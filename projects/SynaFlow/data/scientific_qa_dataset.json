@@ -1,0 +1,105 @@
+{
+  "train": [
+    {
+      "question": {
+        "question": "How do black holes emit Hawking radiation?",
+        "domain": "physics",
+        "context": null
+      },
+      "answer": {
+        "background": "Black holes are regions of spacetime where gravity is so strong that nothing can escape from them, not even light. Stephen Hawking proposed that black holes can emit radiation due to quantum effects near the event horizon.",
+        "reasoning": "According to quantum field theory in curved spacetime, vacuum fluctuations near the event horizon can result in particle-antiparticle pairs. When this happens near the event horizon, one particle may fall in while the other escapes, appearing as radiation. From an outside observer's perspective, it appears that the black hole is emitting radiation. Over time, this process leads to the black hole losing mass and eventually evaporating.",
+        "answer": "Black holes emit Hawking radiation due to quantum effects near the event horizon where particle-antiparticle pairs can be separated, with one falling into the black hole and the other escaping as radiation.",
+        "confidence": 0.95,
+        "citations": [
+          {
+            "title": "A Brief History of Time",
+            "authors": ["Stephen Hawking"],
+            "year": 1988,
+            "source": "Bantam Books",
+            "url": "https://example.com/brief-history-time"
+          },
+          {
+            "title": "Black Holes and Time Warps: Einstein's Outrageous Legacy",
+            "authors": ["Kip S. Thorne"],
+            "year": 1994,
+            "source": "W. W. Norton & Company",
+            "url": "https://example.com/black-holes-time-warps"
+          }
+        ],
+        "further_reading": [
+          "Hawking, S. W. (1975). Particle creation by black holes. Communications in Mathematical Physics, 43(3), 199-220.",
+          "Page, D. N. (1976). Particle emission rates from a black hole: Massless particles from an uncharged, nonrotating hole. Physical Review D, 13(2), 198."
+        ]
+      }
+    },
+    {
+      "question": {
+        "question": "What is the mechanism of CRISPR-Cas9?",
+        "domain": "biology",
+        "context": null
+      },
+      "answer": {
+        "background": "CRISPR-Cas9 is a revolutionary gene editing technology adapted from a naturally occurring genome editing system in bacteria. The bacteria capture snippets of DNA from invading viruses and use them to create DNA segments known as CRISPR arrays, which allow the bacteria to remember the viruses.",
+        "reasoning": "The CRISPR-Cas9 system works in three steps: (1) A guide RNA (gRNA) is designed to match the DNA sequence to be edited. (2) The gRNA binds to the Cas9 enzyme, forming a complex. (3) This complex locates and binds to the target DNA sequence. The Cas9 enzyme then cuts both strands of DNA at the targeted location. The cell's natural DNA repair mechanisms then repair the cut, either by non-homologous end joining (which can result in gene knockout) or by homology-directed repair if a template is provided (allowing for precise genetic modifications).",
+        "answer": "CRISPR-Cas9 is a gene editing mechanism where a guide RNA directs the Cas9 enzyme to cut DNA at a specific target sequence, after which cellular repair mechanisms can either knock out genes or introduce specific modifications when a repair template is provided.",
+        "confidence": 0.98,
+        "citations": [
+          {
+            "title": "A Programmable Dual-RNA-Guided DNA Endonuclease in Adaptive Bacterial Immunity",
+            "authors": ["Martin Jinek", "Krzysztof Chylinski", "Ines Fonfara", "Michael Hauer", "Jennifer A. Doudna", "Emmanuelle Charpentier"],
+            "year": 2012,
+            "source": "Science",
+            "url": "https://doi.org/10.1126/science.1225829"
+          },
+          {
+            "title": "Development and Applications of CRISPR-Cas9 for Genome Engineering",
+            "authors": ["Patrick D. Hsu", "Eric S. Lander", "Feng Zhang"],
+            "year": 2014,
+            "source": "Cell",
+            "url": "https://doi.org/10.1016/j.cell.2014.05.010"
+          }
+        ],
+        "further_reading": [
+          "Doudna, J. A., & Charpentier, E. (2014). The new frontier of genome engineering with CRISPR-Cas9. Science, 346(6213).",
+          "Ran, F. A., Hsu, P. D., Wright, J., Agarwala, V., Scott, D. A., & Zhang, F. (2013). Genome engineering using the CRISPR-Cas9 system. Nature Protocols, 8(11), 2281-2308."
+        ]
+      }
+    }
+  ],
+  "validation": [
+    {
+      "question": {
+        "question": "What is quantum entanglement?",
+        "domain": "physics",
+        "context": null
+      },
+      "answer": {
+        "background": "Quantum entanglement is one of the most counterintuitive features of quantum mechanics, a phenomenon where two or more particles become correlated in ways that cannot be explained by classical physics.",
+        "reasoning": "When particles become entangled, the quantum state of each particle cannot be described independently of the others, even when the particles are separated by large distances. Instead, a quantum state must be described for the system as a whole. This leads to correlations between observable physical properties of the particles that cannot be explained by local realistic theories. These correlations were the subject of the famous Einstein-Podolsky-Rosen (EPR) paradox, and later Bell's inequalities showed that local hidden variable theories cannot explain these correlations.",
+        "answer": "Quantum entanglement is a phenomenon where two or more particles become connected in such a way that the quantum state of each particle cannot be described independently of the others, regardless of the distance separating them. A measurement on one particle instantaneously affects the state of its entangled partners, suggesting a kind of 'spooky action at a distance' as Einstein described it.",
+        "confidence": 0.95,
+        "citations": [
+          {
+            "title": "Can Quantum-Mechanical Description of Physical Reality Be Considered Complete?",
+            "authors": ["Albert Einstein", "Boris Podolsky", "Nathan Rosen"],
+            "year": 1935,
+            "source": "Physical Review",
+            "url": "https://doi.org/10.1103/PhysRev.47.777"
+          },
+          {
+            "title": "On the Einstein Podolsky Rosen Paradox",
+            "authors": ["John S. Bell"],
+            "year": 1964,
+            "source": "Physics Physique Fizika",
+            "url": "https://doi.org/10.1103/PhysicsPhysiqueFizika.1.195"
+          }
+        ],
+        "further_reading": [
+          "Aspect, A., Dalibard, J., & Roger, G. (1982). Experimental Test of Bell's Inequalities Using Time-Varying Analyzers. Physical Review Letters, 49(25), 1804-1807.",
+          "Horodecki, R., Horodecki, P., Horodecki, M., & Horodecki, K. (2009). Quantum entanglement. Reviews of Modern Physics, 81(2), 865-942."
+        ]
+      }
+    }
+  ]
+} 
