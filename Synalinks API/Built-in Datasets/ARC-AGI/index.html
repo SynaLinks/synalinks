@@ -1,0 +1,4486 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+      
+      
+        <link rel="canonical" href="https://synalinks.github.io/synalinks/Synalinks%20API/Built-in%20Datasets/ARC-AGI/">
+      
+      
+        <link rel="prev" href="../HotpotQA/">
+      
+      
+        <link rel="next" href="../../Utilities/Program%20plotting%20utilities/">
+      
+      
+      <link rel="icon" href="../../../assets/synalinks_favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.6.14">
+    
+    
+      
+        <title>ARC AGI - Synalinks</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../../assets/stylesheets/main.342714a4.min.css">
+      
+        
+        <link rel="stylesheet" href="../../../assets/stylesheets/palette.06af60db.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../../../assets/_mkdocstrings.css">
+    
+      <link rel="stylesheet" href="../../../stylesheets/extra.css">
+    
+    <script>__md_scope=new URL("../../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+    
+   <link href="../../../assets/stylesheets/glightbox.min.css" rel="stylesheet"/><style>
+    html.glightbox-open { overflow: initial; height: 100%; }
+    .gslide-title { margin-top: 0px; user-select: text; }
+    .gslide-desc { color: #666; user-select: text; }
+    .gslide-image img { background: white; }
+    .gscrollbar-fixer { padding-right: 15px; }
+    .gdesc-inner { font-size: 0.75rem; }
+    body[data-md-color-scheme="slate"] .gdesc-inner { background: var(--md-default-bg-color);}
+    body[data-md-color-scheme="slate"] .gslide-title { color: var(--md-default-fg-color);}
+    body[data-md-color-scheme="slate"] .gslide-desc { color: var(--md-default-fg-color);}</style> <script src="../../../assets/javascripts/glightbox.min.js"></script></head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#synalinks.src.datasets.arcagi.arcagi" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../../.." title="Synalinks" class="md-header__button md-logo" aria-label="Synalinks" data-md-component="logo">
+      
+  <img src="../../../assets/synalinks_logo.png" alt="logo">
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            Synalinks
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              ARC AGI
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme)" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="m14.3 16-.7-2h-3.2l-.7 2H7.8L11 7h2l3.2 9zM20 8.69V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12zm-9.15 3.96h2.3L12 9z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_2" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to system preference"  type="radio" name="__palette" id="__palette_2">
+    
+      <label class="md-header__button md-icon" title="Switch to system preference" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/SynaLinks/synalinks" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 496 512"><!--! Font Awesome Free 6.7.2 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2024 Fonticons, Inc.--><path d="M165.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M244.8 8C106.1 8 0 113.3 0 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C428.2 457.8 496 362.9 496 252 496 113.3 383.5 8 244.8 8M97.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    SynaLinks/synalinks
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../../.." title="Synalinks" class="md-nav__button md-logo" aria-label="Synalinks" data-md-component="logo">
+      
+  <img src="../../../assets/synalinks_logo.png" alt="logo">
+
+    </a>
+    Synalinks
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/SynaLinks/synalinks" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 496 512"><!--! Font Awesome Free 6.7.2 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2024 Fonticons, Inc.--><path d="M165.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M244.8 8C106.1 8 0 113.3 0 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C428.2 457.8 496 362.9 496 252 496 113.3 383.5 8 244.8 8M97.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    SynaLinks/synalinks
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Quickstart
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../Introduction/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Introduction
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../FAQ/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    FAQ
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    Code Examples
+    
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            Code Examples
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4_1" >
+        
+          
+          <label class="md-nav__link" for="__nav_4_1" id="__nav_4_1_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    Basics
+    
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_4_1_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4_1">
+            <span class="md-nav__icon md-icon"></span>
+            Basics
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../Code%20Examples/Basics/First%20Steps/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    First Steps
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../Code%20Examples/Basics/First%20Programs/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    First Programs
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../Code%20Examples/Basics/Control%20Flow/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Control Flow
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../Code%20Examples/Basics/Conversational%20Applications/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Conversational Applications
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../Code%20Examples/Basics/Reward%20Metrics%20And%20Optimizers/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Rewards, Metrics &amp; Optimizers
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../Code%20Examples/Basics/Training%20Programs/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Training Programs
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_4_2" id="__nav_4_2_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    Advanced
+    
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_4_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4_2">
+            <span class="md-nav__icon md-icon"></span>
+            Advanced
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../Code%20Examples/Advanced/Implementing%20Custom%20Modules%20And%20Programs%20Via%20Subclassing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Implementing custom modules &amp; programs via subclassing
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../Code%20Examples/Advanced/First%20Knowledge%20Graph%20Schema/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    First Knowledge Graph Schema
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../Code%20Examples/Advanced/Knowledge%20Extraction/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Knowledge Extraction
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../Code%20Examples/Advanced/Retrieval%20Augmented%20Generation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Retrieval Augmented Generation
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    Synalinks API
+    
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            Synalinks API
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../Language%20Models%20API/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Language Models API
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../Embedding%20Models%20API/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Embedding Models API
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../Knowledge%20Bases%20API/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Knowledge Bases API
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_5_4" id="__nav_5_4_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    Data Models API
+    
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_5_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5_4">
+            <span class="md-nav__icon md-icon"></span>
+            Data Models API
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../Data%20Models%20API/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Data Models API
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../Data%20Models%20API/The%20DataModel%20class/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    The DataModel class
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../Data%20Models%20API/The%20JsonDataModel%20class/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    The JsonDataModel class
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../Data%20Models%20API/The%20SymbolicDataModel%20class/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    The SymbolicDataModel class
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../Data%20Models%20API/The%20Variable%20class/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    The Variable class
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../Data%20Models%20API/The%20Base%20DataModels/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    The Base DataModels
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_5_5" id="__nav_5_5_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    Programs API
+    
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_5_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5_5">
+            <span class="md-nav__icon md-icon"></span>
+            Programs API
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../Programs%20API/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Programs API
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../Programs%20API/The%20Program%20class/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    The Program class
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../Programs%20API/The%20Sequential%20class/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    The Sequential class
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../Programs%20API/Program%20training%20API/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Program training API
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5_5_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_5_5_5" id="__nav_5_5_5_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    Program Saving API
+    
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="3" aria-labelledby="__nav_5_5_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5_5_5">
+            <span class="md-nav__icon md-icon"></span>
+            Program Saving API
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../Programs%20API/Program%20Saving%20API/Program%20saving%20and%20loading/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Program saving and loading
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../Programs%20API/Program%20Saving%20API/Variable%20saving%20and%20loading/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Variable saving and loading
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5_6" >
+        
+          
+          <label class="md-nav__link" for="__nav_5_6" id="__nav_5_6_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    Modules API
+    
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_5_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5_6">
+            <span class="md-nav__icon md-icon"></span>
+            Modules API
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../Modules%20API/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Modules API
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../Modules%20API/Base%20Module%20class/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Base Module class
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5_6_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_5_6_3" id="__nav_5_6_3_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    Core Modules
+    
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="3" aria-labelledby="__nav_5_6_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5_6_3">
+            <span class="md-nav__icon md-icon"></span>
+            Core Modules
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../Modules%20API/Core%20Modules/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Core Modules
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../Modules%20API/Core%20Modules/Input%20module/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Input module
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../Modules%20API/Core%20Modules/Identity%20module/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Identity module
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../Modules%20API/Core%20Modules/Not%20module/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Not module
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../Modules%20API/Core%20Modules/Generator%20module/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Generator module
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../Modules%20API/Core%20Modules/Decision%20module/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Decision module
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../Modules%20API/Core%20Modules/Action%20module/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Action module
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../Modules%20API/Core%20Modules/Branch%20module/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Branch module
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5_6_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_5_6_4" id="__nav_5_6_4_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    Knowledge Modules
+    
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="3" aria-labelledby="__nav_5_6_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5_6_4">
+            <span class="md-nav__icon md-icon"></span>
+            Knowledge Modules
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../Modules%20API/Knowledge%20Modules/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Knowledge Modules
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../Modules%20API/Knowledge%20Modules/Embedding%20module/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Embedding module
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../Modules%20API/Knowledge%20Modules/UpdateKnowledge%20module/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    UpdateKnowledge module
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../Modules%20API/Knowledge%20Modules/EntityRetriever%20module/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    EntityRetriever module
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../Modules%20API/Knowledge%20Modules/KnowledgeRetriever%20module/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    KnowledgeRetriever module
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5_6_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_5_6_5" id="__nav_5_6_5_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    Merging Modules
+    
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="3" aria-labelledby="__nav_5_6_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5_6_5">
+            <span class="md-nav__icon md-icon"></span>
+            Merging Modules
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../Modules%20API/Merging%20Modules/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Merging Modules
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../Modules%20API/Merging%20Modules/Concat%20module/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Concat module
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../Modules%20API/Merging%20Modules/And%20module/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    And module
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../Modules%20API/Merging%20Modules/Or%20module/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Or module
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../Modules%20API/Merging%20Modules/Xor%20module/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Xor module
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5_6_6" >
+        
+          
+          <label class="md-nav__link" for="__nav_5_6_6" id="__nav_5_6_6_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    Test Time Compute Modules
+    
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="3" aria-labelledby="__nav_5_6_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5_6_6">
+            <span class="md-nav__icon md-icon"></span>
+            Test Time Compute Modules
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../Modules%20API/Test%20Time%20Compute%20Modules/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Test Time Compute Modules
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../Modules%20API/Test%20Time%20Compute%20Modules/ChainOfThought%20module/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    ChainOfThought module
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../Modules%20API/Test%20Time%20Compute%20Modules/SelfCritique%20module/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    SelfCritique module
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5_6_7" >
+        
+          
+          <label class="md-nav__link" for="__nav_5_6_7" id="__nav_5_6_7_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    Agents Modules
+    
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="3" aria-labelledby="__nav_5_6_7_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5_6_7">
+            <span class="md-nav__icon md-icon"></span>
+            Agents Modules
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../Modules%20API/Agents%20Modules/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Agent Modules
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../Modules%20API/Agents%20Modules/ReACT%20Agent%20module/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    ReACT Agent module
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5_7" >
+        
+          
+          <label class="md-nav__link" for="__nav_5_7" id="__nav_5_7_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    Callbacks API
+    
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_5_7_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5_7">
+            <span class="md-nav__icon md-icon"></span>
+            Callbacks API
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../Callbacks%20API/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Callbacks API
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../Callbacks%20API/Base%20Callback%20class/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Base Callback class
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../Callbacks%20API/ProgramCheckpoint/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    ProgramCheckpoint
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../Callbacks%20API/CSVLogger/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    CSVLogger
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5_8" >
+        
+          
+          <label class="md-nav__link" for="__nav_5_8" id="__nav_5_8_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    Ops API
+    
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_5_8_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5_8">
+            <span class="md-nav__icon md-icon"></span>
+            Ops API
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../Ops%20API/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Ops API
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../Ops%20API/JSON%20Ops/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    JSON Ops
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../Ops%20API/Language%20Models%20Ops/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Language Models Ops
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../Ops%20API/Embedding%20Models%20Ops/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Embedding Models Ops
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5_9" >
+        
+          
+          <label class="md-nav__link" for="__nav_5_9" id="__nav_5_9_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    Optimizers API
+    
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_5_9_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5_9">
+            <span class="md-nav__icon md-icon"></span>
+            Optimizers API
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../Optimizers%20API/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Optimizers API
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../Optimizers%20API/Base%20Optimizer%20class/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Base Optimizer class
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../Optimizers%20API/RandomFewShot/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    RandomFewShot
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../Optimizers%20API/OPRO/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    OPRO
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../Optimizers%20API/FewShotOPRO/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    FewShotOPRO
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5_10" >
+        
+          
+          <label class="md-nav__link" for="__nav_5_10" id="__nav_5_10_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    Metrics
+    
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_5_10_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5_10">
+            <span class="md-nav__icon md-icon"></span>
+            Metrics
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../Metrics/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Metrics
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../Metrics/Base%20Metric%20class/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Base Metric class
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../Metrics/Metric%20wrappers%20and%20reduction%20metrics/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Metric wrappers and reduction metrics
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../Metrics/Regression%20metrics/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Regression metrics
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../Metrics/FScore%20metrics/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    FScore metrics
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5_11" >
+        
+          
+          <label class="md-nav__link" for="__nav_5_11" id="__nav_5_11_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    Rewards
+    
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_5_11_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5_11">
+            <span class="md-nav__icon md-icon"></span>
+            Rewards
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../Rewards/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Rewards
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../Rewards/ExactMatch%20reward/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    ExactMatch reward
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../Rewards/CosineSimilarity%20reward/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    CosineSimilarity reward
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../Rewards/LMAsJudge%20reward/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    LMAsJudge reward
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../Rewards/Reward%20wrappers/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Reward wrappers
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5_12" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_5_12" id="__nav_5_12_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    Built-in Datasets
+    
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_5_12_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_5_12">
+            <span class="md-nav__icon md-icon"></span>
+            Built-in Datasets
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Built-in Datasets
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../GSM8K/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    GSM8K
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../HotpotQA/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    HotpotQA
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    ARC AGI
+    
+  </span>
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    ARC AGI
+    
+  </span>
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#synalinks.src.datasets.arcagi.arcagi" class="md-nav__link">
+    <span class="md-ellipsis">
+      arcagi
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#synalinks.src.datasets.arcagi.arcagi.ARCAGIInput" class="md-nav__link">
+    <span class="md-ellipsis">
+      ARCAGIInput
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#synalinks.src.datasets.arcagi.arcagi.ARCAGIOutput" class="md-nav__link">
+    <span class="md-ellipsis">
+      ARCAGIOutput
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#synalinks.src.datasets.arcagi.arcagi.TaskExample" class="md-nav__link">
+    <span class="md-ellipsis">
+      TaskExample
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#synalinks.src.datasets.arcagi.arcagi.fetch_and_format" class="md-nav__link">
+    <span class="md-ellipsis">
+      fetch_and_format
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#synalinks.src.datasets.arcagi.arcagi.get_input_data_model" class="md-nav__link">
+    <span class="md-ellipsis">
+      get_input_data_model
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#synalinks.src.datasets.arcagi.arcagi.get_output_data_model" class="md-nav__link">
+    <span class="md-ellipsis">
+      get_output_data_model
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#synalinks.src.datasets.arcagi.arcagi.load_data" class="md-nav__link">
+    <span class="md-ellipsis">
+      load_data
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#synalinks.src.datasets.arcagi.arcagi.plot_task" class="md-nav__link">
+    <span class="md-ellipsis">
+      plot_task
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5_13" >
+        
+          
+          <label class="md-nav__link" for="__nav_5_13" id="__nav_5_13_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    Utilities
+    
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_5_13_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5_13">
+            <span class="md-nav__icon md-icon"></span>
+            Utilities
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../Utilities/Program%20plotting%20utilities/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Program plotting utilities
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../Utilities/More%20plotting%20utilities/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    More plotting utilities
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../Utilities/NLP%20utilities/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    NLP utilities
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../Config/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Config
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_6" >
+        
+          
+          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    Deployment
+    
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6">
+            <span class="md-nav__icon md-icon"></span>
+            Deployment
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../Deployment/Building%20a%20REST%20API/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Building a REST API
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../Deployment/Enabling%20LM%20Tracing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Enabling LM Tracing with Arize Phoenix
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#synalinks.src.datasets.arcagi.arcagi" class="md-nav__link">
+    <span class="md-ellipsis">
+      arcagi
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#synalinks.src.datasets.arcagi.arcagi.ARCAGIInput" class="md-nav__link">
+    <span class="md-ellipsis">
+      ARCAGIInput
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#synalinks.src.datasets.arcagi.arcagi.ARCAGIOutput" class="md-nav__link">
+    <span class="md-ellipsis">
+      ARCAGIOutput
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#synalinks.src.datasets.arcagi.arcagi.TaskExample" class="md-nav__link">
+    <span class="md-ellipsis">
+      TaskExample
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#synalinks.src.datasets.arcagi.arcagi.fetch_and_format" class="md-nav__link">
+    <span class="md-ellipsis">
+      fetch_and_format
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#synalinks.src.datasets.arcagi.arcagi.get_input_data_model" class="md-nav__link">
+    <span class="md-ellipsis">
+      get_input_data_model
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#synalinks.src.datasets.arcagi.arcagi.get_output_data_model" class="md-nav__link">
+    <span class="md-ellipsis">
+      get_output_data_model
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#synalinks.src.datasets.arcagi.arcagi.load_data" class="md-nav__link">
+    <span class="md-ellipsis">
+      load_data
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#synalinks.src.datasets.arcagi.arcagi.plot_task" class="md-nav__link">
+    <span class="md-ellipsis">
+      plot_task
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+  <h1>ARC AGI</h1>
+
+<div class="doc doc-object doc-module">
+
+
+
+<a id="synalinks.src.datasets.arcagi.arcagi"></a>
+    <div class="doc doc-contents first">
+
+
+
+
+
+
+
+
+
+  <div class="doc doc-children">
+
+
+
+
+
+
+
+
+<div class="doc doc-object doc-class">
+
+
+
+<h2 id="synalinks.src.datasets.arcagi.arcagi.ARCAGIInput" class="doc doc-heading">
+            <code>ARCAGIInput</code>
+
+
+</h2>
+
+
+    <div class="doc doc-contents ">
+            <p class="doc doc-class-bases">
+              Bases: <code><span title="synalinks.src.backend.DataModel">DataModel</span></code></p>
+
+
+        <p>Input data model</p>
+
+
+
+
+
+
+
+              <details class="quote">
+                <summary>Source code in <code>synalinks/src/datasets/arcagi/arcagi.py</code></summary>
+                <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-832">832</a></span>
+<span class="normal"><a href="#__codelineno-0-833">833</a></span>
+<span class="normal"><a href="#__codelineno-0-834">834</a></span>
+<span class="normal"><a href="#__codelineno-0-835">835</a></span>
+<span class="normal"><a href="#__codelineno-0-836">836</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-832" name="__codelineno-0-832"></a><span class="k">class</span><span class="w"> </span><span class="nc">ARCAGIInput</span><span class="p">(</span><span class="n">DataModel</span><span class="p">):</span>
+<a id="__codelineno-0-833" name="__codelineno-0-833"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Input data model&quot;&quot;&quot;</span>
+<a id="__codelineno-0-834" name="__codelineno-0-834"></a>
+<a id="__codelineno-0-835" name="__codelineno-0-835"></a>    <span class="n">examples</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="n">TaskExample</span><span class="p">]</span> <span class="o">=</span> <span class="p">[]</span>
+<a id="__codelineno-0-836" name="__codelineno-0-836"></a>    <span class="n">grid</span><span class="p">:</span> <span class="n">Grid</span>
+</code></pre></div></td></tr></table></div>
+              </details>
+
+
+
+  <div class="doc doc-children">
+
+
+
+
+
+
+
+
+
+
+
+  </div>
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-class">
+
+
+
+<h2 id="synalinks.src.datasets.arcagi.arcagi.ARCAGIOutput" class="doc doc-heading">
+            <code>ARCAGIOutput</code>
+
+
+</h2>
+
+
+    <div class="doc doc-contents ">
+            <p class="doc doc-class-bases">
+              Bases: <code><span title="synalinks.src.backend.DataModel">DataModel</span></code></p>
+
+
+        <p>Find the common rule that maps an input grid to an output grid.</p>
+
+
+
+
+
+
+
+              <details class="quote">
+                <summary>Source code in <code>synalinks/src/datasets/arcagi/arcagi.py</code></summary>
+                <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-839">839</a></span>
+<span class="normal"><a href="#__codelineno-0-840">840</a></span>
+<span class="normal"><a href="#__codelineno-0-841">841</a></span>
+<span class="normal"><a href="#__codelineno-0-842">842</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-839" name="__codelineno-0-839"></a><span class="k">class</span><span class="w"> </span><span class="nc">ARCAGIOutput</span><span class="p">(</span><span class="n">DataModel</span><span class="p">):</span>
+<a id="__codelineno-0-840" name="__codelineno-0-840"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Find the common rule that maps an input grid to an output grid.&quot;&quot;&quot;</span>
+<a id="__codelineno-0-841" name="__codelineno-0-841"></a>
+<a id="__codelineno-0-842" name="__codelineno-0-842"></a>    <span class="n">grid</span><span class="p">:</span> <span class="n">Grid</span>
+</code></pre></div></td></tr></table></div>
+              </details>
+
+
+
+  <div class="doc doc-children">
+
+
+
+
+
+
+
+
+
+
+
+  </div>
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-class">
+
+
+
+<h2 id="synalinks.src.datasets.arcagi.arcagi.TaskExample" class="doc doc-heading">
+            <code>TaskExample</code>
+
+
+</h2>
+
+
+    <div class="doc doc-contents ">
+            <p class="doc doc-class-bases">
+              Bases: <code><span title="synalinks.src.backend.DataModel">DataModel</span></code></p>
+
+
+        <p>An example of task</p>
+
+
+
+
+
+
+
+              <details class="quote">
+                <summary>Source code in <code>synalinks/src/datasets/arcagi/arcagi.py</code></summary>
+                <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-825">825</a></span>
+<span class="normal"><a href="#__codelineno-0-826">826</a></span>
+<span class="normal"><a href="#__codelineno-0-827">827</a></span>
+<span class="normal"><a href="#__codelineno-0-828">828</a></span>
+<span class="normal"><a href="#__codelineno-0-829">829</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-825" name="__codelineno-0-825"></a><span class="k">class</span><span class="w"> </span><span class="nc">TaskExample</span><span class="p">(</span><span class="n">DataModel</span><span class="p">):</span>
+<a id="__codelineno-0-826" name="__codelineno-0-826"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;An example of task&quot;&quot;&quot;</span>
+<a id="__codelineno-0-827" name="__codelineno-0-827"></a>
+<a id="__codelineno-0-828" name="__codelineno-0-828"></a>    <span class="n">inputs</span><span class="p">:</span> <span class="n">Grid</span>
+<a id="__codelineno-0-829" name="__codelineno-0-829"></a>    <span class="n">outputs</span><span class="p">:</span> <span class="n">Grid</span>
+</code></pre></div></td></tr></table></div>
+              </details>
+
+
+
+  <div class="doc doc-children">
+
+
+
+
+
+
+
+
+
+
+
+  </div>
+
+    </div>
+
+</div>
+
+
+<div class="doc doc-object doc-function">
+
+
+<h2 id="synalinks.src.datasets.arcagi.arcagi.fetch_and_format" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">fetch_and_format</span><span class="p">(</span><span class="n">task_name</span><span class="p">)</span></code>
+
+</h2>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Fetch and format one task by name</p>
+<p>Example:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="n">x</span><span class="p">,</span> <span class="n">y</span> <span class="o">=</span> <span class="n">synalinks</span><span class="o">.</span><span class="n">datasets</span><span class="o">.</span><span class="n">arcagi</span><span class="o">.</span><span class="n">fetch_and_format</span><span class="p">(</span><span class="s2">&quot;62c24649&quot;</span><span class="p">)</span>
+</code></pre></div>
+
+
+            <details class="quote">
+              <summary>Source code in <code>synalinks/src/datasets/arcagi/arcagi.py</code></summary>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-1045">1045</a></span>
+<span class="normal"><a href="#__codelineno-0-1046">1046</a></span>
+<span class="normal"><a href="#__codelineno-0-1047">1047</a></span>
+<span class="normal"><a href="#__codelineno-0-1048">1048</a></span>
+<span class="normal"><a href="#__codelineno-0-1049">1049</a></span>
+<span class="normal"><a href="#__codelineno-0-1050">1050</a></span>
+<span class="normal"><a href="#__codelineno-0-1051">1051</a></span>
+<span class="normal"><a href="#__codelineno-0-1052">1052</a></span>
+<span class="normal"><a href="#__codelineno-0-1053">1053</a></span>
+<span class="normal"><a href="#__codelineno-0-1054">1054</a></span>
+<span class="normal"><a href="#__codelineno-0-1055">1055</a></span>
+<span class="normal"><a href="#__codelineno-0-1056">1056</a></span>
+<span class="normal"><a href="#__codelineno-0-1057">1057</a></span>
+<span class="normal"><a href="#__codelineno-0-1058">1058</a></span>
+<span class="normal"><a href="#__codelineno-0-1059">1059</a></span>
+<span class="normal"><a href="#__codelineno-0-1060">1060</a></span>
+<span class="normal"><a href="#__codelineno-0-1061">1061</a></span>
+<span class="normal"><a href="#__codelineno-0-1062">1062</a></span>
+<span class="normal"><a href="#__codelineno-0-1063">1063</a></span>
+<span class="normal"><a href="#__codelineno-0-1064">1064</a></span>
+<span class="normal"><a href="#__codelineno-0-1065">1065</a></span>
+<span class="normal"><a href="#__codelineno-0-1066">1066</a></span>
+<span class="normal"><a href="#__codelineno-0-1067">1067</a></span>
+<span class="normal"><a href="#__codelineno-0-1068">1068</a></span>
+<span class="normal"><a href="#__codelineno-0-1069">1069</a></span>
+<span class="normal"><a href="#__codelineno-0-1070">1070</a></span>
+<span class="normal"><a href="#__codelineno-0-1071">1071</a></span>
+<span class="normal"><a href="#__codelineno-0-1072">1072</a></span>
+<span class="normal"><a href="#__codelineno-0-1073">1073</a></span>
+<span class="normal"><a href="#__codelineno-0-1074">1074</a></span>
+<span class="normal"><a href="#__codelineno-0-1075">1075</a></span>
+<span class="normal"><a href="#__codelineno-0-1076">1076</a></span>
+<span class="normal"><a href="#__codelineno-0-1077">1077</a></span>
+<span class="normal"><a href="#__codelineno-0-1078">1078</a></span>
+<span class="normal"><a href="#__codelineno-0-1079">1079</a></span>
+<span class="normal"><a href="#__codelineno-0-1080">1080</a></span>
+<span class="normal"><a href="#__codelineno-0-1081">1081</a></span>
+<span class="normal"><a href="#__codelineno-0-1082">1082</a></span>
+<span class="normal"><a href="#__codelineno-0-1083">1083</a></span>
+<span class="normal"><a href="#__codelineno-0-1084">1084</a></span>
+<span class="normal"><a href="#__codelineno-0-1085">1085</a></span>
+<span class="normal"><a href="#__codelineno-0-1086">1086</a></span>
+<span class="normal"><a href="#__codelineno-0-1087">1087</a></span>
+<span class="normal"><a href="#__codelineno-0-1088">1088</a></span>
+<span class="normal"><a href="#__codelineno-0-1089">1089</a></span>
+<span class="normal"><a href="#__codelineno-0-1090">1090</a></span>
+<span class="normal"><a href="#__codelineno-0-1091">1091</a></span>
+<span class="normal"><a href="#__codelineno-0-1092">1092</a></span>
+<span class="normal"><a href="#__codelineno-0-1093">1093</a></span>
+<span class="normal"><a href="#__codelineno-0-1094">1094</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-1045" name="__codelineno-0-1045"></a><span class="nd">@synalinks_export</span><span class="p">(</span><span class="s2">&quot;synalinks.datasets.arcagi.fetch_and_format&quot;</span><span class="p">)</span>
+<a id="__codelineno-0-1046" name="__codelineno-0-1046"></a><span class="k">def</span><span class="w"> </span><span class="nf">fetch_and_format</span><span class="p">(</span><span class="n">task_name</span><span class="p">):</span>
+<a id="__codelineno-0-1047" name="__codelineno-0-1047"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<a id="__codelineno-0-1048" name="__codelineno-0-1048"></a><span class="sd">    Fetch and format one task by name</span>
+<a id="__codelineno-0-1049" name="__codelineno-0-1049"></a>
+<a id="__codelineno-0-1050" name="__codelineno-0-1050"></a><span class="sd">    Example:</span>
+<a id="__codelineno-0-1051" name="__codelineno-0-1051"></a>
+<a id="__codelineno-0-1052" name="__codelineno-0-1052"></a><span class="sd">    ```python</span>
+<a id="__codelineno-0-1053" name="__codelineno-0-1053"></a><span class="sd">    x, y = synalinks.datasets.arcagi.fetch_and_format(&quot;62c24649&quot;)</span>
+<a id="__codelineno-0-1054" name="__codelineno-0-1054"></a><span class="sd">    ```</span>
+<a id="__codelineno-0-1055" name="__codelineno-0-1055"></a><span class="sd">    &quot;&quot;&quot;</span>
+<a id="__codelineno-0-1056" name="__codelineno-0-1056"></a>    <span class="k">if</span> <span class="n">task_name</span> <span class="ow">in</span> <span class="n">TRAINING_TASK_NAMES</span><span class="p">:</span>
+<a id="__codelineno-0-1057" name="__codelineno-0-1057"></a>        <span class="n">url</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">BASE_URL</span><span class="si">}</span><span class="s2">/training/</span><span class="si">{</span><span class="n">task_name</span><span class="si">}</span><span class="s2">.json&quot;</span>
+<a id="__codelineno-0-1058" name="__codelineno-0-1058"></a>    <span class="k">elif</span> <span class="n">task_name</span> <span class="ow">in</span> <span class="n">EVALUATION_TASK_NAMES</span><span class="p">:</span>
+<a id="__codelineno-0-1059" name="__codelineno-0-1059"></a>        <span class="n">url</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">BASE_URL</span><span class="si">}</span><span class="s2">/evaluation/</span><span class="si">{</span><span class="n">task_name</span><span class="si">}</span><span class="s2">.json&quot;</span>
+<a id="__codelineno-0-1060" name="__codelineno-0-1060"></a>    <span class="k">else</span><span class="p">:</span>
+<a id="__codelineno-0-1061" name="__codelineno-0-1061"></a>        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+<a id="__codelineno-0-1062" name="__codelineno-0-1062"></a>            <span class="sa">f</span><span class="s2">&quot;Task &#39;</span><span class="si">{</span><span class="n">task_name</span><span class="si">}</span><span class="s2">&#39; not recognized, make sure that the task name is valid.&quot;</span>
+<a id="__codelineno-0-1063" name="__codelineno-0-1063"></a>        <span class="p">)</span>
+<a id="__codelineno-0-1064" name="__codelineno-0-1064"></a>
+<a id="__codelineno-0-1065" name="__codelineno-0-1065"></a>    <span class="n">x</span> <span class="o">=</span> <span class="kc">None</span>
+<a id="__codelineno-0-1066" name="__codelineno-0-1066"></a>    <span class="n">y</span> <span class="o">=</span> <span class="kc">None</span>
+<a id="__codelineno-0-1067" name="__codelineno-0-1067"></a>
+<a id="__codelineno-0-1068" name="__codelineno-0-1068"></a>    <span class="n">file_path</span> <span class="o">=</span> <span class="n">file_utils</span><span class="o">.</span><span class="n">get_file</span><span class="p">(</span><span class="n">origin</span><span class="o">=</span><span class="n">url</span><span class="p">,</span> <span class="n">progbar</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+<a id="__codelineno-0-1069" name="__codelineno-0-1069"></a>    <span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="n">file_path</span><span class="p">,</span> <span class="s2">&quot;r&quot;</span><span class="p">)</span> <span class="k">as</span> <span class="n">f</span><span class="p">:</span>
+<a id="__codelineno-0-1070" name="__codelineno-0-1070"></a>        <span class="n">json_data</span> <span class="o">=</span> <span class="n">json</span><span class="o">.</span><span class="n">loads</span><span class="p">(</span><span class="n">f</span><span class="o">.</span><span class="n">read</span><span class="p">())</span>
+<a id="__codelineno-0-1071" name="__codelineno-0-1071"></a>        <span class="n">trainset</span> <span class="o">=</span> <span class="n">json_data</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;train&quot;</span><span class="p">)</span>
+<a id="__codelineno-0-1072" name="__codelineno-0-1072"></a>        <span class="n">testset</span> <span class="o">=</span> <span class="n">json_data</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;test&quot;</span><span class="p">)</span>
+<a id="__codelineno-0-1073" name="__codelineno-0-1073"></a>        <span class="n">x</span> <span class="o">=</span> <span class="n">ARCAGIInput</span><span class="p">(</span><span class="n">grid</span><span class="o">=</span><span class="n">testset</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;input&quot;</span><span class="p">))</span>
+<a id="__codelineno-0-1074" name="__codelineno-0-1074"></a>        <span class="n">x</span><span class="o">.</span><span class="n">examples</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
+<a id="__codelineno-0-1075" name="__codelineno-0-1075"></a>            <span class="n">TaskExample</span><span class="p">(</span>
+<a id="__codelineno-0-1076" name="__codelineno-0-1076"></a>                <span class="n">inputs</span><span class="o">=</span><span class="nb">tuple</span><span class="p">(</span><span class="nb">map</span><span class="p">(</span><span class="nb">tuple</span><span class="p">,</span> <span class="n">trainset</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;input&quot;</span><span class="p">))),</span>
+<a id="__codelineno-0-1077" name="__codelineno-0-1077"></a>                <span class="n">outputs</span><span class="o">=</span><span class="nb">tuple</span><span class="p">(</span><span class="nb">map</span><span class="p">(</span><span class="nb">tuple</span><span class="p">,</span> <span class="n">trainset</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;output&quot;</span><span class="p">))),</span>
+<a id="__codelineno-0-1078" name="__codelineno-0-1078"></a>            <span class="p">)</span>
+<a id="__codelineno-0-1079" name="__codelineno-0-1079"></a>        <span class="p">)</span>
+<a id="__codelineno-0-1080" name="__codelineno-0-1080"></a>        <span class="n">x</span><span class="o">.</span><span class="n">examples</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
+<a id="__codelineno-0-1081" name="__codelineno-0-1081"></a>            <span class="n">TaskExample</span><span class="p">(</span>
+<a id="__codelineno-0-1082" name="__codelineno-0-1082"></a>                <span class="n">inputs</span><span class="o">=</span><span class="nb">tuple</span><span class="p">(</span><span class="nb">map</span><span class="p">(</span><span class="nb">tuple</span><span class="p">,</span> <span class="n">trainset</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;input&quot;</span><span class="p">))),</span>
+<a id="__codelineno-0-1083" name="__codelineno-0-1083"></a>                <span class="n">outputs</span><span class="o">=</span><span class="nb">tuple</span><span class="p">(</span><span class="nb">map</span><span class="p">(</span><span class="nb">tuple</span><span class="p">,</span> <span class="n">trainset</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;output&quot;</span><span class="p">))),</span>
+<a id="__codelineno-0-1084" name="__codelineno-0-1084"></a>            <span class="p">)</span>
+<a id="__codelineno-0-1085" name="__codelineno-0-1085"></a>        <span class="p">)</span>
+<a id="__codelineno-0-1086" name="__codelineno-0-1086"></a>        <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">trainset</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">2</span><span class="p">:</span>
+<a id="__codelineno-0-1087" name="__codelineno-0-1087"></a>            <span class="n">x</span><span class="o">.</span><span class="n">examples</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
+<a id="__codelineno-0-1088" name="__codelineno-0-1088"></a>                <span class="n">TaskExample</span><span class="p">(</span>
+<a id="__codelineno-0-1089" name="__codelineno-0-1089"></a>                    <span class="n">inputs</span><span class="o">=</span><span class="nb">tuple</span><span class="p">(</span><span class="nb">map</span><span class="p">(</span><span class="nb">tuple</span><span class="p">,</span> <span class="n">trainset</span><span class="p">[</span><span class="mi">2</span><span class="p">]</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;input&quot;</span><span class="p">))),</span>
+<a id="__codelineno-0-1090" name="__codelineno-0-1090"></a>                    <span class="n">outputs</span><span class="o">=</span><span class="nb">tuple</span><span class="p">(</span><span class="nb">map</span><span class="p">(</span><span class="nb">tuple</span><span class="p">,</span> <span class="n">trainset</span><span class="p">[</span><span class="mi">2</span><span class="p">]</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;output&quot;</span><span class="p">))),</span>
+<a id="__codelineno-0-1091" name="__codelineno-0-1091"></a>                <span class="p">)</span>
+<a id="__codelineno-0-1092" name="__codelineno-0-1092"></a>            <span class="p">)</span>
+<a id="__codelineno-0-1093" name="__codelineno-0-1093"></a>        <span class="n">y</span> <span class="o">=</span> <span class="n">ARCAGIOutput</span><span class="p">(</span><span class="n">grid</span><span class="o">=</span><span class="nb">tuple</span><span class="p">(</span><span class="nb">map</span><span class="p">(</span><span class="nb">tuple</span><span class="p">,</span> <span class="n">testset</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;output&quot;</span><span class="p">))))</span>
+<a id="__codelineno-0-1094" name="__codelineno-0-1094"></a>    <span class="k">return</span> <span class="n">x</span><span class="p">,</span> <span class="n">y</span>
+</code></pre></div></td></tr></table></div>
+            </details>
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h2 id="synalinks.src.datasets.arcagi.arcagi.get_input_data_model" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">get_input_data_model</span><span class="p">()</span></code>
+
+</h2>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Returns ARC-AGI input data_model for pipeline configurations.</p>
+
+
+    <p><span class="doc-section-title">Returns:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Type</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                  <code><span title="synalinks.src.backend.DataModel">DataModel</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>The ARC-AGI input data_model</p>
+              </div>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+            <details class="quote">
+              <summary>Source code in <code>synalinks/src/datasets/arcagi/arcagi.py</code></summary>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-860">860</a></span>
+<span class="normal"><a href="#__codelineno-0-861">861</a></span>
+<span class="normal"><a href="#__codelineno-0-862">862</a></span>
+<span class="normal"><a href="#__codelineno-0-863">863</a></span>
+<span class="normal"><a href="#__codelineno-0-864">864</a></span>
+<span class="normal"><a href="#__codelineno-0-865">865</a></span>
+<span class="normal"><a href="#__codelineno-0-866">866</a></span>
+<span class="normal"><a href="#__codelineno-0-867">867</a></span>
+<span class="normal"><a href="#__codelineno-0-868">868</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-860" name="__codelineno-0-860"></a><span class="nd">@synalinks_export</span><span class="p">(</span><span class="s2">&quot;synalinks.datasets.arcagi.get_input_data_model&quot;</span><span class="p">)</span>
+<a id="__codelineno-0-861" name="__codelineno-0-861"></a><span class="k">def</span><span class="w"> </span><span class="nf">get_input_data_model</span><span class="p">():</span>
+<a id="__codelineno-0-862" name="__codelineno-0-862"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<a id="__codelineno-0-863" name="__codelineno-0-863"></a><span class="sd">    Returns ARC-AGI input data_model for pipeline configurations.</span>
+<a id="__codelineno-0-864" name="__codelineno-0-864"></a>
+<a id="__codelineno-0-865" name="__codelineno-0-865"></a><span class="sd">    Returns:</span>
+<a id="__codelineno-0-866" name="__codelineno-0-866"></a><span class="sd">        (DataModel): The ARC-AGI input data_model</span>
+<a id="__codelineno-0-867" name="__codelineno-0-867"></a><span class="sd">    &quot;&quot;&quot;</span>
+<a id="__codelineno-0-868" name="__codelineno-0-868"></a>    <span class="k">return</span> <span class="n">ARCAGIInput</span>
+</code></pre></div></td></tr></table></div>
+            </details>
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h2 id="synalinks.src.datasets.arcagi.arcagi.get_output_data_model" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">get_output_data_model</span><span class="p">()</span></code>
+
+</h2>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Returns ARC-AGI output data_model for pipeline configurations.</p>
+
+
+    <p><span class="doc-section-title">Returns:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Type</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                  <code><span title="synalinks.src.backend.DataModel">DataModel</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>The ARC-AGI output data_model</p>
+              </div>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+            <details class="quote">
+              <summary>Source code in <code>synalinks/src/datasets/arcagi/arcagi.py</code></summary>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-871">871</a></span>
+<span class="normal"><a href="#__codelineno-0-872">872</a></span>
+<span class="normal"><a href="#__codelineno-0-873">873</a></span>
+<span class="normal"><a href="#__codelineno-0-874">874</a></span>
+<span class="normal"><a href="#__codelineno-0-875">875</a></span>
+<span class="normal"><a href="#__codelineno-0-876">876</a></span>
+<span class="normal"><a href="#__codelineno-0-877">877</a></span>
+<span class="normal"><a href="#__codelineno-0-878">878</a></span>
+<span class="normal"><a href="#__codelineno-0-879">879</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-871" name="__codelineno-0-871"></a><span class="nd">@synalinks_export</span><span class="p">(</span><span class="s2">&quot;synalinks.datasets.arcagi.get_output_data_model&quot;</span><span class="p">)</span>
+<a id="__codelineno-0-872" name="__codelineno-0-872"></a><span class="k">def</span><span class="w"> </span><span class="nf">get_output_data_model</span><span class="p">():</span>
+<a id="__codelineno-0-873" name="__codelineno-0-873"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<a id="__codelineno-0-874" name="__codelineno-0-874"></a><span class="sd">    Returns ARC-AGI output data_model for pipeline configurations.</span>
+<a id="__codelineno-0-875" name="__codelineno-0-875"></a>
+<a id="__codelineno-0-876" name="__codelineno-0-876"></a><span class="sd">    Returns:</span>
+<a id="__codelineno-0-877" name="__codelineno-0-877"></a><span class="sd">        (DataModel): The ARC-AGI output data_model</span>
+<a id="__codelineno-0-878" name="__codelineno-0-878"></a><span class="sd">    &quot;&quot;&quot;</span>
+<a id="__codelineno-0-879" name="__codelineno-0-879"></a>    <span class="k">return</span> <span class="n">ARCAGIOutput</span>
+</code></pre></div></td></tr></table></div>
+            </details>
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h2 id="synalinks.src.datasets.arcagi.arcagi.load_data" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">load_data</span><span class="p">(</span><span class="n">task_names</span><span class="o">=</span><span class="kc">None</span><span class="p">)</span></code>
+
+</h2>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Load and format data from github</p>
+<p>Example:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="p">(</span><span class="n">x_train</span><span class="p">,</span> <span class="n">y_train</span><span class="p">),</span> <span class="p">(</span><span class="n">x_test</span><span class="p">,</span> <span class="n">y_test</span><span class="p">)</span> <span class="o">=</span> <span class="n">synalinks</span><span class="o">.</span><span class="n">datasets</span><span class="o">.</span><span class="n">arcagi</span><span class="o">.</span><span class="n">load_data</span><span class="p">()</span>
+</code></pre></div>
+
+
+<p><span class="doc-section-title">Parameters:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Type</th>
+          <th>Description</th>
+          <th>Default</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                <code>task_names</code>
+            </td>
+            <td>
+                  <code><span title="list">list</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Optional. The list of tasks to fetch.</p>
+              </div>
+            </td>
+            <td>
+                  <code>None</code>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+    <p><span class="doc-section-title">Returns:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Type</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                  <code><span title="tuple">tuple</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>The train and test data ready for training</p>
+              </div>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+            <details class="quote">
+              <summary>Source code in <code>synalinks/src/datasets/arcagi/arcagi.py</code></summary>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-992"> 992</a></span>
+<span class="normal"><a href="#__codelineno-0-993"> 993</a></span>
+<span class="normal"><a href="#__codelineno-0-994"> 994</a></span>
+<span class="normal"><a href="#__codelineno-0-995"> 995</a></span>
+<span class="normal"><a href="#__codelineno-0-996"> 996</a></span>
+<span class="normal"><a href="#__codelineno-0-997"> 997</a></span>
+<span class="normal"><a href="#__codelineno-0-998"> 998</a></span>
+<span class="normal"><a href="#__codelineno-0-999"> 999</a></span>
+<span class="normal"><a href="#__codelineno-0-1000">1000</a></span>
+<span class="normal"><a href="#__codelineno-0-1001">1001</a></span>
+<span class="normal"><a href="#__codelineno-0-1002">1002</a></span>
+<span class="normal"><a href="#__codelineno-0-1003">1003</a></span>
+<span class="normal"><a href="#__codelineno-0-1004">1004</a></span>
+<span class="normal"><a href="#__codelineno-0-1005">1005</a></span>
+<span class="normal"><a href="#__codelineno-0-1006">1006</a></span>
+<span class="normal"><a href="#__codelineno-0-1007">1007</a></span>
+<span class="normal"><a href="#__codelineno-0-1008">1008</a></span>
+<span class="normal"><a href="#__codelineno-0-1009">1009</a></span>
+<span class="normal"><a href="#__codelineno-0-1010">1010</a></span>
+<span class="normal"><a href="#__codelineno-0-1011">1011</a></span>
+<span class="normal"><a href="#__codelineno-0-1012">1012</a></span>
+<span class="normal"><a href="#__codelineno-0-1013">1013</a></span>
+<span class="normal"><a href="#__codelineno-0-1014">1014</a></span>
+<span class="normal"><a href="#__codelineno-0-1015">1015</a></span>
+<span class="normal"><a href="#__codelineno-0-1016">1016</a></span>
+<span class="normal"><a href="#__codelineno-0-1017">1017</a></span>
+<span class="normal"><a href="#__codelineno-0-1018">1018</a></span>
+<span class="normal"><a href="#__codelineno-0-1019">1019</a></span>
+<span class="normal"><a href="#__codelineno-0-1020">1020</a></span>
+<span class="normal"><a href="#__codelineno-0-1021">1021</a></span>
+<span class="normal"><a href="#__codelineno-0-1022">1022</a></span>
+<span class="normal"><a href="#__codelineno-0-1023">1023</a></span>
+<span class="normal"><a href="#__codelineno-0-1024">1024</a></span>
+<span class="normal"><a href="#__codelineno-0-1025">1025</a></span>
+<span class="normal"><a href="#__codelineno-0-1026">1026</a></span>
+<span class="normal"><a href="#__codelineno-0-1027">1027</a></span>
+<span class="normal"><a href="#__codelineno-0-1028">1028</a></span>
+<span class="normal"><a href="#__codelineno-0-1029">1029</a></span>
+<span class="normal"><a href="#__codelineno-0-1030">1030</a></span>
+<span class="normal"><a href="#__codelineno-0-1031">1031</a></span>
+<span class="normal"><a href="#__codelineno-0-1032">1032</a></span>
+<span class="normal"><a href="#__codelineno-0-1033">1033</a></span>
+<span class="normal"><a href="#__codelineno-0-1034">1034</a></span>
+<span class="normal"><a href="#__codelineno-0-1035">1035</a></span>
+<span class="normal"><a href="#__codelineno-0-1036">1036</a></span>
+<span class="normal"><a href="#__codelineno-0-1037">1037</a></span>
+<span class="normal"><a href="#__codelineno-0-1038">1038</a></span>
+<span class="normal"><a href="#__codelineno-0-1039">1039</a></span>
+<span class="normal"><a href="#__codelineno-0-1040">1040</a></span>
+<span class="normal"><a href="#__codelineno-0-1041">1041</a></span>
+<span class="normal"><a href="#__codelineno-0-1042">1042</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-992" name="__codelineno-0-992"></a><span class="nd">@synalinks_export</span><span class="p">(</span><span class="s2">&quot;synalinks.datasets.arcagi.load_data&quot;</span><span class="p">)</span>
+<a id="__codelineno-0-993" name="__codelineno-0-993"></a><span class="k">def</span><span class="w"> </span><span class="nf">load_data</span><span class="p">(</span><span class="n">task_names</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+<a id="__codelineno-0-994" name="__codelineno-0-994"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<a id="__codelineno-0-995" name="__codelineno-0-995"></a><span class="sd">    Load and format data from github</span>
+<a id="__codelineno-0-996" name="__codelineno-0-996"></a>
+<a id="__codelineno-0-997" name="__codelineno-0-997"></a><span class="sd">    Example:</span>
+<a id="__codelineno-0-998" name="__codelineno-0-998"></a>
+<a id="__codelineno-0-999" name="__codelineno-0-999"></a><span class="sd">    ```python</span>
+<a id="__codelineno-0-1000" name="__codelineno-0-1000"></a><span class="sd">    (x_train, y_train), (x_test, y_test) = synalinks.datasets.arcagi.load_data()</span>
+<a id="__codelineno-0-1001" name="__codelineno-0-1001"></a><span class="sd">    ```</span>
+<a id="__codelineno-0-1002" name="__codelineno-0-1002"></a>
+<a id="__codelineno-0-1003" name="__codelineno-0-1003"></a><span class="sd">    Args:</span>
+<a id="__codelineno-0-1004" name="__codelineno-0-1004"></a><span class="sd">        task_names (list): Optional. The list of tasks to fetch.</span>
+<a id="__codelineno-0-1005" name="__codelineno-0-1005"></a>
+<a id="__codelineno-0-1006" name="__codelineno-0-1006"></a><span class="sd">    Returns:</span>
+<a id="__codelineno-0-1007" name="__codelineno-0-1007"></a><span class="sd">        (tuple): The train and test data ready for training</span>
+<a id="__codelineno-0-1008" name="__codelineno-0-1008"></a><span class="sd">    &quot;&quot;&quot;</span>
+<a id="__codelineno-0-1009" name="__codelineno-0-1009"></a>    <span class="n">x_train</span> <span class="o">=</span> <span class="p">[]</span>
+<a id="__codelineno-0-1010" name="__codelineno-0-1010"></a>    <span class="n">y_train</span> <span class="o">=</span> <span class="p">[]</span>
+<a id="__codelineno-0-1011" name="__codelineno-0-1011"></a>    <span class="n">x_test</span> <span class="o">=</span> <span class="p">[]</span>
+<a id="__codelineno-0-1012" name="__codelineno-0-1012"></a>    <span class="n">y_test</span> <span class="o">=</span> <span class="p">[]</span>
+<a id="__codelineno-0-1013" name="__codelineno-0-1013"></a>
+<a id="__codelineno-0-1014" name="__codelineno-0-1014"></a>    <span class="k">if</span> <span class="ow">not</span> <span class="n">task_names</span><span class="p">:</span>
+<a id="__codelineno-0-1015" name="__codelineno-0-1015"></a>        <span class="k">for</span> <span class="n">task_name</span> <span class="ow">in</span> <span class="n">TRAINING_TASK_NAMES</span><span class="p">:</span>
+<a id="__codelineno-0-1016" name="__codelineno-0-1016"></a>            <span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">y</span><span class="p">)</span> <span class="o">=</span> <span class="n">fetch_and_format</span><span class="p">(</span><span class="n">task_name</span><span class="p">)</span>
+<a id="__codelineno-0-1017" name="__codelineno-0-1017"></a>            <span class="n">x_train</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">x</span><span class="p">)</span>
+<a id="__codelineno-0-1018" name="__codelineno-0-1018"></a>            <span class="n">y_train</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">y</span><span class="p">)</span>
+<a id="__codelineno-0-1019" name="__codelineno-0-1019"></a>
+<a id="__codelineno-0-1020" name="__codelineno-0-1020"></a>        <span class="k">for</span> <span class="n">task_name</span> <span class="ow">in</span> <span class="n">EVALUATION_TASK_NAMES</span><span class="p">:</span>
+<a id="__codelineno-0-1021" name="__codelineno-0-1021"></a>            <span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">y</span><span class="p">)</span> <span class="o">=</span> <span class="n">fetch_and_format</span><span class="p">(</span><span class="n">task_name</span><span class="p">)</span>
+<a id="__codelineno-0-1022" name="__codelineno-0-1022"></a>            <span class="n">x_test</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">x</span><span class="p">)</span>
+<a id="__codelineno-0-1023" name="__codelineno-0-1023"></a>            <span class="n">y_test</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">y</span><span class="p">)</span>
+<a id="__codelineno-0-1024" name="__codelineno-0-1024"></a>
+<a id="__codelineno-0-1025" name="__codelineno-0-1025"></a>    <span class="k">else</span><span class="p">:</span>
+<a id="__codelineno-0-1026" name="__codelineno-0-1026"></a>        <span class="k">for</span> <span class="n">task_name</span> <span class="ow">in</span> <span class="n">task_names</span><span class="p">:</span>
+<a id="__codelineno-0-1027" name="__codelineno-0-1027"></a>            <span class="k">if</span> <span class="n">task_name</span> <span class="ow">in</span> <span class="n">TRAINING_TASK_NAMES</span><span class="p">:</span>
+<a id="__codelineno-0-1028" name="__codelineno-0-1028"></a>                <span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">y</span><span class="p">)</span> <span class="o">=</span> <span class="n">fetch_and_format</span><span class="p">(</span><span class="n">task_name</span><span class="p">)</span>
+<a id="__codelineno-0-1029" name="__codelineno-0-1029"></a>                <span class="n">x_train</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">x</span><span class="p">)</span>
+<a id="__codelineno-0-1030" name="__codelineno-0-1030"></a>                <span class="n">y_train</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">y</span><span class="p">)</span>
+<a id="__codelineno-0-1031" name="__codelineno-0-1031"></a>
+<a id="__codelineno-0-1032" name="__codelineno-0-1032"></a>            <span class="k">if</span> <span class="n">task_name</span> <span class="ow">in</span> <span class="n">EVALUATION_TASK_NAMES</span><span class="p">:</span>
+<a id="__codelineno-0-1033" name="__codelineno-0-1033"></a>                <span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">y</span><span class="p">)</span> <span class="o">=</span> <span class="n">fetch_and_format</span><span class="p">(</span><span class="n">task_name</span><span class="p">)</span>
+<a id="__codelineno-0-1034" name="__codelineno-0-1034"></a>                <span class="n">x_test</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">x</span><span class="p">)</span>
+<a id="__codelineno-0-1035" name="__codelineno-0-1035"></a>                <span class="n">x_test</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">y</span><span class="p">)</span>
+<a id="__codelineno-0-1036" name="__codelineno-0-1036"></a>
+<a id="__codelineno-0-1037" name="__codelineno-0-1037"></a>    <span class="n">x_train</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">x_train</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="s2">&quot;object&quot;</span><span class="p">)</span>
+<a id="__codelineno-0-1038" name="__codelineno-0-1038"></a>    <span class="n">y_train</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">y_train</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="s2">&quot;object&quot;</span><span class="p">)</span>
+<a id="__codelineno-0-1039" name="__codelineno-0-1039"></a>    <span class="n">x_test</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">x_test</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="s2">&quot;object&quot;</span><span class="p">)</span>
+<a id="__codelineno-0-1040" name="__codelineno-0-1040"></a>    <span class="n">y_test</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">y_test</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="s2">&quot;object&quot;</span><span class="p">)</span>
+<a id="__codelineno-0-1041" name="__codelineno-0-1041"></a>
+<a id="__codelineno-0-1042" name="__codelineno-0-1042"></a>    <span class="k">return</span> <span class="p">(</span><span class="n">x_train</span><span class="p">,</span> <span class="n">y_train</span><span class="p">),</span> <span class="p">(</span><span class="n">x_test</span><span class="p">,</span> <span class="n">y_test</span><span class="p">)</span>
+</code></pre></div></td></tr></table></div>
+            </details>
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h2 id="synalinks.src.datasets.arcagi.arcagi.plot_task" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">plot_task</span><span class="p">(</span><span class="n">x</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">y_true</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">y_pred</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">task_name</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">to_file</span><span class="o">=</span><span class="kc">None</span><span class="p">)</span></code>
+
+</h2>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Plot a task for debugging purposes</p>
+<p>Code Example:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="n">synlinks</span><span class="o">.</span><span class="n">datasets</span><span class="o">.</span><span class="n">arcagi</span><span class="o">.</span><span class="n">plot_task</span><span class="p">(</span><span class="n">task_name</span><span class="o">=</span><span class="s2">&quot;025d127b&quot;</span><span class="p">)</span>
+</code></pre></div>
+<p>Example:</p>
+<p><a class="glightbox" href="../../../assets/025d127b.png" data-type="image" data-width="auto" data-height="auto" data-desc-position="bottom"><img alt="025d127b" src="../../../assets/025d127b.png" /></a></p>
+
+
+<p><span class="doc-section-title">Parameters:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Type</th>
+          <th>Description</th>
+          <th>Default</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                <code>x</code>
+            </td>
+            <td>
+                  <code><span title="synalinks.src.backend.DataModel">DataModel</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Optional. The task inputs.</p>
+              </div>
+            </td>
+            <td>
+                  <code>None</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>y_true</code>
+            </td>
+            <td>
+                  <code><span title="synalinks.src.backend.DataModel">DataModel</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Optional. The task target data.</p>
+              </div>
+            </td>
+            <td>
+                  <code>None</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>y_pred</code>
+            </td>
+            <td>
+                  <code><span title="synalinks.src.backend.DataModel">DataModel</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Optional. The prediction.</p>
+              </div>
+            </td>
+            <td>
+                  <code>None</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>task_name</code>
+            </td>
+            <td>
+                  <code><span title="str">str</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>The task name to fetch the data if not provided.</p>
+              </div>
+            </td>
+            <td>
+                  <code>None</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>to_file</code>
+            </td>
+            <td>
+                  <code><span title="str">str</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>The filepath where to save the figure.</p>
+              </div>
+            </td>
+            <td>
+                  <code>None</code>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+            <details class="quote">
+              <summary>Source code in <code>synalinks/src/datasets/arcagi/arcagi.py</code></summary>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-882">882</a></span>
+<span class="normal"><a href="#__codelineno-0-883">883</a></span>
+<span class="normal"><a href="#__codelineno-0-884">884</a></span>
+<span class="normal"><a href="#__codelineno-0-885">885</a></span>
+<span class="normal"><a href="#__codelineno-0-886">886</a></span>
+<span class="normal"><a href="#__codelineno-0-887">887</a></span>
+<span class="normal"><a href="#__codelineno-0-888">888</a></span>
+<span class="normal"><a href="#__codelineno-0-889">889</a></span>
+<span class="normal"><a href="#__codelineno-0-890">890</a></span>
+<span class="normal"><a href="#__codelineno-0-891">891</a></span>
+<span class="normal"><a href="#__codelineno-0-892">892</a></span>
+<span class="normal"><a href="#__codelineno-0-893">893</a></span>
+<span class="normal"><a href="#__codelineno-0-894">894</a></span>
+<span class="normal"><a href="#__codelineno-0-895">895</a></span>
+<span class="normal"><a href="#__codelineno-0-896">896</a></span>
+<span class="normal"><a href="#__codelineno-0-897">897</a></span>
+<span class="normal"><a href="#__codelineno-0-898">898</a></span>
+<span class="normal"><a href="#__codelineno-0-899">899</a></span>
+<span class="normal"><a href="#__codelineno-0-900">900</a></span>
+<span class="normal"><a href="#__codelineno-0-901">901</a></span>
+<span class="normal"><a href="#__codelineno-0-902">902</a></span>
+<span class="normal"><a href="#__codelineno-0-903">903</a></span>
+<span class="normal"><a href="#__codelineno-0-904">904</a></span>
+<span class="normal"><a href="#__codelineno-0-905">905</a></span>
+<span class="normal"><a href="#__codelineno-0-906">906</a></span>
+<span class="normal"><a href="#__codelineno-0-907">907</a></span>
+<span class="normal"><a href="#__codelineno-0-908">908</a></span>
+<span class="normal"><a href="#__codelineno-0-909">909</a></span>
+<span class="normal"><a href="#__codelineno-0-910">910</a></span>
+<span class="normal"><a href="#__codelineno-0-911">911</a></span>
+<span class="normal"><a href="#__codelineno-0-912">912</a></span>
+<span class="normal"><a href="#__codelineno-0-913">913</a></span>
+<span class="normal"><a href="#__codelineno-0-914">914</a></span>
+<span class="normal"><a href="#__codelineno-0-915">915</a></span>
+<span class="normal"><a href="#__codelineno-0-916">916</a></span>
+<span class="normal"><a href="#__codelineno-0-917">917</a></span>
+<span class="normal"><a href="#__codelineno-0-918">918</a></span>
+<span class="normal"><a href="#__codelineno-0-919">919</a></span>
+<span class="normal"><a href="#__codelineno-0-920">920</a></span>
+<span class="normal"><a href="#__codelineno-0-921">921</a></span>
+<span class="normal"><a href="#__codelineno-0-922">922</a></span>
+<span class="normal"><a href="#__codelineno-0-923">923</a></span>
+<span class="normal"><a href="#__codelineno-0-924">924</a></span>
+<span class="normal"><a href="#__codelineno-0-925">925</a></span>
+<span class="normal"><a href="#__codelineno-0-926">926</a></span>
+<span class="normal"><a href="#__codelineno-0-927">927</a></span>
+<span class="normal"><a href="#__codelineno-0-928">928</a></span>
+<span class="normal"><a href="#__codelineno-0-929">929</a></span>
+<span class="normal"><a href="#__codelineno-0-930">930</a></span>
+<span class="normal"><a href="#__codelineno-0-931">931</a></span>
+<span class="normal"><a href="#__codelineno-0-932">932</a></span>
+<span class="normal"><a href="#__codelineno-0-933">933</a></span>
+<span class="normal"><a href="#__codelineno-0-934">934</a></span>
+<span class="normal"><a href="#__codelineno-0-935">935</a></span>
+<span class="normal"><a href="#__codelineno-0-936">936</a></span>
+<span class="normal"><a href="#__codelineno-0-937">937</a></span>
+<span class="normal"><a href="#__codelineno-0-938">938</a></span>
+<span class="normal"><a href="#__codelineno-0-939">939</a></span>
+<span class="normal"><a href="#__codelineno-0-940">940</a></span>
+<span class="normal"><a href="#__codelineno-0-941">941</a></span>
+<span class="normal"><a href="#__codelineno-0-942">942</a></span>
+<span class="normal"><a href="#__codelineno-0-943">943</a></span>
+<span class="normal"><a href="#__codelineno-0-944">944</a></span>
+<span class="normal"><a href="#__codelineno-0-945">945</a></span>
+<span class="normal"><a href="#__codelineno-0-946">946</a></span>
+<span class="normal"><a href="#__codelineno-0-947">947</a></span>
+<span class="normal"><a href="#__codelineno-0-948">948</a></span>
+<span class="normal"><a href="#__codelineno-0-949">949</a></span>
+<span class="normal"><a href="#__codelineno-0-950">950</a></span>
+<span class="normal"><a href="#__codelineno-0-951">951</a></span>
+<span class="normal"><a href="#__codelineno-0-952">952</a></span>
+<span class="normal"><a href="#__codelineno-0-953">953</a></span>
+<span class="normal"><a href="#__codelineno-0-954">954</a></span>
+<span class="normal"><a href="#__codelineno-0-955">955</a></span>
+<span class="normal"><a href="#__codelineno-0-956">956</a></span>
+<span class="normal"><a href="#__codelineno-0-957">957</a></span>
+<span class="normal"><a href="#__codelineno-0-958">958</a></span>
+<span class="normal"><a href="#__codelineno-0-959">959</a></span>
+<span class="normal"><a href="#__codelineno-0-960">960</a></span>
+<span class="normal"><a href="#__codelineno-0-961">961</a></span>
+<span class="normal"><a href="#__codelineno-0-962">962</a></span>
+<span class="normal"><a href="#__codelineno-0-963">963</a></span>
+<span class="normal"><a href="#__codelineno-0-964">964</a></span>
+<span class="normal"><a href="#__codelineno-0-965">965</a></span>
+<span class="normal"><a href="#__codelineno-0-966">966</a></span>
+<span class="normal"><a href="#__codelineno-0-967">967</a></span>
+<span class="normal"><a href="#__codelineno-0-968">968</a></span>
+<span class="normal"><a href="#__codelineno-0-969">969</a></span>
+<span class="normal"><a href="#__codelineno-0-970">970</a></span>
+<span class="normal"><a href="#__codelineno-0-971">971</a></span>
+<span class="normal"><a href="#__codelineno-0-972">972</a></span>
+<span class="normal"><a href="#__codelineno-0-973">973</a></span>
+<span class="normal"><a href="#__codelineno-0-974">974</a></span>
+<span class="normal"><a href="#__codelineno-0-975">975</a></span>
+<span class="normal"><a href="#__codelineno-0-976">976</a></span>
+<span class="normal"><a href="#__codelineno-0-977">977</a></span>
+<span class="normal"><a href="#__codelineno-0-978">978</a></span>
+<span class="normal"><a href="#__codelineno-0-979">979</a></span>
+<span class="normal"><a href="#__codelineno-0-980">980</a></span>
+<span class="normal"><a href="#__codelineno-0-981">981</a></span>
+<span class="normal"><a href="#__codelineno-0-982">982</a></span>
+<span class="normal"><a href="#__codelineno-0-983">983</a></span>
+<span class="normal"><a href="#__codelineno-0-984">984</a></span>
+<span class="normal"><a href="#__codelineno-0-985">985</a></span>
+<span class="normal"><a href="#__codelineno-0-986">986</a></span>
+<span class="normal"><a href="#__codelineno-0-987">987</a></span>
+<span class="normal"><a href="#__codelineno-0-988">988</a></span>
+<span class="normal"><a href="#__codelineno-0-989">989</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-882" name="__codelineno-0-882"></a><span class="nd">@synalinks_export</span><span class="p">(</span><span class="s2">&quot;synalinks.datasets.arcagi.plot_task&quot;</span><span class="p">)</span>
+<a id="__codelineno-0-883" name="__codelineno-0-883"></a><span class="k">def</span><span class="w"> </span><span class="nf">plot_task</span><span class="p">(</span>
+<a id="__codelineno-0-884" name="__codelineno-0-884"></a>    <span class="n">x</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+<a id="__codelineno-0-885" name="__codelineno-0-885"></a>    <span class="n">y_true</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+<a id="__codelineno-0-886" name="__codelineno-0-886"></a>    <span class="n">y_pred</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+<a id="__codelineno-0-887" name="__codelineno-0-887"></a>    <span class="n">task_name</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+<a id="__codelineno-0-888" name="__codelineno-0-888"></a>    <span class="n">to_file</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+<a id="__codelineno-0-889" name="__codelineno-0-889"></a><span class="p">):</span>
+<a id="__codelineno-0-890" name="__codelineno-0-890"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<a id="__codelineno-0-891" name="__codelineno-0-891"></a><span class="sd">    Plot a task for debugging purposes</span>
+<a id="__codelineno-0-892" name="__codelineno-0-892"></a>
+<a id="__codelineno-0-893" name="__codelineno-0-893"></a><span class="sd">    Code Example:</span>
+<a id="__codelineno-0-894" name="__codelineno-0-894"></a>
+<a id="__codelineno-0-895" name="__codelineno-0-895"></a><span class="sd">    ```python</span>
+<a id="__codelineno-0-896" name="__codelineno-0-896"></a><span class="sd">    synlinks.datasets.arcagi.plot_task(task_name=&quot;025d127b&quot;)</span>
+<a id="__codelineno-0-897" name="__codelineno-0-897"></a><span class="sd">    ```</span>
+<a id="__codelineno-0-898" name="__codelineno-0-898"></a>
+<a id="__codelineno-0-899" name="__codelineno-0-899"></a><span class="sd">    Example:</span>
+<a id="__codelineno-0-900" name="__codelineno-0-900"></a>
+<a id="__codelineno-0-901" name="__codelineno-0-901"></a><span class="sd">    ![025d127b](../../assets/025d127b.png)</span>
+<a id="__codelineno-0-902" name="__codelineno-0-902"></a>
+<a id="__codelineno-0-903" name="__codelineno-0-903"></a><span class="sd">    Args:</span>
+<a id="__codelineno-0-904" name="__codelineno-0-904"></a><span class="sd">        x (DataModel): Optional. The task inputs.</span>
+<a id="__codelineno-0-905" name="__codelineno-0-905"></a><span class="sd">        y_true (DataModel): Optional. The task target data.</span>
+<a id="__codelineno-0-906" name="__codelineno-0-906"></a><span class="sd">        y_pred (DataModel): Optional. The prediction.</span>
+<a id="__codelineno-0-907" name="__codelineno-0-907"></a><span class="sd">        task_name (str): The task name to fetch the data if not provided.</span>
+<a id="__codelineno-0-908" name="__codelineno-0-908"></a><span class="sd">        to_file (str): The filepath where to save the figure.</span>
+<a id="__codelineno-0-909" name="__codelineno-0-909"></a><span class="sd">    &quot;&quot;&quot;</span>
+<a id="__codelineno-0-910" name="__codelineno-0-910"></a>    <span class="k">if</span> <span class="ow">not</span> <span class="n">x</span> <span class="ow">and</span> <span class="ow">not</span> <span class="n">y_true</span> <span class="ow">and</span> <span class="n">task_name</span><span class="p">:</span>
+<a id="__codelineno-0-911" name="__codelineno-0-911"></a>        <span class="n">x</span><span class="p">,</span> <span class="n">y_true</span> <span class="o">=</span> <span class="n">fetch_and_format</span><span class="p">(</span><span class="n">task_name</span><span class="p">)</span>
+<a id="__codelineno-0-912" name="__codelineno-0-912"></a>        <span class="k">if</span> <span class="ow">not</span> <span class="n">to_file</span><span class="p">:</span>
+<a id="__codelineno-0-913" name="__codelineno-0-913"></a>            <span class="n">to_file</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">task_name</span><span class="si">}</span><span class="s2">.png&quot;</span>
+<a id="__codelineno-0-914" name="__codelineno-0-914"></a>
+<a id="__codelineno-0-915" name="__codelineno-0-915"></a>    <span class="k">if</span> <span class="ow">not</span> <span class="n">to_file</span><span class="p">:</span>
+<a id="__codelineno-0-916" name="__codelineno-0-916"></a>        <span class="n">to_file</span> <span class="o">=</span> <span class="s2">&quot;arc_agi_task.png&quot;</span>
+<a id="__codelineno-0-917" name="__codelineno-0-917"></a>
+<a id="__codelineno-0-918" name="__codelineno-0-918"></a>    <span class="n">cmap</span> <span class="o">=</span> <span class="n">colors</span><span class="o">.</span><span class="n">ListedColormap</span><span class="p">(</span>
+<a id="__codelineno-0-919" name="__codelineno-0-919"></a>        <span class="p">[</span>
+<a id="__codelineno-0-920" name="__codelineno-0-920"></a>            <span class="s2">&quot;#000000&quot;</span><span class="p">,</span>
+<a id="__codelineno-0-921" name="__codelineno-0-921"></a>            <span class="s2">&quot;#0074D9&quot;</span><span class="p">,</span>
+<a id="__codelineno-0-922" name="__codelineno-0-922"></a>            <span class="s2">&quot;#FF4136&quot;</span><span class="p">,</span>
+<a id="__codelineno-0-923" name="__codelineno-0-923"></a>            <span class="s2">&quot;#2ECC40&quot;</span><span class="p">,</span>
+<a id="__codelineno-0-924" name="__codelineno-0-924"></a>            <span class="s2">&quot;#FFDC00&quot;</span><span class="p">,</span>
+<a id="__codelineno-0-925" name="__codelineno-0-925"></a>            <span class="s2">&quot;#AAAAAA&quot;</span><span class="p">,</span>
+<a id="__codelineno-0-926" name="__codelineno-0-926"></a>            <span class="s2">&quot;#F012BE&quot;</span><span class="p">,</span>
+<a id="__codelineno-0-927" name="__codelineno-0-927"></a>            <span class="s2">&quot;#FF851B&quot;</span><span class="p">,</span>
+<a id="__codelineno-0-928" name="__codelineno-0-928"></a>            <span class="s2">&quot;#7FDBFF&quot;</span><span class="p">,</span>
+<a id="__codelineno-0-929" name="__codelineno-0-929"></a>            <span class="s2">&quot;#870C25&quot;</span><span class="p">,</span>
+<a id="__codelineno-0-930" name="__codelineno-0-930"></a>        <span class="p">]</span>
+<a id="__codelineno-0-931" name="__codelineno-0-931"></a>    <span class="p">)</span>
+<a id="__codelineno-0-932" name="__codelineno-0-932"></a>    <span class="n">norm</span> <span class="o">=</span> <span class="n">colors</span><span class="o">.</span><span class="n">Normalize</span><span class="p">(</span><span class="n">vmin</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span> <span class="n">vmax</span><span class="o">=</span><span class="mi">9</span><span class="p">)</span>
+<a id="__codelineno-0-933" name="__codelineno-0-933"></a>
+<a id="__codelineno-0-934" name="__codelineno-0-934"></a>    <span class="n">nb_examples</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">x</span><span class="o">.</span><span class="n">examples</span><span class="p">)</span>
+<a id="__codelineno-0-935" name="__codelineno-0-935"></a>    <span class="n">n</span> <span class="o">=</span> <span class="n">nb_examples</span> <span class="o">+</span> <span class="mi">1</span>
+<a id="__codelineno-0-936" name="__codelineno-0-936"></a>    <span class="n">fig</span><span class="p">,</span> <span class="n">axis</span> <span class="o">=</span> <span class="n">plt</span><span class="o">.</span><span class="n">subplots</span><span class="p">(</span><span class="mi">2</span><span class="p">,</span> <span class="n">n</span><span class="p">)</span>
+<a id="__codelineno-0-937" name="__codelineno-0-937"></a>
+<a id="__codelineno-0-938" name="__codelineno-0-938"></a>    <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="n">example</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">x</span><span class="o">.</span><span class="n">examples</span><span class="p">):</span>
+<a id="__codelineno-0-939" name="__codelineno-0-939"></a>        <span class="n">inputs</span><span class="p">,</span> <span class="n">outputs</span> <span class="o">=</span> <span class="n">x</span><span class="o">.</span><span class="n">examples</span><span class="p">[</span><span class="n">i</span><span class="p">]</span><span class="o">.</span><span class="n">inputs</span><span class="p">,</span> <span class="n">x</span><span class="o">.</span><span class="n">examples</span><span class="p">[</span><span class="n">i</span><span class="p">]</span><span class="o">.</span><span class="n">outputs</span>
+<a id="__codelineno-0-940" name="__codelineno-0-940"></a>        <span class="n">inputs</span><span class="p">,</span> <span class="n">outputs</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">inputs</span><span class="p">),</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">outputs</span><span class="p">)</span>
+<a id="__codelineno-0-941" name="__codelineno-0-941"></a>
+<a id="__codelineno-0-942" name="__codelineno-0-942"></a>        <span class="n">axis</span><span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="n">i</span><span class="p">]</span><span class="o">.</span><span class="n">imshow</span><span class="p">(</span><span class="n">inputs</span><span class="p">,</span> <span class="n">cmap</span><span class="o">=</span><span class="n">cmap</span><span class="p">,</span> <span class="n">norm</span><span class="o">=</span><span class="n">norm</span><span class="p">)</span>
+<a id="__codelineno-0-943" name="__codelineno-0-943"></a>        <span class="n">axis</span><span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="n">i</span><span class="p">]</span><span class="o">.</span><span class="n">set_title</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;x_train </span><span class="si">{</span><span class="n">i</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+<a id="__codelineno-0-944" name="__codelineno-0-944"></a>        <span class="n">axis</span><span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="n">i</span><span class="p">]</span><span class="o">.</span><span class="n">grid</span><span class="p">(</span><span class="n">axis</span><span class="o">=</span><span class="s2">&quot;both&quot;</span><span class="p">,</span> <span class="n">color</span><span class="o">=</span><span class="s2">&quot;white&quot;</span><span class="p">,</span> <span class="n">linewidth</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
+<a id="__codelineno-0-945" name="__codelineno-0-945"></a>        <span class="n">axis</span><span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="n">i</span><span class="p">]</span><span class="o">.</span><span class="n">set_yticks</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="o">-</span><span class="mf">0.5</span><span class="p">,</span> <span class="n">inputs</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="mi">1</span><span class="p">))</span>
+<a id="__codelineno-0-946" name="__codelineno-0-946"></a>        <span class="n">axis</span><span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="n">i</span><span class="p">]</span><span class="o">.</span><span class="n">set_xticks</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="o">-</span><span class="mf">0.5</span><span class="p">,</span> <span class="n">inputs</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">],</span> <span class="mi">1</span><span class="p">))</span>
+<a id="__codelineno-0-947" name="__codelineno-0-947"></a>        <span class="n">axis</span><span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="n">i</span><span class="p">]</span><span class="o">.</span><span class="n">set_yticklabels</span><span class="p">([])</span>
+<a id="__codelineno-0-948" name="__codelineno-0-948"></a>        <span class="n">axis</span><span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="n">i</span><span class="p">]</span><span class="o">.</span><span class="n">set_xticklabels</span><span class="p">([])</span>
+<a id="__codelineno-0-949" name="__codelineno-0-949"></a>
+<a id="__codelineno-0-950" name="__codelineno-0-950"></a>        <span class="n">axis</span><span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="n">i</span><span class="p">]</span><span class="o">.</span><span class="n">imshow</span><span class="p">(</span><span class="n">outputs</span><span class="p">,</span> <span class="n">cmap</span><span class="o">=</span><span class="n">cmap</span><span class="p">,</span> <span class="n">norm</span><span class="o">=</span><span class="n">norm</span><span class="p">)</span>
+<a id="__codelineno-0-951" name="__codelineno-0-951"></a>        <span class="n">axis</span><span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="n">i</span><span class="p">]</span><span class="o">.</span><span class="n">set_title</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;y_train </span><span class="si">{</span><span class="n">i</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+<a id="__codelineno-0-952" name="__codelineno-0-952"></a>        <span class="n">axis</span><span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="n">i</span><span class="p">]</span><span class="o">.</span><span class="n">grid</span><span class="p">(</span><span class="n">axis</span><span class="o">=</span><span class="s2">&quot;both&quot;</span><span class="p">,</span> <span class="n">color</span><span class="o">=</span><span class="s2">&quot;white&quot;</span><span class="p">,</span> <span class="n">linewidth</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
+<a id="__codelineno-0-953" name="__codelineno-0-953"></a>        <span class="n">axis</span><span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="n">i</span><span class="p">]</span><span class="o">.</span><span class="n">set_yticks</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="o">-</span><span class="mf">0.5</span><span class="p">,</span> <span class="n">outputs</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="mi">1</span><span class="p">))</span>
+<a id="__codelineno-0-954" name="__codelineno-0-954"></a>        <span class="n">axis</span><span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="n">i</span><span class="p">]</span><span class="o">.</span><span class="n">set_xticks</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="o">-</span><span class="mf">0.5</span><span class="p">,</span> <span class="n">outputs</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">],</span> <span class="mi">1</span><span class="p">))</span>
+<a id="__codelineno-0-955" name="__codelineno-0-955"></a>        <span class="n">axis</span><span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="n">i</span><span class="p">]</span><span class="o">.</span><span class="n">set_yticklabels</span><span class="p">([])</span>
+<a id="__codelineno-0-956" name="__codelineno-0-956"></a>        <span class="n">axis</span><span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="n">i</span><span class="p">]</span><span class="o">.</span><span class="n">set_xticklabels</span><span class="p">([])</span>
+<a id="__codelineno-0-957" name="__codelineno-0-957"></a>
+<a id="__codelineno-0-958" name="__codelineno-0-958"></a>    <span class="n">inputs</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">x</span><span class="o">.</span><span class="n">grid</span><span class="p">)</span>
+<a id="__codelineno-0-959" name="__codelineno-0-959"></a>    <span class="n">axis</span><span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="n">nb_examples</span><span class="p">]</span><span class="o">.</span><span class="n">imshow</span><span class="p">(</span><span class="n">inputs</span><span class="p">,</span> <span class="n">cmap</span><span class="o">=</span><span class="n">cmap</span><span class="p">,</span> <span class="n">norm</span><span class="o">=</span><span class="n">norm</span><span class="p">)</span>
+<a id="__codelineno-0-960" name="__codelineno-0-960"></a>    <span class="n">axis</span><span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="n">nb_examples</span><span class="p">]</span><span class="o">.</span><span class="n">set_title</span><span class="p">(</span><span class="s2">&quot;x_test&quot;</span><span class="p">)</span>
+<a id="__codelineno-0-961" name="__codelineno-0-961"></a>    <span class="n">axis</span><span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="n">nb_examples</span><span class="p">]</span><span class="o">.</span><span class="n">grid</span><span class="p">(</span><span class="n">axis</span><span class="o">=</span><span class="s2">&quot;both&quot;</span><span class="p">,</span> <span class="n">color</span><span class="o">=</span><span class="s2">&quot;white&quot;</span><span class="p">,</span> <span class="n">linewidth</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
+<a id="__codelineno-0-962" name="__codelineno-0-962"></a>    <span class="n">axis</span><span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="n">nb_examples</span><span class="p">]</span><span class="o">.</span><span class="n">set_yticks</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="o">-</span><span class="mf">0.5</span><span class="p">,</span> <span class="n">inputs</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="mi">1</span><span class="p">))</span>
+<a id="__codelineno-0-963" name="__codelineno-0-963"></a>    <span class="n">axis</span><span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="n">nb_examples</span><span class="p">]</span><span class="o">.</span><span class="n">set_xticks</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="o">-</span><span class="mf">0.5</span><span class="p">,</span> <span class="n">inputs</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">],</span> <span class="mi">1</span><span class="p">))</span>
+<a id="__codelineno-0-964" name="__codelineno-0-964"></a>    <span class="n">axis</span><span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="n">nb_examples</span><span class="p">]</span><span class="o">.</span><span class="n">set_yticklabels</span><span class="p">([])</span>
+<a id="__codelineno-0-965" name="__codelineno-0-965"></a>    <span class="n">axis</span><span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="n">nb_examples</span><span class="p">]</span><span class="o">.</span><span class="n">set_xticklabels</span><span class="p">([])</span>
+<a id="__codelineno-0-966" name="__codelineno-0-966"></a>
+<a id="__codelineno-0-967" name="__codelineno-0-967"></a>    <span class="k">if</span> <span class="n">y_true</span><span class="p">:</span>
+<a id="__codelineno-0-968" name="__codelineno-0-968"></a>        <span class="n">outputs</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">y_true</span><span class="o">.</span><span class="n">grid</span><span class="p">)</span>
+<a id="__codelineno-0-969" name="__codelineno-0-969"></a>        <span class="n">title</span> <span class="o">=</span> <span class="s2">&quot;y_true&quot;</span>
+<a id="__codelineno-0-970" name="__codelineno-0-970"></a>    <span class="k">if</span> <span class="n">y_pred</span><span class="p">:</span>
+<a id="__codelineno-0-971" name="__codelineno-0-971"></a>        <span class="n">outputs</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">y_pred</span><span class="o">.</span><span class="n">grid</span><span class="p">)</span>
+<a id="__codelineno-0-972" name="__codelineno-0-972"></a>        <span class="n">title</span> <span class="o">=</span> <span class="s2">&quot;y_pred&quot;</span>
+<a id="__codelineno-0-973" name="__codelineno-0-973"></a>    <span class="n">axis</span><span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="n">nb_examples</span><span class="p">]</span><span class="o">.</span><span class="n">imshow</span><span class="p">(</span><span class="n">outputs</span><span class="p">,</span> <span class="n">cmap</span><span class="o">=</span><span class="n">cmap</span><span class="p">,</span> <span class="n">norm</span><span class="o">=</span><span class="n">norm</span><span class="p">)</span>
+<a id="__codelineno-0-974" name="__codelineno-0-974"></a>    <span class="n">axis</span><span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="n">nb_examples</span><span class="p">]</span><span class="o">.</span><span class="n">set_title</span><span class="p">(</span><span class="n">title</span><span class="p">)</span>
+<a id="__codelineno-0-975" name="__codelineno-0-975"></a>    <span class="n">axis</span><span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="n">nb_examples</span><span class="p">]</span><span class="o">.</span><span class="n">grid</span><span class="p">(</span><span class="n">axis</span><span class="o">=</span><span class="s2">&quot;both&quot;</span><span class="p">,</span> <span class="n">color</span><span class="o">=</span><span class="s2">&quot;white&quot;</span><span class="p">,</span> <span class="n">linewidth</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
+<a id="__codelineno-0-976" name="__codelineno-0-976"></a>    <span class="n">axis</span><span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="n">nb_examples</span><span class="p">]</span><span class="o">.</span><span class="n">set_yticks</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="o">-</span><span class="mf">0.5</span><span class="p">,</span> <span class="n">outputs</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="mi">1</span><span class="p">))</span>
+<a id="__codelineno-0-977" name="__codelineno-0-977"></a>    <span class="n">axis</span><span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="n">nb_examples</span><span class="p">]</span><span class="o">.</span><span class="n">set_xticks</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="o">-</span><span class="mf">0.5</span><span class="p">,</span> <span class="n">outputs</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">],</span> <span class="mi">1</span><span class="p">))</span>
+<a id="__codelineno-0-978" name="__codelineno-0-978"></a>    <span class="n">axis</span><span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="n">nb_examples</span><span class="p">]</span><span class="o">.</span><span class="n">set_yticklabels</span><span class="p">([])</span>
+<a id="__codelineno-0-979" name="__codelineno-0-979"></a>    <span class="n">axis</span><span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="n">nb_examples</span><span class="p">]</span><span class="o">.</span><span class="n">set_xticklabels</span><span class="p">([])</span>
+<a id="__codelineno-0-980" name="__codelineno-0-980"></a>
+<a id="__codelineno-0-981" name="__codelineno-0-981"></a>    <span class="n">plt</span><span class="o">.</span><span class="n">tight_layout</span><span class="p">()</span>
+<a id="__codelineno-0-982" name="__codelineno-0-982"></a>    <span class="n">plt</span><span class="o">.</span><span class="n">savefig</span><span class="p">(</span><span class="n">to_file</span><span class="p">)</span>
+<a id="__codelineno-0-983" name="__codelineno-0-983"></a>    <span class="n">plt</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
+<a id="__codelineno-0-984" name="__codelineno-0-984"></a>    <span class="k">try</span><span class="p">:</span>
+<a id="__codelineno-0-985" name="__codelineno-0-985"></a>        <span class="kn">from</span><span class="w"> </span><span class="nn">IPython</span><span class="w"> </span><span class="kn">import</span> <span class="n">display</span>
+<a id="__codelineno-0-986" name="__codelineno-0-986"></a>
+<a id="__codelineno-0-987" name="__codelineno-0-987"></a>        <span class="k">return</span> <span class="n">display</span><span class="o">.</span><span class="n">Image</span><span class="p">(</span><span class="n">filename</span><span class="o">=</span><span class="n">to_file</span><span class="p">)</span>
+<a id="__codelineno-0-988" name="__codelineno-0-988"></a>    <span class="k">except</span> <span class="ne">ImportError</span><span class="p">:</span>
+<a id="__codelineno-0-989" name="__codelineno-0-989"></a>        <span class="k">pass</span>
+</code></pre></div></td></tr></table></div>
+            </details>
+    </div>
+
+</div>
+
+
+
+  </div>
+
+    </div>
+
+</div>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      <script id="__config" type="application/json">{"base": "../../..", "features": ["content.code.copy"], "search": "../../../assets/javascripts/workers/search.d50fe291.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../../assets/javascripts/bundle.13a4f30d.min.js"></script>
+      
+    
+  <script id="init-glightbox">const lightbox = GLightbox({"touchNavigation": true, "loop": false, "zoomable": true, "draggable": true, "openEffect": "zoom", "closeEffect": "zoom", "slideEffect": "slide"});
+document$.subscribe(() => { lightbox.reload() });
+</script></body>
+</html>
