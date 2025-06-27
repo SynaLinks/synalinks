@@ -9,6 +9,7 @@ if backend() == "pydantic":
 from synalinks.src.api_export import synalinks_export
 from synalinks.src.backend.common import name_scope
 from synalinks.src.backend.common.dynamic_json_schema_utils import dynamic_enum
+from synalinks.src.backend.common.dynamic_json_schema_utils import dynamic_enum_array
 from synalinks.src.backend.common.json_schema_utils import concatenate_schema
 from synalinks.src.backend.common.json_schema_utils import contains_schema
 from synalinks.src.backend.common.json_schema_utils import factorize_schema

@@ -1,5 +1,7 @@
 # License Apache 2.0: (c) 2025 Yoan Sallami (Synalinks Team)
 
+import asyncio
+
 from synalinks.src import ops
 from synalinks.src.api_export import synalinks_export
 from synalinks.src.modules.core.decision import Decision
@@ -142,54 +144,63 @@ class Branch(Module):
         )
 
     async def call(self, inputs, training=False):
+        outputs = [None] * len(self.branches)
+
         if not inputs:
-            return tuple([None] * len(self.branches))
+            return tuple(outputs)
+
         decision = await self.decision(
             inputs,
             training=training,
         )
-        choice = decision.get("choice")
+        choice = decision.get("choice", decision.get("choices"))
+
         if not choice:
-            choice = decision.get("choices")
-        outputs = []
+            return tuple(outputs)
+
         if self.inject_decision:
             inputs = await ops.concat(
                 inputs,
                 decision,
                 name=self.name + "_inputs_with_decision",
             )
-        for label, module in self.branches.items():
+
+        # step 1: collect selected modules
+        selected_mapping = []
+        selected_modules = []
+        
+        for i, (label, module) in enumerate(self.branches.items()):
             selected = False
+
             if isinstance(choice, str):
                 if label == choice:
                     selected = True
             elif isinstance(choice, (list, set)):
                 if label in choice:
                     selected = True
-            if selected:
-                if module:
-                    if self.return_decision:
-                        outputs.append(
-                            await ops.logical_and(
-                                decision,
-                                await module(
-                                    inputs,
-                                    training=training,
-                                ),
-                                name=self.name + "_with_decision",
-                            )
-                        )
-                    else:
-                        outputs.append(
-                            await module(
-                                inputs,
-                                training=training,
-                            )
-                        )
-                else:
-                    outputs.append(None)
-            else:
-                outputs.append(None)
+            
+            if selected and module:
+                selected_mapping.append(i)
+                selected_modules.append(module)
+        
+        # step 2: execute selected modules in parallel
+        if selected_modules:
+            responses = await asyncio.gather(*[
+                module(inputs, training=training) 
+                for module in selected_modules
+            ])
+
+            if self.return_decision:
+                responses = await asyncio.gather(*[
+                    ops.logical_and(decision, response, name=self.name + f"_with_decision_{i}") for i, response in enumerate(responses)
+                ])
+        else:
+            responses = []
+        
+        for i, response in enumerate(responses):
+            j = selected_mapping[i]
+            outputs[j] = response
+
         return tuple(outputs)
 
     async def compute_output_spec(self, inputs, training=False):
