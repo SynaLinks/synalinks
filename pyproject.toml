@@ -2,7 +2,7 @@
 name = "synalinks"
 description = "Graph-Based Programmable Neuro-Symbolic LM Framework"
 readme = "README.md"
-requires-python = ">=3.9"
+requires-python = ">=3.10"
 dynamic = ["version"]
 classifiers = [
     "Development Status :: 4 - Beta",
@@ -22,22 +22,23 @@ classifiers = [
 dependencies = [
     "absl-py",
     "asyncio",
+    "click",
     "datasets",
+    "docstring-parser",
+    "graphviz",
+    "inquirer",
     "jinja2",
     "litellm",
+    "matplotlib",
+    "mcp>1.9.2",
     "namex",
+    "neo4j",
+    "nest-asyncio",
     "numpy",
     "optree",
     "pydantic",
     "pydotplus",
     "rich",
-    "matplotlib",
-    "docstring-parser",
-    "nest-asyncio",
-    "graphviz",
-    "click",
-    "inquirer",
-    "neo4j",
     "sentry-sdk",
 ]
 
