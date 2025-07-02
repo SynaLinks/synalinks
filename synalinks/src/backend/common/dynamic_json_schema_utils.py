@@ -112,7 +112,6 @@ def dynamic_enum_array(
                 "minItems": 1,
                 "title": prop_to_update.title().replace("_", ""),
                 "type": "array",
-                "uniqueItems": True,
             }
         }
     )

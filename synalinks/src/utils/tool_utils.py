@@ -185,6 +185,7 @@ class Tool:
             "description": self._docstring.short_description,
             "type": "object",
             "properties": self._params_schema,
+            "additionalProperties": False
         }
 
         if self._required_params:
