@@ -93,3 +93,16 @@ class VariablesTest(testing.TestCase):
             variable_from_dict.get_schema(),
             standardize_schema(Instructions.get_schema()),
         )
+
+    def test_contains_operator(self):
+        class Foo(DataModel):
+            foo: str = ""
+
+        class FooBar(DataModel):
+            foo: str = ""
+            bar: str = ""
+
+        variable = Variable(initializer={"foo": "value", "bar": "value2"}, data_model=FooBar)
+
+        self.assertTrue(Foo in variable)
+        self.assertFalse(FooBar in Foo)

@@ -308,6 +308,19 @@ class JsonDataModel:
             ops.Xor().call(other, self),
         )
 
+    def __contains__(self, other):
+        """Check if the schema of `other` is contained in this one.
+
+        Args:
+            other (SymbolicDataModel | DataModel): The other data model to compare with.
+
+        Returns:
+            (bool): True if all properties of `other` are present in this one.
+        """
+        from synalinks.src.backend.common.json_schema_utils import contains_schema
+
+        return contains_schema(self.get_schema(), other.get_schema())
+
     def factorize(self):
         """Factorizes the data model.
 

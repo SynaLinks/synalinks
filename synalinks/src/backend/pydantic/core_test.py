@@ -123,3 +123,17 @@ class CoreTest(testing.TestCase):
             query: str
 
         self.assertFalse(is_meta_class(Query(query="What is the French capital?")))
+
+    def test_contains_meta_class(self):
+        class Foo(DataModel):
+            foo: str
+
+        class FooBar(DataModel):
+            foo: str
+            bar: str
+
+        class Bar(DataModel):
+            bar: str
+
+        self.assertTrue(Foo in FooBar)
+        self.assertFalse(Bar in Foo)

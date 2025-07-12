@@ -286,3 +286,21 @@ class JsonDataModelTest(testing.TestCase):
         obj = relations[0].get_nested_entity("obj")
         self.assertTrue(subj.get_schema() == Document.get_schema())
         self.assertTrue(obj.get_schema() == Document.get_schema())
+
+    def test_contains_json_data_model(self):
+        class Foo(DataModel):
+            foo: str
+
+        class FooBar(DataModel):
+            foo: str
+            bar: str
+
+        class Bar(DataModel):
+            bar: str
+
+        foo_json = JsonDataModel(data_model=Foo(foo="a"))
+        foobar_json = JsonDataModel(data_model=FooBar(foo="a", bar="b"))
+        bar_json = JsonDataModel(data_model=Bar(bar="c"))
+
+        self.assertTrue(foo_json in foobar_json)
+        self.assertFalse(bar_json in foo_json)

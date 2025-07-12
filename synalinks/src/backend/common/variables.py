@@ -265,6 +265,19 @@ class Variable:
         """
         return self._schema
 
+    def __contains__(self, other):
+        """Check if the schema of `other` is contained within the schema of this variable.
+
+        Args:
+            other (SymbolicDataModel | DataModel): The data model to compare against this variable's schema.
+
+        Returns:
+            bool: True if `other`'s schema is a subset of this variable's schema.
+        """
+        from synalinks.src.backend.common.json_schema_utils import contains_schema
+
+        return contains_schema(self.get_schema(), other.get_schema())
+
     @property
     def trainable(self):
         """Whether the variable is trainable."""
