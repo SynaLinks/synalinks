@@ -155,6 +155,7 @@ class Action(Module):
             name=self.name + "_generator",
         )
 
+    # FIXME: error handling
     async def call(self, inputs, training=False):
         if not inputs:
             return None

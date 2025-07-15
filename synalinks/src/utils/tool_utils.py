@@ -24,9 +24,11 @@
 # License Apache 2.0: (c) 2025 Yoan Sallami (Synalinks Team)
 
 import inspect
+import logging
 import typing
 
 import docstring_parser
+
 
 JsonSchema = typing.Union[
     typing.Dict[str, typing.Any],
@@ -129,7 +131,7 @@ class Tool:
 
         doc = inspect.getdoc(func)
         if not doc:
-            raise ValueError(f"Missing docstring for function '{self.name()}'")
+            raise ValueError(f"The tool ({self.name()}) must have a docstring")
 
         self._docstring = docstring_parser.parse(doc)
         self._signature = inspect.signature(func)
@@ -138,6 +140,12 @@ class Tool:
         self._required_params = []
 
         self._parse_arguments()
+
+        if not self.description():
+            logging.warning(
+                "The tool (%s) has no description. " % self.name() +
+                "This is unsafe behavior and may lead to issues."
+            )
 
     def __call__(self, *args, **kwargs):
         return self._func(*args, **kwargs)
@@ -162,7 +170,7 @@ class Tool:
 
     def _has_return(self):
         return self._signature.return_annotation is not self._signature.empty
-    
+
     def description(self) -> str:
         return self._docstring.short_description or ""
 
@@ -194,9 +202,33 @@ class Tool:
             "description": self._docstring.short_description,
             "type": "object",
             "properties": self._params_schema,
+            "additionalProperties": False,
         }
 
         if self._required_params:
             obj_schema["required"] = self._required_params
 
         return obj_schema
+
+
+def toolkit_to_static_prompt(toolkit: typing.List[Tool] = None) -> str:
+    """Convert a toolkit into a static text prompt.
+
+    Args:
+        toolkit: The set of available tools
+
+    Returns:
+        A string describing each available tool by name and description.
+    """
+    toolkit = toolkit or []
+
+    if not toolkit:
+        return "The toolkit is empty. No tools available."
+
+    prompt = "The toolkit contains %d tool%s:\n\n" % (len(toolkit), "s" if len(toolkit) > 1 else "")
+
+    description = [f"- ({_.name()}) {_.description()}\n" for _ in toolkit]
+
+    prompt = prompt + "".join(description)
+
+    return prompt
