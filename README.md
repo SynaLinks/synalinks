@@ -1,3 +1,5 @@
+[![MseeP.ai Security Assessment Badge](https://mseep.net/pr/synalinks-synalinks-badge.png)](https://mseep.ai/app/synalinks-synalinks)
+
 <div align="center">
 <img height=200 src="https://github.com/SynaLinks/synalinks/blob/main/img/synalinks_logo_square.png?raw=true">
 </div>
