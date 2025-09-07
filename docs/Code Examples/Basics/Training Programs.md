@@ -124,7 +124,7 @@ async def main():
     history = await program.fit(
         x=x_train,
         y=y_train,
-        validation_data=(x_test, y_test),
+        validation_split=0.2,
         epochs=NB_EPOCHS,
         batch_size=BATCH_SIZE,
         callbacks=[program_checkpoint_callback],

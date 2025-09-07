@@ -54,7 +54,8 @@ class UpdateKnowledgeTest(testing.TestCase):
 
         knowledge_base = KnowledgeBase(
             uri="neo4j://localhost:7687",
-            entity_models=[Document],
+            entity_models=[Document, Chunk],
+            relation_models=[IsPartOf],
             embedding_model=embedding_model,
             metric="cosine",
             wipe_on_start=True,
@@ -95,7 +96,8 @@ class UpdateKnowledgeTest(testing.TestCase):
 
         knowledge_base = KnowledgeBase(
             uri="neo4j://localhost:7687",
-            entity_models=[Document],
+            entity_models=[Document, Chunk],
+            relation_models=[IsPartOf],
             embedding_model=embedding_model,
             metric="cosine",
             wipe_on_start=True,
@@ -146,7 +148,8 @@ class UpdateKnowledgeTest(testing.TestCase):
 
         knowledge_base = KnowledgeBase(
             uri="neo4j://localhost:7687",
-            entity_models=[Document],
+            entity_models=[Document, Chunk],
+            relation_models=[IsPartOf],
             embedding_model=embedding_model,
             metric="cosine",
             wipe_on_start=True,
@@ -190,7 +193,8 @@ class UpdateKnowledgeTest(testing.TestCase):
 
         knowledge_base = KnowledgeBase(
             uri="neo4j://localhost:7687",
-            entity_models=[Document],
+            entity_models=[Document, Chunk],
+            relation_models=[IsPartOf],
             embedding_model=embedding_model,
             metric="cosine",
             wipe_on_start=True,
