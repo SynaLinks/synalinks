@@ -3,7 +3,7 @@ import os
 
 import synalinks
 
-NB_EPOCHS = 2
+NB_EPOCHS = 20
 BATCH_SIZE = 32
 STEPS_PER_EPOCHS = 3
 NB_SAMPLES = None
@@ -18,7 +18,7 @@ synalinks.clear_session()
 
 async def main():
     language_model = synalinks.LanguageModel(
-        model="ollama/deepseek-r1",
+        model="ollama/mistral",
     )
     print("Loading GSM8k dataset...")
     (x_train, y_train), (x_test, y_test) = synalinks.datasets.gsm8k.load_data()
@@ -95,7 +95,7 @@ async def main():
     history = await program.fit(
         x=x_train,
         y=y_train,
-        validation_data=(x_test, y_test),
+        validation_split=0.2,
         epochs=NB_EPOCHS,
         batch_size=BATCH_SIZE,
         steps_per_epoch=STEPS_PER_EPOCHS,

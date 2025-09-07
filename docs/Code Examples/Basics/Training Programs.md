@@ -36,7 +36,7 @@ import os
 
 import synalinks
 
-NB_EPOCHS = 2
+NB_EPOCHS = 20
 BATCH_SIZE = 32
 NB_SAMPLES = None
 NB_RUNS = 3
@@ -47,7 +47,7 @@ checkpoint_filepath = "checkpoint.program.json"
 
 async def main():
     language_model = synalinks.LanguageModel(
-        model="ollama/deepseek-r1",
+        model="ollama/mistral",
     )
     print("Loading GSM8k dataset...")
     (x_train, y_train), (x_test, y_test) = synalinks.datasets.gsm8k.load_data()
@@ -176,8 +176,6 @@ if __name__ == "__main__":
 ### Training Result
 
 ![gsm8k_evaluation_comparison](../../assets/gsm8k_evaluation_comparison.png)
-
-Here we have a **77.142% increase of performance**, not bad for a small distilled model. You can push the results even higher by training for more epochs or by using multiple optimizers one after another. Another way to have better results is to modify the architecture, using agents with a calculator or a more complex workflow.
 
 ## Conclusion
         
