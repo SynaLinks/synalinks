@@ -38,29 +38,41 @@ class MemGraphAdapter(Neo4JAdapter):
         )
 
     def wipe_database(self):
-        run_maybe_nested(self.query("MATCH (n) DETACH DELETE n;"))
+        run_maybe_nested(
+            self.query("MATCH (n) DETACH DELETE n;")
+        )
+        result = run_maybe_nested(self.query("SHOW VECTOR INDEXES"))
+        for indexes in result:
+            index_name = indexes["index_name"]
+            query = f"DROP VECTOR INDEX {index_name};"
+            run_maybe_nested(
+                self.query(query)
+            )
 
     def create_vector_index(self):
         metric_mapping = {"cosine": "cos", "euclidean": "l2sq"}
         metric = metric_mapping[self.metric]
 
         for entity_model in self.entity_models:
-            node_label = self.sanitize_label(entity_model.get_schema().get("title"))
-            index_name = to_snake_case(node_label)
-            query = "\n".join(
-                [
-                    f"CREATE VECTOR INDEX {index_name} ",
-                    f"ON :{node_label}(embedding)",
-                    "WITH CONFIG {",
-                    f'  "dimension": {self.embedding_dim}, ',
-                    f'  "metric": "{metric}", ',
-                    '  "capacity": 1000',
-                    "};",
-                ]
-            )
-            run_maybe_nested(
-                self.query(query),
-            )
+            try:
+                node_label = self.sanitize_label(entity_model.get_schema().get("title"))
+                index_name = to_snake_case(node_label)
+                query = "\n".join(
+                    [
+                        f"CREATE VECTOR INDEX {index_name} ",
+                        f"ON :{node_label}(embedding)",
+                        "WITH CONFIG {",
+                        f'  "dimension": {self.embedding_dim}, ',
+                        f'  "metric": "{metric}", ',
+                        '  "capacity": 1000',
+                        "};",
+                    ]
+                )
+                run_maybe_nested(
+                    self.query(query),
+                )
+            except Exception:
+                pass
 
     async def update(
         self,

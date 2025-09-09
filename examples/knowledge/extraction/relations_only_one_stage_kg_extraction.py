@@ -29,7 +29,7 @@ async def main():
     )
 
     knowledge_base = synalinks.KnowledgeBase(
-        uri="neo4j://localhost:7687",
+        uri="memgraph://localhost:7687",
         entity_models=[City, Country, Place, Event],
         relation_models=[IsCapitalOf, IsLocatedIn, IsCityOf, TookPlaceIn],
         embedding_model=embedding_model,

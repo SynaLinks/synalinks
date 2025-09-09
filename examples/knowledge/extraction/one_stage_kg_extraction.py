@@ -2,6 +2,9 @@ import synalinks
 import asyncio
 from typing import List, Union
 
+from dotenv import load_dotenv
+load_dotenv()
+
 from knowledge_graph_schema import City, Country, Place, Event
 from knowledge_graph_schema import IsCapitalOf, IsLocatedIn, IsCityOf, TookPlaceIn
 from knowledge_dataset import Document, load_data
@@ -34,7 +37,7 @@ async def main():
     )
 
     knowledge_base = synalinks.KnowledgeBase(
-        uri="neo4j://localhost:7687",
+        uri="memgraph://localhost:7687",
         entity_models=[City, Country, Place, Event],
         relation_models=[IsCapitalOf, IsLocatedIn, IsCityOf, TookPlaceIn],
         embedding_model=embedding_model,

@@ -162,7 +162,7 @@ class EntityRetriever(Module):
                 (
                     "The similarity search parameter should be "
                     "a short natural language string describing the "
-                    "entities to match",
+                    "entities to match"
                 )
             ]
         self.instructions = instructions
