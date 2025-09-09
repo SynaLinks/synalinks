@@ -184,6 +184,7 @@ class LanguageModel(SynalinksSaveable):
         formatted_messages = messages.get_json().get("messages", [])
         json_instance = {}
         input_kwargs = copy.deepcopy(kwargs)
+        schema = copy.deepcopy(schema)
         if schema:
             if self.model.startswith("groq"):
                 # Use a tool created on the fly for groq
@@ -240,6 +241,11 @@ class LanguageModel(SynalinksSaveable):
             elif self.model.startswith("openai") or self.model.startswith("azure"):
                 # Use constrained structured output for openai
                 # OpenAI require the field  "additionalProperties"
+                # Also OpenAI disallow the field "description" in $ref
+                if "properties" in schema:
+                    for prop_key, prop_value in schema["properties"].items():
+                        if "$ref" in prop_value and "description" in prop_value:
+                            del prop_value["description"]
                 kwargs.update(
                     {
                         "response_format": {
