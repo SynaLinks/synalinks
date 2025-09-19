@@ -216,8 +216,8 @@ class OMEGAEvolve(RandomFewShot):
                 program = Program(
                     inputs=inputs,
                     outputs=outputs,
-                    name=f"{trainable_variable.name}_reflexion",
-                    description="The reflexion program that fix/optimize variables",
+                    name=f"{trainable_variable.name}_mutation",
+                    description="The mutation program that fix/optimize variables",
                 )
                 self.mutation_programs[schema_id] = program
 
@@ -237,8 +237,8 @@ class OMEGAEvolve(RandomFewShot):
                 program = Program(
                     inputs=inputs,
                     outputs=outputs,
-                    name=f"{trainable_variable.name}_merging",
-                    description="The merging program that combine high performing variables",
+                    name=f"{trainable_variable.name}_crossover",
+                    description="The crossover program that combine high performing variables",
                 )
                 self.crossover_programs[schema_id] = program
 
