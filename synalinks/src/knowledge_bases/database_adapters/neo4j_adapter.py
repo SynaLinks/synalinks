@@ -60,9 +60,7 @@ class Neo4JAdapter(DatabaseAdapter):
             params = {
                 "index": index_name,
             }
-            run_maybe_nested(
-                self.query(query, params)
-            )
+            run_maybe_nested(self.query(query, params))
 
     def create_vector_index(self):
         """Create vector indexes"""

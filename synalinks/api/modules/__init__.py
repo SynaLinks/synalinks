@@ -18,12 +18,6 @@ from synalinks.src.modules.core.input_module import Input as Input
 from synalinks.src.modules.core.input_module import InputModule as InputModule
 from synalinks.src.modules.core.not_module import Not as Not
 from synalinks.src.modules.knowledge.embedding import Embedding as Embedding
-from synalinks.src.modules.knowledge.entity_retriever import (
-    EntityRetriever as EntityRetriever,
-)
-from synalinks.src.modules.knowledge.knowledge_retriever import (
-    KnowledgeRetriever as KnowledgeRetriever,
-)
 from synalinks.src.modules.knowledge.update_knowledge import (
     UpdateKnowledge as UpdateKnowledge,
 )
@@ -33,5 +27,14 @@ from synalinks.src.modules.merging.logical_and import And as And
 from synalinks.src.modules.merging.logical_or import Or as Or
 from synalinks.src.modules.merging.logical_xor import Xor as Xor
 from synalinks.src.modules.module import Module as Module
+from synalinks.src.modules.retrievers.entity_retriever import (
+    EntityRetriever as EntityRetriever,
+)
+from synalinks.src.modules.retrievers.triplet_retriever import (
+    TripletRetriever as TripletRetriever,
+)
+from synalinks.src.modules.synthesis.python_synthesis import (
+    PythonSynthesis as PythonSynthesis,
+)
 from synalinks.src.modules.ttc.chain_of_thought import ChainOfThought as ChainOfThought
 from synalinks.src.modules.ttc.self_critique import SelfCritique as SelfCritique

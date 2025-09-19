@@ -29,9 +29,10 @@ class GeneratorModuleTest(testing.TestCase):
             data_model=AnswerWithRationale,
             language_model=language_model,
         ).format_messages(
-            Query(query="What is the french city of aerospace and robotics?")
+            inputs=Query(query="What is the french city of aerospace and robotics?")
         )
-        self.assertTrue(len(msgs) == 1)
+        print(msgs.prettify_json())
+        self.assertTrue(len(msgs.messages) == 2)
 
     def test_format_message_with_instructions(self):
         class Query(DataModel):
@@ -46,11 +47,12 @@ class GeneratorModuleTest(testing.TestCase):
         msgs = Generator(
             data_model=AnswerWithRationale,
             language_model=language_model,
-            instructions=["You are an helpfull assistant"],
+            instructions="You are an helpfull assistant",
         ).format_messages(
             Query(query="What is the french city of aerospace and robotics?")
         )
-        self.assertTrue(len(msgs) == 2)
+        print(msgs.prettify_json())
+        self.assertTrue(len(msgs.messages) == 2)
 
     def test_format_message_with_examples(self):
         class Query(DataModel):
@@ -77,7 +79,8 @@ class GeneratorModuleTest(testing.TestCase):
         ).format_messages(
             Query(query="What is the french city of aerospace and robotics?")
         )
-        self.assertTrue(len(msgs) == 2)
+        print(msgs.prettify_json())
+        self.assertTrue(len(msgs.messages) == 2)
 
     def test_format_message_with_examples_and_instructions(self):
         class Query(DataModel):
@@ -94,20 +97,21 @@ class GeneratorModuleTest(testing.TestCase):
             language_model=language_model,
             examples=[
                 (
-                    {"query": "What is the capital of France?"},
+                    {
+                        "query": "What is the capital of France?",
+                    },
                     {
                         "rationale": "The capital of France is well known",
                         "answer": "Paris",
                     },
                 )
             ],
-            instructions=[
-                "You are an helpfull assistant",
-            ],
+            instructions="You are an helpfull assistant",
         ).format_messages(
             Query(query="What is the french city of aerospace and robotics?")
         )
-        self.assertTrue(len(msgs) == 2)
+        print(msgs.prettify_json())
+        self.assertTrue(len(msgs.messages) == 2)
 
     @patch("litellm.acompletion")
     async def test_basic_functional_setup(self, mock_completion):
@@ -252,4 +256,7 @@ class GeneratorModuleTest(testing.TestCase):
         serialized_dict = modules.serialize(generator)
         new_generator = modules.deserialize(serialized_dict)
         # check that the nested object are good
-        self.assertEqual(str(new_generator.language_model), str(generator.language_model))
+        self.assertEqual(
+            str(new_generator.language_model),
+            str(generator.language_model),
+        )

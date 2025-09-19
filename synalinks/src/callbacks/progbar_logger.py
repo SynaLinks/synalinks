@@ -8,23 +8,6 @@ from synalinks.src.utils import io_utils
 from synalinks.src.utils.progbar import Progbar
 
 
-def is_marimo_notebook_running():
-    try:
-        import marimo as mo
-
-        return mo.running_in_notebook()
-    except ImportError:
-        return False
-
-
-def format_logs(logs):
-    formatted_logs = []
-    for metric, value in logs.items():
-        formatted_logs.append(f"{metric}: {round(value, 3)}")
-    formatted_logs = " - ".join(formatted_logs)
-    return formatted_logs
-
-
 @synalinks_export("synalinks.callbacks.ProgbarLogger")
 class ProgbarLogger(Callback):
     """Callback that prints metrics to stdout.
@@ -73,9 +56,7 @@ class ProgbarLogger(Callback):
         self._reset_progbar()
         self._maybe_init_progbar()
         msg = f"Epoch {epoch + 1}/{self.epochs}"
-        if is_marimo_notebook_running():
-            self.progbar.progress.update(title=msg)
-        elif self.verbose and self.epochs > 1:
+        if self.verbose and self.epochs > 1:
             io_utils.print_msg(msg)
 
     def on_train_batch_end(self, batch, logs=None):
@@ -105,19 +86,11 @@ class ProgbarLogger(Callback):
 
     def _maybe_init_progbar(self):
         if self.progbar is None:
-            if is_marimo_notebook_running():
-                import marimo as mo
-
-                self.progbar = mo.status.progress_bar(
-                    total=self.target if self.target else 0,
-                    show_rate=True,
-                    show_eta=True,
-                    remove_on_exit=True,
-                )
-            else:
-                self.progbar = Progbar(
-                    target=self.target, verbose=self.verbose, unit_name="step"
-                )
+            self.progbar = Progbar(
+                target=self.target,
+                verbose=self.verbose,
+                unit_name="step",
+            )
 
     def _update_progbar(self, batch, logs=None, finalize=False):
         """Updates the progbar."""
@@ -126,27 +99,12 @@ class ProgbarLogger(Callback):
         self.seen = batch + 1  # One-indexed.
 
         if self.verbose == 1:
-            if is_marimo_notebook_running():
-                self.progbar.progress.update(
-                    increment=self.seen, subtitle=format_logs(logs)
-                )
-                if finalize:
-                    self.progbar.disabled = True
-            else:
-                self.progbar.update(self.seen, list(logs.items()), finalize=False)
+            self.progbar.update(self.seen, list(logs.items()), finalize=False)
 
     def _finalize_progbar(self, logs):
         logs = logs or {}
         if self.target is None:
             self.target = self.seen
-            if is_marimo_notebook_running():
-                self.progbar.total = self.target
-            else:
-                self.progbar.target = self.target
-        if is_marimo_notebook_running():
-            self.progbar.progress.update(
-                increment=self.target, subtitle=format_logs(logs)
-            )
-            self.progbar.disabled = True
-        elif self.verbose == 1:
+            self.progbar.target = self.target
+        if self.verbose == 1:
             self.progbar.update(self.target, list(logs.items()), finalize=True)

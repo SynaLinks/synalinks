@@ -1,5 +1,6 @@
 # License Apache 2.0: (c) 2025 Yoan Sallami (Synalinks Team)
 
+import asyncio
 import copy
 import json
 import warnings
@@ -10,6 +11,7 @@ from synalinks.src.api_export import synalinks_export
 from synalinks.src.backend import ChatRole
 from synalinks.src.saving import serialization_lib
 from synalinks.src.saving.synalinks_saveable import SynalinksSaveable
+from synalinks.src.utils.nlp_utils import shorten_text
 
 
 @synalinks_export(
@@ -110,6 +112,19 @@ class LanguageModel(SynalinksSaveable):
     )
     ```
 
+    **Using Google Gemini models**
+
+    ```python
+    import synalinks
+    import os
+
+    os.environ["GEMINI_API_KEY"] = "your-api-key"
+
+    language_model = synalinks.LanguageModel(
+        model="gemini/gemini-1.5-pro",
+    )
+    ```
+
     To cascade models in case there is anything wrong with
     the model provider (hence making your pipelines more robust).
     Use the `fallback` argument like in this example:
@@ -140,6 +155,7 @@ class LanguageModel(SynalinksSaveable):
         retry (int): Optional. The number of retry (default to 5).
         fallback (LanguageModel): Optional. The language model to fallback
             if anything is wrong.
+        caching (bool): Optional. Enable caching of LM calls (Default to True).
     """
 
     def __init__(
@@ -149,6 +165,7 @@ class LanguageModel(SynalinksSaveable):
         timeout=600,
         retry=5,
         fallback=None,
+        caching=True,
     ):
         if model is None:
             raise ValueError("You need to set the `model` argument for any LanguageModel")
@@ -165,6 +182,7 @@ class LanguageModel(SynalinksSaveable):
             self.api_base = api_base
         self.timeout = timeout
         self.retry = retry
+        self.caching = caching
 
     async def __call__(self, messages, schema=None, streaming=False, **kwargs):
         """
@@ -258,6 +276,24 @@ class LanguageModel(SynalinksSaveable):
                         }
                     }
                 )
+            elif self.model.startswith("gemini"):
+                kwargs.update(
+                    {
+                        "response_format": {
+                            "type": "json_object",
+                            "json_schema": schema,
+                        }
+                    }
+                )
+            elif self.model.startwith("xai"):
+                kwargs.update(
+                    {
+                        "response_format": {
+                            "type": "json_object",
+                            "json_schema": schema,
+                        }
+                    }
+                )
             else:
                 provider = self.model.split("/")[0]
                 raise ValueError(
@@ -282,7 +318,7 @@ class LanguageModel(SynalinksSaveable):
                     model=self.model,
                     messages=formatted_messages,
                     timeout=self.timeout,
-                    caching=False,
+                    caching=self.caching,
                     **kwargs,
                 )
                 if streaming:
@@ -306,7 +342,12 @@ class LanguageModel(SynalinksSaveable):
                     }
                 return json_instance
             except Exception as e:
-                warnings.warn(f"Error occured while trying to call {self}: " + str(e))
+                warnings.warn(
+                    f"Error occured while trying to call {self}: "
+                    + str(e)
+                    + f"\nReceived response={shorten_text(response_str)}"
+                )
+            await asyncio.sleep(1)
         if self.fallback:
             return self.fallback(
                 messages,
@@ -326,6 +367,7 @@ class LanguageModel(SynalinksSaveable):
             "api_base": self.api_base,
             "timeout": self.timeout,
             "retry": self.retry,
+            "caching": self.caching,
         }
         if self.fallback:
             fallback_config = {

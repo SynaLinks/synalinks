@@ -5,6 +5,9 @@
 import json
 import logging
 import os
+import random
+
+import numpy as np
 
 from synalinks.src.api_export import synalinks_export
 
@@ -22,6 +25,12 @@ _BACKEND = "pydantic"
 
 # Available backends
 _AVAILABLE_BACKEND = ["pydantic"]
+
+# Random seed for reproductability
+_RANDOM_SEED = 123
+
+np.random.seed(_RANDOM_SEED)
+random.seed(_RANDOM_SEED)
 
 
 @synalinks_export(["synalinks.config.floatx", "synalinks.backend.floatx"])
@@ -132,6 +141,36 @@ def set_epsilon(value):
     """
     global _EPSILON
     _EPSILON = value
+
+
+@synalinks_export(
+    [
+        "synalinks.config.set_seed",
+        "synalinks.backend.set_seed",
+        "synalinks.set_seed",
+    ]
+)
+def set_seed(value):
+    """Set the value of the random seed for reproductability.
+
+    Args:
+        value (float): The new value of epsilon.
+    """
+    global _RANDOM_SEED
+    _RANDOM_SEED = value
+    np.random.seed(_RANDOM_SEED)
+    random.seed(_RANDOM_SEED)
+
+
+@synalinks_export(
+    [
+        "synalinks.config.get_seed",
+        "synalinks.backend.get_seed",
+        "synalinks.get_seed",
+    ]
+)
+def get_seed():
+    return _RANDOM_SEED
 
 
 @synalinks_export(
@@ -291,10 +330,13 @@ if os.path.exists(_config_path):
     assert _floatx in {"float16", "float32", "float64"}
     _epsilon = _config.get("epsilon", _EPSILON)
     assert isinstance(_epsilon, float)
+    _seed = _config.get("seed", _RANDOM_SEED)
+    assert isinstance(_seed, int)
 
     set_backend(_backend)
     set_floatx(_floatx)
     set_epsilon(_epsilon)
+    set_seed(_seed)
 
 # Save config file, if possible.
 if not os.path.exists(_synalinks_DIR):
@@ -310,6 +352,7 @@ if not os.path.exists(_config_path):
         "backend": _BACKEND,
         "floatx": _FLOATX,
         "epsilon": _EPSILON,
+        "seed": _RANDOM_SEED,
     }
     try:
         with open(_config_path, "w") as f:

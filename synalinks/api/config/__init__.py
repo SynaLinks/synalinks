@@ -9,10 +9,12 @@ from synalinks.src.backend.config import backend as backend
 from synalinks.src.backend.config import enable_logging as enable_logging
 from synalinks.src.backend.config import epsilon as epsilon
 from synalinks.src.backend.config import floatx as floatx
+from synalinks.src.backend.config import get_seed as get_seed
 from synalinks.src.backend.config import set_api_key as set_api_key
 from synalinks.src.backend.config import set_backend as set_backend
 from synalinks.src.backend.config import set_epsilon as set_epsilon
 from synalinks.src.backend.config import set_floatx as set_floatx
+from synalinks.src.backend.config import set_seed as set_seed
 from synalinks.src.backend.config import synalinks_home as synalinks_home
 from synalinks.src.saving.serialization_lib import (
     enable_unsafe_deserialization as enable_unsafe_deserialization,

@@ -3,6 +3,7 @@ import asyncio
 from typing import List, Union
 
 from dotenv import load_dotenv
+
 load_dotenv()
 
 from knowledge_graph_schema import City, Country, Place, Event

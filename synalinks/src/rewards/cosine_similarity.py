@@ -32,8 +32,6 @@ async def cosine_similarity(y_true, y_pred, embedding_model=None, axis=-1):
             cosine similarity.
         axis (int): (Optional) Defaults to `-1`. The dimension along which the cosine
             similarity is computed.
-        caching (bool): (Optional) Defaults to `False`. Whether to cache the
-            embeddings of `y_true` not to waste computation on ground truth.
 
     Returns:
         (float): The reward value, which tend to 1.0 if the values are similar,

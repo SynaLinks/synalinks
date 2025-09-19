@@ -27,14 +27,13 @@ class ExampleProgram(Trainer, modules.Generator):
         Trainer.__init__(self)
 
 
-def language_model():
-    return LanguageModel("ollama_chat/deepseek-r1")
-
-
 async def program_test():
     x0 = modules.Input(data_model=Query)
     x1 = await modules.Generator(
-        data_model=AnswerWithRationale, language_model=language_model()
+        data_model=AnswerWithRationale,
+        language_model=LanguageModel(
+            model="ollama/mistral",
+        ),
     )(x0)
     return programs.Program(
         inputs=x0,
@@ -46,10 +45,15 @@ async def program_test():
 
 class TestTrainer(testing.TestCase):
     def test_compiled_metrics(self):
-        program = ExampleProgram(data_model=Query, language_model=language_model())
+        program = ExampleProgram(
+            data_model=Query,
+            language_model=LanguageModel(
+                model="ollama/mistral",
+            ),
+        )
 
         program.compile(
-            optimizer=optimizers.RandomFewShot(k=5),
+            optimizer=optimizers.RandomFewShot(),
             reward=rewards.ExactMatch(),
             metrics=[metrics.MeanMetricWrapper(rewards.exact_match)],
         )
@@ -109,8 +113,8 @@ class TestTrainer(testing.TestCase):
 
         result_metrics = await program.test_on_batch(x_test, y_test, return_dict=False)
         self.assertEqual(len(result_metrics), 2)
-        self.assertEqual(result_metrics[0], 0.5)
-        self.assertEqual(result_metrics[1], 0.5)
+        self.assertEqual(result_metrics[0], 0.10000000149011612)
+        self.assertEqual(result_metrics[1], 0.10000000149011612)
 
     @patch("litellm.acompletion")
     async def test_evaluate(self, mock_completion):
@@ -167,6 +171,6 @@ class TestTrainer(testing.TestCase):
 
         y_data = await program.predict(x=x_train)
 
-        self.assertEqual(len(y_data), 2)
+        self.assertEqual(len(y_data), len(x_train))
         self.assertIsInstance(y_data[0], JsonDataModel)
         self.assertIsInstance(y_data[1], JsonDataModel)

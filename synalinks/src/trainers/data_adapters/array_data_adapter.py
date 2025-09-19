@@ -30,9 +30,9 @@ class ArrayDataAdapter(DataAdapter):
         self._inputs = inputs
 
         # If batch_size is not passed but steps is, calculate from the input
-        # data.  Defaults to `32`.
+        # data.  Defaults to `1`.
         if not batch_size:
-            batch_size = int(math.ceil(num_samples / steps)) if steps else 32
+            batch_size = int(math.ceil(num_samples / steps)) if steps else 1
 
         self._size = int(math.ceil(num_samples / batch_size))
         self._batch_size = batch_size

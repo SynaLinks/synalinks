@@ -89,6 +89,7 @@ class EmbeddingModel(SynalinksSaveable):
         retry (int): Optional. The number of retry.
         fallback (EmbeddingModel): Optional. The embedding model to fallback
             if anything is wrong.
+        caching (bool): Enables caching (Default to True).
     """
 
     def __init__(

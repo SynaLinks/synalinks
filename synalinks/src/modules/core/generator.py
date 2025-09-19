@@ -1,8 +1,6 @@
 # License Apache 2.0: (c) 2025 Yoan Sallami (Synalinks Team)
 
 import re
-from typing import List
-from typing import Optional
 
 import jinja2
 
@@ -11,17 +9,16 @@ from synalinks.src.api_export import synalinks_export
 from synalinks.src.backend import ChatMessage
 from synalinks.src.backend import ChatMessages
 from synalinks.src.backend import ChatRole
-from synalinks.src.backend import DataModel
 from synalinks.src.backend import Instructions
 from synalinks.src.backend import Prediction
 from synalinks.src.backend import SymbolicDataModel
 from synalinks.src.modules.module import Module
 from synalinks.src.saving import serialization_lib
 
+ROLES = [ChatRole.SYSTEM, ChatRole.USER, ChatRole.ASSISTANT, ChatRole.TOOL]
+
 XML_TAGS_REGEX = re.compile(
-    r"<("
-    + "|".join([ChatRole.SYSTEM, ChatRole.USER, ChatRole.ASSISTANT])
-    + r")\s*(?:[^>]*)>\s*([\s\S]*?)\s*</\1>",
+    r"<(" + "|".join(ROLES) + r")\s*(?:[^>]*)>\s*([\s\S]*?)\s*</\1>",
     re.MULTILINE,
 )
 
@@ -35,30 +32,25 @@ def default_prompt_template():
     """
     return """
 <system>
-{% if static_system_prompt %}{{ static_system_prompt }}{% endif %}
-{% if inputs_schema %}You will be given an input JSON object with the following schema. 
-Input JSON Schema:
+<INSTRUCTIONS>
+{{ instructions }}
+</INSTRUCTIONS>{% if inputs_schema %}
+<INPUT_SCHEMA>
 {{ inputs_schema }}
-{% endif %}
-{% if outputs_schema %}
-Your task is to answer with a JSON object following this output JSON schema.
-Output JSON Schema:
+<INPUT_SCHEMA>
+{% endif %}{% if outputs_schema %}
+<OUTPUT_SCHEMA>
 {{ outputs_schema }}
-{% endif %}
-{% if examples %}
-### Examples
-{% for example in examples %}
+</OUTPUT_SCHEMA>
+{% endif %}{% if examples %}
+<EXAMPLES>{% for example in examples %}
+<EXAMPLE>
 Input:
 {{ example[0] }}
 Output:
 {{ example[1] }}
-{% endfor %}
-{% endif %}
-{% if instructions %}
-### Instructions:
-{% for instruction in instructions %}
- - {{ instruction }}
-{% endfor %}
+</EXAMPLE>{% endfor %}
+</EXAMPLES>
 {% endif %}
 </system>
 {% if inputs %}
@@ -67,47 +59,14 @@ Input:
 {{ inputs }}
 Output:
 </user>
-{% endif %}"""
+{% endif %}
+""".strip()
 
 
-@synalinks_export("synalinks.chat_prompt_template")
-def chat_prompt_template():
-    """Returns the default chat prompt template.
-
-    Returns:
-        (str): The default chat prompt template.
-    """
-    return """
-<system>
-{% if instructions %}
-### Instructions:
-{% for instruction in instructions %}
- - {{ instruction }}
-{% endfor %}{% endif %}
-</system>
-{% for message in inputs.messages %}
-{% if message.role == "assistant" %}
-<assistant>
-{{ message.content }}
-</assistant>
-{% elif message.role == "user" %}
-<user>
-{{ message.content }}
-</user>
-{% else %}{% endif %}
-{% endfor %}
-"""
-
-
-class GeneratorState(DataModel):
-    """The generator variables."""
-
-    prompt_template: Optional[str] = None
-    static_system_prompt: Optional[str] = None
-    examples: List[Prediction] = []
-    predictions: List[Prediction] = []
-    instructions: Optional[Instructions] = None
-    instructions_candidates: List[Instructions] = []
+def default_instructions(data_model_fields):
+    return f"""
+Your task is to answer with a JSON containing the following keys: {data_model_fields}
+""".strip()
 
 
 @synalinks_export(["synalinks.modules.Generator", "synalinks.Generator"])
@@ -167,20 +126,19 @@ class Generator(Module):
             model for structured output.
         language_model (LanguageModel): The language model to use.
         prompt_template (str): The jinja2 prompt template.
-        static_system_prompt (str): A static system prompt that **do not** evolve
-            during training. This prompt allow the user to provide additional
-            information that won't be changed during training. Allowing to cache
-            it and reduce inference costs.
         examples (list): The default list of examples, the examples
             are a list of tuples containing input/output JSON pairs.
-        instructions (list): The default instructions being a list of string containing
-            additional instructions for the language model.
+        instructions (str): The default instructions being a string containing
+            instructions for the language model.
+        seed_instructions (list): A list of instructions to use as seed for the 
+            evolutionary optimization. If not provided, use the default instructions as seed. 
         use_inputs_schema (bool): Optional. Whether or not use the inputs schema in
             the prompt (Default to False).
         use_outputs_schema (bool): Optional. Whether or not use the outputs schema in
             the prompt (Default to False).
         return_inputs (bool): Optional. Whether or not to concatenate the inputs to
             the outputs (Default to False).
+        temperature (float): Optional. The temperature for the LM call.
         streaming (str): Optional. If true stream the LM response, enabled only if
             `schema` is `None` and only during inference (not during training).
         name (str): Optional. The name of the module.
@@ -194,12 +152,13 @@ class Generator(Module):
         data_model=None,
         language_model=None,
         prompt_template=None,
-        static_system_prompt=None,
         examples=None,
         instructions=None,
+        seed_instructions=None,
         use_inputs_schema=False,
         use_outputs_schema=False,
         return_inputs=False,
+        temperature=0.0,
         streaming=False,
         name=None,
         description=None,
@@ -213,19 +172,21 @@ class Generator(Module):
         if not schema and data_model:
             schema = data_model.get_schema()
         self.schema = schema
+        if not language_model:
+            raise ValueError("You should provide `language_model` parameter.")
         self.language_model = language_model
         if not prompt_template:
             prompt_template = default_prompt_template()
         self.prompt_template = prompt_template
-        self.static_system_prompt = static_system_prompt
         if not examples:
             examples = []
         self.examples = examples
-        if not instructions:
-            instructions = []
+        if not instructions and self.schema:
+            data_model_keys = list(self.schema["properties"].keys())
+            instructions = default_instructions(data_model_keys)
         self.instructions = instructions
-
         self.return_inputs = return_inputs
+        self.temperature = temperature
         self.use_inputs_schema = use_inputs_schema
         self.use_outputs_schema = use_outputs_schema
         if schema and streaming:
@@ -236,27 +197,34 @@ class Generator(Module):
             Prediction(
                 inputs=example[0],
                 outputs=example[1],
-            )
+                reward=None,
+            ).get_json()
             for example in examples
+        ]
+        
+        if not seed_instructions:
+            seed_instructions = []
+        
+        seed_candidates = [
+            {
+                "instructions": seed_instruction,
+            } for seed_instruction in seed_instructions
         ]
 
         self.state = self.add_variable(
-            initializer=GeneratorState(
-                static_system_prompt=static_system_prompt,
-                prompt_template=prompt_template,
+            initializer=Instructions(
+                instructions=instructions,
                 examples=predictions,
-                predictions=predictions,
-                instructions=Instructions(instructions=instructions),
+                seed_candidates=seed_candidates,
             ).get_json(),
-            data_model=GeneratorState,
+            data_model=Instructions,
             name=self.name + "_state",
         )
 
     async def call(self, inputs, training=False):
         if not inputs:
             return None
-        msgs = ChatMessages()
-        msgs.messages = self.format_messages(inputs)
+        msgs = self.format_messages(inputs)
         if self.streaming and not training:
             streaming = True
         else:
@@ -267,16 +235,19 @@ class Generator(Module):
             language_model=self.language_model,
             streaming=streaming,
             name=self.name + "_prediction",
+            temperature=self.temperature,
         )
         if streaming:
             return result
         if result:
             if training:
-                self.state.get("predictions").append(
-                    Prediction(
-                        inputs=inputs.get_json(),
-                        outputs=result.get_json(),
-                    ).get_json()
+                predictions = self.state.get("predictions")
+                predictions.append(
+                    {
+                        "inputs": inputs.get_json(),
+                        "outputs": result.get_json(),
+                        "reward": None,
+                    }
                 )
             if self.return_inputs:
                 return await ops.concat(
@@ -321,37 +292,36 @@ class Generator(Module):
                 )
 
     def format_messages(self, inputs=None):
-        template = jinja2.Template(self.state.get("prompt_template"))
+        template = jinja2.Template(self.prompt_template)
         rendered_prompt = template.render(
-            static_system_prompt=self.static_system_prompt,
             inputs_schema=inputs.get_schema() if self.use_inputs_schema else None,
             outputs_schema=self.schema if self.use_outputs_schema else None,
             examples=[
                 (pred.get("inputs"), pred.get("outputs"))
                 for pred in self.state.get("examples")
             ],
-            instructions=self.state.get("instructions").get("instructions"),
+            instructions=self.state.get("instructions"),
             inputs=inputs.get_json() if inputs else None,
         )
         matches = XML_TAGS_REGEX.findall(rendered_prompt)
         extracted_tags = [(match[0], match[1].strip()) for match in matches]
-        messages = []
+        msgs = ChatMessages()
         for message in extracted_tags:
             role, content = message
             if content:
-                messages.append(ChatMessage(role=role, content=content))
-        return messages
+                msgs.messages.append(ChatMessage(role=role, content=content))
+        return msgs
 
     def get_config(self):
         config = {
             "schema": self.schema,
             "prompt_template": self.prompt_template,
-            "static_system_prompt": self.static_system_prompt,
             "examples": self.examples,
             "instructions": self.instructions,
             "use_inputs_schema": self.use_inputs_schema,
             "use_outputs_schema": self.use_outputs_schema,
             "return_inputs": self.return_inputs,
+            "temperature": self.temperature,
             "name": self.name,
             "description": self.description,
             "trainable": self.trainable,
@@ -361,11 +331,17 @@ class Generator(Module):
                 self.language_model,
             )
         }
-        return {**config, **language_model_config}
+        return {
+            **config,
+            **language_model_config,
+        }
 
     @classmethod
     def from_config(cls, config):
         language_model = serialization_lib.deserialize_synalinks_object(
             config.pop("language_model"),
         )
-        return cls(language_model=language_model, **config)
+        return cls(
+            language_model=language_model,
+            **config,
+        )

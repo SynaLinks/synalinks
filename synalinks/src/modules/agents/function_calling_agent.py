@@ -2,7 +2,6 @@
 
 import asyncio
 import uuid
-from typing import List
 
 from synalinks.src import ops
 from synalinks.src.api_export import synalinks_export
@@ -20,17 +19,13 @@ from synalinks.src.modules.ttc.chain_of_thought import ChainOfThought
 from synalinks.src.saving import serialization_lib
 
 
-def get_default_static_prompt():
-    return "You are a helpful assistant"
-
-
-def get_default_instructions() -> List[str]:
-    """The default parallel agent instructions."""
-    return [
-        "Think step by step: Use the thinking field to elaborate what you observe and what do you need to accomplish next",  # noqa: E501
-        "Reflect on prior steps: Review your previous actions and their outcomes to avoid unnecessary repetition.",  # noqa: E501
-        "Avoid unnecessary actions: If you already have enough information to complete the user task, return an empty tool calls array.",  # noqa: E501
-    ]
+def get_default_instructions():
+    """The default parallel function calling agent instructions."""
+    return """
+Think step by step: Use the thinking field to elaborate what you observe and what do you need to accomplish next.
+Reflect on prior steps: Review your previous actions and their outcomes to avoid unnecessary repetition.
+Avoid unnecessary actions: If you already have enough information to complete the user task, return an empty tool calls array.
+""".strip()
 
 
 @synalinks_export(
@@ -338,7 +333,6 @@ class FunctionCallingAgent(Module):
         data_model=None,
         language_model=None,
         prompt_template=None,
-        static_system_prompt=None,
         examples=None,
         instructions=None,
         use_inputs_schema=False,
@@ -359,9 +353,6 @@ class FunctionCallingAgent(Module):
         self.schema = schema
 
         self.prompt_template = prompt_template
-        if not static_system_prompt:
-            static_system_prompt = get_default_static_prompt()
-        self.static_system_prompt = static_system_prompt
 
         if not instructions:
             instructions = get_default_instructions()
@@ -386,7 +377,6 @@ class FunctionCallingAgent(Module):
         self.tool_calls_generator = ChainOfThought(
             schema=tool_calls_schema,
             prompt_template=self.prompt_template,
-            static_system_prompt=self.static_system_prompt,
             examples=self.examples,
             instructions=self.instructions,
             use_inputs_schema=self.use_inputs_schema,
@@ -399,7 +389,6 @@ class FunctionCallingAgent(Module):
             self.final_generator = ChainOfThought(
                 schema=self.schema,
                 language_model=self.language_model,
-                static_system_prompt=self.static_system_prompt,
                 instructions=self.instructions,
                 return_inputs=self.return_inputs_with_trajectory,
                 name=self.name + "_final_generator",
@@ -482,10 +471,10 @@ class FunctionCallingAgent(Module):
                         agent_messages.append(
                             ChatMessage(
                                 role=ChatRole.TOOL,
-                            tool_call_id=tool_call_id,
-                            content=tool_result,
-                        ).get_json()
-                    )
+                                tool_call_id=tool_call_id,
+                                content=tool_result,
+                            ).get_json()
+                        )
 
                 trajectory.update({"messages": agent_messages})
             if self.schema:
@@ -599,7 +588,6 @@ class FunctionCallingAgent(Module):
         config = {
             "schema": self.schema,
             "prompt_template": self.prompt_template,
-            "static_system_prompt": self.static_system_prompt,
             "examples": self.examples,
             "instructions": self.instructions,
             "use_inputs_schema": self.use_inputs_schema,

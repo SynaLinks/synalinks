@@ -26,7 +26,6 @@ class CallbackTest(testing.TestCase):
                 super().__init__()
                 self.iterations = self.add_variable(
                     data_model=Iterations,
-                    trainable=False,
                 )
 
             def call(self, inputs):

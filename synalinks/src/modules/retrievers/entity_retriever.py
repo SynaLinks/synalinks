@@ -2,39 +2,38 @@
 
 from synalinks.src import ops
 from synalinks.src.api_export import synalinks_export
-from synalinks.src.backend import TripletSearch
+from synalinks.src.backend import SimilaritySearch
 from synalinks.src.backend.common.dynamic_json_schema_utils import dynamic_enum
 from synalinks.src.modules import Module
-from synalinks.src.modules.ttc.chain_of_thought import ChainOfThought
+from synalinks.src.modules.core.generator import Generator
+
+
+def default_entity_retriever_instructions(entity_labels):
+    """The default instructions for the entity retriever"""
+    return f"""
+Your task is to retrive entities among the following entity labels: {entity_labels}.
+First, decide step-by-step which entity label you need, then describe the entities you are looking for.
+The `similarity search` field should be a short description of the entities to match.
+""".strip()
 
 
 @synalinks_export(
     [
-        "synalinks.modules.KnowledgeRetriever",
-        "synalinks.KnowledgeRetriever",
+        "synalinks.modules.EntityRetriever",
+        "synalinks.EntityRetriever",
     ]
 )
-class KnowledgeRetriever(Module):
-    """Retrieve knowledge using a hybrid neuro-symbolic approach.
+class EntityRetriever(Module):
+    """Retrieve entities from a knowledge base, based on the embedding vector.
 
-    Unlike the Text2Cypher approach, this retriever is 100%
-    guaranteed to generate a valid Cypher query **every time**.
+    This module is useful to implement vector-only (retrieval augmented generation) RAG
+    systems, for KAG (knowledge augmented generation) systems see the
+    `KnowledgeRetriever` module.
 
-    It doesn't need to have the graph schema in the prompt, thus
-    helping the language models by avoiding prompt confusion, because
-    the nodes and relation labels are enforced dynamically
-    using **constrained structured output** (similar to the `Decision` module).
-
-    It works by using the language model to infer the subject, object and
-    relation labels to search for, along with a similarity search
-    field for the object and subject triplets. Additionally, some
-    boolean fields are added to integrate logic-enhanced searches.
-
-    These parameters are then used to *programmatically create a valid Cypher query*.
-
-    This approach not only ensures the syntactical correctness of the
-    Cypher query but also protects the graph database from Cypher
-    injections that could arise from an adversarial prompt injection.
+    If you give multiple entity models to this module, the LM will select the most
+    suitable one to perform the search. Having multiple entity models to search
+    for is an easy way to enhance the performance of you RAG system by having
+    multiple indexes (one per entity model type).
 
     ```python
     import synalinks
@@ -51,27 +50,25 @@ class KnowledgeRetriever(Module):
             description="The answer to the user query",
         )
 
-    class Country(synalinks.Entity):
-        label: Literal["Country"]
-        name: str = synalinks.Field(
-            description="The country's name",
+    class Document(synalinks.Entity):
+        label: Literal["Document"]
+        filename: str = synalinks.Field(
+            description="The document's filename",
+        )
+        text: str = synalinks.Field(
+            description="The document's text",
         )
 
-    class City(synalinks.Entity):
-        label: Literal["City"]
-        name: str = synalinks.Field(
-            description="The city's name",
+    class Chunk(synalinks.Entity):
+        label: Literal["Chunk"]
+        text: str = synalinks.Field(
+            description="The chunk's text",
         )
 
-    class IsCapitalOf(synalinks.Relation):
-        subj: City
-        label: Literal["IsCapitalOf"]
-        obj: Country
-
-    class IsCityOf(synalinks.Relation):
-        subj: City
-        label: Literal["IsCityOf"]
-        obj: Country
+    class IsPartOf(synalinks.Relation):
+        subj: Chunk
+        label: Literal["IsPartOf"]
+        obj: Document
 
     language_model = synalinks.LanguageModel(
         model="ollama/mistral",
@@ -91,9 +88,8 @@ class KnowledgeRetriever(Module):
 
     async def main():
         inputs = synalinks.Input(data_model=Query)
-        x = await synalinks.KnowledgeRetriever(
-            entity_models=[Country, City],
-            relation_models=[IsCityOf, IsCapitalOf]
+        x = await synalinks.EntityRetriever(
+            entity_models=[Chunk],
             language_model=language_model,
             knowledge_base=knowledge_base,
         )(inputs)
@@ -105,8 +101,8 @@ class KnowledgeRetriever(Module):
         program = synalinks.Program(
             inputs=inputs,
             outputs=outputs,
-            name="kag_program",
-            description="A simple KAG program",
+            name="rag_program",
+            description="A naive RAG program",
         )
 
     if __name__ == "__main__":
@@ -118,8 +114,6 @@ class KnowledgeRetriever(Module):
         language_model (LanguageModel): The language model to use.
         entity_models (list): The list of entities models to search for
             being a list of `Entity` data models.
-        relation_models (list): The list of relations models to seach for.
-            being a list of `Relation` data models.
         k (int): Maximum number of similar entities to return
             (Defaults to 10).
         threshold (float): Minimum similarity score for results.
@@ -127,9 +121,11 @@ class KnowledgeRetriever(Module):
             Should be between 0.0 and 1.0 (Defaults to 0.5).
         prompt_template (str): The default jinja2 prompt template
             to use (see `Generator`).
-        examples (list): The default examples to use in the prompt
-            (see `Generator`).
-        instructions (list): The default instructions to use (see `Generator`).
+        examples (list): The default list of examples, the examples
+            are a list of tuples containing input/output JSON pairs.
+        instructions (str): The default instructions being a string containing
+            instructions for the language model.
+        temperature (float): Optional. The temperature for the LM call.
         use_inputs_schema (bool): Optional. Whether or not use the inputs schema in
             the prompt (Default to False) (see `Generator`).
         use_outputs_schema (bool): Optional. Whether or not use the outputs schema in
@@ -148,12 +144,12 @@ class KnowledgeRetriever(Module):
         knowledge_base=None,
         language_model=None,
         entity_models=None,
-        relation_models=None,
         k=10,
         threshold=0.5,
         prompt_template=None,
         examples=None,
         instructions=None,
+        temperature=0.0,
         use_inputs_schema=False,
         use_outputs_schema=False,
         return_inputs=True,
@@ -173,72 +169,34 @@ class KnowledgeRetriever(Module):
         self.threshold = threshold
         self.prompt_template = prompt_template
         self.examples = examples
-        if not instructions:
-            instructions = [
-                (
-                    "Think about the triplet you are looking for, "
-                    "which relation label do you need, then the "
-                    "subject and object label"
-                ),
-                (
-                    "The similarity search parameters should be a short "
-                    "natural language string describing the entities to match"
-                ),
-                (
-                    "Remember to replace the similarity search with `?` "
-                    "for the entity you are looking for"
-                ),
-            ]
-        self.instructions = instructions
-        self.use_inputs_schema = use_inputs_schema
-        self.use_outputs_schema = use_outputs_schema
-        self.return_inputs = return_inputs
-        self.return_query = return_query
-
-        self.schema = TripletSearch.get_schema()
-
         if entity_models:
             node_labels = [
                 entity_model.get_schema().get("title") for entity_model in entity_models
             ]
         else:
             node_labels = []
-
-        if relation_models:
-            relation_labels = [
-                relation_model.get_schema().get("title")
-                for relation_model in relation_models
-            ]
-        else:
-            relation_labels = []
-
+        if not instructions:
+            instructions = default_entity_retriever_instructions(node_labels)
+        self.instructions = instructions
+        self.temperature = temperature
+        self.use_inputs_schema = use_inputs_schema
+        self.use_outputs_schema = use_outputs_schema
+        self.return_inputs = return_inputs
+        self.return_query = return_query
+        self.schema = SimilaritySearch.get_schema()
         self.schema = dynamic_enum(
             schema=self.schema,
-            prop_to_update="subject_label",
+            prop_to_update="entity_label",
             labels=node_labels,
-            description="The subject label to match",
+            description="The entity label to search for",
         )
-
-        self.schema = dynamic_enum(
-            schema=self.schema,
-            prop_to_update="relation_label",
-            labels=relation_labels,
-            description="The relation label to match",
-        )
-
-        self.schema = dynamic_enum(
-            schema=self.schema,
-            prop_to_update="object_label",
-            labels=node_labels,
-            description="The object label to match",
-        )
-
-        self.query_generator = ChainOfThought(
+        self.query_generator = Generator(
             schema=self.schema,
             language_model=self.language_model,
             prompt_template=self.prompt_template,
             examples=self.examples,
             instructions=self.instructions,
+            temperature=self.temperature,
             use_inputs_schema=self.use_inputs_schema,
             use_outputs_schema=self.use_outputs_schema,
             return_inputs=False,
@@ -248,18 +206,18 @@ class KnowledgeRetriever(Module):
     async def call(self, inputs, training=False):
         if not inputs:
             return None
-        triplet_search_query = await self.query_generator(
+        similarity_search_query = await self.query_generator(
             inputs,
             training=training,
         )
         if self.return_inputs:
             if self.return_query:
-                return await ops.logical_and(
+                return await ops.concat(
                     inputs,
-                    await ops.logical_and(
-                        triplet_search_query,
-                        await ops.triplet_search(
-                            triplet_search_query,
+                    await ops.concat(
+                        similarity_search_query,
+                        await ops.similarity_search(
+                            similarity_search_query,
                             knowledge_base=self.knowledge_base,
                             k=self.k,
                             threshold=self.threshold,
@@ -269,10 +227,10 @@ class KnowledgeRetriever(Module):
                     ),
                 )
             else:
-                return await ops.logical_and(
+                return await ops.concat(
                     inputs,
-                    await ops.triplet_search(
-                        triplet_search_query,
+                    await ops.similarity_search(
+                        similarity_search_query,
                         knowledge_base=self.knowledge_base,
                         k=self.k,
                         threshold=self.threshold,
@@ -282,10 +240,10 @@ class KnowledgeRetriever(Module):
                 )
         else:
             if self.return_query:
-                return await ops.logical_and(
-                    triplet_search_query,
-                    await ops.triplet_search(
-                        triplet_search_query,
+                return await ops.concat(
+                    similarity_search_query,
+                    await ops.similarity_search(
+                        similarity_search_query,
                         knowledge_base=self.knowledge_base,
                         k=self.k,
                         threshold=self.threshold,
@@ -294,10 +252,77 @@ class KnowledgeRetriever(Module):
                     name=self.name + "_similarity_search_with_query",
                 )
             else:
-                return await ops.triplet_search(
-                    triplet_search_query,
+                return await ops.similarity_search(
+                    similarity_search_query,
                     knowledge_base=self.knowledge_base,
                     k=self.k,
                     threshold=self.threshold,
                     name=self.name + "_similarity_search",
                 )
+
+    def get_config(self):
+        config = {
+            "k": self.question,
+            "threshold": self.labels,
+            "prompt_template": self.prompt_template,
+            "examples": self.examples,
+            "instructions": self.instructions,
+            "temperature": self.temperature,
+            "use_inputs_schema": self.use_inputs_schema,
+            "use_outputs_schema": self.use_outputs_schema,
+            "return_inputs": self.return_inputs,
+            "return_query": self.return_query,
+            "name": self.name,
+            "description": self.description,
+            "trainable": self.trainable,
+        }
+        knowledge_base_config = {
+            "knowledge_base": serialization_lib.serialize_synalinks_object(
+                self.knowledge_base,
+            )
+        }
+        language_model_config = {
+            "language_model": serialization_lib.serialize_synalinks_object(
+                self.teacher_language_model,
+            )
+        }
+        entity_models_config = {
+            "entity_models": [
+                (
+                    serialization_lib.serialize_synalinks_object(
+                        entity_model.to_symbolic_data_model(
+                            name=self.name + "_entity_model" + ("_{i}" if i > 0 else "")
+                        )
+                    )
+                    if not is_symbolic_data_model(entity_model)
+                    else serialization_lib.serialize_synalinks_object(entity_model)
+                )
+                for i, entity_model in enumerate(self.entity_models)
+            ]
+        }
+        return {
+            **config,
+            **knowledge_base_config,
+            **language_model_config,
+            **entity_models_config,
+        }
+
+    @classmethod
+    def from_config(cls, config):
+        knowledge_base = serialization_lib.deserialize_synalinks_object(
+            config.pop("knowledge_base"),
+        )
+        language_model = serialization_lib.deserialize_synalinks_object(
+            config.pop("language_model"),
+        )
+        entity_models_config = config.pop("entity_models")
+        entity_models = [
+            serialization_lib.deserialize_synalinks_object(entity_model)
+            for entity_model in entity_models_config
+        ]
+        return cls(
+            knowledge_base=knowledge_base,
+            entity_models=entity_models,
+            language_model=teacher_language_model,
+            **config,
+        )

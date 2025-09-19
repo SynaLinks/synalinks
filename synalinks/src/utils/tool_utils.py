@@ -28,7 +28,10 @@ import logging
 import typing
 
 import docstring_parser
-from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
+from tenacity import retry
+from tenacity import retry_if_exception_type
+from tenacity import stop_after_attempt
+from tenacity import wait_exponential
 
 from synalinks.src.api_export import synalinks_export
 from synalinks.src.saving import serialization_lib
@@ -163,7 +166,7 @@ class Tool(SynalinksSaveable):
         stop=stop_after_attempt(3),
         wait=wait_exponential(multiplier=1, min=1, max=10),
         retry=retry_if_exception_type((Exception,)),
-        reraise=True
+        reraise=True,
     )
     async def __call__(self, *args, **kwargs):
         return await self._func(*args, **kwargs)

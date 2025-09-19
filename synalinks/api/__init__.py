@@ -31,6 +31,8 @@ from synalinks.src.backend.common.symbolic_data_model import (
 )
 from synalinks.src.backend.common.symbolic_scope import SymbolicScope as SymbolicScope
 from synalinks.src.backend.config import enable_logging as enable_logging
+from synalinks.src.backend.config import get_seed as get_seed
+from synalinks.src.backend.config import set_seed as set_seed
 from synalinks.src.backend.config import synalinks_home as synalinks_home
 from synalinks.src.backend.pydantic.base import ChatMessage as ChatMessage
 from synalinks.src.backend.pydantic.base import ChatMessages as ChatMessages
@@ -50,6 +52,7 @@ from synalinks.src.backend.pydantic.base import Relation as Relation
 from synalinks.src.backend.pydantic.base import Relations as Relations
 from synalinks.src.backend.pydantic.base import SimilaritySearch as SimilaritySearch
 from synalinks.src.backend.pydantic.base import ToolCall as ToolCalling
+from synalinks.src.backend.pydantic.base import Trainable as Trainable
 from synalinks.src.backend.pydantic.base import TripletSearch as TripletSearch
 from synalinks.src.backend.pydantic.base import is_chat_message as is_chat_message
 from synalinks.src.backend.pydantic.base import is_chat_messages as is_chat_messages
@@ -67,6 +70,7 @@ from synalinks.src.backend.pydantic.base import (
     is_similarity_search as is_similarity_search,
 )
 from synalinks.src.backend.pydantic.base import is_tool_call as is_tool_call
+from synalinks.src.backend.pydantic.base import is_trainable as is_trainable
 from synalinks.src.backend.pydantic.base import is_triplet_search as is_triplet_search
 from synalinks.src.embedding_models.embedding_model import (
     EmbeddingModel as EmbeddingModel,
@@ -83,21 +87,12 @@ from synalinks.src.modules.core.branch import Branch as Branch
 from synalinks.src.modules.core.decision import Decision as Decision
 from synalinks.src.modules.core.generator import Generator as Generator
 from synalinks.src.modules.core.generator import (
-    chat_prompt_template as chat_prompt_template,
-)
-from synalinks.src.modules.core.generator import (
     default_prompt_template as default_prompt_template,
 )
 from synalinks.src.modules.core.identity import Identity as Identity
 from synalinks.src.modules.core.input_module import Input as Input
 from synalinks.src.modules.core.not_module import Not as Not
 from synalinks.src.modules.knowledge.embedding import Embedding as Embedding
-from synalinks.src.modules.knowledge.entity_retriever import (
-    EntityRetriever as EntityRetriever,
-)
-from synalinks.src.modules.knowledge.knowledge_retriever import (
-    KnowledgeRetriever as KnowledgeRetriever,
-)
 from synalinks.src.modules.knowledge.update_knowledge import (
     UpdateKnowledge as UpdateKnowledge,
 )
@@ -107,6 +102,15 @@ from synalinks.src.modules.merging.logical_and import And as And
 from synalinks.src.modules.merging.logical_or import Or as Or
 from synalinks.src.modules.merging.logical_xor import Xor as Xor
 from synalinks.src.modules.module import Module as Module
+from synalinks.src.modules.retrievers.entity_retriever import (
+    EntityRetriever as EntityRetriever,
+)
+from synalinks.src.modules.retrievers.triplet_retriever import (
+    TripletRetriever as TripletRetriever,
+)
+from synalinks.src.modules.synthesis.python_synthesis import (
+    PythonSynthesis as PythonSynthesis,
+)
 from synalinks.src.modules.ttc.chain_of_thought import ChainOfThought as ChainOfThought
 from synalinks.src.modules.ttc.self_critique import SelfCritique as SelfCritique
 from synalinks.src.ops.function import Function as Function

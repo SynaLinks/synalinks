@@ -38,16 +38,12 @@ class MemGraphAdapter(Neo4JAdapter):
         )
 
     def wipe_database(self):
-        run_maybe_nested(
-            self.query("MATCH (n) DETACH DELETE n;")
-        )
+        run_maybe_nested(self.query("MATCH (n) DETACH DELETE n;"))
         result = run_maybe_nested(self.query("SHOW VECTOR INDEXES"))
         for indexes in result:
             index_name = indexes["index_name"]
             query = f"DROP VECTOR INDEX {index_name};"
-            run_maybe_nested(
-                self.query(query)
-            )
+            run_maybe_nested(self.query(query))
 
     def create_vector_index(self):
         metric_mapping = {"cosine": "cos", "euclidean": "l2sq"}

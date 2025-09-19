@@ -283,6 +283,19 @@ class DataModel(pydantic.BaseModel, SynalinksSaveable, metaclass=MetaDataModel):
         return cls.model_json_schema()
 
     @classmethod
+    def keys(cls):
+        """Gets the JSON properties keys of the data model.
+
+        Returns:
+            (dict): The JSON schema.
+        """
+        schema = cls.get_schema()
+        if "properties" in schema:
+            return schema["properties"].keys()
+        else:
+            return []
+
+    @classmethod
     def prettify_schema(cls):
         """Get a pretty version of the JSON schema for display.
 
@@ -296,7 +309,7 @@ class DataModel(pydantic.BaseModel, SynalinksSaveable, metaclass=MetaDataModel):
     @classmethod
     def to_symbolic_data_model(cls, name=None):
         """Converts the data model to a symbolic data model.
-        
+
         Args:
             name (str): Optional. The name of the symbolic data model.
                 If None, a name will be given automatically.
@@ -327,9 +340,29 @@ class DataModel(pydantic.BaseModel, SynalinksSaveable, metaclass=MetaDataModel):
     def __repr__(self):
         return f"<DataModel json={self.get_json()}, schema={self.get_schema()}>"
 
+    def get(self, key, default=None):
+        """Get wrapper to make it easier to access JSON fields.
+
+        Args:
+            key (str): The key to access.
+            default (any): The default value if key not found.
+        """
+        try:
+            self.__getattribute__(key)
+        except Exception:
+            return default
+
+    def __getitem__(self, key):
+        """Get item wrapper to make it easier to access JSON fields.
+
+        Args:
+            key (str): The key to access.
+        """
+        return self.__getattribute__(key)
+
     def to_json_data_model(self, name=None):
         """Converts the data model to a backend-independent data model.
-        
+
         Args:
             name (str): Optional. The name of the json data model.
                 If None, a name will be given automatically.

@@ -55,6 +55,7 @@ if backend() == "pydantic":
     from synalinks.src.backend.pydantic.base import Relations
     from synalinks.src.backend.pydantic.base import SimilaritySearch
     from synalinks.src.backend.pydantic.base import ToolCall
+    from synalinks.src.backend.pydantic.base import Trainable
     from synalinks.src.backend.pydantic.base import TripletSearch
     from synalinks.src.backend.pydantic.base import is_chat_message
     from synalinks.src.backend.pydantic.base import is_chat_messages
@@ -70,6 +71,7 @@ if backend() == "pydantic":
     from synalinks.src.backend.pydantic.base import is_relations
     from synalinks.src.backend.pydantic.base import is_similarity_search
     from synalinks.src.backend.pydantic.base import is_tool_call
+    from synalinks.src.backend.pydantic.base import is_trainable
     from synalinks.src.backend.pydantic.base import is_triplet_search
     from synalinks.src.backend.pydantic.core import IS_THREAD_SAFE
     from synalinks.src.backend.pydantic.core import DataModel as BackendDataModel
@@ -101,13 +103,13 @@ class name_scope(backend_name_scope):
 
 
 @synalinks_export("synalinks.ops.convert_to_json_data_model")
-def convert_to_json_data_model(x, name=None):
-    return JsonDataModel(schema=x.get_schema(), json=x.get_json(), name=name) if x else x
+def convert_to_json_data_model(x):
+    return JsonDataModel(schema=x.get_schema(), json=x.get_json()) if x else x
 
 
 @synalinks_export("synalinks.ops.convert_to_symbolic_data_model")
-def convert_to_symbolic_data_model(x, name=None):
-    return SymbolicDataModel(schema=x.get_schema(), name=name) if x else x
+def convert_to_symbolic_data_model(x):
+    return SymbolicDataModel(schema=x.get_schema()) if x else x
 
 
 async def compute_output_spec(fn, *args, **kwargs):

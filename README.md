@@ -8,7 +8,7 @@
 
 <em>The first neuro-symbolic LM framework to leverage decades-old best practices in Deep Learning frameworks from the most user-friendly framework ever built - Keras</em>
 
-<b>Build RAGs, autonomous agents, multi-agents systems and more in just few lines</b>
+<b>Build RAGs, autonomous agents, multi-agents systems, self-evolving system and more in just few lines</b>
 
 <p align="center">
   <a href="https://synalinks.github.io/synalinks" target="_blank"><strong>Documentation</strong></a> ·
@@ -56,14 +56,13 @@ Developping a successful LM application in a profesional context, beyond statele
 - **Async Optimization**: Synalinks automatically optimizes your pipelines by detecting parallel processes, so you don't have to worry about it.
 - **Assessing the performance of your application**: Synalinks provides built-in metrics and rewards to evaluate your workflows.
 - **Configuring Language & Embedding Models**: Seamlessly integrate multiple LM providers like Ollama, OpenAI, Azure, Anthropic, Mistral or Groq.
-- **Configuring Graph Databases**: Seamlessly integrate with Neo4J or MemGraph (more to come!).
+- **Configuring Graph Databases**: Seamlessly integrate with Neo4J or MemGraph.
 - **Documenting your ML workflows**: Plot your workflows, training history, and evaluations; document everything.
 - **Versioning the prompts/pipelines**: Each program is serializable into JSON so you can version it with git.
 - **Deploying REST APIs or MCP servers**: Compatible out-of-the-box with FastAPI and FastMCP so your Data Scientists and Web Developers can stop tearing each other apart.
+- **Finding Hyperparameters**: Synalinks is compatible with [KerasTuner](https://keras.io/keras_tuner/), so you don't have to guess the hyperparameters.
 
-Synalinks can help you simplify these tasks by leveraging decade old practices in Deep Learning frameworks. We provide a comprehensive suite of tools and features designed to streamline the development process, making it easier to create, evaluate, train, document and deploy robust neuro-symbolic LMs applications.
-
-## What about other frameworks?
+We can help you simplify these tasks by leveraging decade old practices in Deep Learning frameworks. We provide a comprehensive suite of tools and features designed to streamline the development process, making it easier to create, evaluate, train, document and deploy robust neuro-symbolic LMs applications.
 
 <div align="center">
 
@@ -387,7 +386,7 @@ async def main():
 
     program.compile(
         reward=synalinks.rewards.ExactMatch(in_mask=["answer"]),
-        optimizer=synalinks.optimizers.FewShotOPRO(
+        optimizer=synalinks.optimizers.OMEGAEvolve(
             language_model=language_model,
         )
     )

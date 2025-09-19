@@ -13,6 +13,7 @@ from synalinks.src import initializers
 from synalinks.src import tree
 from synalinks.src import utils
 from synalinks.src.api_export import synalinks_export
+from synalinks.src.backend import is_trainable
 from synalinks.src.backend.common import global_state
 from synalinks.src.backend.common.name_scope import current_path
 from synalinks.src.hooks.hook_list import HookList
@@ -359,6 +360,7 @@ class Module(BackendModule, Operation, SynalinksSaveable):
         data_model=None,
         trainable=True,
         name=None,
+        description=None,
     ):
         """Add a variable to the module
 
@@ -372,6 +374,9 @@ class Module(BackendModule, Operation, SynalinksSaveable):
                 optimization or whether its updates are managed manually. Defaults
                 to `True`.
             name (string): String name of the variable. Useful for debugging purposes.
+            description (string): String description of the variable. Used by the
+                optimizers to infer the role of the variable. Required if the data
+                model do not have a docstring.
 
         Returns:
             (Variable): The created variable
@@ -379,12 +384,14 @@ class Module(BackendModule, Operation, SynalinksSaveable):
         self._check_super_called()
         if initializer is None:
             initializer = initializers.Empty(data_model=data_model)
+        trainable = trainable and is_trainable(data_model)
         with backend.name_scope(self.name, caller=self):
             variable = backend.Variable(
                 initializer=initializer,
                 data_model=data_model,
                 trainable=trainable,
                 name=name,
+                description=description,
             )
         self._track_variable(variable)
         return variable
@@ -523,7 +530,7 @@ class Module(BackendModule, Operation, SynalinksSaveable):
 
         # Used to avoid expensive `tree` operations in the most common case.
         if len(args) == 1 and backend.is_data_model(args[0]):
-            args[0] = args[0].to_json_data_model()
+            args[0] = args[0].to_json_data_model(name=self.name + "_inputs")
         else:
             args = self._maybe_convert_inputs(args)
 
@@ -651,13 +658,17 @@ class Module(BackendModule, Operation, SynalinksSaveable):
         pass
 
     def _maybe_convert_inputs(self, inputs):
-        counter = {'i': 0}
+        counter = {"i": 0}
+
         def convert_fn(x):
             if backend.is_data_model(x):
-                result = x.to_json_data_model(
-                    name=f"{self.name}_inputs_{counter['i']}"
-                )
-                counter['i'] += 1
+                if counter["i"] > 0:
+                    result = x.to_json_data_model(
+                        name=f"{self.name}_inputs_{counter['i']}"
+                    )
+                else:
+                    result = x.to_json_data_model(name=f"{self.name}_inputs")
+                counter["i"] += 1
                 return result
             return x
 

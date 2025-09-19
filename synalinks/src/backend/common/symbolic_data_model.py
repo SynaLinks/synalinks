@@ -365,19 +365,66 @@ class SymbolicDataModel(SynalinksSaveable):
 
         return run_maybe_nested(ops.Suffix(suffix=suffix).symbolic_call(self))
 
-    def get(self, key, default_value=None):
+    def get(self, key, default=None):
         """Get wrapper to make easier to access fields.
 
         Implemented to help the user to identifying issues.
 
         Args:
             key (str): The key to access.
+            default (any): The default value if key not found.
 
         Raises:
             ValueError: The help message.
         """
         raise ValueError(
             f"Attempting to get '{key}' from a symbolic data model "
+            "this operation is not possible, make sure that your `call()` "
+            "is correctly implemented, if so then you likely need to implement "
+            " `compute_output_spec()` in your subclassed module."
+        )
+
+    def __getitem__(self, key):
+        """Get item wrapper to make it easier to access JSON fields.
+
+        Implemented to help the user to identifying issues.
+
+        Args:
+            key (str): The key to access.
+        """
+        raise ValueError(
+            f"Attempting to get '{key}' from a symbolic data model "
+            "this operation is not possible, make sure that your `call()` "
+            "is correctly implemented, if so then you likely need to implement "
+            " `compute_output_spec()` in your subclassed module."
+        )
+
+    def keys(self):
+        """Keys wrapper to make it easier to access JSON fields."""
+        if "properties" in self.get_schema():
+            return self.get_schema()["properties"].keys()
+        else:
+            return []
+
+    def values(self):
+        """Values wrapper to make it easier to access JSON fields.
+
+        Implemented to help the user to identifying issues.
+        """
+        raise ValueError(
+            "Attempting to get '.values()' from a symbolic data model "
+            "this operation is not possible, make sure that your `call()` "
+            "is correctly implemented, if so then you likely need to implement "
+            " `compute_output_spec()` in your subclassed module."
+        )
+
+    def items(self):
+        """Items wrapper to make it easier to access JSON fields.
+
+        Implemented to help the user to identifying issues.
+        """
+        raise ValueError(
+            "Attempting to get '.items()' from a symbolic data model "
             "this operation is not possible, make sure that your `call()` "
             "is correctly implemented, if so then you likely need to implement "
             " `compute_output_spec()` in your subclassed module."

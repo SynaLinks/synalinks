@@ -77,14 +77,12 @@ class ChainOfThought(Module):
             If not provided use the `data_model` to infer it.
         data_model (DataModel | SymbolicDataModel | JsonDataModel): The target data model.
         language_model (LanguageModel): The language model to use.
-        static_system_prompt (str): A static system prompt that **do not** evolve
-            during training. This prompt allow the user to provide additional
-            information that won't be changed during training. Allowing to cache
-            it and reduce inference costs (see `Generator`).
         prompt_template (str): The jinja2 prompt template (see `Generator`).
-        examples (list): The default list of examples (see `Generator`).
-        instructions (list): The default instructions being a list of string containing
-            additional instructions for the language model (see `Generator`).
+        examples (list): The default list of examples, the examples
+            are a list of tuples containing input/output JSON pairs.
+        instructions (str): The default instructions being a string containing
+            instructions for the language model.
+        temperature (float): Optional. The temperature for the LM call.
         use_inputs_schema (bool): Optional. Whether or not use the inputs schema in
             the prompt (Default to False) (see `Generator`).
         use_outputs_schema (bool): Optional. Whether or not use the outputs schema in
@@ -103,16 +101,16 @@ class ChainOfThought(Module):
         data_model=None,
         language_model=None,
         prompt_template=None,
-        static_system_prompt=None,
         examples=None,
         instructions=None,
+        temperature=0.0,
         use_inputs_schema=False,
         use_outputs_schema=False,
         k=1,
         return_inputs=False,
         name=None,
         description=None,
-        trainable=None,
+        trainable=True,
     ):
         super().__init__(
             name=name,
@@ -124,10 +122,10 @@ class ChainOfThought(Module):
             schema = data_model.get_schema()
         self.schema = schema
         self.language_model = language_model
-        self.static_system_prompt = static_system_prompt
         self.prompt_template = prompt_template
         self.examples = examples
         self.instructions = instructions
+        self.temperature = temperature
         self.use_inputs_schema = use_inputs_schema
         self.use_outputs_schema = use_outputs_schema
         self.return_inputs = return_inputs
@@ -143,10 +141,10 @@ class ChainOfThought(Module):
         self.generator = Generator(
             data_model=final_data_model,
             language_model=self.language_model,
-            static_system_prompt=self.static_system_prompt,
             prompt_template=self.prompt_template,
             examples=self.examples,
             instructions=self.instructions,
+            temperature=self.temperature,
             use_inputs_schema=self.use_inputs_schema,
             use_outputs_schema=self.use_outputs_schema,
             return_inputs=self.return_inputs,
@@ -160,9 +158,9 @@ class ChainOfThought(Module):
         config = {
             "schema": self.schema,
             "prompt_template": self.prompt_template,
-            "static_system_prompt": self.static_system_prompt,
             "examples": self.examples,
             "instructions": self.instructions,
+            "temperature": self.temperature,
             "use_inputs_schema": self.use_inputs_schema,
             "use_outputs_schema": self.use_outputs_schema,
             "return_inputs": self.return_inputs,
@@ -173,14 +171,20 @@ class ChainOfThought(Module):
         }
         language_model_config = {
             "language_model": serialization_lib.serialize_synalinks_object(
-                self.language_model
+                self.language_model,
             )
         }
-        return {**config, **language_model_config}
+        return {
+            **config,
+            **language_model_config,
+        }
 
     @classmethod
     def from_config(cls, config):
         language_model = serialization_lib.deserialize_synalinks_object(
             config.pop("language_model"),
         )
-        return cls(language_model=language_model, **config)
+        return cls(
+            language_model=language_model,
+            **config,
+        )

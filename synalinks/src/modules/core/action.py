@@ -99,13 +99,10 @@ class Action(Module):
         language_model (LanguageModel): The language model to use.
         prompt_template (str): The default jinja2 prompt template
             to use (see `Generator`).
-        static_system_prompt (str): A static system prompt that **do not** evolve
-            during training. This prompt allow the user to provide additional
-            information that won't be changed during training. Allowing to cache
-            it and reduce inference costs (see `Generator`).
         examples (list): The default examples to use in the prompt
             (see `Generator`).
         instructions (list): The default instructions to use (see `Generator`).
+        temperature (float): Optional. The temperature for the LM call.
         use_inputs_schema (bool): Optional. Whether or not use the inputs schema in
             the prompt (Default to False) (see `Generator`).
         use_outputs_schema (bool): Optional. Whether or not use the outputs schema in
@@ -120,9 +117,9 @@ class Action(Module):
         fn,
         language_model=None,
         prompt_template=None,
-        static_system_prompt=None,
         examples=None,
         instructions=None,
+        temperature=0.0,
         use_inputs_schema=False,
         use_outputs_schema=False,
         name=None,
@@ -138,18 +135,18 @@ class Action(Module):
         schema = tool_utils.Tool(fn).get_tool_schema()
         self.language_model = language_model
         self.prompt_template = prompt_template
-        self.static_system_prompt = static_system_prompt
         self.examples = examples
         self.instructions = instructions
+        self.temperature = temperature
         self.use_inputs_schema = use_inputs_schema
         self.use_outputs_schema = use_outputs_schema
         self.action = Generator(
             schema=schema,
             language_model=self.language_model,
             prompt_template=self.prompt_template,
-            static_system_prompt=self.static_system_prompt,
             examples=self.examples,
             instructions=self.instructions,
+            temperature=self.temperature,
             use_inputs_schema=self.use_inputs_schema,
             use_outputs_schema=self.use_outputs_schema,
             name=self.name + "_generator",
@@ -178,9 +175,9 @@ class Action(Module):
         config = {
             "fn": self.fn,
             "prompt_template": self.prompt_template,
-            "static_system_prompt": self.static_system_prompt,
             "examples": self.examples,
             "instructions": self.instructions,
+            "temperature": self.temperature,
             "name": self.name,
             "description": self.description,
             "trainable": self.trainable,

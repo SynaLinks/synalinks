@@ -90,7 +90,6 @@ def plot_history(
 
     plt.legend()
     plt.grid(grid)
-    plt.tight_layout()
 
     if to_folder:
         to_file = os.path.join(to_folder, to_file)
@@ -257,7 +256,6 @@ def plot_history_with_mean_and_std(
 
     plt.legend()
     plt.grid(grid)
-    plt.tight_layout()
 
     if to_folder:
         to_file = os.path.join(to_folder, to_file)
@@ -429,7 +427,6 @@ def plot_history_comparison(
 
     plt.legend()
     plt.grid(grid)
-    plt.tight_layout()
 
     if to_folder:
         to_file = os.path.join(to_folder, to_file)
@@ -636,7 +633,6 @@ def plot_history_comparison_with_mean_and_std(
 
     plt.legend()
     plt.grid(grid)
-    plt.tight_layout()
 
     if to_folder:
         to_file = os.path.join(to_folder, to_file)

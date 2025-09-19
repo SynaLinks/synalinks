@@ -79,13 +79,10 @@ class Branch(Module):
         language_model (LanguageModel): The language model to use.
         prompt_template (str): The default jinja2 prompt template
             to use (see `Generator`).
-        static_system_prompt (str): A static system prompt that **do not** evolve
-            during training. This prompt allow the user to provide additional
-            information that won't be changed during training. Allowing to cache
-            it and reduce inference costs (see `Generator`).
         examples (list): The default examples to use in the prompt
             (see `Decision`).
         instructions (list): The default instructions to use (see `Decision`).
+        temperature (float): Optional. The temperature for the LM call.
         use_inputs_schema (bool): Optional. Whether or not use the inputs
             schema in the decision prompt (Default to False) (see `Decision`).
         use_outputs_schema (bool): Optional. Whether or not use the outputs
@@ -104,10 +101,10 @@ class Branch(Module):
         inject_decision=True,
         return_decision=True,
         language_model=None,
-        static_system_prompt=None,
         prompt_template=None,
         examples=None,
         instructions=None,
+        temperature=0.0,
         use_inputs_schema=False,
         use_outputs_schema=False,
         decision_type=Decision,
@@ -132,22 +129,23 @@ class Branch(Module):
         self.branches = {labels[i]: m for i, m in enumerate(branches)}
         self.inject_decision = inject_decision
         self.return_decision = return_decision
+        self.language_model = language_model
         self.prompt_template = prompt_template
-        self.static_system_prompt = static_system_prompt
         self.examples = examples
         self.instructions = instructions
+        self.temperature = temperature
         self.use_inputs_schema = use_inputs_schema
         self.use_outputs_schema = use_outputs_schema
         self.decision = decision_type(
-            question=question,
-            labels=labels,
-            language_model=language_model,
-            prompt_template=prompt_template,
-            static_system_prompt=static_system_prompt,
-            examples=examples,
-            instructions=instructions,
-            use_inputs_schema=use_inputs_schema,
-            use_outputs_schema=use_outputs_schema,
+            question=self.question,
+            labels=self.labels,
+            language_model=self.language_model,
+            prompt_template=self.prompt_template,
+            examples=self.examples,
+            instructions=self.instructions,
+            temperature=self.temperature,
+            use_inputs_schema=self.use_inputs_schema,
+            use_outputs_schema=self.use_outputs_schema,
             name=self.name + "_decision",
         )
 
@@ -252,9 +250,9 @@ class Branch(Module):
             "inject_decision": self.inject_decision,
             "return_decision": self.return_decision,
             "prompt_template": self.prompt_template,
-            "static_system_prompt": self.static_system_prompt,
             "examples": self.examples,
             "instructions": self.instructions,
+            "temperature": self.temperature,
             "use_inputs_schema": self.use_inputs_schema,
             "use_outputs_schema": self.use_outputs_schema,
             "name": self.name,

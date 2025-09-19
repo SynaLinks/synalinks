@@ -33,7 +33,6 @@ from synalinks.api import Instructions
 from synalinks.api import JsonDataModel
 from synalinks.api import KnowledgeBase
 from synalinks.api import KnowledgeGraph
-from synalinks.api import KnowledgeRetriever
 from synalinks.api import LanguageModel
 from synalinks.api import LMAsJudge
 from synalinks.api import Metric
@@ -45,6 +44,7 @@ from synalinks.api import Or
 from synalinks.api import Prediction
 from synalinks.api import Program
 from synalinks.api import ProgramAsJudge
+from synalinks.api import PythonSynthesis
 from synalinks.api import Relation
 from synalinks.api import Relations
 from synalinks.api import Reward
@@ -56,19 +56,21 @@ from synalinks.api import SymbolicDataModel
 from synalinks.api import SymbolicScope
 from synalinks.api import Tool
 from synalinks.api import ToolCalling
+from synalinks.api import Trainable
+from synalinks.api import TripletRetriever
 from synalinks.api import TripletSearch
 from synalinks.api import UpdateKnowledge
 from synalinks.api import Xor
 from synalinks.api import __version__
 from synalinks.api import backend
 from synalinks.api import callbacks
-from synalinks.api import chat_prompt_template
 from synalinks.api import clear_session
 from synalinks.api import config
 from synalinks.api import datasets
 from synalinks.api import default_prompt_template
 from synalinks.api import embedding_models
 from synalinks.api import enable_logging
+from synalinks.api import get_seed
 from synalinks.api import hooks
 from synalinks.api import initializers
 from synalinks.api import is_chat_message
@@ -85,6 +87,7 @@ from synalinks.api import is_relation
 from synalinks.api import is_relations
 from synalinks.api import is_similarity_search
 from synalinks.api import is_tool_call
+from synalinks.api import is_trainable
 from synalinks.api import is_triplet_search
 from synalinks.api import language_models
 from synalinks.api import metrics
@@ -95,6 +98,7 @@ from synalinks.api import optimizers
 from synalinks.api import programs
 from synalinks.api import rewards
 from synalinks.api import saving
+from synalinks.api import set_seed
 from synalinks.api import synalinks_home
 from synalinks.api import tree
 from synalinks.api import utils

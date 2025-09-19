@@ -2,6 +2,7 @@
 # Original authors: François Chollet et al. (Keras Team)
 # License Apache 2.0: (c) 2025 Yoan Sallami (Synalinks Team)
 
+import copy
 import json
 import re
 import shutil
@@ -45,6 +46,8 @@ def format_module_schema(module):
         return "?"
 
     def format_schema(schema):
+        schema = copy.deepcopy(schema)
+        schema.pop("$defs")
         return json.dumps(schema, indent=2)
 
     # There are 2 approaches to get output schemas:
@@ -71,7 +74,7 @@ def format_module_schema(module):
             return "?"
     if len(output_schemas) == 1:
         return output_schemas[0]
-    out = str(output_schemas)
+    out = "\n---\n".join(output_schemas)
     return out
 
 

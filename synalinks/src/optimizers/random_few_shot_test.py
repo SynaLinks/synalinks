@@ -3,26 +3,25 @@
 from unittest.mock import patch
 
 from synalinks.src import testing
-from synalinks.src.embedding_models import EmbeddingModel
 from synalinks.src.language_models import LanguageModel
 from synalinks.src.modules import Generator
 from synalinks.src.modules import Input
 from synalinks.src.optimizers import RandomFewShot
 from synalinks.src.programs import Program
-from synalinks.src.rewards.cosine_similarity import CosineSimilarity
+from synalinks.src.rewards.exact_match import ExactMatch
 from synalinks.src.testing.test_utils import AnswerWithRationale
 from synalinks.src.testing.test_utils import Query
 from synalinks.src.testing.test_utils import load_test_data
 from synalinks.src.testing.test_utils import mock_completion_data
+from synalinks.src.testing.test_utils import mock_incorrect_completion_data
 
 
 class RandomFewShotTest(testing.TestCase):
-    @patch("litellm.aembedding")
     @patch("litellm.acompletion")
-    async def test_random_few_shot_training(self, mock_completion, mock_embedding):
-        language_model = LanguageModel(model="ollama/mistral")
-
-        embedding_model = EmbeddingModel(model="ollama/all-minilm")
+    async def test_random_few_shot_training(self, mock_completion):
+        language_model = LanguageModel(
+            model="ollama/mistral",
+        )
 
         inputs = Input(data_model=Query)
         outputs = await Generator(
@@ -38,25 +37,25 @@ class RandomFewShotTest(testing.TestCase):
         )
 
         program.compile(
-            optimizer=RandomFewShot(),
-            reward=CosineSimilarity(
-                embedding_model=embedding_model,
+            optimizer=RandomFewShot(
+                nb_min_examples=1,
             ),
+            reward=ExactMatch(in_mask=["answer"]),
         )
 
         (x_train, y_train), (x_test, y_test) = load_test_data()
 
-        mock_responses = mock_completion_data()
+        mock_responses = []
+        mock_responses.extend(mock_incorrect_completion_data())
+        mock_responses.extend(mock_completion_data())
 
         mock_completion.side_effect = mock_responses
-
-        expected_value = [0.0, 0.1, 0.2, 0.3]
-        mock_embedding.return_value = {"data": [{"embedding": expected_value}]}
 
         _ = await program.fit(
             x=x_train,
             y=y_train,
-            validation_data=(x_test, y_test),
+            epochs=2,
+            batch_size=32,
         )
 
         program_vars = program.get_variable(index=0).get_json()

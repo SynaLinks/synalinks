@@ -397,13 +397,34 @@ class JsonDataModel:
             ops.Suffix(suffix=suffix).call(self),
         )
 
-    def get(self, name, default_value=None):
+    def get(self, key, default=None):
         """Get wrapper to make it easier to access JSON fields.
 
         Args:
-            name (str): The attribute name to access.
+            key (str): The key to access.
+            default (any): The default value if key not found.
         """
-        return copy.deepcopy(self._json.get(name, default_value))
+        return self._json.get(key, default)
+
+    def __getitem__(self, key):
+        """Get item wrapper to make it easier to access JSON fields.
+
+        Args:
+            key (str): The key to access.
+        """
+        return self._json[key]
+
+    def keys(self):
+        """Keys wrapper to make it easier to access JSON fields."""
+        return self._json.keys()
+
+    def values(self):
+        """Values wrapper to make it easier to access JSON fields."""
+        return self._json.values()
+
+    def items(self):
+        """Items wrapper to make it easier to access JSON fields."""
+        return self._json.items()
 
     def update(self, kv_dict):
         """Update wrapper to make it easier to modify JSON fields.

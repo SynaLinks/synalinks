@@ -411,3 +411,33 @@ def normalize_and_tokenize(text):
     text = remove_articles(text)
     text = remove_punctuation(text)
     return text.split()
+
+
+def shorten_text(text, nb_words_offset=10):
+    """
+    Shorten a text.
+
+    Args:
+        text (str): The text to shorten.
+        nb_words_offset (int): The number of words to keep
+            from the beginning and end of the text
+            (Default is 20).
+
+    Returns:
+        (str): The shortened text. If the original text has more than nb_words words,
+            returns the first nb_words and last nb_words separated by " (...) ".
+            Otherwise, returns the original text unchanged.
+    """
+    if not isinstance(text, str):
+        text = str(text)
+
+    words = text.split(" ")
+    if len(words) <= nb_words_offset * 2:
+        return text
+    nb_words_removed = len(words) - 2 * nb_words_offset
+    short_text = (
+        " ".join(words[:nb_words_offset])
+        + f" (... {nb_words_removed} words removed for clarity) "
+        + " ".join(words[-nb_words_offset:])
+    )
+    return short_text

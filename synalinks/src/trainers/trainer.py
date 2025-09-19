@@ -104,6 +104,7 @@ class Trainer:
         """
         self._clear_previous_trainer_metrics()
         self._optimizer = optimizer
+        self._optimizer.set_program(self)
 
         if hasattr(self, "output_names"):
             output_names = self.output_names
@@ -203,7 +204,6 @@ class Trainer:
         x=None,
         y=None,
         y_pred=None,
-        sample_weight=None,
         training=True,
     ):
         """Compute the total reward, validate it, and return it.
@@ -248,7 +248,6 @@ class Trainer:
         x=None,
         y=None,
         y_pred=None,
-        sample_weight=None,
         training=True,
     ):
         var_mapping = list(zip(self.trainable_variables, trainable_variables))
@@ -261,7 +260,6 @@ class Trainer:
                 x,
                 y,
                 y_pred,
-                sample_weight=sample_weight,
                 training=training,
             )
 
@@ -335,7 +333,7 @@ class Trainer:
         epochs=1,
         verbose="auto",
         callbacks=None,
-        validation_split=0.0,
+        validation_split=0.1,
         validation_data=None,
         shuffle=True,
         initial_epoch=0,
@@ -343,7 +341,6 @@ class Trainer:
         validation_steps=None,
         validation_batch_size=None,
         validation_freq=1,
-        train_optimizer=False,
     ):
         """Trains the program for a fixed number of epochs (dataset iterations).
 
@@ -442,8 +439,6 @@ class Trainer:
                 Specifies how many training epochs to run
                 before a new validation run is performed,
                 e.g. `validation_freq=2` runs validation every 2 epochs.
-            train_optimizer (bool): Wether or not to train the optimizer
-                if possible (Default to False).
 
         Returns:
             (History): A `History` object. Its `History.history` attribute is
@@ -452,8 +447,9 @@ class Trainer:
                 and validation metrics values (if applicable).
         """
         self._assert_compile_called("fit")
-        # TODO: respect compiled trainable state
         self._eval_epoch_iterator = None
+        val_y, val_y = None, None
+
         if validation_split and validation_data is None:
             # Create the validation data using the training data. Only supported
             # for numpy arrays.
@@ -502,20 +498,66 @@ class Trainer:
         logs = {}
         initial_epoch = self._initial_epoch or initial_epoch
 
+        if self.trainable_variables and isinstance(
+            self.optimizer, optimizers_module.Optimizer
+        ):
+            await self.optimizer.on_train_begin(
+                self.trainable_variables,
+            )
+
         for epoch in range(initial_epoch, epochs):
             self.reset_metrics()
+
+            if self.trainable_variables and isinstance(
+                self.optimizer, optimizers_module.Optimizer
+            ):
+                await self.optimizer.on_epoch_begin(
+                    epoch,
+                    self.trainable_variables,
+                )
+
             callbacks.on_epoch_begin(epoch)
             with epoch_iterator.catch_stop_iteration():
                 for step, iterator in epoch_iterator:
                     data = iterator[0]
                     x_batch, y_batch = data_adapter_utils.unpack_x_y(data)
+
+                    if self.trainable_variables and isinstance(
+                        self.optimizer, optimizers_module.Optimizer
+                    ):
+                        await self.optimizer.on_batch_begin(
+                            step,
+                            self.trainable_variables,
+                        )
+
                     callbacks.on_train_batch_begin(step)
+
                     logs = await self.train_on_batch(
+                        step=step,
                         x=x_batch,
                         y=y_batch,
+                        val_x=val_x,
+                        val_y=val_y,
                         return_dict=True,
-                        train_optimizer=train_optimizer,
                     )
+
+                    val_logs = await self.evaluate(
+                        x=val_x,
+                        y=val_y,
+                        batch_size=validation_batch_size or batch_size,
+                        steps=validation_steps,
+                        callbacks=callbacks,
+                        _use_cached_eval_dataset=False,
+                    )
+
+                    if self.trainable_variables and isinstance(
+                        self.optimizer, optimizers_module.Optimizer
+                    ):
+                        await self.optimizer.on_batch_end(
+                            step,
+                            self.trainable_variables,
+                        )
+
                     callbacks.on_train_batch_end(step, logs)
                     if self.stop_training:
                         break
@@ -535,6 +577,7 @@ class Trainer:
                         steps_per_epoch=validation_steps,
                         shuffle=False,
                     )
+
                 val_logs = await self.evaluate(
                     x=val_x,
                     y=val_y,
@@ -546,22 +589,27 @@ class Trainer:
                 val_logs = {"val_" + name: val for name, val in val_logs.items()}
                 epoch_logs.update(val_logs)
 
+            if self.trainable_variables and isinstance(
+                self.optimizer, optimizers_module.Optimizer
+            ):
+                await self.optimizer.on_epoch_end(
+                    epoch,
+                    self.trainable_variables,
+                )
             callbacks.on_epoch_end(epoch, epoch_logs)
             training_logs = epoch_logs
             if self.stop_training:
                 break
 
-        if isinstance(self.optimizer, optimizers_module.Optimizer) and epochs > 0:
-            await self.optimizer.finalize_variable_values(self.trainable_variables)
-
-            if self.optimizer.trainable_variables and train_optimizer:
-                await self.optimizer.finalize_variable_values(
-                    self.optimizer.trainable_variables,
-                )
-
         # If _eval_epoch_iterator exists, delete it after all epochs are done.
         if getattr(self, "_eval_epoch_iterator", None) is not None:
             del self._eval_epoch_iterator
+
+        if self.trainable_variables and isinstance(
+            self.optimizer, optimizers_module.Optimizer
+        ):
+            await self.optimizer.on_train_end(self.trainable_variables)
+
         callbacks.on_train_end(logs=training_logs)
         return self.history
 
@@ -593,7 +641,7 @@ class Trainer:
                 `x`.
             batch_size (int): Integer or `None`.
                 Number of samples per batch of computation.
-                If unspecified, `batch_size` will default to 32.
+                If unspecified, `batch_size` will default to 1.
                 Do not specify the `batch_size` if your input data `x` is a
                 Python generator function since they generate batches.
             verbose (int | str): `"auto"`, 0, 1, or 2. Verbosity mode.
@@ -768,18 +816,21 @@ class Trainer:
 
     async def train_on_batch(
         self,
+        step,
         x,
         y=None,
-        train_optimizer=False,
+        val_x=None,
+        val_y=None,
         return_dict=False,
     ):
-        """Runs a single backpropagation/optimization update on a single batch of data.
+        """Runs a single optimization step on a single batch of data.
 
         Args:
+            step (int): The training step.
             x (np.ndarray): Input data. Must be array-like.
             y (np.ndarray): Target data. Must be array-like.
-            train_optimizer (bool): Wether or not to train the optimizer
-                if possible (Default to False).
+            val_x (np.ndarray): Input validation data. Must be array-like.
+            val_y (np.ndarray): Target validation data. Must be array-like.
             return_dict (bool): If `True`, reward and metric results are returned as a
                 dict, with each key being the name of the metric. If `False`,
                 they are returned as a list.
@@ -790,35 +841,27 @@ class Trainer:
                 and metric values (if there are metrics and `return_dict=False`),
                 or a dict of metric and reward values (if `return_dict=True`).
         """
-        y_pred = await self.predict_on_batch(x, training=True)
-
-        reward = await self.compute_reward(
-            x=x,
-            y=y,
-            y_pred=y_pred,
-            training=True,
-        )
-
-        await self._reward_tracker.update_state(reward)
-
-        # Perform training/optimization
-        if self.trainable_variables:
-            await self.optimizer.apply_optimization(
+        if self.trainable_variables and isinstance(
+            self.optimizer, optimizers_module.Optimizer
+        ):
+            metrics = await self.optimizer.optimize(
+                step,
                 self.trainable_variables,
-                reward=reward,
-                training=True if train_optimizer else False,
+                x=x,
+                y=y,
+                val_x=val_x,
+                val_y=val_y,
             )
         else:
             warnings.warn("The program does not have any trainable variables.")
-
-        if self.optimizer.trainable_variables and train_optimizer:
-            few_shot_optimizer = optimizers_module.RandomFewShot()
-            await few_shot_optimizer.apply_optimization(
-                self.optimizer.trainable_variables,
-                reward=reward,
+            y_pred = await self.predict_on_batch(val_x)
+            reward = await self.compute_reward(
+                x=val_x,
+                y=val_y,
+                y_pred=y_pred,
             )
-
-        metrics = await self.compute_metrics(x, y, y_pred)
+            await self._reward_tracker.update_state(reward)
+            metrics = await self.compute_metrics(val_x, val_y, y_pred)
 
         if return_dict:
             return metrics
@@ -845,7 +888,7 @@ class Trainer:
                 and metric values (if there are metrics and `return_dict=False`),
                 or a dict of metric and reward values (if `return_dict=True`).
         """
-        y_pred = await self.predict_on_batch(x, training=False)
+        y_pred = await self.predict_on_batch(x)
 
         reward = await self.compute_reward(
             x=x,
@@ -1008,7 +1051,7 @@ class Trainer:
                     break
             (x, y) = data_batch
             try:
-                y_pred = run_maybe_nested(self.predict_on_batch(x, training=False))
+                y_pred = run_maybe_nested(self.predict_on_batch(x))
             except Exception as e:
                 raise RuntimeError(
                     "Unable to automatically build the program. "

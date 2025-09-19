@@ -2,46 +2,60 @@
 # Original authors: François Chollet et al. (Keras Team)
 # License Apache 2.0: (c) 2025 Yoan Sallami (Synalinks Team)
 
+import copy
+import random
 import warnings
 
 import docstring_parser
 
 from synalinks.src import backend
 from synalinks.src.backend import DataModel
-from synalinks.src.backend import contains_schema
-from synalinks.src.backend import standardize_schema
+from synalinks.src.backend import Trainable
+from synalinks.src.backend.common.json_utils import out_mask_json
 from synalinks.src.initializers import Empty
 from synalinks.src.metrics import Metric
 from synalinks.src.modules import Module
 from synalinks.src.saving.synalinks_saveable import SynalinksSaveable
 from synalinks.src.utils import tracking
-from synalinks.src.utils.async_utils import run_maybe_nested
 from synalinks.src.utils.naming import auto_name
 
 
-class Iteration(DataModel):
-    iteration: int = 0
+class Iterations(DataModel):
+    iterations: int = 0
+    epochs: int = 0
 
 
 class Optimizer(SynalinksSaveable):
     """Optimizer base class: all Synalinks optimizers inherit from this class.
 
+    This abstract base class provides the common infrastructure for all optimizers in Synalinks.
+
+    Concrete optimizer implementations must inherit from this class and implement
+    the `optimize()` method with their specific optimization logic.
+
     Args:
-        schema (dict): The schema of the variables that the optimizer can act upon.
-        data_model (DataModel): The backend data model that the optimizer can act upon,
-            if no schema is specified, uses the data model to infer it.
-        name (str): The name of the optimizer.
-        description (str): The description of the optimizer.
+        name (str): Optional. The name of the optimizer.
+        description (str): Optional. The description of the optimizer.
     """
 
     def __init__(
         self,
-        schema=None,
-        data_model=None,
         name=None,
         description=None,
         **kwargs,
     ):
+        """Initialize the base optimizer.
+
+        Sets up the optimizer's internal state, variable tracking, and naming.
+
+        Args:
+            name (str): Optional name for the optimizer instance
+            description (str): Optional description for the optimizer
+            **kwargs (keyword params): Additional arguments (will raise error if provided)
+
+        Raises:
+            ValueError: If unexpected keyword arguments are provided
+        """
         self._lock = False
 
         if kwargs:
@@ -60,28 +74,84 @@ class Optimizer(SynalinksSaveable):
                 description = ""
         self.description = description
 
-        if not data_model and not schema:
-            raise ValueError(
-                "You should provide at least one argument "
-                "between `data_model` or `schema`"
-            )
-        if not schema and data_model:
-            schema = standardize_schema(data_model.get_schema())
-        self._schema = schema
-
         self.built = False
+        self._program = None
 
         self._initialize_tracker()
 
         with backend.name_scope(self.name, caller=self):
             iterations = backend.Variable(
-                initializer=Empty(data_model=Iteration),
-                data_model=Iteration,
+                initializer=Empty(data_model=Iterations),
+                data_model=Iterations,
                 trainable=False,
-                name="iteration",
             )
-        # self._track_variable(iterations)
-        self._iteration = iterations
+        self._iterations = iterations
+
+    @property
+    def iterations(self):
+        """Get the current iteration count.
+
+        Returns:
+            (int): Number of optimization iterations performed
+        """
+        return self._iterations.get("iterations")
+
+    @property
+    def epochs(self):
+        """Get the current epoch number.
+
+        Returns:
+            (int): Number of epochs performed
+        """
+        return self._iterations.get("epochs")
+
+    def increment_iterations(self):
+        """Increment the iteration counter by 1.
+
+        This method is called after each optimization step to track progress.
+        """
+        iterations = self._iterations.get("iterations")
+        self._iterations.update({"iterations": iterations + 1})
+
+    def increment_epochs(self):
+        """Increment the epoch counter by 1.
+
+        This method is called after each epoch step to track progress.
+        """
+        iterations = self._iterations.get("epochs")
+        self._iterations.update({"epochs": iterations + 1})
+
+    def set_program(self, program):
+        """Set the program that this optimizer will optimize.
+
+        The program contains the model/pipeline that the optimizer will work on.
+
+        Args:
+            program (Program): The Synalinks program to optimize
+        """
+        self._program = program
+
+    @property
+    def program(self):
+        """Get the program associated with this optimizer.
+
+        Returns:
+            (Program): The Synalinks program being optimized, or None if not set
+        """
+        return self._program
+
+    @property
+    def reward_tracker(self):
+        """Get the reward tracker from the associated program.
+
+        The reward tracker monitors the performance/rewards during optimization.
+
+        Returns:
+            (RewardTracker): The reward tracker from the program, or None if no program is set
+        """
+        if self._program:
+            return self._program._reward_tracker
+        return None
 
     @tracking.no_automatic_dependency_tracking
     def _initialize_tracker(self):
@@ -120,9 +190,6 @@ class Optimizer(SynalinksSaveable):
             value = self._tracker.track(value)
         return super().__setattr__(name, value)
 
-    def get_schema(self):
-        return self._schema
-
     @property
     def variables(self):
         return self._non_trainable_variables[:] + self._trainable_variables[:]
@@ -137,10 +204,6 @@ class Optimizer(SynalinksSaveable):
         for module in self._modules:
             variables.extend(module.trainable_variables)
         return variables
-
-    @property
-    def iterations(self):
-        return self._iteration
 
     def save_own_variables(self, store):
         """Get the state of this optimizer object."""
@@ -173,47 +236,380 @@ class Optimizer(SynalinksSaveable):
                 "Go add it!"
             )
 
-    async def apply_optimization(self, trainable_variables, reward=None, training=False):
-        """Apply the backprop/optimization for each trainable variables
-        that match the optimizer schema.
+    async def on_train_begin(
+        self,
+        trainable_variables,
+    ):
+        """Called at the beginning of the training
+
+        Args:
+            trainable_variables (list): The list of trainable variables.
         """
+        
+        for trainable_variable in trainable_variables:
+            seed_candidates = trainable_variable.get("seed_candidates")
+            if not seed_candidates:
+                mask = list(Trainable.keys())
+                mask.remove("examples")
+                masked_variable = out_mask_json(
+                    trainable_variable.get_json(),
+                    mask=mask,
+                )
+                trainable_variable.update(
+                    {
+                        "seed_candidates": [
+                            {
+                                **masked_variable
+                            },
+                        ],
+                    },
+                )
+
+    async def on_train_end(
+        self,
+        trainable_variables,
+    ):
+        """Called at the end of the training
+
+        Args:
+            trainable_variables (list): The list of trainable variables
+        """
+        for variable in trainable_variables:
+            best_candidates = variable.get("best_candidates")
+            sorted_candidates = sorted(
+                best_candidates,
+                key=lambda x: x.get("reward"),
+                reverse=True,
+            )
+            best_candidate = sorted_candidates[0]
+            best_candidate = out_mask_json(
+                best_candidate,
+                mask=["reward"],
+            )
+            variable.update(
+                {
+                    **best_candidate,
+                },
+            )
+
+    async def on_epoch_begin(
+        self,
+        epoch,
+        trainable_variables,
+    ):
+        """Called at the beginning of an epoch
+
+        Args:
+            epoch (int): The epoch number
+            trainable_variables (list): The list of trainable variables
+        """
+        for trainable_variable in trainable_variables:
+            trainable_variable.update(
+                {
+                    "predictions": [],
+                },
+            )
+
+    async def on_epoch_end(
+        self,
+        epoch,
+        trainable_variables,
+    ):
+        """Called at the end of an epoch
+
+        Args:
+            epoch (int): The epoch number
+            trainable_variables (list): The list of trainable variables
+        """
+        self.increment_epochs()
+
+    async def on_batch_begin(
+        self,
+        step,
+        trainable_variables,
+    ):
+        """Called at the beginning of a batch
+
+        Args:
+            step (int): The batch number
+            trainable_variables (list): The list of trainable variables
+        """
+        for trainable_variable in trainable_variables:
+            best_candidates = trainable_variable.get("best_candidates")
+            if len(best_candidates) > step:
+                best_candidate = best_candidates[step]
+                best_candidate = out_mask_json(
+                    best_candidate,
+                    mask=["reward"],
+                )
+                trainable_variable.update(
+                    {
+                        **best_candidate,
+                    },
+                )
+            else:
+                seed_candidates = trainable_variable.get("seed_candidates")
+                if len(seed_candidates) > 0:
+                    seed_candidate = random.choice(seed_candidates)
+                    trainable_variable.update(
+                        {
+                            **seed_candidate,
+                        },
+                    )
+            trainable_variable.update(
+                {
+                    "nb_visit": 0,
+                    "cumulative_reward": 0.0,
+                },
+            )
+
+    async def on_batch_end(
+        self,
+        step,
+        trainable_variables,
+    ):
+        """Called at the end of a batch
+
+        Args:
+            step (int): The batch number
+            trainable_variables (list): The list of trainable variables
+        """
+        for trainable_variable in trainable_variables:
+            best_candidates = trainable_variable.get("best_candidates")
+            sorted_candidates = sorted(
+                best_candidates,
+                key=lambda x: x.get("reward"),
+                reverse=True,
+            )
+            best_candidate = sorted_candidates[0]
+            history = trainable_variable.get("history")
+            if len(history) > 0:
+                last_candidate = history[-1]
+                if last_candidate != best_candidate:
+                    history.append(best_candidate)
+            else:
+                history.append(best_candidate)
+            best_candidate = out_mask_json(
+                best_candidate,
+                mask=["reward"],
+            )
+            trainable_variable.update(
+                {
+                    **best_candidate,
+                },
+            )
+        self.increment_iterations()
+
+    async def optimize(
+        self,
+        step,
+        trainable_variables,
+        x=None,
+        y=None,
+        val_x=None,
+        val_y=None,
+    ):
+        """Method for performing optimization.
+
+        Args:
+            step (int): The training step.
+            trainable_variables (list): Variables to be optimized
+            x (np.ndarray): Training batch input data. Must be array-like.
+            y (np.ndarray): Training batch target data. Must be array-like.
+            val_x (np.ndarray): Input validation data. Must be array-like.
+            val_y (np.ndarray): Target validation data. Must be array-like.
+        """
+        self._check_super_called()
         if not self.built:
-            run_maybe_nested(self.build(trainable_variables))
-        iteration = self._iteration.get("iteration")
-        self._iteration.update({"iteration": iteration + 1})
-        for variable in trainable_variables:
-            if contains_schema(variable.get_schema(), self.get_schema()):
-                await self.optimize(variable, reward=reward, training=training)
+            await self.build(trainable_variables)
 
-    async def finalize_variable_values(self, trainable_variables):
-        """Finalize the optimization of the variables (cleanup/scaling etc.)."""
-        for variable in trainable_variables:
-            if contains_schema(variable.get_schema(), self.get_schema()):
-                await self.finalize(variable)
-
-    async def optimize(self, trainable_variable, reward=None, training=False):
-        """Perform a backprop/optimization on a single variable.
-
-        This function needs to be implemented by subclassed Optimizer.
-        """
-        raise NotImplementedError(
-            "Optimizer subclasses must implement the `optimize()` method."
+        y_pred = await self.program.predict_on_batch(
+            x=x,
+            training=True,
         )
 
-    async def finalize(self, trainable_variable):
-        """Finalize the optimization of the variable (cleanup/scaling etc.).
-
-        This function needs to be implemented by subclassed Optimizer.
-        """
-        raise NotImplementedError(
-            "Optimizer subclasses must implement the `finalize()` method."
+        reward = await self.program.compute_reward(
+            x=x,
+            y=y,
+            y_pred=y_pred,
         )
+
+        self.assign_reward_to_predictions(
+            trainable_variables,
+            reward=reward,
+        )
+
+        await self.propose_new_candidates(
+            step,
+            trainable_variables,
+            x=x,
+            y=y,
+            y_pred=y_pred,
+        )
+
+        y_pred = await self.program.predict_on_batch(
+            x=val_x,
+            training=False,
+        )
+
+        reward = await self.program.compute_reward(
+            x=val_x,
+            y=val_y,
+            y_pred=y_pred,
+        )
+
+        for trainable_variable in trainable_variables:
+            self.add_candidates_to_map(
+                step,
+                trainable_variable,
+                reward=reward,
+            )
+
+        await self.reward_tracker.update_state(reward)
+        metrics = await self.program.compute_metrics(val_x, val_y, y_pred)
+        return metrics
+
+    async def propose_new_candidates(
+        self,
+        step,
+        trainable_variables,
+        x=None,
+        y=None,
+        y_pred=None,
+    ):
+        raise NotImplementedError(
+            "Optimizer subclasses must implement the `propose_new_candidates()` method."
+        )
+
+    def assign_reward_to_predictions(
+        self,
+        trainable_variables,
+        reward=None,
+    ):
+        """Assign rewards to predictions that don't have them yet.
+
+        This method updates all predictions in trainable variables that have
+        None as their reward value. It's typically called after computing
+        rewards for a batch of predictions.
+
+        Args:
+            trainable_variables (list): Variables containing predictions
+            reward (float): Reward value to assign (defaults to 0.0 if None/False)
+        """
+        if not reward:
+            reward = 0.0
+        for trainable_variable in trainable_variables:
+            predictions = trainable_variable.get("predictions")
+            for p in predictions:
+                if p["reward"] is None:
+                    p["reward"] = reward
+                    nb_visit = trainable_variable.get("nb_visit")
+                    cumulative_reward = trainable_variable.get("cumulative_reward")
+                    trainable_variable.update(
+                        {
+                            "nb_visit": nb_visit + 1,
+                            "cumulative_reward": cumulative_reward + reward,
+                        }
+                    )
+
+    def assign_candidate(
+        self,
+        trainable_variable,
+        new_candidate=None,
+        examples=None,
+    ):
+        """Assign a new candidate configuration to a trainable variable.
+
+        This method updates a variable with either a complete new candidate
+        or just new examples for few-shot learning.
+
+        Args:
+            trainable_variable (Variable): The variable to update
+            new_candidate (JsonDataModel): New candidate (optional)
+            examples (list): New examples for few-shot learning (optional)
+        """
+        if new_candidate:
+            if examples:
+                # Update with both new candidate and examples
+                trainable_variable.update(
+                    {
+                        **new_candidate.get_json(),
+                        "examples": examples,
+                    },
+                )
+            else:
+                # Update with just new candidate
+                trainable_variable.update(
+                    {
+                        **new_candidate.get_json(),
+                    },
+                )
+        elif examples:
+            # Update with just new examples
+            trainable_variable.update(
+                {
+                    "examples": examples,
+                },
+            )
+
+    def add_candidates_to_map(
+        self,
+        step,
+        trainable_variable,
+        new_candidate=None,
+        examples=None,
+        reward=None,
+    ):
+        """Add a new candidate to the map.
+
+        Args:
+            step (int): The training step.
+            trainable_variable (Variable): The variable to add candidate to.
+            new_candidate (dict): New candidate configuration (optional).
+            examples (list): New examples for few-shot learning (optional).
+            reward (float): The candidate reward.
+        """
+        if not reward:
+            reward = 0.0
+        mask = list(Trainable.keys())
+        mask.append("reward")
+        if new_candidate:
+            masked_candidate = out_mask_json(
+                new_candidate.get_json(),
+                mask=mask,
+            )
+        else:
+            masked_candidate = out_mask_json(
+                trainable_variable.get_json(),
+                mask=mask,
+            )
+        if not examples:
+            examples = trainable_variable.get("examples")
+
+        best_candidates = trainable_variable.get("best_candidates")
+        if len(best_candidates) > step:
+            old_reward = best_candidates[step].get("reward")
+            if reward >= old_reward:
+                best_candidates[step].update(
+                    {
+                        **masked_candidate,
+                        "examples": examples,
+                        "reward": reward,
+                    }
+                )
+        else:
+            best_candidates.append(
+                {
+                    **masked_candidate,
+                    "examples": examples,
+                    "reward": reward,
+                }
+            )
 
     def get_config(self):
         return {
             "name": self.name,
             "description": self.description,
-            "schema": self.schema,
         }
 
     @classmethod

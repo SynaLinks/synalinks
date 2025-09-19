@@ -15,7 +15,6 @@ from enum import Enum
 from typing import Any
 from typing import Dict
 from typing import List
-from typing import Literal
 from typing import Optional
 from typing import Union
 
@@ -528,10 +527,7 @@ def is_knowledge_graph(x):
         "synalinks.Prediction",
     ]
 )
-class Prediction(Entity, GenericIO):
-    """The generator's prediction"""
-
-    label: Literal["Prediction"] = "Prediction"
+class Prediction(GenericIO):
     reward: Optional[float] = Field(
         description="The prediction's reward",
         default=None,
@@ -561,20 +557,73 @@ def is_prediction(x):
 
 @synalinks_export(
     [
+        "synalinks.backend.Trainable",
+        "synalinks.Trainable",
+    ]
+)
+class Trainable(DataModel):
+    examples: List[Prediction] = Field(
+        description="The examples for few-shot learning",
+        default=[],
+    )
+    predictions: List[Prediction] = Field(
+        description="The predictions store",
+        default=[],
+    )
+    seed_candidates: List[Any] = Field(
+        description="The seed candidates",
+        default=[],
+    )
+    best_candidates: List[Any] = Field(
+        description="The best candidates",
+        default=[],
+    )
+    history: List[Any] = Field(
+        description="The candidates history",
+        default=[],
+    )
+    nb_visit: int = Field(
+        description="The number of visits",
+        default=0,
+    )
+    cumulative_reward: float = Field(
+        description="The cumulative reward",
+        default=0.0,
+    )
+
+
+@synalinks_export(
+    [
+        "synalinks.backend.is_trainable",
+        "synalinks.is_trainable",
+    ]
+)
+def is_trainable(x):
+    """Checks if the given data model is Trainable
+
+    Args:
+        x (DataModel | JsonDataModel | SymbolicDataModel | Variable):
+            The data model to check.
+
+    Returns:
+        (bool): True if the condition is met
+    """
+    if contains_schema(x.get_schema(), Trainable.get_schema()):
+        return True
+    return False
+
+
+@synalinks_export(
+    [
         "synalinks.backend.Instructions",
         "synalinks.Instructions",
     ]
 )
-class Instructions(Entity):
-    """The generator's instructions"""
+class Instructions(Trainable):
+    """The instructions for the language model"""
 
-    label: Literal["Instructions"] = "Instructions"
-    instructions: List[str] = Field(
-        description="The list of instructions",
-    )
-    reward: Optional[float] = Field(
-        description="The instruction's reward",
-        default=None,
+    instructions: Optional[str] = Field(
+        description="The instructions for the language model",
     )
 
 

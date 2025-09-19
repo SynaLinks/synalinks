@@ -24,19 +24,19 @@ class TestArrayDataAdapter(testing.TestCase):
         adapter = ArrayDataAdapter(
             x,
             y=y,
-            batch_size=None,
+            batch_size=32,
             steps=None,
             shuffle=shuffle,
         )
         self.assertEqual(adapter.num_batches, 1)
         self.assertEqual(adapter.batch_size, 32)
         self.assertEqual(adapter.has_partial_batch, True)
-        self.assertEqual(adapter.partial_batch_size, 2)
+        self.assertEqual(adapter.partial_batch_size, 15)
 
         it = adapter.get_numpy_iterator()
         for i, batch in enumerate(it):
-            x, y = batch
             self.assertEqual(len(batch), 2)
+            x, y = batch
             self.assertIsInstance(batch, tuple)
             self.assertIsInstance(x[0], Query)
             self.assertIsInstance(x[1], Query)

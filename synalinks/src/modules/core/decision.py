@@ -22,6 +22,13 @@ class DecisionAnswer(DataModel):
     choice: str = Field(description="The chosen label.")
 
 
+def default_decision_instructions(labels):
+    """The decision default instructions"""
+    return f"""
+You will be given a question, your task is to answer step-by-step to choose one the following labels: {labels}
+""".strip()
+
+
 @synalinks_export(["synalinks.modules.Decision", "synalinks.Decision"])
 class Decision(Module):
     """Perform a decision on the given input based on a question and a list of labels.
@@ -69,13 +76,10 @@ class Decision(Module):
         language_model (LanguageModel): The language model to use.
         prompt_template (str): The default jinja2 prompt template
             to use (see `Generator`).
-        static_system_prompt (str): A static system prompt that **do not** evolve
-            during training. This prompt allow the user to provide additional
-            information that won't be changed during training. Allowing to cache
-            it and reduce inference costs (see `Generator`).
         examples (list): The default examples to use in the prompt
             (see `Generator`).
         instructions (list): The default instructions to use (see `Generator`).
+        temperature (float): Optional. The temperature for the LM call.
         use_inputs_schema (bool): Optional. Whether or not use the inputs schema in
             the prompt (Default to False) (see `Generator`).
         use_outputs_schema (bool): Optional. Whether or not use the outputs schema in
@@ -91,9 +95,9 @@ class Decision(Module):
         labels=None,
         language_model=None,
         prompt_template=None,
-        static_system_prompt=None,
         examples=None,
         instructions=None,
+        temperature=0.0,
         use_inputs_schema=False,
         use_outputs_schema=False,
         name=None,
@@ -116,19 +120,21 @@ class Decision(Module):
         self.question = question
         self.labels = labels
         self.language_model = language_model
-        self.static_system_prompt = static_system_prompt
         self.prompt_template = prompt_template
         self.examples = examples
+        if not instructions:
+            instructions = default_decision_instructions(self.labels)
         self.instructions = instructions
+        self.temperature = temperature
         self.use_inputs_schema = use_inputs_schema
         self.use_outputs_schema = use_outputs_schema
         self.decision = Generator(
             schema=self.schema,
             language_model=self.language_model,
             prompt_template=self.prompt_template,
-            static_system_prompt=self.static_system_prompt,
             examples=self.examples,
             instructions=self.instructions,
+            temperature=self.temperature,
             use_inputs_schema=self.use_inputs_schema,
             use_outputs_schema=self.use_outputs_schema,
             name=self.name + "_generator",
@@ -149,10 +155,10 @@ class Decision(Module):
         config = {
             "question": self.question,
             "labels": self.labels,
-            "static_system_prompt": self.static_system_prompt,
             "prompt_template": self.prompt_template,
             "examples": self.examples,
             "instructions": self.instructions,
+            "temperature": self.temperature,
             "use_inputs_schema": self.use_inputs_schema,
             "use_outputs_schema": self.use_outputs_schema,
             "name": self.name,

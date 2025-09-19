@@ -8,6 +8,7 @@ from synalinks.src.backend import is_symbolic_data_model
 from synalinks.src.knowledge_bases import database_adapters
 from synalinks.src.saving import serialization_lib
 from synalinks.src.saving.synalinks_saveable import SynalinksSaveable
+from synalinks.src.utils.naming import auto_name
 
 
 @synalinks_export("synalinks.KnowledgeBase")
@@ -82,6 +83,7 @@ class KnowledgeBase(SynalinksSaveable):
         metric (str): The metric to use for the vector index (`cosine` or `euclidean`).
         wipe_on_start (bool): Wether or not to wipe the graph database at start
             (Default to False).
+        name (str): Optional. The name of the knowledge base used for serialization.
     """
 
     def __init__(
@@ -92,6 +94,7 @@ class KnowledgeBase(SynalinksSaveable):
         embedding_model=None,
         metric="cosine",
         wipe_on_start=False,
+        name=None,
     ):
         self.adapter = database_adapters.get(uri)(
             uri=uri,
@@ -107,6 +110,10 @@ class KnowledgeBase(SynalinksSaveable):
         self.embedding_model = embedding_model
         self.metric = metric
         self.wipe_on_start = wipe_on_start
+        if not name:
+            self.name = auto_name("knowledge_base")
+        else:
+            self.name = name
 
     async def update(
         self,
@@ -195,6 +202,7 @@ class KnowledgeBase(SynalinksSaveable):
     def get_config(self):
         config = {
             "uri": self.uri,
+            "name": self.name,
             "metric": self.metric,
             "wipe_on_start": self.wipe_on_start,
         }
@@ -202,24 +210,28 @@ class KnowledgeBase(SynalinksSaveable):
             "entity_models": [
                 (
                     serialization_lib.serialize_synalinks_object(
-                        entity_model.to_symbolic_data_model()
+                        entity_model.to_symbolic_data_model(
+                            name=self.name + "_entity_model" + ("_{i}" if i > 0 else "")
+                        )
                     )
                     if not is_symbolic_data_model(entity_model)
                     else serialization_lib.serialize_synalinks_object(entity_model)
                 )
-                for entity_model in self.entity_models
+                for i, entity_model in enumerate(self.entity_models)
             ]
         }
         relation_models_config = {
             "relation_models": [
                 (
                     serialization_lib.serialize_synalinks_object(
-                        relation_model.to_symbolic_data_model()
+                        relation_model.to_symbolic_data_model(
+                            name=self.name + "_relation_model" + ("_{i}" if i > 0 else "")
+                        )
                     )
                     if not is_symbolic_data_model(relation_model)
                     else serialization_lib.serialize_synalinks_object(relation_model)
                 )
-                for relation_model in self.relation_models
+                for i, relation_model in enumerate(self.relation_models)
             ]
         }
         embedding_model_config = {

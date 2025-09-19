@@ -6,11 +6,10 @@ from synalinks.src import optimizers
 from synalinks.src import rewards
 from synalinks.src import testing
 from synalinks.src.backend import DataModel
-from synalinks.src.backend import Instructions
 from synalinks.src.language_models import LanguageModel
 from synalinks.src.modules import Generator
 from synalinks.src.modules import Input
-from synalinks.src.modules.core.generator import default_prompt_template
+from synalinks.src.modules import default_instructions
 from synalinks.src.programs import Program
 from synalinks.src.utils.nlp_utils import remove_numerical_suffix
 
@@ -39,20 +38,23 @@ class ProgramTest(testing.TestCase):
             description="Useful to answer in a step by step manner.",
         )
 
+        data_model_fields = list(AnswerWithRationale.get_schema()["properties"].keys())
+        instructions = default_instructions(data_model_fields)
+
         state_tree = program.get_state_tree()
 
         expected_tree = {
             "trainable_variables": {
                 "generator": {
                     "generator_state": {
-                        "prompt_template": default_prompt_template(),
-                        "static_system_prompt": None,
+                        "instructions": instructions,
                         "examples": [],
-                        "instructions": Instructions(
-                            instructions=[],
-                        ).get_json(),
                         "predictions": [],
-                        "instructions_candidates": [],
+                        "history": [],
+                        "seed_candidates": [],
+                        "best_candidates": [],
+                        "nb_visit": 0,
+                        "cumulative_reward": 0.0,
                     }
                 }
             },
@@ -121,23 +123,33 @@ class ProgramTest(testing.TestCase):
 
         state_tree = program.get_state_tree()
 
+        data_model_fields = list(AnswerWithRationale.get_schema()["properties"].keys())
+        instructions = default_instructions(data_model_fields)
+
         expected_tree = {
             "trainable_variables": {
                 "generator": {
                     "generator_state": {
-                        "prompt_template": default_prompt_template(),
-                        "static_system_prompt": None,
+                        "instructions": instructions,
                         "examples": [],
-                        "instructions": Instructions(
-                            instructions=[],
-                        ).get_json(),
                         "predictions": [],
-                        "instructions_candidates": [],
+                        "history": [],
+                        "seed_candidates": [],
+                        "best_candidates": [],
+                        "nb_visit": 0,
+                        "cumulative_reward": 0.0,
                     }
                 }
             },
             "non_trainable_variables": {},
-            "optimizer_variables": {"random_few_shot": {"iteration": {"iteration": 0}}},
+            "optimizer_variables": {
+                "random_few_shot": {
+                    "variable": {
+                        "iterations": 0,
+                        "epochs": 0,
+                    },
+                },
+            },
             "metrics_variables": {
                 "reward": {"total_with_count": {"total": 0.0, "count": 0}}
             },
@@ -209,7 +221,7 @@ class ProgramTest(testing.TestCase):
         )
 
         program.compile(
-            reward=rewards.ExactMatch(),
+            reward=rewards.ExactMatch(in_mask=["answer"]),
             optimizer=optimizers.RandomFewShot(),
         )
 
@@ -220,6 +232,7 @@ class ProgramTest(testing.TestCase):
         _ = await program.fit(
             x=x_train,
             y=y_train,
+            batch_size=32,
         )
 
         _ = program.get_state_tree()
@@ -251,7 +264,7 @@ class ProgramTest(testing.TestCase):
         )
 
         program.compile(
-            reward=rewards.ExactMatch(),
+            reward=rewards.ExactMatch(in_mask=["answer"]),
             optimizer=optimizers.RandomFewShot(),
         )
 
@@ -262,6 +275,7 @@ class ProgramTest(testing.TestCase):
         _ = await program.fit(
             x=x_train,
             y=y_train,
+            batch_size=32,
         )
 
         state_tree = program.get_state_tree()
@@ -307,14 +321,13 @@ class ProgramTest(testing.TestCase):
         _ = await program.fit(
             x=x_train,
             y=y_train,
+            batch_size=32,
         )
 
         filepath = "/tmp/program.json"
         program.save("/tmp/program.json")
         cloned_program = Program.load(filepath)
 
-        state_tree = program.get_state_tree()
-        cloned_program.set_state_tree(state_tree)
         for var1 in program.variables:
             for var2 in cloned_program.variables:
                 if remove_numerical_suffix(var1.path) == remove_numerical_suffix(

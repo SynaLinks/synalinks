@@ -17,10 +17,12 @@ from synalinks.src.backend.config import backend as backend
 from synalinks.src.backend.config import enable_logging as enable_logging
 from synalinks.src.backend.config import epsilon as epsilon
 from synalinks.src.backend.config import floatx as floatx
+from synalinks.src.backend.config import get_seed as get_seed
 from synalinks.src.backend.config import set_api_key as set_api_key
 from synalinks.src.backend.config import set_backend as set_backend
 from synalinks.src.backend.config import set_epsilon as set_epsilon
 from synalinks.src.backend.config import set_floatx as set_floatx
+from synalinks.src.backend.config import set_seed as set_seed
 from synalinks.src.backend.pydantic.base import ChatMessage as ChatMessage
 from synalinks.src.backend.pydantic.base import ChatMessages as ChatMessages
 from synalinks.src.backend.pydantic.base import ChatRole as ChatRole
@@ -40,6 +42,7 @@ from synalinks.src.backend.pydantic.base import Relation as Relation
 from synalinks.src.backend.pydantic.base import Relations as Relations
 from synalinks.src.backend.pydantic.base import SimilaritySearch as SimilaritySearch
 from synalinks.src.backend.pydantic.base import ToolCall as ToolCalling
+from synalinks.src.backend.pydantic.base import Trainable as Trainable
 from synalinks.src.backend.pydantic.base import TripletSearch as TripletSearch
 from synalinks.src.backend.pydantic.base import is_chat_message as is_chat_message
 from synalinks.src.backend.pydantic.base import is_chat_messages as is_chat_messages
@@ -57,6 +60,7 @@ from synalinks.src.backend.pydantic.base import (
     is_similarity_search as is_similarity_search,
 )
 from synalinks.src.backend.pydantic.base import is_tool_call as is_tool_call
+from synalinks.src.backend.pydantic.base import is_trainable as is_trainable
 from synalinks.src.backend.pydantic.base import is_triplet_search as is_triplet_search
 from synalinks.src.backend.pydantic.core import is_meta_class as is_meta_class
 from synalinks.src.utils.naming import get_uid as get_uid

@@ -628,12 +628,6 @@ class Program(Trainer, Module):
             variables["optimizer_variables"] = self._create_nested_dict(
                 self.optimizer.variables
             )
-            # variables["optimizer_non_trainable_variables"] = self._create_nested_dict(
-            #     self.optimizer.non_trainable_variables
-            # )
-            # variables["optimizer_trainable_variables"] = self._create_nested_dict(
-            #     self.optimizer.trainable_variables
-            # )
         variables["metrics_variables"] = self._create_nested_dict(self.metrics_variables)
         return variables
 
@@ -689,16 +683,6 @@ class Program(Trainer, Module):
                     self._assign_variable_values(
                         self.optimizer.variables, path_value_dict
                     )
-            # elif k == "optimizer_non_trainable_variables":
-            #     if self.optimizer:
-            #         self._assign_variable_values(
-            #             self.optimizer.non_trainable_variables, path_value_dict
-            #         )
-            # elif k == "optimizer_trainable_variables":
-            #     if self.optimizer:
-            #         self._assign_variable_values(
-            #             self.optimizer.trainable_variables, path_value_dict
-            #         )
             elif k == "metrics_variables":
                 self._assign_variable_values(self.metrics_variables, path_value_dict)
             else:
@@ -706,21 +690,11 @@ class Program(Trainer, Module):
 
     def _assign_variable_values(self, variables, path_value_dict):
         for full_path, value in path_value_dict.items():
-            path_parts = full_path.split("/")
-            field_name = path_parts[-1]
-            parent_path = "/".join(path_parts[:-1])
+            path = "/".join(full_path.split("/")[:-1])
+            field_name = full_path.split("/")[-1]
             for variable in variables:
-                variable_path = remove_numerical_suffix(variable.path)
-                if parent_path == variable_path:
-                    variable.update({field_name: value})
-                    break
-                else:
-                    nested_field_name = parent_path.split("/")[-1]
-                    if parent_path.startswith(variable_path) and variable.get(
-                        nested_field_name, None
-                    ):
-                        variable.get_json()[nested_field_name].update({field_name: value})
-                        break
+                if remove_numerical_suffix(variable.path) == path:
+                    variable.get_json()[field_name] = value
 
     def _flatten_nested_dict(self, nested_dict):
         flat_dict = {}

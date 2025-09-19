@@ -6,7 +6,6 @@ from synalinks.src import ops
 from synalinks.src import tree
 from synalinks.src.api_export import synalinks_export
 from synalinks.src.backend.common import numpy as np
-from synalinks.src.backend import is_data_model
 from synalinks.src.saving.synalinks_saveable import SynalinksSaveable
 from synalinks.src.utils.naming import auto_name
 
@@ -40,34 +39,12 @@ class Reward(SynalinksSaveable):
 
     async def __call__(self, y_true, y_pred):
         with ops.name_scope(self.name):
-            counter = {"y_pred": 0, "y_true": 0}
-            
-            def convert_y_pred(x):
-                if is_data_model(x):
-                    result = x.to_json_data_model(
-                        name=f"{self.name}_y_pred_{counter['y_pred']}"
-                    )
-                    counter["y_pred"] += 1
-                    return result
-                return x
-            
-            def convert_y_true(x):
-                if is_data_model(x):
-                    result = x.to_json_data_model(
-                        name=f"{self.name}_y_pred_{counter['y_true']}"
-                    )
-                    counter["y_true"] += 1
-                    return result
-                return x
-
-            if y_pred:
-                y_pred = tree.map_structure(
-                    lambda x: convert_y_pred(x), y_pred
-                )
-            if y_true:
-                y_true = tree.map_structure(
-                    lambda x: convert_y_true(x), y_true
-                )
+            y_pred = tree.map_structure(
+                lambda x: ops.convert_to_json_data_model(x), y_pred
+            )
+            y_true = tree.map_structure(
+                lambda x: ops.convert_to_json_data_model(x), y_true
+            )
 
             if self.in_mask and y_pred:
                 y_pred = tree.map_structure(
@@ -85,14 +62,12 @@ class Reward(SynalinksSaveable):
                 y_true = tree.map_structure(
                     lambda x: x.out_mask(mask=self.out_mask), y_true
                 )
-            if y_pred:
-                rewards = await self.call(y_true, y_pred)
-                return reduce_values(
-                    rewards,
-                    reduction=self.reduction,
-                )
-            else:
-                return 0.0
+
+            rewards = await self.call(y_true, y_pred)
+            return reduce_values(
+                rewards,
+                reduction=self.reduction,
+            )
 
     async def call(self, y_true, y_pred):
         raise NotImplementedError

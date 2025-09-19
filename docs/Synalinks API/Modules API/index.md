@@ -77,8 +77,19 @@ if __name__ == "__main__":
 
 - [Embedding module](Knowledge Modules/Embedding module.md)
 - [UpdateKnowledge module](Knowledge Modules/UpdateKnowledge module.md)
-- [EntityRetriever module](Knowledge Modules/EntityRetriever module.md)
-- [KnowledgeRetriever module](Knowledge Modules/KnowledgeRetriever module.md)
+
+---
+
+### Retrievers Modules
+
+- [EntityRetriever module](Retrievers Modules/EntityRetriever module.md)
+- [TripletRetriever module](Retrievers Modules/TripletRetriever module.md)
+
+---
+
+### Synthesis Modules
+
+- [PythonSynthesis module](Synthesis Modules/PythonSynthesis module.md)
 
 ---
 

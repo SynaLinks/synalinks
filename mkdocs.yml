@@ -89,8 +89,10 @@ nav:
         - Synalinks API/Modules API/Knowledge Modules/index.md
         - Synalinks API/Modules API/Knowledge Modules/Embedding module.md
         - Synalinks API/Modules API/Knowledge Modules/UpdateKnowledge module.md
-        - Synalinks API/Modules API/Knowledge Modules/EntityRetriever module.md
-        - Synalinks API/Modules API/Knowledge Modules/KnowledgeRetriever module.md
+      - Retrievers Modules:
+        - Synalinks API/Modules API/Retrievers Modules/index.md
+        - Synalinks API/Modules API/Retrievers Modules/EntityRetriever module.md
+        - Synalinks API/Modules API/Retrievers Modules/TripletRetriever module.md
       - Merging Modules:
         - Synalinks API/Modules API/Merging Modules/index.md
         - Synalinks API/Modules API/Merging Modules/Concat module.md
@@ -101,6 +103,9 @@ nav:
         - Synalinks API/Modules API/Test Time Compute Modules/index.md
         - Synalinks API/Modules API/Test Time Compute Modules/ChainOfThought module.md
         - Synalinks API/Modules API/Test Time Compute Modules/SelfCritique module.md
+      - Synthesis Modules:
+        - Synalinks API/Modules API/Synthesis Modules/index.md
+        - Synalinks API/Modules API/Synthesis Modules/PythonSynthesis module.md
       - Agents Modules:
         - Synalinks API/Modules API/Agents Modules/index.md
         - Synalinks API/Modules API/Agents Modules/FunctionCallingAgent module.md
@@ -118,8 +123,7 @@ nav:
       - Synalinks API/Optimizers API/index.md
       - Synalinks API/Optimizers API/Base Optimizer class.md
       - Synalinks API/Optimizers API/RandomFewShot.md
-      - Synalinks API/Optimizers API/OPRO.md
-      - Synalinks API/Optimizers API/FewShotOPRO.md
+      - Synalinks API/Optimizers API/OMEGAEvolve.md
     - Metrics:
       - Synalinks API/Metrics/index.md
       - Synalinks API/Metrics/Base Metric class.md

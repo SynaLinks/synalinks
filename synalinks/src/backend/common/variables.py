@@ -20,7 +20,7 @@ class Variable:
     It holds a JSON object value with the corresponding schema and can
     be updated by the optimizers.
 
-    A Variable is different from a JsonDataModel as it can be modified by the optimizers
+    A Variable is different from a JsonDataModel as it can be modified by the optimizers.
 
     Note that the DataModel used for the variable declaration
     **must have a default value** for each of its field.
@@ -102,6 +102,8 @@ class Variable:
             Defaults to `True`.
         name (str): Optional. A unique name for the variable. Automatically generated
             if not set.
+        description (str): Optional. the description of the variable. Automatically generated
+            if not set by fetching the data model description.
     """
 
     def __init__(
@@ -110,6 +112,7 @@ class Variable:
         data_model=None,
         trainable=True,
         name=None,
+        description=None,
     ):
         name = name or auto_name(self.__class__.__name__)
         if not isinstance(name, str) or "/" in name:
@@ -124,13 +127,14 @@ class Variable:
             self._path = current_path() + "/" + name
         else:
             self._path = name
+
         self._initializer = None
         self._data_model = data_model
         self._trainable = bool(trainable)
+        self._json = None
 
         if in_stateless_scope():
             if callable(initializer):
-                self._json = None
                 self._initializer = initializer
                 self._schema = standardize_schema(data_model.get_schema())
                 register_uninitialized_variable(self)
@@ -167,6 +171,14 @@ class Variable:
                 self._initialize(value)
                 self._schema = standardize_schema(data_model.get_schema())
 
+        if not description:
+            if "description" in self._schema:
+                self._description = self._schema["description"]
+            else:
+                self._description = ""
+        else:
+            self._description = description
+
     def _deferred_initialize(self):
         """Deferred initialization of the variable.
 
@@ -182,7 +194,7 @@ class Variable:
                 "You are attempting to initialize a variable "
                 "while in a stateless scope. This is disallowed. "
                 "Make sure that all variables are initialized "
-                "before you start using your layer/model objects."
+                "before you start using your module/program objects."
             )
         self._initialize_with_initializer(self._initializer)
         self._initializer = None
@@ -272,7 +284,7 @@ class Variable:
             other (SymbolicDataModel | DataModel): The data model to compare against this variable's schema.
 
         Returns:
-            bool: True if `other`'s schema is a subset of this variable's schema.
+            (bool): True if `other`'s schema is a subset of this variable's schema.
         """
         from synalinks.src.backend.common.json_schema_utils import contains_schema
 
@@ -291,6 +303,11 @@ class Variable:
     def name(self):
         """The name of the variable."""
         return self._name
+
+    @property
+    def description(self):
+        """The description of the variable."""
+        return self._description
 
     @property
     def path(self):
@@ -322,29 +339,61 @@ class Variable:
         """
         self._json = json
 
-    def to_json_data_model(self):
+    def to_json_data_model(self, name=None):
         """Convert the variable into a `JsonDataModel`.
 
         Returns:
             (JsonDataModel): The equivalent backend-independent data model
         """
-        return JsonDataModel(schema=self.get_schema(), json=self.get_json())
+        if not name:
+            name = self.name
+        return JsonDataModel(
+            schema=self.get_schema(),
+            json=self.get_json(),
+            name=name,
+        )
 
-    def to_symbolic_data_model(self):
+    def to_symbolic_data_model(self, name=None):
         """Convert the variable into a `SymbolicDataModel`.
 
         Returns:
             (SymbolicDataModel): The equivalent symbolic data model
         """
-        return SymbolicDataModel(schema=self._schema)
+        if not name:
+            name = self.name
+        return SymbolicDataModel(
+            schema=self.get_schema(),
+            name=name,
+        )
 
-    def get(self, key, default_value=None):
-        """Get wrapper to make easier to access fields.
+    def get(self, key, default=None):
+        """Get wrapper to make it easier to access JSON fields.
+
+        Args:
+            key (str): The key to access.
+            default (any): The default value if key not found.
+        """
+        return self.get_json().get(key, default)
+
+    def __getitem__(self, key):
+        """Get item wrapper to make it easier to access JSON fields.
 
         Args:
             key (str): The key to access.
         """
-        return self._json.get(key, default_value)
+        return self.get_json()[key]
+
+    def keys(self):
+        """Keys wrapper to make it easier to access JSON fields."""
+        return self.get_json().keys()
+
+    def values(self):
+        """Values wrapper to make it easier to access JSON fields."""
+        return self.get_json().values()
+
+    def items(self):
+        """Items wrapper to make it easier to access JSON fields."""
+        return self.get_json().items()
 
     def update(self, kv_dict):
         """Update wrapper to make easier to modify fields.

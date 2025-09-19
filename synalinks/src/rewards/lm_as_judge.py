@@ -15,10 +15,6 @@ class LMAsJudgeProgram(Program):
         language_model (LanguageModel): The language model to use.
         prompt_template (str): The default jinja2 prompt template
             to use (see `Generator`).
-        static_system_prompt (str): A static system prompt that **do not** evolve
-            during training. This prompt allow the user to provide additional
-            information that won't be changed during training. Allowing to cache
-            it and reduce inference costs during training.
         examples (list): The default examples to use in the prompt
             (see `Generator`).
         instructions (list): The default instructions to use (see `Generator`).
@@ -31,7 +27,6 @@ class LMAsJudgeProgram(Program):
         self,
         language_model=None,
         prompt_template=None,
-        static_system_prompt=None,
         examples=None,
         instructions=None,
         name=None,
@@ -46,14 +41,12 @@ class LMAsJudgeProgram(Program):
         self.critique = SelfCritique(
             language_model=language_model,
             prompt_template=prompt_template,
-            static_system_prompt=static_system_prompt,
             examples=examples,
             instructions=instructions,
             name=self.name + "_self_critique",
         )
         self.language_model = language_model
         self.prompt_template = prompt_template
-        self.static_system_prompt = static_system_prompt
         self.examples = examples
         self.instructions = instructions
 
@@ -83,7 +76,6 @@ class LMAsJudgeProgram(Program):
     def get_config(self):
         config = {
             "prompt_template": self.prompt_template,
-            "static_system_prompt": self.static_system_prompt,
             "examples": self.examples,
             "instructions": self.instructions,
             "name": self.name,
@@ -136,13 +128,9 @@ class LMAsJudge(ProgramAsJudge):
         language_model (LanguageModel): The language model to use.
         prompt_template (str): The default jinja2 prompt template
             to use (see `Generator`).
-        static_system_prompt (str): A static system prompt that **do not** evolve
-            during training. This prompt allow the user to provide additional
-            information that won't be changed during training. Allowing to cache
-            it and reduce inference costs during training.
+        instructions (list): The default instructions to use (see `Generator`).
         examples (list): The default examples to use in the prompt
             (see `Generator`).
-        instructions (list): The default instructions to use (see `Generator`).
         name (str): Optional. string name of the reward instance.
         in_mask (list): Optional. list of keys to keep to compute the reward.
         out_mask (list): Optional. list of keys to remove to compute the reward.
@@ -152,7 +140,6 @@ class LMAsJudge(ProgramAsJudge):
         self,
         language_model=None,
         prompt_template=None,
-        static_system_prompt=None,
         examples=None,
         instructions=None,
         name="lm_as_judge",
@@ -162,7 +149,6 @@ class LMAsJudge(ProgramAsJudge):
         program = LMAsJudgeProgram(
             language_model=language_model,
             prompt_template=prompt_template,
-            static_system_prompt=static_system_prompt,
             examples=examples,
             instructions=instructions,
         )

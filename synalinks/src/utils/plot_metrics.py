@@ -92,8 +92,6 @@ def plot_metrics(
     if len(metric_names) > 5:
         plt.xticks(rotation=45, ha="right")
 
-    plt.tight_layout()
-
     if to_folder:
         to_file = os.path.join(to_folder, to_file)
 
@@ -243,8 +241,6 @@ def plot_metrics_comparison(
     # Rotate x-axis labels if there are many metrics
     if len(metric_names) > 5:
         plt.xticks(x, metric_names, rotation=45, ha="right")
-
-    plt.tight_layout()
 
     if to_folder:
         to_file = os.path.join(to_folder, to_file)
@@ -463,8 +459,6 @@ def plot_metrics_comparison_with_mean_and_std(
     if len(metric_names) > 5:
         plt.xticks(x, metric_names, rotation=45, ha="right")
 
-    plt.tight_layout()
-
     if to_folder:
         to_file = os.path.join(to_folder, to_file)
 
@@ -625,8 +619,6 @@ def plot_metrics_with_mean_and_std(
     # Rotate x-axis labels if there are many metrics
     if len(metric_names) > 5:
         plt.xticks(rotation=45, ha="right")
-
-    plt.tight_layout()
 
     if to_folder:
         to_file = os.path.join(to_folder, to_file)
