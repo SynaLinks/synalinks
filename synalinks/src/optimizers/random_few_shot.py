@@ -31,7 +31,7 @@ class RandomFewShot(Optimizer):
                 nb_min_examples=1,
                 nb_max_examples=3,
                 temperature=1.0,
-                merging_rate=0.001,
+                merging_rate=0.02,
             ),
         )
 
@@ -47,7 +47,9 @@ class RandomFewShot(Optimizer):
         temperature (float): The temperature for softmax sampling of the few-shot
             learning examples. Lower values concentrate sampling on high-reward predictions,
             higher values make sampling more uniform (Default 1.0).
-        merging_rate (float): Rate at which crossover vs mutation is selected. (Default to 0.02)
+        merging_rate (float): Rate at which crossover vs mutation is selected. (Default to 0.02).
+        nb_max_best_candidates (int): The maximum number of best candidates to keep
+            during the optimization process.
         name (str): Optional name for the optimizer instance.
         description (str): Optional description of the optimizer instance.
     """
@@ -58,10 +60,12 @@ class RandomFewShot(Optimizer):
         nb_max_examples=3,
         temperature=1.0,
         merging_rate=0.02,
+        nb_max_best_candidates=5,
         name=None,
         description=None,
     ):
         super().__init__(
+            nb_max_best_candidates=nb_max_best_candidates,
             name=name,
             description=description,
         )
@@ -199,6 +203,7 @@ class RandomFewShot(Optimizer):
             "nb_max_examples": self.nb_max_examples,
             "temperature": self.temperature,
             "merging_rate": self.merging_rate,
+            "nb_max_best_candidates": self.nb_max_best_candidates,
             "name": self.name,
             "description": self.description,
         }

@@ -130,7 +130,7 @@ class OMEGAEvolve(RandomFewShot):
         (classification, QA, Math etc).
     - Combine **constrained JSON decoding** with variable optimization, **a variable is a JSON object** 
         not just a string in Synalinks! So you can use Synalinks to optimize
-        protein chains, logic rules, code etc. while ensuring a robust structure!
+        protein chains, logic rules, code etc. while ensuring a correct structure!
     - The optimizer has access to the training batch data, for mutation *And* crossover.
             
     If you want to explore the future of neuro-symbolic self-evolving systems, contact us.
@@ -143,7 +143,7 @@ class OMEGAEvolve(RandomFewShot):
     - The `PythonSynthesis` module that has self-evolving python scripts.
         
     More will be added in the future.
-        
+    
     References:
         - [AlphaEvolve: A coding agent for scientific and algorithmic discovery](https://arxiv.org/abs/2506.13131)
 
@@ -156,7 +156,9 @@ class OMEGAEvolve(RandomFewShot):
         temperature (float): The temperature for softmax sampling of the few-shot
             learning examples. Lower values concentrate sampling on high-reward predictions,
             higher values make sampling more uniform (Default 1.0).
-        merging_rate (float): Rate at which crossover vs mutation is selected. (Default to 0.02)
+        merging_rate (float): Rate at which crossover vs mutation is selected. (Default to 0.02).
+        nb_max_best_candidates (int): The maximum number of best candidates to keep
+            during the optimization process.
         name (str): Optional name for the optimizer instance.
         description (str): Optional description of the optimizer instance.
     """
@@ -169,6 +171,7 @@ class OMEGAEvolve(RandomFewShot):
         nb_max_examples=3,
         temperature=1.0,
         merging_rate=0.02,
+        nb_max_best_candidates=5,
         name=None,
         description=None,
     ):
@@ -177,6 +180,7 @@ class OMEGAEvolve(RandomFewShot):
             nb_max_examples=nb_max_examples,
             temperature=temperature,
             merging_rate=merging_rate,
+            nb_max_best_candidates=nb_max_best_candidates,
             name=name,
             description=description,
         )
@@ -336,6 +340,7 @@ class OMEGAEvolve(RandomFewShot):
             "nb_max_examples": self.nb_max_examples,
             "temperature": self.temperature,
             "merging_rate": self.merging_rate,
+            "nb_max_best_candidates": self.nb_max_best_candidates,
             "name": self.name,
             "description": self.description,
         }

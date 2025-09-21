@@ -31,7 +31,7 @@ class Optimizer(SynalinksSaveable):
     This abstract base class provides the common infrastructure for all optimizers in Synalinks.
 
     Concrete optimizer implementations must inherit from this class and implement
-    the `optimize()` method with their specific optimization logic.
+    the `propose_new_candidates()` method with their specific optimization logic.
 
     Args:
         name (str): Optional. The name of the optimizer.
@@ -40,6 +40,7 @@ class Optimizer(SynalinksSaveable):
 
     def __init__(
         self,
+        nb_max_best_candidates=5,
         name=None,
         description=None,
         **kwargs,
@@ -49,6 +50,8 @@ class Optimizer(SynalinksSaveable):
         Sets up the optimizer's internal state, variable tracking, and naming.
 
         Args:
+            nb_max_best_candidates (int): The maximum number of best candidates to keep
+                during the optimization process.
             name (str): Optional name for the optimizer instance
             description (str): Optional description for the optimizer
             **kwargs (keyword params): Additional arguments (will raise error if provided)
@@ -60,6 +63,8 @@ class Optimizer(SynalinksSaveable):
 
         if kwargs:
             raise ValueError(f"Argument(s) not recognized: {kwargs}")
+        
+        self.nb_max_best_candidates = nb_max_best_candidates
 
         if name is None:
             name = auto_name(self.__class__.__name__)
@@ -336,8 +341,8 @@ class Optimizer(SynalinksSaveable):
         """
         for trainable_variable in trainable_variables:
             best_candidates = trainable_variable.get("best_candidates")
-            if len(best_candidates) > step:
-                best_candidate = best_candidates[step]
+            if len(best_candidates) >= self.nb_max_best_candidates:
+                best_candidate = random.choice(best_candidates)
                 best_candidate = out_mask_json(
                     best_candidate,
                     mask=["reward"],
@@ -587,27 +592,24 @@ class Optimizer(SynalinksSaveable):
             examples = trainable_variable.get("examples")
 
         best_candidates = trainable_variable.get("best_candidates")
-        if len(best_candidates) > step:
-            old_reward = best_candidates[step].get("reward")
-            if reward >= old_reward:
-                best_candidates[step].update(
-                    {
-                        **masked_candidate,
-                        "examples": examples,
-                        "reward": reward,
-                    }
-                )
-        else:
-            best_candidates.append(
-                {
-                    **masked_candidate,
-                    "examples": examples,
-                    "reward": reward,
-                }
+        best_candidates.append(
+            {
+                **masked_candidate,
+                "examples": examples,
+                "reward": reward,
+            }
+        )
+        if len(best_candidates) > self.nb_max_best_candidates:
+            sorted_candidates = sorted(
+                best_candidates,
+                key=lambda x: x.get("reward"),
+                reverse=True,
             )
+            best_candidates = sorted_candidates[:self.nb_max_best_candidates]
 
     def get_config(self):
         return {
+            "nb_max_best_candidates": self.nb_max_best_candidates,
             "name": self.name,
             "description": self.description,
         }

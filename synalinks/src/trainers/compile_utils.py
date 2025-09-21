@@ -164,7 +164,7 @@ class CompileMetrics(metrics_module.Metric):
                 if name not in output_names:
                     raise ValueError(
                         f"In the dict argument `{argument_name}`, key "
-                        f"'{name}' does not correspond to any model "
+                        f"'{name}' does not correspond to any program "
                         f"output. Received:\n{argument_name}={metrics}"
                     )
         if num_outputs == 1:
@@ -194,11 +194,11 @@ class CompileMetrics(metrics_module.Metric):
             if isinstance(metrics, (list, tuple)):
                 if len(metrics) != len(y_pred):
                     raise ValueError(
-                        "For a model with multiple outputs, "
+                        "For a program with multiple outputs, "
                         f"when providing the `{argument_name}` argument as a "
-                        "list, it should have as many entries as the model has "
+                        "list, it should have as many entries as the program has "
                         f"outputs. Received:\n{argument_name}={metrics}\nof "
-                        f"length {len(metrics)} whereas the model has "
+                        f"length {len(metrics)} whereas the program has "
                         f"{len(y_pred)} outputs."
                     )
                 for idx, (mls, yt, yp) in enumerate(zip(metrics, y_true, y_pred)):
@@ -222,7 +222,7 @@ class CompileMetrics(metrics_module.Metric):
                 if output_names is None:
                     raise ValueError(
                         f"Argument `{argument_name}` can only be provided as a "
-                        "dict when the model also returns a dict of outputs. "
+                        "dict when the program also returns a dict of outputs. "
                         f"Received {argument_name}={metrics}"
                     )
                 for name in metrics.keys():
@@ -413,7 +413,7 @@ class CompileReward(rewards_module.Reward):
             raise KeyError(
                 f"The path: {current_path} in "
                 "the `reward` argument, can't be found in "
-                "the model's output (`y_pred`)."
+                "the program's output (`y_pred`)."
             )
 
         # shallow traverse the reward config
@@ -446,7 +446,7 @@ class CompileReward(rewards_module.Reward):
                 raise KeyError(
                     f"The path: {current_path + (key,)} in "
                     "the `reward` argument, can't be found in "
-                    "either the model's output (`y_pred`) or in the "
+                    "either the program's output (`y_pred`) or in the "
                     "labels (`y_true`)."
                 )
 
@@ -644,7 +644,7 @@ class CompileReward(rewards_module.Reward):
             y_true = tree.pack_sequence_as(
                 self._y_true_build_structure, tree.flatten(y_true)
             )
-        # We need to add a dummy `None` if the model has only a single output.
+        # We need to add a dummy `None` if the program has only a single output.
         metrics = [None] if len(self.metrics) == 0 else self.metrics
 
         # Iterate all rewards in flat form.

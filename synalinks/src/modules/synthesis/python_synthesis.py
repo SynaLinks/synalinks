@@ -152,11 +152,12 @@ class PythonSynthesis(Module):
         
         if not seed_scripts:
             seed_scripts = []
+        self.seed_scripts = seed_scripts
             
         seed_candidates = [
             {
                 "python_script": seed_script
-            } for seed_script in seed_scripts
+            } for seed_script in self.seed_scripts
         ]
 
         self.state = self.add_variable(
@@ -168,7 +169,7 @@ class PythonSynthesis(Module):
             name=self.name + "_state",
         )
 
-    async def execute(self, inputs, python_code):
+    async def execute(self, inputs, python_script):
         value = None
         stdout = ""
         stderr = ""
@@ -184,7 +185,7 @@ class PythonSynthesis(Module):
             local_namespace = {"inputs": copy.deepcopy(inputs.get_json())}
 
             # Execute the entire script
-            exec(python_code, local_namespace)
+            exec(python_script, local_namespace)
 
             # Look for the result variable in the namespace
             if 'result' in local_namespace:
@@ -215,8 +216,8 @@ class PythonSynthesis(Module):
     async def call(self, inputs, training=False):
         if not inputs:
             return None
-        python_code = self.state.get("python_code")
-        result, stdout, stderr = await self.execute(inputs, python_code)
+        python_script = self.state.get("python_script")
+        result, stdout, stderr = await self.execute(inputs, python_script)
         if training:
             predictions = self.state.get("predictions")
             if result:
@@ -240,7 +241,6 @@ class PythonSynthesis(Module):
                             **inputs.get_json(),
                         },
                         "outputs": {
-                            **self.default_return_value,
                             "stdout": stdout,
                             "stderr": stderr,
                         },
@@ -278,7 +278,8 @@ class PythonSynthesis(Module):
     def get_config(self):
         config = {
             "schema": self.schema,
-            "python_code": self.python_code,
+            "python_script": self.python_script,
+            "seed_scripts": self.seed_scripts,
             "default_return_value": self.default_return_value,
             "name": self.name,
             "description": self.description,

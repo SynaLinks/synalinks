@@ -204,11 +204,12 @@ class Generator(Module):
         
         if not seed_instructions:
             seed_instructions = []
+        self.seed_instructions = seed_instructions
         
         seed_candidates = [
             {
                 "instructions": seed_instruction,
-            } for seed_instruction in seed_instructions
+            } for seed_instruction in self.seed_instructions
         ]
 
         self.state = self.add_variable(
@@ -318,6 +319,7 @@ class Generator(Module):
             "prompt_template": self.prompt_template,
             "examples": self.examples,
             "instructions": self.instructions,
+            "seed_instructions": self.seed_instructions,
             "use_inputs_schema": self.use_inputs_schema,
             "use_outputs_schema": self.use_outputs_schema,
             "return_inputs": self.return_inputs,
