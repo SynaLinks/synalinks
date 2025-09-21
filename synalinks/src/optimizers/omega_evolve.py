@@ -105,37 +105,9 @@ class CrossoverInputs(DataModel):
 
 @synalinks_export("synalinks.optimizers.OMEGA")
 class OMEGAEvolve(RandomFewShot):
-    """An evolutionary optimizer that can enhance/optimize **ANY** trainable
-        variable of the computation graph (Synalink's DAG).
+    """An evolutionary optimizer.
     
-    This Optimizer is still experimental and subject to changes, but these 
-    changes should not impact you if you use it, so don't hesitate.
-    
-    This SOTA optimizer have unique features:
-        
-    - First the variable to update is selected based on its performance/number of
-        visits during the training batch and the temperature parameter (softmax weighted).
-        In order to avoid optimizing blindly modules that wasn't called during
-        a batch and focus on worst performing ones.
-    - It has a merging rate that grow over time to first explore mutations before
-        merging high performing variables, balancing exploration/exploitation.
-    - If a program has modules that wasn't called during a batch, which might be the case 
-        if you used the `Branch` module, then it won't be updated because the optimizer focus
-        only on visited Modules it has information about.
-    - It uses the **entire** training batch as feedback, if your `batch_size` > 1
-        then it will have access to all the batch samples, which makes possible to repeat
-        the training data (disable LM caching in that case!) to learn in a grouped fashion like GRPO.
-    - The examples evolve also, which makes possible to combine the variables evolutions + 
-        examples. Which is powerfull when you deal with tasks that benefit from examples 
-        (classification, QA, Math etc).
-    - Combine **constrained JSON decoding** with variable optimization, **a variable is a JSON object** 
-        not just a string in Synalinks! So you can use Synalinks to optimize
-        protein chains, logic rules, code etc. while ensuring a correct structure!
-    - The optimizer has access to the training batch data, for mutation *And* crossover.
-            
-    If you want to explore the future of neuro-symbolic self-evolving systems, contact us.
-    While these systems are not "hard" to code thanks to Synalinks, they requires 
-    technical knowledge and a deep understanding of multiple AI paradigm.
+    This Optimizer is still experimental and subject to changes.
     
     For now, only 2 modules features self-evolving trainable variables:
     
@@ -143,9 +115,6 @@ class OMEGAEvolve(RandomFewShot):
     - The `PythonSynthesis` module that has self-evolving python scripts.
         
     More will be added in the future.
-    
-    References:
-        - [AlphaEvolve: A coding agent for scientific and algorithmic discovery](https://arxiv.org/abs/2506.13131)
 
     Args:
         language_model (LanguageModel): The language model to use.

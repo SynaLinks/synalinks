@@ -464,7 +464,7 @@ class Optimizer(SynalinksSaveable):
         )
 
         for trainable_variable in trainable_variables:
-            self.add_candidates_to_map(
+            self.maybe_add_candidate(
                 step,
                 trainable_variable,
                 reward=reward,
@@ -557,7 +557,7 @@ class Optimizer(SynalinksSaveable):
                 },
             )
 
-    def add_candidates_to_map(
+    def maybe_add_candidate(
         self,
         step,
         trainable_variable,
@@ -565,7 +565,7 @@ class Optimizer(SynalinksSaveable):
         examples=None,
         reward=None,
     ):
-        """Add a new candidate to the map.
+        """Maybe add new candidate to best candidates.
 
         Args:
             step (int): The training step.
@@ -579,12 +579,12 @@ class Optimizer(SynalinksSaveable):
         mask = list(Trainable.keys())
         mask.append("reward")
         if new_candidate:
-            masked_candidate = out_mask_json(
+            new_candidate = out_mask_json(
                 new_candidate.get_json(),
                 mask=mask,
             )
         else:
-            masked_candidate = out_mask_json(
+            new_candidate = out_mask_json(
                 trainable_variable.get_json(),
                 mask=mask,
             )
@@ -594,7 +594,7 @@ class Optimizer(SynalinksSaveable):
         best_candidates = trainable_variable.get("best_candidates")
         best_candidates.append(
             {
-                **masked_candidate,
+                **new_candidate,
                 "examples": examples,
                 "reward": reward,
             }
@@ -605,7 +605,11 @@ class Optimizer(SynalinksSaveable):
                 key=lambda x: x.get("reward"),
                 reverse=True,
             )
-            best_candidates = sorted_candidates[:self.nb_max_best_candidates]
+            trainable_variable.update(
+                {
+                    "best_candidates": sorted_candidates[:self.nb_max_best_candidates]
+                }
+            )
 
     def get_config(self):
         return {

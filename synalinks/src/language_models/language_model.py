@@ -7,6 +7,8 @@ import warnings
 
 import litellm
 
+litellm.drop_params = True
+
 from synalinks.src.api_export import synalinks_export
 from synalinks.src.backend import ChatRole
 from synalinks.src.saving import serialization_lib

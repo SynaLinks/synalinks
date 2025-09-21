@@ -147,8 +147,6 @@ class RandomFewShot(Optimizer):
         trainable_variable,
     ):
         best_candidates = trainable_variable.get("best_candidates")
-        best_candidates = copy.deepcopy(best_candidates)
-        del best_candidates[step]
         selected_candidate = random.choice(best_candidates)
         return selected_candidate
 
