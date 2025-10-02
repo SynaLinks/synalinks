@@ -123,7 +123,7 @@ nav:
       - Synalinks API/Optimizers API/index.md
       - Synalinks API/Optimizers API/Base Optimizer class.md
       - Synalinks API/Optimizers API/RandomFewShot.md
-      - Synalinks API/Optimizers API/OMEGAEvolve.md
+      - Synalinks API/Optimizers API/OMEGA.md
     - Metrics:
       - Synalinks API/Metrics/index.md
       - Synalinks API/Metrics/Base Metric class.md
