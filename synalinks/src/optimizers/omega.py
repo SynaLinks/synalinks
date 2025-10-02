@@ -165,9 +165,9 @@ class OMEGA(RandomFewShot):
     This approach only add one step to the traditional genetic algorithm and **outperform** MAP-Elites, Threshold-Elites and Cluster-Elites.
 
     Concerning the inspirations for this optimizer:
-    - Dominated Novelty Search for the solution to the problem of diversity in genetic algorithms.
-    - DSPY's GEPA for feeding the optimizer program with the raw training data and for formalizing the evolutionary optimization strategy (not the MAP-Elites method used).
-    - AlphaEvolve have been a huge inspiration, more on the motivational side as they didn't released the code.
+        - Dominated Novelty Search for the solution to the problem of diversity in genetic algorithms.
+        - DSPY's GEPA for feeding the optimizer program with the raw training data and for formalizing the evolutionary optimization strategy (not the MAP-Elites method used).
+        - AlphaEvolve have been a huge inspiration, more on the motivational side as they didn't released the code.
     
     References:
         - [Dominated Novelty Search: Rethinking Local Competition in Quality-Diversity](https://arxiv.org/html/2502.00593v1#S5.SS1.SSS3)
