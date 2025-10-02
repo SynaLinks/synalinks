@@ -1,6 +1,10 @@
 # Don't reveal our solution yet
 benchmarks/arcagi
 
+# Don't reveal our solution for RAGs yet
+*parametrized_cypher_synthesis.py
+*cypher_retriever.py
+
 # byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]

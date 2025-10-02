@@ -140,6 +140,8 @@ class TripletRetriever(Module):
             are a list of tuples containing input/output JSON pairs.
         instructions (str): The default instructions being a string containing
             instructions for the language model.
+        seed_instructions (list): Optional. A list of instructions to use as seed for the
+            optimization. If not provided, use the default instructions as seed.
         temperature (float): Optional. The temperature for the LM call.
         use_inputs_schema (bool): Optional. Whether or not use the inputs schema in
             the prompt (Default to False) (see `Generator`).
@@ -165,6 +167,7 @@ class TripletRetriever(Module):
         prompt_template=None,
         examples=None,
         instructions=None,
+        seed_instructions=None,
         temperature=0.0,
         use_inputs_schema=False,
         use_outputs_schema=False,
@@ -204,6 +207,7 @@ class TripletRetriever(Module):
                 node_labels, relation_labels
             )
         self.instructions = instructions
+        self.seed_instructions = seed_instructions
         self.temperature = temperature
         self.use_inputs_schema = use_inputs_schema
         self.use_outputs_schema = use_outputs_schema
@@ -239,6 +243,7 @@ class TripletRetriever(Module):
             prompt_template=self.prompt_template,
             examples=self.examples,
             instructions=self.instructions,
+            seed_instructions=self.seed_instructions,
             temperature=self.temperature,
             use_inputs_schema=self.use_inputs_schema,
             use_outputs_schema=self.use_outputs_schema,
@@ -310,6 +315,7 @@ class TripletRetriever(Module):
             "prompt_template": self.prompt_template,
             "examples": self.examples,
             "instructions": self.instructions,
+            "seed_instructions": self.seed_instructions,
             "temperature": self.temperature,
             "use_inputs_schema": self.use_inputs_schema,
             "use_outputs_schema": self.use_outputs_schema,
@@ -369,9 +375,6 @@ class TripletRetriever(Module):
     def from_config(cls, config):
         knowledge_base = serialization_lib.deserialize_synalinks_object(
             config.pop("knowledge_base"),
-        )
-        teacher_language_model = serialization_lib.deserialize_synalinks_object(
-            config.pop("teacher_language_model"),
         )
         language_model = serialization_lib.deserialize_synalinks_object(
             config.pop("language_model"),

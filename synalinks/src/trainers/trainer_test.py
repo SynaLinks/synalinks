@@ -53,7 +53,7 @@ class TestTrainer(testing.TestCase):
         )
 
         program.compile(
-            optimizer=optimizers.RandomFewShot(),
+            optimizer=optimizers.random_few_shot.RandomFewShot(),
             reward=rewards.ExactMatch(),
             metrics=[metrics.MeanMetricWrapper(rewards.exact_match)],
         )
@@ -104,7 +104,7 @@ class TestTrainer(testing.TestCase):
         program = await program_test()
 
         program.compile(
-            optimizer=optimizers.RandomFewShot(),
+            optimizer=optimizers.random_few_shot.RandomFewShot(),
             reward=rewards.ExactMatch(in_mask=["answer"]),
             metrics=[metrics.MeanMetricWrapper(rewards.exact_match, in_mask=["answer"])],
         )
@@ -131,7 +131,7 @@ class TestTrainer(testing.TestCase):
         program = await program_test()
 
         program.compile(
-            optimizer=optimizers.RandomFewShot(),
+            optimizer=optimizers.random_few_shot.RandomFewShot(),
             reward=rewards.ExactMatch(in_mask=["answer"]),
             metrics=[
                 metrics.MeanMetricWrapper(rewards.exact_match, in_mask=["answer"]),
@@ -160,7 +160,7 @@ class TestTrainer(testing.TestCase):
         program = await program_test()
 
         program.compile(
-            optimizer=optimizers.RandomFewShot(),
+            optimizer=optimizers.random_few_shot.RandomFewShot(),
             reward=rewards.ExactMatch(in_mask=["answer"]),
             metrics=[
                 metrics.MeanMetricWrapper(rewards.exact_match, in_mask=["answer"]),

@@ -282,17 +282,19 @@ class LanguageModel(SynalinksSaveable):
                 kwargs.update(
                     {
                         "response_format": {
-                            "type": "json_object",
+                            "type": "json_schema",
                             "json_schema": schema,
+                            "strict": True,
                         }
                     }
                 )
-            elif self.model.startwith("xai"):
+            elif self.model.startswith("xai"):
                 kwargs.update(
                     {
                         "response_format": {
-                            "type": "json_object",
+                            "type": "json_schema",
                             "json_schema": schema,
+                            "strict": True,
                         }
                     }
                 )

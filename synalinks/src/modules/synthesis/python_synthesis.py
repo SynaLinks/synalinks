@@ -27,15 +27,6 @@ class PythonScript(Trainable):
 class PythonConsoleLog(DataModel):
     stdout: str = Field(description="The python console's stdout")
     stderr: str = Field(description="The python console's stderr")
-    
-    
-def code_instructions():
-    return \
-"""
-# The inputs are directly available as a variable in the script's namespace (as `inputs`).
-# so scripts can directly access and manipulate the input data.
-# The final result should be stored in a variable named `result`.
-""".strip()
 
 
 @synalinks_export(
@@ -132,12 +123,7 @@ class PythonSynthesis(Module):
 
         if not python_script:
             raise ValueError("You should provide the `python_script` argument")
-        self.python_script = "\n".join(
-            [
-                code_instructions(),
-                python_script,
-            ]
-        )
+        self.python_script = python_script
         if not default_return_value:
             raise ValueError("You should provide the `default_return_value` argument")
 
@@ -149,15 +135,13 @@ class PythonSynthesis(Module):
             )
 
         self.default_return_value = default_return_value
-        
+
         if not seed_scripts:
             seed_scripts = []
         self.seed_scripts = seed_scripts
-            
+
         seed_candidates = [
-            {
-                "python_script": seed_script
-            } for seed_script in self.seed_scripts
+            {"python_script": seed_script} for seed_script in self.seed_scripts
         ]
 
         self.state = self.add_variable(
@@ -188,8 +172,8 @@ class PythonSynthesis(Module):
             exec(python_script, local_namespace)
 
             # Look for the result variable in the namespace
-            if 'result' in local_namespace:
-                result = local_namespace['result']
+            if "result" in local_namespace:
+                result = local_namespace["result"]
 
                 if result:
                     try:
@@ -198,7 +182,7 @@ class PythonSynthesis(Module):
                         stderr += f"Validation Error: {validation_error}\n"
                         result = None
             else:
-                stderr += f"Error: No 'result' variable found after script execution\n"
+                stderr += "Error: No 'result' variable found after script execution\n"
                 result = None
 
         except Exception as e:

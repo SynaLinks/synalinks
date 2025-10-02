@@ -57,6 +57,12 @@ def mean(x, axis=None, keepdims=False):
     return np.mean(x, axis=axis, keepdims=keepdims).astype(floatx())
 
 
+def median(x, axis=None, keepdims=False):
+    axis = standardize_axis_for_numpy(axis)
+    x = convert_to_tensor(x)
+    return np.median(x, axis=axis, keepdims=keepdims).astype(floatx())
+
+
 def sum(x, axis=None, keepdims=False):
     axis = standardize_axis_for_numpy(axis)
     return np.sum(x, axis=axis, keepdims=keepdims).astype(floatx())

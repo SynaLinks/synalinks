@@ -2,11 +2,11 @@
 # Original authors: François Chollet et al. (Keras Team)
 # License Apache 2.0: (c) 2025 Yoan Sallami (Synalinks Team)
 
-import copy
 import random
 import warnings
 
 import docstring_parser
+import numpy as np
 
 from synalinks.src import backend
 from synalinks.src.backend import DataModel
@@ -34,13 +34,16 @@ class Optimizer(SynalinksSaveable):
     the `propose_new_candidates()` method with their specific optimization logic.
 
     Args:
+        population_size (int): The maximum number of best candidates to keep
+            during the optimization process.
         name (str): Optional. The name of the optimizer.
         description (str): Optional. The description of the optimizer.
     """
 
     def __init__(
         self,
-        nb_max_best_candidates=5,
+        merging_rate=0.02,
+        population_size=10,
         name=None,
         description=None,
         **kwargs,
@@ -50,7 +53,7 @@ class Optimizer(SynalinksSaveable):
         Sets up the optimizer's internal state, variable tracking, and naming.
 
         Args:
-            nb_max_best_candidates (int): The maximum number of best candidates to keep
+            population_size (int): The maximum number of best candidates to keep
                 during the optimization process.
             name (str): Optional name for the optimizer instance
             description (str): Optional description for the optimizer
@@ -63,8 +66,9 @@ class Optimizer(SynalinksSaveable):
 
         if kwargs:
             raise ValueError(f"Argument(s) not recognized: {kwargs}")
-        
-        self.nb_max_best_candidates = nb_max_best_candidates
+
+        self.merging_rate = merging_rate
+        self.population_size = population_size
 
         if name is None:
             name = auto_name(self.__class__.__name__)
@@ -81,6 +85,7 @@ class Optimizer(SynalinksSaveable):
 
         self.built = False
         self._program = None
+        self._optimizer = None
 
         self._initialize_tracker()
 
@@ -144,6 +149,23 @@ class Optimizer(SynalinksSaveable):
             (Program): The Synalinks program being optimized, or None if not set
         """
         return self._program
+
+    def set_meta_optimizer(self, meta_optimizer):
+        """Set the meta optimizer associated with this optimizer.
+
+        Args:
+            meta_optimizer (Optimizer): The meta optimizer
+        """
+        self._meta_optimizer = meta_optimizer
+
+    @property
+    def meta_optimizer(self):
+        """Get the optimizer associated with this optimizer.
+
+        Returns:
+            (Optimizer): The meta optimizeer
+        """
+        return self._meta_optimizer
 
     @property
     def reward_tracker(self):
@@ -241,6 +263,47 @@ class Optimizer(SynalinksSaveable):
                 "Go add it!"
             )
 
+    async def select_variable_name_to_update(self, trainable_variables):
+        rewards = []
+        for trainable_variable in trainable_variables:
+            nb_visit = trainable_variable.get("nb_visit")
+            cumulative_reward = trainable_variable.get("cumulative_reward")
+            if nb_visit == 0:
+                variable_reward = 100000
+            else:
+                variable_reward = cumulative_reward / nb_visit
+            rewards.append(variable_reward)
+        rewards = np.array(rewards)
+        inverted_rewards = -rewards
+        scaled_rewards = inverted_rewards / self.sampling_temperature
+        exp_rewards = np.exp(scaled_rewards - np.max(scaled_rewards))
+        probabilities = exp_rewards / np.sum(exp_rewards)
+        selected_variable = np.random.choice(
+            trainable_variables,
+            size=1,
+            replace=False,
+            p=probabilities,
+        ).tolist()[0]
+        return selected_variable.name
+
+    async def select_evolving_strategy(self):
+        rand = random.random()
+        if rand > (self.merging_rate * self.epochs):
+            return "mutation"
+        else:
+            return "crossover"
+
+    async def select_candidate_to_merge(
+        self,
+        step,
+        trainable_variable,
+    ):
+        best_candidates = trainable_variable.get("best_candidates")
+        if len(best_candidates) > 0:
+            selected_candidate = random.choice(best_candidates)
+            return selected_candidate
+        return None
+
     async def on_train_begin(
         self,
         trainable_variables,
@@ -250,25 +313,20 @@ class Optimizer(SynalinksSaveable):
         Args:
             trainable_variables (list): The list of trainable variables.
         """
+        mask = list(Trainable.keys())
+        mask.remove("examples")
         
         for trainable_variable in trainable_variables:
             seed_candidates = trainable_variable.get("seed_candidates")
-            if not seed_candidates:
-                mask = list(Trainable.keys())
-                mask.remove("examples")
-                masked_variable = out_mask_json(
-                    trainable_variable.get_json(),
-                    mask=mask,
-                )
-                trainable_variable.update(
-                    {
-                        "seed_candidates": [
-                            {
-                                **masked_variable
-                            },
-                        ],
-                    },
-                )
+            masked_variable = out_mask_json(
+                trainable_variable.get_json(),
+                mask=mask,
+            )
+            seed_candidates.append(
+                {
+                    **masked_variable,
+                }
+            )
 
     async def on_train_end(
         self,
@@ -312,7 +370,8 @@ class Optimizer(SynalinksSaveable):
             trainable_variable.update(
                 {
                     "predictions": [],
-                },
+                    "candidates": [],
+                }
             )
 
     async def on_epoch_end(
@@ -326,33 +385,41 @@ class Optimizer(SynalinksSaveable):
             epoch (int): The epoch number
             trainable_variables (list): The list of trainable variables
         """
+        for trainable_variable in trainable_variables:
+            candidates = trainable_variable.get("candidates")
+            best_candidates = trainable_variable.get("best_candidates")
+            all_candidates = candidates + best_candidates
+            sorted_candidates = sorted(
+                all_candidates,
+                key=lambda x: x.get("reward"),
+                reverse=True,
+            )
+            selected_candidates = sorted_candidates[: self.population_size]
+            trainable_variable.update(
+                {
+                    "predictions": [],
+                    "candidates": [],
+                    "best_candidates": selected_candidates,
+                }
+            )
         self.increment_epochs()
 
     async def on_batch_begin(
         self,
         step,
+        epoch,
         trainable_variables,
     ):
         """Called at the beginning of a batch
 
         Args:
             step (int): The batch number
+            epoch (int): The epoch number
             trainable_variables (list): The list of trainable variables
         """
         for trainable_variable in trainable_variables:
             best_candidates = trainable_variable.get("best_candidates")
-            if len(best_candidates) >= self.nb_max_best_candidates:
-                best_candidate = random.choice(best_candidates)
-                best_candidate = out_mask_json(
-                    best_candidate,
-                    mask=["reward"],
-                )
-                trainable_variable.update(
-                    {
-                        **best_candidate,
-                    },
-                )
-            else:
+            if epoch == 0:
                 seed_candidates = trainable_variable.get("seed_candidates")
                 if len(seed_candidates) > 0:
                     seed_candidate = random.choice(seed_candidates)
@@ -361,6 +428,27 @@ class Optimizer(SynalinksSaveable):
                             **seed_candidate,
                         },
                     )
+            else:
+                if len(best_candidates) > 0:
+                    best_candidate = random.choice(best_candidates)
+                    best_candidate = out_mask_json(
+                        best_candidate,
+                        mask=["reward"],
+                    )
+                    trainable_variable.update(
+                        {
+                            **best_candidate,
+                        },
+                    )
+                else:
+                    seed_candidates = trainable_variable.get("seed_candidates")
+                    if len(seed_candidates) > 0:
+                        seed_candidate = random.choice(seed_candidates)
+                        trainable_variable.update(
+                            {
+                                **seed_candidate,
+                            },
+                        )
             trainable_variable.update(
                 {
                     "nb_visit": 0,
@@ -371,38 +459,41 @@ class Optimizer(SynalinksSaveable):
     async def on_batch_end(
         self,
         step,
+        epoch,
         trainable_variables,
     ):
         """Called at the end of a batch
 
         Args:
             step (int): The batch number
+            epoch (int): The epoch number
             trainable_variables (list): The list of trainable variables
         """
         for trainable_variable in trainable_variables:
             best_candidates = trainable_variable.get("best_candidates")
-            sorted_candidates = sorted(
-                best_candidates,
-                key=lambda x: x.get("reward"),
-                reverse=True,
-            )
-            best_candidate = sorted_candidates[0]
-            history = trainable_variable.get("history")
-            if len(history) > 0:
-                last_candidate = history[-1]
-                if last_candidate != best_candidate:
+            if len(best_candidates) > 0:
+                sorted_candidates = sorted(
+                    best_candidates,
+                    key=lambda x: x.get("reward"),
+                    reverse=True,
+                )
+                best_candidate = sorted_candidates[0]
+                history = trainable_variable.get("history")
+                if len(history) > 0:
+                    last_candidate = history[-1]
+                    if last_candidate != best_candidate:
+                        history.append(best_candidate)
+                else:
                     history.append(best_candidate)
-            else:
-                history.append(best_candidate)
-            best_candidate = out_mask_json(
-                best_candidate,
-                mask=["reward"],
-            )
-            trainable_variable.update(
-                {
-                    **best_candidate,
-                },
-            )
+                best_candidate = out_mask_json(
+                    best_candidate,
+                    mask=["reward"],
+                )
+                trainable_variable.update(
+                    {
+                        **best_candidate,
+                    },
+                )
         self.increment_iterations()
 
     async def optimize(
@@ -428,6 +519,9 @@ class Optimizer(SynalinksSaveable):
         if not self.built:
             await self.build(trainable_variables)
 
+        if self.meta_optimizer and not self.meta_optimizer.built:
+            await self.meta_optimizer.build(self.trainable_variables)
+
         y_pred = await self.program.predict_on_batch(
             x=x,
             training=True,
@@ -439,10 +533,21 @@ class Optimizer(SynalinksSaveable):
             y_pred=y_pred,
         )
 
-        self.assign_reward_to_predictions(
+        await self.assign_reward_to_predictions(
             trainable_variables,
             reward=reward,
         )
+        
+        if self.trainable_variables and self.meta_optimizer and step > 0:
+            await self.meta_optimizer.assign_reward_to_predictions(
+                self.trainable_variables,
+                reward=reward,
+            )
+            
+            await self.meta_optimizer.propose_new_candidates(
+                step,
+                self.trainable_variables,
+            )
 
         await self.propose_new_candidates(
             step,
@@ -450,6 +555,7 @@ class Optimizer(SynalinksSaveable):
             x=x,
             y=y,
             y_pred=y_pred,
+            training=self.trainable_variables and self.meta_optimizer,
         )
 
         y_pred = await self.program.predict_on_batch(
@@ -462,13 +568,21 @@ class Optimizer(SynalinksSaveable):
             y=val_y,
             y_pred=y_pred,
         )
-
+        
         for trainable_variable in trainable_variables:
-            self.maybe_add_candidate(
+            await self.maybe_add_candidate(
                 step,
                 trainable_variable,
                 reward=reward,
             )
+
+        if self.trainable_variables and self.meta_optimizer:
+            for trainable_variable in self.trainable_variables:
+                await self.meta_optimizer.maybe_add_candidate(
+                    step,
+                    trainable_variable,
+                    reward=reward,
+                )
 
         await self.reward_tracker.update_state(reward)
         metrics = await self.program.compute_metrics(val_x, val_y, y_pred)
@@ -486,7 +600,7 @@ class Optimizer(SynalinksSaveable):
             "Optimizer subclasses must implement the `propose_new_candidates()` method."
         )
 
-    def assign_reward_to_predictions(
+    async def assign_reward_to_predictions(
         self,
         trainable_variables,
         reward=None,
@@ -517,7 +631,7 @@ class Optimizer(SynalinksSaveable):
                         }
                     )
 
-    def assign_candidate(
+    async def assign_candidate(
         self,
         trainable_variable,
         new_candidate=None,
@@ -557,7 +671,7 @@ class Optimizer(SynalinksSaveable):
                 },
             )
 
-    def maybe_add_candidate(
+    async def maybe_add_candidate(
         self,
         step,
         trainable_variable,
@@ -565,7 +679,7 @@ class Optimizer(SynalinksSaveable):
         examples=None,
         reward=None,
     ):
-        """Maybe add new candidate to best candidates.
+        """Maybe add new candidate to candidates.
 
         Args:
             step (int): The training step.
@@ -591,29 +705,27 @@ class Optimizer(SynalinksSaveable):
         if not examples:
             examples = trainable_variable.get("examples")
 
+        candidates = trainable_variable.get("candidates")
         best_candidates = trainable_variable.get("best_candidates")
-        best_candidates.append(
-            {
-                **new_candidate,
-                "examples": examples,
-                "reward": reward,
-            }
-        )
-        if len(best_candidates) > self.nb_max_best_candidates:
-            sorted_candidates = sorted(
-                best_candidates,
-                key=lambda x: x.get("reward"),
-                reverse=True,
-            )
-            trainable_variable.update(
+        all_candidates = best_candidates + candidates
+        is_present = False
+        for candidate in all_candidates:
+            if out_mask_json(candidate, mask=mask) == new_candidate:
+                is_present = True
+                break
+        if not is_present:
+            candidates.append(
                 {
-                    "best_candidates": sorted_candidates[:self.nb_max_best_candidates]
+                    **new_candidate,
+                    "examples": examples,
+                    "reward": reward,
                 }
             )
 
     def get_config(self):
         return {
-            "nb_max_best_candidates": self.nb_max_best_candidates,
+            "merging_rate": self.merging_rate,
+            "population_size": self.population_size,
             "name": self.name,
             "description": self.description,
         }

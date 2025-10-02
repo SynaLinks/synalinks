@@ -6,7 +6,7 @@ from synalinks.src import testing
 from synalinks.src.language_models import LanguageModel
 from synalinks.src.modules import Generator
 from synalinks.src.modules import Input
-from synalinks.src.optimizers import RandomFewShot
+from synalinks.src.optimizers.random_few_shot import RandomFewShot
 from synalinks.src.programs import Program
 from synalinks.src.rewards.exact_match import ExactMatch
 from synalinks.src.testing.test_utils import AnswerWithRationale

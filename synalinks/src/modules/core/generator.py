@@ -130,8 +130,8 @@ class Generator(Module):
             are a list of tuples containing input/output JSON pairs.
         instructions (str): The default instructions being a string containing
             instructions for the language model.
-        seed_instructions (list): A list of instructions to use as seed for the 
-            evolutionary optimization. If not provided, use the default instructions as seed. 
+        seed_instructions (list): Optional. A list of instructions to use as seed for the
+            optimization. If not provided, use the default instructions as seed.
         use_inputs_schema (bool): Optional. Whether or not use the inputs schema in
             the prompt (Default to False).
         use_outputs_schema (bool): Optional. Whether or not use the outputs schema in
@@ -201,15 +201,16 @@ class Generator(Module):
             ).get_json()
             for example in examples
         ]
-        
+
         if not seed_instructions:
             seed_instructions = []
         self.seed_instructions = seed_instructions
-        
+
         seed_candidates = [
             {
                 "instructions": seed_instruction,
-            } for seed_instruction in self.seed_instructions
+            }
+            for seed_instruction in self.seed_instructions
         ]
 
         self.state = self.add_variable(

@@ -8,7 +8,7 @@
 
 <em>The first neuro-symbolic LM framework to leverage decades-old best practices in Deep Learning frameworks from the most user-friendly framework ever built - Keras</em>
 
-<b>Build RAGs, autonomous agents, multi-agents systems, self-evolving system and more in just few lines</b>
+<b>Build RAGs, autonomous agents, multi-agents systems, self-evolving systems and more in just few lines</b>
 
 <p align="center">
   <a href="https://synalinks.github.io/synalinks" target="_blank"><strong>Documentation</strong></a> ·
@@ -32,13 +32,11 @@
 [![License: Apache-2.0](https://img.shields.io/badge/License-Apache_2.0-green.svg)](https://opensource.org/license/apache-2-0)
 [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/SynaLinks/synalinks)
 
-Too busy to read the documentation? Give **[LLM.md](https://raw.githubusercontent.com/SynaLinks/synalinks/refs/heads/main/LLM.md)** to your favorite LM provider.
-
 </div>
 
 ## What is Synalinks?
 
-Synalinks is an open-source framework that makes it easy to create, evaluate, train, and deploy industry-standard Language Models (LMs) applications like **graph RAGs, autonomous agents and multi-agent systems**. Synalinks follows the principle of *progressive disclosure of complexity*: meaning that simple workflows should be quick and easy, while arbitrarily advanced ones should be possible via a clear path that builds upon what you've already learned.
+Synalinks is an open-source framework that makes it easy to create, evaluate, train, and deploy industry-standard Language Models (LMs) applications like **graph RAGs, autonomous agents, multi-agent systems or self-evolving systems**. Synalinks follows the principle of *progressive disclosure of complexity*: meaning that simple workflows should be quick and easy, while arbitrarily advanced ones should be possible via a clear path that builds upon what you've already learned.
 
 Synalinks is an *adaptation of Keras 3* focused on neuro-symbolic systems and in-context reinforcement learning, an ensemble of techniques that enhance the LMs predictions and accuracy without changing the weights of the model. The goal of Synalinks is to facilitate the rapid setup of simple applications while providing the flexibility for researchers and advanced users to develop sophisticated systems.
 
@@ -66,13 +64,13 @@ We can help you simplify these tasks by leveraging decade old practices in Deep 
 
 <div align="center">
 
-| Framework | MCP | Graph DB | Logical Flow | Robust Branching | Parallel Function Calling | Ease of Use |
-| --- | --- | --- | --- | --- | --- | --- |
-| Synalinks | ✅ Yes | ✅ Yes | ✅ Yes | ✅ Yes | ✅ Yes | 😀 |
-| DSPy      | ✅ Yes | ❌ No | ❌ No | ❌ No | ❌ No | 😢 |
-| AdalFlow  | ✅ Yes | ❌ No | ❌ No | ❌ No | ❌ No | 😢 |
-| TextGrad  | ❌ No | ❌ No | ❌ No | ❌ No | ❌ No | 😭 |
-| Trace     | ❌ No | ❌ No | ❌ No | ❌ No | ❌ No | 😭 |
+| Framework | MCP | Graph DB | Logical Flow | Robust Branching | Parallel Function Calling | Hyperparameter Tuning | Constrained JSON Decoding | Ease of Use |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| Synalinks | ✅ Yes | ✅ Yes | ✅ Yes | ✅ Yes | ✅ Yes | ✅ Yes | ✅ Yes | 😀 |
+| DSPy      | ✅ Yes | ❌ No | ❌ No | ❌ No | ❌ No | ❌ No | ❌ No | 😢 |
+| AdalFlow  | ✅ Yes | ❌ No | ❌ No | ❌ No | ❌ No | ❌ No | ❌ No | 😢 |
+| TextGrad  | ❌ No | ❌ No | ❌ No | ❌ No | ❌ No | ❌ No | ❌ No | 😭 |
+| Trace     | ❌ No | ❌ No | ❌ No | ❌ No | ❌ No | ❌ No | ✅ Yes | 😭 |
 
 </div>
 
@@ -385,19 +383,22 @@ async def main():
     (x_train, y_train), (x_test, y_test) = synalinks.datasets.gsm8k.load_data()
 
     program.compile(
-        reward=synalinks.rewards.ExactMatch(in_mask=["answer"]),
-        optimizer=synalinks.optimizers.OMEGAEvolve(
+        reward=synalinks.rewards.ExactMatch(
+            in_mask=["answer"],
+        ),
+        optimizer=synalinks.optimizers.OMEGA(
             language_model=language_model,
-        )
+            embedding_model=embedding_model,
+        ),
     )
 
-    batch_size=32
+    batch_size=1
     epochs=10
 
     history = await program.fit(
         x_train,
         y_train,
-        validation_data=(x_test, y_test),
+        validation_split=0.2,
         batch_size=batch_size,
         epochs=epochs,
     )

@@ -52,6 +52,7 @@ class ProgramTest(testing.TestCase):
                         "predictions": [],
                         "history": [],
                         "seed_candidates": [],
+                        "candidates": [],
                         "best_candidates": [],
                         "nb_visit": 0,
                         "cumulative_reward": 0.0,
@@ -118,7 +119,7 @@ class ProgramTest(testing.TestCase):
 
         program.compile(
             reward=rewards.ExactMatch(),
-            optimizer=optimizers.RandomFewShot(),
+            optimizer=optimizers.random_few_shot.RandomFewShot(),
         )
 
         state_tree = program.get_state_tree()
@@ -135,6 +136,7 @@ class ProgramTest(testing.TestCase):
                         "predictions": [],
                         "history": [],
                         "seed_candidates": [],
+                        "candidates": [],
                         "best_candidates": [],
                         "nb_visit": 0,
                         "cumulative_reward": 0.0,
@@ -142,7 +144,7 @@ class ProgramTest(testing.TestCase):
                 }
             },
             "non_trainable_variables": {},
-            "optimizer_variables": {
+            "optimizer_non_trainable_variables": {
                 "random_few_shot": {
                     "variable": {
                         "iterations": 0,
@@ -150,6 +152,7 @@ class ProgramTest(testing.TestCase):
                     },
                 },
             },
+            "optimizer_trainable_variables": {},
             "metrics_variables": {
                 "reward": {"total_with_count": {"total": 0.0, "count": 0}}
             },
@@ -184,7 +187,7 @@ class ProgramTest(testing.TestCase):
 
         program.compile(
             reward=rewards.ExactMatch(),
-            optimizer=optimizers.RandomFewShot(),
+            optimizer=optimizers.random_few_shot.RandomFewShot(),
         )
 
         state_tree = program.get_state_tree()
@@ -222,7 +225,7 @@ class ProgramTest(testing.TestCase):
 
         program.compile(
             reward=rewards.ExactMatch(in_mask=["answer"]),
-            optimizer=optimizers.RandomFewShot(),
+            optimizer=optimizers.random_few_shot.RandomFewShot(),
         )
 
         (x_train, y_train), (x_test, y_test) = testing.test_utils.load_test_data()
@@ -265,7 +268,7 @@ class ProgramTest(testing.TestCase):
 
         program.compile(
             reward=rewards.ExactMatch(in_mask=["answer"]),
-            optimizer=optimizers.RandomFewShot(),
+            optimizer=optimizers.random_few_shot.RandomFewShot(),
         )
 
         (x_train, y_train), (x_test, y_test) = testing.test_utils.load_test_data()
@@ -311,7 +314,7 @@ class ProgramTest(testing.TestCase):
 
         program.compile(
             reward=rewards.ExactMatch(in_mask=["answer"]),
-            optimizer=optimizers.RandomFewShot(),
+            optimizer=optimizers.random_few_shot.RandomFewShot(),
         )
 
         (x_train, y_train), (x_test, y_test) = testing.test_utils.load_test_data()

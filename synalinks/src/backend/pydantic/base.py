@@ -574,6 +574,10 @@ class Trainable(DataModel):
         description="The seed candidates",
         default=[],
     )
+    candidates: List[Any] = Field(
+        description="The candidates",
+        default=[],
+    )
     best_candidates: List[Any] = Field(
         description="The best candidates",
         default=[],

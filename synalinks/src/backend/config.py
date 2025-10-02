@@ -23,6 +23,12 @@ _SYNALINKS_API_KEY = None
 # Default backend: Pydantic.
 _BACKEND = "pydantic"
 
+# Default monitoring api base
+_MONITORING_API_BASE = "http://localhost:4242"
+
+# Enable monitoring
+_ENABLE_MONITORING = False
+
 # Available backends
 _AVAILABLE_BACKEND = ["pydantic"]
 
@@ -208,6 +214,31 @@ def enable_logging(filename=None, debug=False):
             level=level,
             format="%(asctime)s - %(levelname)s - %(message)s",
         )
+
+
+@synalinks_export(
+    [
+        "synalinks.config.enable_monitoring",
+        "synalinks.backend.enable_monitoring",
+        "synalinks.enable_monitoring",
+    ]
+)
+def enable_monitoring(api_base=None):
+    """
+    Configures and enables monitoring for the application.
+
+    This function sets up the observability configuration for the application, 
+    allowing traces and logs to be send to Synalinks Laboratory.
+    
+    Args:
+        api_base (str): Optional. The api base to send the traces and logs to.
+    """
+    global _MONITORING_API_BASE
+    global _ENABLE_MONITORING
+    if api_base:
+        _MONITORING_API_BASE = api_base
+    
+    _ENABLE_MONITORING = True
 
 
 @synalinks_export(

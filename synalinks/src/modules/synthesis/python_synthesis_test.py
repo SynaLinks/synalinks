@@ -13,8 +13,7 @@ class PythonSynthesisTest(testing.TestCase):
         task_names = get_arcagi1_evaluation_task_names()
         task_name = task_names[0]
 
-        default_python_script = \
-"""
+        default_python_script = """
 def transform(inputs: Dict[str, Any]) -> Dict[str, Any]:
     # TODO implement the code
     return {"output_grid": inputs.get("input_grid")}
