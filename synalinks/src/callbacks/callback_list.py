@@ -8,8 +8,10 @@ from synalinks.src import backend
 from synalinks.src import tree
 from synalinks.src import utils
 from synalinks.src.api_export import synalinks_export
+from synalinks.src.backend import is_observability_enabled
 from synalinks.src.callbacks.callback import Callback
 from synalinks.src.callbacks.history import History
+from synalinks.src.callbacks.monitor import Monitor
 from synalinks.src.callbacks.progbar_logger import ProgbarLogger
 from synalinks.src.utils import python_utils
 
@@ -94,12 +96,15 @@ class CallbackList(Callback):
         """Adds `Callback`s that are always present."""
         self._progbar = None
         self._history = None
+        self._monitor = None
 
         for cb in self.callbacks:
             if isinstance(cb, ProgbarLogger):
                 self._progbar = cb
             elif isinstance(cb, History):
                 self._history = cb
+            elif isinstance(cb, Monitor):
+                self._monitor = cb
 
         if self._history is None and add_history:
             self._history = History()
@@ -108,6 +113,10 @@ class CallbackList(Callback):
         if self._progbar is None and add_progbar:
             self._progbar = ProgbarLogger()
             self.callbacks.append(self._progbar)
+
+        if self._monitor is None and is_observability_enabled():
+            self._monitor = Monitor()
+            self.callbacks.append(self._monitor)
 
     def set_program(self, program):
         if not program:

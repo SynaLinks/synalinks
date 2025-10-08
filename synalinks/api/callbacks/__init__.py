@@ -12,6 +12,7 @@ from synalinks.src.callbacks.callback_list import CallbackList as CallbackList
 from synalinks.src.callbacks.csv_logger import CSVLogger as CSVLogger
 from synalinks.src.callbacks.early_stopping import EarlyStopping as EarlyStopping
 from synalinks.src.callbacks.history import History as History
+from synalinks.src.callbacks.monitor import Monitor as Monitor
 from synalinks.src.callbacks.progbar_logger import ProgbarLogger as ProgbarLogger
 from synalinks.src.callbacks.program_checkpoint import (
     ProgramCheckpoint as ProgramCheckpoint,

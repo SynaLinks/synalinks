@@ -30,8 +30,14 @@ from synalinks.src.backend.common.symbolic_data_model import (
     SymbolicDataModel as SymbolicDataModel,
 )
 from synalinks.src.backend.common.symbolic_scope import SymbolicScope as SymbolicScope
+from synalinks.src.backend.config import api_base as api_base
 from synalinks.src.backend.config import enable_logging as enable_logging
+from synalinks.src.backend.config import enable_observability as enable_observability
 from synalinks.src.backend.config import get_seed as get_seed
+from synalinks.src.backend.config import (
+    is_observability_enabled as is_observability_enabled,
+)
+from synalinks.src.backend.config import set_api_base as set_api_base
 from synalinks.src.backend.config import set_seed as set_seed
 from synalinks.src.backend.config import synalinks_home as synalinks_home
 from synalinks.src.backend.pydantic.base import ChatMessage as ChatMessage

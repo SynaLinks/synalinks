@@ -7,3 +7,4 @@ since your modifications would be overwritten.
 from synalinks.src.hooks.hook import Hook as Hook
 from synalinks.src.hooks.hook_list import HookList as HookList
 from synalinks.src.hooks.logger import Logger as Logger
+from synalinks.src.hooks.monitor import Monitor as Monitor

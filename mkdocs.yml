@@ -114,6 +114,10 @@ nav:
       - Synalinks API/Callbacks API/Base Callback class.md
       - Synalinks API/Callbacks API/ProgramCheckpoint.md
       - Synalinks API/Callbacks API/CSVLogger.md
+      - Synalinks API/Callbacks API/BackUpAndRestore.md
+      - Synalinks API/Callbacks API/EarlyStopping.md
+    - Hooks API:
+      - Synalinks API/Hooks API/index.md
     - Ops API:
       - Synalinks API/Ops API/index.md
       - Synalinks API/Ops API/JSON Ops.md

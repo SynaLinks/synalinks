@@ -421,6 +421,9 @@ class Module(BackendModule, Operation, SynalinksSaveable):
         for module in self._modules:
             module.trainable = value
 
+    def add_hook(self, hook):
+        self._hooks.add_hook(hook)
+
     @property
     def variables(self):
         """List of all module state.

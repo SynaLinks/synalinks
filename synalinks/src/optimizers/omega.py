@@ -1,3 +1,5 @@
+# License Apache 2.0: (c) 2025 Yoan Sallami (Synalinks Team)
+
 from typing import Any
 from typing import List
 from typing import Optional
@@ -41,10 +43,10 @@ Your primary task is to creatively enhance the provided variable so that the pre
 Pay close attention to the variable's description, its intended use, and the broader context of the computation graph.
 
 Guidelines:
-- Ensure the enhanced variable is generalizable and performs well across similar inputs.
+- Ensure the new variable is generalizable and performs well across various inputs of the same kind.
 - Include all specified keys: {variables_keys}.
 - Justify each change with clear reasoning, referencing the variable's purpose and the desired output.
-- If no ground truth is provided, the goal is to critically enhance the predicted output. 
+- If no ground truth is provided, the goal is to critically enhance the predicted output.
 """.strip()
 
 
@@ -83,7 +85,7 @@ The new variable should improve the alignment of the predicted output with the g
 Guidelines:
 - Analyze both the current variable and the other high-performing variable, identifying their respective strengths and weaknesses.
 - Pay close attention to the variable's description, its intended use, and the broader context of the computation graph.
-- Ensure the new variable is generalizable and performs well across similar inputs.
+- Ensure the new variable is generalizable and performs well across various inputs of the same kind.
 - Include all specified keys: {variables_keys}.
 - Justify each feature you incorporate, explaining how it contributes to better performance or alignment with the ground truth.
 - If no ground truth is provided, the goal is to critically enhance the predicted output. 
@@ -112,11 +114,15 @@ class CrossoverInputs(DataModel):
     current_variable: Any = Field(
         description="current high performing variable to merge",
     )
-    
-    
+
+
 async def similarity_distance(candidate1, candidate2, embedding_model=None, axis=-1):
     """The default cosine similarity distance used by Dominated Novelty Search
-    
+
+    If the candidates have multiple fields, they are combined by averaging the
+    vector before calculating the distance allowing candidates to have
+    variable/dynamic number of fields.
+
     Args:
         candidate1 (dict): The first variable candidate
         candidate2 (dict): The second variable candidate
@@ -129,11 +135,11 @@ async def similarity_distance(candidate1, candidate2, embedding_model=None, axis
     embeddings2 = embeddings2["embeddings"]
     embeddings1 = np.convert_to_tensor(embeddings1)
     embeddings2 = np.convert_to_tensor(embeddings2)
-    embeddings1, embeddings2 = squeeze_or_expand_to_same_rank(
-        embeddings1, embeddings2
-    )
+    embeddings1, embeddings2 = squeeze_or_expand_to_same_rank(embeddings1, embeddings2)
     embeddings1 = np.normalize(embeddings1, axis=axis)
     embeddings2 = np.normalize(embeddings2, axis=axis)
+    embeddings1 = np.mean(embeddings1, axis=0)
+    embeddings1 = np.mean(embeddings2, axis=0)
     similarity = (np.sum(embeddings1 * embeddings2, axis=axis) + 1) / 2
     return 1 - np.mean(similarity)
 
@@ -142,33 +148,51 @@ async def similarity_distance(candidate1, candidate2, embedding_model=None, axis
 class OMEGA(RandomFewShot):
     """OMEGA: OptiMizEr as Genetic Algorithm - A genetic optimizer with dominated novelty search.
 
-    For now, only 2 based modules features self-evolving trainable variables:
+    This optimizer is **unique to Synalinks** and the result of our research effort on advancing neuro-symbolic AI.
 
-    - The `Generator` module (and all modules using it) that has self-evolving instructions.
-    - The `PythonSynthesis` module that has self-evolving python scripts.
-
-    More will be added in a near future.
-
-    Dominated Novelty Search, is a SOTA Quality-Diversity optimization method that implements a competition function.
+    Dominated Novelty Search (DNS), is a SOTA Quality-Diversity optimization method that implements a competition function in a classic genetic algorithm.
 
     The key insight behind Dominated Novelty Search is that candidates should be eliminated from the population if they are both:
 
     - Inferior in reward/fitness
     - Similar to existing candidates/solutions
 
-    In our case, an embedding model is used to compute a descriptor in order to measure the similarity of candidates.
-
-    This allow the system to explore the search space more quickly by eliminating non-promising candidates while preserving diversity to avoid local minima.
-
     This algorithm creates an evolutionary pressure to focus on high performing candidates **Or** candidates that explore other approaches.
 
-    This approach only add one step to the traditional genetic algorithm and **outperform** MAP-Elites, Threshold-Elites and Cluster-Elites.
+    This approach only add one step to the traditional genetic algorithm and *outperform* MAP-Elites, Threshold-Elites and Cluster-Elites.
+
+    This allow the system to explore the search space more quickly by eliminating non-promising candidates while preserving diversity to avoid local optimum.
+
+    At Synalinks, we adapted this algorithm for LM-based optimization, to do so we use an embedding model to compute the candidate's descriptor and a cosine distance between solutions.
+
+    **Note**: In Synalinks, unlike other In-Context learning frameworks, a variable (the module's state to optimize) is a JSON object not a simple string.
+    Which has multiple implications, we maintain a 100% correct structure through constrained JSON decoding, and we allow the state to have variable/dynamic
+    number of fields, which is handled by this approach by embedding each field and averaging them before computing the distance required by DNS.
+
+    Example:
+    ```
+    import synalinks
+    import asyncio
+
+    async def main():
+        # ... your program definition
+
+        program.compile(
+            reward=synalinks.rewards.ExactMatch(),
+            optimizer=synalinks.optimizers.OMEGA(
+                language_model=language_model,
+                embedding_model=embedding_model,
+            )
+        )
+
+        history = await program.fit(...)
+    ```
 
     Concerning the inspirations for this optimizer:
-        - Dominated Novelty Search for the solution to the problem of diversity in genetic algorithms.
-        - DSPY's GEPA for feeding the optimizer program with the raw training data and for formalizing the evolutionary optimization strategy (not the MAP-Elites method used).
-        - AlphaEvolve have been a huge inspiration, more on the motivational side as they didn't released the code.
-    
+        - Dominated Novelty Search for their elegant Quality-Diversity algorithm that outperform many other evolutionary strategies.
+        - DSPY's GEPA for feeding the optimizer program with the raw training data and for formalizing the evolutionary optimization strategy (**not** the MAP-Elites method used).
+        - DeepMind's AlphaEvolve have been a huge inspiration, more on the motivational side as they didn't released the code.
+
     References:
         - [Dominated Novelty Search: Rethinking Local Competition in Quality-Diversity](https://arxiv.org/html/2502.00593v1#S5.SS1.SSS3)
         - [GEPA: Reflective Prompt Evolution Can Outperform Reinforcement Learning](https://arxiv.org/pdf/2507.19457)
@@ -230,12 +254,12 @@ class OMEGA(RandomFewShot):
         self.crossover_temperature = crossover_temperature
         self.k_nearest_fitter = k_nearest_fitter
         self.few_shot_learning = few_shot_learning
-        
+
         if not distance_function:
             self.distance_function = similarity_distance
         else:
             self.distance_function = distance_function
-            
+
         self.kwargs = kwargs
 
         self.mutation_programs = {}
@@ -418,10 +442,13 @@ class OMEGA(RandomFewShot):
         candidates,
     ):
         """
-        This function implement Dominated Novelty Search paper.
+        This function implement Dominated Novelty Search.
 
-        This implement the competition function allowing to eliminate non-promising
-        solutions to focus on fittest or non-similar ones.
+        Args:
+            candidates (list): The list of candidates to evaluate.
+
+        Returns:
+            (list): The selected candidates.
         """
         if len(candidates) <= 1:
             return candidates
@@ -436,14 +463,11 @@ class OMEGA(RandomFewShot):
         for i in range(N):
             fi = fitness_values[i]
 
-            # Step 1: Identify all other solutions with superior fitness
             fitter_indices = [j for j in range(N) if j != i and fitness_values[j] > fi]
 
             if not fitter_indices:
-                # No fitter neighbors - max competition fitness
                 competition_scores[i] = 1.0
             else:
-                # Step 2: Compute pairwise distances to fitter solutions
                 distances = []
                 for j in fitter_indices:
                     distance = await self.distance_function(
@@ -454,31 +478,20 @@ class OMEGA(RandomFewShot):
                     )
                     distances.append((j, distance))
 
-                # Step 3: Calculate dominated novelty score
-                # Sort by distance and take k-nearest fitter solutions
                 distances.sort(key=lambda x: x[1])
                 k = min(self.k_nearest_fitter, len(distances))
                 k_nearest_distances = [d[1] for d in distances[:k]]
 
-                # Average distance to k-nearest fitter solutions
                 competition_scores[i] = float(
                     np.sum(k_nearest_distances) / k if k > 0 else 0.0
                 )
-        # print("\nDominated Novelty Search")
-        # print(f"fitness score: {fitness_values}")
-        # print(f"competition score: {competition_scores}")
-        # print(f"nb candidates before competition: {len(candidates)}")
         median_score = np.median(competition_scores)
-        # print(f"median score: {median_score}")
         selected_candidates = []
         for i, candidate in enumerate(candidates):
             if competition_scores[i] >= median_score:
                 selected_candidates.append(candidate)
-        # print(f"nb candidates after competition: {len(selected_candidates)}")
-        # final_fitness_values = [c.get("reward", 0.0) for c in selected_candidates]
-        # print(f"final fitness score: {final_fitness_values}")
         return selected_candidates
-            
+
     async def on_epoch_end(
         self,
         epoch,

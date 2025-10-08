@@ -3,8 +3,10 @@
 
 from synalinks.src import tree
 from synalinks.src.api_export import synalinks_export
+from synalinks.src.backend import is_observability_enabled
 from synalinks.src.hooks.hook import Hook
 from synalinks.src.hooks.logger import Logger
+from synalinks.src.hooks.monitor import Monitor
 
 
 @synalinks_export("synalinks.hooks.HookList")
@@ -40,6 +42,9 @@ class HookList(Hook):
         self.set_module(module)
         self.set_params(params)
 
+    def add_hook(self, hook):
+        self.hooks.append(hook)
+
     def set_params(self, params):
         self.params = params
         if params:
@@ -48,6 +53,7 @@ class HookList(Hook):
 
     def _add_default_hooks(self, add_logger):
         self._logger = None
+        self._monitor = None
 
         for hook in self.hooks:
             if isinstance(hook, Logger):
@@ -56,6 +62,10 @@ class HookList(Hook):
         if self._logger is None and add_logger:
             self._logger = Logger()
             self.hooks.append(self._logger)
+
+        if self._monitor is None and is_observability_enabled():
+            self._monitor = Monitor()
+            self.hooks.append(self._monitor)
 
     def set_module(self, module):
         if not module:

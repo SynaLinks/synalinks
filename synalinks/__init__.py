@@ -62,6 +62,7 @@ from synalinks.api import TripletSearch
 from synalinks.api import UpdateKnowledge
 from synalinks.api import Xor
 from synalinks.api import __version__
+from synalinks.api import api_base
 from synalinks.api import backend
 from synalinks.api import callbacks
 from synalinks.api import clear_session
@@ -70,6 +71,7 @@ from synalinks.api import datasets
 from synalinks.api import default_prompt_template
 from synalinks.api import embedding_models
 from synalinks.api import enable_logging
+from synalinks.api import enable_observability
 from synalinks.api import get_seed
 from synalinks.api import hooks
 from synalinks.api import initializers
@@ -82,6 +84,7 @@ from synalinks.api import is_entities
 from synalinks.api import is_entity
 from synalinks.api import is_instructions
 from synalinks.api import is_knowledge_graph
+from synalinks.api import is_observability_enabled
 from synalinks.api import is_prediction
 from synalinks.api import is_relation
 from synalinks.api import is_relations
@@ -98,6 +101,7 @@ from synalinks.api import optimizers
 from synalinks.api import programs
 from synalinks.api import rewards
 from synalinks.api import saving
+from synalinks.api import set_api_base
 from synalinks.api import set_seed
 from synalinks.api import synalinks_home
 from synalinks.api import tree

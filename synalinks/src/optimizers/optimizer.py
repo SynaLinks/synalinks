@@ -315,7 +315,7 @@ class Optimizer(SynalinksSaveable):
         """
         mask = list(Trainable.keys())
         mask.remove("examples")
-        
+
         for trainable_variable in trainable_variables:
             seed_candidates = trainable_variable.get("seed_candidates")
             masked_variable = out_mask_json(
@@ -397,11 +397,17 @@ class Optimizer(SynalinksSaveable):
             selected_candidates = sorted_candidates[: self.population_size]
             trainable_variable.update(
                 {
-                    "predictions": [],
-                    "candidates": [],
                     "best_candidates": selected_candidates,
                 }
             )
+            best_candidate = selected_candidates[0]
+            history = trainable_variable.get("history")
+            if len(history) > 0:
+                last_candidate = history[-1]
+                if last_candidate != best_candidate:
+                    history.append(best_candidate)
+            else:
+                history.append(best_candidate)
         self.increment_epochs()
 
     async def on_batch_begin(
@@ -470,21 +476,16 @@ class Optimizer(SynalinksSaveable):
             trainable_variables (list): The list of trainable variables
         """
         for trainable_variable in trainable_variables:
+            candidates = trainable_variable.get("candidates")
             best_candidates = trainable_variable.get("best_candidates")
+            all_candidates = candidates + best_candidates
             if len(best_candidates) > 0:
                 sorted_candidates = sorted(
-                    best_candidates,
+                    all_candidates,
                     key=lambda x: x.get("reward"),
                     reverse=True,
                 )
                 best_candidate = sorted_candidates[0]
-                history = trainable_variable.get("history")
-                if len(history) > 0:
-                    last_candidate = history[-1]
-                    if last_candidate != best_candidate:
-                        history.append(best_candidate)
-                else:
-                    history.append(best_candidate)
                 best_candidate = out_mask_json(
                     best_candidate,
                     mask=["reward"],
@@ -537,13 +538,13 @@ class Optimizer(SynalinksSaveable):
             trainable_variables,
             reward=reward,
         )
-        
+
         if self.trainable_variables and self.meta_optimizer and step > 0:
             await self.meta_optimizer.assign_reward_to_predictions(
                 self.trainable_variables,
                 reward=reward,
             )
-            
+
             await self.meta_optimizer.propose_new_candidates(
                 step,
                 self.trainable_variables,
@@ -568,7 +569,7 @@ class Optimizer(SynalinksSaveable):
             y=val_y,
             y_pred=y_pred,
         )
-        
+
         for trainable_variable in trainable_variables:
             await self.maybe_add_candidate(
                 step,

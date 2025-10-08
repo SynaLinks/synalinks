@@ -21,4 +21,4 @@ to maximize the reward.
 
 - [Base Optimizer class](Base Optimizer class.md)
 - [RandomFewShot optimizer](RandomFewShot.md)
-- [OMEGAEvolve optimizer](OMEGAEvolve.md)
+- [OMEGA optimizer](OMEGA.md)

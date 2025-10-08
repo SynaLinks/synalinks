@@ -1,7 +1,9 @@
+from synalinks.src.backend.config import api_base
 from synalinks.src.backend.config import api_key
 from synalinks.src.backend.config import backend
 from synalinks.src.backend.config import epsilon
 from synalinks.src.backend.config import floatx
+from synalinks.src.backend.config import is_observability_enabled
 
 if backend() == "pydantic":
     import pydantic

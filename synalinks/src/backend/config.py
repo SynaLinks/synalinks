@@ -23,11 +23,11 @@ _SYNALINKS_API_KEY = None
 # Default backend: Pydantic.
 _BACKEND = "pydantic"
 
-# Default monitoring api base
-_MONITORING_API_BASE = "http://localhost:4242"
+# Default Synalinks api base
+_SYNALINKS_API_BASE = "http://localhost:4248"
 
 # Enable monitoring
-_ENABLE_MONITORING = False
+_ENABLE_OBSERVABILITY = False
 
 # Available backends
 _AVAILABLE_BACKEND = ["pydantic"]
@@ -218,27 +218,75 @@ def enable_logging(filename=None, debug=False):
 
 @synalinks_export(
     [
-        "synalinks.config.enable_monitoring",
-        "synalinks.backend.enable_monitoring",
-        "synalinks.enable_monitoring",
+        "synalinks.config.is_observability_enabled",
+        "synalinks.backend.is_observability_enabled",
+        "synalinks.is_observability_enabled",
     ]
 )
-def enable_monitoring(api_base=None):
-    """
-    Configures and enables monitoring for the application.
+def is_observability_enabled():
+    """Check if the observability is enabled
 
-    This function sets up the observability configuration for the application, 
-    allowing traces and logs to be send to Synalinks Laboratory.
-    
+    Returns:
+        (bool): True if the observability is enabled.
+    """
+    return _ENABLE_OBSERVABILITY
+
+
+@synalinks_export(
+    [
+        "synalinks.config.api_base",
+        "synalinks.backend.api_base",
+        "synalinks.api_base",
+    ]
+)
+def api_base():
+    """Returns the Synalinks api base
+
+    Returns:
+        (str): The observability api base
+    """
+    return _API_BASE
+
+
+@synalinks_export(
+    [
+        "synalinks.config.set_api_base",
+        "synalinks.backend.set_api_base",
+        "synalinks.set_api_base",
+    ]
+)
+def set_api_base(api_base):
+    """Set the observability api base
+
+    Args:
+        api_base (str): The observability api base
+    """
+    global _SYNALINKS_API_BASE
+    _SYNALINKS_API_BASE = api_base
+
+
+@synalinks_export(
+    [
+        "synalinks.config.enable_observability",
+        "synalinks.backend.enable_observability",
+        "synalinks.enable_observability",
+    ]
+)
+def enable_observability(api_base=None):
+    """
+    Configures and enables observability for the application.
+
+    This function sets up the observability configuration for the application,
+    allowing traces and logs to be send to Synalinks Lab.
+
     Args:
         api_base (str): Optional. The api base to send the traces and logs to.
     """
-    global _MONITORING_API_BASE
-    global _ENABLE_MONITORING
+    global _SYNALINKS_API_BASE
+    global _ENABLE_OBSERVABILITY
     if api_base:
-        _MONITORING_API_BASE = api_base
-    
-    _ENABLE_MONITORING = True
+        _SYNALINKS_API_BASE = api_base
+    _ENABLE_OBSERVABILITY = True
 
 
 @synalinks_export(
@@ -363,11 +411,14 @@ if os.path.exists(_config_path):
     assert isinstance(_epsilon, float)
     _seed = _config.get("seed", _RANDOM_SEED)
     assert isinstance(_seed, int)
+    _api_base = _config.get("api_base", _SYNALINKS_API_BASE)
+    assert isinstance(_api_base, str)
 
     set_backend(_backend)
     set_floatx(_floatx)
     set_epsilon(_epsilon)
     set_seed(_seed)
+    set_api_base(_api_base)
 
 # Save config file, if possible.
 if not os.path.exists(_synalinks_DIR):
@@ -384,6 +435,7 @@ if not os.path.exists(_config_path):
         "floatx": _FLOATX,
         "epsilon": _EPSILON,
         "seed": _RANDOM_SEED,
+        "api_base": _SYNALINKS_API_BASE,
     }
     try:
         with open(_config_path, "w") as f:

@@ -70,7 +70,8 @@ class Trainer:
 
         Args:
             optimizer (Optimizer): Optimizer instance. See `synalinks.optimizers`.
-            meta_optimizer (Optimizer): Optimizer instance. See `synalinks.optimizers`.
+            meta_optimizer (Optimizer): Experimental feature, use at your own risk.
+                Optional. Optimizer instance. See `synalinks.optimizers`.
             reward (Reward): Reward function. A `synalinks.rewards.Reward`
                 instance. See `synalinks.rewards`. A reward function is
                 any callable with the signature `reward = fn(y_true, y_pred)`,
@@ -338,7 +339,7 @@ class Trainer:
         self,
         x=None,
         y=None,
-        batch_size=None,
+        batch_size=1,
         epochs=1,
         verbose="auto",
         callbacks=None,
@@ -348,7 +349,7 @@ class Trainer:
         initial_epoch=0,
         steps_per_epoch=None,
         validation_steps=None,
-        validation_batch_size=None,
+        validation_batch_size=32,
         validation_freq=1,
     ):
         """Trains the program for a fixed number of epochs (dataset iterations).
@@ -670,7 +671,7 @@ class Trainer:
         self,
         x=None,
         y=None,
-        batch_size=None,
+        batch_size=32,
         verbose="auto",
         steps=None,
         callbacks=None,
@@ -694,7 +695,7 @@ class Trainer:
                 `x`.
             batch_size (int): Integer or `None`.
                 Number of samples per batch of computation.
-                If unspecified, `batch_size` will default to 1.
+                If unspecified, `batch_size` will default to 32.
                 Do not specify the `batch_size` if your input data `x` is a
                 Python generator function since they generate batches.
             verbose (int | str): `"auto"`, 0, 1, or 2. Verbosity mode.
@@ -778,7 +779,7 @@ class Trainer:
             callbacks.on_test_batch_end(step, logs)
             if self.stop_evaluating:
                 break
-        logs = self._get_metrics_result_or_logs(logs)
+        logs = self.get_metrics_result()
         callbacks.on_test_end(logs)
 
         if return_dict:
@@ -949,7 +950,6 @@ class Trainer:
             y_pred=y_pred,
             training=False,
         )
-
         await self._reward_tracker.update_state(reward)
 
         metrics = await self.compute_metrics(x, y, y_pred)

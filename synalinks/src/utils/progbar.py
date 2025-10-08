@@ -20,9 +20,6 @@ class Progbar:
         target: Total number of steps expected, None if unknown.
         width: Progress bar width on screen.
         verbose: Verbosity mode, 0 (silent), 1 (verbose), 2 (semi-verbose)
-        stateful_metrics: Iterable of string names of metrics that should *not*
-            be averaged over time. Metrics in this list will be displayed as-is.
-            All others will be averaged by the progbar before display.
         interval: Minimum visual progress update interval (in seconds).
         unit_name: Display name for step counts (usually "step" or "sample").
     """
@@ -33,7 +30,6 @@ class Progbar:
         width=20,
         verbose=1,
         interval=0.05,
-        stateful_metrics=None,
         unit_name="step",
     ):
         self.target = target
@@ -41,10 +37,6 @@ class Progbar:
         self.verbose = verbose
         self.interval = interval
         self.unit_name = unit_name
-        if stateful_metrics:
-            self.stateful_metrics = set(stateful_metrics)
-        else:
-            self.stateful_metrics = set()
 
         self._dynamic_display = (
             (hasattr(sys.stdout, "isatty") and sys.stdout.isatty())
@@ -68,10 +60,7 @@ class Progbar:
 
         Args:
             current: Index of current step.
-            values: List of tuples: `(name, value_for_last_step)`. If `name` is
-                in `stateful_metrics`, `value_for_last_step` will be displayed
-                as-is. Else, an average of the metric over time will be
-                displayed.
+            values: List of tuples: `(name, value_for_last_step)`.
             finalize: Whether this is the last update for the progress bar. If
                 `None`, defaults to `current >= self.target`.
         """
@@ -85,23 +74,7 @@ class Progbar:
         for k, v in values:
             if k not in self._values_order:
                 self._values_order.append(k)
-            if k not in self.stateful_metrics:
-                # In the case that progress bar doesn't have a target value in
-                # the first epoch, both on_batch_end and on_epoch_end will be
-                # called, which will cause 'current' and 'self._seen_so_far' to
-                # have the same value. Force the minimal value to 1 here,
-                # otherwise stateful_metric will be 0s.
-                value_base = max(current - self._seen_so_far, 1)
-                if k not in self._values:
-                    self._values[k] = [v * value_base, value_base]
-                else:
-                    self._values[k][0] += v * value_base
-                    self._values[k][1] += value_base
-            else:
-                # Stateful metrics output a numeric value. This representation
-                # means "take an average from a single value" but keeps the
-                # numeric formatting.
-                self._values[k] = [v, 1]
+            self._values[k] = [v, 1]
         self._seen_so_far = current
 
         message = ""

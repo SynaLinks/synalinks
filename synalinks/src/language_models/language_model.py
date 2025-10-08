@@ -7,13 +7,13 @@ import warnings
 
 import litellm
 
-litellm.drop_params = True
-
 from synalinks.src.api_export import synalinks_export
 from synalinks.src.backend import ChatRole
 from synalinks.src.saving import serialization_lib
 from synalinks.src.saving.synalinks_saveable import SynalinksSaveable
 from synalinks.src.utils.nlp_utils import shorten_text
+
+litellm.drop_params = True
 
 
 @synalinks_export(
@@ -124,6 +124,19 @@ class LanguageModel(SynalinksSaveable):
 
     language_model = synalinks.LanguageModel(
         model="gemini/gemini-1.5-pro",
+    )
+    ```
+
+    **Using XAI models**
+
+    ```python
+    import synalinks
+    import os
+
+    os.environ["XAI_API_KEY"] = "your-api-key"
+
+    language_model = synalinks.LanguageModel(
+        model="xai/grok-code-fast-1",
     )
     ```
 
@@ -283,7 +296,9 @@ class LanguageModel(SynalinksSaveable):
                     {
                         "response_format": {
                             "type": "json_schema",
-                            "json_schema": schema,
+                            "json_schema": {
+                                "schema": schema,
+                            },
                             "strict": True,
                         }
                     }
@@ -293,7 +308,9 @@ class LanguageModel(SynalinksSaveable):
                     {
                         "response_format": {
                             "type": "json_schema",
-                            "json_schema": schema,
+                            "json_schema": {
+                                "schema": schema,
+                            },
                             "strict": True,
                         }
                     }
