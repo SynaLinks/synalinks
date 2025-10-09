@@ -141,7 +141,7 @@ async def similarity_distance(candidate1, candidate2, embedding_model=None, axis
     embeddings1 = np.mean(embeddings1, axis=0)
     embeddings1 = np.mean(embeddings2, axis=0)
     similarity = (np.sum(embeddings1 * embeddings2, axis=axis) + 1) / 2
-    return 1 - np.mean(similarity)
+    return 1 - similarity
 
 
 @synalinks_export("synalinks.optimizers.OMEGA")
