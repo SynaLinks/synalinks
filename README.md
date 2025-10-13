@@ -48,9 +48,9 @@ Synalinks is designed for a diverse range of users, from professionals and AI re
 
 Developping a successful LM application in a profesional context, beyond stateless chatbots, is difficult and typically include:
 
-- **Building optimized prompts with examples/instructions at each step**: Synalinks uses advanced In-Context Reinforcement Learning techniques to optimize **each** prompt of your workflow/agent.
+- **Building optimized prompts with examples/instructions at each step**: Synalinks uses advanced In-Context Reinforcement Learning techniques to optimize **each** prompt/code/rules of your workflow/agent using our SOTA optimizers.
 - **Pipelines that change over time**: Easily edit your pipelines, re-run your training, and you're good to go.
-- **Ensuring the correctness of the LMs output**: Synalinks combines *constrained structured output* with In-Context RL to ensure **both format and content correctness**.
+- **Ensuring the correctness of the LMs output**: Synalinks combines **constrained structured output** with In-Context RL to ensure **both format and content correctness**.
 - **Async Optimization**: Synalinks automatically optimizes your pipelines by detecting parallel processes, so you don't have to worry about it.
 - **Assessing the performance of your application**: Synalinks provides built-in metrics and rewards to evaluate your workflows.
 - **Configuring Language & Embedding Models**: Seamlessly integrate multiple LM providers like Ollama, OpenAI, Azure, Anthropic, Mistral or Groq.
@@ -64,13 +64,13 @@ We can help you simplify these tasks by leveraging decade old practices in Deep 
 
 <div align="center">
 
-| Framework | MCP | Graph DB | Logical Flow | Robust Branching | Parallel Function Calling | Hyperparameter Tuning | Constrained JSON Decoding | Ease of Use |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| Synalinks | ✅ Yes | ✅ Yes | ✅ Yes | ✅ Yes | ✅ Yes | ✅ Yes | ✅ Yes | 😀 |
-| DSPy      | ✅ Yes | ❌ No | ❌ No | ❌ No | ❌ No | ❌ No | ❌ No | 😢 |
-| AdalFlow  | ✅ Yes | ❌ No | ❌ No | ❌ No | ❌ No | ❌ No | ❌ No | 😢 |
-| TextGrad  | ❌ No | ❌ No | ❌ No | ❌ No | ❌ No | ❌ No | ❌ No | 😭 |
-| Trace     | ❌ No | ❌ No | ❌ No | ❌ No | ❌ No | ❌ No | ✅ Yes | 😭 |
+| Framework | MCP | Graph DB | Logical Flow | Robust Branching | Parallel Function Calling | Hyperparameter Tuning | Ease of Use |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| Synalinks | ✅ Yes | ✅ Yes | ✅ Yes | ✅ Yes | ✅ Yes | ✅ Yes | 😀 |
+| DSPy      | ✅ Yes | ❌ No | ❌ No | ❌ No | ❌ No | ❌ No | 😢 |
+| AdalFlow  | ✅ Yes | ❌ No | ❌ No | ❌ No | ❌ No | ❌ No | 😢 |
+| TextGrad  | ❌ No | ❌ No | ❌ No | ❌ No | ❌ No | ❌ No  | 😭 |
+| Trace     | ❌ No | ❌ No | ❌ No | ❌ No | ❌ No | ❌ No  | 😭 |
 
 </div>
 

@@ -1,3 +1,5 @@
+# License Apache 2.0: (c) 2025 Yoan Sallami (Synalinks Team)
+
 import copy
 import sys
 import traceback
@@ -5,6 +7,10 @@ from io import StringIO
 
 import jsonschema
 from jsonschema import ValidationError
+
+import asyncio
+from concurrent.futures import ThreadPoolExecutor
+import threading
 
 from synalinks.src import ops
 from synalinks.src.api_export import synalinks_export
@@ -14,6 +20,11 @@ from synalinks.src.backend import JsonDataModel
 from synalinks.src.backend import SymbolicDataModel
 from synalinks.src.backend import Trainable
 from synalinks.src.modules.module import Module
+
+
+class TimeoutException(Exception):
+    """Exception raised when script execution times out"""
+    pass
 
 
 class PythonScript(Trainable):
@@ -60,7 +71,7 @@ class PythonSynthesis(Module):
     default_python_script = \\
     \"\"\"
     def transform(inputs: Dict[str, Any]) -> Dict[str, Any]:
-        # TODO implement the code
+        # TODO implement the code to transform the input grid into the output grid
         return {"output_grid": inputs.get("input_grid")}
         
     result = transform(inputs)
@@ -79,6 +90,8 @@ class PythonSynthesis(Module):
         program = synalinks.Program(
             inputs=inputs,
             outputs=outputs,
+            name="python_script_synthesis",
+            description="A program to solve ARCAGI with python code",
         )
     ```
     
@@ -95,6 +108,7 @@ class PythonSynthesis(Module):
         seed_scripts (list): Optional. A list of Python scripts to use as seed for the evolution.
             If not provided, create a seed from the default configuration.
         default_return_value (dict): Default return value.
+        timeout (int): Maximum execution time in seconds. (Default 5 seconds).
         name (str): Optional. The name of the module.
         description (str): Optional. The description of the module.
         trainable (bool): Whether the module's variables should be trainable.
@@ -107,6 +121,7 @@ class PythonSynthesis(Module):
         python_script=None,
         seed_scripts=None,
         default_return_value=None,
+        timeout=5,
         sandbox=False,
         name=None,
         description=None,
@@ -135,6 +150,7 @@ class PythonSynthesis(Module):
             )
 
         self.default_return_value = default_return_value
+        self.timeout = timeout
 
         if not seed_scripts:
             seed_scripts = []
@@ -152,49 +168,77 @@ class PythonSynthesis(Module):
             data_model=PythonScript,
             name=self.name + "_state",
         )
-
+        
     async def execute(self, inputs, python_script):
-        value = None
-        stdout = ""
-        stderr = ""
-
-        # Capture stdout and stderr
-        old_stdout = sys.stdout
-        old_stderr = sys.stderr
-        sys.stdout = StringIO()
-        sys.stderr = StringIO()
-
-        try:
-            # Create a local namespace with the inputs
-            local_namespace = {"inputs": copy.deepcopy(inputs.get_json())}
-
-            # Execute the entire script
-            exec(python_script, local_namespace)
-
-            # Look for the result variable in the namespace
-            if "result" in local_namespace:
-                result = local_namespace["result"]
-
-                if result:
-                    try:
-                        jsonschema.validate(result, self.schema)
-                    except ValidationError as validation_error:
-                        stderr += f"Validation Error: {validation_error}\n"
-                        result = None
-            else:
-                stderr += "Error: No 'result' variable found after script execution\n"
-                result = None
-
-        except Exception as e:
-            stderr += f"Error: {str(e)}\n"
-            stderr += traceback.format_exc()
+        """Execute the Python script with timeout using asyncio and threading."""
+        
+        def _execute_in_thread():
+            """Execute the script in a separate thread to enable timeout."""
             result = None
+            stdout = ""
+            stderr = ""
+            
+            # Capture stdout and stderr
+            old_stdout = sys.stdout
+            old_stderr = sys.stderr
+            sys.stdout = StringIO()
+            sys.stderr = StringIO()
+            
+            try:
+                # Create a local namespace with the inputs
+                local_namespace = {"inputs": copy.deepcopy(inputs.get_json())}
+                
+                # Execute the entire script
+                exec(python_script, local_namespace)
+                
+                # Look for the result variable in the namespace
+                if "result" in local_namespace:
+                    result = local_namespace["result"]
+                    
+                    if result:
+                        try:
+                            jsonschema.validate(result, self.schema)
+                        except ValidationError as validation_error:
+                            stderr_capture = sys.stderr.getvalue()
+                            stdout_capture = sys.stdout.getvalue()
+                            sys.stdout = old_stdout
+                            sys.stderr = old_stderr
+                            return None, stdout_capture, stderr_capture + f"Validation Error: {validation_error}\n"
+                else:
+                    stderr_capture = sys.stderr.getvalue()
+                    stdout_capture = sys.stdout.getvalue()
+                    sys.stdout = old_stdout
+                    sys.stderr = old_stderr
+                    return None, stdout_capture, stderr_capture + "Error: No 'result' variable found after script execution\n"
+                    
+            except Exception as e:
+                stderr_capture = sys.stderr.getvalue()
+                stdout_capture = sys.stdout.getvalue()
+                sys.stdout = old_stdout
+                sys.stderr = old_stderr
+                return None, stdout_capture, stderr_capture + f"Error: {str(e)}\n{traceback.format_exc()}"
+            finally:
+                stdout = sys.stdout.getvalue()
+                stderr = sys.stderr.getvalue()
+                sys.stdout = old_stdout
+                sys.stderr = old_stderr
+            
+            return result, stdout, stderr
+        
+        loop = asyncio.get_event_loop()
+        executor = ThreadPoolExecutor(max_workers=1)
+        
+        try:
+            result, stdout, stderr = await asyncio.wait_for(
+                loop.run_in_executor(executor, _execute_in_thread),
+                timeout=self.timeout
+            )
+        except asyncio.TimeoutError:
+            executor.shutdown(wait=False, cancel_futures=True)
+            return None, "", f"Timeout Error: Script execution exceeded {self.timeout} second(s)\n"
         finally:
-            stdout = sys.stdout.getvalue()
-            stderr += sys.stderr.getvalue()
-            sys.stdout = old_stdout
-            sys.stderr = old_stderr
-
+            executor.shutdown(wait=False)
+        
         return result, stdout, stderr
 
     async def call(self, inputs, training=False):

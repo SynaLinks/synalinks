@@ -348,7 +348,7 @@ class DataModel(pydantic.BaseModel, SynalinksSaveable, metaclass=MetaDataModel):
             default (any): The default value if key not found.
         """
         try:
-            self.__getattribute__(key)
+            return self.__getattribute__(key)
         except Exception:
             return default
 
