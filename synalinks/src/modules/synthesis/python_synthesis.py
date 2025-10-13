@@ -5,12 +5,13 @@ import sys
 import traceback
 from io import StringIO
 
+import multiprocessing
+from multiprocessing import Process, Queue
+
 import jsonschema
 from jsonschema import ValidationError
 
 import asyncio
-from concurrent.futures import ThreadPoolExecutor
-import threading
 
 from synalinks.src import ops
 from synalinks.src.api_export import synalinks_export
@@ -38,6 +39,60 @@ class PythonScript(Trainable):
 class PythonConsoleLog(DataModel):
     stdout: str = Field(description="The python console's stdout")
     stderr: str = Field(description="The python console's stderr")
+
+
+def _execute_script_in_process(python_script, inputs_json, schema, result_queue):
+    """Execute the script in a separate process.
+    
+    This function runs in a separate process and can be forcefully terminated.
+    """
+    result = None
+    
+    # Capture stdout and stderr
+    old_stdout = sys.stdout
+    old_stderr = sys.stderr
+    stdout_capture = StringIO()
+    stderr_capture = StringIO()
+    sys.stdout = stdout_capture
+    sys.stderr = stderr_capture
+    
+    try:
+        # Create a local namespace with the inputs
+        local_namespace = {"inputs": copy.deepcopy(inputs_json)}
+        
+        # Execute the entire script
+        exec(python_script, local_namespace)
+        
+        # Look for the result variable in the namespace
+        if "result" in local_namespace:
+            result = local_namespace["result"]
+            
+            if result:
+                try:
+                    jsonschema.validate(result, schema)
+                except ValidationError as validation_error:
+                    stdout = stdout_capture.getvalue()
+                    stderr = stderr_capture.getvalue() + f"Validation Error: {validation_error}\n"
+                    result_queue.put((None, stdout, stderr))
+                    return
+        else:
+            stdout = stdout_capture.getvalue()
+            stderr = stderr_capture.getvalue() + "Error: No 'result' variable found after script execution\n"
+            result_queue.put((None, stdout, stderr))
+            return
+            
+    except Exception as e:
+        stdout = stdout_capture.getvalue()
+        stderr = stderr_capture.getvalue() + f"Error: {str(e)}\n{traceback.format_exc()}"
+        result_queue.put((None, stdout, stderr))
+        return
+    finally:
+        stdout = stdout_capture.getvalue()
+        stderr = stderr_capture.getvalue()
+        sys.stdout = old_stdout
+        sys.stderr = old_stderr
+    
+    result_queue.put((result, stdout, stderr))
 
 
 @synalinks_export(
@@ -70,7 +125,7 @@ class PythonSynthesis(Module):
     
     default_python_script = \\
     \"\"\"
-    def transform(inputs: Dict[str, Any]) -> Dict[str, Any]:
+    def transform(inputs):
         # TODO implement the code to transform the input grid into the output grid
         return {"output_grid": inputs.get("input_grid")}
         
@@ -170,76 +225,41 @@ class PythonSynthesis(Module):
         )
         
     async def execute(self, inputs, python_script):
-        """Execute the Python script with timeout using asyncio and threading."""
+        """Execute the Python script with timeout using multiprocessing.
+        """
+        result_queue = Queue()
         
-        def _execute_in_thread():
-            """Execute the script in a separate thread to enable timeout."""
-            result = None
-            stdout = ""
-            stderr = ""
-            
-            # Capture stdout and stderr
-            old_stdout = sys.stdout
-            old_stderr = sys.stderr
-            sys.stdout = StringIO()
-            sys.stderr = StringIO()
-            
-            try:
-                # Create a local namespace with the inputs
-                local_namespace = {"inputs": copy.deepcopy(inputs.get_json())}
-                
-                # Execute the entire script
-                exec(python_script, local_namespace)
-                
-                # Look for the result variable in the namespace
-                if "result" in local_namespace:
-                    result = local_namespace["result"]
-                    
-                    if result:
-                        try:
-                            jsonschema.validate(result, self.schema)
-                        except ValidationError as validation_error:
-                            stderr_capture = sys.stderr.getvalue()
-                            stdout_capture = sys.stdout.getvalue()
-                            sys.stdout = old_stdout
-                            sys.stderr = old_stderr
-                            return None, stdout_capture, stderr_capture + f"Validation Error: {validation_error}\n"
-                else:
-                    stderr_capture = sys.stderr.getvalue()
-                    stdout_capture = sys.stdout.getvalue()
-                    sys.stdout = old_stdout
-                    sys.stderr = old_stderr
-                    return None, stdout_capture, stderr_capture + "Error: No 'result' variable found after script execution\n"
-                    
-            except Exception as e:
-                stderr_capture = sys.stderr.getvalue()
-                stdout_capture = sys.stdout.getvalue()
-                sys.stdout = old_stdout
-                sys.stderr = old_stderr
-                return None, stdout_capture, stderr_capture + f"Error: {str(e)}\n{traceback.format_exc()}"
-            finally:
-                stdout = sys.stdout.getvalue()
-                stderr = sys.stderr.getvalue()
-                sys.stdout = old_stdout
-                sys.stderr = old_stderr
-            
-            return result, stdout, stderr
+        process = Process(
+            target=_execute_script_in_process,
+            args=(python_script, inputs.get_json(), self.schema, result_queue)
+        )
+        process.start()
         
-        loop = asyncio.get_event_loop()
-        executor = ThreadPoolExecutor(max_workers=1)
+        start_time = asyncio.get_event_loop().time()
+        timeout_remaining = self.timeout
         
-        try:
-            result, stdout, stderr = await asyncio.wait_for(
-                loop.run_in_executor(executor, _execute_in_thread),
-                timeout=self.timeout
-            )
-        except asyncio.TimeoutError:
-            executor.shutdown(wait=False, cancel_futures=True)
+        while process.is_alive() and timeout_remaining > 0:
+            await asyncio.sleep(0.1)
+            elapsed = asyncio.get_event_loop().time() - start_time
+            timeout_remaining = self.timeout - elapsed
+        
+        if process.is_alive():
+            process.terminate()
+            process.join(timeout=1)
+            
+            if process.is_alive():
+                process.kill()
+                process.join()
+            
             return None, "", f"Timeout Error: Script execution exceeded {self.timeout} second(s)\n"
-        finally:
-            executor.shutdown(wait=False)
         
-        return result, stdout, stderr
+        process.join()
+        
+        if not result_queue.empty():
+            result, stdout, stderr = result_queue.get()
+            return result, stdout, stderr
+        else:
+            return None, "", "Error: Process terminated unexpectedly\n"
 
     async def call(self, inputs, training=False):
         if not inputs:
