@@ -120,7 +120,7 @@ async def similarity_distance(candidate1, candidate2, embedding_model=None, axis
     """The default cosine similarity distance used by Dominated Novelty Search
 
     If the candidates have multiple fields, they are combined by averaging the
-    vector before calculating the distance allowing candidates to have
+    vectors before calculating the distance allowing candidates to have
     variable/dynamic number of fields.
 
     Args:
@@ -194,7 +194,7 @@ class OMEGA(RandomFewShot):
         - DeepMind's AlphaEvolve have been a huge inspiration, more on the motivational side as they didn't released the code.
 
     References:
-        - [Dominated Novelty Search: Rethinking Local Competition in Quality-Diversity](https://arxiv.org/html/2502.00593v1#S5.SS1.SSS3)
+        - [Dominated Novelty Search: Rethinking Local Competition in Quality-Diversity](https://arxiv.org/html/2502.00593v1)
         - [GEPA: Reflective Prompt Evolution Can Outperform Reinforcement Learning](https://arxiv.org/pdf/2507.19457)
         - [AlphaEvolve: A coding agent for scientific and algorithmic discovery](https://arxiv.org/pdf/2506.13131)
 

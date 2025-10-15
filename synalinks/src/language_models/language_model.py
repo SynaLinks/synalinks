@@ -14,7 +14,7 @@ from synalinks.src.saving.synalinks_saveable import SynalinksSaveable
 from synalinks.src.utils.nlp_utils import shorten_text
 
 litellm.drop_params = True
-
+litellm.disable_aiohttp_transport = True
 
 @synalinks_export(
     [
@@ -170,7 +170,7 @@ class LanguageModel(SynalinksSaveable):
         retry (int): Optional. The number of retry (default to 5).
         fallback (LanguageModel): Optional. The language model to fallback
             if anything is wrong.
-        caching (bool): Optional. Enable caching of LM calls (Default to True).
+        caching (bool): Optional. Enable caching of LM calls (Default to False).
     """
 
     def __init__(
@@ -180,7 +180,7 @@ class LanguageModel(SynalinksSaveable):
         timeout=600,
         retry=5,
         fallback=None,
-        caching=True,
+        caching=False,
     ):
         if model is None:
             raise ValueError("You need to set the `model` argument for any LanguageModel")

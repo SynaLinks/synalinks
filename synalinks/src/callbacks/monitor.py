@@ -5,7 +5,7 @@ import logging
 import time
 import uuid
 
-import aiohttp
+import requests
 
 from synalinks.src.api_export import synalinks_export
 from synalinks.src.backend import api_base
@@ -37,7 +37,6 @@ class Monitor(Callback):
         if api_key() is not None and not headers:
             headers = {"Authorization": api_key()}
         self.headers = headers or {}
-        self._session = None
         self.call_start_times = {}
         self._pending_tasks = []
         self.logger = logging.getLogger(__name__)
@@ -45,31 +44,30 @@ class Monitor(Callback):
         self._epoch_start_times = {}
         self._batch_start_times = {}
 
-    async def _get_session(self):
-        """Get or create aiohttp session."""
-        if self._session is None or self._session.closed:
-            self._session = aiohttp.ClientSession(headers=self.headers)
-        return self._session
-
     async def _post_trace(self, data: dict):
         """POST trace data to the endpoint asynchronously."""
         url = f"{self.endpoint}/trace"
 
         try:
-            session = await self._get_session()
-            async with session.post(
-                url,
-                json=data,
-                timeout=aiohttp.ClientTimeout(total=self.timeout),
-            ) as response:
-                response.raise_for_status()
-                self.logger.debug(
-                    f"Trace sent successfully: {data.get('event')} for {data.get('phase')}"
+            loop = asyncio.get_event_loop()
+            # Run requests in executor to make it non-blocking
+            response = await loop.run_in_executor(
+                None,
+                lambda: requests.post(
+                    url,
+                    json=data,
+                    headers=self.headers,
+                    timeout=self.timeout,
                 )
-        except aiohttp.ClientError as e:
-            self.logger.error(f"Failed to send trace to {url}: {e}")
-        except asyncio.TimeoutError:
+            )
+            response.raise_for_status()
+            self.logger.debug(
+                f"Trace sent successfully: {data.get('event')} for {data.get('phase')}"
+            )
+        except requests.exceptions.Timeout:
             self.logger.error(f"Timeout sending trace to {url}")
+        except requests.exceptions.RequestException as e:
+            self.logger.error(f"Failed to send trace to {url}: {e}")
         except Exception as e:
             self.logger.error(f"Unexpected error sending trace: {e}")
 
@@ -240,14 +238,12 @@ class Monitor(Callback):
         self._send_trace_async(trace_data)
 
     async def _cleanup(self):
-        """Wait for pending tasks and close session."""
+        """Wait for pending tasks."""
         if self._pending_tasks:
             await asyncio.gather(*self._pending_tasks, return_exceptions=True)
-        if self._session and not self._session.closed:
-            await self._session.close()
 
     def __del__(self):
-        """Cleanup pending traces and close session."""
+        """Cleanup pending traces."""
         if hasattr(self, "_pending_tasks") and self._pending_tasks:
             try:
                 loop = asyncio.get_event_loop()

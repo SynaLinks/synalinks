@@ -1,6 +1,3 @@
-# Don't reveal our solution yet
-benchmarks/arcagi
-
 # byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]

@@ -338,9 +338,11 @@ class Optimizer(SynalinksSaveable):
             trainable_variables (list): The list of trainable variables
         """
         for variable in trainable_variables:
+            candidates = variable.get("candidates")
             best_candidates = variable.get("best_candidates")
+            all_candidates = candidates + best_candidates
             sorted_candidates = sorted(
-                best_candidates,
+                all_candidates,
                 key=lambda x: x.get("reward"),
                 reverse=True,
             )
@@ -385,6 +387,9 @@ class Optimizer(SynalinksSaveable):
             epoch (int): The epoch number
             trainable_variables (list): The list of trainable variables
         """
+        mask = list(Trainable.keys())
+        mask.remove("examples")
+        
         for trainable_variable in trainable_variables:
             candidates = trainable_variable.get("candidates")
             best_candidates = trainable_variable.get("best_candidates")
@@ -401,6 +406,15 @@ class Optimizer(SynalinksSaveable):
                 }
             )
             best_candidate = selected_candidates[0]
+            best_candidate = out_mask_json(
+                best_candidate,
+                mask=["reward"],
+            )
+            variable.update(
+                {
+                    **best_candidate,
+                },
+            )
             history = trainable_variable.get("history")
             if len(history) > 0:
                 last_candidate = history[-1]
@@ -520,9 +534,6 @@ class Optimizer(SynalinksSaveable):
         if not self.built:
             await self.build(trainable_variables)
 
-        if self.meta_optimizer and not self.meta_optimizer.built:
-            await self.meta_optimizer.build(self.trainable_variables)
-
         y_pred = await self.program.predict_on_batch(
             x=x,
             training=True,
@@ -539,24 +550,12 @@ class Optimizer(SynalinksSaveable):
             reward=reward,
         )
 
-        if self.trainable_variables and self.meta_optimizer and step > 0:
-            await self.meta_optimizer.assign_reward_to_predictions(
-                self.trainable_variables,
-                reward=reward,
-            )
-
-            await self.meta_optimizer.propose_new_candidates(
-                step,
-                self.trainable_variables,
-            )
-
         await self.propose_new_candidates(
             step,
             trainable_variables,
             x=x,
             y=y,
             y_pred=y_pred,
-            training=self.trainable_variables and self.meta_optimizer,
         )
 
         y_pred = await self.program.predict_on_batch(
@@ -576,14 +575,6 @@ class Optimizer(SynalinksSaveable):
                 trainable_variable,
                 reward=reward,
             )
-
-        if self.trainable_variables and self.meta_optimizer:
-            for trainable_variable in self.trainable_variables:
-                await self.meta_optimizer.maybe_add_candidate(
-                    step,
-                    trainable_variable,
-                    reward=reward,
-                )
 
         await self.reward_tracker.update_state(reward)
         metrics = await self.program.compute_metrics(val_x, val_y, y_pred)

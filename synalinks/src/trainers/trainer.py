@@ -38,7 +38,6 @@ class Trainer:
         )
         # Placeholders used in `compile`
         self._optimizer = None
-        self._meta_optimizer = None
         self._compile_reward = None
         self._compile_metrics = None
         self._reward_tracker = None
@@ -47,7 +46,6 @@ class Trainer:
     def compile(
         self,
         optimizer=None,
-        meta_optimizer=None,
         reward=None,
         reward_weights=None,
         metrics=None,
@@ -70,8 +68,6 @@ class Trainer:
 
         Args:
             optimizer (Optimizer): Optimizer instance. See `synalinks.optimizers`.
-            meta_optimizer (Optimizer): Experimental feature, use at your own risk.
-                Optional. Optimizer instance. See `synalinks.optimizers`.
             reward (Reward): Reward function. A `synalinks.rewards.Reward`
                 instance. See `synalinks.rewards`. A reward function is
                 any callable with the signature `reward = fn(y_true, y_pred)`,
@@ -108,9 +104,7 @@ class Trainer:
         """
         self._clear_previous_trainer_metrics()
         self._optimizer = optimizer
-        self._meta_optimizer = meta_optimizer
         self._optimizer.set_program(self)
-        self._optimizer.set_meta_optimizer(meta_optimizer)
 
         if hasattr(self, "output_names"):
             output_names = self.output_names
@@ -141,10 +135,6 @@ class Trainer:
     @property
     def optimizer(self):
         return self._optimizer
-
-    @property
-    def meta_optimizer(self):
-        return self._meta_optimizer
 
     @property
     def metrics(self):
@@ -515,13 +505,6 @@ class Trainer:
                 self.trainable_variables,
             )
 
-        if self.optimizer.trainable_variables and isinstance(
-            self.meta_optimizer, optimizers_module.Optimizer
-        ):
-            await self.meta_optimizer.on_train_begin(
-                self.optimizer.trainable_variables,
-            )
-
         for epoch in range(initial_epoch, epochs):
             self.reset_metrics()
 
@@ -531,14 +514,6 @@ class Trainer:
                 await self.optimizer.on_epoch_begin(
                     epoch,
                     self.trainable_variables,
-                )
-
-            if self.optimizer.trainable_variables and isinstance(
-                self.meta_optimizer, optimizers_module.Optimizer
-            ):
-                await self.meta_optimizer.on_epoch_begin(
-                    epoch,
-                    self.optimizer.trainable_variables,
                 )
 
             callbacks.on_epoch_begin(epoch)
@@ -554,15 +529,6 @@ class Trainer:
                             step,
                             epoch,
                             self.trainable_variables,
-                        )
-
-                    if self.optimizer.trainable_variables and isinstance(
-                        self.meta_optimizer, optimizers_module.Optimizer
-                    ):
-                        await self.meta_optimizer.on_batch_begin(
-                            step,
-                            epoch,
-                            self.optimizer.trainable_variables,
                         )
 
                     callbacks.on_train_batch_begin(step)
@@ -592,15 +558,6 @@ class Trainer:
                             step,
                             epoch,
                             self.trainable_variables,
-                        )
-
-                    if self.optimizer.trainable_variables and isinstance(
-                        self.meta_optimizer, optimizers_module.Optimizer
-                    ):
-                        await self.meta_optimizer.on_batch_end(
-                            step,
-                            epoch,
-                            self.optimizer.trainable_variables,
                         )
 
                     callbacks.on_train_batch_end(step, logs)
@@ -640,14 +597,6 @@ class Trainer:
                 await self.optimizer.on_epoch_end(
                     epoch,
                     self.trainable_variables,
-                )
-
-            if self.optimizer.trainable_variables and isinstance(
-                self.meta_optimizer, optimizers_module.Optimizer
-            ):
-                await self.meta_optimizer.on_epoch_end(
-                    epoch,
-                    self.optimizer.trainable_variables,
                 )
 
             callbacks.on_epoch_end(epoch, epoch_logs)
@@ -1014,12 +963,6 @@ class Trainer:
             # Create optimizer variables/programs.
             if not self.optimizer.built:
                 run_maybe_nested(self.optimizer.build(self.trainable_variables))
-            if hasattr(self, "meta_optimizer") and self.built:
-                # Create optimizer variables/programs.
-                if self.meta_optimizer and not self.meta_optimizer.built:
-                    run_maybe_nested(
-                        self.meta_optimizer.build(self.optimizer.trainable_variables)
-                    )
 
     def _should_reward(self, epoch, validation_freq):
         epoch = epoch + 1  # one-index the user-facing epoch.
@@ -1100,9 +1043,6 @@ class Trainer:
             self._compile_reward is not None and not self._compile_reward.built
         )
         optimizer_unbuilt = self.optimizer is not None and not self.optimizer.built
-        meta_optimizer_unbuilt = (
-            self.meta_optimizer is not None and not self.meta_optimizer.built
-        )
         if program_unbuilt or compile_metrics_unbuilt or compile_reward_unbuilt:
             if data_batch is None:
                 for _, data_or_iterator in iterator:
@@ -1150,10 +1090,6 @@ class Trainer:
         if optimizer_unbuilt:
             # Build optimizer
             run_maybe_nested(self.optimizer.build(self.trainable_variables))
-        if meta_optimizer_unbuilt:
-            run_maybe_nested(
-                self.meta_optimizer.build(self.optimizer.trainable_variables)
-            )
         self._post_build()
 
     def _assert_compile_called(self, method_name=None):

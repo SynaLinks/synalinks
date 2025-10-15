@@ -106,6 +106,7 @@ nav:
       - Synthesis Modules:
         - Synalinks API/Modules API/Synthesis Modules/index.md
         - Synalinks API/Modules API/Synthesis Modules/PythonSynthesis module.md
+        - Synalinks API/Modules API/Synthesis Modules/SequentialPlanSynthesis module.md
       - Agents Modules:
         - Synalinks API/Modules API/Agents Modules/index.md
         - Synalinks API/Modules API/Agents Modules/FunctionCallingAgent module.md
