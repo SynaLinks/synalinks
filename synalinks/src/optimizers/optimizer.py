@@ -85,7 +85,6 @@ class Optimizer(SynalinksSaveable):
 
         self.built = False
         self._program = None
-        self._optimizer = None
 
         self._initialize_tracker()
 
@@ -149,23 +148,6 @@ class Optimizer(SynalinksSaveable):
             (Program): The Synalinks program being optimized, or None if not set
         """
         return self._program
-
-    def set_meta_optimizer(self, meta_optimizer):
-        """Set the meta optimizer associated with this optimizer.
-
-        Args:
-            meta_optimizer (Optimizer): The meta optimizer
-        """
-        self._meta_optimizer = meta_optimizer
-
-    @property
-    def meta_optimizer(self):
-        """Get the optimizer associated with this optimizer.
-
-        Returns:
-            (Optimizer): The meta optimizeer
-        """
-        return self._meta_optimizer
 
     @property
     def reward_tracker(self):

@@ -136,6 +136,9 @@ class SequentialPlanSynthesis(Module):
             steps = []
         self.steps = steps
             
+        if not seed_steps:
+            seed_steps = [[]]
+        
         self.seed_steps = seed_steps
         if not runner:
             raise ValueError("The `runner` parameter is required.")
