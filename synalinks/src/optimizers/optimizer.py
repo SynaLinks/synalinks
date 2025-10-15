@@ -410,7 +410,7 @@ class Optimizer(SynalinksSaveable):
                 best_candidate,
                 mask=["reward"],
             )
-            variable.update(
+            trainable_variable.update(
                 {
                     **best_candidate,
                 },
