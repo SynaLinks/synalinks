@@ -140,7 +140,7 @@ class Decision(Module):
             temperature=self.temperature,
             use_inputs_schema=self.use_inputs_schema,
             use_outputs_schema=self.use_outputs_schema,
-            name=self.name + "_generator",
+            name="generator_" + self.name,
         )
 
     async def call(self, inputs, training=False):
@@ -149,7 +149,7 @@ class Decision(Module):
         inputs = await ops.concat(
             inputs,
             Question(question=self.question),
-            name=self.name + "_inputs_with_question",
+            name="inputs_with_question_" + self.name,
         )
         result = await self.decision(inputs, training=training)
         return result

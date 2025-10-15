@@ -441,7 +441,7 @@ class JsonDataModel:
         if name:
             clone.name = name
         else:
-            clone.name = auto_name(self.name + "_clone")
+            clone.name = auto_name("clone_" + self.name)
         return clone
 
     def get_nested_entity(self, key):
@@ -462,7 +462,7 @@ class JsonDataModel:
             schema.update({"$defs": defs})
 
         if schema:
-            return JsonDataModel(json=json, schema=schema, name=self.name + "_" + key)
+            return JsonDataModel(json=json, schema=schema, name=key + "_" + self.name)
         else:
             return None
 
@@ -485,7 +485,7 @@ class JsonDataModel:
                     JsonDataModel(
                         json=data_model_json,
                         schema=schema,
-                        name=self.name + "_" + key + f"_{i}",
+                        name=key + f"_{i}_"+ self.name,
                     )
                 )
         return outputs

@@ -566,6 +566,10 @@ class Trainable(DataModel):
         description="The examples for few-shot learning",
         default=[],
     )
+    current_predictions: List[Prediction] = Field(
+        description="The current predictions store",
+        default=[],
+    )
     predictions: List[Prediction] = Field(
         description="The predictions store",
         default=[],

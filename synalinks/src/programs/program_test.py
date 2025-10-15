@@ -46,9 +46,10 @@ class ProgramTest(testing.TestCase):
         expected_tree = {
             "trainable_variables": {
                 "generator": {
-                    "generator_state": {
+                    "state_generator": {
                         "instructions": instructions,
                         "examples": [],
+                        "current_predictions": [],
                         "predictions": [],
                         "history": [],
                         "seed_candidates": [],
@@ -88,7 +89,7 @@ class ProgramTest(testing.TestCase):
         )
 
         state_tree = program.get_state_tree()
-        state_tree["trainable_variables"]["generator"]["generator_state"][
+        state_tree["trainable_variables"]["generator"]["state_generator"][
             "prompt_template"
         ] = "Dummy prompt template"
         program.set_state_tree(state_tree)
@@ -130,9 +131,10 @@ class ProgramTest(testing.TestCase):
         expected_tree = {
             "trainable_variables": {
                 "generator": {
-                    "generator_state": {
+                    "state_generator": {
                         "instructions": instructions,
                         "examples": [],
+                        "current_predictions": [],
                         "predictions": [],
                         "history": [],
                         "seed_candidates": [],
@@ -146,7 +148,7 @@ class ProgramTest(testing.TestCase):
             "non_trainable_variables": {},
             "optimizer_non_trainable_variables": {
                 "random_few_shot": {
-                    "variable": {
+                    "iterations_random_few_shot": {
                         "iterations": 0,
                         "epochs": 0,
                     },
@@ -191,7 +193,7 @@ class ProgramTest(testing.TestCase):
         )
 
         state_tree = program.get_state_tree()
-        state_tree["trainable_variables"]["generator"]["generator_state"][
+        state_tree["trainable_variables"]["generator"]["state_generator"][
             "prompt_template"
         ] = "Dummy prompt template"
         program.set_state_tree(state_tree)

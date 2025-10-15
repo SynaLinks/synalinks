@@ -42,6 +42,6 @@ class Or(Module):
             output = await ops.logical_or(
                 output,
                 inputs[i],
-                name=self.name + f"_module_or_{i}",
+                name=f"module_or_{i}_" + self.name,
             )
         return output

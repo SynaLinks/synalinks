@@ -95,13 +95,6 @@ class SequentialPlanSynthesisTest(testing.TestCase):
             description="An agent that learn a step by step plan to achieve a task",
         )
         
-        problem = (
-            """Let f:R→Rf: \mathbb{R} \to \mathbb{R}f:R→R be a function such that for all real numbers x and y,"""
-            """f(x+y)=f(x)+f(y)+2xy f(x + y) = f(x) + f(y) + 2xyf(x+y)=f(x)+f(y)+2xy"""
-            """and f(0)=1f(0) = 1f(0)=1. Find an explicit formula for f(x)f(x)f(x)."""
-            """Bonus: Prove that your solution is unique."""
-        )
-        
         # TODO mock the LM calls
         # result = await program(Query(query=problem))
         # print(result.prettify_json())

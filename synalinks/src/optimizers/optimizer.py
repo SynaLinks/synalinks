@@ -93,6 +93,7 @@ class Optimizer(SynalinksSaveable):
                 initializer=Empty(data_model=Iterations),
                 data_model=Iterations,
                 trainable=False,
+                name="iterations_"+self.name
             )
         self._iterations = iterations
 
@@ -592,8 +593,9 @@ class Optimizer(SynalinksSaveable):
         if not reward:
             reward = 0.0
         for trainable_variable in trainable_variables:
+            current_predictions = trainable_variable.get("current_predictions")
             predictions = trainable_variable.get("predictions")
-            for p in predictions:
+            for p in current_predictions:
                 if p["reward"] is None:
                     p["reward"] = reward
                     nb_visit = trainable_variable.get("nb_visit")
@@ -604,6 +606,12 @@ class Optimizer(SynalinksSaveable):
                             "cumulative_reward": cumulative_reward + reward,
                         }
                     )
+            trainable_variable.update(
+                {
+                    "predictions": predictions + current_predictions,
+                    "current_predictions": [],
+                }
+            )
 
     async def assign_candidate(
         self,

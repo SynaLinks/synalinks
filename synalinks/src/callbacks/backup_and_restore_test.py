@@ -61,10 +61,10 @@ class CanaryModule(modules.Module):
     async def call(self, x):
         counter = self.counter.get("counter")
         self.counter.update({"counter": counter + 1})
-        return x.clone(name=self.name + "_clone")
+        return x.clone(name="clone_" + self.name)
 
     async def compute_output_spec(self, x):
-        return x.clone(name=self.name + "_clone")
+        return x.clone(name="clone_" +self.name)
 
 
 class BackupAndRestoreCallbackTest(testing.TestCase):

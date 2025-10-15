@@ -221,7 +221,7 @@ class PythonSynthesis(Module):
                 seed_candidates=seed_candidates,
             ).get_json(),
             data_model=PythonScript,
-            name=self.name + "_state",
+            name="state_" + self.name,
         )
         
     async def execute(self, inputs, python_script):
@@ -267,7 +267,7 @@ class PythonSynthesis(Module):
         python_script = self.state.get("python_script")
         result, stdout, stderr = await self.execute(inputs, python_script)
         if training:
-            predictions = self.state.get("predictions")
+            predictions = self.state.get("current_predictions")
             if result:
                 predictions.append(
                     {

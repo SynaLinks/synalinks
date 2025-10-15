@@ -220,7 +220,7 @@ class Generator(Module):
                 seed_candidates=seed_candidates,
             ).get_json(),
             data_model=Instructions,
-            name=self.name + "_state",
+            name="state_" + self.name,
         )
 
     async def call(self, inputs, training=False):
@@ -236,14 +236,14 @@ class Generator(Module):
             schema=self.schema,
             language_model=self.language_model,
             streaming=streaming,
-            name=self.name + "_prediction",
+            name="prediction_" + self.name,
             temperature=self.temperature,
         )
         if streaming:
             return result
         if result:
             if training:
-                predictions = self.state.get("predictions")
+                predictions = self.state.get("current_predictions")
                 predictions.append(
                     {
                         "inputs": inputs.get_json(),
@@ -255,7 +255,7 @@ class Generator(Module):
                 return await ops.concat(
                     inputs,
                     result,
-                    name=self.name + "_with_inputs",
+                    name="with_inputs_" + self.name,
                 )
             else:
                 return result
@@ -270,7 +270,7 @@ class Generator(Module):
                         schema=self.schema,
                         name=self.name,
                     ),
-                    name=self.name + "_with_inputs",
+                    name="with_inputs_" + self.name,
                 )
             else:
                 return SymbolicDataModel(
@@ -285,7 +285,7 @@ class Generator(Module):
                         schema=ChatMessage.get_schema(),
                         name=self.name,
                     ),
-                    name=self.name + "_with_inputs",
+                    name="with_inputs_" + self.name,
                 )
             else:
                 return SymbolicDataModel(

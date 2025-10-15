@@ -248,7 +248,7 @@ class TripletRetriever(Module):
             use_inputs_schema=self.use_inputs_schema,
             use_outputs_schema=self.use_outputs_schema,
             return_inputs=False,
-            name=self.name + "_query_generator",
+            name="query_generator_" + self.name,
         )
 
     async def call(self, inputs, training=False):
@@ -269,9 +269,9 @@ class TripletRetriever(Module):
                             knowledge_base=self.knowledge_base,
                             k=self.k,
                             threshold=self.threshold,
-                            name=self.name + "_similarity_search",
+                            name="similarity_search_" + self.name,
                         ),
-                        name=self.name + "_similarity_search_with_query_and_inputs",
+                        name="similarity_search_with_query_and_inputs_" + self.name,
                     ),
                 )
             else:
@@ -282,9 +282,9 @@ class TripletRetriever(Module):
                         knowledge_base=self.knowledge_base,
                         k=self.k,
                         threshold=self.threshold,
-                        name=self.name + "_similarity_search",
+                        name="similarity_search_" + self.name,
                     ),
-                    name=self.name + "_similarity_search_with_inputs",
+                    name="similarity_search_with_inputs_" + self.name,
                 )
         else:
             if self.return_query:
@@ -295,9 +295,9 @@ class TripletRetriever(Module):
                         knowledge_base=self.knowledge_base,
                         k=self.k,
                         threshold=self.threshold,
-                        name=self.name + "_similarity_search",
+                        name="similarity_search_" + self.name,
                     ),
-                    name=self.name + "_similarity_search_with_query",
+                    name="similarity_search_with_query_" + self.name,
                 )
             else:
                 return await ops.triplet_search(
@@ -305,7 +305,7 @@ class TripletRetriever(Module):
                     knowledge_base=self.knowledge_base,
                     k=self.k,
                     threshold=self.threshold,
-                    name=self.name + "_similarity_search",
+                    name="similarity_search_" + self.name,
                 )
 
     def get_config(self):
@@ -340,7 +340,7 @@ class TripletRetriever(Module):
                 (
                     serialization_lib.serialize_synalinks_object(
                         entity_model.to_symbolic_data_model(
-                            name=self.name + "_entity_model" + ("_{i}" if i > 0 else "")
+                            name="entity_model" + (f"_{i}_" if i > 0 else "_") + self.name
                         )
                     )
                     if not is_symbolic_data_model(entity_model)
@@ -354,7 +354,7 @@ class TripletRetriever(Module):
                 (
                     serialization_lib.serialize_synalinks_object(
                         relation_model.to_symbolic_data_model(
-                            name=self.name + "_relation_model" + ("_{i}" if i > 0 else "")
+                            name="relation_model" + (f"_{i}_" if i > 0 else "_") + self.name
                         )
                     )
                     if not is_symbolic_data_model(relation_model)

@@ -151,7 +151,7 @@ class Branch(Module):
             temperature=self.temperature,
             use_inputs_schema=self.use_inputs_schema,
             use_outputs_schema=self.use_outputs_schema,
-            name=self.name + "_decision",
+            name="decision_" + self.name,
         )
 
     async def call(self, inputs, training=False):
@@ -173,7 +173,7 @@ class Branch(Module):
             inputs = await ops.concat(
                 inputs,
                 decision,
-                name=self.name + "_inputs_with_decision",
+                name="inputs_with_decision_" + self.name,
             )
 
         tasks = []
@@ -224,7 +224,7 @@ class Branch(Module):
             inputs = await ops.concat(
                 inputs,
                 decision,
-                name=self.name + "_inputs_with_decision",
+                name="inputs_with_decision_" + self.name,
             )
         for label in self.labels:
             module = self.branches[label]
@@ -236,7 +236,7 @@ class Branch(Module):
                             inputs,
                             training=training,
                         ),
-                        name=self.name + "_with_decision",
+                        name="with_decision_" + self.name,
                     )
                 )
             else:

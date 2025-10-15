@@ -94,7 +94,7 @@ class FBetaScore(Metric):
             )
         self.state = self.add_variable(
             data_model=FBetaState,
-            name=self.name + "_state",
+            name="state_" + self.name,
         )
         self.average = average
         self.beta = beta

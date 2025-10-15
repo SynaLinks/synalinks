@@ -41,6 +41,6 @@ class And(Module):
             output = await ops.logical_and(
                 output,
                 inputs[i],
-                name=self.name + f"_module_and_{i}",
+                name=f"module_and_{i}_" + self.name,
             )
         return output

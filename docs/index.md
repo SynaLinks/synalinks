@@ -106,7 +106,7 @@ async def main():
             self.answer = synalinks.Generator(
                 data_model=AnswerWithThinking,
                 language_model=language_model,
-                name=self.name+"_generator",
+                name="generator_"+self.name,
             )
 
         async def call(self, inputs, training=False):

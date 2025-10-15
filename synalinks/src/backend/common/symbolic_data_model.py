@@ -456,7 +456,7 @@ class SymbolicDataModel(SynalinksSaveable):
         if name:
             clone.name = name
         else:
-            clone.name = self.name + "_clone"
+            clone.name = "clone_" + self.name
         return clone
 
     def get_config(self):

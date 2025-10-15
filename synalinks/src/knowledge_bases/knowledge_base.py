@@ -211,7 +211,7 @@ class KnowledgeBase(SynalinksSaveable):
                 (
                     serialization_lib.serialize_synalinks_object(
                         entity_model.to_symbolic_data_model(
-                            name=self.name + "_entity_model" + ("_{i}" if i > 0 else "")
+                            name="entity_model" + (f"_{i}_" if i > 0 else "_") + self.name
                         )
                     )
                     if not is_symbolic_data_model(entity_model)
@@ -225,7 +225,7 @@ class KnowledgeBase(SynalinksSaveable):
                 (
                     serialization_lib.serialize_synalinks_object(
                         relation_model.to_symbolic_data_model(
-                            name=self.name + "_relation_model" + ("_{i}" if i > 0 else "")
+                            name="relation_model" + (f"_{i}_" if i > 0 else "_") + self.name
                         )
                     )
                     if not is_symbolic_data_model(relation_model)

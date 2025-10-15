@@ -66,7 +66,7 @@ class BacktrackingOfThought(synalinks.Module):
                     instructions=self.instructions,
                     use_inputs_schema=self.use_inputs_schema,
                     use_outputs_schema=self.use_outputs_schema,
-                    name=self.name + "_thinking_generator",
+                    name="thinking_generator_" + self.name,
                 )
             )
         self.critique = []
@@ -80,7 +80,7 @@ class BacktrackingOfThought(synalinks.Module):
                     instructions=self.instructions,
                     use_inputs_schema=self.use_inputs_schema,
                     use_outputs_schema=self.use_outputs_schema,
-                    name=self.name + "_critique_generator",
+                    name="critique_generator_" + self.name,
                 )
             )
         # This is going to be the final generator
@@ -93,7 +93,7 @@ class BacktrackingOfThought(synalinks.Module):
             instructions=self.instructions,
             use_inputs_schema=self.use_inputs_schema,
             use_outputs_schema=self.use_outputs_schema,
-            name=self.name + "_generator",
+            name="generator_" + self.name,
         )
 
     async def call(self, inputs, training=False):
@@ -115,7 +115,7 @@ class BacktrackingOfThought(synalinks.Module):
                 inputs = await synalinks.ops.concat(
                     inputs,
                     critique,
-                    name=self.name + f"_inputs_with_thinking_{i}",
+                    name=f"inputs_with_thinking_{i}_" + self.name,
                 )
                 if reward > self.stop_threshold:
                     break

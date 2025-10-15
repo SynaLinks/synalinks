@@ -177,7 +177,7 @@ class SelfCritique(Module):
             use_inputs_schema=self.use_inputs_schema,
             use_outputs_schema=self.use_outputs_schema,
             return_inputs=self.return_inputs,
-            name=self.name + "_generator",
+            name="generator_" + self.name,
         )
 
     async def call(self, inputs, training=False):

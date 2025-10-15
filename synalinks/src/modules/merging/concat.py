@@ -43,6 +43,6 @@ class Concat(Module):
             output = await ops.concat(
                 output,
                 inputs[i],
-                name=self.name + f"_module_concat_{i}",
+                name=f"module_concat_{i}_" + self.name,
             )
         return output

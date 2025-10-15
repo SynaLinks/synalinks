@@ -533,7 +533,7 @@ class Module(BackendModule, Operation, SynalinksSaveable):
 
         # Used to avoid expensive `tree` operations in the most common case.
         if len(args) == 1 and backend.is_data_model(args[0]):
-            args[0] = args[0].to_json_data_model(name=self.name + "_inputs")
+            args[0] = args[0].to_json_data_model(name="inputs_" + self.name)
         else:
             args = self._maybe_convert_inputs(args)
 

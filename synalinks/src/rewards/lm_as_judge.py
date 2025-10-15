@@ -43,7 +43,7 @@ class LMAsJudgeProgram(Program):
             prompt_template=prompt_template,
             examples=examples,
             instructions=instructions,
-            name=self.name + "_self_critique",
+            name="self_critique_" + self.name,
         )
         self.language_model = language_model
         self.prompt_template = prompt_template

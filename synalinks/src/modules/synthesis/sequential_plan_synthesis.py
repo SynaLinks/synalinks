@@ -155,14 +155,14 @@ class SequentialPlanSynthesis(Module):
                 seed_candidates=self.seed_steps,
             ).get_json(),
             data_model=SequentialPlan,
-            name=self.name+"_state",
+            name="state"+self.name,
         )
         
         self.final_generator = ChainOfThought(
             schema=self.schema,
             language_model=self.language_model,
             return_inputs=self.return_inputs,
-            name=self.name + "_final_generator",
+            name="final_generator_"+self.name,
         )
         
     async def call(self, inputs, training=False):
@@ -176,16 +176,16 @@ class SequentialPlanSynthesis(Module):
                 previous_steps = await ops.concat(
                     previous_steps,
                     step_result,
-                    name=self.name+f"_step_{i}_with_inputs",
+                    name=+f"step_{i}_with_inputs"+self.name,
                 )
             inputs = await ops.concat(
                 inputs,
                 await ops.concat(
                     previous_steps,
                     Step(step=step),
-                    name=self.name+f"_step_{i}",
+                    name=f"step_{i}_"+self.name,
                 ),
-                name=self.name+f"_step_{i}_with_inputs",
+                name=f"step_{i}_with_inputs_"+self.name,
             )
         return await self.final_generator(inputs, training=training)
         
