@@ -139,7 +139,7 @@ async def similarity_distance(candidate1, candidate2, embedding_model=None, axis
     embeddings1 = np.normalize(embeddings1, axis=axis)
     embeddings2 = np.normalize(embeddings2, axis=axis)
     embeddings1 = np.mean(embeddings1, axis=0)
-    embeddings1 = np.mean(embeddings2, axis=0)
+    embeddings2 = np.mean(embeddings2, axis=0)
     similarity = (np.sum(embeddings1 * embeddings2, axis=axis) + 1) / 2
     return 1 - similarity
 
