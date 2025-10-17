@@ -39,8 +39,7 @@ class SequentialPlanSynthesis(Module):
     each individual step. The most common runners are usually a `FunctionCallingAgent`, 
     `ChainOfThought` or `Generator` module, but you can use any Module or Program.
     
-    This module start by defaut without any plan, so it is equivalent to a `ChainOfThought` module,
-    iteratively, the plan will be constructed and optimized to solve the task.
+    This module start by defaut without any plan, so it is equivalent to a single runner call.
     
     This module works **ONLY** with advanced optimizers (**NOT** the `RandomFewShot` optimizer).
     
@@ -166,26 +165,36 @@ class SequentialPlanSynthesis(Module):
         )
         
     async def call(self, inputs, training=False):
+        if not inputs:
+            return None
         steps = self.state.get("steps")
         previous_steps = None
-        for i, step in enumerate(steps):
-            step_result = await self.runner(inputs, training=training)
-            if not previous_steps:
-                previous_steps = step_result
-            else:
-                previous_steps = await ops.concat(
-                    previous_steps,
-                    step_result,
-                    name=+f"step_{i}_with_inputs"+self.name,
+        if steps:
+            for i, step in enumerate(steps):
+                step_result = await self.runner(inputs, training=training)
+                if not previous_steps:
+                    previous_steps = step_result
+                else:
+                    previous_steps = await ops.concat(
+                        previous_steps,
+                        step_result,
+                        name=+f"step_{i}_with_inputs"+self.name,
+                    )
+                inputs = await ops.concat(
+                    inputs,
+                    await ops.concat(
+                        previous_steps,
+                        Step(step=step),
+                        name=f"step_{i}_"+self.name,
+                    ),
+                    name=f"step_{i}_with_inputs_"+self.name,
                 )
+        else:
+            result = await self.runner(inputs, training=training)
             inputs = await ops.concat(
                 inputs,
-                await ops.concat(
-                    previous_steps,
-                    Step(step=step),
-                    name=f"step_{i}_"+self.name,
-                ),
-                name=f"step_{i}_with_inputs_"+self.name,
+                result,
+                name="with_inputs_"+self.name,
             )
         return await self.final_generator(inputs, training=training)
         

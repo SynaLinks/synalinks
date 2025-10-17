@@ -10,6 +10,10 @@ Synalinks is an *adaptation of Keras 3* focused on neuro-symbolic systems and in
 
 ---
 
+!!! info
+    You can use the [`llms.txt`](/synalinks/llms.txt) or [`llms-full.txt`](/synalinks/llms-full.txt) to feed your favorite LMs with Synalinks documentation
+
+
 ## Who is Synalinks for?
 
 Synalinks is designed for a diverse range of users, from professionals and AI researchers to students, independent developers, and hobbyists. It is suitable for anyone who wants to learn about AI by building/composing blocks or build solid foundations for enterprise-grade products. While a background in Machine Learning and Deep Learning can be advantageous — as Synalinks leverages design patterns from Keras, one of the most user-friendly and popular Deep Learning frameworks — it is not a prerequisite. Synalinks is designed to be accessible to anyone with programming skills in Python, making it a versatile and inclusive platform for AI development.

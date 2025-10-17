@@ -1,4 +1,5 @@
 site_name: Synalinks
+site_description: Keras based LM framework for neuro-symbolic applications
 site_url: https://synalinks.github.io/synalinks
 repo_url: https://github.com/SynaLinks/synalinks
 repo_name: SynaLinks/synalinks
@@ -19,6 +20,7 @@ extra_css:
   - stylesheets/extra.css
 
 markdown_extensions:
+  - admonition
   - pymdownx.highlight:
       anchor_linenums: true
   - pymdownx.superfences:
@@ -32,11 +34,24 @@ plugins:
   - mkdocstrings:
       default_handler: python
   - glightbox
+  - llmstxt:
+      full_output: llms-full.txt
+      markdown_description: Keras based LM framework for neuro-symbolic applications and In-Context learning
+      sections:
+        Usage documentation:
+        - Introduction.md
+        - Synalinks API/Programs API/Program training API.md
+        - Synalinks API/Programs API/The Program class.md
+        - Synalinks API/Programs API/The Sequential class.md
+        - Synalinks API/* module.md
+        - Synalinks API/Rewards/* reward.md
+        - Synalinks API/Rewards/* wrappers.md
 
 nav:
   - index.md
   - Introduction.md
   - FAQ.md
+  - Differences with Keras.md
   - Code Examples:
     - Basics:
       - Code Examples/Basics/First Steps.md
@@ -117,8 +132,12 @@ nav:
       - Synalinks API/Callbacks API/CSVLogger.md
       - Synalinks API/Callbacks API/BackUpAndRestore.md
       - Synalinks API/Callbacks API/EarlyStopping.md
+      - SynaLinks API/Callbacks API/Monitor.md
     - Hooks API:
       - Synalinks API/Hooks API/index.md
+      - SynaLinks API/Hooks API/Base Hook class.md
+      - Synalinks API/Hooks API/Logger.md
+      - SynaLinks API/Hooks API/Monitor.md
     - Ops API:
       - Synalinks API/Ops API/index.md
       - Synalinks API/Ops API/JSON Ops.md

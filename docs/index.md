@@ -1,5 +1,8 @@
 # Quickstart
 
+!!! info
+    You can use the [`llms.txt`](/synalinks/llms.txt) or [`llms-full.txt`](/synalinks/llms-full.txt) to feed your favorite LMs with Synalinks documentation
+
 ## Install
 
 ```shell

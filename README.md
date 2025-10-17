@@ -19,6 +19,7 @@
 
 </div>
 
+
 <div align="center">
 
 ⭐ Help us reach more AI/ML engineers and grow the Synalinks community. Star this repo ⭐
@@ -31,6 +32,12 @@
 [![Python package](https://github.com/SynaLinks/Synalinks/actions/workflows/tests.yml/badge.svg)](https://github.com/SynaLinks/SynaLinks/actions/workflows/tests.yml)
 [![License: Apache-2.0](https://img.shields.io/badge/License-Apache_2.0-green.svg)](https://opensource.org/license/apache-2-0)
 [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/SynaLinks/synalinks)
+
+</div>
+
+<div align="center">
+
+Too busy to read the documentation? Give the [llms.txt](https://synalinks.github.io/synalinks/llms.txt) or [llms-full.txt](https://synalinks.github.io/synalinks/llms-full.txt) to you favorite LMs or AI coding tools
 
 </div>
 
