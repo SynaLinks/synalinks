@@ -87,12 +87,6 @@ We can help you simplify these tasks by leveraging decade old practices in Deep 
 uv pip install synalinks
 ```
 
-Start your project with
-
-```shell
-uv run synalinks init
-```
-
 ## Programming your application: 4 ways
 
 ### Using the `Functional` API

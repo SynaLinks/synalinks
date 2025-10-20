@@ -109,7 +109,6 @@ from synalinks.api import utils
 from synalinks.api import version
 
 # END DO NOT EDIT.
-from synalinks.cli.magic_cli import magic_cli
 
 import os  # isort: skip
 
@@ -128,11 +127,11 @@ def __dir__():
     return list(keys)
 
 
-# Don't import `.src`, `.api` or `.cli` during `from synalinks import *`.
+# Don't import `.src`, or `.api` during `from synalinks import *`.
 __all__ = [
     name
     for name in globals().keys()
-    if not (name.startswith("_") or name in ("src", "api", "cli"))
+    if not (name.startswith("_") or name in ("src", "api"))
 ]
 
 if backend.backend() == "pydantic":
