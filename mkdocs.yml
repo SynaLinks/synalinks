@@ -52,6 +52,7 @@ nav:
   - Introduction.md
   - FAQ.md
   - Differences with Keras.md
+  - Differences with DSPy.md
   - Code Examples:
     - Basics:
       - Code Examples/Basics/First Steps.md
