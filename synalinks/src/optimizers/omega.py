@@ -44,6 +44,7 @@ Pay close attention to the variable's description, its intended use, and the bro
 
 Guidelines:
 - Ensure the new variable is generalizable and performs well across various inputs of the same kind.
+- If you have to optimize a variable containing code, don't hardcode solutions but use a generalizable code.
 - Include all specified keys: {variables_keys}.
 - Justify each change with clear reasoning, referencing the variable's purpose and the desired output.
 - If no ground truth is provided, the goal is to critically enhance the predicted output.
@@ -86,6 +87,7 @@ Guidelines:
 - Analyze both the current variable and the other high-performing variable, identifying their respective strengths and weaknesses.
 - Pay close attention to the variable's description, its intended use, and the broader context of the computation graph.
 - Ensure the new variable is generalizable and performs well across various inputs of the same kind.
+- If you have to optimize a variable containing code, don't hardcode solutions but use a generalizable code.
 - Include all specified keys: {variables_keys}.
 - Justify each feature you incorporate, explaining how it contributes to better performance or alignment with the ground truth.
 - If no ground truth is provided, the goal is to critically enhance the predicted output. 
