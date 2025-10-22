@@ -63,4 +63,4 @@ This document highlights the key differences between **DSPy** and **Synalinks**.
 
 ## Summary
 
-While **DSPy** is a powerful research tool inspired by PyTorch’s flexibility, **Synalinks** is designed for production use, inspired by Keras user-friendliness and reliability. Synalinks use of JSON schemas, strict typing, async-by-default design, robust branching/merging makes it ideal for building complex, reliable neuro-symbolic systems that can learn, plan, and reason with structured data.
+While **DSPy** is a powerful research tool inspired by PyTorch’s flexibility, **Synalinks** is designed for production use, inspired by Keras user-friendliness and reliability. **Synalinks** use of JSON schemas, strict typing, async-by-default design, robust branching/merging makes it ideal for building complex, reliable neuro-symbolic systems that can learn, plan, and reason with structured data.

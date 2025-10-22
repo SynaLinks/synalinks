@@ -1,7 +1,7 @@
 # Differences with Keras
 ## A Complete Guide
 
-This document provides a comprehensive guide for translating Keras concepts into Synalinks. While Keras is designed for building traditional neural networks with tensor operations, Synalinks is a framework for creating **neuro-symbolic programs** that combine language models with structured reasoning.
+This document provides a comprehensive guide for translating **Keras** concepts into **Synalinks**. While **Keras** is designed for building traditional neural networks with tensor operations, **Synalinks** is a framework for creating **neuro-symbolic programs** that combine language models with structured reasoning.
 
 ---
 
@@ -58,11 +58,11 @@ A **Program** orchestrates multiple Modules into a directed acyclic graph (DAG):
 - **Keras**: Fixed computation graph of tensor operations
 - **Synalinks**: Dynamic graph with conditional branching based on LM decisions
 
-In Keras, you build sequential or functional models with fixed layer connections. In Synalinks, you create programs that can include conditional branches, where different modules execute based on LM-driven decisions or data conditions.
+In Keras, you build sequential or functional models with fixed layer connections. In **Synalinks**, you create programs that can include conditional branches, where different modules execute based on LM-driven decisions or data conditions.
 
 ### Data Models & JSON Schemas
 
-Instead of implicit tensor shapes, Synalinks uses **explicit JSON schemas**:
+Instead of implicit tensor shapes, **Synalinks** uses **explicit JSON schemas**:
 
 - **Keras**: Input shape defined as dimensions (e.g., 784-dimensional vector)
 - **Synalinks**: Input structure defined as JSON schema with explicit fields, types, and validation rules
@@ -124,6 +124,6 @@ Instead of implicit tensor shapes, Synalinks uses **explicit JSON schemas**:
 
 ## Summary
 
-While Keras excels at building traditional neural networks with tensor operations and gradient-based training, Synalinks is designed for a fundamentally different purpose: creating **neuro-symbolic applications** that combine the reasoning capabilities of language models with structured, validated data processing.
+While Keras excels at building traditional neural networks with tensor operations and gradient-based training, **Synalinks** is designed for a fundamentally different purpose: creating **neuro-symbolic applications** that combine the reasoning capabilities of language models with structured, validated data processing.
 
-The shift from tensors to JSON, from gradients to LM-based optimization, and from fixed architectures to adaptive programs represents not just a technical change, but a paradigm shift in how we think about building intelligent systems. Synalinks is ideal when you need interpretability, flexibility, and the ability to integrate language understanding with symbolic reasoning—making it perfect for next-generation AI applications.
+The shift from tensors to JSON, from gradients to LM-based optimization, and from fixed architectures to adaptive programs represents not just a technical change, but a paradigm shift in how we think about building intelligent systems. **Synalinks** is ideal when you need interpretability, flexibility, and the ability to integrate language understanding with symbolic reasoning, making it perfect for next-generation AI applications.

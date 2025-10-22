@@ -42,7 +42,7 @@ async def main():
     )
     
     inputs = synalinks.Input(data_model=Query)
-    query_result = await synalinks.KnowledgeRetriever(
+    query_result = await synalinks.TripletRetriever(
         entity_models=[City, Country, Place, Event],
         relation_models=[IsCapitalOf, IsLocatedIn, IsCityOf, TookPlaceIn],
         knowledge_base=knowledge_base,
@@ -241,7 +241,7 @@ if __name__ == "__main__":
   "answer": "The capital of France is Paris."
 ```
 
-The key difference between the basic RAG and KAG approaches lies in the retriever component. While `EntityRetriever` focuses on finding individual entities, `KnowledgeRetriever` explores the rich web of relationships between entities. This enables more sophisticated reasoning patterns.
+The key difference between the basic RAG and KAG approaches lies in the retriever component. While `EntityRetriever` focuses on finding individual entities, `TripletRetriever` explores the rich web of relationships between entities. This enables more sophisticated reasoning patterns.
 
 When you ask "What is the French capital?", the KAG system doesn't just find entities related to France or capitals. It traverses the IsCapitalOf relationships to understand the specific connection between Paris and France, providing more accurate and contextually rich answers.
 
@@ -258,7 +258,7 @@ Don't forget that these instructions can be optimized to enhance the reasoning c
 
 - **Three-Stage Architecture**: The retrieval-augmentation-generation pipeline creates a clear separation of concerns where each stage can be optimized independently. This modular approach improves maintainability and allows for targeted performance improvements.
 
-- **Entity vs Relationship Retrieval**: EntityRetriever focuses on finding individual knowledge components, while KnowledgeRetriever explores the rich web of relationships between entities. This distinction enables different reasoning patterns depending on query complexity.
+- **Entity vs Relationship Retrieval**: EntityRetriever focuses on finding individual knowledge components, while TripletRetriever explores the rich web of relationships between entities. This distinction enables different reasoning patterns depending on query complexity.
 
 - **Schema-Driven Pipeline Design**: Synalinks enforces structured data flow through explicit Query and Answer models, ensuring type safety and predictable behavior across your entire RAG pipeline. This contract-based approach prevents data inconsistencies and enables reliable processing.
 

@@ -87,7 +87,7 @@ You can then load the variables into a program *with the same architecture*:
 
 ### How to do hyperparameter tuning with Synalinks?
 
-As today, there is no way to perform automatic hyperparameter tuning with Synalinks, we might consider it in the future.
+Synalinks is compatible with [KerasTuner](https://keras.io/keras_tuner/) which allows you to find hyperparameters.
 
 ---
 

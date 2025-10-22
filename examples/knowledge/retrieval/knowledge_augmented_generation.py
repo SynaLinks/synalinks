@@ -36,7 +36,7 @@ async def main():
     )
 
     inputs = synalinks.Input(data_model=Query)
-    query_result = await synalinks.KnowledgeRetriever(
+    query_result = await synalinks.TripletRetriever(
         entity_models=[City, Country, Place, Event],
         relation_models=[IsCapitalOf, IsLocatedIn, IsCityOf, TookPlaceIn],
         knowledge_base=knowledge_base,
