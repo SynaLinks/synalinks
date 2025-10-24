@@ -365,7 +365,7 @@ class LanguageModel(SynalinksSaveable):
             except Exception as e:
                 warnings.warn(
                     f"Error occured while trying to call {self}: "
-                    + str(e)
+                    + shorten_text(str(e))
                     + f"\nReceived response={shorten_text(response_str)}"
                 )
             await asyncio.sleep(1)

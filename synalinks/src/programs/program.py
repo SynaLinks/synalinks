@@ -694,14 +694,14 @@ class Program(Trainer, Module):
             elif k == "metrics_variables":
                 self._assign_variable_values(self.metrics_variables, path_value_dict)
             else:
-                warnings.warn(f"Unknown variable name: {k}")
+                raise ValueError(f"Unknown variable name: {k}")
 
     def _assign_variable_values(self, variables, path_value_dict):
         for full_path, value in path_value_dict.items():
             path = "/".join(full_path.split("/")[:-1])
             field_name = full_path.split("/")[-1]
             for variable in variables:
-                if remove_numerical_suffix(variable.path) == path:
+                if variable.path == path:
                     variable.get_json()[field_name] = value
 
     def _flatten_nested_dict(self, nested_dict):

@@ -246,29 +246,56 @@ def load_data(
                 for i in range(repeat):
                     x_train.append(inputs)
                     y_train.append(outputs)
+        else:
+            for i in range(len(trainset)):
+                input_grid = trainset[i].get("input")
+                output_grid = trainset[i].get("output")
+                inputs = ARCAGIInput(
+                    examples=[],
+                    input_grid=input_grid,
+                )
+                outputs = ARCAGIOutput(
+                    output_grid=output_grid,
+                )
+                for i in range(repeat):
+                    x_train.append(inputs)
+                    y_train.append(outputs)
 
     for i in range(len(testset)):
-        examples = []
-        for j in range(len(trainset)):
-            input_grid_example = trainset[j].get("input")
-            output_grid_example = trainset[j].get("output")
+        if one_leave_out:
+            examples = []
+            for j in range(len(trainset)):
+                input_grid_example = trainset[j].get("input")
+                output_grid_example = trainset[j].get("output")
 
-            task = ARCAGITask(
-                input_grid=input_grid_example,
-                output_grid=output_grid_example,
+                task = ARCAGITask(
+                    input_grid=input_grid_example,
+                    output_grid=output_grid_example,
+                )
+                examples.append(task)
+            input_grid = testset[i].get("input")
+            output_grid = testset[i].get("output")
+            inputs = ARCAGIInput(
+                examples=examples,
+                input_grid=input_grid,
             )
-            examples.append(task)
-        input_grid = testset[i].get("input")
-        output_grid = testset[i].get("output")
-        inputs = ARCAGIInput(
-            examples=examples,
-            input_grid=input_grid,
-        )
-        outputs = ARCAGIOutput(
-            output_grid=output_grid,
-        )
-        x_test.append(inputs)
-        y_test.append(outputs)
+            outputs = ARCAGIOutput(
+                output_grid=output_grid,
+            )
+            x_test.append(inputs)
+            y_test.append(outputs)
+        else:
+            input_grid = testset[i].get("input")
+            output_grid = testset[i].get("output")
+            inputs = ARCAGIInput(
+                examples=[],
+                input_grid=input_grid,
+            )
+            outputs = ARCAGIOutput(
+                output_grid=output_grid,
+            )
+            x_test.append(inputs)
+            y_test.append(outputs)
 
     if curriculum_learning:
 

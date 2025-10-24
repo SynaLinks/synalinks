@@ -305,9 +305,16 @@ class Optimizer(SynalinksSaveable):
                 trainable_variable.get_json(),
                 mask=mask,
             )
-            seed_candidates.append(
+            if not seed_candidates:
+                seed_candidates.append(
+                    {
+                        **masked_variable,
+                    }
+                )
+            trainable_variable.update(
                 {
-                    **masked_variable,
+                    "candidates": [],
+                    "best_candidates": [],
                 }
             )
 
@@ -399,12 +406,9 @@ class Optimizer(SynalinksSaveable):
                 },
             )
             history = trainable_variable.get("history")
-            if len(history) > 0:
-                last_candidate = history[-1]
-                if last_candidate != best_candidate:
-                    history.append(best_candidate)
-            else:
+            if not history or history[-1] != best_candidate:
                 history.append(best_candidate)
+                trainable_variable.update({"history": history})
         self.increment_epochs()
 
     async def on_batch_begin(
@@ -476,7 +480,7 @@ class Optimizer(SynalinksSaveable):
             candidates = trainable_variable.get("candidates")
             best_candidates = trainable_variable.get("best_candidates")
             all_candidates = candidates + best_candidates
-            if len(best_candidates) > 0:
+            if len(all_candidates) > 0:
                 sorted_candidates = sorted(
                     all_candidates,
                     key=lambda x: x.get("reward"),
