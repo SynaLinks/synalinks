@@ -293,12 +293,13 @@ class OMEGA(RandomFewShot):
                             mutation_instructions(list(symbolic_variable.keys())),
                         ]
                     ),
+                    name=f"mutation_cot_{schema_id}_"+self.name,
                 )(inputs)
                 outputs = outputs.in_mask(mask=list(symbolic_variable.keys()))
                 program = Program(
                     inputs=inputs,
                     outputs=outputs,
-                    name=f"{trainable_variable.name}_mutation",
+                    name=f"mutation_{schema_id}_"+self.name,
                     description="The mutation program that fix/optimize variables",
                 )
                 self.mutation_programs[schema_id] = program
@@ -315,12 +316,13 @@ class OMEGA(RandomFewShot):
                             crossover_instructions(list(symbolic_variable.keys())),
                         ]
                     ),
+                    name=f"crossover_cot_{schema_id}_"+self.name,
                 )(inputs)
                 outputs = outputs.in_mask(mask=list(symbolic_variable.keys()))
                 program = Program(
                     inputs=inputs,
                     outputs=outputs,
-                    name=f"{trainable_variable.name}_crossover",
+                    name=f"crossover_{schema_id}_"+self.name,
                     description="The crossover program that combine high performing variables",
                 )
                 self.crossover_programs[schema_id] = program
