@@ -45,7 +45,7 @@ class RandomFewShot(Optimizer):
         nb_max_examples (int): The max number of examples for few-shot learning (Default to 3).
         sampling_temperature (float): The sampling_temperature for softmax sampling of the few-shot
             learning examples. Lower values concentrate sampling on high-reward predictions,
-            higher values make sampling more uniform (Default 1.0).
+            higher values make sampling more uniform (Default 0.3).
         merging_rate (float): Rate at which crossover vs mutation is selected. (Default to 0.02).
         population_size (int): The maximum number of best candidates to keep
             during the optimization process.
@@ -57,7 +57,7 @@ class RandomFewShot(Optimizer):
         self,
         nb_min_examples=1,
         nb_max_examples=3,
-        sampling_temperature=1.0,
+        sampling_temperature=0.3,
         merging_rate=0.02,
         population_size=10,
         name=None,

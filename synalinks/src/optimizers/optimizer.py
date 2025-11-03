@@ -543,6 +543,7 @@ class Optimizer(SynalinksSaveable):
             x=x,
             y=y,
             y_pred=y_pred,
+            training=True,
         )
 
         y_pred = await self.program.predict_on_batch(
@@ -555,6 +556,12 @@ class Optimizer(SynalinksSaveable):
             y=val_y,
             y_pred=y_pred,
         )
+        
+        if self.trainable_variables:
+            await self.assign_reward_to_predictions(
+                self.trainable_variables,
+                reward=reward,
+            )
 
         for trainable_variable in trainable_variables:
             await self.maybe_add_candidate(
@@ -574,6 +581,7 @@ class Optimizer(SynalinksSaveable):
         x=None,
         y=None,
         y_pred=None,
+        training=False,
     ):
         raise NotImplementedError(
             "Optimizer subclasses must implement the `propose_new_candidates()` method."

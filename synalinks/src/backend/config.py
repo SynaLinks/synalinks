@@ -245,7 +245,7 @@ def api_base():
     Returns:
         (str): The observability api base
     """
-    return _API_BASE
+    return _SYNALINKS_API_BASE
 
 
 @synalinks_export(
@@ -411,14 +411,14 @@ if os.path.exists(_config_path):
     assert isinstance(_epsilon, float)
     _seed = _config.get("seed", _RANDOM_SEED)
     assert isinstance(_seed, int)
-    _api_base = _config.get("api_base", _SYNALINKS_API_BASE)
-    assert isinstance(_api_base, str)
+    _SYNALINKS_API_BASE = _config.get("api_base", _SYNALINKS_API_BASE)
+    assert isinstance(_SYNALINKS_API_BASE, str)
 
     set_backend(_backend)
     set_floatx(_floatx)
     set_epsilon(_epsilon)
     set_seed(_seed)
-    set_api_base(_api_base)
+    set_api_base(_SYNALINKS_API_BASE)
 
 # Save config file, if possible.
 if not os.path.exists(_synalinks_DIR):

@@ -133,6 +133,16 @@ class DatabaseAdapter:
         raise NotImplementedError(
             f"{self.__class__} should implement the `similarity_search()` method"
         )
+        
+    async def fulltext_search(self, keywords, data_model=None, k=10, threshold=0.8):
+        raise NotImplementedError(
+            f"{self.__class__} should implement the `fulltext_search()` method"
+        )
+        
+    async def chain_search(self, chain_search, data_model=None, k=10, threshold=0.8):
+        raise NotImplementedError(
+            f"{self.__class__} should implement the `chain_search()` method"
+        )
 
     async def triplet_search(self, triplet_search, k=10, threshold=0.8):
         raise NotImplementedError(

@@ -163,6 +163,8 @@ class PythonSynthesis(Module):
         seed_scripts (list): Optional. A list of Python scripts to use as seed for the evolution.
             If not provided, create a seed from the default configuration.
         default_return_value (dict): Default return value.
+        return_python_script (bool): Wether or not to return the python script for 
+            evaluation. (Default to False).
         timeout (int): Maximum execution time in seconds. (Default 5 seconds).
         name (str): Optional. The name of the module.
         description (str): Optional. The description of the module.
@@ -176,6 +178,7 @@ class PythonSynthesis(Module):
         python_script=None,
         seed_scripts=None,
         default_return_value=None,
+        return_python_script=False,
         timeout=5,
         sandbox=False,
         name=None,
@@ -186,7 +189,7 @@ class PythonSynthesis(Module):
             name=name,
             description=description,
             trainable=trainable,
-        )
+        )        
         if not schema and data_model:
             schema = data_model.get_schema()
         self.schema = schema
@@ -194,6 +197,7 @@ class PythonSynthesis(Module):
         if not python_script:
             raise ValueError("You should provide the `python_script` argument")
         self.python_script = python_script
+        
         if not default_return_value:
             raise ValueError("You should provide the `default_return_value` argument")
 
@@ -205,6 +209,7 @@ class PythonSynthesis(Module):
             )
 
         self.default_return_value = default_return_value
+        self.return_python_script = return_python_script
         self.timeout = timeout
 
         if not seed_scripts:
@@ -269,59 +274,129 @@ class PythonSynthesis(Module):
         if training:
             predictions = self.state.get("current_predictions")
             if result:
-                predictions.append(
-                    {
-                        "inputs": {
-                            **inputs.get_json(),
-                        },
-                        "outputs": {
-                            **result,
-                            "stdout": stdout,
-                            "stderr": stderr,
-                        },
-                        "reward": None,
-                    }
+                if self.return_python_script:
+                    predictions.append(
+                        {
+                            "inputs": {
+                                **inputs.get_json(),
+                            },
+                            "outputs": {
+                                "python_script": python_script,
+                                **result,
+                                "stdout": stdout,
+                                "stderr": stderr,
+                            },
+                            "reward": None,
+                        }
+                    )
+                else:
+                    predictions.append(
+                        {
+                            "inputs": {
+                                **inputs.get_json(),
+                            },
+                            "outputs": {
+                                **result,
+                                "stdout": stdout,
+                                "stderr": stderr,
+                            },
+                            "reward": None,
+                        }
+                    )
+            else:
+                if self.return_python_script:
+                    predictions.append(
+                        {
+                            "inputs": {
+                                **inputs.get_json(),
+                            },
+                            "outputs": {
+                                "python_script": python_script,
+                                "stdout": stdout,
+                                "stderr": stderr,
+                            },
+                            "reward": None,
+                        }
+                    )
+                else:
+                    predictions.append(
+                        {
+                            "inputs": {
+                                **inputs.get_json(),
+                            },
+                            "outputs": {
+                                "stdout": stdout,
+                                "stderr": stderr,
+                            },
+                            "reward": None,
+                        }
+                    )
+        if result:
+            if self.return_python_script:
+                return JsonDataModel(
+                    json={
+                        "python_script": python_script,
+                        **result,
+                        "stdout": stdout,
+                        "stderr": stderr,
+                    },
+                    schema=self.schema,
+                    name=self.name,
                 )
             else:
-                predictions.append(
-                    {
-                        "inputs": {
-                            **inputs.get_json(),
-                        },
-                        "outputs": {
-                            "stdout": stdout,
-                            "stderr": stderr,
-                        },
-                        "reward": None,
-                    }
+                return JsonDataModel(
+                    json={
+                        **result,
+                        "stdout": stdout,
+                        "stderr": stderr,
+                    },
+                    schema=self.schema,
+                    name=self.name,
                 )
-        if result:
-            return JsonDataModel(
-                json={
-                    **result,
-                    "stdout": stdout,
-                    "stderr": stderr,
-                },
-                schema=self.schema,
+        else:
+            if self.return_python_script:
+                return JsonDataModel(
+                    json={
+                        "python_script": python_script,
+                        **self.default_return_value,
+                        "stdout": stdout,
+                        "stderr": stderr,
+                    },
+                    schema=self.schema,
+                    name=self.name,
+                )
+            else:
+                return JsonDataModel(
+                    json={
+                        **self.default_return_value,
+                        "stdout": stdout,
+                        "stderr": stderr,
+                    },
+                    schema=self.schema,
+                    name=self.name,
+                )
+
+    async def compute_output_spec(self, inputs, training=False):
+        if self.return_python_script:
+            return await ops.concat(
+                await ops.out_mask(
+                    PythonScript.to_symbolic_data_model(),
+                    mask=list(Trainable.keys()),
+                    name="python_script_masked_"+self.name,
+                ),
+                await ops.concat(
+                    SymbolicDataModel(schema=self.schema),
+                    PythonConsoleLog,
+                    name="python_logs_"+self.name,
+                ),
                 name=self.name,
             )
         else:
-            return JsonDataModel(
-                json={
-                    **self.default_return_value,
-                    "stdout": stdout,
-                    "stderr": stderr,
-                },
-                schema=self.schema,
+            return await ops.concat(
+                SymbolicDataModel(schema=self.schema),
+                PythonConsoleLog,
                 name=self.name,
             )
-
-    async def compute_output_spec(self, inputs, training=False):
-        return await ops.concat(
-            SymbolicDataModel(schema=self.schema),
-            PythonConsoleLog,
-            name=self.name,
-        )
 
     def get_config(self):
         config = {
@@ -329,6 +404,7 @@ class PythonSynthesis(Module):
             "python_script": self.python_script,
             "seed_scripts": self.seed_scripts,
             "default_return_value": self.default_return_value,
+            "return_python_script": self.return_python_script,
             "name": self.name,
             "description": self.description,
             "trainable": self.trainable,

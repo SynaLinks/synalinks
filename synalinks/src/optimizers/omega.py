@@ -1,5 +1,9 @@
 # License Apache 2.0: (c) 2025 Yoan Sallami (Synalinks Team)
 
+import random
+import math
+import numpy
+
 from typing import Any
 from typing import List
 from typing import Optional
@@ -44,10 +48,11 @@ Pay close attention to the variable's description, its intended use, and the bro
 
 Guidelines:
 - Ensure the new variable is generalizable and performs well across various inputs of the same kind.
-- If you have to optimize a variable containing code, don't hardcode solutions but use a generalizable code.
 - Include all specified keys: {variables_keys}.
 - Justify each change with clear reasoning, referencing the variable's purpose and the desired output.
 - If no ground truth is provided, the goal is to critically enhance the predicted output.
+- If you have to optimize a variable containing code, provide a generalizable algorithm.
+- Always focus on ONLY one aspect at the time.
 """.strip()
 
 
@@ -87,10 +92,11 @@ Guidelines:
 - Analyze both the current variable and the other high-performing variable, identifying their respective strengths and weaknesses.
 - Pay close attention to the variable's description, its intended use, and the broader context of the computation graph.
 - Ensure the new variable is generalizable and performs well across various inputs of the same kind.
-- If you have to optimize a variable containing code, don't hardcode solutions but use a generalizable code.
 - Include all specified keys: {variables_keys}.
 - Justify each feature you incorporate, explaining how it contributes to better performance or alignment with the ground truth.
-- If no ground truth is provided, the goal is to critically enhance the predicted output. 
+- If no ground truth is provided, the goal is to critically enhance the predicted output.
+- If you have to optimize a variable containing code, provide a generalizable algorithm.
+- Always focus on ONLY one aspect at the time.
 """.strip()
 
 
@@ -192,7 +198,7 @@ class OMEGA(RandomFewShot):
 
     Concerning the inspirations for this optimizer:
         - Dominated Novelty Search for their elegant Quality-Diversity algorithm that outperform many other evolutionary strategies.
-        - DSPY's GEPA for feeding the optimizer program with the raw training data and for formalizing the evolutionary optimization strategy (**not** the MAP-Elites method used).
+        - DSPY's GEPA for feeding the optimizer program with the raw training data and for formalizing the evolutionary optimization strategy (**NOT** the MAP-Elites method used).
         - DeepMind's AlphaEvolve have been a huge inspiration, more on the motivational side as they didn't released the code.
 
     References:
@@ -213,9 +219,16 @@ class OMEGA(RandomFewShot):
             the same method than the `RandomFewShot` optimizer.
         nb_min_examples (int): The min number of examples for few-shot learning (Default to 1).
         nb_max_examples (int): The max number of examples for few-shot learning (Default to 3).
+        algorithm (str): The mechanism to use for the genetic algorithm between ['ga', 'dns'].
+            This parameter is provided for ablation studies and shouldn't be modified. (Default to 'dns').
+        selection (str): The method to select the candidate to evolve at the beginning of a batch
+            between ['random', 'best', 'softmax']. (Default to 'softmax').
+        selection_temperature (float): The temperature for softmax selection.
+            Used only when `selection='softmax'`. Lower values concentrate selection on high-reward 
+            candidates, higher values make selection more uniform (Default 0.2).
         sampling_temperature (float): The temperature for softmax sampling of the few-shot
             learning examples. Lower values concentrate sampling on high-reward predictions,
-            higher values make sampling more uniform (Default 1.0).
+            higher values make sampling more uniform (Default 0.2).
         merging_rate (float): Rate at which crossover vs mutation is selected. (Default to 0.02).
         population_size (int): The maximum number of best candidates to keep
             during the optimization process.
@@ -229,13 +242,16 @@ class OMEGA(RandomFewShot):
         embedding_model=None,
         k_nearest_fitter=5,
         distance_function=None,
-        mutation_temperature=1.0,
-        crossover_temperature=1.0,
+        mutation_temperature=0.3,
+        crossover_temperature=0.3,
         merging_rate=0.02,
         few_shot_learning=False,
         nb_min_examples=1,
         nb_max_examples=3,
-        sampling_temperature=1.0,
+        sampling_temperature=0.3,
+        algorithm="dns",
+        selection="softmax",
+        selection_temperature=0.3,
         population_size=10,
         name=None,
         description=None,
@@ -263,6 +279,17 @@ class OMEGA(RandomFewShot):
             self.distance_function = distance_function
 
         self.kwargs = kwargs
+        
+        algorithms = ["ga", "dns"]
+        if algorithm not in algorithms:
+            raise ValueError(f"Parameter `algorithm` should be between {algorithms}")
+        self.algorithm = algorithm
+        
+        selections = ["best", "random", "softmax"]
+        if selection not in selections:
+            raise ValueError(f"Parameter `selection` should be between {selections}")
+        self.selection = selection
+        self.selection_temperature = selection_temperature
 
         self.mutation_programs = {}
         self.crossover_programs = {}
@@ -440,6 +467,77 @@ class OMEGA(RandomFewShot):
                     new_candidate=new_candidate,
                     examples=examples,
                 )
+                
+    async def on_batch_begin(
+        self,
+        step,
+        epoch,
+        trainable_variables,
+    ):
+        """Called at the beginning of a batch
+
+        Args:
+            step (int): The batch number
+            epoch (int): The epoch number
+            trainable_variables (list): The list of trainable variables
+        """
+        for trainable_variable in trainable_variables:
+            best_candidates = trainable_variable.get("best_candidates")
+            if epoch == 0:
+                seed_candidates = trainable_variable.get("seed_candidates")
+                if len(seed_candidates) > 0:
+                    seed_candidate = random.choice(seed_candidates)
+                    trainable_variable.update(
+                        {
+                            **seed_candidate,
+                        },
+                    )
+            else:
+                if len(best_candidates) > 0:
+                    if self.selection == "random":
+                        best_candidate = random.choice(best_candidates)
+                    elif self.selection == "best":
+                        best_candidate = sorted(
+                            best_candidates,
+                            key=lambda x: x.get("reward"),
+                            reverse=True,
+                        )[0]
+                    elif self.selection == "softmax":
+                        rewards = numpy.array([candidate.get("reward", 0) for candidate in best_candidates])
+                        scaled_rewards = rewards / self.selection_temperature
+                        exp_rewards = numpy.exp(scaled_rewards - numpy.max(scaled_rewards))
+                        probabilities = exp_rewards / numpy.sum(exp_rewards)
+                        best_candidate = numpy.random.choice(
+                            best_candidates,
+                            size=1,
+                            replace=False,
+                            p=probabilities,
+                        ).tolist()[0]
+                        
+                    best_candidate = out_mask_json(
+                        best_candidate,
+                        mask=["reward"],
+                    )
+                    trainable_variable.update(
+                        {
+                            **best_candidate,
+                        },
+                    )
+                else:
+                    seed_candidates = trainable_variable.get("seed_candidates")
+                    if len(seed_candidates) > 0:
+                        seed_candidate = random.choice(seed_candidates)
+                        trainable_variable.update(
+                            {
+                                **seed_candidate,
+                            },
+                        )
+            trainable_variable.update(
+                {
+                    "nb_visit": 0,
+                    "cumulative_reward": 0.0,
+                },
+            )
 
     async def competition(
         self,
@@ -516,7 +614,8 @@ class OMEGA(RandomFewShot):
                 key=lambda x: x.get("reward"),
                 reverse=True,
             )
-            sorted_candidates = await self.competition(sorted_candidates)
+            if self.algorithm == "dns":
+                sorted_candidates = await self.competition(sorted_candidates)
             selected_candidates = sorted_candidates[: self.population_size]
             trainable_variable.update(
                 {
@@ -534,6 +633,9 @@ class OMEGA(RandomFewShot):
             "nb_min_examples": self.nb_min_examples,
             "nb_max_examples": self.nb_max_examples,
             "sampling_temperature": self.sampling_temperature,
+            "algorithm": self.algorithm,
+            "selection": self.selection,
+            "selection_temperature": self.selection_temperature,
             "merging_rate": self.merging_rate,
             "population_size": self.population_size,
             "name": self.name,
