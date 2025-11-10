@@ -9,35 +9,33 @@ from synalinks.src.backend import any_symbolic_data_models
 from synalinks.src.hooks.hook import Hook
 
 _SYMBOLIC_LOG_TEMPLATE = """
-\033[94m---
-# {name}
 Call ID: {call_id}
+Parent call ID: {parent_call_id}
+Module: {module}
 Module Name: {module_name}
 Module Description: {module_description}
 Data Model JSON Schema:
 {data_model_schema}
----\033[0m
 """
 
 _DATA_LOG_TEMPLATE = """
-\033[92m---
-# {name}
 Call ID: {call_id}
+Parent call ID: {parent_call_id}
+Module: {module}
 Module Name: {module_name}
 Module Description: {module_description}
 Data Model JSON:
 {data_model_json}
----\033[0m
 """
 
 _EXCEPTION_TEMPLATE = """
-\033[91m---
 # Exception
 Call ID: {call_id}
+Parent call ID: {parent_call_id}
+Module: {module}
 Module Name: {module_name}
 Module Description: {module_description}
 Exception: {exception}
----\033[0m
 """
 
 
@@ -58,11 +56,12 @@ class Logger(Hook):
 
     def _maybe_setup_logger(self):
         if not hasattr(self, "logger"):
-            self.logger = logging.getLogger(self.module.name)
+            self.logger = logging.getLogger(f"synalinks.{self.module.name}")
 
     def on_call_begin(
         self,
         call_id,
+        parent_call_id=None,
         inputs=None,
     ):
         self._maybe_setup_logger()
@@ -76,10 +75,12 @@ class Logger(Hook):
                 dm.get_schema() for dm in flatten_inputs if dm is not None
             ]
             if data_models_schemas:
-                self.logger.info(
+                self.logger.debug(
                     _SYMBOLIC_LOG_TEMPLATE.format(
                         name="Symbolic Call Start",
                         call_id=call_id,
+                        parent_call_id=parent_call_id,
+                        module=str(self.module.__class__.__name__),
                         module_name=module_name,
                         module_description=module_description,
                         data_model_schema=json.dumps(
@@ -95,6 +96,8 @@ class Logger(Hook):
                     _DATA_LOG_TEMPLATE.format(
                         name="Call Start",
                         call_id=call_id,
+                        parent_call_id=parent_call_id,
+                        module=str(self.module.__class__.__name__),
                         module_name=module_name,
                         module_description=module_description,
                         data_model_json=json.dumps(
@@ -107,6 +110,7 @@ class Logger(Hook):
     def on_call_end(
         self,
         call_id,
+        parent_call_id=None,
         outputs=None,
         exception=None,
     ):
@@ -117,7 +121,9 @@ class Logger(Hook):
             self.logger.error(
                 _EXCEPTION_TEMPLATE.format(
                     call_id=call_id,
+                    parent_call_id=parent_call_id,
                     exception=exception,
+                    module=str(self.module.__class__.__name__),
                     module_name=module_name,
                     module_description=module_description,
                 )
@@ -130,10 +136,12 @@ class Logger(Hook):
                 dm.get_schema() for dm in flatten_outputs if dm is not None
             ]
             if data_models_schemas:
-                self.logger.info(
+                self.logger.debug(
                     _SYMBOLIC_LOG_TEMPLATE.format(
                         name="Symbolic Call End",
                         call_id=call_id,
+                        parent_call_id=parent_call_id,
+                        module=str(self.module.__class__.__name__),
                         module_name=module_name,
                         module_description=module_description,
                         data_model_schema=json.dumps(
@@ -151,6 +159,8 @@ class Logger(Hook):
                     _DATA_LOG_TEMPLATE.format(
                         name="Call End",
                         call_id=call_id,
+                        parent_call_id=parent_call_id,
+                        module=str(self.module.__class__.__name__),
                         module_name=module_name,
                         module_description=module_description,
                         data_model_json=json.dumps(

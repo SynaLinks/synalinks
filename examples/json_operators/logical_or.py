@@ -47,7 +47,7 @@ answer = None | AnswerWithThinking(
         "Toulouse and is renowned for its research in robotics."
         " Toulouse is also widely recognized as a central hub for aeronautics and"
         " space in Europe. It houses the headquarters of Airbus and several "
-        "important aerospace research centers. and aeronautics."
+        "important aerospace research centers."
     ),
     answer="Toulouse",
 )
@@ -58,7 +58,7 @@ print(answer.prettify_json())
 # Syst\u00e8mes) is located in Toulouse and is renowned for its research
 # in robotics. Toulouse is also widely recognized as a central hub for
 # aeronautics and space in Europe. It houses the headquarters of Airbus
-# and several important aerospace research centers. and aeronautics.",
+# and several important aerospace research centers.",
 #   "answer": "Toulouse"
 # }
 
@@ -110,7 +110,6 @@ async def main():
     )
 
     print(answer.prettify_json())
-
 
 # {
 #   "thinking": "The answer to the given query involves finding a city in

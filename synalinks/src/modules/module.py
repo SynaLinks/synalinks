@@ -513,13 +513,22 @@ class Module(BackendModule, Operation, SynalinksSaveable):
 
     async def __call__(self, *args, **kwargs):
         call_id = str(uuid.uuid4())
+        
+        self._check_super_called()
+        self._called = True
+        
+        call_context = self._get_call_context()
+        
+        parent_call_id = call_context.call_id if call_context.call_id else None
+
+        call_context.call_id = call_id
+        
         if self._hooks:
             self._hooks.on_call_begin(
                 call_id=call_id,
+                parent_call_id=parent_call_id,
                 inputs=args,
             )
-        self._check_super_called()
-        self._called = True
 
         #####################################
         # 0. Convert tuple inputs to list for convenience
@@ -571,10 +580,6 @@ class Module(BackendModule, Operation, SynalinksSaveable):
         # (4) Any non-None default value for `training` in the call signature
         # (5) False (treating the module as if it's in inference)
 
-        # Maintains info about the `Module.call` stack
-        # across nested calls.
-        call_context = self._get_call_context()
-
         # This is the value explicitly passed by the user
         training = call_spec.user_arguments_dict.get("training", None)
         if training is None:
@@ -609,6 +614,7 @@ class Module(BackendModule, Operation, SynalinksSaveable):
         if self._hooks:
             self._hooks.on_call_end(
                 call_id=call_id,
+                parent_call_id=parent_call_id,
                 outputs=outputs,
             )
         return outputs
@@ -873,9 +879,12 @@ class CallSpec:
 
 
 class CallContext:
-    def __init__(self, entry_module):
+    def __init__(self, entry_module, call_id=None, parent_call_id=None):
         self.entry_module = entry_module
         self.training = None
+        self.call_id = call_id
+        self.parent_call_id = parent_call_id
+        self.cost = 0.0
 
 
 def might_have_unbuilt_state(module):

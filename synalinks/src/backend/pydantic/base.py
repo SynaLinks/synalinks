@@ -27,6 +27,26 @@ from synalinks.src.backend.pydantic.core import DataModel
 
 @synalinks_export(
     [
+        "synalinks.backend.Score",
+        "synalinks.Score",
+    ]
+)
+class Score(float, Enum):
+    VERY_BAD = 0.0
+    POOR = 0.1
+    BELOW_AVERAGE = 0.2
+    LOW_AVERAGE = 0.3
+    MEDIUM_LOW = 0.4
+    MEDIUM = 0.5
+    MEDIUM_HIGH = 0.6
+    ABOVE_AVERAGE = 0.7
+    HIGH_AVERAGE = 0.8
+    GOOD = 0.9
+    VERY_GOOD = 1.0
+    
+
+@synalinks_export(
+    [
         "synalinks.backend.GenericOutputs",
         "synalinks.GenericOutputs",
     ]

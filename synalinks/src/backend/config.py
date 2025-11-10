@@ -6,6 +6,7 @@ import json
 import logging
 import os
 import random
+import re
 
 import numpy as np
 
@@ -23,10 +24,10 @@ _SYNALINKS_API_KEY = None
 # Default backend: Pydantic.
 _BACKEND = "pydantic"
 
-# Default Synalinks api base
-_SYNALINKS_API_BASE = "http://localhost:4248"
+# Default Synalinks Studio API base
+_SYNALINKS_API_BASE = "http://localhost:8000/api"
 
-# Enable monitoring
+# Enable observability
 _ENABLE_OBSERVABILITY = False
 
 # Available backends
@@ -37,6 +38,43 @@ _RANDOM_SEED = 123
 
 np.random.seed(_RANDOM_SEED)
 random.seed(_RANDOM_SEED)
+
+
+logger = logging.getLogger("synalinks")
+logger.propagate = False
+logger.setLevel(logging.CRITICAL)
+
+
+class SynalinksLogFormatter(logging.Formatter):
+    """Formatter for console logging with colors and prefix."""
+
+    blue = "\x1b[34m"
+    bold_red = "\x1b[31;1m"
+    reset = "\x1b[0m"
+    prefix = "🧠🔗 Synalinks: "
+
+    FORMATS = {
+        logging.DEBUG: f"(DEBUG) {prefix}%(message)s",
+        logging.INFO: f"{prefix}%(message)s",
+        logging.WARNING: f"{prefix}%(message)s",
+        logging.ERROR: f"{bold_red}{prefix}%(message)s{reset}",
+        logging.CRITICAL: f"{bold_red}{prefix}%(message)s{reset}",
+    }
+
+    def format(self, record):
+        log_fmt = self.FORMATS.get(record.levelno, self.FORMATS[logging.INFO])
+        formatter = logging.Formatter(log_fmt)
+        return formatter.format(record)
+
+
+class SynalinksFileFormatter(logging.Formatter):
+    """Formatter for file logging that removes ANSI escape codes."""
+
+    ANSI_ESCAPE_PATTERN = re.compile(r"\x1b\[[0-9;]*m")
+
+    def format(self, record):
+        record.msg = self.ANSI_ESCAPE_PATTERN.sub("", str(record.msg))
+        return super().format(record)
 
 
 @synalinks_export(["synalinks.config.floatx", "synalinks.backend.floatx"])
@@ -186,7 +224,7 @@ def get_seed():
         "synalinks.enable_logging",
     ]
 )
-def enable_logging(filename=None, debug=False):
+def enable_logging(log_level="debug", log_to_file=False):
     """
     Configures and enables logging for the application.
 
@@ -195,25 +233,33 @@ def enable_logging(filename=None, debug=False):
     verbose logging or INFO for standard logging.
 
     Args:
-        filename (str): The name of the file where logs should be written. If not provided,
-            logs will be output to the console.
-        debug (bool): If True, sets the logging level to DEBUG. If False, the logging level
-            is set to INFO. Defaults to False.
+        log_level (str): The logging level.
+        log_to_file (bool): If True save the logs into `synalinks.log`
 
     The log message format includes the timestamp, log level, and the log message itself.
     """
-    level = logging.DEBUG if debug else logging.INFO
-    if filename:
-        logging.basicConfig(
-            filename=filename,
-            level=level,
-            format="%(asctime)s - %(levelname)s - %(message)s",
-        )
-    else:
-        logging.basicConfig(
-            level=level,
-            format="%(asctime)s - %(levelname)s - %(message)s",
-        )
+    global logger
+    
+    log_level = log_level.upper()
+    if log_level and hasattr(logging, log_level):
+        log_level = getattr(logging, log_level)
+    
+    logger.setLevel(log_level)
+    
+    for handler in logger.handlers[:]:
+        logger.removeHandler(handler)
+
+    stream_handler = logging.StreamHandler()
+    stream_handler.setLevel(log_level)
+    stream_handler.setFormatter(SynalinksLogFormatter())
+    logger.addHandler(stream_handler)
+    
+    if log_to_file:
+        file_handler = logging.FileHandler("synalinks.log", mode="w")
+        file_handler.setLevel(log_level)
+        formatter = SynalinksLogFormatter("%(asctime)s - %(levelname)s - %(message)s")
+        file_handler.setFormatter(formatter)
+        logger.addHandler(file_handler)
 
 
 @synalinks_export(

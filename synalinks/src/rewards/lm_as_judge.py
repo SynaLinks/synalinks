@@ -57,6 +57,8 @@ class LMAsJudgeProgram(Program):
             raise ValueError("The inputs of the program should have a length of 2.")
         y_true = inputs[0]
         y_pred = inputs[1]
+        if not y_pred:
+            return 0.0
         if y_true:
             y_true = await ops.prefix(
                 y_true,

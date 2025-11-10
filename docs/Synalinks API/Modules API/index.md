@@ -90,6 +90,7 @@ if __name__ == "__main__":
 ### Synthesis Modules
 
 - [PythonSynthesis module](Synthesis Modules/PythonSynthesis module.md)
+- [SequentialPlanSynthesis module](Synthesis Modules/SequentialPlanSynthesis module.md)
 
 ---
 

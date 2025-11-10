@@ -1,10 +1,12 @@
 # Programs API
 
-Synalinks offers three methods to create programs, each tailored to different levels of complexity and use cases:
+Synalinks offers 4 methods to create programs, each tailored to different levels of complexity and use cases:
 
 - **[Sequential Program](The%20Sequential%20class.md)**: This is the simplest method, involving a straightforward list of modules. Ideal for single-input, single-output stacks of modules. However, it is limited in flexibility compared to other methods.
 
 - **[Functional Program](The%20Program%20class.md)**: This is a fully-featured API that supports arbitrary program architectures. Easy to use and suitable for most users, offering greater flexibility than the Sequential program.
+
+- **[Mixing Subclassing and Functional API](The%20Program%20class.md)**: This make easier to encapsulate your programs made with the functional API into bigger systems.
 
 - **[Program Subclassing](The%20Program%20class.md)**: This method allows you to implement everything from scratch. Ideal for complex or research use cases. It is also the preferred method for contributing.
 

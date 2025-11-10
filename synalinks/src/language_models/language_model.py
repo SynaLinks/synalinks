@@ -189,15 +189,21 @@ class LanguageModel(SynalinksSaveable):
             # Switch from `ollama` to `ollama_chat`
             # because it have better performance due to the chat prompts
             model = model.replace("ollama", "ollama_chat")
+        if model_provider == "vllm":
+            model = model.replace("vllm", "hosted_vllm")
         self.model = model
         self.fallback = fallback
         if self.model.startswith("ollama") and not api_base:
             self.api_base = "http://localhost:11434"
         else:
             self.api_base = api_base
+        if self.model.startswith("hostted_vllm") and not api_base:
+            self.api_base = os.environ.get("HOSTED_VLLM_API_BASE", "http://localhost:8000")
         self.timeout = timeout
         self.retry = retry
         self.caching = caching
+        self.cumulated_cost = 0.0
+        self.last_call_cost = 0.0
 
     async def __call__(self, messages, schema=None, streaming=False, **kwargs):
         """
@@ -315,6 +321,18 @@ class LanguageModel(SynalinksSaveable):
                         }
                     }
                 )
+            elif self.model.startswith("hosted_vllm"):
+                kwargs.update(
+                    {
+                        "response_format": {
+                            "type": "json_schema",
+                            "json_schema": {
+                                "schema": schema,
+                            },
+                            "strict": True,
+                        }
+                    }
+                )
             else:
                 provider = self.model.split("/")[0]
                 raise ValueError(
@@ -342,6 +360,10 @@ class LanguageModel(SynalinksSaveable):
                     caching=self.caching,
                     **kwargs,
                 )
+                if hasattr(response, "_hidden_params"):
+                    if "response_cost" in response._hidden_params:
+                        self.last_call_cost = response._hidden_params["response_cost"]
+                        self.cumulated_cost += self.last_call_cost
                 if streaming:
                     return StreamingIterator(response)
                 if (

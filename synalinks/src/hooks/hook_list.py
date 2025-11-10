@@ -77,23 +77,27 @@ class HookList(Hook):
     def on_call_begin(
         self,
         call_id,
+        parent_call_id=None,
         inputs=None,
     ):
         for hook in self.hooks:
             hook.on_call_begin(
                 call_id,
+                parent_call_id=parent_call_id,
                 inputs=inputs,
             )
 
     def on_call_end(
         self,
         call_id,
+        parent_call_id=None,
         outputs=None,
         exception=None,
     ):
         for hook in self.hooks:
             hook.on_call_end(
                 call_id,
+                parent_call_id=parent_call_id,
                 outputs=outputs,
                 exception=exception,
             )

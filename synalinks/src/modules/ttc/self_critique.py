@@ -4,27 +4,11 @@ from enum import Enum
 
 from synalinks.src.api_export import synalinks_export
 from synalinks.src.backend import DataModel
+from synalinks.src.backend import Score
 from synalinks.src.backend import Field
 from synalinks.src.modules.core.generator import Generator
 from synalinks.src.modules.module import Module
 from synalinks.src.saving import serialization_lib
-
-
-# This is a trick to ensure a reward between 0.0 and 1.0
-# for structured output.
-# (as most providers don't support pydantic constraints nor regexes)
-class Score(float, Enum):
-    VERY_BAD = 0.0
-    POOR = 0.1
-    BELOW_AVERAGE = 0.2
-    LOW_AVERAGE = 0.3
-    MEDIUM_LOW = 0.4
-    MEDIUM = 0.5
-    MEDIUM_HIGH = 0.6
-    ABOVE_AVERAGE = 0.7
-    HIGH_AVERAGE = 0.8
-    GOOD = 0.9
-    VERY_GOOD = 1.0
 
 
 class Critique(DataModel):

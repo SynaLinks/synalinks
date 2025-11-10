@@ -39,6 +39,7 @@ class Hook:
     def on_call_begin(
         self,
         call_id,
+        parent_call_id=None,
         inputs=None,
     ):
         """Called at the beginning of the module execution.
@@ -55,6 +56,7 @@ class Hook:
     def on_call_end(
         self,
         call_id,
+        parent_call_id=None,
         outputs=None,
         exception=None,
     ):

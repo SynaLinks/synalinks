@@ -50,7 +50,9 @@ plugins:
 nav:
   - index.md
   - Introduction.md
+  - Modules.md
   - FAQ.md
+  - CheatSheet.md
   - Differences with Keras.md
   - Differences with DSPy.md
   - Code Examples:
@@ -133,12 +135,12 @@ nav:
       - Synalinks API/Callbacks API/CSVLogger.md
       - Synalinks API/Callbacks API/BackUpAndRestore.md
       - Synalinks API/Callbacks API/EarlyStopping.md
-      - SynaLinks API/Callbacks API/Monitor.md
+      - Synalinks API/Callbacks API/Monitor.md
     - Hooks API:
       - Synalinks API/Hooks API/index.md
-      - SynaLinks API/Hooks API/Base Hook class.md
+      - Synalinks API/Hooks API/Base Hook class.md
       - Synalinks API/Hooks API/Logger.md
-      - SynaLinks API/Hooks API/Monitor.md
+      - Synalinks API/Hooks API/Monitor.md
     - Ops API:
       - Synalinks API/Ops API/index.md
       - Synalinks API/Ops API/JSON Ops.md

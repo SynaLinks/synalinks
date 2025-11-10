@@ -37,3 +37,4 @@ if __main__ == "__main__":
 - [Base Callback class](Base Callback class.md)
 - [CSVLogger callback](CSVLogger.md)
 - [ProgramCheckPoint callback](ProgramCheckpoint.md)
+- [Monitor callback](Monitor.md)

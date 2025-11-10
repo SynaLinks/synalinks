@@ -32,32 +32,29 @@ def default_prompt_template():
     """
     return """
 <system>
-<INSTRUCTIONS>
+# Instructions
 {{ instructions }}
-</INSTRUCTIONS>{% if inputs_schema %}
-<INPUT_SCHEMA>
+{% if inputs_schema %}
+# Input Schema
 {{ inputs_schema }}
-<INPUT_SCHEMA>
 {% endif %}{% if outputs_schema %}
-<OUTPUT_SCHEMA>
+# Output schema
 {{ outputs_schema }}
-</OUTPUT_SCHEMA>
 {% endif %}{% if examples %}
-<EXAMPLES>{% for example in examples %}
-<EXAMPLE>
-Input:
+# Examples
+{% for example in examples %}
+## Input:
 {{ example[0] }}
-Output:
+## Output:
 {{ example[1] }}
-</EXAMPLE>{% endfor %}
-</EXAMPLES>
+{% endfor %}
 {% endif %}
 </system>
 {% if inputs %}
 <user>
-Input:
+## Input:
 {{ inputs }}
-Output:
+## Output:
 </user>
 {% endif %}
 """.strip()

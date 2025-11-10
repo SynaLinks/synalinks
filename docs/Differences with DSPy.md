@@ -11,7 +11,7 @@ This document highlights the key differences between **DSPy** and **Synalinks**.
 
 - **Purpose**: Build intelligent applications combining LMs with symbolic reasoning.
 - **Memory**: Natively supports vector-only databases.
-- **Reliability**: DSPy relies on brittle parsing logic in `Adapter` classes. While optimization reduces errors, exceptions due to LM output format failures remain common in production.
+- **Reliability**: DSPy relies on brittle parsing logic in `Adapter` classes. While optimization reduces errors, exceptions due to LM output format failures remain common in production. Also, still DSPy rely on pipelines exceptions and formatting failures to optimize internal modules, which is higly problematic in any production settings.
 - **Async**: Offers both async and sync code, which can lead to inconsistent practices in production environments.
 - **String Variables**: Like TextGrad and other in-context learning frameworks, DSPy represents variables as strings. This limits the ability to handle complex structured variables (e.g., graphs, plans), making them less suitable for advanced neuro-symbolic systems that require learning to plan or structure working memory.
 
@@ -19,7 +19,7 @@ This document highlights the key differences between **DSPy** and **Synalinks**.
 
 - **Purpose**: Build intelligent applications combining LMs with symbolic reasoning.
 - **Memory**: Natively supports hybrid graph + vector databases, enabling richer data relationships and more flexible memory structures.
-- **Reliability**: Uses constrained structured output by default, eliminating brittle parsing and ensuring robust, predictable behavior.
+- **Reliability**: Uses constrained structured output by default, eliminating brittle parsing and ensuring robust, predictable behavior whith 100% success output formatting.
 - **Async**: Async by default, enforcing production-ready practices and consistent performance.
 - **Strict Module Typing**: Modules in Synalinks are strictly typed using JSON schemas (defined in `compute_output_spec()`). This allows the system to compute output contracts end-to-end before any computation, ensuring type safety and clarity.
 - **JSON Variables**: Variables are JSON objects with associated schemas. The optimizer uses constrained structured output to guarantee 100% correct variable structure, enabling complex, nested, and graph-like data handling.

@@ -304,8 +304,39 @@ class BinaryFBetaScore(FBetaScore):
     and can be used for **multi-class and multi-label classification**.
 
     Each field of `y_true` and `y_pred` should be booleans or floats between [0, 1].
-    If the fields are floats, it uses the threshold for deciding
+    If the fields are floats, it uses the threshold parameter for deciding
     if the values are 0 or 1.
+    
+    Example:
+    
+    ```
+    
+    class MultiClassClassification(synalinks.DataModel):
+        label_1: bool = synalinks.Field(
+            description="The first label",
+        )
+        label_2: bool = synalinks.Field(
+            description="The second label",
+        )
+        label_3: bool = synalinks.Field(
+            description="The third label",
+        )
+    
+    # OR you can also use floats between 0 and 1
+    # The `Score`, enforce a float between 0.0 and 1.0 using constrained decoding
+    
+    class MultiClassClassification(synalinks.DataModel):
+        label_1: synalinks.Score = synalinks.Field(
+            description="The first label",
+        )
+        label_2: synalinks.Score = synalinks.Field(
+            description="The second label",
+        )
+        label_3: synalinks.Score = synalinks.Field(
+            description="The third label",
+        )
+    
+    ```
 
     Args:
         average (str): Type of averaging to be performed across per-class results
@@ -499,6 +530,226 @@ class BinaryF1Score(BinaryFBetaScore):
             average=average,
             beta=1.0,
             threshold=threshold,
+            name=name,
+            in_mask=in_mask,
+            out_mask=out_mask,
+        )
+
+    def get_config(self):
+        """Return the serializable config of the metric.
+
+        Returns:
+            (dict): The config dict.
+        """
+        base_config = super().get_config()
+        del base_config["beta"]
+        return base_config
+
+
+@synalinks_export("synalinks.metrics.ListFBetaScore")
+class ListFBetaScore(FBetaScore):
+    """Computes F-Beta score on list structures.
+
+    Formula:
+
+    ```python
+    b2 = beta ** 2
+    f_beta_score = (1 + b2) * (precision * recall) / (precision * b2 + recall)
+    ```
+
+    This is the weighted harmonic mean of precision and recall.
+    Its output range is `[0, 1]`. It operates at a field level
+    and can be used for **classification** or **retrieval pipelines**.
+    
+    The difference between this metric and the `F1Score` is that this one consider 
+    each element of the list (or the string) as **one label**.
+
+    This metric works using list or string structures like in the following example:
+    
+    Example:
+    
+    ```python
+    
+    # for single label classification
+    
+    class ListClassification(synalinks.DataModel):
+        label: Literal["label", "label_1", "label_2"]
+        
+    # for multi label classification
+    
+    class ListClassification(synalinks.DataModel):
+        labels: List[Literal["label", "label_1", "label_2"]]
+        
+    # or use it with retrieval pipelines, in that case make sure to mask the correct fields.
+    
+    class AnswerWithReferences(synalinks.DataModel):
+        sources: List[str]
+        answer: str
+    
+    ```
+    
+    """
+    def __init__(
+        self,
+        average=None,
+        beta=1.0,
+        name="list_fbeta_score",
+        in_mask=None,
+        out_mask=None,
+    ):
+        super().__init__(
+            average=average,
+            beta=beta,
+            name=name,
+            in_mask=in_mask,
+            out_mask=out_mask,
+        )
+    
+    async def update_state(self, y_true, y_pred):
+        y_pred = tree.map_structure(lambda x: ops.convert_to_json_data_model(x), y_pred)
+        y_true = tree.map_structure(lambda x: ops.convert_to_json_data_model(x), y_true)
+
+        if self.in_mask:
+            y_pred = tree.map_structure(lambda x: x.in_mask(mask=self.in_mask), y_pred)
+            y_true = tree.map_structure(lambda x: x.in_mask(mask=self.in_mask), y_true)
+        if self.out_mask:
+            y_pred = tree.map_structure(lambda x: x.out_mask(mask=self.out_mask), y_pred)
+            y_true = tree.map_structure(lambda x: x.out_mask(mask=self.out_mask), y_true)
+
+        y_true = tree.flatten(tree.map_structure(lambda x: x, y_true.get_json()))
+        y_pred = tree.flatten(tree.map_structure(lambda x: x, y_pred.get_json()))
+
+        true_positives = []
+        false_positives = []
+        false_negatives = []
+        intermediate_weights = []
+        
+        for yt, yp in zip(y_true, y_pred):        
+            y_true_tokens = [str(tok) for tok in y_true] if isinstance(y_true, list) else [yt]
+            y_pred_tokens = [str(tok) for tok in y_pred] if isinstance(y_pred, list) else [yp]
+            common_tokens = set(y_true_tokens) & set(y_pred_tokens)
+            true_positives.append(len(common_tokens))
+            false_positives.append(len(y_pred_tokens) - len(common_tokens))
+            false_negatives.append(len(y_true_tokens) - len(common_tokens))
+            intermediate_weights.append(len(y_true_tokens))
+
+        true_positives = np.convert_to_numpy(true_positives)
+        false_positives = np.convert_to_numpy(false_positives)
+        false_negatives = np.convert_to_numpy(false_negatives)
+        intermediate_weights = np.convert_to_numpy(intermediate_weights)
+
+        current_true_positives = self.state.get("true_positives")
+        if current_true_positives:
+            true_positives = np.add(current_true_positives, true_positives)
+
+        current_false_positives = self.state.get("false_positives")
+        if current_false_positives:
+            false_positives = np.add(current_false_positives, false_positives)
+
+        current_false_negatives = self.state.get("false_negatives")
+        if current_false_negatives:
+            false_negatives = np.add(current_false_negatives, false_negatives)
+
+        current_intermediate_weights = self.state.get("intermediate_weights")
+        if current_intermediate_weights:
+            intermediate_weights = np.add(
+                current_intermediate_weights, intermediate_weights
+            )
+
+        self.state.update(
+            {
+                "true_positives": true_positives.tolist(),
+                "false_positives": false_positives.tolist(),
+                "false_negatives": false_negatives.tolist(),
+                "intermediate_weights": intermediate_weights.tolist(),
+            }
+        )
+    
+    def get_config(self):
+        """Return the serializable config of the metric.
+
+        Returns:
+            (dict): The config dict.
+        """
+        config = {
+            "beta": self.beta,
+            "name": self.name,
+        }
+        base_config = super().get_config()
+        return {**base_config, **config}
+
+
+@synalinks_export("synalinks.metrics.ListF1Score")
+class ListF1Score(ListFBetaScore):
+    """Computes F-1 Score on list structures.
+
+    Formula:
+    ```python
+        f1_score = 2 * (precision * recall) / (precision + recall)
+    ```
+
+    This is the harmonic mean of precision and recall.
+    Its output range is `[0, 1]`. It operates at a field level
+    and can be used for **classification** or **retrieval pipelines**.
+    
+    The difference between this metric and the `F1Score` is that this one consider 
+    each element of the list (or the string) as **one label**.
+
+    This metric works using list or string structures like in the following example:
+    
+    Example:
+    
+    ```python
+    
+        # for single label classification
+        
+        class ListClassification(synalinks.DataModel):
+            label: Literal["label", "label_1", "label_2"]
+            
+        # for multi label classification
+        
+        class ListClassification(synalinks.DataModel):
+            labels: List[Literal["label", "label_1", "label_2"]]
+            
+        # or use it with retrieval pipelines, in that case make sure to mask the correct fields.
+        
+        class AnswerWithReferences(synalinks.DataModel):
+            sources: List[str]
+            answer: str
+    ```
+
+    Args:
+        average (str): Type of averaging to be performed across per-field results
+            in the multi-field case.
+            Acceptable values are `None`, `"micro"`, `"macro"` and
+            `"weighted"`. Defaults to `None`.
+            If `None`, no averaging is performed and `result()` will return
+            the score for each class.
+            If `"micro"`, compute metrics globally by counting the total
+            true positives, false negatives and false positives.
+            If `"macro"`, compute metrics for each label,
+            and return their unweighted mean.
+            This does not take label imbalance into account.
+            If `"weighted"`, compute metrics for each label,
+            and return their average weighted by support
+            (the number of true instances for each label).
+            This alters `"macro"` to account for label imbalance.
+            It can result in an score that is not between precision and recall.
+        name (str): (Optional) string name of the metric instance.
+        in_mask (list): (Optional) list of keys to keep to compute the metric.
+        out_mask (list): (Optional) list of keys to remove to compute the metric.
+    """
+
+    def __init__(
+        self,
+        average=None,
+        name="list_f1_score",
+        in_mask=None,
+        out_mask=None,
+    ):
+        super().__init__(
+            average=average,
+            beta=1.0,
             name=name,
             in_mask=in_mask,
             out_mask=out_mask,
