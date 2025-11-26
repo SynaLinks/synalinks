@@ -393,6 +393,6 @@ class TripletRetriever(Module):
             knowledge_base=knowledge_base,
             entity_models=entity_models,
             relation_models=relation_models,
-            language_model=teacher_language_model,
+            language_model=language_model,
             **config,
         )

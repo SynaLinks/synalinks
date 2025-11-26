@@ -438,11 +438,11 @@ class DataModel(pydantic.BaseModel, SynalinksSaveable, metaclass=MetaDataModel):
 
         if any_meta_class(self, other):
             return run_maybe_nested(
-                ops.Add().symbolic_call(self, other),
+                ops.And().symbolic_call(self, other),
             )
         else:
             return run_maybe_nested(
-                ops.Add()(self, other),
+                ops.And()(self, other),
             )
 
     def __rand__(self, other):
@@ -465,11 +465,11 @@ class DataModel(pydantic.BaseModel, SynalinksSaveable, metaclass=MetaDataModel):
 
         if any_meta_class(other, self):
             return run_maybe_nested(
-                ops.Add().symbolic_call(other, self),
+                ops.And().symbolic_call(other, self),
             )
         else:
             return run_maybe_nested(
-                ops.Add()(other, self),
+                ops.And()(other, self),
             )
 
     def __or__(self, other):

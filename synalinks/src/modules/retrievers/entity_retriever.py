@@ -289,7 +289,7 @@ class EntityRetriever(Module):
         }
         language_model_config = {
             "language_model": serialization_lib.serialize_synalinks_object(
-                self.teacher_language_model,
+                self.language_model,
             )
         }
         entity_models_config = {
@@ -329,6 +329,6 @@ class EntityRetriever(Module):
         return cls(
             knowledge_base=knowledge_base,
             entity_models=entity_models,
-            language_model=teacher_language_model,
+            language_model=language_model,
             **config,
         )
