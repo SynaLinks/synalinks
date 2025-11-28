@@ -57,6 +57,13 @@ if __name__ == "__main__":
 
 ---
 
+### Masking Modules
+
+- [InMask module](Masking Modules/InMask module.md)
+- [OutMask module](Masking Modules/OutMask module.md)
+
+---
+
 ### Merging Modules
 
 - [Concat module](Merging Modules/Concat module.md)

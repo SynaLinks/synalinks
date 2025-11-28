@@ -23,7 +23,6 @@ class TestCase(
     def setUp(self):
         # clear global state so that test cases are independent
         clear_session(free_memory=False)
-        enable_logging()
 
     def get_temp_dir(self):
         temp_dir = tempfile.mkdtemp()

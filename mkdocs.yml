@@ -111,6 +111,10 @@ nav:
         - Synalinks API/Modules API/Retrievers Modules/index.md
         - Synalinks API/Modules API/Retrievers Modules/EntityRetriever module.md
         - Synalinks API/Modules API/Retrievers Modules/TripletRetriever module.md
+      - Masking Modules:
+        - Synalinks API/Modules API/Masking Modules/index.md
+        - Synalinks API/Modules API/Masking Modules/InMask module.md
+        - Synalinks API/Modules API/Masking Modules/OutMask module.md
       - Merging Modules:
         - Synalinks API/Modules API/Merging Modules/index.md
         - Synalinks API/Modules API/Merging Modules/Concat module.md
