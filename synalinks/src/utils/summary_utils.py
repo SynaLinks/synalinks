@@ -47,7 +47,8 @@ def format_module_schema(module):
 
     def format_schema(schema):
         schema = copy.deepcopy(schema)
-        schema.pop("$defs")
+        if "$defs" in schema:
+            schema.pop("$defs")
         return json.dumps(schema, indent=2)
 
     # There are 2 approaches to get output schemas:

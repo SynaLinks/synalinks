@@ -1,10 +1,13 @@
 # License Apache 2.0: (c) 2025 Yoan Sallami (Synalinks Team)
 
 import json
+import uuid
 from unittest.mock import patch
 
 from synalinks import modules
 from synalinks.src import testing
+from synalinks.src.backend import ChatMessage
+from synalinks.src.backend import ChatMessages
 from synalinks.src.backend import DataModel
 from synalinks.src.language_models import LanguageModel
 from synalinks.src.modules import Generator
@@ -33,6 +36,61 @@ class GeneratorModuleTest(testing.TestCase):
         )
         print(msgs.prettify_json())
         self.assertTrue(len(msgs.messages) == 2)
+
+    def test_format_chat_message(self):
+        class AnswerWithRationale(DataModel):
+            rationale: str
+            answer: str
+
+        language_model = LanguageModel(
+            model="ollama/mistral",
+        )
+
+        msgs = Generator(
+            data_model=AnswerWithRationale,
+            language_model=language_model,
+        ).format_messages(
+            inputs=ChatMessages(
+                messages=[
+                    ChatMessage(
+                        role="user",
+                        content="What is the french city of aerospace and robotics?",
+                    ),
+                ]
+            )
+        )
+        print(msgs.prettify_json())
+        self.assertTrue(len(msgs.messages) == 2)
+
+    def test_format_chat_message_with_tools(self):
+        class AnswerWithRationale(DataModel):
+            rationale: str
+            answer: str
+
+        language_model = LanguageModel(
+            model="ollama/mistral",
+        )
+
+        msgs = Generator(
+            data_model=AnswerWithRationale,
+            language_model=language_model,
+        ).format_messages(
+            inputs=ChatMessages(
+                messages=[
+                    ChatMessage(
+                        role="user",
+                        content="What is the french city of aerospace and robotics?",
+                    ),
+                    ChatMessage(
+                        role="tool",
+                        tool_call_id=str(uuid.uuid4()),
+                        content={"expression": "2+2"},
+                    ),
+                ]
+            )
+        )
+        print(msgs.prettify_json())
+        self.assertTrue(len(msgs.messages) == 3)
 
     def test_format_message_with_instructions(self):
         class Query(DataModel):

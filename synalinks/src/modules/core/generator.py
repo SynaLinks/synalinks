@@ -12,6 +12,7 @@ from synalinks.src.backend import ChatRole
 from synalinks.src.backend import Instructions
 from synalinks.src.backend import Prediction
 from synalinks.src.backend import SymbolicDataModel
+from synalinks.src.backend import is_chat_messages
 from synalinks.src.modules.module import Module
 from synalinks.src.saving import serialization_lib
 
@@ -31,7 +32,6 @@ def default_prompt_template():
         (str): The default prompt template.
     """
     return """
-<system>
 # Instructions
 {{ instructions }}
 {% if inputs_schema %}
@@ -48,14 +48,6 @@ def default_prompt_template():
 ## Output:
 {{ example[1] }}
 {% endfor %}
-{% endif %}
-</system>
-{% if inputs %}
-<user>
-## Input:
-{{ inputs }}
-## Output:
-</user>
 {% endif %}
 """.strip()
 
@@ -300,15 +292,14 @@ class Generator(Module):
                 for pred in self.state.get("examples")
             ],
             instructions=self.state.get("instructions"),
-            inputs=inputs.get_json() if inputs else None,
         )
-        matches = XML_TAGS_REGEX.findall(rendered_prompt)
-        extracted_tags = [(match[0], match[1].strip()) for match in matches]
-        msgs = ChatMessages()
-        for message in extracted_tags:
-            role, content = message
-            if content:
-                msgs.messages.append(ChatMessage(role=role, content=content))
+        system_message = ChatMessage(role="system", content=rendered_prompt)
+
+        if inputs and is_chat_messages(inputs):
+            msgs = ChatMessages(messages=[system_message] + inputs.get("messages"))
+        else:
+            user_message = ChatMessage(role="user", content=f"## Input:\n{inputs.get_json()}\n##Output:\n")
+            msgs = ChatMessages(messages=[system_message, user_message])
         return msgs
 
     def get_config(self):
