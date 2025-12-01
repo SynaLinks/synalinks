@@ -50,7 +50,7 @@ plugins:
 nav:
   - index.md
   - Introduction.md
-  - Modules.md
+  - Modules: Synalinks API/Modules API/index.md
   - FAQ.md
   - CheatSheet.md
   - Differences with Keras.md
