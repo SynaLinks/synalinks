@@ -10,7 +10,7 @@ from absl.testing import parameterized
 
 from synalinks.src.backend.common.global_state import clear_session
 from synalinks.src.backend.config import enable_logging
-
+from synalinks.src.backend.config import disable_telemetry
 
 class TestCase(
     unittest.IsolatedAsyncioTestCase, parameterized.TestCase, unittest.TestCase
@@ -23,6 +23,7 @@ class TestCase(
     def setUp(self):
         # clear global state so that test cases are independent
         clear_session(free_memory=False)
+        disable_telemetry()
 
     def get_temp_dir(self):
         temp_dir = tempfile.mkdtemp()

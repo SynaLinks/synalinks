@@ -39,11 +39,9 @@ _RANDOM_SEED = 123
 np.random.seed(_RANDOM_SEED)
 random.seed(_RANDOM_SEED)
 
-
 logger = logging.getLogger("synalinks")
 logger.propagate = False
 logger.setLevel(logging.CRITICAL)
-
 
 class SynalinksLogFormatter(logging.Formatter):
     """Formatter for console logging with colors and prefix."""
@@ -75,6 +73,31 @@ class SynalinksFileFormatter(logging.Formatter):
     def format(self, record):
         record.msg = self.ANSI_ESCAPE_PATTERN.sub("", str(record.msg))
         return super().format(record)
+    
+_ENABLE_TELEMETRY = True
+
+
+@synalinks_export(
+    [
+        "synalinks.config.disable_telemetry",
+        "synalinks.backend.disable_telemetry",
+        "synalinks.disable_telemetry",
+    ]
+)
+def disable_telemetry():
+    global _ENABLE_TELEMETRY
+    _ENABLE_TELEMETRY = False
+
+
+@synalinks_export(
+    [
+        "synalinks.config.is_telemetry_enabled",
+        "synalinks.backend.is_telemetry_enabled",
+        "synalinks.is_telemetry_enabled",
+    ]
+)
+def is_telemetry_enabled():
+    return _ENABLE_TELEMETRY
 
 
 @synalinks_export(["synalinks.config.floatx", "synalinks.backend.floatx"])
