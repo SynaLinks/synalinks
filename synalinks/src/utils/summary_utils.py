@@ -15,7 +15,7 @@ from synalinks.src.utils import io_utils
 
 
 def count_params(variables):
-    return int(sum(len(v.get_json()) for v in variables))
+    return len(variables)
 
 
 def highlight_number(x):
