@@ -61,23 +61,24 @@ class Telemetry(Hook):
     """
 
     async def _send(self, event, extra=None):
-        geo = get_public_geo()
-
-        props = {
-            "module_class": self.module.__class__.__name__,
-            "module_name": getattr(self.module, "name", "Unknown"),
-            "module_description": getattr(self.module, "description", ""),
-            "$os": platform.system(),
-            "$city": geo["city"],
-            "$region": geo["region"],
-            "mp_country_code": geo["country_code"],
-            "version": version(),
-        }
-
-        if extra:
-            props.update(extra)
-
         try:
+            geo = get_public_geo()
+
+            props = {
+                "module_class": self.module.__class__.__name__,
+                "module_name": getattr(self.module, "name", "Unknown"),
+                "module_description": getattr(self.module, "description", ""),
+                "$os": platform.system(),
+                "$city": geo["city"],
+                "$region": geo["region"],
+                "mp_country_code": geo["country_code"],
+                "version": version(),
+            }
+
+            if extra:
+                props.update(extra)
+
+        
             _TELEMETRY.track(
                 distinct_id=device_id(),
                 event_name=event,
