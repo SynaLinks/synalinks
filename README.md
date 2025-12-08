@@ -41,6 +41,17 @@ Too busy to read the documentation? Give the [llms.txt](https://synalinks.github
 
 </div>
 
+## Want to learn how to build neuro-symbolic systems?
+
+We provide a suite of notebooks available in [Google Colab](https://colab.research.google.com/) so you can learn about the future of AI and become a neuro-symbolic expert!
+
+We specifically designed them to be easy to start and become more complex as you learn more, so we encourage you explore them in the provided order.
+
+1. [Working With Data Models](examples/1_working_with_data_models.ipynb)[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1eJoFNn6wAFVd2vqrmgIHEwgzHfbp0Lkb?usp=sharing)
+2. [Working With Programs](examples/2_working_with_programs.ipynb) [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1RRZUIGW6r61Rs38EQl52beRVZyIoYXe_?usp=sharing)
+3. [Parrallel and Conditional Branches]()
+
+
 ## What is Synalinks?
 
 Synalinks is an open-source framework that makes it easy to create, evaluate, train, and deploy industry-standard Language Models (LMs) applications like **graph RAGs, autonomous agents, multi-agent systems or self-evolving systems**. Synalinks follows the principle of *progressive disclosure of complexity*: meaning that simple workflows should be quick and easy, while arbitrarily advanced ones should be possible via a clear path that builds upon what you've already learned.
@@ -57,7 +68,7 @@ Developping a successful LM application in a profesional context, beyond statele
 
 - **Building optimized prompts with examples/instructions at each step**: Synalinks uses advanced In-Context Reinforcement Learning techniques to optimize **each** prompt/code/rules of your workflow/agent using our SOTA optimizers.
 - **Pipelines that change over time**: Easily edit your pipelines, re-run your training, and you're good to go.
-- **Ensuring the correctness of the LMs output**: Synalinks combines **constrained structured output** with In-Context RL to ensure **both format and content correctness**.
+- **Ensuring the correctness of the LMs output**: Synalinks combines **constrained JSON structured output** with In-Context RL to ensure **both format and content correctness**.
 - **Async Optimization**: Synalinks automatically optimizes your pipelines by detecting parallel processes, so you don't have to worry about it.
 - **Assessing the performance of your application**: Synalinks provides built-in metrics and rewards to evaluate your workflows.
 - **Configuring Language & Embedding Models**: Seamlessly integrate multiple LM providers like Ollama, OpenAI, Azure, Anthropic, Mistral or Groq.
