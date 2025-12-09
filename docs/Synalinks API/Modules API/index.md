@@ -57,6 +57,12 @@ if __name__ == "__main__":
 
 ---
 
+### Agents Modules
+
+- [FunctionCallingAgent module](Agents Modules/FunctionCallingAgent module.md)
+
+---
+
 ### Masking Modules
 
 - [InMask module](Masking Modules/InMask module.md)
@@ -98,9 +104,3 @@ if __name__ == "__main__":
 
 - [PythonSynthesis module](Synthesis Modules/PythonSynthesis module.md)
 - [SequentialPlanSynthesis module](Synthesis Modules/SequentialPlanSynthesis module.md)
-
----
-
-### Agents Modules
-
-- [FunctionCallingAgent module](Agents Modules/FunctionCallingAgent module.md)

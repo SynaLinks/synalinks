@@ -103,6 +103,9 @@ nav:
         - Synalinks API/Modules API/Core Modules/Decision module.md
         - Synalinks API/Modules API/Core Modules/Action module.md
         - Synalinks API/Modules API/Core Modules/Branch module.md
+      - Agents Modules:
+        - Synalinks API/Modules API/Agents Modules/index.md
+        - Synalinks API/Modules API/Agents Modules/FunctionCallingAgent module.md
       - Knowledge Modules:
         - Synalinks API/Modules API/Knowledge Modules/index.md
         - Synalinks API/Modules API/Knowledge Modules/Embedding module.md
@@ -129,9 +132,6 @@ nav:
         - Synalinks API/Modules API/Synthesis Modules/index.md
         - Synalinks API/Modules API/Synthesis Modules/PythonSynthesis module.md
         - Synalinks API/Modules API/Synthesis Modules/SequentialPlanSynthesis module.md
-      - Agents Modules:
-        - Synalinks API/Modules API/Agents Modules/index.md
-        - Synalinks API/Modules API/Agents Modules/FunctionCallingAgent module.md
     - Callbacks API:
       - Synalinks API/Callbacks API/index.md
       - Synalinks API/Callbacks API/Base Callback class.md

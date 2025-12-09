@@ -6,7 +6,7 @@
 
 <b>From idea to production in just few lines</b>
 
-<em>The first neuro-symbolic LM framework to leverage decades-old best practices in Deep Learning frameworks from the most user-friendly framework ever built - Keras</em>
+<em>The first neuro-symbolic Language Model (LM) framework leveraging the simplicity of Keras and the rigor of Deep Learning best practices.</em>
 
 <b>Build RAGs, autonomous agents, multi-agents systems, self-evolving systems and more in just few lines</b>
 
@@ -22,7 +22,7 @@
 
 <div align="center">
 
-⭐ Help us reach more AI/ML engineers and grow the Synalinks community. Star this repo ⭐
+⭐ If you find Synalinks useful, please star the repo! Help us reach more AI/ML engineers and grow the community. ⭐
 
 ![Beta](https://img.shields.io/badge/Release-Beta-blue.svg)
 [![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
@@ -41,33 +41,50 @@ Too busy to read the documentation? Give the [llms.txt](https://synalinks.github
 
 </div>
 
-## What is Synalinks?
+## What Is Synalinks?
 
-Synalinks is an open-source framework that makes it easy to create, evaluate, train, and deploy industry-standard Language Models (LMs) applications like **graph RAGs, autonomous agents, multi-agent systems or self-evolving systems**. Synalinks follows the principle of *progressive disclosure of complexity*: meaning that simple workflows should be quick and easy, while arbitrarily advanced ones should be possible via a clear path that builds upon what you've already learned.
+Synalinks is an open-source neuro-symbolic framework that makes it simple to create, train, evaluate, and deploy advanced LM-based applications, including graph RAGs, autonomous agents, and self-evolving reasoning systems.
 
-Synalinks is an *adaptation of Keras 3* focused on neuro-symbolic systems and in-context reinforcement learning, an ensemble of techniques that enhance the LMs predictions and accuracy without changing the weights of the model. The goal of Synalinks is to facilitate the rapid setup of simple applications while providing the flexibility for researchers and advanced users to develop sophisticated systems.
+Think Keras for Language Models applications, a clean, declarative API where:
 
-## Who is Synalinks for?
+- 🧩 You **compose** modules like you would with layers.
+- ⚙️ You **train & optimize** with in-context reinforcement learning.
+- 🌐 You **deploy** instantly as REST APIs or MCP servers.
 
-Synalinks is designed for a diverse range of users, from professionals and AI researchers to students, independent developers, and hobbyists. It is suitable for anyone who wants to learn about AI by building/composing blocks or build solid foundations for enterprise-grade products. While a background in Machine Learning and Deep Learning can be advantageous — as Synalinks leverages design patterns from Keras, one of the most user-friendly and popular Deep Learning frameworks — it is not a prerequisite. Synalinks is designed to be accessible to anyone with programming skills in Python, making it a versatile and inclusive platform for AI development.
+### Key Principles
 
-## Why use Synalinks?
+- **Progressive complexity**: Start simple and grow advanced naturally.
+- **Neuro-symbolic learning**: Combine logic, structure, and deep models.
+- **In-context optimization**: Improve model reasoning without retraining weights.
 
-Developping a successful LM application in a profesional context, beyond stateless chatbots, is difficult and typically include:
+## Who Is It For?
 
-- **Building optimized prompts with examples/instructions at each step**: Synalinks uses advanced In-Context Reinforcement Learning techniques to optimize **each** prompt/code/rules of your workflow/agent using our SOTA optimizers.
-- **Pipelines that change over time**: Easily edit your pipelines, re-run your training, and you're good to go.
-- **Ensuring the correctness of the LMs output**: Synalinks combines **constrained JSON structured output** with In-Context RL to ensure **both format and content correctness**.
-- **Async Optimization**: Synalinks automatically optimizes your pipelines by detecting parallel processes, so you don't have to worry about it.
-- **Assessing the performance of your application**: Synalinks provides built-in metrics and rewards to evaluate your workflows.
-- **Configuring Language & Embedding Models**: Seamlessly integrate multiple LM providers like Ollama, OpenAI, Azure, Anthropic, Mistral or Groq.
-- **Configuring Graph Databases**: Seamlessly integrate with Neo4J or MemGraph.
-- **Documenting your ML workflows**: Plot your workflows, training history, and evaluations; document everything.
-- **Versioning the prompts/pipelines**: Each program is serializable into JSON so you can version it with git.
-- **Deploying REST APIs or MCP servers**: Compatible out-of-the-box with FastAPI and FastMCP so your Data Scientists and Web Developers can stop tearing each other apart.
-- **Finding Hyperparameters**: Synalinks is compatible with [KerasTuner](https://keras.io/keras_tuner/), so you don't have to guess the hyperparameters.
+<div align="center">
 
-We can help you simplify these tasks by leveraging decade old practices in Deep Learning frameworks. We provide a comprehensive suite of tools and features designed to streamline the development process, making it easier to create, evaluate, train, document and deploy robust neuro-symbolic LMs applications.
+| Role                      | Why Synalinks Helps                                      |
+| ------------------------- | -------------------------------------------------------- |
+| 🧑‍💻 **Developers**      | Build complex LM apps without boilerplate.               |
+| 🧠 **Researchers**        | Prototype neuro-symbolic and RL-in-context systems fast. |
+| 🏢 **Data Scientists**    | Integrate LM workflows with APIs & databases.            |
+| 🎓 **Students/Hobbyists** | Learn AI composition in a clean, intuitive framework.    |
+
+No ML background required, just Python skills.
+
+</div>
+
+## Why Synalinks?
+
+Building robust LM apps is hard. Synalinks simplifies it with:
+
+- **Prompt/Anything optimization** per module via In-Context RL
+- **Versionable**, JSON-serializable pipelines
+- **Constrained structured outputs** (JSON) for correctness
+- **Automatic async** & parallel execution
+- **Metrics, rewards & evaluations** built-in
+- **Native integrations**: OpenAI, Ollama, Anthropic, Mistral, Azure, Groq, Gemini, XAI
+- **Graph DB support**: Neo4J, MemGraph
+- **API-ready**: Deploy with FastAPI or FastMCP
+- **KerasTuner compatibility** for hyperparameter search
 
 <div align="center">
 
@@ -81,17 +98,13 @@ We can help you simplify these tasks by leveraging decade old practices in Deep 
 
 </div>
 
-## Install
+## Installation
 
 ```shell
 uv pip install synalinks
 ```
 
-## Programming your application: 4 ways
-
-### Using the `Functional` API
-
-You start from `Input`, you chain modules calls to specify the program's structure, and finally, you create your program from inputs and outputs:
+## Example
 
 ```python
 import synalinks
@@ -102,245 +115,60 @@ class Query(synalinks.DataModel):
         description="The user query",
     )
 
-class AnswerWithThinking(synalinks.DataModel):
-    thinking: str = synalinks.Field(
-        description="Your step by step thinking",
-    )
+class NumericalAnswer(synalinks.DataModel):
     answer: float = synalinks.Field(
-        description="The correct numerical answer",
+        description="The final numerical answer",
     )
+
+language_model = synalinks.LanguageModel(
+    model="gemini/gemini-2.5-pro",
+)
+
+@synalinks.saving.register_synalinks_serializable()
+async def calculate(expression: str):
+    """Calculate the result of a mathematical expression.
+
+    Args:
+        expression (str): The mathematical expression to calculate, such as
+            '2 + 2'. The expression can contain numbers, operators (+, -, *, /),
+            parentheses, and spaces.
+    """
+    if not all(char in "0123456789+-*/(). " for char in expression):
+        return {
+            "result": None,
+            "log": "Error: invalid characters in expression",
+        }
+    try:
+        # Evaluate the mathematical expression safely
+        result = round(float(eval(expression, {"__builtins__": None}, {})), 2)
+        return {
+            "result": result,
+            "log": "Successfully executed",
+        }
+    except Exception as e:
+        return {
+            "result": None,
+            "log": f"Error: {e}",
+        }
 
 async def main():
+    inputs = synalinks.Input(data_model=Query)
 
-    language_model = synalinks.LanguageModel(
-        model="ollama/mistral",
-    )
-
-    x0 = synalinks.Input(data_model=Query)
-    x1 = await synalinks.Generator(
-        data_model=AnswerWithThinking,
+    outputs = await synalinks.FunctionCallingAgent(
+        data_model=NumericalAnswer,
+        tools=[
+            synalinks.Tool(calculate),
+        ],
         language_model=language_model,
-    )(x0)
+    )(inputs)
 
     program = synalinks.Program(
-        inputs=x0,
-        outputs=x1,
-        name="chain_of_thought",
-        description="Useful to answer in a step by step manner.",
+        inputs=inputs,
+        outputs=outputs,
+        name="math_agent",
+        description="A math agent",
     )
 
-if __name__ == "__main__":
-    asyncio.run(main())
-```
-
-### Subclassing the `Program` class
-
-In that case, you should define your modules in `__init__()` and implement the program's structure in `call()`. This way of programming is more similar to PyTorch style, if you are an experimented user, this way will give you the maximum flexibility.
-
-**Note:** you can optionaly have a `training` argument (boolean), which you can use to specify a different behavior in training and inference.
-
-```python
-import synalinks
-import asyncio
-
-class Query(synalinks.DataModel):
-    query: str = synalinks.Field(
-        description="The user query",
-    )
-
-class AnswerWithThinking(synalinks.DataModel):
-    thinking: str = synalinks.Field(
-        description="Your step by step thinking process",
-    )
-    answer: float = synalinks.Field(
-        description="The correct numerical answer",
-    )
-
-class ChainOfThought(synalinks.Program):
-    """Useful to answer in a step by step manner.
-    
-    The first line of the docstring is provided as description
-    for the program if not provided in the `super().__init__()`.
-    In a similar way the name is automatically infered based on
-    the class name if not provided.
-    """
-
-    def __init__(
-        self,
-        language_model=None,
-        name=None,
-        description=None,
-        trainable=True,
-    ):
-        super().__init__(
-            name=name,
-            description=description,
-            trainable=trainable,
-        )
-        self.answer = synalinks.Generator(
-            data_model=AnswerWithThinking,
-            language_model=language_model,
-            name="generator_"+self.name,
-        )
-
-    async def call(self, inputs, training=False):
-        if not inputs:
-            return None
-        x = await self.answer(inputs, training=training)
-        return x
-
-    def get_config(self):
-        config = {
-            "name": self.name,
-            "description": self.description,
-            "trainable": self.trainable,
-        }
-        language_model_config = \
-        {
-            "language_model": synalinks.saving.serialize_synalinks_object(
-                self.language_model
-            )
-        }
-        return {**config, **language_model_config}
-
-    @classmethod
-    def from_config(cls, config):
-        language_model = synalinks.saving.deserialize_synalinks_object(
-            config.pop("language_model")
-        )
-        return cls(language_model=language_model, **config)
-
-async def main():
-
-    language_model = synalinks.LanguageModel(
-        model="ollama/mistral",
-    )
-
-    program = ChainOfThought(
-        language_model=language_model,
-    )
-
-if __name__ == "__main__":
-    asyncio.run(main())
-```
-
-### Mixing the subclassing and the `Functional` API
-
-This way of programming is recommended to encapsulate your application while providing an easy to use setup.
-It is the recommended way for most users as it avoid making your program/agents from scratch.
-In that case, you should implement only the `__init__()` and `build()` methods.
-
-```python
-import synalinks
-import asyncio
-
-class Query(synalinks.DataModel):
-    query: str = synalinks.Field(
-        description="The user query",
-    )
-
-class AnswerWithThinking(synalinks.DataModel):
-    thinking: str = synalinks.Field(
-        description="Your step by step thinking process",
-    )
-    answer: float = synalinks.Field(
-        description="The correct numerical answer",
-    )
-
-async def main():
-
-    class ChainOfThought(synalinks.Program):
-        """Useful to answer in a step by step manner."""
-
-        def __init__(
-            self,
-            language_model=None,
-            name=None,
-            description=None,
-            trainable=True,
-        ):
-            super().__init__(
-                name=name,
-                description=description,
-                trainable=trainable,
-            )
-
-            self.language_model = language_model
-        
-        async def build(self, inputs):
-            outputs = await synalinks.Generator(
-                data_model=AnswerWithThinking,
-                language_model=self.language_model,
-            )(inputs)
-
-            # Create your program using the functional API
-            super().__init__(
-                inputs=inputs,
-                outputs=outputs,
-                name=self.name,
-                description=self.description,
-                trainable=self.trainable,
-            )
-
-    language_model = synalinks.LanguageModel(
-        model="ollama/mistral",
-    )
-
-    program = ChainOfThought(
-        language_model=language_model,
-    )
-
-if __name__ == "__main__":
-    asyncio.run(main())
-```
-
-This allows you to not have to implement the `call()` and serialization methods
-(`get_config()` and `from_config()`). The program will be built for any inputs the first time called.
-
-### Using the `Sequential` API
-
-In addition, `Sequential` is a special case of program where the program
-is purely a stack of single-input, single-output modules.
-
-```python
-import synalinks
-import asyncio
-
-class Query(synalinks.DataModel):
-    query: str = synalinks.Field(
-        description="The user query",
-    )
-
-class AnswerWithThinking(synalinks.DataModel):
-    thinking: str = synalinks.Field(
-        description="Your step by step thinking",
-    )
-    answer: float = synalinks.Field(
-        description="The correct numerical answer",
-    )
-
-async def main():
-
-    language_model = synalinks.LanguageModel(
-        model="ollama/mistral",
-    )
-
-    program = synalinks.Sequential(
-        [
-            synalinks.Input(
-                data_model=Query,
-            ),
-            synalinks.Generator(
-                data_model=AnswerWithThinking,
-                language_model=language_model,
-            ),
-        ],
-        name="chain_of_thought",
-        description="Useful to answer in a step by step manner.",
-    )
-
-if __name__ == "__main__":
-    asyncio.run(main())
 ```
 
 ## Getting a summary of your program
@@ -362,19 +190,25 @@ synalinks.utils.plot_program(
 )
 ```
 
-![chain_of_thought](./docs/assets/chain_of_thought.png)
-
 ## Running your program
 
 To run your program use the following:
 
 ```python
 result = await program(
-    Query(query="What is the French city of aerospace?"),
+    Query(
+        query=(
+            "A bookstore receives a shipment of 135 new books."
+            "They place the books evenly onto 9 shelves."
+            "Later, they decide to move 3 books from each shelf to a display table"
+            " at the front of the store. "
+            "How many books are left on the shelves after the books are moved?"
+        )
+    ),
 )
 ```
 
-## Training your program
+## Training your program/agent
 
 ```python
 async def main():
@@ -407,11 +241,6 @@ async def main():
 if __name__ == "__main__":
     asyncio.run(main())
 ```
-<div align="center">
-
-![gsm8k_evaluation_comparison](./docs/assets/gsm8k_evaluation_comparison.png)
-
-</div>
 
 ## Saving & Loading
 
@@ -461,6 +290,10 @@ Beware that every additional metric/module/optimizer should be approved by the c
 If you have specific feedbacks or features request we invite you to open an [issue](https://github.com/SynaLinks/synalinks/issues).
 
 ### Contributors
+
+Your contributions, feedback, and support are what make this project thrive.
+
+From small bug fixes to major features, thank you for believing in open collaboration and the future of neuro-symbolic AI.
 
 <a href="https://github.com/SynaLinks/synalinks/graphs/contributors">
   <img src="https://contrib.rocks/image?repo=SynaLinks/synalinks"/>

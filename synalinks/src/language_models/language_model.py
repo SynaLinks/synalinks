@@ -123,7 +123,7 @@ class LanguageModel(SynalinksSaveable):
     os.environ["GEMINI_API_KEY"] = "your-api-key"
 
     language_model = synalinks.LanguageModel(
-        model="gemini/gemini-1.5-pro",
+        model="gemini/gemini-2.5-pro",
     )
     ```
 
