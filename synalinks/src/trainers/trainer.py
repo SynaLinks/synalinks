@@ -330,6 +330,7 @@ class Trainer:
         x=None,
         y=None,
         batch_size=1,
+        minibatch_size=4,
         epochs=1,
         verbose="auto",
         callbacks=None,
@@ -360,6 +361,10 @@ class Trainer:
                 If unspecified, `batch_size` will default to 32.
                 Do not specify the `batch_size` if your input data `x` is a
                 Python generator function since they generate batches.
+            minibatch_size (int): Integer or `None`.
+                Number of randomly selected samples per batch validation.
+                If unspecified, `minibatch_size` will default to 4.
+                If `None`, the whole validation set will be used.
             epochs (int): Integer. Number of epochs to train the program.
                 An epoch is an iteration over the entire `x` and `y`
                 data provided (unless the `steps_per_epoch` flag is set to
@@ -532,13 +537,25 @@ class Trainer:
                         )
 
                     callbacks.on_train_batch_begin(step)
+                    
+                    mini_val_x = None
+                    mini_val_y = None
+                    if minibatch_size:
+                        if len(val_x) > minibatch_size:
+                            indices = np.random.choice(
+                                len(val_x),
+                                size=minibatch_size,
+                                replace=False,
+                            )
+                            mini_val_x = val_x[indices]
+                            mini_val_y = val_y[indices]
 
                     logs = await self.train_on_batch(
                         step=step,
                         x=x_batch,
                         y=y_batch,
-                        val_x=val_x,
-                        val_y=val_y,
+                        val_x=mini_val_x if mini_val_x else val_x,
+                        val_y=mini_val_y if mini_val_y else val_y,
                         return_dict=True,
                     )
 

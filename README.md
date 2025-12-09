@@ -68,8 +68,6 @@ Think Keras for Language Models applications, a clean, declarative API where:
 | 🏢 **Data Scientists**    | Integrate LM workflows with APIs & databases.            |
 | 🎓 **Students/Hobbyists** | Learn AI composition in a clean, intuitive framework.    |
 
-No ML background required, just Python skills.
-
 </div>
 
 ## Why Synalinks?
