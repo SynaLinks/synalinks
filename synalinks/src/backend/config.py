@@ -73,9 +73,8 @@ class SynalinksFileFormatter(logging.Formatter):
     def format(self, record):
         record.msg = self.ANSI_ESCAPE_PATTERN.sub("", str(record.msg))
         return super().format(record)
-    
-_ENABLE_TELEMETRY = True
 
+_ENABLE_TELEMETRY = True
 
 @synalinks_export(
     [

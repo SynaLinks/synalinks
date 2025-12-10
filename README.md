@@ -10,6 +10,16 @@
 
 <b>Build RAGs, autonomous agents, multi-agents systems, self-evolving systems and more in just few lines</b>
 
+[Deutsch](https://zdoc.app/de/SynaLinks/synalinks) | 
+[English](https://zdoc.app/en/SynaLinks/synalinks) | 
+[Español](https://zdoc.app/es/SynaLinks/synalinks) | 
+[Français](https://zdoc.app/fr/SynaLinks/synalinks) | 
+[日本語](https://zdoc.app/ja/SynaLinks/synalinks) | 
+[한국어](https://zdoc.app/ko/SynaLinks/synalinks) | 
+[Português](https://zdoc.app/pt/SynaLinks/synalinks) | 
+[Русский](https://zdoc.app/ru/SynaLinks/synalinks) | 
+[中文](https://zdoc.app/zh/SynaLinks/synalinks)
+
 <p align="center">
   <a href="https://synalinks.github.io/synalinks" target="_blank"><strong>Documentation</strong></a> ·
   <a href="https://synalinks.github.io/synalinks/FAQ/" target="_blank"><strong>FAQ</strong></a> ·
@@ -18,7 +28,6 @@
 </p>
 
 </div>
-
 
 <div align="center">
 
@@ -47,14 +56,14 @@ Synalinks is an open-source neuro-symbolic framework that makes it simple to cre
 
 Think Keras for Language Models applications, a clean, declarative API where:
 
-- 🧩 You **compose** modules like you would with layers.
+- 🧩 You **compose** `Module`s like you would with deep learning `Layer`s.
 - ⚙️ You **train & optimize** with in-context reinforcement learning.
-- 🌐 You **deploy** instantly as REST APIs or MCP servers.
+- 🌐 You **deploy** as REST APIs or MCP servers.
 
 ### Key Principles
 
 - **Progressive complexity**: Start simple and grow advanced naturally.
-- **Neuro-symbolic learning**: Combine logic, structure, and deep models.
+- **Neuro-symbolic learning**: Combine logic, structure, and language models.
 - **In-context optimization**: Improve model reasoning without retraining weights.
 
 ## Who Is It For?

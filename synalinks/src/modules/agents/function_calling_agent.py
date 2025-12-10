@@ -382,7 +382,7 @@ class FunctionCallingAgent(Module):
             use_inputs_schema=self.use_inputs_schema,
             use_outputs_schema=self.use_outputs_schema,
             language_model=self.language_model,
-            name="tool_calls_generator_"+self.name,
+            name="tool_calls_generator_" + self.name,
         )
 
         if self.schema and self.autonomous:
@@ -391,7 +391,7 @@ class FunctionCallingAgent(Module):
                 language_model=self.language_model,
                 instructions=self.instructions,
                 return_inputs=self.return_inputs_with_trajectory,
-                name="final_generator_"+self.name,
+                name="final_generator_" + self.name,
             )
 
     async def call(self, inputs, training=False):

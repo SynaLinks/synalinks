@@ -207,6 +207,7 @@ class OMEGA(RandomFewShot):
         - [AlphaEvolve: A coding agent for scientific and algorithmic discovery](https://arxiv.org/pdf/2506.13131)
 
     Args:
+        instructions (str): additional instructions about the task for the optimizer.
         language_model (LanguageModel): The language model to use.
         embedding_model (EmbeddingModel): The embedding model to use to compute candidates
             descriptors according to Dominated Novelty Search.
@@ -238,6 +239,7 @@ class OMEGA(RandomFewShot):
 
     def __init__(
         self,
+        instructions=None,
         language_model=None,
         embedding_model=None,
         k_nearest_fitter=5,
@@ -266,6 +268,9 @@ class OMEGA(RandomFewShot):
             name=name,
             description=description,
         )
+        if not instructions:
+            instructions = ""
+        self.instructions = instructions
         self.language_model = language_model
         self.embedding_model = embedding_model
         self.mutation_temperature = mutation_temperature
@@ -319,6 +324,13 @@ class OMEGA(RandomFewShot):
                             base_instructions(),
                             mutation_instructions(list(symbolic_variable.keys())),
                         ]
+                    ) if not self.instructions else
+                    "\n".join(
+                        [
+                            self.instructions,
+                            base_instructions(),
+                            mutation_instructions(list(symbolic_variable.keys())),
+                        ]
                     ),
                     name=f"mutation_cot_{schema_id}_"+self.name,
                 )(inputs)
@@ -339,6 +351,13 @@ class OMEGA(RandomFewShot):
                     temperature=self.crossover_temperature,
                     instructions="\n".join(
                         [
+                            base_instructions(),
+                            crossover_instructions(list(symbolic_variable.keys())),
+                        ]
+                    ) if not self.instructions else
+                    "\n".join(
+                        [
+                            self.instructions,
                             base_instructions(),
                             crossover_instructions(list(symbolic_variable.keys())),
                         ]
@@ -626,6 +645,7 @@ class OMEGA(RandomFewShot):
 
     def get_config(self):
         config = {
+            "instructions": self.instructions,
             "k_nearest_fitter": self.k_nearest_fitter,
             "mutation_temperature": self.mutation_temperature,
             "crossover_temperature": self.crossover_temperature,
