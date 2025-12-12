@@ -554,8 +554,8 @@ class Trainer:
                         step=step,
                         x=x_batch,
                         y=y_batch,
-                        val_x=mini_val_x if mini_val_x else val_x,
-                        val_y=mini_val_y if mini_val_y else val_y,
+                        val_x=mini_val_x if mini_val_x is not None else val_x,
+                        val_y=mini_val_y if mini_val_y is not None else val_y,
                         return_dict=True,
                     )
 
