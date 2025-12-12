@@ -1,0 +1,39 @@
+# Synalinks
+
+> Keras based LM framework for neuro-symbolic applications
+
+Keras based LM framework for neuro-symbolic applications and In-Context learning
+
+## Usage documentation
+
+- [Introduction](https://synalinks.github.io/synalinks/Introduction/index.md)
+- [Program training API](https://synalinks.github.io/synalinks/Synalinks API/Programs API/Program training API/index.md)
+- [The Program class](https://synalinks.github.io/synalinks/Synalinks API/Programs API/The Program class/index.md)
+- [The Sequential class](https://synalinks.github.io/synalinks/Synalinks API/Programs API/The Sequential class/index.md)
+- [FunctionCallingAgent module](https://synalinks.github.io/synalinks/Synalinks API/Modules API/Agents Modules/FunctionCallingAgent module/index.md)
+- [Action module](https://synalinks.github.io/synalinks/Synalinks API/Modules API/Core Modules/Action module/index.md)
+- [Branch module](https://synalinks.github.io/synalinks/Synalinks API/Modules API/Core Modules/Branch module/index.md)
+- [Decision module](https://synalinks.github.io/synalinks/Synalinks API/Modules API/Core Modules/Decision module/index.md)
+- [Generator module](https://synalinks.github.io/synalinks/Synalinks API/Modules API/Core Modules/Generator module/index.md)
+- [Identity module](https://synalinks.github.io/synalinks/Synalinks API/Modules API/Core Modules/Identity module/index.md)
+- [Input module](https://synalinks.github.io/synalinks/Synalinks API/Modules API/Core Modules/Input module/index.md)
+- [Not module](https://synalinks.github.io/synalinks/Synalinks API/Modules API/Core Modules/Not module/index.md)
+- [Embedding module](https://synalinks.github.io/synalinks/Synalinks API/Modules API/Knowledge Modules/Embedding module/index.md)
+- [UpdateKnowledge module](https://synalinks.github.io/synalinks/Synalinks API/Modules API/Knowledge Modules/UpdateKnowledge module/index.md)
+- [InMask module](https://synalinks.github.io/synalinks/Synalinks API/Modules API/Masking Modules/InMask module/index.md)
+- [OutMask module](https://synalinks.github.io/synalinks/Synalinks API/Modules API/Masking Modules/OutMask module/index.md)
+- [And module](https://synalinks.github.io/synalinks/Synalinks API/Modules API/Merging Modules/And module/index.md)
+- [Concat module](https://synalinks.github.io/synalinks/Synalinks API/Modules API/Merging Modules/Concat module/index.md)
+- [Or module](https://synalinks.github.io/synalinks/Synalinks API/Modules API/Merging Modules/Or module/index.md)
+- [Xor module](https://synalinks.github.io/synalinks/Synalinks API/Modules API/Merging Modules/Xor module/index.md)
+- [EntityRetriever module](https://synalinks.github.io/synalinks/Synalinks API/Modules API/Retrievers Modules/EntityRetriever module/index.md)
+- [TripletRetriever module](https://synalinks.github.io/synalinks/Synalinks API/Modules API/Retrievers Modules/TripletRetriever module/index.md)
+- [PythonSynthesis module](https://synalinks.github.io/synalinks/Synalinks API/Modules API/Synthesis Modules/PythonSynthesis module/index.md)
+- [SequentialPlanSynthesis module](https://synalinks.github.io/synalinks/Synalinks API/Modules API/Synthesis Modules/SequentialPlanSynthesis module/index.md)
+- [ChainOfThought module](https://synalinks.github.io/synalinks/Synalinks API/Modules API/Test Time Compute Modules/ChainOfThought module/index.md)
+- [SelfCritique module](https://synalinks.github.io/synalinks/Synalinks API/Modules API/Test Time Compute Modules/SelfCritique module/index.md)
+- [CosineSimilarity reward](https://synalinks.github.io/synalinks/Synalinks API/Rewards/CosineSimilarity reward/index.md)
+- [ExactMatch reward](https://synalinks.github.io/synalinks/Synalinks API/Rewards/ExactMatch reward/index.md)
+- [LMAsJudge reward](https://synalinks.github.io/synalinks/Synalinks API/Rewards/LMAsJudge reward/index.md)
+- [Reward wrappers](https://synalinks.github.io/synalinks/Synalinks API/Rewards/Reward wrappers/index.md)
+
