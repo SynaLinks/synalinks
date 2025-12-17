@@ -629,3 +629,53 @@ async def suffix(x, suffix=None, name=None, description=None):
         name=name,
         description=description,
     )(x)
+
+
+class Not(Operation):
+    """Negation/invert operator to be used in logical flows.
+    
+    When used the output is always `None`.
+    """
+    def __init__(
+        self,
+        name=None,
+        description=None,
+    ):
+        super().__init__(
+            name=name,
+            description=description,
+        )
+
+    async def call(self, x):
+        return None
+
+    async def compute_output_spec(self, x):
+        return SymbolicDataModel(schema=x.get_schema(), name=self.name)
+
+
+@synalinks_export(["synalinks.ops.logical_not", "synalinks.ops.json.logical_not"])
+async def logical_not(x, name=None, description=None):
+    """Negation/invert operator to be used in logical flows.
+    
+    When used the output is always `None`.
+    
+    If the data models used is a metaclass or symbolic data model
+    the output is a symbolic data model with the same schema than the input.
+    
+    Args:
+        x (JsonDataModel | SymbolicDataModel): the input data model
+        name (str): Optional. The name of the operation.
+        description (str): Optional. The description of the operation.
+
+    Returns:
+        (`None` | SymbolicDataModel): The resulting data model
+    """
+    if any_symbolic_data_models(x):
+        return await Not(
+            name=name,
+            description=description,
+        ).symbolic_call(x)
+    return await Not(
+        name=name,
+        description=description,
+    )(x)

@@ -9,12 +9,14 @@ from synalinks.src.ops.json import InMask
 from synalinks.src.ops.json import Or
 from synalinks.src.ops.json import OutMask
 from synalinks.src.ops.json import Xor
+from synalinks.src.ops.json import Not
 from synalinks.src.ops.json import concat
 from synalinks.src.ops.json import factorize
 from synalinks.src.ops.json import in_mask
 from synalinks.src.ops.json import logical_and
 from synalinks.src.ops.json import logical_or
 from synalinks.src.ops.json import logical_xor
+from synalinks.src.ops.json import logical_not
 from synalinks.src.ops.json import out_mask
 from synalinks.src.ops.json import prefix
 from synalinks.src.ops.json import suffix

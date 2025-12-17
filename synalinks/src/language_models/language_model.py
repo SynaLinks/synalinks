@@ -197,7 +197,7 @@ class LanguageModel(SynalinksSaveable):
             self.api_base = "http://localhost:11434"
         else:
             self.api_base = api_base
-        if self.model.startswith("hostted_vllm") and not api_base:
+        if self.model.startswith("hosted_vllm") and not api_base:
             self.api_base = os.environ.get("HOSTED_VLLM_API_BASE", "http://localhost:8000")
         self.timeout = timeout
         self.retry = retry

@@ -304,3 +304,13 @@ class JsonDataModelTest(testing.TestCase):
 
         self.assertTrue(foo_json in foobar_json)
         self.assertFalse(bar_json in foo_json)
+        
+    def test_not_json_data_model(self):
+        class Foo(DataModel):
+            foo: str
+            
+        foo_json = JsonDataModel(data_model=Foo(foo="a"))
+        
+        not_foo = ~foo_json
+        
+        self.assertTrue(not_foo is None)

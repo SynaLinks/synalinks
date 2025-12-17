@@ -111,6 +111,16 @@ class CoreTest(testing.TestCase):
         schema = x.get_schema()
         expected_schema = standardize_schema(Foo.get_schema())
         self.assertEqual(schema, expected_schema)
+        
+    def test_not_meta_data_model(self):
+        class Foo(DataModel):
+            foo: str
+            
+        x = ~Foo
+        
+        schema = x.get_schema()
+        expected_schema = standardize_schema(Foo.get_schema())
+        self.assertEqual(schema, expected_schema)
 
     def test_is_meta_class(self):
         class Query(DataModel):
