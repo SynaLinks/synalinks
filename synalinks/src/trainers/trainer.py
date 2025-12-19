@@ -537,7 +537,7 @@ class Trainer:
                         )
 
                     callbacks.on_train_batch_begin(step)
-                    
+
                     mini_val_x = None
                     mini_val_y = None
                     if minibatch_size:

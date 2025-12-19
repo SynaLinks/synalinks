@@ -154,7 +154,7 @@ class Action(Module):
             temperature=self.temperature,
             use_inputs_schema=self.use_inputs_schema,
             use_outputs_schema=self.use_outputs_schema,
-            name="generator_"+self.name,
+            name="generator_" + self.name,
         )
 
     async def call(self, inputs, training=False):

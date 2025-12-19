@@ -9,8 +9,8 @@ from synalinks.src.metrics.f_score_metrics import BinaryF1Score
 from synalinks.src.metrics.f_score_metrics import BinaryFBetaScore
 from synalinks.src.metrics.f_score_metrics import F1Score
 from synalinks.src.metrics.f_score_metrics import FBetaScore
-from synalinks.src.metrics.f_score_metrics import ListFBetaScore
 from synalinks.src.metrics.f_score_metrics import ListF1Score
+from synalinks.src.metrics.f_score_metrics import ListFBetaScore
 
 
 class FBetaScoreTest(testing.TestCase):
@@ -151,7 +151,7 @@ class BinaryF1ScoreTest(testing.TestCase):
 class ListFBetaScoreTest(testing.TestCase):
     async def test_same_single_label(self):
         from typing import Literal
-        
+
         class SingleLabel(DataModel):
             label: Literal["label_1", "label_2", "label_3"]
 
@@ -165,7 +165,7 @@ class ListFBetaScoreTest(testing.TestCase):
 
     async def test_different_single_label(self):
         from typing import Literal
-        
+
         class SingleLabel(DataModel):
             label: Literal["label_1", "label_2", "label_3"]
 
@@ -177,8 +177,9 @@ class ListFBetaScoreTest(testing.TestCase):
         self.assertAlmostEqual(score, 0.0, delta=3 * backend.epsilon())
 
     async def test_same_multi_label(self):
-        from typing import List, Literal
-        
+        from typing import List
+        from typing import Literal
+
         class MultiLabel(DataModel):
             labels: List[Literal["label_1", "label_2", "label_3"]]
 
@@ -190,8 +191,9 @@ class ListFBetaScoreTest(testing.TestCase):
         self.assertAlmostEqual(score, 1.0, delta=3 * backend.epsilon())
 
     async def test_partial_overlap_multi_label(self):
-        from typing import List, Literal
-        
+        from typing import List
+        from typing import Literal
+
         class MultiLabel(DataModel):
             labels: List[Literal["label_1", "label_2", "label_3"]]
 
@@ -205,8 +207,9 @@ class ListFBetaScoreTest(testing.TestCase):
         self.assertLess(score, 1.0)
 
     async def test_no_overlap_multi_label(self):
-        from typing import List, Literal
-        
+        from typing import List
+        from typing import Literal
+
         class MultiLabel(DataModel):
             labels: List[Literal["label_1", "label_2", "label_3"]]
 
@@ -219,18 +222,16 @@ class ListFBetaScoreTest(testing.TestCase):
 
     async def test_retrieval_sources(self):
         from typing import List
-        
+
         class AnswerWithSources(DataModel):
             sources: List[str]
             answer: str
 
         y_pred = AnswerWithSources(
-            sources=["source1", "source2", "source3"],
-            answer="This is an answer"
+            sources=["source1", "source2", "source3"], answer="This is an answer"
         )
         y_true = AnswerWithSources(
-            sources=["source1", "source2"],
-            answer="This is an answer"
+            sources=["source1", "source2"], answer="This is an answer"
         )
 
         # Test with in_mask to only evaluate sources
@@ -244,7 +245,7 @@ class ListFBetaScoreTest(testing.TestCase):
 class ListF1ScoreTest(testing.TestCase):
     async def test_same_single_label(self):
         from typing import Literal
-        
+
         class SingleLabel(DataModel):
             label: Literal["label_1", "label_2", "label_3"]
 
@@ -257,7 +258,7 @@ class ListF1ScoreTest(testing.TestCase):
 
     async def test_different_single_label(self):
         from typing import Literal
-        
+
         class SingleLabel(DataModel):
             label: Literal["label_1", "label_2", "label_3"]
 
@@ -269,8 +270,9 @@ class ListF1ScoreTest(testing.TestCase):
         self.assertAlmostEqual(score, 0.0, delta=3 * backend.epsilon())
 
     async def test_same_multi_label(self):
-        from typing import List, Literal
-        
+        from typing import List
+        from typing import Literal
+
         class MultiLabel(DataModel):
             labels: List[Literal["label_1", "label_2", "label_3"]]
 
@@ -282,8 +284,9 @@ class ListF1ScoreTest(testing.TestCase):
         self.assertAlmostEqual(score, 1.0, delta=3 * backend.epsilon())
 
     async def test_different_multi_label(self):
-        from typing import List, Literal
-        
+        from typing import List
+        from typing import Literal
+
         class MultiLabel(DataModel):
             labels: List[Literal["label_1", "label_2", "label_3"]]
 
@@ -295,8 +298,9 @@ class ListF1ScoreTest(testing.TestCase):
         self.assertAlmostEqual(score, 0.0, delta=3 * backend.epsilon())
 
     async def test_reset_state(self):
-        from typing import List, Literal
-        
+        from typing import List
+        from typing import Literal
+
         class MultiLabel(DataModel):
             labels: List[Literal["label_1", "label_2", "label_3"]]
 
@@ -311,14 +315,15 @@ class ListF1ScoreTest(testing.TestCase):
         self.assertEqual(score, 0.0)
 
     async def test_variable_serialization(self):
-        from typing import List, Literal
-        
+        from typing import List
+        from typing import Literal
+
         class MultiLabel(DataModel):
             labels: List[Literal["label_1", "label_2", "label_3"]]
 
         y_pred = MultiLabel(labels=["label_1", "label_2"])
         y_true = MultiLabel(labels=["label_1", "label_2"])
-        
+
         metric = ListF1Score(average="weighted")
         score = await metric(y_true, y_pred)
         self.assertAlmostEqual(score, 1.0, delta=3 * backend.epsilon())
@@ -328,18 +333,16 @@ class ListF1ScoreTest(testing.TestCase):
 
     async def test_with_out_mask(self):
         from typing import List
-        
+
         class AnswerWithSources(DataModel):
             sources: List[str]
             answer: str
 
         y_pred = AnswerWithSources(
-            sources=["source1", "source2"],
-            answer="Different answer"
+            sources=["source1", "source2"], answer="Different answer"
         )
         y_true = AnswerWithSources(
-            sources=["source1", "source2"],
-            answer="This is an answer"
+            sources=["source1", "source2"], answer="This is an answer"
         )
 
         # Test with out_mask to exclude answer field
@@ -349,8 +352,8 @@ class ListF1ScoreTest(testing.TestCase):
         self.assertAlmostEqual(score, 1.0, delta=3 * backend.epsilon())
 
     async def test_averaging_modes(self):
-        from typing import List, Literal
-        
+        from typing import Literal
+
         class MultiField(DataModel):
             field1: Literal["a", "b", "c"]
             field2: Literal["x", "y", "z"]

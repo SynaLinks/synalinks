@@ -16,6 +16,7 @@ from synalinks.src.utils.nlp_utils import shorten_text
 litellm.drop_params = True
 litellm.disable_aiohttp_transport = True
 
+
 @synalinks_export(
     [
         "synalinks.LanguageModel",
@@ -198,7 +199,9 @@ class LanguageModel(SynalinksSaveable):
         else:
             self.api_base = api_base
         if self.model.startswith("hosted_vllm") and not api_base:
-            self.api_base = os.environ.get("HOSTED_VLLM_API_BASE", "http://localhost:8000")
+            self.api_base = os.environ.get(
+                "HOSTED_VLLM_API_BASE", "http://localhost:8000"
+            )
         self.timeout = timeout
         self.retry = retry
         self.caching = caching

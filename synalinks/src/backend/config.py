@@ -43,6 +43,7 @@ logger = logging.getLogger("synalinks")
 logger.propagate = False
 logger.setLevel(logging.CRITICAL)
 
+
 class SynalinksLogFormatter(logging.Formatter):
     """Formatter for console logging with colors and prefix."""
 
@@ -74,7 +75,9 @@ class SynalinksFileFormatter(logging.Formatter):
         record.msg = self.ANSI_ESCAPE_PATTERN.sub("", str(record.msg))
         return super().format(record)
 
+
 _ENABLE_TELEMETRY = True
+
 
 @synalinks_export(
     [
@@ -261,13 +264,13 @@ def enable_logging(log_level="debug", log_to_file=False):
     The log message format includes the timestamp, log level, and the log message itself.
     """
     global logger
-    
+
     log_level = log_level.upper()
     if log_level and hasattr(logging, log_level):
         log_level = getattr(logging, log_level)
-    
+
     logger.setLevel(log_level)
-    
+
     for handler in logger.handlers[:]:
         logger.removeHandler(handler)
 
@@ -275,7 +278,7 @@ def enable_logging(log_level="debug", log_to_file=False):
     stream_handler.setLevel(log_level)
     stream_handler.setFormatter(SynalinksLogFormatter())
     logger.addHandler(stream_handler)
-    
+
     if log_to_file:
         file_handler = logging.FileHandler("synalinks.log", mode="w")
         file_handler.setLevel(log_level)

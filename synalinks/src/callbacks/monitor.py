@@ -3,15 +3,16 @@
 import asyncio
 import logging
 import uuid
-from typing import Dict, Literal
+from typing import Dict
+from typing import Literal
 
 import requests
 
 from synalinks.src.api_export import synalinks_export
+from synalinks.src.backend import DataModel
 from synalinks.src.backend import api_base
 from synalinks.src.backend import api_key
 from synalinks.src.callbacks.callback import Callback
-from synalinks.src.backend import DataModel
 
 
 @synalinks_export("synalinks.callbacks.monitor.LogEntry")
@@ -19,7 +20,16 @@ class LogEntry(DataModel):
     experiment_id: str
     program_name: str
     program_description: str
-    event: Literal["train_begin", "train_end", "batch_begin", "batch_end", "epoch_begin", "epoch_end", "predict_begin", "predict_end"]
+    event: Literal[
+        "train_begin",
+        "train_end",
+        "batch_begin",
+        "batch_end",
+        "epoch_begin",
+        "epoch_end",
+        "predict_begin",
+        "predict_end",
+    ]
     phase: Literal["train", "test", "predict"]
     logs: Dict[str, float]
 
@@ -72,7 +82,7 @@ class Monitor(Callback):
                     json=data,
                     headers=self.headers,
                     timeout=self.timeout,
-                )
+                ),
             )
             response.raise_for_status()
             self.logger.debug(

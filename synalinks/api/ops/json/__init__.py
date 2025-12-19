@@ -9,6 +9,7 @@ from synalinks.src.ops.json import concat as concatenate
 from synalinks.src.ops.json import factorize as factorize
 from synalinks.src.ops.json import in_mask as in_mask
 from synalinks.src.ops.json import logical_and as logical_and
+from synalinks.src.ops.json import logical_not as logical_not
 from synalinks.src.ops.json import logical_or as logical_or
 from synalinks.src.ops.json import logical_xor as logical_xor
 from synalinks.src.ops.json import out_mask as out_mask

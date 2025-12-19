@@ -1,12 +1,11 @@
 # License Apache 2.0: (c) 2025 Yoan Sallami (Synalinks Team)
 
 import random
-import math
-import numpy
-
 from typing import Any
 from typing import List
 from typing import Optional
+
+import numpy
 
 from synalinks.src import tree
 from synalinks.src.api_export import synalinks_export
@@ -225,7 +224,7 @@ class OMEGA(RandomFewShot):
         selection (str): The method to select the candidate to evolve at the beginning of a batch
             between ['random', 'best', 'softmax']. (Default to 'softmax').
         selection_temperature (float): The temperature for softmax selection.
-            Used only when `selection='softmax'`. Lower values concentrate selection on high-reward 
+            Used only when `selection='softmax'`. Lower values concentrate selection on high-reward
             candidates, higher values make selection more uniform (Default 0.2).
         sampling_temperature (float): The temperature for softmax sampling of the few-shot
             learning examples. Lower values concentrate sampling on high-reward predictions,
@@ -284,12 +283,12 @@ class OMEGA(RandomFewShot):
             self.distance_function = distance_function
 
         self.kwargs = kwargs
-        
+
         algorithms = ["ga", "dns"]
         if algorithm not in algorithms:
             raise ValueError(f"Parameter `algorithm` should be between {algorithms}")
         self.algorithm = algorithm
-        
+
         selections = ["best", "random", "softmax"]
         if selection not in selections:
             raise ValueError(f"Parameter `selection` should be between {selections}")
@@ -319,26 +318,29 @@ class OMEGA(RandomFewShot):
                     data_model=symbolic_variable,
                     language_model=self.language_model,
                     temperature=self.mutation_temperature,
-                    instructions="\n".join(
-                        [
-                            base_instructions(),
-                            mutation_instructions(list(symbolic_variable.keys())),
-                        ]
-                    ) if not self.instructions else
-                    "\n".join(
-                        [
-                            self.instructions,
-                            base_instructions(),
-                            mutation_instructions(list(symbolic_variable.keys())),
-                        ]
+                    instructions=(
+                        "\n".join(
+                            [
+                                base_instructions(),
+                                mutation_instructions(list(symbolic_variable.keys())),
+                            ]
+                        )
+                        if not self.instructions
+                        else "\n".join(
+                            [
+                                self.instructions,
+                                base_instructions(),
+                                mutation_instructions(list(symbolic_variable.keys())),
+                            ]
+                        )
                     ),
-                    name=f"mutation_cot_{schema_id}_"+self.name,
+                    name=f"mutation_cot_{schema_id}_" + self.name,
                 )(inputs)
                 outputs = outputs.in_mask(mask=list(symbolic_variable.keys()))
                 program = Program(
                     inputs=inputs,
                     outputs=outputs,
-                    name=f"mutation_{schema_id}_"+self.name,
+                    name=f"mutation_{schema_id}_" + self.name,
                     description="The mutation program that fix/optimize variables",
                 )
                 self.mutation_programs[schema_id] = program
@@ -349,26 +351,29 @@ class OMEGA(RandomFewShot):
                     data_model=symbolic_variable,
                     language_model=self.language_model,
                     temperature=self.crossover_temperature,
-                    instructions="\n".join(
-                        [
-                            base_instructions(),
-                            crossover_instructions(list(symbolic_variable.keys())),
-                        ]
-                    ) if not self.instructions else
-                    "\n".join(
-                        [
-                            self.instructions,
-                            base_instructions(),
-                            crossover_instructions(list(symbolic_variable.keys())),
-                        ]
+                    instructions=(
+                        "\n".join(
+                            [
+                                base_instructions(),
+                                crossover_instructions(list(symbolic_variable.keys())),
+                            ]
+                        )
+                        if not self.instructions
+                        else "\n".join(
+                            [
+                                self.instructions,
+                                base_instructions(),
+                                crossover_instructions(list(symbolic_variable.keys())),
+                            ]
+                        )
                     ),
-                    name=f"crossover_cot_{schema_id}_"+self.name,
+                    name=f"crossover_cot_{schema_id}_" + self.name,
                 )(inputs)
                 outputs = outputs.in_mask(mask=list(symbolic_variable.keys()))
                 program = Program(
                     inputs=inputs,
                     outputs=outputs,
-                    name=f"crossover_{schema_id}_"+self.name,
+                    name=f"crossover_{schema_id}_" + self.name,
                     description="The crossover program that combine high performing variables",
                 )
                 self.crossover_programs[schema_id] = program
@@ -486,7 +491,7 @@ class OMEGA(RandomFewShot):
                     new_candidate=new_candidate,
                     examples=examples,
                 )
-                
+
     async def on_batch_begin(
         self,
         step,
@@ -522,9 +527,13 @@ class OMEGA(RandomFewShot):
                             reverse=True,
                         )[0]
                     elif self.selection == "softmax":
-                        rewards = numpy.array([candidate.get("reward", 0) for candidate in best_candidates])
+                        rewards = numpy.array(
+                            [candidate.get("reward", 0) for candidate in best_candidates]
+                        )
                         scaled_rewards = rewards / self.selection_temperature
-                        exp_rewards = numpy.exp(scaled_rewards - numpy.max(scaled_rewards))
+                        exp_rewards = numpy.exp(
+                            scaled_rewards - numpy.max(scaled_rewards)
+                        )
                         probabilities = exp_rewards / numpy.sum(exp_rewards)
                         best_candidate = numpy.random.choice(
                             best_candidates,
@@ -532,7 +541,7 @@ class OMEGA(RandomFewShot):
                             replace=False,
                             p=probabilities,
                         ).tolist()[0]
-                        
+
                     best_candidate = out_mask_json(
                         best_candidate,
                         mask=["reward"],

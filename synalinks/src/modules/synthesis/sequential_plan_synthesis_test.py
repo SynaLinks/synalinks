@@ -1,13 +1,16 @@
 # License Apache 2.0: (c) 2025 Yoan Sallami (Synalinks Team)
 
 from synalinks.src import testing
-from synalinks.src.backend import DataModel, Field
+from synalinks.src.backend import DataModel
+from synalinks.src.backend import Field
 from synalinks.src.language_models.language_model import LanguageModel
-from synalinks.src.saving.object_registration import register_synalinks_serializable
-from synalinks.src.modules.core.input_module import Input
 from synalinks.src.modules.agents.function_calling_agent import FunctionCallingAgent
-from synalinks.src.modules.synthesis.sequential_plan_synthesis import SequentialPlanSynthesis
+from synalinks.src.modules.core.input_module import Input
+from synalinks.src.modules.synthesis.sequential_plan_synthesis import (
+    SequentialPlanSynthesis,
+)
 from synalinks.src.programs.program import Program
+from synalinks.src.saving.object_registration import register_synalinks_serializable
 from synalinks.src.utils.tool_utils import Tool
 
 
@@ -49,16 +52,19 @@ async def thinking(thinking: str):
     return {
         "thinking": thinking,
     }
-    
+
+
 class Query(DataModel):
     query: str = Field(
         description="The user query",
     )
-    
+
+
 class FinalReport(DataModel):
     report: str = Field(
         description="The final report",
     )
+
 
 class TaskSummary(DataModel):
     summary: str = Field(
@@ -68,14 +74,13 @@ class TaskSummary(DataModel):
 
 class SequentialPlanSynthesisTest(testing.TestCase):
     async def test_default_synthesis(self):
-        
         language_model = LanguageModel(model="ollama/mistral")
-        
+
         tools = [
             Tool(calculate),
             Tool(thinking),
         ]
-        
+
         inputs = Input(data_model=Query)
         outputs = await SequentialPlanSynthesis(
             data_model=FinalReport,
@@ -87,15 +92,14 @@ class SequentialPlanSynthesisTest(testing.TestCase):
                 return_inputs_with_trajectory=False,
             ),
         )(inputs)
-        
+
         program = Program(
             inputs=inputs,
             outputs=outputs,
             name="planner_agent",
             description="An agent that learn a step by step plan to achieve a task",
         )
-        
+
         # TODO mock the LM calls
         # result = await program(Query(query=problem))
         # print(result.prettify_json())
-        

@@ -21,6 +21,8 @@ from synalinks.src.modules.knowledge.embedding import Embedding as Embedding
 from synalinks.src.modules.knowledge.update_knowledge import (
     UpdateKnowledge as UpdateKnowledge,
 )
+from synalinks.src.modules.masking.in_mask import InMask as InMask
+from synalinks.src.modules.masking.out_mask import OutMask as OutMask
 from synalinks.src.modules.merging.concat import Concat as Concat
 from synalinks.src.modules.merging.concat import Concat as Concatenate
 from synalinks.src.modules.merging.logical_and import And as And

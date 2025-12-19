@@ -31,12 +31,14 @@ from synalinks.src.backend.common.symbolic_data_model import (
 )
 from synalinks.src.backend.common.symbolic_scope import SymbolicScope as SymbolicScope
 from synalinks.src.backend.config import api_base as api_base
+from synalinks.src.backend.config import disable_telemetry as disable_telemetry
 from synalinks.src.backend.config import enable_logging as enable_logging
 from synalinks.src.backend.config import enable_observability as enable_observability
 from synalinks.src.backend.config import get_seed as get_seed
 from synalinks.src.backend.config import (
     is_observability_enabled as is_observability_enabled,
 )
+from synalinks.src.backend.config import is_telemetry_enabled as is_telemetry_enabled
 from synalinks.src.backend.config import set_api_base as set_api_base
 from synalinks.src.backend.config import set_seed as set_seed
 from synalinks.src.backend.config import synalinks_home as synalinks_home
@@ -56,6 +58,7 @@ from synalinks.src.backend.pydantic.base import KnowledgeGraph as KnowledgeGraph
 from synalinks.src.backend.pydantic.base import Prediction as Prediction
 from synalinks.src.backend.pydantic.base import Relation as Relation
 from synalinks.src.backend.pydantic.base import Relations as Relations
+from synalinks.src.backend.pydantic.base import Score as Score
 from synalinks.src.backend.pydantic.base import SimilaritySearch as SimilaritySearch
 from synalinks.src.backend.pydantic.base import ToolCall as ToolCalling
 from synalinks.src.backend.pydantic.base import Trainable as Trainable
@@ -102,6 +105,8 @@ from synalinks.src.modules.knowledge.embedding import Embedding as Embedding
 from synalinks.src.modules.knowledge.update_knowledge import (
     UpdateKnowledge as UpdateKnowledge,
 )
+from synalinks.src.modules.masking.in_mask import InMask as InMask
+from synalinks.src.modules.masking.out_mask import OutMask as OutMask
 from synalinks.src.modules.merging.concat import Concat as Concat
 from synalinks.src.modules.merging.concat import Concat as Concatenate
 from synalinks.src.modules.merging.logical_and import And as And

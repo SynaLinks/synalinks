@@ -3,17 +3,21 @@
 import asyncio
 import logging
 import time
-from typing import Dict, Optional, Any, List, Literal
+from typing import Any
+from typing import Dict
+from typing import List
+from typing import Literal
+from typing import Optional
 
 import requests
 
 from synalinks.src import tree
 from synalinks.src.api_export import synalinks_export
+from synalinks.src.backend import DataModel
 from synalinks.src.backend import any_symbolic_data_models
 from synalinks.src.backend import api_base
 from synalinks.src.backend import api_key
 from synalinks.src.hooks.hook import Hook
-from synalinks.src.backend import DataModel
 
 
 @synalinks_export("synalinks.callbacks.monitor.Span")
@@ -86,7 +90,7 @@ class Monitor(Hook):
                     json=span.get_json(),
                     headers=self.headers,
                     timeout=self.timeout,
-                )
+                ),
             )
             response.raise_for_status()
             self.logger.debug(
@@ -123,7 +127,7 @@ class Monitor(Hook):
     ):
         """Called when a module call begins."""
         self.call_start_times[call_id] = time.time()
-        
+
         flatten_inputs = tree.flatten(inputs)
         is_symbolic = False
         if any_symbolic_data_models(inputs):
@@ -158,7 +162,7 @@ class Monitor(Hook):
         end_time = time.time()
         start_time = self.call_start_times.pop(call_id, end_time)
         duration = end_time - start_time
-        
+
         flatten_outputs = tree.flatten(outputs)
         is_symbolic = False
         if any_symbolic_data_models(outputs):
@@ -182,7 +186,7 @@ class Monitor(Hook):
             success=exception is None,
             cost=self.module._get_call_context().cost,
         )
-        
+
         self._send_span_async(span)
 
     async def _cleanup(self):

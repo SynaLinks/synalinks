@@ -306,11 +306,11 @@ class BinaryFBetaScore(FBetaScore):
     Each field of `y_true` and `y_pred` should be booleans or floats between [0, 1].
     If the fields are floats, it uses the threshold parameter for deciding
     if the values are 0 or 1.
-    
+
     Example:
-    
+
     ```
-    
+
     class MultiClassClassification(synalinks.DataModel):
         label_1: bool = synalinks.Field(
             description="The first label",
@@ -321,10 +321,10 @@ class BinaryFBetaScore(FBetaScore):
         label_3: bool = synalinks.Field(
             description="The third label",
         )
-    
+
     # OR you can also use floats between 0 and 1
     # The `Score`, enforce a float between 0.0 and 1.0 using constrained decoding
-    
+
     class MultiClassClassification(synalinks.DataModel):
         label_1: synalinks.Score = synalinks.Field(
             description="The first label",
@@ -335,7 +335,7 @@ class BinaryFBetaScore(FBetaScore):
         label_3: synalinks.Score = synalinks.Field(
             description="The third label",
         )
-    
+
     ```
 
     Args:
@@ -560,35 +560,36 @@ class ListFBetaScore(FBetaScore):
     This is the weighted harmonic mean of precision and recall.
     Its output range is `[0, 1]`. It operates at a field level
     and can be used for **classification** or **retrieval pipelines**.
-    
-    The difference between this metric and the `F1Score` is that this one consider 
+
+    The difference between this metric and the `F1Score` is that this one consider
     each element of the list (or the string) as **one label**.
 
     This metric works using list or string structures like in the following example:
-    
+
     Example:
-    
+
     ```python
-    
+
     # for single label classification
-    
+
     class ListClassification(synalinks.DataModel):
         label: Literal["label", "label_1", "label_2"]
-        
+
     # for multi label classification
-    
+
     class ListClassification(synalinks.DataModel):
         labels: List[Literal["label", "label_1", "label_2"]]
-        
+
     # or use it with retrieval pipelines, in that case make sure to mask the correct fields.
-    
+
     class AnswerWithReferences(synalinks.DataModel):
         sources: List[str]
         answer: str
-    
+
     ```
-    
+
     """
+
     def __init__(
         self,
         average=None,
@@ -604,7 +605,7 @@ class ListFBetaScore(FBetaScore):
             in_mask=in_mask,
             out_mask=out_mask,
         )
-    
+
     async def update_state(self, y_true, y_pred):
         y_pred = tree.map_structure(lambda x: ops.convert_to_json_data_model(x), y_pred)
         y_true = tree.map_structure(lambda x: ops.convert_to_json_data_model(x), y_true)
@@ -623,10 +624,14 @@ class ListFBetaScore(FBetaScore):
         false_positives = []
         false_negatives = []
         intermediate_weights = []
-        
-        for yt, yp in zip(y_true, y_pred):        
-            y_true_tokens = [str(tok) for tok in y_true] if isinstance(y_true, list) else [yt]
-            y_pred_tokens = [str(tok) for tok in y_pred] if isinstance(y_pred, list) else [yp]
+
+        for yt, yp in zip(y_true, y_pred):
+            y_true_tokens = (
+                [str(tok) for tok in y_true] if isinstance(y_true, list) else [yt]
+            )
+            y_pred_tokens = (
+                [str(tok) for tok in y_pred] if isinstance(y_pred, list) else [yp]
+            )
             common_tokens = set(y_true_tokens) & set(y_pred_tokens)
             true_positives.append(len(common_tokens))
             false_positives.append(len(y_pred_tokens) - len(common_tokens))
@@ -664,7 +669,7 @@ class ListFBetaScore(FBetaScore):
                 "intermediate_weights": intermediate_weights.tolist(),
             }
         )
-    
+
     def get_config(self):
         """Return the serializable config of the metric.
 
@@ -691,28 +696,28 @@ class ListF1Score(ListFBetaScore):
     This is the harmonic mean of precision and recall.
     Its output range is `[0, 1]`. It operates at a field level
     and can be used for **classification** or **retrieval pipelines**.
-    
-    The difference between this metric and the `F1Score` is that this one consider 
+
+    The difference between this metric and the `F1Score` is that this one consider
     each element of the list (or the string) as **one label**.
 
     This metric works using list or string structures like in the following example:
-    
+
     Example:
-    
+
     ```python
-    
+
         # for single label classification
-        
+
         class ListClassification(synalinks.DataModel):
             label: Literal["label", "label_1", "label_2"]
-            
+
         # for multi label classification
-        
+
         class ListClassification(synalinks.DataModel):
             labels: List[Literal["label", "label_1", "label_2"]]
-            
+
         # or use it with retrieval pipelines, in that case make sure to mask the correct fields.
-        
+
         class AnswerWithReferences(synalinks.DataModel):
             sources: List[str]
             answer: str

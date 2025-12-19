@@ -10,6 +10,7 @@ from synalinks.src.saving.synalinks_saveable import SynalinksSaveable
 
 litellm.disable_aiohttp_transport = True
 
+
 @synalinks_export(
     [
         "synalinks.EmbeddingModel",

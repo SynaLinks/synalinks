@@ -64,7 +64,7 @@ class CanaryModule(modules.Module):
         return x.clone(name="clone_" + self.name)
 
     async def compute_output_spec(self, x):
-        return x.clone(name="clone_" +self.name)
+        return x.clone(name="clone_" + self.name)
 
 
 class BackupAndRestoreCallbackTest(testing.TestCase):

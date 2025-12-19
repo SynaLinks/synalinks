@@ -513,16 +513,16 @@ class Module(BackendModule, Operation, SynalinksSaveable):
 
     async def __call__(self, *args, **kwargs):
         call_id = str(uuid.uuid4())
-        
+
         self._check_super_called()
         self._called = True
-        
+
         call_context = self._get_call_context()
-        
+
         parent_call_id = call_context.call_id if call_context.call_id else None
 
         call_context.call_id = call_id
-        
+
         if self._hooks:
             self._hooks.on_call_begin(
                 call_id=call_id,

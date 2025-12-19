@@ -298,7 +298,9 @@ class Generator(Module):
         if inputs and is_chat_messages(inputs):
             msgs = ChatMessages(messages=[system_message] + inputs.get("messages"))
         else:
-            user_message = ChatMessage(role="user", content=f"## Input:\n{inputs.get_json()}\n##Output:\n")
+            user_message = ChatMessage(
+                role="user", content=f"## Input:\n{inputs.get_json()}\n##Output:\n"
+            )
             msgs = ChatMessages(messages=[system_message, user_message])
         return msgs
 

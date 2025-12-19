@@ -14,7 +14,6 @@ from synalinks.src.trainers.trainer import Trainer
 from synalinks.src.utils import file_utils
 from synalinks.src.utils import io_utils
 from synalinks.src.utils import summary_utils
-from synalinks.src.utils.nlp_utils import remove_numerical_suffix
 
 
 @synalinks_export(["synalinks.Program", "synalinks.programs.Program"])

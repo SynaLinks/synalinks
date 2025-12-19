@@ -93,7 +93,7 @@ class Optimizer(SynalinksSaveable):
                 initializer=Empty(data_model=Iterations),
                 data_model=Iterations,
                 trainable=False,
-                name="iterations_"+self.name
+                name="iterations_" + self.name,
             )
         self._iterations = iterations
 
@@ -379,7 +379,7 @@ class Optimizer(SynalinksSaveable):
         """
         mask = list(Trainable.keys())
         mask.remove("examples")
-        
+
         for trainable_variable in trainable_variables:
             candidates = trainable_variable.get("candidates")
             best_candidates = trainable_variable.get("best_candidates")
@@ -556,7 +556,7 @@ class Optimizer(SynalinksSaveable):
             y=val_y,
             y_pred=y_pred,
         )
-        
+
         if self.trainable_variables:
             await self.assign_reward_to_predictions(
                 self.trainable_variables,

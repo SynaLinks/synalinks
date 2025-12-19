@@ -94,7 +94,7 @@ def divide_no_nan(x1, x2):
     x1 = convert_to_tensor(x1)
     x2 = convert_to_tensor(x2)
     # Use np.divide with where parameter to avoid division by zero warning
-    return np.divide(x1, x2, out=np.zeros_like(x1, dtype=floatx()), where=x2!=0)
+    return np.divide(x1, x2, out=np.zeros_like(x1, dtype=floatx()), where=x2 != 0)
 
 
 def broadcast_to(x, shape):

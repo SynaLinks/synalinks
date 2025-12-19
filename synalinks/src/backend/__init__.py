@@ -38,7 +38,6 @@ from synalinks.src.backend.common.symbolic_scope import SymbolicScope
 if backend() == "pydantic":
     from pydantic import Field
 
-    from synalinks.src.backend.pydantic.base import Score
     from synalinks.src.backend.pydantic.base import ChatMessage
     from synalinks.src.backend.pydantic.base import ChatMessages
     from synalinks.src.backend.pydantic.base import ChatRole
@@ -56,6 +55,7 @@ if backend() == "pydantic":
     from synalinks.src.backend.pydantic.base import Prediction
     from synalinks.src.backend.pydantic.base import Relation
     from synalinks.src.backend.pydantic.base import Relations
+    from synalinks.src.backend.pydantic.base import Score
     from synalinks.src.backend.pydantic.base import SimilaritySearch
     from synalinks.src.backend.pydantic.base import ToolCall
     from synalinks.src.backend.pydantic.base import Trainable

@@ -11,6 +11,8 @@ from synalinks.src.metrics.f_score_metrics import BinaryF1Score as BinaryF1Score
 from synalinks.src.metrics.f_score_metrics import BinaryFBetaScore as BinaryFBetaScore
 from synalinks.src.metrics.f_score_metrics import F1Score as F1Score
 from synalinks.src.metrics.f_score_metrics import FBetaScore as FBetaScore
+from synalinks.src.metrics.f_score_metrics import ListF1Score as ListF1Score
+from synalinks.src.metrics.f_score_metrics import ListFBetaScore as ListFBetaScore
 from synalinks.src.metrics.metric import Metric as Metric
 from synalinks.src.metrics.reduction_metrics import Mean as Mean
 from synalinks.src.metrics.reduction_metrics import MeanMetricWrapper as MeanMetricWrapper

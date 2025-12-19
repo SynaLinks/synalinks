@@ -633,9 +633,10 @@ async def suffix(x, suffix=None, name=None, description=None):
 
 class Not(Operation):
     """Negation/invert operator to be used in logical flows.
-    
+
     When used the output is always `None`.
     """
+
     def __init__(
         self,
         name=None,
@@ -656,12 +657,12 @@ class Not(Operation):
 @synalinks_export(["synalinks.ops.logical_not", "synalinks.ops.json.logical_not"])
 async def logical_not(x, name=None, description=None):
     """Negation/invert operator to be used in logical flows.
-    
+
     When used the output is always `None`.
-    
+
     If the data models used is a metaclass or symbolic data model
     the output is a symbolic data model with the same schema than the input.
-    
+
     Args:
         x (JsonDataModel | SymbolicDataModel): the input data model
         name (str): Optional. The name of the operation.

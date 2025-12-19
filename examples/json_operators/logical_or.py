@@ -111,6 +111,7 @@ async def main():
 
     print(answer.prettify_json())
 
+
 # {
 #   "thinking": "The answer to the given query involves finding a city in
 # France that is known for robotics and aeronautics. While there might be

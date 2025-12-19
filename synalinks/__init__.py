@@ -28,6 +28,7 @@ from synalinks.api import GenericOutputs
 from synalinks.api import GenericResult
 from synalinks.api import Identity
 from synalinks.api import Initializer
+from synalinks.api import InMask
 from synalinks.api import Input
 from synalinks.api import Instructions
 from synalinks.api import JsonDataModel
@@ -41,6 +42,7 @@ from synalinks.api import MultiServerMCPClient
 from synalinks.api import Not
 from synalinks.api import Operation
 from synalinks.api import Or
+from synalinks.api import OutMask
 from synalinks.api import Prediction
 from synalinks.api import Program
 from synalinks.api import ProgramAsJudge
@@ -48,6 +50,7 @@ from synalinks.api import PythonSynthesis
 from synalinks.api import Relation
 from synalinks.api import Relations
 from synalinks.api import Reward
+from synalinks.api import Score
 from synalinks.api import SelfCritique
 from synalinks.api import Sequential
 from synalinks.api import SimilaritySearch
@@ -69,6 +72,7 @@ from synalinks.api import clear_session
 from synalinks.api import config
 from synalinks.api import datasets
 from synalinks.api import default_prompt_template
+from synalinks.api import disable_telemetry
 from synalinks.api import embedding_models
 from synalinks.api import enable_logging
 from synalinks.api import enable_observability
@@ -89,6 +93,7 @@ from synalinks.api import is_prediction
 from synalinks.api import is_relation
 from synalinks.api import is_relations
 from synalinks.api import is_similarity_search
+from synalinks.api import is_telemetry_enabled
 from synalinks.api import is_tool_call
 from synalinks.api import is_trainable
 from synalinks.api import is_triplet_search

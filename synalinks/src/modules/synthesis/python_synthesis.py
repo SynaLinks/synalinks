@@ -1,17 +1,15 @@
 # License Apache 2.0: (c) 2025 Yoan Sallami (Synalinks Team)
 
+import asyncio
 import copy
 import sys
 import traceback
 from io import StringIO
-
-import multiprocessing
-from multiprocessing import Process, Queue
+from multiprocessing import Process
+from multiprocessing import Queue
 
 import jsonschema
 from jsonschema import ValidationError
-
-import asyncio
 
 from synalinks.src import ops
 from synalinks.src.api_export import synalinks_export
@@ -25,6 +23,7 @@ from synalinks.src.modules.module import Module
 
 class TimeoutException(Exception):
     """Exception raised when script execution times out"""
+
     pass
 
 
@@ -43,11 +42,11 @@ class PythonConsoleLog(DataModel):
 
 def _execute_script_in_process(python_script, inputs_json, schema, result_queue):
     """Execute the script in a separate process.
-    
+
     This function runs in a separate process and can be forcefully terminated.
     """
     result = None
-    
+
     # Capture stdout and stderr
     old_stdout = sys.stdout
     old_stderr = sys.stderr
@@ -55,32 +54,38 @@ def _execute_script_in_process(python_script, inputs_json, schema, result_queue)
     stderr_capture = StringIO()
     sys.stdout = stdout_capture
     sys.stderr = stderr_capture
-    
+
     try:
         # Create a local namespace with the inputs
         local_namespace = {"inputs": copy.deepcopy(inputs_json)}
-        
+
         # Execute the entire script
         exec(python_script, local_namespace)
-        
+
         # Look for the result variable in the namespace
         if "result" in local_namespace:
             result = local_namespace["result"]
-            
+
             if result:
                 try:
                     jsonschema.validate(result, schema)
                 except ValidationError as validation_error:
                     stdout = stdout_capture.getvalue()
-                    stderr = stderr_capture.getvalue() + f"Validation Error: {validation_error}\n"
+                    stderr = (
+                        stderr_capture.getvalue()
+                        + f"Validation Error: {validation_error}\n"
+                    )
                     result_queue.put((None, stdout, stderr))
                     return
         else:
             stdout = stdout_capture.getvalue()
-            stderr = stderr_capture.getvalue() + "Error: No 'result' variable found after script execution\n"
+            stderr = (
+                stderr_capture.getvalue()
+                + "Error: No 'result' variable found after script execution\n"
+            )
             result_queue.put((None, stdout, stderr))
             return
-            
+
     except Exception as e:
         stdout = stdout_capture.getvalue()
         stderr = stderr_capture.getvalue() + f"Error: {str(e)}\n{traceback.format_exc()}"
@@ -91,7 +96,7 @@ def _execute_script_in_process(python_script, inputs_json, schema, result_queue)
         stderr = stderr_capture.getvalue()
         sys.stdout = old_stdout
         sys.stderr = old_stderr
-    
+
     result_queue.put((result, stdout, stderr))
 
 
@@ -189,7 +194,7 @@ class PythonSynthesis(Module):
             name=name,
             description=description,
             trainable=trainable,
-        )        
+        )
         if not schema and data_model:
             schema = data_model.get_schema()
         self.schema = schema
@@ -197,7 +202,7 @@ class PythonSynthesis(Module):
         if not python_script:
             raise ValueError("You should provide the `python_script` argument")
         self.python_script = python_script
-        
+
         if not default_return_value:
             raise ValueError("You should provide the `default_return_value` argument")
 
@@ -228,38 +233,41 @@ class PythonSynthesis(Module):
             data_model=PythonScript,
             name="state_" + self.name,
         )
-        
+
     async def execute(self, inputs, python_script):
-        """Execute the Python script with timeout using multiprocessing.
-        """
+        """Execute the Python script with timeout using multiprocessing."""
         result_queue = Queue()
-        
+
         process = Process(
             target=_execute_script_in_process,
-            args=(python_script, inputs.get_json(), self.schema, result_queue)
+            args=(python_script, inputs.get_json(), self.schema, result_queue),
         )
         process.start()
-        
+
         start_time = asyncio.get_event_loop().time()
         timeout_remaining = self.timeout
-        
+
         while process.is_alive() and timeout_remaining > 0:
             await asyncio.sleep(0.1)
             elapsed = asyncio.get_event_loop().time() - start_time
             timeout_remaining = self.timeout - elapsed
-        
+
         if process.is_alive():
             process.terminate()
             process.join(timeout=1)
-            
+
             if process.is_alive():
                 process.kill()
                 process.join()
-            
-            return None, "", f"Timeout Error: Script execution exceeded {self.timeout} second(s)\n"
-        
+
+            return (
+                None,
+                "",
+                f"Timeout Error: Script execution exceeded {self.timeout} second(s)\n",
+            )
+
         process.join()
-        
+
         if not result_queue.empty():
             result, stdout, stderr = result_queue.get()
             return result, stdout, stderr
@@ -382,12 +390,12 @@ class PythonSynthesis(Module):
                 await ops.out_mask(
                     PythonScript.to_symbolic_data_model(),
                     mask=list(Trainable.keys()),
-                    name="python_script_masked_"+self.name,
+                    name="python_script_masked_" + self.name,
                 ),
                 await ops.concat(
                     SymbolicDataModel(schema=self.schema),
                     PythonConsoleLog,
-                    name="python_logs_"+self.name,
+                    name="python_logs_" + self.name,
                 ),
                 name=self.name,
             )

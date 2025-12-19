@@ -1,11 +1,10 @@
 # License Apache 2.0: (c) 2025 Yoan Sallami (Synalinks Team)
 
-from enum import Enum
 
 from synalinks.src.api_export import synalinks_export
 from synalinks.src.backend import DataModel
-from synalinks.src.backend import Score
 from synalinks.src.backend import Field
+from synalinks.src.backend import Score
 from synalinks.src.modules.core.generator import Generator
 from synalinks.src.modules.module import Module
 from synalinks.src.saving import serialization_lib

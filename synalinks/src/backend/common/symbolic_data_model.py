@@ -296,15 +296,15 @@ class SymbolicDataModel(SynalinksSaveable):
         from synalinks.src.backend.common.json_schema_utils import contains_schema
 
         return contains_schema(self.get_schema(), other.get_schema())
-    
+
     def __invert__(self):
         """Perform an invertion/negation
-        
+
         When an input is provided, invert it by outputing `None`
-        
+
         Returns:
             (SymbolicDataModel | None): `None` if used with an instance/class,
-                and a symbolic data model if used on a metaclass or symbolic model. 
+                and a symbolic data model if used on a metaclass or symbolic model.
         """
         from synalinks.src import ops
 

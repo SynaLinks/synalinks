@@ -228,7 +228,7 @@ class EntityRetriever(Module):
                             threshold=self.threshold,
                             name="similarity_search_" + self.name,
                         ),
-                        name="similarity_search_with_query_and_inputs_"+self.name,
+                        name="similarity_search_with_query_and_inputs_" + self.name,
                     ),
                 )
             else:

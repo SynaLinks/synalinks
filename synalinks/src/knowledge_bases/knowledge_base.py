@@ -225,7 +225,9 @@ class KnowledgeBase(SynalinksSaveable):
                 (
                     serialization_lib.serialize_synalinks_object(
                         relation_model.to_symbolic_data_model(
-                            name="relation_model" + (f"_{i}_" if i > 0 else "_") + self.name
+                            name="relation_model"
+                            + (f"_{i}_" if i > 0 else "_")
+                            + self.name
                         )
                     )
                     if not is_symbolic_data_model(relation_model)

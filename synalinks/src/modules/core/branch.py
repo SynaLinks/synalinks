@@ -164,10 +164,10 @@ class Branch(Module):
             inputs,
             training=training,
         )
-        
+
         if not decision:
             return tuple(outputs)
-        
+
         choice = decision.get("choice", decision.get("choices"))
 
         if not choice:

@@ -73,7 +73,7 @@ class HookList(Hook):
         if self._monitor is None and is_observability_enabled():
             self._monitor = Monitor()
             self.hooks.append(self._monitor)
-            
+
         if self._telemetry is None and is_telemetry_enabled():
             self._telemetry = Telemetry()
             self.hooks.append(self._telemetry)

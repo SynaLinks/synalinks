@@ -43,7 +43,7 @@ class Score(float, Enum):
     HIGH_AVERAGE = 0.8
     GOOD = 0.9
     VERY_GOOD = 1.0
-    
+
 
 @synalinks_export(
     [

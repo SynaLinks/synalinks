@@ -366,15 +366,15 @@ class JsonDataModel:
         return run_maybe_nested(
             ops.OutMask(mask=mask, recursive=recursive).call(self),
         )
-        
+
     def __invert__(self):
         """Perform an invertion/negation
-        
+
         When an input is provided, invert it by outputing `None`
-        
+
         Returns:
             (SymbolicDataModel | None): `None` if used with an instance/class,
-                and a symbolic data model if used on a metaclass or symbolic model. 
+                and a symbolic data model if used on a metaclass or symbolic model.
         """
         from synalinks.src import ops
 
@@ -500,7 +500,7 @@ class JsonDataModel:
                     JsonDataModel(
                         json=data_model_json,
                         schema=schema,
-                        name=key + f"_{i}_"+ self.name,
+                        name=key + f"_{i}_" + self.name,
                     )
                 )
         return outputs
