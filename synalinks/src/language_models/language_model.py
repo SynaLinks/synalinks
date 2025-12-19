@@ -395,7 +395,7 @@ class LanguageModel(SynalinksSaveable):
                 )
             await asyncio.sleep(1)
         if self.fallback:
-            return self.fallback(
+            return await self.fallback(
                 messages,
                 schema=schema,
                 streaming=streaming,
