@@ -19,12 +19,18 @@ def contains_schema(schema1, schema2):
     return schema2.get("properties").items() <= schema1.get("properties").items()
 
 
+def _default_title_from_key(key: str) -> str:
+    return key.replace("_", " ").title()
+
+
 def prefix_schema(schema, prefix):
     """Add a prefix to the schema properties"""
     schema = copy.deepcopy(schema)
     new_properties = {}
-    for prop_key, prop_value in schema.get("properties").items():
-        title = prop_value["title"]
+
+    for prop_key, prop_value in schema.get("properties", {}).items():
+        prop_value = copy.deepcopy(prop_value)
+        title = prop_value.get("title", _default_title_from_key(prop_key))
         prop_value["title"] = f"{prefix.title()} {title}"
         new_properties[f"{prefix}_{prop_key}"] = prop_value
     schema["properties"] = new_properties
@@ -35,8 +41,10 @@ def suffix_schema(schema, suffix):
     """Add a suffix to the schema properties"""
     schema = copy.deepcopy(schema)
     new_properties = {}
-    for prop_key, prop_value in schema.get("properties").items():
-        title = prop_value["title"]
+
+    for prop_key, prop_value in schema.get("properties", {}).items():
+        prop_value = copy.deepcopy(prop_value)
+        title = prop_value.get("title", _default_title_from_key(prop_key))
         prop_value["title"] = f"{title} {suffix.title()}"
         new_properties[f"{prop_key}_{suffix}"] = prop_value
     schema["properties"] = new_properties
