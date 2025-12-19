@@ -34,6 +34,7 @@ def prefix_schema(schema, prefix):
         prop_value["title"] = f"{prefix.title()} {title}"
         new_properties[f"{prefix}_{prop_key}"] = prop_value
     schema["properties"] = new_properties
+    schema["required"] = list(new_properties.keys())
     return schema
 
 
@@ -48,6 +49,7 @@ def suffix_schema(schema, suffix):
         prop_value["title"] = f"{title} {suffix.title()}"
         new_properties[f"{prop_key}_{suffix}"] = prop_value
     schema["properties"] = new_properties
+    schema["required"] = list(new_properties.keys())
     return schema
 
 
