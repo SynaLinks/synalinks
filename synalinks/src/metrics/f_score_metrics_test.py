@@ -21,7 +21,7 @@ class FBetaScoreTest(testing.TestCase):
         y_pred = Answer(answer="Toulouse is the French city of aeronautics and space.")
         y_true = Answer(answer="Toulouse is the French city of aeronautics and space.")
 
-        metric = FBetaScore()
+        metric = FBetaScore(average="weighted")
         score = await metric(y_true, y_pred)
         self.assertAlmostEqual(score, 1.0, delta=3 * backend.epsilon())
 
@@ -32,7 +32,7 @@ class FBetaScoreTest(testing.TestCase):
         y_pred = Answer(answer="Toulouse is the French city of aeronautics and space.")
         y_true = Answer(answer="Paris is the capital of France.")
 
-        metric = FBetaScore()
+        metric = FBetaScore(average="weighted")
         score = await metric(y_true, y_pred)
         self.assertAlmostEqual(score, 0.0, delta=3 * backend.epsilon())
 
