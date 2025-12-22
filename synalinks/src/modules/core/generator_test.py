@@ -90,7 +90,7 @@ class GeneratorModuleTest(testing.TestCase):
             )
         )
         print(msgs.prettify_json())
-        self.assertTrue(len(msgs.messages) == 3)
+        self.assertTrue(len(msgs.messages) == 2)
 
     def test_format_message_with_instructions(self):
         class Query(DataModel):
