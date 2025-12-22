@@ -1,6 +1,10 @@
 import synalinks
 import asyncio
 
+from dotenv import load_dotenv
+
+load_dotenv()
+
 synalinks.enable_logging()
 
 
