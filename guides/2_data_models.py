@@ -57,6 +57,7 @@ class Rating(int, Enum):
     SIX = 6
     SEVEN = 7
     EIGHT = 8
+    NINE = 9
     TEN = 10
 
 class MovieReview(synalinks.DataModel):
