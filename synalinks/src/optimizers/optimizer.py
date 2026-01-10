@@ -43,7 +43,6 @@ class Optimizer(SynalinksSaveable):
 
     def __init__(
         self,
-        merging_rate=0.02,
         population_size=10,
         name=None,
         description=None,
@@ -68,7 +67,6 @@ class Optimizer(SynalinksSaveable):
         if kwargs:
             raise ValueError(f"Argument(s) not recognized: {kwargs}")
 
-        self.merging_rate = merging_rate
         self.population_size = population_size
 
         if name is None:
@@ -270,13 +268,6 @@ class Optimizer(SynalinksSaveable):
             p=probabilities,
         ).tolist()[0]
         return selected_variable.name
-
-    async def select_evolving_strategy(self):
-        rand = random.random()
-        if rand > (self.merging_rate * self.epochs):
-            return "mutation"
-        else:
-            return "crossover"
 
     async def select_candidate_to_merge(
         self,
@@ -720,7 +711,6 @@ class Optimizer(SynalinksSaveable):
 
     def get_config(self):
         return {
-            "merging_rate": self.merging_rate,
             "population_size": self.population_size,
             "name": self.name,
             "description": self.description,

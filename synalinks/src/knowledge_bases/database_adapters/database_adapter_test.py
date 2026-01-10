@@ -421,6 +421,29 @@ class DuckDBAdapterFulltextSearchTest(testing.TestCase):
         )
         self.assertGreater(len(results), 0)
 
+    async def test_fulltext_search_returns_full_records(self):
+        """Test that fulltext_search returns all fields, not just id and score."""
+        adapter = DuckDBAdapter(uri=self.db_path)
+        docs = [
+            JsonDataModel(data_model=Document(id="doc1", text="The quick brown fox")),
+            JsonDataModel(data_model=Document(id="doc2", text="The lazy dog sleeps")),
+        ]
+        await adapter.update(docs)
+
+        results = await adapter.fulltext_search(
+            "quick", [Document.to_symbolic_data_model()], k=10
+        )
+
+        self.assertGreater(len(results), 0)
+        # Verify that the result contains all fields, not just id and score
+        result = results[0]
+        self.assertIn("id", result)
+        self.assertIn("text", result)
+        self.assertIn("score", result)
+        # Verify the content is correct
+        self.assertEqual(result["id"], "doc1")
+        self.assertEqual(result["text"], "The quick brown fox")
+
     async def test_fulltext_search_empty_query(self):
         adapter = DuckDBAdapter(uri=self.db_path)
         results = await adapter.fulltext_search("")

@@ -58,11 +58,11 @@ class EvolutionaryOptimizer(Optimizer):
         **kwargs,
     ):
         super().__init__(
-            merging_rate=merging_rate,
             population_size=population_size,
             name=name,
             description=description,
         )
+        self.merging_rate = merging_rate
         self.language_model = language_model
         self.mutation_temperature = mutation_temperature
         self.crossover_temperature = crossover_temperature
@@ -305,9 +305,22 @@ class EvolutionaryOptimizer(Optimizer):
             "EvolutionaryOptimizer subclasses must implement `merge_candidate()`."
         )
 
+    async def select_evolving_strategy(self):
+        """Select between mutation and crossover based on merging_rate.
+
+        Returns:
+            str: Either "mutation" or "crossover"
+        """
+        rand = random.random()
+        if rand > (self.merging_rate * self.epochs):
+            return "mutation"
+        else:
+            return "crossover"
+
     def get_config(self):
         base_config = super().get_config()
         config = {
+            "merging_rate": self.merging_rate,
             "mutation_temperature": self.mutation_temperature,
             "crossover_temperature": self.crossover_temperature,
             "selection": self.selection,

@@ -64,6 +64,33 @@ METRICS = [
 MAIN_TABLE = "main"
 
 
+def _get_json_columns_from_schema(schema: dict) -> set:
+    """Get column names that are JSON type from a JSON schema."""
+    json_columns = set()
+    properties = schema.get("properties", {})
+    for prop_name, prop_spec in properties.items():
+        prop_type = prop_spec.get("type")
+        if prop_type == "object":
+            json_columns.add(prop_name)
+        elif prop_type == "array":
+            item_spec = prop_spec.get("items", {})
+            if item_spec.get("type") == "object":
+                json_columns.add(prop_name)
+    return json_columns
+
+
+def _parse_json_columns(row: dict, json_columns: set) -> dict:
+    """Parse JSON string columns to Python dicts based on known JSON columns."""
+    result = dict(row)
+    for col in json_columns:
+        if col in result and isinstance(result[col], str):
+            try:
+                result[col] = json.loads(result[col])
+            except (json.JSONDecodeError, TypeError):
+                pass
+    return result
+
+
 def sanitize_identifier(name: str) -> str:
     """Allow only alphanumeric, underscore, and enforce starting with a letter."""
     if not re.match(r"^[A-Za-z_][A-Za-z0-9_]*$", name):
@@ -175,32 +202,6 @@ class DuckDBAdapter(DatabaseAdapter):
         elif schema_or_json:
             return next(iter(schema_or_json.keys()))
         raise ValueError("Cannot determine primary key: schema has no properties")
-
-    def _parse_json_fields(self, row_dict: dict) -> dict:
-        """Parse JSON string fields back to Python objects.
-
-        DuckDB returns JSON columns as strings, so we need to parse them.
-
-        Args:
-            row_dict: Dictionary of column names to values.
-
-        Returns:
-            Dictionary with JSON strings parsed to dicts/lists.
-        """
-        result = {}
-        for key, value in row_dict.items():
-            if isinstance(value, str):
-                # Try to parse as JSON if it looks like JSON
-                if value.startswith("{") or value.startswith("["):
-                    try:
-                        result[key] = json.loads(value)
-                    except json.JSONDecodeError:
-                        result[key] = value
-                else:
-                    result[key] = value
-            else:
-                result[key] = value
-        return result
 
     def _get_fts_field(self, schema_or_json: dict) -> str | None:
         if "properties" in schema_or_json:
@@ -546,7 +547,8 @@ class DuckDBAdapter(DatabaseAdapter):
                 if not rows:
                     continue
 
-                json_data = self._parse_json_fields(rows[0])
+                json_columns = _get_json_columns_from_schema(json_schema)
+                json_data = _parse_json_columns(rows[0], json_columns)
 
                 if remove_embedding:
                     if self.vss_key in json_data:
@@ -582,10 +584,11 @@ class DuckDBAdapter(DatabaseAdapter):
                     return []
 
                 schema = data_model.get_schema()
+                json_columns = _get_json_columns_from_schema(schema)
 
                 results = []
                 for row in rows:
-                    json_data = self._parse_json_fields(row)
+                    json_data = _parse_json_columns(row, json_columns)
 
                     if remove_embedding and self.vss_key in json_data:
                         json_data.pop(self.vss_key)
@@ -704,15 +707,16 @@ class DuckDBAdapter(DatabaseAdapter):
 
                 for text in texts:
                     sql = f"""
-                        SELECT *, score
-                        FROM (
-                            SELECT 
+                        SELECT t.*, fts.score
+                        FROM {label} t
+                        JOIN (
+                            SELECT
                                 {id_key},
                                 {fts_table}.match_bm25({id_key}, ?) AS score
                             FROM {label}
-                        ) sq
-                        WHERE score IS NOT NULL
-                        ORDER BY score DESC
+                        ) fts ON t.{id_key} = fts.{id_key}
+                        WHERE fts.score IS NOT NULL
+                        ORDER BY fts.score DESC
                         LIMIT ?;
                     """
                     params = [text]
