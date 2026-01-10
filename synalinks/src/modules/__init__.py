@@ -9,7 +9,9 @@ from synalinks.src.modules.core.identity import Identity
 from synalinks.src.modules.core.input_module import Input
 from synalinks.src.modules.core.input_module import InputModule
 from synalinks.src.modules.core.not_module import Not
-from synalinks.src.modules.knowledge.embedding import Embedding
+from synalinks.src.modules.core.tool import Tool
+from synalinks.src.modules.knowledge.embed_knowledge import EmbedKnowledge
+from synalinks.src.modules.knowledge.retrieve_knowledge import RetrieveKnowledge
 from synalinks.src.modules.knowledge.update_knowledge import UpdateKnowledge
 from synalinks.src.modules.module import Module
 from synalinks.src.modules.ttc.chain_of_thought import ChainOfThought

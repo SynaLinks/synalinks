@@ -77,7 +77,7 @@ class Function(Operation):
                 f"outputs={outputs}"
             )
 
-        (nodes, nodes_by_depth, operations, operations_by_depth) = map_graph(
+        nodes, nodes_by_depth, operations, operations_by_depth = map_graph(
             self._inputs, self._outputs
         )
         self._nodes = nodes

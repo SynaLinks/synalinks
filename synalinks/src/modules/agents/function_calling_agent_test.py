@@ -10,9 +10,9 @@ from synalinks.src.backend import is_chat_messages
 from synalinks.src.language_models import LanguageModel
 from synalinks.src.modules.agents.function_calling_agent import FunctionCallingAgent
 from synalinks.src.modules.core.input_module import Input
+from synalinks.src.modules.core.tool import Tool
 from synalinks.src.programs import Program
 from synalinks.src.saving.object_registration import register_synalinks_serializable
-from synalinks.src.utils.tool_utils import Tool
 
 
 @register_synalinks_serializable()
@@ -132,7 +132,10 @@ class FunctionCallingAgentTest(testing.TestCase):
         )
 
         tool_calls = {
-            "thinking": "Perform simple arithmetic operation by adding the numbers given in the input.",  # noqa: E501
+            "thinking": (
+                "Perform simple arithmetic operation by adding the numbers "
+                "given in the input."
+            ),
             "tool_calls": [
                 {
                     "tool_name": "calculate",
@@ -142,7 +145,12 @@ class FunctionCallingAgentTest(testing.TestCase):
         }
 
         tool_calls_1 = {
-            "thinking": "The user has asked for a simple arithmetic operation, specifically adding 152648 and 485. I have already performed the calculation using the 'calculate' tool and obtained the result as 153133.",  # noqa: E501
+            "thinking": (
+                "The user has asked for a simple arithmetic operation, "
+                "specifically adding 152648 and 485. I have already performed "
+                "the calculation using the 'calculate' tool and obtained the "
+                "result as 153133."
+            ),
             "tool_calls": [],
         }
 
@@ -194,7 +202,14 @@ class FunctionCallingAgentTest(testing.TestCase):
         )
 
         tool_calls = {
-            "thinking": "First, I will perform the arithmetic operation as instructed. Let's calculate (150 + 250) * 2 / 4. The order of operations is follow BIDMAS/BODMAS which means Brackets, Orders or Powers, Division and Multiplication, Addition and Subtraction. So, first I will add 150 and 250, then multiply the result by 2, divide it by 4 and finally add 100.",  # noqa: E501
+            "thinking": (
+                "First, I will perform the arithmetic operation as instructed. "
+                "Let's calculate (150 + 250) * 2 / 4. The order of operations "
+                "is follow BIDMAS/BODMAS which means Brackets, Orders or "
+                "Powers, Division and Multiplication, Addition and "
+                "Subtraction. So, first I will add 150 and 250, then multiply "
+                "the result by 2, divide it by 4 and finally add 100."
+            ),
             "tool_calls": [
                 {
                     "tool_name": "calculate",
@@ -204,7 +219,11 @@ class FunctionCallingAgentTest(testing.TestCase):
         }
 
         tool_calls_1 = {
-            "thinking": "The user provided a mathematical expression to calculate. I performed the operation (150 + 250) * 2 / 4 and then added 100 to the result. Now, the result is 300.",  # noqa: E501
+            "thinking": (
+                "The user provided a mathematical expression to calculate. I "
+                "performed the operation (150 + 250) * 2 / 4 and then added "
+                "100 to the result. Now, the result is 300."
+            ),
             "tool_calls": [
                 {
                     "tool_name": "calculate",
@@ -234,122 +253,398 @@ class FunctionCallingAgentTest(testing.TestCase):
         print("Result:")
         print(result.prettify_json())
 
-    # async def test_interactive_mode_single_step(self):
-    #     """Test interactive mode with single step execution."""
-    #     language_model = LanguageModel(model="ollama/mistral")
-    #     tools = [
-    #         Tool(calculate),
-    #         Tool(thinking),
-    #     ]
-    #     inputs = Input(data_model=ChatMessages)
-    #     outputs = await FunctionCallingAgent(
-    #         language_model=language_model,
-    #         tools=tools,
-    #         autonomous=False,
-    #         return_inputs_with_trajectory=True,
-    #     )(inputs)
-    #     agent = Program(
-    #         inputs=inputs,
-    #         outputs=outputs,
-    #         name="interactive_single_step_test",
-    #     )
+    @patch("litellm.acompletion")
+    async def test_autonomous_mode_returns_chat_messages_without_schema(
+        self, mock_completion
+    ):
+        """Test that autonomous mode returns ChatMessages when no schema is provided."""
+        language_model = LanguageModel(model="ollama/mistral")
+        tools = [
+            Tool(calculate),
+        ]
+        inputs = Input(data_model=ChatMessages)
+        outputs = await FunctionCallingAgent(
+            language_model=language_model,
+            tools=tools,
+            autonomous=True,
+            max_iterations=3,
+        )(inputs)
+        agent = Program(
+            inputs=inputs,
+            outputs=outputs,
+            name="autonomous_no_schema_test",
+        )
 
-    #     input_messages = ChatMessages(
-    #         messages=[
-    #             ChatMessage(
-    #                 role="user",
-    #                 content="How much is 152648 + 485?",
-    #             )
-    #         ]
-    #     )
-    #     result = await agent(input_messages)
-    #     print("Interactive Mode Single Step Result:")
-    #     print(result.prettify_json())
-    #     raise ValueError
+        tool_calls = {
+            "thinking": "I need to calculate 10 + 20.",
+            "tool_calls": [
+                {
+                    "tool_name": "calculate",
+                    "expression": "10 + 20",
+                }
+            ],
+        }
 
-    # async def test_interactive_mode_multi_step(self):
-    #     """Test interactive mode with multiple steps simulation."""
-    #     language_model = LanguageModel(model="ollama/mistral")
-    #     tools = [
-    #         Tool(calculate),
-    #         Tool(thinking),
-    #     ]
-    #     inputs = Input(data_model=ChatMessages)
-    #     outputs = await FunctionCallingAgent(
-    #         language_model=language_model,
-    #         tools=tools,
-    #         autonomous=False,
-    #         return_inputs_with_trajectory=True,
-    #     )(inputs)
-    #     agent = Program(
-    #         inputs=inputs,
-    #         outputs=outputs,
-    #         name="interactive_multi_step_test",
-    #     )
+        tool_calls_1 = {
+            "thinking": "The calculation is complete. The result is 30.",
+            "tool_calls": [],
+        }
 
-    #     input_messages = ChatMessages(
-    #         messages=[
-    #             ChatMessage(
-    #                 role="user",
-    #                 content="I need to calculate 100 + 200, then multiply by 3",
-    #             )
-    #         ]
-    #     )
+        mock_responses = [
+            {"choices": [{"message": {"content": json.dumps(tool_calls)}}]},
+            {"choices": [{"message": {"content": json.dumps(tool_calls_1)}}]},
+        ]
 
-    #     # Simulate multiple interaction steps
-    #     max_steps = 3
-    #     for step in range(max_steps):
-    #         print(f"\n--- Step {step + 1} ---")
-    #         result = await agent(input_messages)
-    #         print(f"Step {step + 1} Result:")
-    #         print(result.prettify_json())
+        mock_completion.side_effect = mock_responses
 
-    #         # Get the latest assistant message
-    #         messages = result.get("messages", [])
-    #         if messages:
-    #             last_message = messages[-1]
-    #             if last_message.get("role") == "assistant":
-    #                 tool_calls = last_message.get("tool_calls", [])
-    #                 if not tool_calls:
-    #                     print("No more tool calls, stopping interaction")
-    #                     break
-    #                 # In a real scenario, you would validate/modify tool calls here
-    #                 input_messages = result
-    #             else:
-    #                 break
-    #         else:
-    #             break
+        input_messages = ChatMessages(
+            messages=[
+                ChatMessage(
+                    role="user",
+                    content="How much is 10 + 20?",
+                ),
+            ]
+        )
+        result = await agent(input_messages)
 
-    # async def test_interactive_mode(self):
-    #     language_model = LanguageModel(model="ollama/mistral")
+        # Verify result is ChatMessages
+        self.assertIsNotNone(result)
+        self.assertTrue(is_chat_messages(result))
 
-    #     tools = [
-    #         Tool(calculate),
-    #         Tool(thinking),
-    #     ]
+        # Verify messages include tool calls and tool results
+        messages = result.get("messages", [])
+        self.assertGreater(len(messages), 1)
 
-    #     inputs = Input(data_model=ChatMessages)
-    #     outputs = await FunctionCallingAgent(
-    #         language_model=language_model,
-    #         tools=tools,
-    #     )(inputs)
+        # Check that we have user, assistant with tool_calls, tool, and final assistant
+        roles = [msg.get("role") for msg in messages]
+        self.assertIn("user", roles)
+        self.assertIn("assistant", roles)
+        self.assertIn("tool", roles)
 
-    #     agent = Program(
-    #         inputs=inputs,
-    #         outputs=outputs,
-    #         name="function_calling_agent_test",
-    #     )
+    @patch("litellm.acompletion")
+    async def test_non_autonomous_mode_returns_chat_messages(self, mock_completion):
+        """Test that non-autonomous mode returns ChatMessages."""
+        language_model = LanguageModel(model="ollama/mistral")
+        tools = [
+            Tool(calculate),
+        ]
+        inputs = Input(data_model=ChatMessages)
+        outputs = await FunctionCallingAgent(
+            language_model=language_model,
+            tools=tools,
+            autonomous=False,
+            return_inputs_with_trajectory=False,
+        )(inputs)
+        agent = Program(
+            inputs=inputs,
+            outputs=outputs,
+            name="non_autonomous_test",
+        )
 
-    #     input_messages = ChatMessages(
-    #         messages=[
-    #             ChatMessage(
-    #                 role="user",
-    #                 content="How much is 152648 + 485?",
-    #             )
-    #         ]
-    #     )
+        tool_calls = {
+            "thinking": "I need to calculate 5 * 5.",
+            "tool_calls": [
+                {
+                    "tool_name": "calculate",
+                    "expression": "5 * 5",
+                }
+            ],
+        }
 
-    #     result = await agent(input_messages)
+        mock_responses = [
+            {"choices": [{"message": {"content": json.dumps(tool_calls)}}]},
+        ]
 
-    #     print("Result:")
-    #     print(result.prettify_json())
+        mock_completion.side_effect = mock_responses
+
+        input_messages = ChatMessages(
+            messages=[
+                ChatMessage(
+                    role="user",
+                    content="How much is 5 * 5?",
+                ),
+            ]
+        )
+        result = await agent(input_messages)
+
+        # Verify result is ChatMessages (not ChatMessage)
+        self.assertIsNotNone(result)
+        self.assertTrue(is_chat_messages(result))
+
+        # Verify messages structure - only assistant message since no prior tool calls
+        messages = result.get("messages", [])
+        self.assertEqual(len(messages), 1)
+        self.assertEqual(messages[0].get("role"), "assistant")
+
+    @patch("litellm.acompletion")
+    async def test_non_autonomous_mode_returns_tool_and_assistant_messages(
+        self, mock_completion
+    ):
+        """Test non-autonomous mode returns tool messages and assistant message."""
+        language_model = LanguageModel(model="ollama/mistral")
+        tools = [
+            Tool(calculate),
+        ]
+        inputs = Input(data_model=ChatMessages)
+        outputs = await FunctionCallingAgent(
+            language_model=language_model,
+            tools=tools,
+            autonomous=False,
+            return_inputs_with_trajectory=False,
+        )(inputs)
+        agent = Program(
+            inputs=inputs,
+            outputs=outputs,
+            name="non_autonomous_tool_messages_test",
+        )
+
+        # Second LLM response after tool execution
+        tool_calls_response = {
+            "thinking": "The calculation result is 25. Task complete.",
+            "tool_calls": [],
+        }
+
+        mock_responses = [
+            {"choices": [{"message": {"content": json.dumps(tool_calls_response)}}]},
+        ]
+
+        mock_completion.side_effect = mock_responses
+
+        # Input includes a previous assistant message with tool_calls
+        # This simulates continuing the conversation after the user approved tool calls
+        input_messages = ChatMessages(
+            messages=[
+                ChatMessage(
+                    role="user",
+                    content="How much is 5 * 5?",
+                ),
+                ChatMessage(
+                    role="assistant",
+                    content="I need to calculate 5 * 5.",
+                    tool_calls=[
+                        {
+                            "id": "test-tool-call-id",
+                            "name": "calculate",
+                            "arguments": {"expression": "5 * 5"},
+                        }
+                    ],
+                ),
+            ]
+        )
+        result = await agent(input_messages)
+
+        # Verify result is ChatMessages
+        self.assertIsNotNone(result)
+        self.assertTrue(is_chat_messages(result))
+
+        # Verify messages include both tool result and new assistant message
+        messages = result.get("messages", [])
+        self.assertEqual(len(messages), 2)
+
+        # First message should be the tool result
+        self.assertEqual(messages[0].get("role"), "tool")
+        self.assertEqual(messages[0].get("tool_call_id"), "test-tool-call-id")
+
+        # Second message should be the assistant response
+        self.assertEqual(messages[1].get("role"), "assistant")
+
+    @patch("litellm.acompletion")
+    async def test_non_autonomous_mode_with_trajectory(self, mock_completion):
+        """Test non-autonomous mode with return_inputs_with_trajectory=True."""
+        language_model = LanguageModel(model="ollama/mistral")
+        tools = [
+            Tool(calculate),
+        ]
+        inputs = Input(data_model=ChatMessages)
+        outputs = await FunctionCallingAgent(
+            language_model=language_model,
+            tools=tools,
+            autonomous=False,
+            return_inputs_with_trajectory=True,
+        )(inputs)
+        agent = Program(
+            inputs=inputs,
+            outputs=outputs,
+            name="non_autonomous_trajectory_test",
+        )
+
+        tool_calls = {
+            "thinking": "I need to calculate 3 + 3.",
+            "tool_calls": [
+                {
+                    "tool_name": "calculate",
+                    "expression": "3 + 3",
+                }
+            ],
+        }
+
+        mock_responses = [
+            {"choices": [{"message": {"content": json.dumps(tool_calls)}}]},
+        ]
+
+        mock_completion.side_effect = mock_responses
+
+        input_messages = ChatMessages(
+            messages=[
+                ChatMessage(
+                    role="user",
+                    content="How much is 3 + 3?",
+                ),
+            ]
+        )
+        result = await agent(input_messages)
+
+        # Verify result is ChatMessages
+        self.assertIsNotNone(result)
+        self.assertTrue(is_chat_messages(result))
+
+        # Verify full trajectory is returned (user message + assistant message)
+        messages = result.get("messages", [])
+        self.assertGreaterEqual(len(messages), 2)
+        self.assertEqual(messages[0].get("role"), "user")
+        self.assertEqual(messages[-1].get("role"), "assistant")
+
+    @patch("litellm.acompletion")
+    async def test_interactive_mode_single_step(self, mock_completion):
+        """Test interactive mode with single step execution."""
+        language_model = LanguageModel(model="ollama/mistral")
+        tools = [
+            Tool(calculate),
+            Tool(thinking),
+        ]
+        inputs = Input(data_model=ChatMessages)
+        outputs = await FunctionCallingAgent(
+            language_model=language_model,
+            tools=tools,
+            autonomous=False,
+            return_inputs_with_trajectory=True,
+        )(inputs)
+        agent = Program(
+            inputs=inputs,
+            outputs=outputs,
+            name="interactive_single_step_test",
+        )
+
+        tool_calls = {
+            "thinking": "I need to calculate 152648 + 485.",
+            "tool_calls": [
+                {
+                    "tool_name": "calculate",
+                    "expression": "152648 + 485",
+                }
+            ],
+        }
+
+        mock_completion.return_value = {
+            "choices": [{"message": {"content": json.dumps(tool_calls)}}]
+        }
+
+        input_messages = ChatMessages(
+            messages=[
+                ChatMessage(
+                    role="user",
+                    content="How much is 152648 + 485?",
+                )
+            ]
+        )
+        result = await agent(input_messages)
+
+        # Verify result structure
+        self.assertIsNotNone(result)
+        self.assertTrue(is_chat_messages(result))
+        messages = result.get("messages", [])
+        self.assertGreaterEqual(len(messages), 2)
+        self.assertEqual(messages[0].get("role"), "user")
+        self.assertEqual(messages[-1].get("role"), "assistant")
+
+    @patch("litellm.acompletion")
+    async def test_interactive_mode_multi_step(self, mock_completion):
+        """Test interactive mode with multiple steps simulation."""
+        language_model = LanguageModel(model="ollama/mistral")
+        tools = [
+            Tool(calculate),
+            Tool(thinking),
+        ]
+        inputs = Input(data_model=ChatMessages)
+        outputs = await FunctionCallingAgent(
+            language_model=language_model,
+            tools=tools,
+            autonomous=False,
+            return_inputs_with_trajectory=True,
+        )(inputs)
+        agent = Program(
+            inputs=inputs,
+            outputs=outputs,
+            name="interactive_multi_step_test",
+        )
+
+        # First step: calculate 100 + 200
+        tool_calls_step1 = {
+            "thinking": "First, I need to calculate 100 + 200.",
+            "tool_calls": [
+                {
+                    "tool_name": "calculate",
+                    "expression": "100 + 200",
+                }
+            ],
+        }
+
+        # Second step: multiply result by 3
+        tool_calls_step2 = {
+            "thinking": "Now I need to multiply 300 by 3.",
+            "tool_calls": [
+                {
+                    "tool_name": "calculate",
+                    "expression": "300 * 3",
+                }
+            ],
+        }
+
+        # Final step: no more tool calls
+        tool_calls_step3 = {
+            "thinking": "Calculation complete. 100 + 200 = 300, then 300 * 3 = 900.",
+            "tool_calls": [],
+        }
+
+        mock_responses = [
+            {"choices": [{"message": {"content": json.dumps(tool_calls_step1)}}]},
+            {"choices": [{"message": {"content": json.dumps(tool_calls_step2)}}]},
+            {"choices": [{"message": {"content": json.dumps(tool_calls_step3)}}]},
+        ]
+        mock_completion.side_effect = mock_responses
+
+        input_messages = ChatMessages(
+            messages=[
+                ChatMessage(
+                    role="user",
+                    content="I need to calculate 100 + 200, then multiply by 3",
+                )
+            ]
+        )
+
+        # Simulate multiple interaction steps
+        max_steps = 3
+        for step in range(max_steps):
+            result = await agent(input_messages)
+
+            # Verify result is ChatMessages
+            self.assertIsNotNone(result)
+            self.assertTrue(is_chat_messages(result))
+
+            # Get the latest assistant message
+            messages = result.get("messages", [])
+            if messages:
+                last_message = messages[-1]
+                if last_message.get("role") == "assistant":
+                    tool_calls = last_message.get("tool_calls", [])
+                    if not tool_calls:
+                        break
+                    # Continue with the result as new input
+                    input_messages = result
+                else:
+                    break
+            else:
+                break
+
+        # Verify we completed all steps
+        self.assertEqual(step, 2)  # 0, 1, 2 = 3 steps

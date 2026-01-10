@@ -4,6 +4,7 @@ from types import TracebackType
 from typing import AsyncIterator
 
 from synalinks.src.api_export import synalinks_export
+from synalinks.src.modules.core.tool import Tool
 from synalinks.src.utils.async_utils import create_task
 from synalinks.src.utils.mcp.sessions import ClientSession
 from synalinks.src.utils.mcp.sessions import Connection
@@ -14,7 +15,6 @@ from synalinks.src.utils.mcp.sessions import StreamableHttpConnection
 from synalinks.src.utils.mcp.sessions import WebsocketConnection
 from synalinks.src.utils.mcp.sessions import create_session
 from synalinks.src.utils.mcp.tools import load_mcp_tools
-from synalinks.src.utils.tool_utils import Tool
 
 ASYNC_CONTEXT_MANAGER_ERROR = (
     "MultiServerMCPClient cannot be used as a context "

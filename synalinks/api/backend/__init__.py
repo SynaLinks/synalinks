@@ -25,6 +25,8 @@ from synalinks.src.backend.config import (
     is_observability_enabled as is_observability_enabled,
 )
 from synalinks.src.backend.config import is_telemetry_enabled as is_telemetry_enabled
+from synalinks.src.backend.config import mlflow_experiment_name as mlflow_experiment_name
+from synalinks.src.backend.config import mlflow_tracking_uri as mlflow_tracking_uri
 from synalinks.src.backend.config import set_api_base as set_api_base
 from synalinks.src.backend.config import set_api_key as set_api_key
 from synalinks.src.backend.config import set_backend as set_backend
@@ -34,37 +36,27 @@ from synalinks.src.backend.config import set_seed as set_seed
 from synalinks.src.backend.pydantic.base import ChatMessage as ChatMessage
 from synalinks.src.backend.pydantic.base import ChatMessages as ChatMessages
 from synalinks.src.backend.pydantic.base import ChatRole as ChatRole
-from synalinks.src.backend.pydantic.base import EmbeddedEntity as EmbeddedEntity
 from synalinks.src.backend.pydantic.base import Embedding as Embedding
 from synalinks.src.backend.pydantic.base import Embeddings as Embeddings
-from synalinks.src.backend.pydantic.base import Entities as Entities
-from synalinks.src.backend.pydantic.base import Entity as Entity
 from synalinks.src.backend.pydantic.base import GenericInputs as GenericInputs
 from synalinks.src.backend.pydantic.base import GenericIO as GenericIO
 from synalinks.src.backend.pydantic.base import GenericOutputs as GenericOutputs
 from synalinks.src.backend.pydantic.base import GenericResult as GenericResult
 from synalinks.src.backend.pydantic.base import Instructions as Instructions
-from synalinks.src.backend.pydantic.base import KnowledgeGraph as KnowledgeGraph
 from synalinks.src.backend.pydantic.base import Prediction as Prediction
-from synalinks.src.backend.pydantic.base import Relation as Relation
-from synalinks.src.backend.pydantic.base import Relations as Relations
 from synalinks.src.backend.pydantic.base import Score as Score
 from synalinks.src.backend.pydantic.base import SimilaritySearch as SimilaritySearch
 from synalinks.src.backend.pydantic.base import ToolCall as ToolCalling
+from synalinks.src.backend.pydantic.base import ToolCall as ToollCall
 from synalinks.src.backend.pydantic.base import Trainable as Trainable
 from synalinks.src.backend.pydantic.base import TripletSearch as TripletSearch
 from synalinks.src.backend.pydantic.base import is_chat_message as is_chat_message
 from synalinks.src.backend.pydantic.base import is_chat_messages as is_chat_messages
-from synalinks.src.backend.pydantic.base import is_embedded_entity as is_embedded_entity
+from synalinks.src.backend.pydantic.base import is_embedded as is_embedded
 from synalinks.src.backend.pydantic.base import is_embedding as is_embedding
 from synalinks.src.backend.pydantic.base import is_embeddings as is_embeddings
-from synalinks.src.backend.pydantic.base import is_entities as is_entities
-from synalinks.src.backend.pydantic.base import is_entity as is_entity
 from synalinks.src.backend.pydantic.base import is_instructions as is_instructions
-from synalinks.src.backend.pydantic.base import is_knowledge_graph as is_knowledge_graph
 from synalinks.src.backend.pydantic.base import is_prediction as is_prediction
-from synalinks.src.backend.pydantic.base import is_relation as is_relation
-from synalinks.src.backend.pydantic.base import is_relations as is_relations
 from synalinks.src.backend.pydantic.base import (
     is_similarity_search as is_similarity_search,
 )

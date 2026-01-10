@@ -463,7 +463,7 @@ class Trainer:
             )
 
         if validation_data is not None:
-            (val_x, val_y) = data_adapter_utils.unpack_x_y(validation_data)
+            val_x, val_y = data_adapter_utils.unpack_x_y(validation_data)
         # Create an iterator that yields batches of input/target data.
         epoch_iterator = EpochIterator(
             x=x,
@@ -487,6 +487,11 @@ class Trainer:
 
         # Container that configures and calls callbacks.
         if not isinstance(callbacks, callbacks_module.CallbackList):
+            # Get optimizer name for logging
+            optimizer_name = None
+            if self._optimizer is not None:
+                optimizer_name = self._optimizer.__class__.__name__
+
             callbacks = callbacks_module.CallbackList(
                 callbacks,
                 add_history=True,
@@ -494,6 +499,8 @@ class Trainer:
                 verbose=verbose,
                 epochs=epochs,
                 steps=steps_per_epoch,
+                batch_size=batch_size,
+                optimizer=optimizer_name,
                 program=self,
             )
 
@@ -1068,7 +1075,7 @@ class Trainer:
                     else:
                         data_batch = next(data_or_iterator)
                     break
-            (x, y) = data_batch
+            x, y = data_batch
             try:
                 y_pred = run_maybe_nested(self.predict_on_batch(x))
             except Exception as e:

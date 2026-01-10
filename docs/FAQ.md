@@ -24,7 +24,7 @@
 
 ### What makes Synalinks revolutionary compared to DSPy?
 
-While DSPy wrestles with PyTorch complexity, Synalinks delivers the elegant simplicity of Keras with enterprise-grade power. We're the only framework featuring logical flows inspired by logical circuits and comprehensive Knowledge Graph support. Synalinks transforms AI workflow design into an intuitive, natural process that accelerates development cycles and reduces implementation complexity.
+While DSPy wrestles with PyTorch complexity, Synalinks delivers the elegant simplicity of Keras with enterprise-grade power. We're the only framework featuring logical flows inspired by logical circuits and parrallel function calling agents. Synalinks transforms AI workflow design into an intuitive, natural process that accelerates development cycles and reduces implementation complexity.
 
 ---
 
@@ -34,7 +34,7 @@ In the real-world, most problems that companies face, are not labelled in public
 
 Training a whole Language Model (LM) from scratch is out of the reach of most companies, so adapting them to real-world tasks is essential.
 
-LMs have the capability to leverage their prompt to mimick the examples given, but it means that one have to update the examples each time you change the pipelines as you experiment. Making it cumberstone, but even with that, their is no guaranty that the examples you gave yield to the best results.
+LMs have the capability to leverage their prompt to mimick the examples given, but it means that one have to update the examples/prompts each time you change the pipelines as you experiment. Making it cumberstone, but even with that, their is no guaranty that the examples/prompts you gave yield to the best results.
 
 To select the best examples and instructions to give to the LMs, it needs a complex system like Synalinks that automate the generation and selection.
 

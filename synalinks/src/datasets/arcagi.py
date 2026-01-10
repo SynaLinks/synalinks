@@ -146,8 +146,10 @@ def load_data(
         task_name (str): The name of the task
         filepath (str): The task filepath
         arc_version (int): ARC-AGI version between 1 or 2
-        one_leave_out (bool): If True create a traning set using the one-leave-out technique.
-        permutation (bool): If True augment the training data using permutation of examples.
+        one_leave_out (bool): If True create a traning set using the
+            one-leave-out technique.
+        permutation (bool): If True augment the training data using
+            permutation of examples.
         repeat (int): The number of times to repeat the training data.
         curriculum_learning (bool): Wether or not to sort the training set by difficulty.
             In this case, the difficulty refer to the grid-size of the expected output.

@@ -117,8 +117,9 @@ class PythonSynthesis(Module):
     to refine the code during the training loop based on iterative feedback and
     automatic selection of the best script.
 
-    This module works **ONLY** with advanced optimizers (**NOT** the `RandomFewShot` optimizer).
-    
+    This module works **ONLY** with advanced optimizers (**NOT** the
+    `RandomFewShot` optimizer).
+
     The module executes the entire Python script and expects the result to be stored
     in a variable named 'result' at the end of execution.
     
@@ -165,8 +166,9 @@ class PythonSynthesis(Module):
         data_model (DataModel | SymbolicDataModel | JsonDataModel): The target data
             model for structured output.
         python_script (str): The default Python script.
-        seed_scripts (list): Optional. A list of Python scripts to use as seed for the evolution.
-            If not provided, create a seed from the default configuration.
+        seed_scripts (list): Optional. A list of Python scripts to use as seed
+            for the evolution. If not provided, create a seed from the default
+            configuration.
         default_return_value (dict): Default return value.
         return_python_script (bool): Wether or not to return the python script for 
             evaluation. (Default to False).

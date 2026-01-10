@@ -28,7 +28,8 @@ class Iterations(DataModel):
 class Optimizer(SynalinksSaveable):
     """Optimizer base class: all Synalinks optimizers inherit from this class.
 
-    This abstract base class provides the common infrastructure for all optimizers in Synalinks.
+    This abstract base class provides the common infrastructure for all
+    optimizers in Synalinks.
 
     Concrete optimizer implementations must inherit from this class and implement
     the `propose_new_candidates()` method with their specific optimization logic.
@@ -157,7 +158,8 @@ class Optimizer(SynalinksSaveable):
         The reward tracker monitors the performance/rewards during optimization.
 
         Returns:
-            (RewardTracker): The reward tracker from the program, or None if no program is set
+            (RewardTracker): The reward tracker from the program, or None if
+                no program is set.
         """
         if self._program:
             return self._program._reward_tracker

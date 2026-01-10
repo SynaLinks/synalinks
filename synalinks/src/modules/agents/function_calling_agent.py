@@ -22,9 +22,12 @@ from synalinks.src.saving import serialization_lib
 def get_default_instructions():
     """The default parallel function calling agent instructions."""
     return """
-Think step by step: Use the thinking field to elaborate what you observe and what do you need to accomplish next.
-Reflect on prior steps: Review your previous actions and their outcomes to avoid unnecessary repetition.
-Avoid unnecessary actions: If you already have enough information to complete the user task, return an empty tool calls array.
+Think step by step: Use the thinking field to elaborate what you observe and
+what do you need to accomplish next.
+Reflect on prior steps: Review your previous actions and their outcomes to
+avoid unnecessary repetition.
+Avoid unnecessary actions: If you already have enough information to complete
+the user task, return an empty tool calls array.
 """.strip()
 
 
@@ -42,8 +45,9 @@ class FunctionCallingAgent(Module):
     - Autonomous: It will execute tools as soon as called.
     - Non-autonomous: It will return the tool arguments as a ChatMessage.
 
-    In *autonomous* mode, the agent accept **any kind of data model input** and perform a final inference to
-    eventually format its final answer if a `data_model` or `schema` is provided.
+    In *autonomous* mode, the agent accept **any kind of data model input**
+    and perform a final inference to eventually format its final answer if a
+    `data_model` or `schema` is provided.
 
     Example:
 
@@ -151,7 +155,9 @@ class FunctionCallingAgent(Module):
             },
             {
                 "role": "assistant",
-                "content": "The user has asked for a simple addition calculation. The assistant used the 'calculate' tool to perform this task, and the result was returned successfully.",
+                "content": "The user has asked for a simple addition "
+                "calculation. The assistant used the 'calculate' tool to "
+                "perform this task, and the result was returned successfully.",
             }
         ],
         "final_answer": 153133.0
@@ -423,7 +429,8 @@ class FunctionCallingAgent(Module):
                 if not tool_calls:
                     assistant_message = ChatMessage(
                         role=ChatRole.ASSISTANT,
-                        content="Something went wrong while trying to decide the next action.",
+                        content="Something went wrong while trying to decide "
+                        "the next action.",
                     )
                     agent_messages.append(assistant_message.get_json())
                     break
@@ -468,11 +475,17 @@ class FunctionCallingAgent(Module):
                             ).get_json()
                         )
                     else:
+                        # Handle both JsonDataModel and raw dict results
+                        content = (
+                            tool_result.get_json()
+                            if hasattr(tool_result, "get_json")
+                            else tool_result
+                        )
                         agent_messages.append(
                             ChatMessage(
                                 role=ChatRole.TOOL,
                                 tool_call_id=tool_call_id,
-                                content=tool_result,
+                                content=content,
                             ).get_json()
                         )
 
@@ -480,8 +493,15 @@ class FunctionCallingAgent(Module):
             if self.schema:
                 return await self.final_generator(trajectory)
             else:
-                return trajectory
+                return JsonDataModel(
+                    json=trajectory.get_json(),
+                    schema=ChatMessages.get_schema(),
+                    name=self.name,
+                )
         else:
+            # Track new messages generated in this step
+            new_messages = []
+
             if len(agent_messages) > 0:
                 if agent_messages[-1].get("role") == ChatRole.ASSISTANT:
                     tasks = []
@@ -499,21 +519,25 @@ class FunctionCallingAgent(Module):
                     for j, tool_result in enumerate(tool_results):
                         tool_call_id = tool_calls_ids[j]
                         if isinstance(tool_result, Exception):
-                            agent_messages.append(
-                                ChatMessage(
-                                    role=ChatRole.TOOL,
-                                    tool_call_id=tool_call_id,
-                                    content="error: %s" % str(tool_result),
-                                ).get_json()
+                            tool_message = ChatMessage(
+                                role=ChatRole.TOOL,
+                                tool_call_id=tool_call_id,
+                                content="error: %s" % str(tool_result),
                             )
                         else:
-                            agent_messages.append(
-                                ChatMessage(
-                                    role=ChatRole.TOOL,
-                                    tool_call_id=tool_call_id,
-                                    content=tool_result,
-                                ).get_json()
+                            # Handle both JsonDataModel and raw dict results
+                            content = (
+                                tool_result.get_json()
+                                if hasattr(tool_result, "get_json")
+                                else tool_result
                             )
+                            tool_message = ChatMessage(
+                                role=ChatRole.TOOL,
+                                tool_call_id=tool_call_id,
+                                content=content,
+                            )
+                        agent_messages.append(tool_message.get_json())
+                        new_messages.append(tool_message)
 
             trajectory.update({"messages": agent_messages})
 
@@ -539,6 +563,7 @@ class FunctionCallingAgent(Module):
                 )
 
             agent_messages.append(assistant_message.get_json())
+            new_messages.append(assistant_message)
             trajectory.update({"messages": agent_messages})
 
             if self.return_inputs_with_trajectory:
@@ -549,8 +574,8 @@ class FunctionCallingAgent(Module):
                 )
             else:
                 return JsonDataModel(
-                    json=assistant_message.get_json(),
-                    schema=ChatMessage.get_schema(),
+                    json=ChatMessages(messages=new_messages).get_json(),
+                    schema=ChatMessages.get_schema(),
                     name=self.name,
                 )
 
@@ -573,16 +598,10 @@ class FunctionCallingAgent(Module):
 
             _ = await self.tool_calls_generator(inputs)
 
-            if self.return_inputs_with_trajectory:
-                return SymbolicDataModel(
-                    schema=ChatMessages.get_schema(),
-                    name=self.name,
-                )
-            else:
-                return SymbolicDataModel(
-                    schema=ChatMessage.get_schema(),
-                    name=self.name,
-                )
+            return SymbolicDataModel(
+                schema=ChatMessages.get_schema(),
+                name=self.name,
+            )
 
     def get_config(self):
         config = {

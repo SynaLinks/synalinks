@@ -129,5 +129,5 @@ class SymbolicArgumentsTest(testing.TestCase):
             {"1": c},
         )
 
-        (values, _) = sym_args.fill_in(dictionary)
+        values, _ = sym_args.fill_in(dictionary)
         self.assertEqual(values, ((json_data_model1, None), {"1": json_data_model2}))

@@ -35,49 +35,58 @@ class BackupAndRestore(Callback):
 
     Example:
 
-    >>> class InterruptingCallback(synalinks.callbacks.Callback):
-    ...   def on_epoch_begin(self, epoch, logs=None):
-    ...     if epoch == 4:
-    ...       raise RuntimeError('Interrupting!')
-    >>> callback = synalinks.callbacks.BackupAndRestore(backup_dir="/tmp/backup")
-    >>> program = synalinks.programs.Sequential([synalinks.Generator(data_model=Answer)])
-    >>> program.compile(synalinks.optimizers.RandomFewShot(), reward=synalinks.reward.ExactMatch())
-    >>> program.build(Query)
-    >>> try:
-    ...   program.fit(..., callbacks=[callback, InterruptingCallback()],
-    ...             verbose=0)
-    ... except:
-    ...   pass
-    >>> history = program.fit(..., epochs=10, batch_size=1,
-    ...                       callbacks=[callback], verbose=0)
-    >>> # Only 6 more epochs are run, since first training got interrupted at
-    >>> # zero-indexed epoch 4, second training will continue from 4 to 9.
-    >>> len(history.history['reward'])
-    >>> 6
+    ```python
+    class InterruptingCallback(synalinks.callbacks.Callback):
+        def on_epoch_begin(self, epoch, logs=None):
+            if epoch == 4:
+                raise RuntimeError('Interrupting!')
+
+    callback = synalinks.callbacks.BackupAndRestore(backup_dir="/tmp/backup")
+    program = synalinks.programs.Sequential(
+        [synalinks.Generator(data_model=Answer)]
+    )
+    program.compile(
+        synalinks.optimizers.RandomFewShot(),
+        reward=synalinks.reward.ExactMatch(),
+    )
+    program.build(Query)
+
+    try:
+        program.fit(..., callbacks=[callback, InterruptingCallback()], verbose=0)
+    except:
+        pass
+
+    history = program.fit(
+        ..., epochs=10, batch_size=1, callbacks=[callback], verbose=0
+    )
+    # Only 6 more epochs are run, since first training got interrupted at
+    # zero-indexed epoch 4, second training will continue from 4 to 9.
+    len(history.history['reward'])  # Returns 6
+    ```
 
     Args:
-        backup_dir: String, path of directory where to store the data
+        backup_dir (str): Path of directory where to store the data
             needed to restore the program. The directory
             cannot be reused elsewhere to store other files, e.g. by the
             `BackupAndRestore` callback of another training run,
             or by another callback (e.g. `ProgramCheckpoint`)
             of the same training run.
-        save_freq: `"epoch"`, integer, or `False`. When set to `"epoch"`
-          the callback saves the checkpoint at the end of each epoch.
-          When set to an integer, the callback saves the checkpoint every
-          `save_freq` batches. Set `save_freq=False` only if using
-          preemption checkpointing (i.e. with `save_before_preemption=True`).
-        double_checkpoint: Boolean. If enabled, `BackupAndRestore` callback
-          will save 2 last training states (current and previous). After
-          interruption if current state can't be loaded due to IO error
-          (e.g. file corrupted) it will try to restore previous one. Such
-          behaviour will consume twice more space on disk, but increase fault
-          tolerance. Defaults to `False`.
-        delete_checkpoint: Boolean. This `BackupAndRestore`
-          callback works by saving a checkpoint to back up the training state.
-          If `delete_checkpoint=True`, the checkpoint will be deleted after
-          training is finished. Use `False` if you'd like to keep the checkpoint
-          for future usage. Defaults to `True`.
+        save_freq (str | int): `"epoch"`, integer, or `False`. When set to
+            `"epoch"` the callback saves the checkpoint at the end of each epoch.
+            When set to an integer, the callback saves the checkpoint every
+            `save_freq` batches. Set `save_freq=False` only if using
+            preemption checkpointing (i.e. with `save_before_preemption=True`).
+        double_checkpoint (bool): If enabled, `BackupAndRestore` callback
+            will save 2 last training states (current and previous). After
+            interruption if current state can't be loaded due to IO error
+            (e.g. file corrupted) it will try to restore previous one. Such
+            behaviour will consume twice more space on disk, but increase fault
+            tolerance. Defaults to `False`.
+        delete_checkpoint (bool): This `BackupAndRestore`
+            callback works by saving a checkpoint to back up the training state.
+            If `delete_checkpoint=True`, the checkpoint will be deleted after
+            training is finished. Use `False` if you'd like to keep the checkpoint
+            for future usage. Defaults to `True`.
     """
 
     def __init__(

@@ -30,6 +30,12 @@ _SYNALINKS_API_BASE = "http://localhost:8000/api"
 # Enable observability
 _ENABLE_OBSERVABILITY = False
 
+# MLflow tracking URI for observability
+_MLFLOW_TRACKING_URI = None
+
+# MLflow experiment name for observability
+_MLFLOW_EXPERIMENT_NAME = "synalinks_traces"
+
 # Available backends
 _AVAILABLE_BACKEND = ["pydantic"]
 
@@ -253,9 +259,10 @@ def enable_logging(log_level="debug", log_to_file=False):
     """
     Configures and enables logging for the application.
 
-    This function sets up the logging configuration for the application, allowing logs to be output
-    either to a specified file or to the console. The logging level can be set to DEBUG for more
-    verbose logging or INFO for standard logging.
+    This function sets up the logging configuration for the application,
+    allowing logs to be output either to a specified file or to the console.
+    The logging level can be set to DEBUG for more verbose logging or INFO
+    for standard logging.
 
     Args:
         log_level (str): The logging level.
@@ -343,21 +350,74 @@ def set_api_base(api_base):
         "synalinks.enable_observability",
     ]
 )
-def enable_observability(api_base=None):
+def enable_observability(tracking_uri=None, experiment_name=None):
     """
-    Configures and enables observability for the application.
+    Configures and enables observability for the application using MLflow.
 
     This function sets up the observability configuration for the application,
-    allowing traces and logs to be send to Synalinks Lab.
+    enabling tracing of module calls via MLflow.
 
     Args:
-        api_base (str): Optional. The api base to send the traces and logs to.
+        tracking_uri (str): Optional. The MLflow tracking server URI.
+            If not provided, MLflow will use the default (local ./mlruns
+            directory or MLFLOW_TRACKING_URI environment variable).
+        experiment_name (str): Optional. The MLflow experiment name.
+            Defaults to "synalinks_traces".
+
+    Example:
+
+    ```python
+    import synalinks
+
+    # Basic usage with defaults
+    synalinks.enable_observability()
+
+    # With custom MLflow tracking server
+    synalinks.enable_observability(
+        tracking_uri="http://localhost:5000",
+        experiment_name="my_experiment"
+    )
+    ```
     """
-    global _SYNALINKS_API_BASE
+    global _MLFLOW_TRACKING_URI
+    global _MLFLOW_EXPERIMENT_NAME
     global _ENABLE_OBSERVABILITY
-    if api_base:
-        _SYNALINKS_API_BASE = api_base
+
+    if tracking_uri:
+        _MLFLOW_TRACKING_URI = tracking_uri
+    if experiment_name:
+        _MLFLOW_EXPERIMENT_NAME = experiment_name
     _ENABLE_OBSERVABILITY = True
+
+
+@synalinks_export(
+    [
+        "synalinks.config.mlflow_tracking_uri",
+        "synalinks.backend.mlflow_tracking_uri",
+    ]
+)
+def mlflow_tracking_uri():
+    """Returns the MLflow tracking URI for observability.
+
+    Returns:
+        (str): The MLflow tracking URI, or None if not set.
+    """
+    return _MLFLOW_TRACKING_URI
+
+
+@synalinks_export(
+    [
+        "synalinks.config.mlflow_experiment_name",
+        "synalinks.backend.mlflow_experiment_name",
+    ]
+)
+def mlflow_experiment_name():
+    """Returns the MLflow experiment name for observability.
+
+    Returns:
+        (str): The MLflow experiment name.
+    """
+    return _MLFLOW_EXPERIMENT_NAME
 
 
 @synalinks_export(

@@ -50,7 +50,8 @@ class Telemetry(Hook):
     """
     Synalinks Telemetry Hook
 
-    To disable the telemetry just use `synalinks.disable_telemetry()` at the beginning of your scripts
+    To disable the telemetry just use `synalinks.disable_telemetry()` at the
+    beginning of your scripts
 
     ```python
     import synalinks
@@ -93,7 +94,7 @@ class Telemetry(Hook):
         except Exception:
             pass
 
-    def on_call_begin(self, call_id, parent_call_id=None, inputs=None):
+    def on_call_begin(self, call_id, parent_call_id=None, inputs=None, kwargs=None):
         run_maybe_nested(self._send("call_begin_" + self.module.name))
 
     def on_call_end(self, call_id, parent_call_id=None, outputs=None, exception=None):

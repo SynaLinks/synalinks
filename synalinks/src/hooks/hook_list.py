@@ -90,12 +90,14 @@ class HookList(Hook):
         call_id,
         parent_call_id=None,
         inputs=None,
+        kwargs=None,
     ):
         for hook in self.hooks:
             hook.on_call_begin(
                 call_id,
                 parent_call_id=parent_call_id,
                 inputs=inputs,
+                kwargs=kwargs,
             )
 
     def on_call_end(

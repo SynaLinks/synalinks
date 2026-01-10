@@ -25,7 +25,8 @@ class DecisionAnswer(DataModel):
 def default_decision_instructions(labels):
     """The decision default instructions"""
     return f"""
-You will be given a question, your task is to answer step-by-step to choose one the following labels: {labels}
+You will be given a question, your task is to answer step-by-step to choose
+one the following labels: {labels}
 """.strip()
 
 

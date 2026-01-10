@@ -13,8 +13,8 @@ theme:
     repo: fontawesome/brands/github
   theme:
   palette:
-    - media: "(prefers-color-scheme: dark)"
-      scheme: slate
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
 
 extra_css:
   - stylesheets/extra.css
@@ -50,28 +50,41 @@ plugins:
 nav:
   - index.md
   - Introduction.md
+  - Guides:
+    - guides/Getting Started.md
+    - guides/Data Models.md
+    - guides/Programs.md
+    - guides/Modules.md
+    - guides/Agents.md
+    - guides/Knowledge Base.md
+    - guides/Training.md
+    - guides/Observability.md
+    - guides/Guard Patterns.md
   - Modules: Synalinks API/Modules API/index.md
   - FAQ.md
   - CheatSheet.md
   - Differences with Keras.md
   - Differences with DSPy.md
   - Code Examples:
-    - Basics:
-      - Code Examples/Basics/First Steps.md
-      - Code Examples/Basics/First Programs.md
-      - Code Examples/Basics/Control Flow.md
-      - Code Examples/Basics/Conversational Applications.md
-      - Code Examples/Basics/Reward Metrics And Optimizers.md
-      - Code Examples/Basics/Training Programs.md
-      - Code Examples/Basics/Implementing Custom Modules Via Subclassing.md
-    - RAGs:
-      - Code Examples/RAGs/First Knowledge Graph Schema.md
-      - Code Examples/RAGs/Knowledge Extraction.md
-      - Code Examples/RAGs/Retrieval Augmented Generation.md
-      - Code Examples/RAGs/Knowledge Augmented Generation.md
-    - Agents:
-      - Code Examples/Agents/Autonomous Agent.md
-      - Code Examples/Agents/Interactive Agent.md
+    - Code Examples/First Steps.md
+    - Code Examples/Functional API.md
+    - Code Examples/Subclassing.md
+    - Code Examples/Sequential API.md
+    - Code Examples/Mixing Strategy.md
+    - Code Examples/Parallel Branches.md
+    - Code Examples/Decisions.md
+    - Code Examples/Conditional Branches.md
+    - Code Examples/Data Model Operators.md
+    - Code Examples/JSON Ops.md
+    - Code Examples/Conversational Applications.md
+    - Code Examples/Reward Metrics And Optimizers.md
+    - Code Examples/Training Programs.md
+    - Code Examples/Implementing Custom Modules Via Subclassing.md
+    - Code Examples/Autonomous Agent.md
+    - Code Examples/Interactive Agent.md
+    - Code Examples/Knowledge Extraction and Storage.md
+    - Code Examples/Document RAG.md
+    - Code Examples/RAG Agent.md
   - Synalinks API:
     - Synalinks API/Language Models API.md
     - Synalinks API/Embedding Models API.md
@@ -108,12 +121,9 @@ nav:
         - Synalinks API/Modules API/Agents Modules/FunctionCallingAgent module.md
       - Knowledge Modules:
         - Synalinks API/Modules API/Knowledge Modules/index.md
-        - Synalinks API/Modules API/Knowledge Modules/Embedding module.md
+        - Synalinks API/Modules API/Knowledge Modules/EmbedKnowledge module.md
         - Synalinks API/Modules API/Knowledge Modules/UpdateKnowledge module.md
-      - Retrievers Modules:
-        - Synalinks API/Modules API/Retrievers Modules/index.md
-        - Synalinks API/Modules API/Retrievers Modules/EntityRetriever module.md
-        - Synalinks API/Modules API/Retrievers Modules/TripletRetriever module.md
+        - Synalinks API/Modules API/Knowledge Modules/RetrieveKnowledge module.md
       - Masking Modules:
         - Synalinks API/Modules API/Masking Modules/index.md
         - Synalinks API/Modules API/Masking Modules/InMask module.md
@@ -179,7 +189,5 @@ nav:
     - Synalinks API/Config.md
   - Deployment:
     - Deployment/Building a REST API.md
-  - Graph Visualization:
-    - Graph Visualization/Using G.V() as Graph IDE.md
-  - Monitoring:
-    - Monitoring/Arize Phoenix.md
+  - Observability:
+    - Observability/MLflow.md

@@ -53,8 +53,8 @@ def dynamic_tool_calls(tools):
     "tool_name" field to identify the tool being called.
 
     Args:
-        tools (list): A list of tool objects, each with a name() method and an obj_schema()
-            method that returns the schema of the tool.
+        tools (list): A list of tool objects, each with a name() method and
+            an obj_schema() method that returns the schema of the tool.
 
     Returns:
         (dict): A schema dictionary that defines the structure for tool calls. The schema

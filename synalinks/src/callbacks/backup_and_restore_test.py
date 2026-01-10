@@ -248,8 +248,6 @@ class BackupAndRestoreCallbackTest(testing.TestCase):
 
         (x_train, y_train), _ = load_test_data()
 
-        mock_messages = []
-
         mock_responses = []
         mock_responses.extend(mock_incorrect_completion_data())
         mock_responses.extend(mock_completion_data())

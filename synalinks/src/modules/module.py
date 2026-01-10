@@ -528,6 +528,7 @@ class Module(BackendModule, Operation, SynalinksSaveable):
                 call_id=call_id,
                 parent_call_id=parent_call_id,
                 inputs=args,
+                kwargs=kwargs,
             )
 
         #####################################

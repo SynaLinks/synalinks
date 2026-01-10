@@ -28,39 +28,43 @@ class EarlyStopping(Callback):
     >>> callback = synalinks.callbacks.EarlyStopping(monitor='reward', patience=3)
     >>> # This callback will stop the training when there is no improvement in
     >>> # the loss for three consecutive epochs.
-    >>> program = synalinks.programs.Sequential([synalinks.modules.Generator(data_model=Answer)])
-    >>> program.compile(synalinks.optimizers.RandomFewShot(), reward=synalinks.rewards.ExactMatch())
-    >>> history = program.fit(..., epochs=10, batch_size=1, callbacks=[callback], verbose=0)
+    >>> program = synalinks.programs.Sequential(
+    ...     [synalinks.modules.Generator(data_model=Answer)])
+    >>> program.compile(
+    ...     synalinks.optimizers.RandomFewShot(),
+    ...     reward=synalinks.rewards.ExactMatch())
+    >>> history = program.fit(
+    ...     ..., epochs=10, batch_size=1, callbacks=[callback], verbose=0)
     >>> len(history.history['reward'])  # Only 4 epochs are run.
     4
 
     Args:
-        monitor: Quantity to be monitored. Defaults to `val_reward`.
-        min_delta: Minimum change in the monitored quantity to qualify as an
-            improvement, i.e. an absolute change of less than min_delta, will
-            count as no improvement. Defaults to `0`.
-        stop_at: The value at which we should stop training.
-        patience: Number of epochs with no improvement after which training will
-            be stopped. Defaults to `0`.
-        verbose: Verbosity mode, 0 or 1. Mode 0 is silent, and mode 1 displays
-            messages when the callback takes an action. Defaults to `0`.
-        mode: One of `{"auto", "min", "max"}`. In `min` mode, training will stop
-            when the quantity monitored has stopped decreasing; in `"max"` mode
-            it will stop when the quantity monitored has stopped increasing; in
-            `"auto"` mode, the direction is automatically inferred from the name
-            of the monitored quantity. Defaults to `"auto"`.
-        baseline: Baseline value for the monitored quantity. If not `None`,
-            training will stop if the program doesn't show improvement over the
-            baseline. Defaults to `None`.
-        restore_best_variables: Whether to restore program variables from the epoch
-            with the best value of the monitored quantity. If `False`, the program
-            variables obtained at the last step of training are used. An epoch
-            will be restored regardless of the performance relative to the
-            `baseline`. If no epoch improves on `baseline`, training will run
+        monitor (str): Quantity to be monitored. Defaults to `val_reward`.
+        min_delta (float): Minimum change in the monitored quantity to qualify
+            as an improvement, i.e. an absolute change of less than min_delta,
+            will count as no improvement. Defaults to `0`.
+        stop_at (float): The value at which we should stop training.
+        patience (int): Number of epochs with no improvement after which
+            training will be stopped. Defaults to `0`.
+        verbose (int): Verbosity mode, 0 or 1. Mode 0 is silent, and mode 1
+            displays messages when the callback takes an action. Defaults to `0`.
+        mode (str): One of `{"auto", "min", "max"}`. In `min` mode, training
+            will stop when the quantity monitored has stopped decreasing; in
+            `"max"` mode it will stop when the quantity monitored has stopped
+            increasing; in `"auto"` mode, the direction is automatically
+            inferred from the name of the monitored quantity. Defaults to `"auto"`.
+        baseline (float): Baseline value for the monitored quantity. If not
+            `None`, training will stop if the program doesn't show improvement
+            over the baseline. Defaults to `None`.
+        restore_best_variables (bool): Whether to restore program variables from
+            the epoch with the best value of the monitored quantity. If `False`,
+            the program variables obtained at the last step of training are used.
+            An epoch will be restored regardless of the performance relative to
+            the `baseline`. If no epoch improves on `baseline`, training will run
             for `patience` epochs and restore variables from the best epoch in
             that set. Defaults to `False`.
-        start_from_epoch: Number of epochs to wait before starting to monitor
-            improvement. This allows for a warm-up period in which no
+        start_from_epoch (int): Number of epochs to wait before starting to
+            monitor improvement. This allows for a warm-up period in which no
             improvement is expected and thus training will not be stopped.
             Defaults to `0`.
 

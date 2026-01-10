@@ -41,6 +41,7 @@ class Hook:
         call_id,
         parent_call_id=None,
         inputs=None,
+        kwargs=None,
     ):
         """Called at the beginning of the module execution.
 
@@ -49,6 +50,7 @@ class Hook:
             inputs (SymbolicDataModel | JsonDataModel | DataModel | list | dict | tuple):
                 The module's inputs. The outputs can be data models or lists,
                 dicts or tuples of data models.
+            kwargs (dict): The keyword arguments passed to the module's call.
         """
         pass
 

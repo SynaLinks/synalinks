@@ -580,7 +580,8 @@ class ListFBetaScore(FBetaScore):
     class ListClassification(synalinks.DataModel):
         labels: List[Literal["label", "label_1", "label_2"]]
 
-    # or use it with retrieval pipelines, in that case make sure to mask the correct fields.
+    # or use it with retrieval pipelines, in that case make sure to mask
+    # the correct fields.
 
     class AnswerWithReferences(synalinks.DataModel):
         sources: List[str]
@@ -716,7 +717,8 @@ class ListF1Score(ListFBetaScore):
         class ListClassification(synalinks.DataModel):
             labels: List[Literal["label", "label_1", "label_2"]]
 
-        # or use it with retrieval pipelines, in that case make sure to mask the correct fields.
+        # or use it with retrieval pipelines, in that case make sure to mask
+        # the correct fields.
 
         class AnswerWithReferences(synalinks.DataModel):
             sources: List[str]

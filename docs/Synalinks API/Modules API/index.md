@@ -88,15 +88,9 @@ if __name__ == "__main__":
 
 ### Knowledge Modules
 
-- [Embedding module](Knowledge Modules/Embedding module.md)
+- [EmbedKnowledge module](Knowledge Modules/EmbedKnowledge module.md)
 - [UpdateKnowledge module](Knowledge Modules/UpdateKnowledge module.md)
-
----
-
-### Retrievers Modules
-
-- [EntityRetriever module](Retrievers Modules/EntityRetriever module.md)
-- [TripletRetriever module](Retrievers Modules/TripletRetriever module.md)
+- [RetrieveKnowledge module](Knowledge Modules/RetrieveKnowledge module.md)
 
 ---
 

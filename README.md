@@ -46,13 +46,13 @@
 
 <div align="center">
 
-Too busy to read the documentation? Give the [llms.txt](https://synalinks.github.io/synalinks/llms.txt) or [llms-full.txt](https://synalinks.github.io/synalinks/llms-full.txt) to you favorite LMs or AI coding tools
+Too busy to read the documentation? Give the [llms.txt](https://synalinks.github.io/synalinks/llms.txt) or [llms-full.txt](https://synalinks.github.io/synalinks/llms-full.txt) to you favorite LMs or AI coding tools. Or better, use [Synalinks Claude Skills](https://github.com/SynaLinks/synalinks-skills) with Claude Code to use Synalinks right away!
 
 </div>
 
 ## What Is Synalinks?
 
-Synalinks is an open-source neuro-symbolic framework that makes it simple to create, train, evaluate, and deploy advanced LM-based applications, including graph RAGs, autonomous agents, and self-evolving reasoning systems.
+Synalinks is an open-source neuro-symbolic framework that makes it simple to create, train, evaluate, and deploy advanced LM-based applications, including RAGs, autonomous agents, and self-evolving reasoning systems.
 
 Think Keras for Language Models applications, a clean, declarative API where:
 
@@ -86,22 +86,23 @@ Building robust LM apps is hard. Synalinks simplifies it with:
 - **Prompt/Anything optimization** per module via In-Context RL
 - **Versionable**, JSON-serializable pipelines
 - **Constrained structured outputs** (JSON) for correctness
-- **Automatic async** & parallel execution
+- **Automatic async & parallel execution** by default
 - **Metrics, rewards & evaluations** built-in
 - **Native integrations**: OpenAI, Ollama, Anthropic, Mistral, Azure, Groq, Gemini, XAI
-- **Graph DB support**: Neo4J, MemGraph
+- **Embeddable fast knowledge base support**: based on DuckDB
 - **API-ready**: Deploy with FastAPI or FastMCP
 - **KerasTuner compatibility** for hyperparameter search
+- **Built-In MLFlow callbacks and hooks** for observability
 
 <div align="center">
 
-| Framework | MCP | Graph DB | Logical Flow | Robust Branching | Parallel Function Calling | Hyperparameter Tuning | Ease of Use |
-| --- | --- | --- | --- | --- | --- | --- | --- |
-| Synalinks | ✅ Yes | ✅ Yes | ✅ Yes | ✅ Yes | ✅ Yes | ✅ Yes | 😀 |
-| DSPy      | ✅ Yes | ❌ No | ❌ No | ❌ No | ❌ No | ❌ No | 😢 |
-| AdalFlow  | ✅ Yes | ❌ No | ❌ No | ❌ No | ❌ No | ❌ No | 😢 |
-| TextGrad  | ❌ No | ❌ No | ❌ No | ❌ No | ❌ No | ❌ No  | 😭 |
-| Trace     | ❌ No | ❌ No | ❌ No | ❌ No | ❌ No | ❌ No  | 😭 |
+| Framework | MCP | Logical Flow | Robust Branching | Parallel Function Calling | Hyperparameter Tuning | Ease of Use |
+| --- | --- | --- | --- | --- | --- | --- |
+| Synalinks | ✅ Yes | ✅ Yes | ✅ Yes | ✅ Yes | ✅ Yes | 😀 |
+| DSPy      | ✅ Yes | ❌ No | ❌ No | ❌ No | ❌ No | 😢 |
+| AdalFlow  | ✅ Yes | ❌ No | ❌ No | ❌ No | ❌ No | 😢 |
+| TextGrad  | ❌ No | ❌ No | ❌ No | ❌ No | ❌ No  | 😭 |
+| Trace     | ❌ No | ❌ No | ❌ No | ❌ No | ❌ No  | 😭 |
 
 </div>
 
@@ -176,6 +177,38 @@ async def main():
         description="A math agent",
     )
 
+```
+
+## Data Model Operators
+
+Synalinks provides Python operators for combining and manipulating data models, enabling sophisticated control flow:
+
+<div align="center">
+
+| Operator | Name | Description | Use Case |
+| :---: | --- | --- | --- |
+| `+` | Concatenation | Combines fields from both data models. Raises exception if either is `None`. | Merging outputs from parallel branches |
+| `&` | Logical And | Safe concatenation that returns `None` if either input is `None`. | Combining with potentially null branch outputs |
+| `\|` | Logical Or | Returns the non-`None` data model. If both are non-`None`, merges them. | Gathering outputs from conditional branches |
+| `^` | Logical Xor | Returns data if exactly one input is non-`None`, otherwise `None`. | Exclusive branch selection |
+| `~` | Logical Not | Returns `None` if input is non-`None`, or a empty data model if `None`. | Inverting branch conditions |
+| `in` | Contains | Checks if a field exists in the data model. Returns `True` or `False`. | Conditional field checking |
+
+</div>
+
+```python
+# Parallel branches with concatenation
+x1 = await generator1(inputs)
+x2 = await generator2(inputs)
+combined = x1 & x2  # Merge both outputs
+
+# Conditional branches with logical or
+(easy, hard) = await synalinks.Branch(
+    question="Is this query complex?",
+    labels=["easy", "hard"],
+    branches=[simple_generator, complex_generator],
+)(inputs)
+result = easy | hard  # Get whichever branch was selected
 ```
 
 ## Getting a summary of your program
@@ -283,6 +316,39 @@ To enable logging, use the following at the beginning of your script:
 synalinks.enable_logging()
 ```
 
+## Observability
+
+Synalinks provides built-in observability through MLflow for tracing and monitoring your programs.
+
+> **Important**: Call `enable_observability()` **before** creating any modules.
+
+```python
+import synalinks
+
+# Enable observability first
+synalinks.enable_observability(
+    tracking_uri="http://localhost:5000",  # Optional: MLflow server URI
+    experiment_name="my_experiment"         # Optional: defaults to "synalinks_traces"
+)
+
+# Then create your modules - they will be automatically traced
+inputs = synalinks.Input(data_model=Query)
+outputs = await synalinks.Generator(...)(inputs)
+```
+
+For training metrics and artifacts, use the `Monitor` callback:
+
+```python
+monitor = synalinks.callbacks.Monitor(
+    tracking_uri="http://localhost:5000",
+    experiment_name="training_runs",
+)
+
+await program.fit(x=train_x, y=train_y, callbacks=[monitor])
+```
+
+See the [Observability documentation](https://synalinks.github.io/synalinks/Observability/MLflow/) for Docker setup and advanced configuration.
+
 ### Learn more
 
 You can learn more by reading our [documentation](https://synalinks.github.io/synalinks/). If you have questions, the [FAQ](https://synalinks.github.io/synalinks/FAQ/) might help you.
@@ -331,3 +397,4 @@ Synalinks would not be possible without the great work of the following open-sou
 - [DSPy](https://dspy.ai/) for the modules/optimizers inspiration.
 - [Pydantic](https://docs.pydantic.dev/latest/) for the backend data layer.
 - [LiteLLM](https://docs.litellm.ai/docs/) for the LMs integrations.
+- [DuckDB](https://duckdb.org/) for the fast embeddable knowledge base.

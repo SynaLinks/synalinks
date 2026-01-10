@@ -6,10 +6,9 @@ from datasets import load_dataset
 
 from synalinks.src.api_export import synalinks_export
 from synalinks.src.backend import DataModel
-from synalinks.src.backend import Entity
 
 
-class Document(Entity):
+class Document(DataModel):
     title: str
     text: str
 

@@ -603,7 +603,7 @@ class DataModel(pydantic.BaseModel, SynalinksSaveable, metaclass=MetaDataModel):
         """
         from synalinks.src import ops
 
-        if any_meta_class(other, self):
+        if any_meta_class(self):
             return run_maybe_nested(
                 ops.Not().symbolic_call(self),
             )

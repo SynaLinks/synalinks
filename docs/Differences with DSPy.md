@@ -18,7 +18,7 @@ This document highlights the key differences between **DSPy** and **Synalinks**.
 ### Synalinks: Keras-Inspired
 
 - **Purpose**: Build intelligent applications combining LMs with symbolic reasoning.
-- **Memory**: Natively supports hybrid graph + vector databases, enabling richer data relationships and more flexible memory structures.
+- **Memory**: Natively supports vector databases for flexible memory structures.
 - **Reliability**: Uses constrained structured output by default, eliminating brittle parsing and ensuring robust, predictable behavior whith 100% success output formatting.
 - **Async**: Async by default, enforcing production-ready practices and consistent performance.
 - **Strict Module Typing**: Modules in Synalinks are strictly typed using JSON schemas (defined in `compute_output_spec()`). This allows the system to compute output contracts end-to-end before any computation, ensuring type safety and clarity.
@@ -37,7 +37,7 @@ This document highlights the key differences between **DSPy** and **Synalinks**.
 | `GEPA`                | `OMEGA`                         | Use a SOTA algorithm (2025) in evolutionary AI instead of a 10 years old method                                |
 | String-based variables   | JSON-based variables             | Supports complex structures (graphs, plans) and strict validation                  |
 | Sync/Async choice         | Async by default                 | Enforces production best practices                                                  |
-| Vector-only memory       | Hybrid graph + vector memory    | Enables richer data relationships and more flexible memory structures              |
+| Vector-only memory       | Vector database memory          | Flexible memory structures with DuckDB                                              |
 | Custom branching logic   | JSON operators for branching    | Dynamic schema creation and merging; no need for custom classes                    |
 | Limited observability    | Observable by default            | Full visibility into LM calls for reward computation and debugging                  |
 
@@ -55,7 +55,7 @@ This document highlights the key differences between **DSPy** and **Synalinks**.
 - You need a production-ready, reliable system with robust error handling.
 - Your application requires complex structured variables (e.g., graphs, plans).
 - You want strict typing and end-to-end contract validation.
-- You need hybrid memory (graph + vector) for richer data relationships.
+- You need flexible vector memory with DuckDB for data relationships.
 - You want to observe and optimize internal LM processes, not just outputs.
 - You need to rapidly change architectures using built-in JSON operators.
 

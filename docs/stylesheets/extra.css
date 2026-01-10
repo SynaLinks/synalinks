@@ -1,42 +1,42 @@
 /* Light mode */
 [data-md-color-scheme="default"] {
-    --md-default-bg-color: #ffffff;
-    --md-default-fg-color: #002c37;
+    --md-default-bg-color: rgb(240, 240, 240);
+    --md-default-fg-color: rgb(51, 51, 51);
 
-    --md-primary-bg-color: #ffffff;
-    --md-primary-fg-color: #0a3642;
-    --md-primary-fg-color--dark: #002c37;
-    --md-primary-fg-color--light: #0a3642;
+    --md-primary-bg-color: rgb(255, 255, 255);
+    --md-primary-fg-color: rgb(96, 96, 96);
+    --md-primary-fg-color--dark: rgb(51, 51, 51);
+    --md-primary-fg-color--light: rgb(102, 102, 102);
 
-    --md-accent-fg-color: #70a0a0;
+    --md-accent-fg-color: rgb(71, 102, 102);
 
-    --md-code-fg-color: #002c37;
-    --md-code-bg-color: #ffffff;
+    --md-code-fg-color: rgb(51, 51, 51);
+    --md-code-bg-color: rgb(220, 220, 220);
 
-    --md-footer-fg-color: #303030;
-    --md-footer-bg-color: #ffffff;
-    --md-footer-fg-color--light: #303030;
-    --md-footer-bg-color--dark: #ffffff;
+    --md-footer-fg-color: rgb(51, 51, 51);
+    --md-footer-bg-color: rgb(234, 234, 234);
+    --md-footer-fg-color--light: rgb(102, 102, 102);
+    --md-footer-bg-color--dark: rgb(224, 224, 224);
 }
 
 /* Dark mode */
 [data-md-color-scheme="slate"] {
-    --md-default-bg-color: #1a1a1a;
-    --md-default-fg-color: #ffffff;
+    --md-default-bg-color: rgb(26, 26, 26);
+    --md-default-fg-color: rgb(217, 217, 217);
 
-    --md-primary-bg-color: #ffffff;
-    --md-primary-fg-color: #1a1a1a;
-    --md-primary-fg-color--dark: #0a3642;
-    --md-primary-fg-color--light: #303030;
+    --md-primary-bg-color: rgb(217, 217, 217);
+    --md-primary-fg-color: rgb(26, 26, 26);
+    --md-primary-fg-color--dark: rgb(217, 217, 217);
+    --md-primary-fg-color--light: rgb(128, 128, 128);
 
-    --md-accent-fg-color: #70a0a0;
-    --md-accent-bg-color: #0a3642;
+    --md-accent-fg-color: rgb(126, 156, 160);
+    --md-accent-bg-color: rgb(64, 64, 64);
 
-    --md-code-fg-color: #ffffff;
-    --md-code-bg-color: #303030;
+    --md-code-fg-color: rgb(217, 217, 217);
+    --md-code-bg-color: rgb(32, 32, 32);
 
-    --md-footer-fg-color: #ffffff;
-    --md-footer-bg-color: #1a1a1a;
-    --md-footer-fg-color--light: #ffffff;
-    --md-footer-bg-color--dark: #1a1a1a;
+    --md-footer-fg-color: rgb(217, 217, 217);
+    --md-footer-bg-color: rgb(31, 31, 31);
+    --md-footer-fg-color--light: rgb(128, 128, 128);
+    --md-footer-bg-color--dark: rgb(48, 48, 48);
 }

@@ -12,7 +12,6 @@ from synalinks.src.backend import ChatRole
 from synalinks.src.backend import Instructions
 from synalinks.src.backend import Prediction
 from synalinks.src.backend import SymbolicDataModel
-from synalinks.src.backend import is_chat_messages
 from synalinks.src.modules.module import Module
 from synalinks.src.saving import serialization_lib
 

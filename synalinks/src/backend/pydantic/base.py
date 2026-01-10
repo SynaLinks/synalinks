@@ -3,7 +3,7 @@
 """
 We provide different backend-dependent `DataModel`s to use.
 
-These data models provide I/O for chatbots, agents, rags, knowledge graphs etc.
+These data models provide I/O for chatbots, agents, rags etc.
 
 The user can build new data models by inheriting from these base models.
 
@@ -123,6 +123,8 @@ class ChatRole(str, Enum):
     [
         "synalinks.backend.ToolCalling",
         "synalinks.ToolCalling",
+        "synalinks.ToolCall",
+        "synalinks.backend.ToollCall",
     ]
 )
 class ToolCall(DataModel):
@@ -132,7 +134,9 @@ class ToolCall(DataModel):
     name: str = Field(
         description="The name of the function called",
     )
-    arguments: Dict[str, Any] = Field(description="The arguments of the tool call")
+    arguments: Dict[str, Any] = Field(
+        description="The arguments of the tool call",
+    )
 
 
 @synalinks_export(
@@ -312,59 +316,11 @@ def is_embeddings(x):
 
 @synalinks_export(
     [
-        "synalinks.backend.Entity",
-        "synalinks.Entity",
+        "synalinks.backend.is_embedded",
+        "synalinks.is_embedded",
     ]
 )
-class Entity(DataModel):
-    """An entity data model"""
-
-    label: str = Field(
-        description="The entity label",
-    )
-
-
-@synalinks_export(
-    [
-        "synalinks.backend.is_entity",
-        "synalinks.is_entity",
-    ]
-)
-def is_entity(x):
-    """Checks if the given data model is an entity
-
-    Args:
-        x (DataModel | JsonDataModel | SymbolicDataModel | Variable):
-            The data model to check.
-
-    Returns:
-        (bool): True if the condition is met
-    """
-    schema = x.get_schema()
-    properties = schema.get("properties", None)
-    if properties:
-        if properties.get("label", None):
-            return True
-    return False
-
-
-@synalinks_export(
-    [
-        "synalinks.backend.EmbeddedEntity",
-        "synalinks.EmbeddedEntity",
-    ]
-)
-class EmbeddedEntity(Embedding, Entity):
-    pass
-
-
-@synalinks_export(
-    [
-        "synalinks.backend.is_embedded_entity",
-        "synalinks.is_embedded_entity",
-    ]
-)
-def is_embedded_entity(x):
+def is_embedded(x):
     """Checks if the given data model is an embedded entity
 
     Args:
@@ -377,166 +333,7 @@ def is_embedded_entity(x):
     schema = x.get_schema()
     properties = schema.get("properties", None)
     if properties:
-        if properties.get("label", None) and properties.get("embedding", None):
-            return True
-    return False
-
-
-@synalinks_export(
-    [
-        "synalinks.backend.Relation",
-        "synalinks.Relation",
-    ]
-)
-class Relation(DataModel):
-    """A relation model"""
-
-    obj: Entity = Field(
-        description="The object entity",
-    )
-    label: str = Field(
-        description="The relation label",
-    )
-    subj: Entity = Field(
-        description="The subject entity",
-    )
-
-
-@synalinks_export(
-    [
-        "synalinks.backend.is_relation",
-        "synalinks.is_relation",
-    ]
-)
-def is_relation(x):
-    """Checks if is a relation model
-
-    Args:
-        x (DataModel | JsonDataModel | SymbolicDataModel | Variable):
-            The data model to check.
-
-    Returns:
-        (bool): True if the condition is met
-    """
-    schema = x.get_schema()
-    properties = schema.get("properties", None)
-    if properties:
-        if (
-            properties.get("subj", None)
-            and properties.get("label", None)
-            and properties.get("obj", None)
-        ):
-            return True
-    return False
-
-
-@synalinks_export(
-    [
-        "synalinks.backend.Entities",
-        "synalinks.Entities",
-    ]
-)
-class Entities(DataModel):
-    entities: List[Entity] = Field(
-        description="The entities",
-    )
-
-
-@synalinks_export(
-    [
-        "synalinks.backend.is_entities",
-        "synalinks.is_entities",
-    ]
-)
-def is_entities(x):
-    """Checks if is an entities model
-
-    Args:
-        x (DataModel | JsonDataModel | SymbolicDataModel | Variable):
-            The data model to check.
-
-    Returns:
-        (bool): True if the condition is met
-    """
-    schema = x.get_schema()
-    properties = schema.get("properties", None)
-    if properties:
-        if properties.get("entities", None):
-            return True
-    return False
-
-
-@synalinks_export(
-    [
-        "synalinks.backend.Relations",
-        "synalinks.Relations",
-    ]
-)
-class Relations(DataModel):
-    relations: List[Relation] = Field(
-        description="The relations",
-    )
-
-
-@synalinks_export(
-    [
-        "synalinks.backend.is_relations",
-        "synalinks.is_relations",
-    ]
-)
-def is_relations(x):
-    """Checks if is an relations model
-
-    Args:
-        x (DataModel | JsonDataModel | SymbolicDataModel | Variable):
-            The data model to check.
-
-    Returns:
-        (bool): True if the condition is met
-    """
-    schema = x.get_schema()
-    properties = schema.get("properties", None)
-    if properties:
-        if properties.get("relations", None):
-            return True
-    return False
-
-
-@synalinks_export(
-    [
-        "synalinks.backend.KnowledgeGraph",
-        "synalinks.KnowledgeGraph",
-    ]
-)
-class KnowledgeGraph(DataModel):
-    entities: List[Entity] = Field(
-        description="The entities",
-    )
-    relations: List[Relation] = Field(
-        description="The relations",
-    )
-
-
-@synalinks_export(
-    [
-        "synalinks.backend.is_knowledge_graph",
-        "synalinks.is_knowledge_graph",
-    ]
-)
-def is_knowledge_graph(x):
-    """Checks if is a knowledge graph model
-
-    Args:
-        x (DataModel | JsonDataModel | SymbolicDataModel | Variable):
-            The data model to check.
-
-    Returns:
-        (bool): True if the condition is met
-    """
-    schema = x.get_schema()
-    properties = schema.get("properties", None)
-    if properties:
-        if properties.get("entities", None) and properties.get("relations", None):
+        if properties.get("embedding", None):
             return True
     return False
 

@@ -11,11 +11,11 @@ from mcp.types import TextResourceContents
 from mcp.types import Tool as MCPTool
 
 from synalinks.src import testing
+from synalinks.src.modules.core.tool import Tool
 from synalinks.src.utils.mcp.tools import ToolException
 from synalinks.src.utils.mcp.tools import _convert_call_tool_result
 from synalinks.src.utils.mcp.tools import convert_mcp_tool_to_synalinks_tool
 from synalinks.src.utils.mcp.tools import load_mcp_tools
-from synalinks.src.utils.tool_utils import Tool
 
 
 class MCPToolsTest(testing.TestCase):
@@ -123,7 +123,8 @@ class MCPToolsTest(testing.TestCase):
             "test_tool", {"param1": "test", "param2": 42}
         )
 
-        self.assertEqual(result["response"], "tool result")
+        # New Tool module returns JsonDataModel, use get_json() to access data
+        self.assertEqual(result.get_json()["response"], "tool result")
 
     async def test_load_mcp_tools(self):
         tool_input_schema = {
@@ -182,12 +183,14 @@ class MCPToolsTest(testing.TestCase):
 
         result1 = await toolkit[0](param1="test1", param2=1)
         self.assertEqual(
-            result1["response"], "tool1 result with {'param1': 'test1', 'param2': 1}"
+            result1.get_json()["response"],
+            "tool1 result with {'param1': 'test1', 'param2': 1}",
         )
 
         result2 = await toolkit[1](param1="test2", param2=2)
         self.assertEqual(
-            result2["response"], "tool2 result with {'param1': 'test2', 'param2': 2}"
+            result2.get_json()["response"],
+            "tool2 result with {'param1': 'test2', 'param2': 2}",
         )
 
     async def test_load_mcp_tools_with_namespace(self):
@@ -249,10 +252,12 @@ class MCPToolsTest(testing.TestCase):
 
         result1 = await toolkit[0](param1="test1", param2=1)
         self.assertEqual(
-            result1["response"], "tool1 result with {'param1': 'test1', 'param2': 1}"
+            result1.get_json()["response"],
+            "tool1 result with {'param1': 'test1', 'param2': 1}",
         )
 
         result2 = await toolkit[1](param1="test2", param2=2)
         self.assertEqual(
-            result2["response"], "tool2 result with {'param1': 'test2', 'param2': 2}"
+            result2.get_json()["response"],
+            "tool2 result with {'param1': 'test2', 'param2': 2}",
         )

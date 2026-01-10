@@ -34,10 +34,9 @@ result = transform(inputs)
             description=f"A python function to solve ARC-AGI task {task_name}",
         )
 
-        (x_train, y_train), (x_test, y_test) = load_data(task_name=task_name)
+        (x_train, _), (_, _) = load_data(task_name=task_name)
 
         x = x_train[0]
-        y = y_train[0]
 
         result = await program(x)
         self.assertEqual(result.get("output_grid"), x.get("input_grid"))
@@ -70,10 +69,9 @@ result = transform(inputs)
             description=f"A python function to solve ARC-AGI task {task_name}",
         )
 
-        (x_train, y_train), (x_test, y_test) = load_data(task_name=task_name)
+        (x_train, _), (_, _) = load_data(task_name=task_name)
 
         x = x_train[0]
-        y = y_train[0]
 
         result = await program(x)
         self.assertEqual(result.get("output_grid"), [[]])

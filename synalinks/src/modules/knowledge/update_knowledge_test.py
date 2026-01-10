@@ -1,246 +1,128 @@
 # License Apache 2.0: (c) 2025 Yoan Sallami (Synalinks Team)
 
-from typing import List
-from typing import Literal
-from typing import Union
-from unittest.mock import patch
-
-import numpy as np
+import os
+import tempfile
 
 from synalinks.src import testing
-from synalinks.src.backend import Entities
-from synalinks.src.backend import Entity
-from synalinks.src.backend import Relation
-from synalinks.src.backend import Relations
-from synalinks.src.embedding_models import EmbeddingModel
-from synalinks.src.knowledge_bases.knowledge_base import KnowledgeBase
+from synalinks.src.backend import DataModel
+from synalinks.src.backend import Field
+from synalinks.src.backend import JsonDataModel
+from synalinks.src.knowledge_bases import KnowledgeBase
 from synalinks.src.modules import Input
-from synalinks.src.modules.knowledge.embedding import Embedding
 from synalinks.src.modules.knowledge.update_knowledge import UpdateKnowledge
 from synalinks.src.programs import Program
 
 
-class Document(Entity):
-    label: Literal["Document"]
-    text: str
-
-
-class Chunk(Entity):
-    label: Literal["Chunk"]
-    text: str
-
-
-class DocumentsAndChunks(Entities):
-    entities: List[Union[Document, Chunk]]
-
-
-class IsPartOf(Relation):
-    subj: Document
-    label: Literal["IsPartOf"]
-    obj: Union[Chunk, Document]
-
-
-class DocumentRelations(Relations):
-    relations: List[IsPartOf]
+class Document(DataModel):
+    id: str = Field(description="The document id")
+    text: str = Field(description="The content of the document")
 
 
 class UpdateKnowledgeTest(testing.TestCase):
-    @patch("litellm.aembedding")
-    async def test_update_knowledge_single_entity(self, mock_embedding):
-        expected_value = np.random.rand(1024)
-        mock_embedding.return_value = {"data": [{"embedding": expected_value}]}
+    def setUp(self):
+        super().setUp()
+        self.temp_dir = tempfile.mkdtemp()
+        self.db_path = os.path.join(self.temp_dir, "test.db")
 
-        embedding_model = EmbeddingModel(model="ollama/mxbai-embed-large")
+    def tearDown(self):
+        import shutil
 
+        shutil.rmtree(self.temp_dir, ignore_errors=True)
+        super().tearDown()
+
+    async def test_update_knowledge_single(self):
         knowledge_base = KnowledgeBase(
-            uri="neo4j://localhost:7687",
-            entity_models=[Document, Chunk],
-            relation_models=[IsPartOf],
-            embedding_model=embedding_model,
-            metric="cosine",
-            wipe_on_start=True,
+            uri=self.db_path,
+            data_models=[Document],
         )
 
         x0 = Input(data_model=Document)
-        x1 = await Embedding(
-            embedding_model=embedding_model,
-            in_mask=["text"],
-        )(x0)
-        x2 = await UpdateKnowledge(
-            knowledge_base=knowledge_base,
-        )(x1)
+        x1 = await UpdateKnowledge(knowledge_base=knowledge_base)(x0)
 
         program = Program(
             inputs=x0,
-            outputs=x2,
+            outputs=x1,
             name="test_update_knowledge",
             description="test_update_knowledge",
         )
 
-        input_doc = Document(
-            label="Document",
-            text="test document",
-        )
-
+        input_doc = Document(id="doc1", text="test document")
         result = await program(input_doc)
-        self.assertNotEqual(result, None)
 
-    @patch("litellm.aembedding")
-    async def test_update_knowledge_single_relation(self, mock_embedding):
-        expected_value = np.random.rand(1024)
-        mock_embedding.return_value = {"data": [{"embedding": expected_value}]}
+        self.assertIsNotNone(result)
 
-        embedding_model = EmbeddingModel(
-            model="ollama/mxbai-embed-large",
-        )
+        # Verify document was stored
+        retrieved = await knowledge_base.get("doc1", [Document.to_symbolic_data_model()])
+        self.assertIsNotNone(retrieved)
+        self.assertEqual(retrieved.get_json()["text"], "test document")
 
+    async def test_update_knowledge_multiple(self):
         knowledge_base = KnowledgeBase(
-            uri="neo4j://localhost:7687",
-            entity_models=[Document, Chunk],
-            relation_models=[IsPartOf],
-            embedding_model=embedding_model,
-            metric="cosine",
-            wipe_on_start=True,
+            uri=self.db_path,
+            data_models=[Document],
         )
 
-        x0 = Input(data_model=IsPartOf)
-        x1 = await Embedding(
-            embedding_model=embedding_model,
-            in_mask=["text"],
-        )(x0)
-        x2 = await UpdateKnowledge(
-            knowledge_base=knowledge_base,
-        )(x1)
+        update_module = UpdateKnowledge(knowledge_base=knowledge_base)
 
-        program = Program(
-            inputs=x0,
-            outputs=x2,
-            name="test_update_knowledge",
-            description="test_update_knowledge",
-        )
+        docs = [
+            JsonDataModel(data_model=Document(id="doc1", text="first document")),
+            JsonDataModel(data_model=Document(id="doc2", text="second document")),
+        ]
 
-        doc = Document(
-            label="Document",
-            text="test document",
-        )
+        results = await update_module(docs)
+        self.assertIsNotNone(results)
+        self.assertEqual(len(results), 2)
 
-        chunk = Chunk(
-            label="Chunk",
-            text="test chunk",
-        )
+        # Verify both documents were stored
+        retrieved1 = await knowledge_base.get("doc1", [Document.to_symbolic_data_model()])
+        retrieved2 = await knowledge_base.get("doc2", [Document.to_symbolic_data_model()])
+        self.assertIsNotNone(retrieved1)
+        self.assertIsNotNone(retrieved2)
 
-        input_rel = IsPartOf(
-            subj=doc,
-            label="IsPartOf",
-            obj=chunk,
-        )
-        result = await program(input_rel)
-        self.assertNotEqual(result, None)
-
-    @patch("litellm.aembedding")
-    async def test_update_knowledge_entities(self, mock_embedding):
-        expected_value = np.random.rand(1024)
-        mock_embedding.return_value = {"data": [{"embedding": expected_value}]}
-
-        embedding_model = EmbeddingModel(
-            model="ollama/mxbai-embed-large",
-        )
-
+    async def test_update_knowledge_upsert(self):
         knowledge_base = KnowledgeBase(
-            uri="neo4j://localhost:7687",
-            entity_models=[Document, Chunk],
-            relation_models=[IsPartOf],
-            embedding_model=embedding_model,
-            metric="cosine",
-            wipe_on_start=True,
+            uri=self.db_path,
+            data_models=[Document],
         )
 
-        i0 = Input(data_model=DocumentsAndChunks)
+        update_module = UpdateKnowledge(knowledge_base=knowledge_base)
 
-        x1 = await Embedding(
-            embedding_model=embedding_model,
-            in_mask=["text"],
-        )(i0)
-        x2 = await UpdateKnowledge(
-            knowledge_base=knowledge_base,
-        )(x1)
+        # Insert first version
+        doc1 = JsonDataModel(data_model=Document(id="doc1", text="original text"))
+        await update_module(doc1)
 
-        program = Program(
-            inputs=i0,
-            outputs=x2,
-            name="test_update_knowledge",
-            description="test_update_knowledge",
-        )
+        # Update with new text
+        doc1_updated = JsonDataModel(data_model=Document(id="doc1", text="updated text"))
+        await update_module(doc1_updated)
 
-        inputs = DocumentsAndChunks(
-            entities=[
-                Document(label="Document", text="test document 1"),
-                Document(label="Document", text="test document 2"),
-            ]
-        )
+        # Verify update
+        retrieved = await knowledge_base.get("doc1", [Document.to_symbolic_data_model()])
+        self.assertEqual(retrieved.get_json()["text"], "updated text")
 
-        result = await program(inputs)
-        self.assertNotEqual(result, None)
-
-    @patch("litellm.aembedding")
-    async def test_update_knowledge_relations(self, mock_embedding):
-        expected_value = np.random.rand(1024)
-        mock_embedding.return_value = {"data": [{"embedding": expected_value}]}
-
-        embedding_model = EmbeddingModel(
-            model="ollama/mxbai-embed-large",
-        )
-
+    async def test_update_knowledge_none_input(self):
         knowledge_base = KnowledgeBase(
-            uri="neo4j://localhost:7687",
-            entity_models=[Document, Chunk],
-            relation_models=[IsPartOf],
-            embedding_model=embedding_model,
-            metric="cosine",
-            wipe_on_start=True,
+            uri=self.db_path,
+            data_models=[Document],
         )
 
-        x0 = Input(data_model=DocumentRelations)
-        x1 = await Embedding(
-            embedding_model=embedding_model,
-            in_mask=["text"],
-        )(x0)
-        x2 = await UpdateKnowledge(
+        update_module = UpdateKnowledge(knowledge_base=knowledge_base)
+        result = await update_module(None)
+        self.assertIsNone(result)
+
+    def test_update_knowledge_serialization(self):
+        knowledge_base = KnowledgeBase(
+            uri=self.db_path,
+            data_models=[Document],
+        )
+
+        update_module = UpdateKnowledge(
             knowledge_base=knowledge_base,
-        )(x1)
-
-        program = Program(
-            inputs=x0,
-            outputs=x2,
-            name="test_update_knowledge",
-            description="test_update_knowledge",
+            name="test_update",
+            description="Test update module",
         )
 
-        rel1 = IsPartOf(
-            subj=Document(
-                label="Document",
-                text="test document 1",
-            ),
-            label="IsPartOf",
-            obj=Document(
-                label="Document",
-                text="test document 2",
-            ),
-        )
+        config = update_module.get_config()
+        cloned_module = UpdateKnowledge.from_config(config)
 
-        rel2 = IsPartOf(
-            subj=Document(
-                label="Document",
-                text="test document 3",
-            ),
-            label="IsPartOf",
-            obj=Document(
-                label="Document",
-                text="test document 4",
-            ),
-        )
-
-        inputs = DocumentRelations(relations=[rel1, rel2])
-
-        result = await program(inputs)
-        self.assertNotEqual(result, None)
+        self.assertEqual(cloned_module.name, "test_update")
+        self.assertEqual(cloned_module.description, "Test update module")

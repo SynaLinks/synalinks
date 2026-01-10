@@ -100,10 +100,11 @@ class Variable:
         data_model (DataModel): The backend-dependent data model used as spec.
         trainable (bool): Optional. Boolean indicating if variable is trainable.
             Defaults to `True`.
-        name (str): Optional. A unique name for the variable. Automatically generated
-            if not set.
-        description (str): Optional. the description of the variable. Automatically generated
-            if not set by fetching the data model description.
+        name (str): Optional. A unique name for the variable. Automatically
+            generated if not set.
+        description (str): Optional. The description of the variable.
+            Automatically generated if not set by fetching the data model
+            description.
     """
 
     def __init__(
@@ -281,7 +282,8 @@ class Variable:
         """Check if the schema of `other` is contained within the schema of this variable.
 
         Args:
-            other (SymbolicDataModel | DataModel): The data model to compare against this variable's schema.
+            other (SymbolicDataModel | DataModel): The data model to compare
+                against this variable's schema.
 
         Returns:
             (bool): True if `other`'s schema is a subset of this variable's schema.

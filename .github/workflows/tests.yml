@@ -23,24 +23,11 @@ jobs:
           python-version: ${{ matrix.python-version }}
       - name: Display Python version
         run: python -c "import sys; print(sys.version)"
-      - name: Install Neo4j tools
-        run: |
-            wget -O - https://debian.neo4j.com/neotechnology.gpg.key | sudo apt-key add -
-            echo 'deb https://debian.neo4j.com stable latest' | sudo tee -a /etc/apt/sources.list.d/neo4j.list;sudo add-apt-repository -y ppa:openjdk-r/ppa;
-            sudo apt-get install neo4j -y;
-      - name: Start Neo4J
-        run: docker run --publish=7474:7474 --publish=7687:7687 --volume=$HOME/neo4j/data:/data --env=NEO4J_AUTH=none neo4j &
-      - name: Start MemGraph
-        run: docker run -p 7688:7687 -p 7444:7444 --name memgraph memgraph/memgraph-mage &
       - name: Install Project Manager
         run: ./shell/uv.sh
       - name: Install Synalinks
         run: ./shell/install.sh
       - name: Install pytest
         run: uv pip install pytest pytest-cov
-      - name: Ping Neo4J
-        run: cypher-shell -a bolt://localhost:7687 -u neo4j "RETURN 1 as ping;"
-      - name: Ping MemGraph
-        run: cypher-shell -a bolt://localhost:7688 -u memgraph "RETURN 1 as ping;"
       - name: Run the tests
         run: ./shell/test.sh

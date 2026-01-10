@@ -3,6 +3,7 @@
 import asyncio
 import copy
 import json
+import os
 import warnings
 
 import litellm
@@ -168,7 +169,7 @@ class LanguageModel(SynalinksSaveable):
         model (str): The model to use.
         api_base (str): Optional. The endpoint to use.
         timeout (int): Optional. The timeout value in seconds (Default to 600).
-        retry (int): Optional. The number of retry (default to 5).
+        retry (int): Optional. The number of retry (default to 2).
         fallback (LanguageModel): Optional. The language model to fallback
             if anything is wrong.
         caching (bool): Optional. Enable caching of LM calls (Default to False).
@@ -179,7 +180,7 @@ class LanguageModel(SynalinksSaveable):
         model=None,
         api_base=None,
         timeout=600,
-        retry=5,
+        retry=2,
         fallback=None,
         caching=False,
     ):
@@ -390,7 +391,7 @@ class LanguageModel(SynalinksSaveable):
             except Exception as e:
                 warnings.warn(
                     f"Error occured while trying to call {self}: "
-                    + shorten_text(str(e))
+                    + str(e)
                     + f"\nReceived response={shorten_text(response_str)}"
                 )
             await asyncio.sleep(1)

@@ -76,11 +76,10 @@ All objects are JSON-serializable via `synalinks.saving`. Custom objects need `@
 
 ## Code Conventions
 
-- Use `ruff` for linting with config in `pyproject.toml`
+- Use `uvx ruff` for linting with config in `pyproject.toml`
 - Use `black` for formatting with 90 char line length
 - Tests are colocated with source files using `*_test.py` suffix
 - All module `call()` methods are async
-- Graph databases (Neo4J/MemGraph) required for some tests
 
 ## API Structure
 

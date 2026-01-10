@@ -132,12 +132,7 @@ def get_param_schema(
     return param_schema
 
 
-@synalinks_export(
-    [
-        "synalinks.utils.Tool",
-        "synalinks.Tool",
-    ]
-)
+@synalinks_export("synalinks.utils.Tool")
 class Tool(SynalinksSaveable):
     def __init__(self, func: typing.Callable):
         self._func = func

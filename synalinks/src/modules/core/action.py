@@ -9,7 +9,6 @@ from synalinks.src.backend import SymbolicDataModel
 from synalinks.src.modules.core.generator import Generator
 from synalinks.src.modules.module import Module
 from synalinks.src.saving import serialization_lib
-from synalinks.src.utils import tool_utils
 
 
 class GenericAction(DataModel):
@@ -25,16 +24,14 @@ class GenericAction(DataModel):
     ]
 )
 class Action(Module):
-    """Use a `LanguageModel` to perform a function call given the input datamodel.
+    """Use a `LanguageModel` to perform a tool call given the input data model.
 
-    This module use structured output to call a given Python function.
+    This module uses structured output to call a given Tool.
     This module can be used in agents or traditional workflows seamlessly,
-    it use the input data model to infer the function parameters.
+    it uses the input data model to infer the tool parameters.
 
-    The output of this module contains the inputs infered by the language model
-    as well as the outputs of the function call.
-
-    Note: The function **MUST** return a JSON object dict and be asynchronous.
+    The output of this module contains the inputs inferred by the language model
+    as well as the outputs of the tool call.
 
     Example:
 
@@ -47,6 +44,7 @@ class Action(Module):
         class Query(synalinks.DataModel):
             query: str
 
+        @synalinks.saving.register_synalinks_serializable()
         async def calculate(expression: str):
             \"""Calculate the result of a mathematical expression.
 
@@ -79,7 +77,7 @@ class Action(Module):
 
         x0 = synalinks.Input(data_model=Query)
         x1 = await synalinks.Action(
-            fn=calculate,
+            tool=synalinks.Tool(calculate),
             language_model=language_model,
         )(x0)
 
@@ -95,7 +93,7 @@ class Action(Module):
     ```
 
     Args:
-        fn (Callable): The function to call.
+        tool (Tool): The Tool instance to call.
         language_model (LanguageModel): The language model to use.
         prompt_template (str): The default jinja2 prompt template
             to use (see `Generator`).
@@ -116,7 +114,7 @@ class Action(Module):
 
     def __init__(
         self,
-        fn,
+        tool,
         language_model=None,
         prompt_template=None,
         examples=None,
@@ -134,8 +132,8 @@ class Action(Module):
             description=description,
             trainable=trainable,
         )
-        self.fn = fn
-        schema = tool_utils.Tool(fn).get_tool_schema()
+        self.tool = tool
+        schema = self.tool.get_input_schema()
         self.language_model = language_model
         self.prompt_template = prompt_template
         self.examples = examples
@@ -160,12 +158,13 @@ class Action(Module):
     async def call(self, inputs, training=False):
         if not inputs:
             return None
-        fn_inputs = await self.action(inputs, training=training)
+        tool_inputs = await self.action(inputs, training=training)
         try:
-            fn_outputs = await self.fn(**fn_inputs.get_json())
+            tool_result = await self.tool(**tool_inputs.get_json())
+            tool_outputs = tool_result.get_json() if tool_result else {}
         except Exception as e:
-            fn_outputs = {"error": str(e)}
-        generic_io = GenericIO(inputs=fn_inputs.get_json(), outputs=fn_outputs)
+            tool_outputs = {"error": str(e)}
+        generic_io = GenericIO(inputs=tool_inputs.get_json(), outputs=tool_outputs)
         return JsonDataModel(
             json=GenericAction(action=generic_io.get_json()).get_json(),
             schema=GenericAction.get_schema(),
@@ -178,7 +177,6 @@ class Action(Module):
 
     def get_config(self):
         config = {
-            "fn": self.fn,
             "prompt_template": self.prompt_template,
             "examples": self.examples,
             "instructions": self.instructions,
@@ -188,16 +186,18 @@ class Action(Module):
             "description": self.description,
             "trainable": self.trainable,
         }
+        tool_config = {"tool": serialization_lib.serialize_synalinks_object(self.tool)}
         language_model_config = {
             "language_model": serialization_lib.serialize_synalinks_object(
                 self.language_model
             )
         }
-        return {**config, **language_model_config}
+        return {**config, **tool_config, **language_model_config}
 
     @classmethod
     def from_config(cls, config):
+        tool = serialization_lib.deserialize_synalinks_object(config.pop("tool"))
         language_model = serialization_lib.deserialize_synalinks_object(
             config.pop("language_model")
         )
-        return cls(language_model=language_model, **config)
+        return cls(tool=tool, language_model=language_model, **config)

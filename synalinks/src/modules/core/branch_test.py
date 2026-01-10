@@ -28,7 +28,7 @@ class BranchTest(testing.TestCase):
         language_model = LanguageModel("ollama_chat/deepseek-r1")
 
         x0 = Input(data_model=Query)
-        (x1, x2) = await Branch(
+        x1, x2 = await Branch(
             question="What is the difficulty level of the given query?",
             labels=["easy", "difficult"],
             branches=[

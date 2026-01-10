@@ -1,153 +1,248 @@
 # License Apache 2.0: (c) 2025 Yoan Sallami (Synalinks Team)
 
-import copy
-import re
 from typing import Any
 from typing import Dict
-
-from synalinks.src.embedding_models import EmbeddingModel
-from synalinks.src.utils.async_utils import run_maybe_nested
-from synalinks.src.utils.naming import to_snake_case
+from typing import List
+from typing import Optional
+from typing import Union
 
 
 class DatabaseAdapter:
+    """Base class for database adapters.
+
+    DatabaseAdapter provides a unified interface for storing and retrieving
+    structured data with optional embedding-based similarity search capabilities.
+
+    Subclasses must implement the abstract methods to provide concrete
+    database functionality.
+    """
+
     def __init__(
         self,
         uri=None,
         embedding_model=None,
-        entity_models=None,
-        relation_models=None,
+        data_models=None,
         metric="cosine",
         wipe_on_start=False,
+        name=None,
         **kwargs,
     ):
+        """Initialize the database adapter.
+
+        Args:
+            uri (str): The database connection URI or path.
+            embedding_model (EmbeddingModel): Optional embedding model for
+                vector similarity search.
+            data_models (list): Optional list of SymbolicDataModel or DataModel
+                classes to create tables for.
+            metric (str): Distance metric for vector search. Options depend on
+                the specific adapter implementation.
+            wipe_on_start (bool): Whether to clear the database on initialization.
+            name (str): Optional name for the adapter instance.
+        """
         self.uri = uri
-        if not embedding_model:
-            raise ValueError("KnowledgeBase requires `embedding_model` argument")
-        if not isinstance(embedding_model, EmbeddingModel):
-            raise ValueError(
-                "KnowledgeBase `embedding_model` argument to be an `EmbeddingModel`"
-            )
-
         self.embedding_model = embedding_model
-        self.embedding_dim = len(
-            run_maybe_nested(embedding_model(texts=["test"]))["embeddings"][0]
-        )
-
-        if metric not in ("cosine", "euclidean"):
-            raise ValueError(
-                "KnowledgeBase `metric` argument should between `cosine` or `euclidean`"
-            )
+        self.data_models = data_models or []
         self.metric = metric
-
-        if not entity_models and not relation_models:
-            raise ValueError(
-                "KnowledgeBase requires `entity_models` and `relation_models` argument"
-            )
-        if not entity_models:
-            raise ValueError("KnowledgeBase requires `entity_models` argument")
-
-        if not relation_models:
-            relation_models = []
-
-        self.entity_models = entity_models
-        self.relation_models = relation_models
+        self.name = name
 
         if wipe_on_start:
             self.wipe_database()
 
-        self.create_vector_index()
-
-    def sanitize(self, string):
-        """Prevent Cypher injections.
-
-        Args:
-            string (str): The string to sanitize
-
-        Returns:
-            (str): The sanitized string
-        """
-        string = re.sub(r"//.*?(\n|$)", "", string)
-        string = re.sub(r"/\*.*?\*/", "", string, flags=re.DOTALL)
-        return string
-
-    def sanitize_label(self, label):
-        """Prevent Cypher injections.
-
-        Args:
-            label (str): The label to sanitize
-
-        Returns:
-            (str): The sanitized string
-        """
-        label = self.sanitize(label)
-        label = re.sub(r"[^a-zA-Z0-9]", "", label)
-        return label
-
-    def sanitize_property_name(self, property_name):
-        """Prevent Cypher injections.
-
-        Args:
-            property_name (str): The property name to sanitize
-
-        Returns:
-            (str): The sanitized property name
-        """
-        property_name = self.sanitize(property_name)
-        property_name = re.sub(r"[^a-zA-Z0-9_]", "", property_name)
-        return to_snake_case(property_name)
-
-    def sanitize_properties(self, properties):
-        """Prevent Cypher injections.
-
-        Args:
-            properties (dict): The properties to sanitize
-
-        Returns:
-            (dict): The sanitized properties
-        """
-        properties = copy.deepcopy(properties)
-        return {self.sanitize_property_name(k): v for k, v in properties.items()}
-
     def wipe_database(self):
+        """Clear all data from the database.
+
+        Raises:
+            NotImplementedError: Subclasses must implement this method.
+        """
         raise NotImplementedError(
-            f"{self.__class__} should implement the `wipe_database()` method"
+            f"{self.__class__.__name__} should implement the `wipe_database()` method"
         )
 
-    def create_vector_index(self):
+    def get_symbolic_data_models(self):
+        """Retrieve all data models from the database schema.
+
+        Returns:
+            List[SymbolicDataModel]: List of symbolic data models representing
+                the database schema.
+
+        Raises:
+            NotImplementedError: Subclasses must implement this method.
+        """
         raise NotImplementedError(
-            f"{self.__class__} should implement the `create_vector_index()` method"
+            f"{self.__class__.__name__} should implement the "
+            "`get_symbolic_data_models()` method"
         )
 
-    async def update(self, data_model, threshold=0.8):
+    async def update(
+        self,
+        data_model_or_data_models: Union[Any, List[Any]],
+    ) -> Union[Any, List[Any]]:
+        """Insert or update records in the database.
+
+        Args:
+            data_model_or_data_models: A single JsonDataModel or a list of
+                JsonDataModels to insert or update.
+
+        Returns:
+            The primary key value(s) of the inserted/updated records.
+
+        Raises:
+            NotImplementedError: Subclasses must implement this method.
+        """
         raise NotImplementedError(
-            f"{self.__class__} should implement the `update()` method"
+            f"{self.__class__.__name__} should implement the `update()` method"
         )
 
-    async def query(self, query: str, params: Dict[str, Any] = None, **kwargs):
+    async def get(
+        self,
+        id_or_ids: Any,
+        data_models: Optional[List[Any]] = None,
+    ) -> Optional[Any]:
+        """Retrieve a record by its primary key.
+
+        Args:
+            id_or_ids: The primary key value to look up.
+            data_models: Optional list of SymbolicDataModels to search in.
+                If not provided, searches all tables.
+
+        Returns:
+            JsonDataModel if found, None otherwise.
+
+        Raises:
+            NotImplementedError: Subclasses must implement this method.
+        """
         raise NotImplementedError(
-            f"{self.__class__} should implement the `query()` method"
+            f"{self.__class__.__name__} should implement the `get()` method"
         )
 
-    async def similarity_search(self, text, data_model=None, k=10, threshold=0.8):
+    async def getall(
+        self,
+        data_model: Any,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> List[Any]:
+        """Retrieve all records from a table with pagination.
+
+        Args:
+            data_model: The SymbolicDataModel representing the table to query.
+            limit: Maximum number of records to return.
+            offset: Number of records to skip.
+
+        Returns:
+            List of JsonDataModels.
+
+        Raises:
+            NotImplementedError: Subclasses must implement this method.
+        """
         raise NotImplementedError(
-            f"{self.__class__} should implement the `similarity_search()` method"
+            f"{self.__class__.__name__} should implement the `getall()` method"
         )
 
-    async def fulltext_search(self, keywords, data_model=None, k=10, threshold=0.8):
+    async def query(
+        self,
+        query: str,
+        params: Optional[Dict[str, Any]] = None,
+        **kwargs,
+    ) -> List[Dict[str, Any]]:
+        """Execute a raw query against the database.
+
+        Args:
+            query: The query string (SQL or other query language).
+            params: Optional parameters for parameterized queries.
+            **kwargs: Additional adapter-specific options.
+
+        Returns:
+            List of result dictionaries.
+
+        Raises:
+            NotImplementedError: Subclasses must implement this method.
+        """
         raise NotImplementedError(
-            f"{self.__class__} should implement the `fulltext_search()` method"
+            f"{self.__class__.__name__} should implement the `query()` method"
         )
 
-    async def chain_search(self, chain_search, data_model=None, k=10, threshold=0.8):
+    async def similarity_search(
+        self,
+        text_or_texts: Union[str, List[str]],
+        data_models: Optional[List[Any]] = None,
+        k: int = 10,
+        threshold: Optional[float] = None,
+    ) -> List[Dict[str, Any]]:
+        """Perform vector similarity search using embeddings.
+
+        Requires an embedding_model to be configured.
+
+        Args:
+            text_or_texts: Query text or list of query texts to search for.
+            data_models: Optional list of SymbolicDataModels to search in.
+            k: Maximum number of results to return.
+            threshold: Optional similarity threshold for filtering results.
+
+        Returns:
+            List of matching records with similarity scores.
+
+        Raises:
+            NotImplementedError: Subclasses must implement this method.
+        """
         raise NotImplementedError(
-            f"{self.__class__} should implement the `chain_search()` method"
+            f"{self.__class__.__name__} should implement the `similarity_search()` method"
         )
 
-    async def triplet_search(self, triplet_search, k=10, threshold=0.8):
+    async def fulltext_search(
+        self,
+        text_or_texts: Union[str, List[str]],
+        data_models: Optional[List[Any]] = None,
+        k: int = 10,
+        threshold: Optional[float] = None,
+    ) -> List[Dict[str, Any]]:
+        """Perform full-text search on text fields.
+
+        Args:
+            text_or_texts: Query text or list of query texts to search for.
+            data_models: Optional list of SymbolicDataModels to search in.
+            k: Maximum number of results to return.
+            threshold: Optional relevance threshold for filtering results.
+
+        Returns:
+            List of matching records with relevance scores.
+
+        Raises:
+            NotImplementedError: Subclasses must implement this method.
+        """
         raise NotImplementedError(
-            f"{self.__class__} should implement the `triplet_search()` method"
+            f"{self.__class__.__name__} should implement the `fulltext_search()` method"
         )
 
-    async def __repr__(self):
-        return f"<DatabaseAdapter index={self.uri}>"
+    async def hybrid_search(
+        self,
+        text_or_texts: Union[str, List[str]],
+        data_models: Optional[List[Any]] = None,
+        k: int = 10,
+        similarity_threshold: Optional[float] = None,
+        fulltext_threshold: Optional[float] = None,
+    ) -> List[Dict[str, Any]]:
+        """Perform hybrid search combining vector similarity and full-text search.
+
+        Uses Reciprocal Rank Fusion (RRF) to combine results from both
+        similarity search and full-text search.
+
+        Args:
+            text_or_texts: Query text or list of query texts to search for.
+            data_models: Optional list of SymbolicDataModels to search in.
+            k: Maximum number of results to return.
+            similarity_threshold: Optional threshold for vector similarity.
+            fulltext_threshold: Optional threshold for full-text relevance.
+
+        Returns:
+            List of matching records with combined scores.
+
+        Raises:
+            NotImplementedError: Subclasses must implement this method.
+        """
+        raise NotImplementedError(
+            f"{self.__class__.__name__} should implement the `hybrid_search()` method"
+        )
+
+    def __repr__(self):
+        return f"<{self.__class__.__name__} uri={self.uri}>"

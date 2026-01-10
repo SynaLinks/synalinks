@@ -459,52 +459,6 @@ class JsonDataModel:
             clone.name = auto_name("clone_" + self.name)
         return clone
 
-    def get_nested_entity(self, key):
-        """Retrieve a nested Entity and convert it to a JsonDataModel"""
-        json = copy.deepcopy(self.get(key))
-        if "label" in json:
-            schema_key = json.get("label")
-        else:
-            return None
-        schema = copy.deepcopy(self.get_schema().get("$defs").get(schema_key))
-
-        defs = {}
-        for obj_key, obj_schema in copy.deepcopy(self.get_schema().get("$defs")).items():
-            if str(schema).find(f"#/$defs/{obj_key}") > 0:
-                defs[obj_key] = obj_schema
-
-        if defs:
-            schema.update({"$defs": defs})
-
-        if schema:
-            return JsonDataModel(json=json, schema=schema, name=key + "_" + self.name)
-        else:
-            return None
-
-    def get_nested_entity_list(self, key):
-        """Retrieve a nested Entity list and convert it to a list of JsonDataModel"""
-        json = self.get(key)
-        outputs = []
-        for i, data_model_json in enumerate(json):
-            if "label" in data_model_json:
-                schema_key = data_model_json.get("label")
-                schema = self.get_schema().get("$defs").get(schema_key)
-                defs = {}
-                for obj_key, obj_schema in self.get_schema().get("$defs").items():
-                    if str(schema).find(f"#/$defs/{obj_key}") > 0:
-                        defs[obj_key] = obj_schema
-                if defs:
-                    schema.update({"$defs": defs})
-
-                outputs.append(
-                    JsonDataModel(
-                        json=data_model_json,
-                        schema=schema,
-                        name=key + f"_{i}_" + self.name,
-                    )
-                )
-        return outputs
-
     def __repr__(self):
         return f"<JsonDataModel schema={self._schema}, json={self._json}>"
 

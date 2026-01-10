@@ -1,4 +1,5 @@
 # Knowledge Modules
 
-- [Embedding module](Embedding module.md)
+- [EmbedKnowledge module](EmbedKnowledge module.md)
 - [UpdateKnowledge module](UpdateKnowledge module.md)
+- [RetrieveKnowledge module](RetrieveKnowledge module.md)

@@ -1,0 +1,30 @@
+# Docker Compose for MLflow Observability (Testing/Development)
+#
+# Usage:
+#   docker compose up -d
+#
+# Access MLflow UI at: http://localhost:5000
+#
+# Configure Synalinks to use it:
+#   synalinks.enable_observability(
+#       tracking_uri="http://localhost:5000",
+#       experiment_name="my_experiment"
+#   )
+
+services:
+  mlflow:
+    image: ghcr.io/mlflow/mlflow:latest
+    container_name: synalinks-mlflow
+    ports:
+      - "5000:5000"
+    volumes:
+      - ./mlflow-data:/mlflow
+    command: >
+      mlflow server
+      --host 0.0.0.0
+      --port 5000
+      --backend-store-uri sqlite:///mlflow/mlflow.db
+      --default-artifact-root mlflow-artifacts:/
+      --serve-artifacts
+      --artifacts-destination /mlflow/artifacts
+    restart: unless-stopped

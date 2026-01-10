@@ -9,9 +9,9 @@ from mcp.types import ImageContent
 from mcp.types import TextContent
 from mcp.types import Tool as MCPTool
 
+from synalinks.src.modules.core.tool import Tool
 from synalinks.src.utils.mcp.sessions import Connection
 from synalinks.src.utils.mcp.sessions import create_session
-from synalinks.src.utils.tool_utils import Tool
 
 NonTextContent = ImageContent | EmbeddedResource
 MAX_ITERATIONS = 1000

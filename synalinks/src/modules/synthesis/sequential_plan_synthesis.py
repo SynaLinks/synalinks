@@ -30,23 +30,29 @@ class SequentialPlan(Trainable):
 class SequentialPlanSynthesis(Module):
     """A module that executes a sequential plan of steps.
 
-    This module features a sequential plan as a trainable variable, allowing optimizers
-    to refine the plan during the training loop based on iterative feedback.
+    This module features a sequential plan as a trainable variable, allowing
+    optimizers to refine the plan during the training loop based on iterative
+    feedback.
 
-    Basically learning to plan based on iterative feedback and automatic selection of the best plan.
+    Basically learning to plan based on iterative feedback and automatic
+    selection of the best plan.
 
-    The module executes each step in the plan sequentially, passing the output of each
-    step as input to the next step. The runner is responsible for executing
-    each individual step. The most common runners are usually a `FunctionCallingAgent`,
-    `ChainOfThought` or `Generator` module, but you can use any Module or Program.
+    The module executes each step in the plan sequentially, passing the output
+    of each step as input to the next step. The runner is responsible for
+    executing each individual step. The most common runners are usually a
+    `FunctionCallingAgent`, `ChainOfThought` or `Generator` module, but you
+    can use any Module or Program.
 
-    This module start by defaut without any plan, so it is equivalent to a single runner call.
+    This module start by defaut without any plan, so it is equivalent to a
+    single runner call.
 
-    This module works **ONLY** with advanced optimizers (**NOT** the `RandomFewShot` optimizer).
+    This module works **ONLY** with advanced optimizers (**NOT** the
+    `RandomFewShot` optimizer).
 
-    **Note**: The inputs are forwarded to the runner each time by concatenating the inputs with
-    the previous steps outputs. So **ensure that the runner doesn't returns the inputs**, use
-    `return_inputs=False` or `return_inputs_with_trajectory=False` when configuring your runner.
+    **Note**: The inputs are forwarded to the runner each time by concatenating
+    the inputs with the previous steps outputs. So **ensure that the runner
+    doesn't returns the inputs**, use `return_inputs=False` or
+    `return_inputs_with_trajectory=False` when configuring your runner.
 
     Example:
 

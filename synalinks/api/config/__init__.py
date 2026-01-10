@@ -17,6 +17,8 @@ from synalinks.src.backend.config import (
     is_observability_enabled as is_observability_enabled,
 )
 from synalinks.src.backend.config import is_telemetry_enabled as is_telemetry_enabled
+from synalinks.src.backend.config import mlflow_experiment_name as mlflow_experiment_name
+from synalinks.src.backend.config import mlflow_tracking_uri as mlflow_tracking_uri
 from synalinks.src.backend.config import set_api_base as set_api_base
 from synalinks.src.backend.config import set_api_key as set_api_key
 from synalinks.src.backend.config import set_backend as set_backend

@@ -45,36 +45,26 @@ from synalinks.src.backend.config import synalinks_home as synalinks_home
 from synalinks.src.backend.pydantic.base import ChatMessage as ChatMessage
 from synalinks.src.backend.pydantic.base import ChatMessages as ChatMessages
 from synalinks.src.backend.pydantic.base import ChatRole as ChatRole
-from synalinks.src.backend.pydantic.base import EmbeddedEntity as EmbeddedEntity
 from synalinks.src.backend.pydantic.base import Embeddings as Embeddings
-from synalinks.src.backend.pydantic.base import Entities as Entities
-from synalinks.src.backend.pydantic.base import Entity as Entity
 from synalinks.src.backend.pydantic.base import GenericInputs as GenericInputs
 from synalinks.src.backend.pydantic.base import GenericIO as GenericIO
 from synalinks.src.backend.pydantic.base import GenericOutputs as GenericOutputs
 from synalinks.src.backend.pydantic.base import GenericResult as GenericResult
 from synalinks.src.backend.pydantic.base import Instructions as Instructions
-from synalinks.src.backend.pydantic.base import KnowledgeGraph as KnowledgeGraph
 from synalinks.src.backend.pydantic.base import Prediction as Prediction
-from synalinks.src.backend.pydantic.base import Relation as Relation
-from synalinks.src.backend.pydantic.base import Relations as Relations
 from synalinks.src.backend.pydantic.base import Score as Score
 from synalinks.src.backend.pydantic.base import SimilaritySearch as SimilaritySearch
+from synalinks.src.backend.pydantic.base import ToolCall as ToolCall
 from synalinks.src.backend.pydantic.base import ToolCall as ToolCalling
 from synalinks.src.backend.pydantic.base import Trainable as Trainable
 from synalinks.src.backend.pydantic.base import TripletSearch as TripletSearch
 from synalinks.src.backend.pydantic.base import is_chat_message as is_chat_message
 from synalinks.src.backend.pydantic.base import is_chat_messages as is_chat_messages
-from synalinks.src.backend.pydantic.base import is_embedded_entity as is_embedded_entity
+from synalinks.src.backend.pydantic.base import is_embedded as is_embedded
 from synalinks.src.backend.pydantic.base import is_embedding as is_embedding
 from synalinks.src.backend.pydantic.base import is_embeddings as is_embeddings
-from synalinks.src.backend.pydantic.base import is_entities as is_entities
-from synalinks.src.backend.pydantic.base import is_entity as is_entity
 from synalinks.src.backend.pydantic.base import is_instructions as is_instructions
-from synalinks.src.backend.pydantic.base import is_knowledge_graph as is_knowledge_graph
 from synalinks.src.backend.pydantic.base import is_prediction as is_prediction
-from synalinks.src.backend.pydantic.base import is_relation as is_relation
-from synalinks.src.backend.pydantic.base import is_relations as is_relations
 from synalinks.src.backend.pydantic.base import (
     is_similarity_search as is_similarity_search,
 )
@@ -101,7 +91,13 @@ from synalinks.src.modules.core.generator import (
 from synalinks.src.modules.core.identity import Identity as Identity
 from synalinks.src.modules.core.input_module import Input as Input
 from synalinks.src.modules.core.not_module import Not as Not
-from synalinks.src.modules.knowledge.embedding import Embedding as Embedding
+from synalinks.src.modules.core.tool import Tool as Tool
+from synalinks.src.modules.knowledge.embed_knowledge import (
+    EmbedKnowledge as EmbedKnowledge,
+)
+from synalinks.src.modules.knowledge.retrieve_knowledge import (
+    RetrieveKnowledge as RetrieveKnowledge,
+)
 from synalinks.src.modules.knowledge.update_knowledge import (
     UpdateKnowledge as UpdateKnowledge,
 )
@@ -113,12 +109,6 @@ from synalinks.src.modules.merging.logical_and import And as And
 from synalinks.src.modules.merging.logical_or import Or as Or
 from synalinks.src.modules.merging.logical_xor import Xor as Xor
 from synalinks.src.modules.module import Module as Module
-from synalinks.src.modules.retrievers.entity_retriever import (
-    EntityRetriever as EntityRetriever,
-)
-from synalinks.src.modules.retrievers.triplet_retriever import (
-    TripletRetriever as TripletRetriever,
-)
 from synalinks.src.modules.synthesis.python_synthesis import (
     PythonSynthesis as PythonSynthesis,
 )
@@ -134,6 +124,5 @@ from synalinks.src.rewards.lm_as_judge import LMAsJudge as LMAsJudge
 from synalinks.src.rewards.reward import Reward as Reward
 from synalinks.src.rewards.reward_wrappers import ProgramAsJudge as ProgramAsJudge
 from synalinks.src.utils.mcp.client import MultiServerMCPClient as MultiServerMCPClient
-from synalinks.src.utils.tool_utils import Tool as Tool
 from synalinks.src.version import __version__
 from synalinks.src.version import version as version

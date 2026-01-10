@@ -1,11 +1,15 @@
 # License Apache 2.0: (c) 2025 Yoan Sallami (Synalinks Team)
 
-import random
+from typing import TYPE_CHECKING
 from typing import Any
+from typing import Dict
 from typing import List
 from typing import Optional
 
-import numpy
+if TYPE_CHECKING:
+    from synalinks.src.backend.common.variables import Variable
+    from synalinks.src.embedding_models.embedding_model import EmbeddingModel
+
 
 from synalinks.src import tree
 from synalinks.src.api_export import synalinks_export
@@ -16,43 +20,10 @@ from synalinks.src.backend import out_mask_json
 from synalinks.src.backend.common import numpy as np
 from synalinks.src.modules.core.input_module import Input
 from synalinks.src.modules.ttc.chain_of_thought import ChainOfThought
-from synalinks.src.optimizers.random_few_shot import RandomFewShot
+from synalinks.src.optimizers.evolutionary_optimizer import EvolutionaryOptimizer
 from synalinks.src.programs.program import Program
 from synalinks.src.rewards.reward import squeeze_or_expand_to_same_rank
 from synalinks.src.saving import serialization_lib
-
-
-def base_instructions():
-    """
-    Base instructions that define the context for all optimization programs.
-    These instructions explain that the system optimizes JSON variables in a computation graph.
-    """
-    return """
-You are an integral part of an optimization system designed to improve JSON variables within a computation graph (i.e. the program).
-Each module in the graph performs specific computations, with JSON variables serving as the state.
-These variables can represent prompts, code, plans, rules, or any other JSON-compatible data.
-""".strip()
-
-
-def mutation_instructions(variables_keys):
-    """
-    Instructions for the mutation program that optimizes variables.
-
-    Args:
-        variables_keys (list): List of keys that the variable should contain
-    """
-    return f"""
-Your primary task is to creatively enhance the provided variable so that the predicted output aligns as closely as possible with the ground truth.
-Pay close attention to the variable's description, its intended use, and the broader context of the computation graph.
-
-Guidelines:
-- Ensure the new variable is generalizable and performs well across various inputs of the same kind.
-- Include all specified keys: {variables_keys}.
-- Justify each change with clear reasoning, referencing the variable's purpose and the desired output.
-- If no ground truth is provided, the goal is to critically enhance the predicted output.
-- If you have to optimize a variable containing code, provide a generalizable algorithm.
-- Always focus on ONLY one aspect at the time.
-""".strip()
 
 
 class MutationInputs(DataModel):
@@ -74,29 +45,6 @@ class MutationInputs(DataModel):
     current_variable: Any = Field(
         description="The variable to optimize",
     )
-
-
-def crossover_instructions(variables_keys):
-    """
-    Instructions for the crossover program that optimizes variables.
-
-    Args:
-        variables_keys (list): List of keys that the variable should contain
-    """
-    return f"""
-Your responsibility is to create a new, optimized variable by strategically combining features from the current variable and a high-performing candidate.
-The new variable should improve the alignment of the predicted output with the ground truth.
-
-Guidelines:
-- Analyze both the current variable and the other high-performing variable, identifying their respective strengths and weaknesses.
-- Pay close attention to the variable's description, its intended use, and the broader context of the computation graph.
-- Ensure the new variable is generalizable and performs well across various inputs of the same kind.
-- Include all specified keys: {variables_keys}.
-- Justify each feature you incorporate, explaining how it contributes to better performance or alignment with the ground truth.
-- If no ground truth is provided, the goal is to critically enhance the predicted output.
-- If you have to optimize a variable containing code, provide a generalizable algorithm.
-- Always focus on ONLY one aspect at the time.
-""".strip()
 
 
 class CrossoverInputs(DataModel):
@@ -123,18 +71,100 @@ class CrossoverInputs(DataModel):
     )
 
 
-async def similarity_distance(candidate1, candidate2, embedding_model=None, axis=-1):
-    """The default cosine similarity distance used by Dominated Novelty Search
+def base_instructions():
+    """Base instructions that define the context for all optimization programs.
 
-    If the candidates have multiple fields, they are combined by averaging the
-    vectors before calculating the distance allowing candidates to have
-    variable/dynamic number of fields.
+    These instructions explain that the system optimizes JSON variables
+    in a computation graph.
+    """
+    return """
+You are an integral part of an optimization system designed to improve
+JSON variables within a computation graph (i.e. the program).
+Each module in the graph performs specific computations, with JSON variables
+serving as the state.
+These variables can represent prompts, code, plans, rules, or any other
+JSON-compatible data.
+""".strip()
+
+
+def mutation_instructions(variables_keys):
+    """Instructions for the mutation program that optimizes variables.
 
     Args:
-        candidate1 (dict): The first variable candidate
-        candidate2 (dict): The second variable candidate
-        embedding_model (EmbeddingModel): The embedding model to use
-        axis (int): The axis along which compute the similarity (default -1)
+        variables_keys (list): List of keys that the variable should contain
+    """
+    return f"""
+Your primary task is to creatively enhance the provided variable so that the
+predicted output aligns as closely as possible with the ground truth.
+Pay close attention to the variable's description, its intended use, and the
+broader context of the computation graph.
+
+Guidelines:
+- Ensure the new variable is generalizable and performs well across various
+  inputs of the same kind.
+- Include all specified keys: {variables_keys}.
+- Justify each change with clear reasoning, referencing the variable's purpose
+  and the desired output.
+- If no ground truth is provided, the goal is to critically enhance the
+  predicted output.
+- If you have to optimize a variable containing code, provide a generalizable
+  algorithm.
+- Always focus on ONLY one aspect at the time.
+- If the instructions/prompt contains general information, keep it.
+""".strip()
+
+
+def crossover_instructions(variables_keys):
+    """Instructions for the crossover program that optimizes variables.
+
+    Args:
+        variables_keys (list): List of keys that the variable should contain
+    """
+    return f"""
+Your responsibility is to create a new, optimized variable by strategically
+combining features from the current variable and a high-performing candidate.
+The new variable should improve the alignment of the predicted output with
+the ground truth.
+
+Guidelines:
+- Analyze both the current variable and the other high-performing variable,
+  identifying their respective strengths and weaknesses.
+- Pay close attention to the variable's description, its intended use, and the
+  broader context of the computation graph.
+- Ensure the new variable is generalizable and performs well across various
+  inputs of the same kind.
+- Include all specified keys: {variables_keys}.
+- Justify each feature you incorporate, explaining how it contributes to
+  better performance or alignment with the ground truth.
+- If no ground truth is provided, the goal is to critically enhance the
+  predicted output.
+- If you have to optimize a variable containing code, provide a generalizable
+  algorithm.
+- Always focus on ONLY one aspect at the time.
+- If the instructions/prompt contains general information, keep it.
+""".strip()
+
+
+async def similarity_distance(
+    candidate1: Dict[str, Any],
+    candidate2: Dict[str, Any],
+    embedding_model: Optional["EmbeddingModel"] = None,
+    axis: int = -1,
+) -> float:
+    """Compute distance between two candidates using embeddings.
+
+    This function computes the cosine distance between the mean embeddings
+    of two candidate JSON objects. Each field of the JSON is embedded
+    separately, normalized to unit length, then averaged.
+
+    Args:
+        candidate1 (dict): First candidate (dict or JSON-serializable object)
+        candidate2 (dict): Second candidate (dict or JSON-serializable object)
+        embedding_model (EmbeddingModel): The embedding model for computing embeddings
+        axis (int): The axis along which to compute the similarity (default: -1)
+
+    Returns:
+        float: Cosine distance between candidates (0 = identical, 1 = orthogonal)
     """
     embeddings1 = await embedding_model(tree.flatten(candidate1))
     embeddings2 = await embedding_model(tree.flatten(candidate2))
@@ -152,29 +182,45 @@ async def similarity_distance(candidate1, candidate2, embedding_model=None, axis
 
 
 @synalinks_export("synalinks.optimizers.OMEGA")
-class OMEGA(RandomFewShot):
-    """OMEGA: OptiMizEr as Genetic Algorithm - A genetic optimizer with dominated novelty search.
+class OMEGA(EvolutionaryOptimizer):
+    """OMEGA: OptiMizEr as Genetic Algorithm.
 
-    This optimizer is **unique to Synalinks** and the result of our research effort on advancing neuro-symbolic AI.
+    A genetic optimizer with dominated novelty search.
 
-    Dominated Novelty Search (DNS), is a SOTA Quality-Diversity optimization method that implements a competition function in a classic genetic algorithm.
+    This optimizer is **unique to Synalinks** and the result of our research
+    effort on advancing neuro-symbolic AI.
 
-    The key insight behind Dominated Novelty Search is that candidates should be eliminated from the population if they are both:
+    Dominated Novelty Search (DNS), is a SOTA Quality-Diversity optimization
+    method that implements a competition function in a classic genetic
+    algorithm.
+
+    The key insight behind Dominated Novelty Search is that candidates should
+    be eliminated from the population if they are both:
 
     - Inferior in reward/fitness
     - Similar to existing candidates/solutions
 
-    This algorithm creates an evolutionary pressure to focus on high performing candidates **Or** candidates that explore other approaches.
+    This algorithm creates an evolutionary pressure to focus on high performing
+    candidates **Or** candidates that explore other approaches.
 
-    This approach only add one step to the traditional genetic algorithm and *outperform* MAP-Elites, Threshold-Elites and Cluster-Elites.
+    This approach only add one step to the traditional genetic algorithm and
+    *outperform* MAP-Elites, Threshold-Elites and Cluster-Elites.
 
-    This allow the system to explore the search space more quickly by eliminating non-promising candidates while preserving diversity to avoid local optimum.
+    This allow the system to explore the search space more quickly by
+    eliminating non-promising candidates while preserving diversity to avoid
+    local optimum.
 
-    At Synalinks, we adapted this algorithm for LM-based optimization, to do so we use an embedding model to compute the candidate's descriptor and a cosine distance between solutions.
+    At Synalinks, we adapted this algorithm for LM-based optimization, to do
+    so we use an embedding model to compute the candidate's descriptor and a
+    cosine distance between solutions.
 
-    **Note**: In Synalinks, unlike other In-Context learning frameworks, a variable (the module's state to optimize) is a JSON object not a simple string.
-    Which has multiple implications, we maintain a 100% correct structure through constrained JSON decoding, and we allow the state to have variable/dynamic
-    number of fields, which is handled by this approach by embedding each field and averaging them before computing the distance required by DNS.
+    **Note**: In Synalinks, unlike other In-Context learning frameworks, a
+    variable (the module's state to optimize) is a JSON object not a simple
+    string. Which has multiple implications, we maintain a 100% correct
+    structure through constrained JSON decoding, and we allow the state to
+    have variable/dynamic number of fields, which is handled by this approach
+    by embedding each field and averaging them before computing the distance
+    required by DNS.
 
     Example:
     ```
@@ -196,40 +242,50 @@ class OMEGA(RandomFewShot):
     ```
 
     Concerning the inspirations for this optimizer:
-        - Dominated Novelty Search for their elegant Quality-Diversity algorithm that outperform many other evolutionary strategies.
-        - DSPY's GEPA for feeding the optimizer program with the raw training data and for formalizing the evolutionary optimization strategy (**NOT** the MAP-Elites method used).
-        - DeepMind's AlphaEvolve have been a huge inspiration, more on the motivational side as they didn't released the code.
+        - Dominated Novelty Search for their elegant Quality-Diversity
+          algorithm that outperform many other evolutionary strategies.
+        - DSPY's GEPA for feeding the optimizer program with the raw training
+          data and for formalizing the evolutionary optimization strategy
+          (**NOT** the MAP-Elites method used).
+        - DeepMind's AlphaEvolve have been a huge inspiration, more on the
+          motivational side as they didn't released the code.
 
     References:
-        - [Dominated Novelty Search: Rethinking Local Competition in Quality-Diversity](https://arxiv.org/html/2502.00593v1)
-        - [GEPA: Reflective Prompt Evolution Can Outperform Reinforcement Learning](https://arxiv.org/pdf/2507.19457)
-        - [AlphaEvolve: A coding agent for scientific and algorithmic discovery](https://arxiv.org/pdf/2506.13131)
+        - Dominated Novelty Search: Rethinking Local Competition in
+          Quality-Diversity (https://arxiv.org/html/2502.00593v1)
+        - GEPA: Reflective Prompt Evolution Can Outperform Reinforcement
+          Learning (https://arxiv.org/pdf/2507.19457)
+        - AlphaEvolve: A coding agent for scientific and algorithmic
+          discovery (https://arxiv.org/pdf/2506.13131)
 
     Args:
-        instructions (str): additional instructions about the task for the optimizer.
+        instructions (str): Additional instructions about the task for the
+            optimizer.
         language_model (LanguageModel): The language model to use.
-        embedding_model (EmbeddingModel): The embedding model to use to compute candidates
-            descriptors according to Dominated Novelty Search.
-        k_nearest_fitter (int): The K nearest fitter used by Dominated Novelty Search.
-        distance_function (callable): Optional. The distance function to use by Dominated Novelty Search.
-            If no function is provided, use the default cosine distance.
-        mutation_temperature (float): The temperature for the LM calls of the mutation programs.
-        crossover_temperature (float): The temperature for the LM calls of the crossover programs.
-        few_shot_learning (bool): If `True` enable the selection of examples using
-            the same method than the `RandomFewShot` optimizer.
-        nb_min_examples (int): The min number of examples for few-shot learning (Default to 1).
-        nb_max_examples (int): The max number of examples for few-shot learning (Default to 3).
-        algorithm (str): The mechanism to use for the genetic algorithm between ['ga', 'dns'].
-            This parameter is provided for ablation studies and shouldn't be modified. (Default to 'dns').
-        selection (str): The method to select the candidate to evolve at the beginning of a batch
-            between ['random', 'best', 'softmax']. (Default to 'softmax').
+        embedding_model (EmbeddingModel): The embedding model to use to
+            compute candidates descriptors according to Dominated Novelty
+            Search.
+        k_nearest_fitter (int): The K nearest fitter used by Dominated
+            Novelty Search.
+        distance_function (callable): Optional. The distance function to use
+            by Dominated Novelty Search. If no function is provided, use
+            the default cosine distance.
+        mutation_temperature (float): The temperature for the LM calls of
+            the mutation programs.
+        crossover_temperature (float): The temperature for the LM calls of
+            the crossover programs.
+        algorithm (str): The mechanism to use for the genetic algorithm
+            between ['ga', 'dns']. This parameter is provided for ablation
+            studies and shouldn't be modified. (Default to 'dns').
+        selection (str): The method to select the candidate to evolve at the
+            beginning of a batch between ['random', 'best', 'softmax'].
+            (Default to 'softmax').
         selection_temperature (float): The temperature for softmax selection.
-            Used only when `selection='softmax'`. Lower values concentrate selection on high-reward
-            candidates, higher values make selection more uniform (Default 0.2).
-        sampling_temperature (float): The temperature for softmax sampling of the few-shot
-            learning examples. Lower values concentrate sampling on high-reward predictions,
-            higher values make sampling more uniform (Default 0.2).
-        merging_rate (float): Rate at which crossover vs mutation is selected. (Default to 0.02).
+            Used only when `selection='softmax'`. Lower values concentrate
+            selection on high-reward candidates, higher values make selection
+            more uniform (Default 0.3).
+        merging_rate (float): Rate at which crossover vs mutation is selected.
+            (Default to 0.02).
         population_size (int): The maximum number of best candidates to keep
             during the optimization process.
         name (str): Optional name for the optimizer instance.
@@ -246,10 +302,6 @@ class OMEGA(RandomFewShot):
         mutation_temperature=0.3,
         crossover_temperature=0.3,
         merging_rate=0.02,
-        few_shot_learning=False,
-        nb_min_examples=1,
-        nb_max_examples=3,
-        sampling_temperature=0.3,
         algorithm="dns",
         selection="softmax",
         selection_temperature=0.3,
@@ -259,44 +311,30 @@ class OMEGA(RandomFewShot):
         **kwargs,
     ):
         super().__init__(
-            nb_min_examples=nb_min_examples,
-            nb_max_examples=nb_max_examples,
-            sampling_temperature=sampling_temperature,
+            language_model=language_model,
+            mutation_temperature=mutation_temperature,
+            crossover_temperature=crossover_temperature,
+            selection=selection,
+            selection_temperature=selection_temperature,
             merging_rate=merging_rate,
             population_size=population_size,
             name=name,
             description=description,
+            **kwargs,
         )
         if not instructions:
             instructions = ""
         self.instructions = instructions
-        self.language_model = language_model
+
+        # DNS-specific parameters
         self.embedding_model = embedding_model
-        self.mutation_temperature = mutation_temperature
-        self.crossover_temperature = crossover_temperature
         self.k_nearest_fitter = k_nearest_fitter
-        self.few_shot_learning = few_shot_learning
-
-        if not distance_function:
-            self.distance_function = similarity_distance
-        else:
-            self.distance_function = distance_function
-
-        self.kwargs = kwargs
+        self.distance_function = distance_function
 
         algorithms = ["ga", "dns"]
         if algorithm not in algorithms:
             raise ValueError(f"Parameter `algorithm` should be between {algorithms}")
         self.algorithm = algorithm
-
-        selections = ["best", "random", "softmax"]
-        if selection not in selections:
-            raise ValueError(f"Parameter `selection` should be between {selections}")
-        self.selection = selection
-        self.selection_temperature = selection_temperature
-
-        self.mutation_programs = {}
-        self.crossover_programs = {}
 
     async def build(self, trainable_variables):
         """
@@ -374,260 +412,160 @@ class OMEGA(RandomFewShot):
                     inputs=inputs,
                     outputs=outputs,
                     name=f"crossover_{schema_id}_" + self.name,
-                    description="The crossover program that combine high performing variables",
+                    description="Crossover program combining high performing variables",
                 )
                 self.crossover_programs[schema_id] = program
 
         self.built = True
 
-    async def propose_new_candidates(
+    async def mutate_candidate(
         self,
-        step,
-        trainable_variables,
-        x=None,
-        y=None,
-        y_pred=None,
-        training=False,
-    ):
-        variable_name_to_update = await self.select_variable_name_to_update(
-            trainable_variables,
-        )
+        step: int,
+        trainable_variable: "Variable",
+        selected_candidate: Dict[str, Any],
+        x: Optional[List[Any]] = None,
+        y: Optional[List[Any]] = None,
+        y_pred: Optional[List[Any]] = None,
+        training: bool = False,
+    ) -> Dict[str, Any]:
+        """Apply mutation to generate a new candidate using LLM.
 
-        strategy = await self.select_evolving_strategy()
-
-        for trainable_variable in trainable_variables:
-            if trainable_variable.name == variable_name_to_update:
-                mask = list(Trainable.keys())
-                schema_id = id(trainable_variable.get_schema())
-                if strategy == "mutation":
-                    masked_variable = out_mask_json(
-                        trainable_variable.get_json(),
-                        mask=mask,
-                    )
-                    inputs = MutationInputs(
-                        program_description=self.program.description,
-                        program_inputs=[inp.get_json() for inp in x],
-                        program_predicted_outputs=[
-                            pred.get_json() if pred else None for pred in y_pred
-                        ],
-                        program_ground_truth=(
-                            [gt.get_json() for gt in y] if y is not None else []
-                        ),
-                        variable_description=trainable_variable.description,
-                        current_variable=masked_variable,
-                    )
-                    program = self.mutation_programs[schema_id]
-                    new_candidate = await program(inputs, training=training)
-                    if self.few_shot_learning:
-                        examples = await self.sample_best_predictions(
-                            trainable_variable,
-                        )
-                    else:
-                        examples = None
-                elif strategy == "crossover":
-                    candidate_to_merge = await self.select_candidate_to_merge(
-                        step,
-                        trainable_variable,
-                    )
-                    if candidate_to_merge:
-                        current_variable = out_mask_json(
-                            trainable_variable.get_json(),
-                            mask=mask,
-                        )
-                        other_variable = out_mask_json(
-                            candidate_to_merge,
-                            mask=mask,
-                        )
-                        inputs = CrossoverInputs(
-                            program_description=self.program.description,
-                            program_inputs=[inp.get_json() for inp in x],
-                            program_predicted_outputs=[
-                                pred.get_json() if pred else None for pred in y_pred
-                            ],
-                            program_ground_truth=(
-                                [gt.get_json() for gt in y] if y is not None else []
-                            ),
-                            variable_description=trainable_variable.description,
-                            other_variable=other_variable,
-                            current_variable=current_variable,
-                        )
-                        program = self.crossover_programs[schema_id]
-                        new_candidate = await program(inputs, training=training)
-                        if self.few_shot_learning:
-                            examples = self.merge_examples(
-                                trainable_variable.get("examples"),
-                                candidate_to_merge.get("examples"),
-                            )
-                        else:
-                            examples = None
-                    else:
-                        masked_variable = out_mask_json(
-                            trainable_variable.get_json(),
-                            mask=mask,
-                        )
-                        inputs = MutationInputs(
-                            program_description=self.program.description,
-                            program_inputs=[inp.get_json() for inp in x],
-                            program_predicted_outputs=[
-                                pred.get_json() if pred else None for pred in y_pred
-                            ],
-                            program_ground_truth=(
-                                [gt.get_json() for gt in y] if y is not None else []
-                            ),
-                            variable_description=trainable_variable.description,
-                            current_variable=masked_variable,
-                        )
-                        program = self.mutation_programs[schema_id]
-                        new_candidate = await program(inputs, training=training)
-                        if self.few_shot_learning:
-                            examples = await self.sample_best_predictions(
-                                trainable_variable,
-                            )
-                        else:
-                            examples = None
-
-                await self.assign_candidate(
-                    trainable_variable,
-                    new_candidate=new_candidate,
-                    examples=examples,
-                )
-
-    async def on_batch_begin(
-        self,
-        step,
-        epoch,
-        trainable_variables,
-    ):
-        """Called at the beginning of a batch
+        Creates mutation inputs from the selected candidate and training data,
+        then calls the mutation program to generate an optimized variant.
 
         Args:
-            step (int): The batch number
-            epoch (int): The epoch number
-            trainable_variables (list): The list of trainable variables
-        """
-        for trainable_variable in trainable_variables:
-            best_candidates = trainable_variable.get("best_candidates")
-            if epoch == 0:
-                seed_candidates = trainable_variable.get("seed_candidates")
-                if len(seed_candidates) > 0:
-                    seed_candidate = random.choice(seed_candidates)
-                    trainable_variable.update(
-                        {
-                            **seed_candidate,
-                        },
-                    )
-            else:
-                if len(best_candidates) > 0:
-                    if self.selection == "random":
-                        best_candidate = random.choice(best_candidates)
-                    elif self.selection == "best":
-                        best_candidate = sorted(
-                            best_candidates,
-                            key=lambda x: x.get("reward"),
-                            reverse=True,
-                        )[0]
-                    elif self.selection == "softmax":
-                        rewards = numpy.array(
-                            [candidate.get("reward", 0) for candidate in best_candidates]
-                        )
-                        scaled_rewards = rewards / self.selection_temperature
-                        exp_rewards = numpy.exp(
-                            scaled_rewards - numpy.max(scaled_rewards)
-                        )
-                        probabilities = exp_rewards / numpy.sum(exp_rewards)
-                        best_candidate = numpy.random.choice(
-                            best_candidates,
-                            size=1,
-                            replace=False,
-                            p=probabilities,
-                        ).tolist()[0]
-
-                    best_candidate = out_mask_json(
-                        best_candidate,
-                        mask=["reward"],
-                    )
-                    trainable_variable.update(
-                        {
-                            **best_candidate,
-                        },
-                    )
-                else:
-                    seed_candidates = trainable_variable.get("seed_candidates")
-                    if len(seed_candidates) > 0:
-                        seed_candidate = random.choice(seed_candidates)
-                        trainable_variable.update(
-                            {
-                                **seed_candidate,
-                            },
-                        )
-            trainable_variable.update(
-                {
-                    "nb_visit": 0,
-                    "cumulative_reward": 0.0,
-                },
-            )
-
-    async def competition(
-        self,
-        candidates,
-    ):
-        """
-        This function implement Dominated Novelty Search.
-
-        Args:
-            candidates (list): The list of candidates to evaluate.
+            step (int): The current training step
+            trainable_variable (Variable): The trainable variable (for metadata access)
+            selected_candidate (dict): The selected candidate to mutate
+            x (list): Input data batch
+            y (list): Ground truth data batch
+            y_pred (list): Predicted outputs from the current model
+            training (bool): Whether in training mode
 
         Returns:
-            (list): The selected candidates.
+            dict: The mutated candidate from the mutation program
+        """
+        mask = list(Trainable.keys())
+        schema_id = id(trainable_variable.get_schema())
+        masked_variable = out_mask_json(
+            selected_candidate,
+            mask=mask,
+        )
+        inputs = MutationInputs(
+            program_description=self.program.description,
+            program_inputs=[inp.get_json() for inp in x],
+            program_predicted_outputs=[
+                pred.get_json() if pred else None for pred in y_pred
+            ],
+            program_ground_truth=([gt.get_json() for gt in y] if y is not None else []),
+            variable_description=trainable_variable.description,
+            current_variable=masked_variable,
+        )
+        program = self.mutation_programs[schema_id]
+        return await program(inputs, training=training)
+
+    async def merge_candidate(
+        self,
+        step: int,
+        trainable_variable: "Variable",
+        current_candidate: Dict[str, Any],
+        other_candidate: Dict[str, Any],
+        x: Optional[List[Any]] = None,
+        y: Optional[List[Any]] = None,
+        y_pred: Optional[List[Any]] = None,
+        training: bool = False,
+    ) -> Dict[str, Any]:
+        """Apply crossover to merge two selected candidates.
+
+        Creates crossover inputs combining two high-performing candidates,
+        then calls the crossover program to generate a merged variant.
+
+        Args:
+            step (int): The current training step
+            trainable_variable (Variable): The trainable variable (for metadata access)
+            current_candidate (dict): First selected candidate to merge
+            other_candidate (dict): Second selected candidate to merge
+            x (list): Input data batch
+            y (list): Ground truth data batch
+            y_pred (list): Predicted outputs from the current model
+            training (bool): Whether in training mode
+
+        Returns:
+            dict: The merged candidate from the crossover program
+        """
+        mask = list(Trainable.keys())
+        schema_id = id(trainable_variable.get_schema())
+        current_variable = out_mask_json(
+            current_candidate,
+            mask=mask,
+        )
+        other_variable = out_mask_json(
+            other_candidate,
+            mask=mask,
+        )
+        inputs = CrossoverInputs(
+            program_description=self.program.description,
+            program_inputs=[inp.get_json() for inp in x],
+            program_predicted_outputs=[
+                pred.get_json() if pred else None for pred in y_pred
+            ],
+            program_ground_truth=([gt.get_json() for gt in y] if y is not None else []),
+            variable_description=trainable_variable.description,
+            other_variable=other_variable,
+            current_variable=current_variable,
+        )
+        program = self.crossover_programs[schema_id]
+        return await program(inputs, training=training)
+
+    async def competition(self, candidates: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """Apply Dominated Novelty Search (DNS) competition.
+
+        DNS filters candidates by removing those that are both:
+        - Inferior in reward (dominated)
+        - Similar to existing candidates (not novel)
+
+        This maintains diversity while focusing on high-performing candidates.
+
+        Args:
+            candidates (list): List of candidate dictionaries with 'reward' key
+
+        Returns:
+            list: Filtered list of candidates that passed the DNS competition
         """
         if len(candidates) <= 1:
             return candidates
 
-        mask = list(Trainable.keys())
-        mask.append("reward")
+        distance_function = (
+            self.distance_function if self.distance_function else similarity_distance
+        )
 
-        N = len(candidates)
-        fitness_values = [c.get("reward", 0.0) for c in candidates]
-        competition_scores = [0.0] * N
-
-        for i in range(N):
-            fi = fitness_values[i]
-
-            fitter_indices = [j for j in range(N) if j != i and fitness_values[j] > fi]
-
-            if not fitter_indices:
-                competition_scores[i] = 1.0
-            else:
-                distances = []
-                for j in fitter_indices:
-                    distance = await self.distance_function(
-                        out_mask_json(candidates[i], mask=mask),
-                        out_mask_json(candidates[j], mask=mask),
-                        embedding_model=self.embedding_model,
-                        **self.kwargs,
-                    )
-                    distances.append((j, distance))
-
-                distances.sort(key=lambda x: x[1])
-                k = min(self.k_nearest_fitter, len(distances))
-                k_nearest_distances = [d[1] for d in distances[:k]]
-
-                competition_scores[i] = float(
-                    np.sum(k_nearest_distances) / k if k > 0 else 0.0
-                )
-        median_score = np.median(competition_scores)
         selected_candidates = []
-        for i, candidate in enumerate(candidates):
-            if competition_scores[i] >= median_score:
+        for candidate in candidates:
+            is_dominated = False
+            for other in candidates:
+                if other is candidate:
+                    continue
+                distance = await distance_function(
+                    candidate,
+                    other,
+                    embedding_model=self.embedding_model,
+                )
+                # Check if within k-nearest neighborhood
+                if distance < 1.0 / self.k_nearest_fitter:
+                    # Check if dominated (lower reward)
+                    if candidate.get("reward", 0) < other.get("reward", 0):
+                        is_dominated = True
+                        break
+            if not is_dominated:
                 selected_candidates.append(candidate)
-        return selected_candidates
 
-    async def on_epoch_end(
-        self,
-        epoch,
-        trainable_variables,
-    ):
-        """Called at the end of an epoch
+        return selected_candidates if selected_candidates else [candidates[0]]
+
+    async def on_epoch_end(self, epoch, trainable_variables):
+        """Called at the end of each epoch.
+
+        Applies DNS competition (if algorithm='dns') to filter candidates,
+        then selects the top candidates based on population_size.
 
         Args:
             epoch (int): The epoch number
@@ -636,60 +574,54 @@ class OMEGA(RandomFewShot):
         for trainable_variable in trainable_variables:
             candidates = trainable_variable.get("candidates")
             best_candidates = trainable_variable.get("best_candidates")
+
+            # Combine current candidates with best candidates
             all_candidates = candidates + best_candidates
-            sorted_candidates = sorted(
+
+            # Apply DNS competition if enabled
+            if self.algorithm == "dns" and len(all_candidates) > 1:
+                all_candidates = await self.competition(all_candidates)
+
+            # Sort by reward and keep top population_size candidates
+            all_candidates = sorted(
                 all_candidates,
-                key=lambda x: x.get("reward"),
+                key=lambda x: x.get("reward", 0),
                 reverse=True,
             )
-            if self.algorithm == "dns":
-                sorted_candidates = await self.competition(sorted_candidates)
-            selected_candidates = sorted_candidates[: self.population_size]
             trainable_variable.update(
                 {
-                    "best_candidates": selected_candidates,
+                    "candidates": [],
+                    "best_candidates": all_candidates[: self.population_size],
                 }
             )
-        self.increment_epochs()
 
     def get_config(self):
-        config = {
-            "instructions": self.instructions,
-            "k_nearest_fitter": self.k_nearest_fitter,
-            "mutation_temperature": self.mutation_temperature,
-            "crossover_temperature": self.crossover_temperature,
-            "few_shot_learning": self.few_shot_learning,
-            "nb_min_examples": self.nb_min_examples,
-            "nb_max_examples": self.nb_max_examples,
-            "sampling_temperature": self.sampling_temperature,
-            "algorithm": self.algorithm,
-            "selection": self.selection,
-            "selection_temperature": self.selection_temperature,
-            "merging_rate": self.merging_rate,
-            "population_size": self.population_size,
-            "name": self.name,
-            "description": self.description,
-        }
-        language_model_config = {
-            "language_model": serialization_lib.serialize_synalinks_object(
-                self.language_model,
+        config = super().get_config()
+        config.update(
+            {
+                "instructions": self.instructions,
+                "k_nearest_fitter": self.k_nearest_fitter,
+                "algorithm": self.algorithm,
+            }
+        )
+        if self.embedding_model:
+            config["embedding_model"] = serialization_lib.serialize_synalinks_object(
+                self.embedding_model
             )
-        }
-        embedding_model_config = {
-            "embedding_model": serialization_lib.serialize_synalinks_object(
-                self.embedding_model,
-            )
-        }
-        return {**config, **language_model_config, **embedding_model_config}
+        return config
 
     @classmethod
     def from_config(cls, config):
+        embedding_model = None
+        if "embedding_model" in config:
+            embedding_model = serialization_lib.deserialize_synalinks_object(
+                config.pop("embedding_model")
+            )
         language_model = serialization_lib.deserialize_synalinks_object(
-            config.pop("language_model"),
-        )
-        embedding_model = serialization_lib.deserialize_synalinks_object(
-            config.pop("embedding_model"),
+            config.pop("language_model")
         )
         return cls(
-            language_model=language_model, embedding_model=embedding_model, **config
+            language_model=language_model,
+            embedding_model=embedding_model,
+            **config,
         )

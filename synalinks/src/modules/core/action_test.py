@@ -2,11 +2,13 @@
 
 from unittest.mock import patch
 
+import synalinks
 from synalinks.src import testing
 from synalinks.src.backend import DataModel
 from synalinks.src.language_models import LanguageModel
 from synalinks.src.modules import Input
 from synalinks.src.modules.core.action import Action
+from synalinks.src.modules.core.tool import Tool
 from synalinks.src.programs import Program
 
 
@@ -16,6 +18,7 @@ class ActionModuleTest(testing.TestCase):
         class Query(DataModel):
             query: str
 
+        @synalinks.saving.register_synalinks_serializable()
         async def calculate(expression: str):
             """Calculate the result of a mathematical expression.
 
@@ -52,7 +55,7 @@ class ActionModuleTest(testing.TestCase):
 
         x0 = Input(data_model=Query)
         x1 = await Action(
-            fn=calculate,
+            tool=Tool(calculate),
             language_model=language_model,
         )(x0)
 
