@@ -108,7 +108,7 @@ Synalinks supports these Python types:
 
 ### Using Enums for Constrained Outputs
 
-When you need the LLM to choose from specific options, use Python Enums:
+When you need the LLM to choose from specific options, use Python Enums (similar to the Literal above):
 
 ```python
 from enum import Enum
@@ -120,11 +120,11 @@ class Priority(str, Enum):
     CRITICAL = "critical"
 
 class TaskAnalysis(synalinks.DataModel):
-    priority: Priority = synalinks.Field(
-        description="The priority level of this task"
-    )
     reasoning: str = synalinks.Field(
         description="Why this priority was assigned"
+    )
+    priority: Priority = synalinks.Field(
+        description="The priority level of this task"
     )
 ```
 
