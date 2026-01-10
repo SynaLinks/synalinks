@@ -1,5 +1,5 @@
 """
-# Lesson 1a: The Functional API
+# The Functional API
 
 Welcome to your first Synalinks lesson! In this tutorial, you will learn
 how to build AI applications using the Functional API - the most intuitive
@@ -37,6 +37,7 @@ class Query(synalinks.DataModel):
 ### 3. The Functional API
 
 The Functional API lets you build programs by:
+
 1. Creating an Input placeholder
 2. Passing it through modules (like connecting pipes)
 3. Wrapping everything in a Program
@@ -55,22 +56,72 @@ outputs = await synalinks.Generator(
 program = synalinks.Program(inputs=inputs, outputs=outputs)
 ```
 
-## What You'll Build
+## Complete Example
 
-In this lesson, you'll create a "Chain of Thought" program - an AI that
-shows its reasoning step-by-step before giving an answer. This technique
-helps LLMs produce more accurate responses.
+Here's a complete Chain of Thought program that shows reasoning before answering:
 
-## Running the Example
+```python
+import asyncio
+from dotenv import load_dotenv
+import synalinks
 
-```bash
-# Make sure you have set up your API key in .env file
-uv run python examples/1a_functional_api.py
+# Define input and output data models
+class Query(synalinks.DataModel):
+    query: str = synalinks.Field(description="The user query")
+
+class AnswerWithThinking(synalinks.DataModel):
+    thinking: str = synalinks.Field(description="Your step by step thinking")
+    answer: str = synalinks.Field(description="The correct answer")
+
+async def main():
+    load_dotenv()
+
+    language_model = synalinks.LanguageModel(model="openai/gpt-4.1")
+
+    # Build with Functional API
+    inputs = synalinks.Input(data_model=Query)
+    outputs = await synalinks.Generator(
+        data_model=AnswerWithThinking,
+        language_model=language_model,
+    )(inputs)
+
+    program = synalinks.Program(
+        inputs=inputs,
+        outputs=outputs,
+        name="chain_of_thought",
+        description="Useful to answer in a step by step manner.",
+    )
+
+    # Run the program
+    result = await program(Query(query="What are the key aspects of human cognition?"))
+    print(f"Thinking: {result['thinking']}")
+    print(f"Answer: {result['answer']}")
+
+asyncio.run(main())
 ```
+
+### Key Takeaways
+
+- **Functional API**: Build programs by connecting modules like pipes - data
+    flows from `Input` through modules to create outputs.
+- **Three Steps**: (1) Create an Input, (2) Pass through modules, (3) Wrap in
+    a Program.
+- **Generator Module**: The core module that uses an LLM to transform input
+    data into structured output matching your data model.
+- **Reusable Programs**: Once built, programs can be called like functions
+    with your input data model.
 
 ## Program Visualization
 
 ![chain_of_thought](../assets/examples/chain_of_thought.png)
+
+## API References
+
+- [DataModel](https://synalinks.github.io/synalinks/Synalinks%20API/Data%20Models%20API/The%20DataModel%20class/)
+- [LanguageModel](https://synalinks.github.io/synalinks/Synalinks%20API/Language%20Models%20API/)
+- [Generator](https://synalinks.github.io/synalinks/Synalinks%20API/Modules%20API/Core%20Modules/Generator%20module/)
+- [Input](https://synalinks.github.io/synalinks/Synalinks%20API/Modules%20API/Core%20Modules/Input%20module/)
+- [Program](https://synalinks.github.io/synalinks/Synalinks%20API/Programs%20API/The%20Program%20class/)
 """
 
 import asyncio

@@ -54,6 +54,7 @@ if __name__ == "__main__":
 - [Decision module](Core Modules/Decision module.md)
 - [Action module](Core Modules/Action module.md)
 - [Branch module](Core Modules/Branch module.md)
+- [Tool module](Core Modules/Tool module.md)
 
 ---
 

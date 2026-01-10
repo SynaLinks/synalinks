@@ -8,8 +8,22 @@ search for, and can combine multiple searches with other tools.
 
 ## Why RAG Agents?
 
+```mermaid
+graph TD
+    A[Question] --> B[Agent]
+    B --> C{Need to Search?}
+    C -->|Yes| D[search_documents]
+    D --> E[Results]
+    E --> B
+    C -->|No| F{Use Calculator?}
+    F -->|Yes| G[calculate]
+    G --> B
+    F -->|No| H[Final Answer]
+```
+
 Traditional RAG pipelines always retrieve documents, even for simple questions.
 A RAG agent is smarter:
+
 - Decides IF retrieval is needed
 - Can reformulate queries for better search results
 - Can perform multiple searches and combine results
@@ -19,15 +33,23 @@ A RAG agent is smarter:
 
 ```python
 # Define the search tool
-async def search_documents(query: str):
-    \"\"\"Search the knowledge base for relevant documents.\"\"\"
+@synalinks.saving.register_synalinks_serializable()
+async def search_knowledge_base(query: str):
+    \"\"\"Search the knowledge base for documents relevant to the query.
+
+    Use this tool to find information about company policies, procedures,
+    products, or any documented knowledge.
+
+    Args:
+        query (str): The search query describing what information you need.
+    \"\"\"
     results = await knowledge_base.hybrid_search(query, k=3)
     return {"documents": results}
 
 # Create the agent
 inputs = synalinks.Input(data_model=synalinks.ChatMessages)
 outputs = await synalinks.FunctionCallingAgent(
-    tools=[synalinks.Tool(search_documents)],
+    tools=[synalinks.Tool(search_knowledge_base)],
     language_model=language_model,
     autonomous=True,
     max_iterations=5,
@@ -47,6 +69,14 @@ outputs = await synalinks.FunctionCallingAgent(
 ## Program Visualization
 
 ![rag_agent](../assets/examples/rag_agent.png)
+
+## API References
+
+- [FunctionCallingAgent](https://synalinks.github.io/synalinks/Synalinks%20API/Modules%20API/Agents%20Modules/FunctionCallingAgent%20module/)
+- [KnowledgeBase](https://synalinks.github.io/synalinks/Synalinks%20API/Knowledge%20Bases%20API/)
+- [ChatMessages (Base DataModels)](https://synalinks.github.io/synalinks/Synalinks%20API/Data%20Models%20API/The%20Base%20DataModels/)
+- [EmbeddingModel](https://synalinks.github.io/synalinks/Synalinks%20API/Embedding%20Models%20API/)
+- [Program](https://synalinks.github.io/synalinks/Synalinks%20API/Programs%20API/The%20Program%20class/)
 """
 
 import asyncio
@@ -102,51 +132,10 @@ async def search_knowledge_base(query: str):
     global _knowledge_base
 
     if _knowledge_base is None:
-        return {
-            "status": "error",
-            "message": "Knowledge base not initialized",
-            "documents": [],
-        }
+        return {"error": "Knowledge base not initialized"}
 
-    try:
-        results = await _knowledge_base.hybrid_search(query, k=3)
-
-        if not results:
-            return {
-                "status": "no_results",
-                "message": f"No documents found for query: {query}",
-                "documents": [],
-            }
-
-        # Format results for the agent
-        documents = []
-        for r in results:
-            doc_id = r.get("id", "unknown")
-            # Fetch the full document
-            doc = await _knowledge_base.get(doc_id)
-            if doc:
-                documents.append(
-                    {
-                        "id": doc.get("id"),
-                        "title": doc.get("title"),
-                        "content": doc.get("content"),
-                        "category": doc.get("category"),
-                    }
-                )
-
-        return {
-            "status": "success",
-            "query": query,
-            "num_results": len(documents),
-            "documents": documents,
-        }
-
-    except Exception as e:
-        return {
-            "status": "error",
-            "message": str(e),
-            "documents": [],
-        }
+    results = await _knowledge_base.hybrid_search(query, k=30)
+    return {"documents": results}
 
 
 @synalinks.saving.register_synalinks_serializable()
@@ -442,7 +431,10 @@ async def main():
         # Add assistant response to history for next turn
         if assistant_response:
             messages.append(
-                synalinks.ChatMessage(role="assistant", content=assistant_response)
+                synalinks.ChatMessage(
+                    role="assistant",
+                    content=assistant_response,
+                ),
             )
 
     print("\n\nDone!")

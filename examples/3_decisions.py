@@ -1,5 +1,5 @@
 """
-# Lesson 3: Making Decisions
+# Making Decisions
 
 Sometimes your AI needs to make a choice: Is this email spam or not? Is this
 query simple or complex? Should we route to department A or B?
@@ -10,6 +10,7 @@ inputs into predefined categories.
 ## What is a Decision?
 
 A Decision is essentially **single-label classification**. You provide:
+
 1. A **question** - what you want to decide
 2. **Labels** - the possible choices
 
@@ -27,7 +28,17 @@ print(decision["choice"])  # Either "spam" or "not_spam"
 
 ## How It Works
 
+```mermaid
+graph LR
+    Input --> Decision
+    Decision --> |thinking| T[Reasoning]
+    Decision --> |choice| C{Labels}
+    C --> L1[easy]
+    C --> L2[difficult]
+```
+
 Behind the scenes, Synalinks:
+
 1. Creates an **Enum schema** from your labels
 2. Uses **constrained generation** to force the LLM to pick one label
 3. Returns a structured output with `thinking` and `choice` fields
@@ -41,15 +52,69 @@ This guarantees you get exactly one of your labels - no ambiguity!
 - **Triage**: Prioritize tasks by urgency
 - **Classification**: Categorize documents, tickets, etc.
 
-## Running the Example
+## Complete Example
 
-```bash
-uv run python examples/3_decisions.py
+```python
+import asyncio
+from dotenv import load_dotenv
+import synalinks
+
+class Query(synalinks.DataModel):
+    query: str = synalinks.Field(description="The user query")
+
+async def main():
+    load_dotenv()
+    language_model = synalinks.LanguageModel(model="openai/gpt-4.1")
+
+    inputs = synalinks.Input(data_model=Query)
+
+    # Decision module classifies input into one of the labels
+    outputs = await synalinks.Decision(
+        question="Evaluate the difficulty to answer the provided query",
+        labels=["easy", "difficult"],
+        language_model=language_model,
+    )(inputs)
+
+    program = synalinks.Program(
+        inputs=inputs,
+        outputs=outputs,
+        name="decision_making",
+    )
+
+    # Test with different queries
+    result = await program(Query(query="What is 2 + 2?"))
+    print(f"Query: 'What is 2 + 2?'")
+    print(f"Choice: {result['choice']}")  # Output: "easy"
+
+    result = await program(Query(query="Explain quantum entanglement"))
+    print(f"Query: 'Explain quantum entanglement'")
+    print(f"Choice: {result['choice']}")  # Output: "difficult"
+
+asyncio.run(main())
 ```
+
+### Key Takeaways
+
+- **Decision Module**: Single-label classification that forces the LLM to
+    pick exactly one label from your predefined choices.
+- **Constrained Output**: Uses enum schemas and constrained generation to
+    guarantee a valid label - no ambiguous responses.
+- **Routing**: Use decisions to route inputs to different processing paths
+    based on their characteristics.
+- **Thinking Field**: Decision outputs include a `thinking` field showing
+    the LLM's reasoning for its choice.
 
 ## Program Visualization
 
 ![decision_making](../assets/examples/decision_making.png)
+
+## API References
+
+- [DataModel](https://synalinks.github.io/synalinks/Synalinks%20API/Data%20Models%20API/The%20DataModel%20class/)
+- [LanguageModel](https://synalinks.github.io/synalinks/Synalinks%20API/Language%20Models%20API/)
+- [Decision](https://synalinks.github.io/synalinks/Synalinks%20API/Modules%20API/Core%20Modules/Decision%20module/)
+- [Input](https://synalinks.github.io/synalinks/Synalinks%20API/Modules%20API/Core%20Modules/Input%20module/)
+- [Program](https://synalinks.github.io/synalinks/Synalinks%20API/Programs%20API/The%20Program%20class/)
 """
 
 import asyncio

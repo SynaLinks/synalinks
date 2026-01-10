@@ -17,10 +17,21 @@ agents bridge this gap by dynamically processing information and executing
 tasks based on predefined tools.
 
 The architecture of an autonomous agent follows several core stages:
+
 - The input stage captures the user's query or command.
 - The processing stage uses predefined tools and logic to process the input
   and generate a response.
 - The output stage returns the result to the user.
+
+```mermaid
+graph LR
+    A[Query] --> B[Agent]
+    B --> C{Need Tool?}
+    C -->|Yes| D[Tool Call]
+    D --> E[Tool Result]
+    E --> B
+    C -->|No| F[Final Answer]
+```
 
 Synalinks streamlines this complex process through its modular architecture,
 allowing you to compose components with precision while maintaining flexibility
@@ -70,6 +81,13 @@ outputs = await synalinks.FunctionCallingAgent(
 ## Program Visualization
 
 ![math_agent](../assets/examples/math_agent.png)
+
+## API References
+
+- [FunctionCallingAgent](https://synalinks.github.io/synalinks/Synalinks%20API/Modules%20API/Agents%20Modules/FunctionCallingAgent%20module/)
+- [DataModel](https://synalinks.github.io/synalinks/Synalinks%20API/Data%20Models%20API/The%20DataModel%20class/)
+- [LanguageModel](https://synalinks.github.io/synalinks/Synalinks%20API/Language%20Models%20API/)
+- [Program](https://synalinks.github.io/synalinks/Synalinks%20API/Programs%20API/The%20Program%20class/)
 """
 
 import asyncio

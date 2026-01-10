@@ -7,12 +7,27 @@ connecting AI models to external tools and data sources.
 
 ## Understanding MCP Integration
 
+```mermaid
+graph LR
+    subgraph Synalinks
+        A[Agent] --> B[MultiServerMCPClient]
+    end
+    subgraph MCP Servers
+        B --> C[Math Server]
+        B --> D[Search Server]
+        B --> E[...]
+    end
+    C --> F[add, subtract, ...]
+    D --> G[search, fetch, ...]
+```
+
 MCP enables seamless integration between language models and external tools
 through a standardized protocol. Synalinks provides the `MultiServerMCPClient`
 class to connect to one or more MCP servers and load their tools as native
 Synalinks Tool modules.
 
 Key benefits of using MCP:
+
 - **Standardized Protocol**: Use tools from any MCP-compatible server
 - **Multiple Servers**: Connect to multiple MCP servers simultaneously
 - **Namespace Support**: Avoid tool name collisions with namespacing
@@ -73,6 +88,13 @@ outputs = await synalinks.FunctionCallingAgent(
 ## Program Visualization
 
 ![mcp_agent](../assets/examples/mcp_agent.png)
+
+## API References
+
+- [FunctionCallingAgent](https://synalinks.github.io/synalinks/Synalinks%20API/Modules%20API/Agents%20Modules/FunctionCallingAgent%20module/)
+- [DataModel](https://synalinks.github.io/synalinks/Synalinks%20API/Data%20Models%20API/The%20DataModel%20class/)
+- [LanguageModel](https://synalinks.github.io/synalinks/Synalinks%20API/Language%20Models%20API/)
+- [Program](https://synalinks.github.io/synalinks/Synalinks%20API/Programs%20API/The%20Program%20class/)
 """
 
 import asyncio

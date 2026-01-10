@@ -1,15 +1,47 @@
 """
-# Guide 8: Observability
+# Observability
 
-Synalinks provides built-in observability features to monitor, debug, and
-trace your LM applications.
+**Observability** is the ability to understand the internal state of a system
+by examining its outputs. In LM applications, this means tracking every prompt,
+response, token usage, and decision - enabling you to debug issues, optimize
+performance, and monitor production systems.
+
+## Why Observability Matters
+
+LM applications are inherently non-deterministic and complex. Without
+observability, you're flying blind:
+
+```mermaid
+graph LR
+    subgraph Without Observability
+        A[Input] --> B[Black Box]
+        B --> C[Output]
+        C --> D["Why did it fail?"]
+    end
+    subgraph With Observability
+        E[Input] --> F[Traced Pipeline]
+        F --> G[Output]
+        H[Traces] --> I[Debug & Optimize]
+    end
+```
+
+Observability enables:
+
+1. **Debugging**: See exactly what prompts were sent and responses received
+2. **Performance Monitoring**: Track latency, token usage, and costs
+3. **Quality Assurance**: Identify and fix problematic outputs
+4. **Optimization**: Find bottlenecks and improve efficiency
 
 ## Enabling Observability
 
+Synalinks uses MLflow for tracing and metrics:
+
 ```python
+import synalinks
+
 synalinks.enable_observability(
-    tracking_uri="http://localhost:5000",
-    experiment_name="my_experiment",
+    tracking_uri="http://localhost:5000",  # MLflow server
+    experiment_name="my_experiment",        # Group related runs
 )
 ```
 
@@ -19,33 +51,255 @@ Start the MLflow UI:
 mlflow ui --port 5000
 ```
 
+Then open http://localhost:5000 in your browser.
+
 ## What Gets Traced
 
-- **Program calls** - Input/output data, execution time
-- **Module calls** - Each module's inputs and outputs
-- **LLM calls** - Prompts, responses, token usage
-- **Tool calls** - Agent tool invocations
-- **Training runs** - Metrics, parameters, artifacts
+Every operation in your program is automatically traced:
+
+```mermaid
+graph TD
+    A[Program Call] --> B[Trace]
+    B --> C[Module: Input]
+    B --> D[Module: Generator]
+    D --> E[LLM Call]
+    E --> F[Prompt]
+    E --> G[Response]
+    E --> H[Token Count]
+    B --> I[Module: Branch]
+    I --> J[Selected Path]
+```
+
+### Trace Contents
+
+| Component | What's Captured |
+|-----------|-----------------|
+| Program | Input/output DataModels, execution time |
+| Module | Each module's inputs, outputs, parameters |
+| LLM Call | Full prompt, response, model name, tokens |
+| Tool Call | Tool name, arguments, result |
+| Training | Metrics, hyperparameters, artifacts |
 
 ## Logging Levels
 
+Control log verbosity for debugging:
+
 ```python
-synalinks.enable_logging(level="DEBUG")  # Detailed
-synalinks.enable_logging(level="INFO")   # Standard
-synalinks.enable_logging(level="WARNING") # Quiet
+import synalinks
+
+# Detailed logging - every LLM call logged
+synalinks.enable_logging(log_level="debug")
+
+# Standard logging - key events only
+synalinks.enable_logging(log_level="info")
+
+# Quiet logging - warnings and errors only
+synalinks.enable_logging(log_level="warning")
 ```
 
 ## Debugging Tools
 
-- `program.summary()` - Print program structure
-- `synalinks.plot_program()` - Visualize program graph
-- `program.trainable_variables` - Inspect trainable state
+### Program Summary
 
-## Running the Example
+Inspect your program's structure:
 
-```bash
-uv run python guides/8_observability.py
+```python
+program.summary()
 ```
+
+Output:
+```
+Program: qa_program
+description: 'A `Functional` program is a `Program` defined as a directed graph
+of modules.'
+┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━┓
+┃ Module (type)               ┃ Output Schema         ┃    Variable # ┃
+┡━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━┩
+│ input_module (InputModule)  │ Query                 │             0 │
+├─────────────────────────────┼───────────────────────┼───────────────┤
+│ generator (Generator)       │ Answer                │             2 │
+└─────────────────────────────┴───────────────────────┴───────────────┘
+ Total variables: 2
+ Trainable variables: 2
+```
+
+### Program Visualization
+
+Generate a visual graph of your program:
+
+```python
+synalinks.utils.plot_program(
+    program,
+    to_folder="output",
+    show_module_names=True,
+    show_trainable=True,
+)
+```
+
+This creates a PNG file showing the computation graph.
+
+### Trainable Variables
+
+Inspect what can be optimized:
+
+```python
+for var in program.trainable_variables:
+    print(f"Variable: {var.name}")
+    print(f"  Value: {var.value}")
+```
+
+## MLflow Integration
+
+### Viewing Traces
+
+Navigate to the MLflow UI at http://localhost:5000:
+
+1. Select your experiment from the sidebar
+2. Click on a run to see its traces
+3. Expand traces to see individual module calls
+4. Click on LLM calls to see full prompts/responses
+
+### Trace Structure
+
+Each trace shows the hierarchical execution:
+
+```
+Program Call: qa_program
+├── Module: Input
+│   ├── Input: {"query": "What is Python?"}
+│   └── Duration: 0.001s
+├── Module: Generator
+│   ├── LLM Call: openai/gpt-4.1-mini
+│   │   ├── Prompt: [full text]
+│   │   ├── Response: [full text]
+│   │   ├── Input tokens: 150
+│   │   └── Output tokens: 50
+│   └── Duration: 1.2s
+└── Output: {"answer": "Python is..."}
+```
+
+### Training Metrics
+
+During training, MLflow captures:
+
+- Per-epoch metrics (reward, accuracy)
+- Validation metrics
+- Hyperparameters (optimizer settings, epochs)
+- Artifacts (saved program checkpoints)
+
+## Complete Example
+
+```python
+import asyncio
+from dotenv import load_dotenv
+import synalinks
+
+class Query(synalinks.DataModel):
+    \"\"\"User question.\"\"\"
+    query: str = synalinks.Field(description="User question")
+
+class Answer(synalinks.DataModel):
+    \"\"\"Answer with reasoning.\"\"\"
+    thinking: str = synalinks.Field(description="Step by step thinking")
+    answer: str = synalinks.Field(description="The final answer")
+
+async def main():
+    load_dotenv()
+    synalinks.clear_session()
+
+    # Enable observability
+    synalinks.enable_observability(
+        tracking_uri="http://localhost:5000",
+        experiment_name="observability_demo",
+    )
+
+    # Enable logging
+    synalinks.enable_logging(log_level="info")
+
+    lm = synalinks.LanguageModel(model="openai/gpt-4.1-mini")
+
+    # Create program
+    inputs = synalinks.Input(data_model=Query)
+    outputs = await synalinks.Generator(
+        data_model=Answer,
+        language_model=lm,
+    )(inputs)
+
+    program = synalinks.Program(
+        inputs=inputs,
+        outputs=outputs,
+        name="traced_qa",
+    )
+
+    # Print summary
+    program.summary()
+
+    # Run program - traces are automatically captured
+    result = await program(Query(query="What is Python?"))
+    print(f"Answer: {result['answer']}")
+
+    # Visualize program
+    synalinks.utils.plot_program(
+        program,
+        show_module_names=True,
+    )
+
+    # Inspect trainable variables
+    print("\\nTrainable variables:")
+    for var in program.trainable_variables:
+        print(f"  - {var.name}")
+
+if __name__ == "__main__":
+    asyncio.run(main())
+```
+
+## Production Monitoring
+
+For production deployments, set up persistent MLflow tracking:
+
+```python
+import synalinks
+
+# Use a remote MLflow server
+synalinks.enable_observability(
+    tracking_uri="http://mlflow.your-domain.com:5000",
+    experiment_name="production",
+)
+```
+
+Monitor key metrics:
+
+- **Latency**: Time per request
+- **Token Usage**: Cost per request
+- **Error Rate**: Failed requests
+- **Quality Scores**: If using LMAsJudge or similar
+
+## Key Takeaways
+
+- **MLflow Integration**: Synalinks uses MLflow for comprehensive tracing
+  and metrics. All traces are automatically captured.
+
+- **enable_observability()**: Call this at startup with your MLflow server
+  URI and experiment name.
+
+- **Trace Hierarchy**: Traces show the full execution path from program
+  to individual LLM calls.
+
+- **Debugging Tools**: Use `program.summary()`, `plot_program()`, and
+  `trainable_variables` for inspection.
+
+- **Logging Levels**: Control verbosity with `enable_logging()` - use
+  DEBUG for development, WARNING for production.
+
+- **Production Ready**: Point to a remote MLflow server for production
+  monitoring and alerting.
+
+## API References
+
+- [enable_observability](https://synalinks.github.io/synalinks/Synalinks%20API/Observability%20API/)
+- [enable_logging](https://synalinks.github.io/synalinks/Synalinks%20API/Observability%20API/)
+- [plot_program](https://synalinks.github.io/synalinks/Synalinks%20API/Utils%20API/)
+- [Program.summary](https://synalinks.github.io/synalinks/Synalinks%20API/Programs%20API/The%20Program%20class/)
 """
 
 import asyncio
@@ -54,8 +308,9 @@ from dotenv import load_dotenv
 
 import synalinks
 
+
 # =============================================================================
-# STEP 1: Define Data Models
+# Data Models
 # =============================================================================
 
 
@@ -73,7 +328,7 @@ class Answer(synalinks.DataModel):
 
 
 # =============================================================================
-# STEP 2: Demonstrate Observability Features
+# Main Demonstration
 # =============================================================================
 
 
@@ -82,7 +337,7 @@ async def main():
     synalinks.clear_session()
 
     # -------------------------------------------------------------------------
-    # 2.1: Enable Observability
+    # Enable Observability
     # -------------------------------------------------------------------------
     print("=" * 60)
     print("Step 1: Enable Observability")
@@ -99,17 +354,17 @@ async def main():
     print("  mlflow ui --port 5000")
 
     # -------------------------------------------------------------------------
-    # 2.2: Enable Logging
+    # Enable Logging
     # -------------------------------------------------------------------------
     print("\n" + "=" * 60)
     print("Step 2: Enable Logging")
     print("=" * 60)
 
-    synalinks.enable_logging(level="INFO")
+    synalinks.enable_logging(log_level="info")
     print("\nLogging enabled at INFO level")
 
     # -------------------------------------------------------------------------
-    # 2.3: Create and Run Program
+    # Create and Run Program
     # -------------------------------------------------------------------------
     print("\n" + "=" * 60)
     print("Step 3: Create and Run Program (traces will be recorded)")
@@ -134,7 +389,7 @@ async def main():
     print(f"\nAnswer: {result['answer'][:100]}...")
 
     # -------------------------------------------------------------------------
-    # 2.4: Program Summary
+    # Program Summary
     # -------------------------------------------------------------------------
     print("\n" + "=" * 60)
     print("Step 4: Program Summary")
@@ -143,7 +398,7 @@ async def main():
     program.summary()
 
     # -------------------------------------------------------------------------
-    # 2.5: Inspect Trainable Variables
+    # Inspect Trainable Variables
     # -------------------------------------------------------------------------
     print("\n" + "=" * 60)
     print("Step 5: Inspect Trainable Variables")
@@ -154,7 +409,7 @@ async def main():
         print(f"  - {var.name}")
 
     # -------------------------------------------------------------------------
-    # 2.6: Visualize Program
+    # Visualize Program
     # -------------------------------------------------------------------------
     print("\n" + "=" * 60)
     print("Step 6: Visualize Program")
@@ -165,13 +420,13 @@ async def main():
         to_folder="guides",
         show_module_names=True,
         show_trainable=True,
-        show_schemas=True,
+        show_schemas=False,
     )
 
     print("\nProgram visualization saved to guides/traced_qa.png")
 
     # -------------------------------------------------------------------------
-    # 2.7: Multiple Traced Calls
+    # Multiple Traced Calls
     # -------------------------------------------------------------------------
     print("\n" + "=" * 60)
     print("Step 7: Multiple Traced Calls")
@@ -189,7 +444,7 @@ async def main():
         print(f"  Q: {q[:30]}... -> A: {result['answer'][:40]}...")
 
     # -------------------------------------------------------------------------
-    # 2.8: Tracing Structure
+    # Tracing Structure
     # -------------------------------------------------------------------------
     print("\n" + "=" * 60)
     print("Tracing Structure")
@@ -207,23 +462,6 @@ Program Call
 │       ├── Response (full text)
 │       └── Tokens: input/output count
 └── Output Data
-"""
-    )
-
-    # -------------------------------------------------------------------------
-    # Key Takeaways
-    # -------------------------------------------------------------------------
-    print("=" * 60)
-    print("Key Takeaways")
-    print("=" * 60)
-    print(
-        """
-1. ENABLE_OBSERVABILITY: Start tracing to MLflow
-2. MLFLOW UI: View traces at http://localhost:5000
-3. ENABLE_LOGGING: Control log verbosity
-4. SUMMARY: Print program structure
-5. PLOT_PROGRAM: Visualize computation graph
-6. TRAINABLE_VARIABLES: Inspect learned state
 """
     )
 

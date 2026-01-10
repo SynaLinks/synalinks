@@ -6,20 +6,30 @@ don't update the weights of the model, but optimize the prompts by automatically
 picking the best examples or generate instructions in order to help the program to
 perform better on your dataset.
 
-For this lesson we are going to work on GSM8k a well known dataset of grade school
-math word problems. Nowadays, most (all?) public datasets have been leaked, meaning
-that their test set have been included in the LM trainset. This basically means
-that the baseline score won't give you much information about the reasoning abilities
-of the underlying language model (but more about its capability to remember),
-however it is still interesing to have it as a baseline to evaluate the progress
-of the programs training and the neuro-symbolic methods used or if you use small
-models like here.
-
 In production settings, this means that you can use smaller and more cost-effective
 models from your preferred provider while enhancing their accuracy with Synalinks.
-This is also a good way to fight model obsolescence, as many proprietary providers
-degrade the performance of their models over time to make people switch to newer/more
-costly models.
+
+## Training Flow
+
+```mermaid
+graph TB
+    subgraph Data
+        A[x_train, y_train]
+        B[x_test, y_test]
+    end
+    subgraph Training
+        C[program.compile] --> D[program.fit]
+        D --> E{val_reward improved?}
+        E -->|Yes| F[Save Checkpoint]
+        E -->|No| D
+    end
+    subgraph Evaluation
+        G[program.evaluate]
+    end
+    A --> D
+    B --> G
+    F --> G
+```
 
 ## Loading a Dataset
 
@@ -72,6 +82,14 @@ program.load("checkpoint.program.json")
 ## Program Visualization
 
 ![gsm8k_baseline](../assets/examples/gsm8k_baseline.png)
+
+## API References
+
+- [Program Training API](https://synalinks.github.io/synalinks/Synalinks%20API/Programs%20API/Program%20training%20API/)
+- [Rewards](https://synalinks.github.io/synalinks/Synalinks%20API/Rewards/)
+- [Optimizers](https://synalinks.github.io/synalinks/Synalinks%20API/Optimizers%20API/)
+- [Callbacks](https://synalinks.github.io/synalinks/Synalinks%20API/Callbacks%20API/)
+- [Built-in Datasets (GSM8K)](https://synalinks.github.io/synalinks/Synalinks%20API/Built-in%20Datasets/GSM8K/)
 """
 
 import asyncio

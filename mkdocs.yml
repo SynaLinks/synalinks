@@ -59,12 +59,8 @@ nav:
     - guides/Knowledge Base.md
     - guides/Training.md
     - guides/Observability.md
-    - guides/Guard Patterns.md
-  - Modules: Synalinks API/Modules API/index.md
-  - FAQ.md
-  - CheatSheet.md
-  - Differences with Keras.md
-  - Differences with DSPy.md
+    - guides/Input Guard.md
+    - guides/Output Guard.md
   - Code Examples:
     - Code Examples/First Steps.md
     - Code Examples/Functional API.md
@@ -85,6 +81,12 @@ nav:
     - Code Examples/Knowledge Extraction and Storage.md
     - Code Examples/Document RAG.md
     - Code Examples/RAG Agent.md
+    - Code Examples/MCP Agent.md
+  - Modules: Synalinks API/Modules API/index.md
+  - FAQ.md
+  - CheatSheet.md
+  - Differences with Keras.md
+  - Differences with DSPy.md
   - Synalinks API:
     - Synalinks API/Language Models API.md
     - Synalinks API/Embedding Models API.md
@@ -116,6 +118,7 @@ nav:
         - Synalinks API/Modules API/Core Modules/Decision module.md
         - Synalinks API/Modules API/Core Modules/Action module.md
         - Synalinks API/Modules API/Core Modules/Branch module.md
+        - Synalinks API/Modules API/Core Modules/Tool module.md
       - Agents Modules:
         - Synalinks API/Modules API/Agents Modules/index.md
         - Synalinks API/Modules API/Agents Modules/FunctionCallingAgent module.md

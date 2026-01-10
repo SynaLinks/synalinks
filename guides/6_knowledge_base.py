@@ -1,76 +1,341 @@
 """
-# Guide 6: Knowledge Base
+# Knowledge Base
 
-Synalinks provides a powerful knowledge base built on DuckDB for storing
-and retrieving structured data with full-text and vector search capabilities.
+A **Knowledge Base** in Synalinks is a structured storage system that enables
+your LM applications to retrieve and reason over external data. Unlike simple
+prompt injection, a Knowledge Base provides semantic search capabilities,
+automatic chunking, and efficient retrieval - the foundation for building
+Retrieval-Augmented Generation (RAG) systems.
+
+## Why Knowledge Bases Matter
+
+Language models have a knowledge cutoff and limited context windows. A
+Knowledge Base solves both problems:
+
+```mermaid
+graph LR
+    subgraph Without Knowledge Base
+        A[Query] --> B[LLM]
+        B --> C[Hallucination Risk]
+    end
+    subgraph With Knowledge Base
+        D[Query] --> E[Retrieve Relevant Docs]
+        E --> F[LLM + Context]
+        F --> G[Grounded Answer]
+    end
+```
+
+Knowledge Bases provide:
+
+1. **Grounded Responses**: Answers based on actual data, not hallucinations
+2. **Unlimited Knowledge**: Store documents beyond context limits
+3. **Up-to-Date Information**: Add new data without retraining
+4. **Source Attribution**: Track where answers come from
+
+## Architecture
+
+Synalinks Knowledge Base is built on DuckDB, providing:
+
+```mermaid
+graph TD
+    A[DataModels] --> B[KnowledgeBase]
+    B --> C[DuckDB Storage]
+    B --> D[Full-Text Index]
+    B --> E[Vector Index]
+    F[Search Query] --> G{Search Type}
+    G -->|fulltext| D
+    G -->|similarity| E
+    G -->|hybrid| H[Combine Both]
+    D --> I[Results]
+    E --> I
+    H --> I
+```
 
 ## Creating a Knowledge Base
 
-```python
-class Document(synalinks.DataModel):
-    id: str = synalinks.Field(description="Document ID")
-    title: str = synalinks.Field(description="Title")
-    content: str = synalinks.Field(description="Content")
+Define DataModels for your documents, then create the Knowledge Base:
 
+```python
+import synalinks
+
+class Document(synalinks.DataModel):
+    \"\"\"A document in the knowledge base.\"\"\"
+    id: str = synalinks.Field(description="Unique document ID")
+    title: str = synalinks.Field(description="Document title")
+    content: str = synalinks.Field(description="Document content")
+
+# Create the knowledge base
 kb = synalinks.KnowledgeBase(
-    uri="duckdb://my_database.db",
-    data_models=[Document],
-    embedding_model=embedding_model,
-    metric="cosine",
-    wipe_on_start=False,
+    uri="duckdb://my_database.db",    # Storage location
+    data_models=[Document],            # What types to store
+    embedding_model=embedding_model,   # For vector search (optional)
+    metric="cosine",                   # Similarity metric
+    wipe_on_start=False,               # Preserve existing data
 )
 ```
 
+### Key Parameters
+
+| Parameter | Description |
+|-----------|-------------|
+| `uri` | Database connection string (e.g., `duckdb://path.db`) |
+| `data_models` | List of DataModel classes to store |
+| `embedding_model` | EmbeddingModel for vector search (optional) |
+| `metric` | Similarity metric: `cosine`, `l2`, or `ip` |
+| `wipe_on_start` | Clear database on initialization |
+
 ## Search Methods
 
-| Method | Description |
-|--------|-------------|
-| `fulltext_search` | BM25-based text search |
-| `similarity_search` | Vector similarity search |
-| `hybrid_search` | Combines full-text and vector search |
+### Full-Text Search (BM25)
+
+Uses the BM25 algorithm for traditional keyword-based search:
+
+```python
+results = await kb.fulltext_search(
+    "machine learning neural networks",
+    data_models=[Document.to_symbolic_data_model()],
+    k=10,           # Number of results
+    threshold=None, # Minimum score (optional)
+)
+```
+
+Best for:
+
+- Exact keyword matching
+- When users search with specific terms
+- Quick, lightweight search
+
+### Similarity Search (Vector)
+
+Uses embedding vectors for semantic search:
+
+```python
+results = await kb.similarity_search(
+    "how do computers learn",  # Semantically matches "machine learning"
+    data_models=[Document.to_symbolic_data_model()],
+    k=10,
+    threshold=0.7,  # Minimum similarity score
+)
+```
+
+Best for:
+
+- Semantic meaning matching
+- Natural language queries
+- Finding conceptually related content
+
+### Hybrid Search
+
+Combines both methods for best results:
+
+```python
+results = await kb.hybrid_search(
+    "machine learning basics",
+    data_models=[Document.to_symbolic_data_model()],
+    k=10,
+    bm25_weight=0.5,    # Weight for BM25 scores
+    vector_weight=0.5,  # Weight for vector scores
+)
+```
+
+Best for:
+
+- Production RAG systems
+- When you need both exact and semantic matching
+- Complex queries that benefit from both approaches
+
+## CRUD Operations
+
+### Create/Update
+
+The `update` method performs upsert (insert or update). The first field in
+your DataModel is used as the primary key:
+
+```python
+doc = Document(
+    id="doc1",
+    title="Introduction to AI",
+    content="Artificial intelligence is...",
+)
+
+await kb.update(doc.to_json_data_model())
+```
+
+### Read by ID
+
+```python
+result = await kb.get(
+    "doc1",  # Primary key value
+    data_models=[Document.to_symbolic_data_model()],
+)
+```
+
+### List All
+
+```python
+all_docs = await kb.getall(
+    Document.to_symbolic_data_model(),
+    limit=100,
+    offset=0,
+)
+```
+
+### Delete
+
+```python
+await kb.delete(
+    "doc1",
+    data_models=[Document.to_symbolic_data_model()],
+)
+```
+
+### Raw SQL
+
+For complex queries, use raw SQL:
+
+```python
+results = await kb.query(
+    "SELECT id, title FROM Document WHERE title LIKE ?",
+    params=["%Learning%"],
+)
+```
 
 ## Knowledge Modules
 
-### UpdateKnowledge
-
-Store data models in the knowledge base.
-
-```python
-stored = await synalinks.UpdateKnowledge(
-    knowledge_base=knowledge_base,
-)(extracted_data)
-```
+Synalinks provides modules for integrating Knowledge Bases into programs:
 
 ### RetrieveKnowledge
 
-Retrieve relevant records using LM-generated search queries.
+Retrieves relevant documents using LM-generated search queries:
+
+```mermaid
+graph LR
+    A[Input] --> B[Generate Query]
+    B --> C[Search KB]
+    C --> D[Context + Input]
+```
 
 ```python
-results = await synalinks.RetrieveKnowledge(
-    knowledge_base=knowledge_base,
-    language_model=language_model,
-    search_type="hybrid",
+retrieved = await synalinks.RetrieveKnowledge(
+    knowledge_base=kb,
+    language_model=lm,
+    search_type="hybrid",  # fulltext, similarity, or hybrid
     k=10,
-    return_inputs=True,
-)(query_input)
+    return_inputs=True,    # Include original input in output
+)(inputs)
+```
+
+### UpdateKnowledge
+
+Stores DataModels in the Knowledge Base:
+
+```python
+stored = await synalinks.UpdateKnowledge(
+    knowledge_base=kb,
+)(extracted_data)
 ```
 
 ### EmbedKnowledge
 
-Generate embeddings for data models to enable similarity search.
+Generates embeddings for DataModels:
 
 ```python
 embedded = await synalinks.EmbedKnowledge(
     embedding_model=embedding_model,
-    in_mask=["content"],
+    in_mask=["content"],  # Which fields to embed
 )(inputs)
 ```
 
-## Running the Example
+## Building a RAG Pipeline
 
-```bash
-uv run python guides/6_knowledge_base.py
+A complete RAG system combines retrieval with generation:
+
+```mermaid
+graph LR
+    A[Query] --> B[RetrieveKnowledge]
+    B --> C[Context + Query]
+    C --> D[Generator]
+    D --> E[Grounded Answer]
 ```
+
+```python
+import asyncio
+from dotenv import load_dotenv
+import synalinks
+
+class Query(synalinks.DataModel):
+    query: str = synalinks.Field(description="User question")
+
+class Answer(synalinks.DataModel):
+    answer: str = synalinks.Field(description="Answer based on context")
+
+async def main():
+    load_dotenv()
+    synalinks.clear_session()
+
+    lm = synalinks.LanguageModel(model="openai/gpt-4.1-mini")
+
+    # Assume kb is already populated
+    kb = synalinks.KnowledgeBase(
+        uri="duckdb://knowledge.db",
+        data_models=[Document],
+    )
+
+    inputs = synalinks.Input(data_model=Query)
+
+    # Retrieve relevant documents
+    retrieved = await synalinks.RetrieveKnowledge(
+        knowledge_base=kb,
+        language_model=lm,
+        search_type="fulltext",
+        k=5,
+        return_inputs=True,
+    )(inputs)
+
+    # Generate answer using retrieved context
+    outputs = await synalinks.Generator(
+        data_model=Answer,
+        language_model=lm,
+    )(retrieved)
+
+    rag = synalinks.Program(
+        inputs=inputs,
+        outputs=outputs,
+        name="rag_pipeline",
+    )
+
+    result = await rag(Query(query="What is machine learning?"))
+    print(result["answer"])
+
+if __name__ == "__main__":
+    asyncio.run(main())
+```
+
+## Key Takeaways
+
+- **DuckDB Backend**: Fast, embedded database with full-text and vector search
+  capabilities. No external services required.
+
+- **Three Search Types**: Full-text (BM25) for keywords, similarity for
+  semantics, hybrid for best of both.
+
+- **DataModel as Schema**: Your DataModels define the structure of stored
+  documents. The first field is the primary key.
+
+- **RetrieveKnowledge Module**: Automates query generation and retrieval for
+  RAG pipelines. Combines seamlessly with Generator.
+
+- **Upsert Semantics**: The `update` method inserts new records or updates
+  existing ones based on the primary key.
+
+- **Raw SQL Access**: For complex queries, you can use raw SQL directly.
+
+## API References
+
+- [KnowledgeBase](https://synalinks.github.io/synalinks/Synalinks%20API/Knowledge%20Base%20API/)
+- [RetrieveKnowledge](https://synalinks.github.io/synalinks/Synalinks%20API/Modules%20API/Knowledge%20Base%20Modules/RetrieveKnowledge%20module/)
+- [UpdateKnowledge](https://synalinks.github.io/synalinks/Synalinks%20API/Modules%20API/Knowledge%20Base%20Modules/UpdateKnowledge%20module/)
+- [EmbedKnowledge](https://synalinks.github.io/synalinks/Synalinks%20API/Modules%20API/Knowledge%20Base%20Modules/EmbedKnowledge%20module/)
 """
 
 import asyncio
@@ -80,8 +345,9 @@ from dotenv import load_dotenv
 
 import synalinks
 
+
 # =============================================================================
-# STEP 1: Define Data Models
+# Data Models
 # =============================================================================
 
 
@@ -106,7 +372,7 @@ class Answer(synalinks.DataModel):
 
 
 # =============================================================================
-# STEP 2: Demonstrate Knowledge Base Features
+# Main Demonstration
 # =============================================================================
 
 
@@ -120,13 +386,12 @@ async def main():
     )
 
     # -------------------------------------------------------------------------
-    # 2.1: Create Knowledge Base (Full-Text Only)
+    # Create Knowledge Base
     # -------------------------------------------------------------------------
     print("=" * 60)
     print("Example 1: Knowledge Base with Full-Text Search")
     print("=" * 60)
 
-    # Remove old database if exists
     db_path = "guides_knowledge.db"
     if os.path.exists(db_path):
         os.remove(db_path)
@@ -141,7 +406,7 @@ async def main():
     )
 
     # -------------------------------------------------------------------------
-    # 2.2: Store Documents
+    # Store Documents
     # -------------------------------------------------------------------------
     print("\nStoring documents...")
 
@@ -173,7 +438,7 @@ async def main():
         print(f"  Stored: {doc.title}")
 
     # -------------------------------------------------------------------------
-    # 2.3: Full-Text Search
+    # Full-Text Search
     # -------------------------------------------------------------------------
     print("\n" + "=" * 60)
     print("Example 2: Full-Text Search")
@@ -192,7 +457,7 @@ async def main():
         print(f"  - {r['title']}: {r['content'][:50]}...")
 
     # -------------------------------------------------------------------------
-    # 2.4: Get by ID
+    # Get by ID
     # -------------------------------------------------------------------------
     print("\n" + "=" * 60)
     print("Example 3: Get by ID")
@@ -208,7 +473,7 @@ async def main():
     print(f"  Content: {result['content']}")
 
     # -------------------------------------------------------------------------
-    # 2.5: Get All Records
+    # Get All Records
     # -------------------------------------------------------------------------
     print("\n" + "=" * 60)
     print("Example 4: Get All Records")
@@ -225,7 +490,7 @@ async def main():
         print(f"  - {doc['id']}: {doc['title']}")
 
     # -------------------------------------------------------------------------
-    # 2.6: RAG Pipeline with RetrieveKnowledge
+    # RAG Pipeline
     # -------------------------------------------------------------------------
     print("\n" + "=" * 60)
     print("Example 5: RAG Pipeline")
@@ -235,7 +500,6 @@ async def main():
 
     inputs = synalinks.Input(data_model=Query)
 
-    # Retrieve relevant documents
     retrieved = await synalinks.RetrieveKnowledge(
         knowledge_base=kb,
         language_model=lm,
@@ -244,7 +508,6 @@ async def main():
         return_inputs=True,
     )(inputs)
 
-    # Generate answer based on context
     outputs = await synalinks.Generator(
         data_model=Answer,
         language_model=lm,
@@ -265,7 +528,7 @@ async def main():
     print(f"Answer: {result['answer']}")
 
     # -------------------------------------------------------------------------
-    # 2.7: Raw SQL Query
+    # Raw SQL Query
     # -------------------------------------------------------------------------
     print("\n" + "=" * 60)
     print("Example 6: Raw SQL Query")
@@ -283,23 +546,6 @@ async def main():
     # Cleanup
     if os.path.exists(db_path):
         os.remove(db_path)
-
-    # -------------------------------------------------------------------------
-    # Key Takeaways
-    # -------------------------------------------------------------------------
-    print("\n" + "=" * 60)
-    print("Key Takeaways")
-    print("=" * 60)
-    print(
-        """
-1. DUCKDB: Fast embedded database for knowledge storage
-2. FULL-TEXT SEARCH: BM25-based search on text fields
-3. HYBRID SEARCH: Combine full-text and vector search
-4. RETRIEVEKNOWLEDGE: Module for RAG pipelines
-5. RAW SQL: Execute custom queries when needed
-6. FIRST FIELD: Used as primary key for upserts
-"""
-    )
 
 
 if __name__ == "__main__":

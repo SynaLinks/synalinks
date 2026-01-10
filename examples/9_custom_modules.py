@@ -31,6 +31,18 @@ the current chain of thinking only if it is above the given threshold.
 This mechanism will allow the system to discard bad thinking to resume
 at the previsous step. Additionally we will add a stop condition.
 
+```mermaid
+graph TD
+    A[Input] --> B[Think]
+    B --> C[Critique]
+    C --> D{Score >= Threshold?}
+    D -->|Yes| E[Add to Chain]
+    D -->|No| B
+    E --> F{Stop Condition?}
+    F -->|No| B
+    F -->|Yes| G[Output]
+```
+
 This algorithm a simplified version of the popular `TreeOfThought` that
 instead of being a tree strucutre, is only a sequential chain of thinking.
 
@@ -107,6 +119,14 @@ implement serialization and deserialization methods (`get_config()` and
 ## Program Visualization
 
 ![backtracking_of_thought](../assets/examples/backtracking_of_thought.png)
+
+## API References
+
+- [Module (Base Class)](https://synalinks.github.io/synalinks/Synalinks%20API/Modules%20API/Base%20Module%20class/)
+- [ChainOfThought](https://synalinks.github.io/synalinks/Synalinks%20API/Modules%20API/Test%20Time%20Compute%20Modules/ChainOfThought%20module/)
+- [SelfCritique](https://synalinks.github.io/synalinks/Synalinks%20API/Modules%20API/Test%20Time%20Compute%20Modules/SelfCritique%20module/)
+- [Generator](https://synalinks.github.io/synalinks/Synalinks%20API/Modules%20API/Core%20Modules/Generator%20module/)
+- [Program Saving API](https://synalinks.github.io/synalinks/Synalinks%20API/Programs%20API/Program%20Saving%20API/Program%20saving%20and%20loading/)
 """
 
 import asyncio

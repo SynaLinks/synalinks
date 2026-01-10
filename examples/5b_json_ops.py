@@ -1,5 +1,5 @@
 """
-# Lesson 5b: JSON Operations
+# JSON Operations
 
 In Lesson 5a, you learned about data model operators (`+`, `&`, `|`, `^`, `~`).
 This lesson covers **JSON operations** - functions for transforming, filtering,
@@ -38,21 +38,80 @@ and reshaping data models.
 
 ## Why Use These Operations?
 
+```mermaid
+graph LR
+    subgraph Before
+        A[thinking: ...<br/>answer: 42]
+    end
+    subgraph in_mask
+        B[answer: 42]
+    end
+    A -->|in_mask| B
+```
+
 1. **Data Preparation**: Transform data before passing to next module
 2. **Field Selection**: Keep only relevant fields for downstream processing
 3. **Conflict Resolution**: Rename fields to avoid collisions when merging
 4. **Aggregation**: Combine multiple similar outputs into lists
 
-## Running the Example
+## Complete Example: Filtering Fields
 
-```bash
-uv run python examples/5b_json_ops.py
+```python
+import asyncio
+from dotenv import load_dotenv
+import synalinks
+
+class Query(synalinks.DataModel):
+    query: str = synalinks.Field(description="The user query")
+
+class AnswerWithThinking(synalinks.DataModel):
+    thinking: str = synalinks.Field(description="Your step by step thinking")
+    answer: str = synalinks.Field(description="The correct answer")
+
+async def main():
+    load_dotenv()
+    language_model = synalinks.LanguageModel(model="openai/gpt-4.1")
+
+    inputs = synalinks.Input(data_model=Query)
+    x = await synalinks.Generator(
+        data_model=AnswerWithThinking,
+        language_model=language_model,
+    )(inputs)
+
+    # Keep only the "answer" field, discard "thinking"
+    outputs = await synalinks.ops.in_mask(x, mask=["answer"])
+
+    program = synalinks.Program(inputs=inputs, outputs=outputs)
+
+    result = await program(Query(query="What is 2 + 2?"))
+    print(f"Fields: {list(result.keys())}")  # Only ['answer']
+
+asyncio.run(main())
 ```
+
+### Key Takeaways
+
+- **in_mask**: Keep only specified fields from a data model. Useful for
+    filtering out intermediate fields like "thinking".
+- **out_mask**: Remove specified fields, keeping all others.
+- **prefix/suffix**: Add constant text before/after field values.
+- **factorize**: Split a data model into multiple single-field data models
+    for independent processing.
+- **Training Integration**: Use masks to evaluate only relevant fields
+    when computing rewards during training.
 
 ## Program Visualizations
 
 ![in_mask_example](../assets/examples/in_mask_example.png)
 ![factorize_example](../assets/examples/factorize_example.png)
+
+## API References
+
+- [DataModel](https://synalinks.github.io/synalinks/Synalinks%20API/Data%20Models%20API/The%20DataModel%20class/)
+- [LanguageModel](https://synalinks.github.io/synalinks/Synalinks%20API/Language%20Models%20API/)
+- [Generator](https://synalinks.github.io/synalinks/Synalinks%20API/Modules%20API/Core%20Modules/Generator%20module/)
+- [JSON Ops (in_mask, out_mask, prefix, suffix, factorize)](https://synalinks.github.io/synalinks/Synalinks%20API/Ops%20API/JSON%20Ops/)
+- [Masking Modules](https://synalinks.github.io/synalinks/Synalinks%20API/Modules%20API/Masking%20Modules/)
 """
 
 import asyncio

@@ -1,5 +1,5 @@
 """
-# Lesson 0: First Steps with Synalinks
+# First Steps with Synalinks
 
 Welcome to Synalinks! This lesson covers the essential concepts you need
 to understand before building AI applications.
@@ -19,8 +19,17 @@ uv pip install synalinks
 ### 1. No Traditional Prompting
 
 In Synalinks, you don't write prompts manually. Instead, you define:
+
 - **Input Data Models**: What data goes into your program
 - **Output Data Models**: What data comes out
+
+```mermaid
+graph LR
+    A[Input DataModel] --> B[Synalinks]
+    B --> C[Auto-Generated Prompt]
+    C --> D[LLM]
+    D --> E[Output DataModel]
+```
 
 The framework automatically constructs prompts from your data model definitions.
 
@@ -53,11 +62,74 @@ module naming:
 synalinks.clear_session()
 ```
 
-## Running the Example
+## Building a Simple Program
 
-```bash
-uv run python examples/0_first_steps.py
+Here's a complete example that creates a question-answering program:
+
+```python
+import asyncio
+from dotenv import load_dotenv
+import synalinks
+
+# Define input data model
+class Query(synalinks.DataModel):
+    query: str = synalinks.Field(description="The user query to answer")
+
+# Define output data model with chain-of-thought
+class AnswerWithThinking(synalinks.DataModel):
+    thinking: str = synalinks.Field(description="Your step by step thinking process")
+    answer: str = synalinks.Field(description="The correct answer based on your thinking")
+
+async def main():
+    load_dotenv()
+    synalinks.clear_session()
+
+    # Initialize a language model
+    language_model = synalinks.LanguageModel(model="openai/gpt-4.1-mini")
+
+    # Build the program using the Functional API
+    inputs = synalinks.Input(data_model=Query)
+    outputs = await synalinks.Generator(
+        data_model=AnswerWithThinking,
+        language_model=language_model,
+    )(inputs)
+
+    program = synalinks.Program(
+        inputs=inputs,
+        outputs=outputs,
+        name="chain_of_thought_qa",
+    )
+
+    # Run the program
+    result = await program(Query(query="What is 2 + 2?"))
+    print(f"Thinking: {result['thinking']}")
+    print(f"Answer: {result['answer']}")
+
+asyncio.run(main())
 ```
+
+By adding a `thinking` field to our output model, we instruct the LLM to show
+its reasoning - this is called "Chain of Thought" prompting, achieved simply
+by defining the output structure!
+
+### Key Takeaways
+
+- **No Prompt Engineering**: Define data models instead of writing prompts -
+    the framework generates prompts automatically from your schemas.
+- **Structured Output**: All LLM responses are guaranteed to match your
+    data model specification through constrained generation.
+- **Field Descriptions**: Use descriptive `Field` annotations to guide the
+    LLM on what each field should contain.
+- **Chain of Thought**: Add a "thinking" field to your output model to get
+    step-by-step reasoning from the LLM.
+
+## API References
+
+- [DataModel](https://synalinks.github.io/synalinks/Synalinks%20API/Data%20Models%20API/The%20DataModel%20class/)
+- [LanguageModel](https://synalinks.github.io/synalinks/Synalinks%20API/Language%20Models%20API/)
+- [Generator](https://synalinks.github.io/synalinks/Synalinks%20API/Modules%20API/Core%20Modules/Generator%20module/)
+- [Input](https://synalinks.github.io/synalinks/Synalinks%20API/Modules%20API/Core%20Modules/Input%20module/)
+- [Program](https://synalinks.github.io/synalinks/Synalinks%20API/Programs%20API/The%20Program%20class/)
 """
 
 import asyncio

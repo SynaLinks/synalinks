@@ -4,12 +4,13 @@
 ## Understanding Rewards
 
 `Reward`s are an essential part of reinforcement learning frameworks.
-They are typically float values (usually between 0.0 and 1.0, but they can be
-negative also) that guide the process into making more efficient decisions or
+They are scalar values (between 0.0 and 1.0 for synalinks) 
+that guide the process into making more efficient decisions or
 predictions. During training, the goal is to maximize the reward function.
 The reward gives the system an indication of how well it performed for that task.
 
 All rewards consist of a function or program that takes two inputs:
+
 - `y_pred`: The prediction of the program.
 - `y_true`: The ground truth/target value provided by the training data.
 
@@ -30,6 +31,19 @@ In that case, you have to filter out or filter in your predictions and ground
 truth using `out_mask` or `in_mask` list parameter.
 
 ## Understanding Optimizers
+
+```mermaid
+graph LR
+    subgraph Training Loop
+        A[Input] --> B[Program]
+        B --> C[y_pred]
+        D[y_true] --> E[Reward]
+        C --> E
+        E --> F[Optimizer]
+        F --> |update| B
+    end
+    E --> G[Metrics]
+```
 
 Optimizers are systems that handle the update of the module's state in order to
 make them more performant. They are in charge of backpropagating the rewards
@@ -58,6 +72,13 @@ program.compile(
 - **Optimizers**: Update the module's state to improve performance.
 - **Filtering Outputs**: Use `out_mask` or `in_mask` to evaluate only relevant
     fields of complex JSON outputs.
+
+## API References
+
+- [Rewards](https://synalinks.github.io/synalinks/Synalinks%20API/Rewards/)
+- [Metrics](https://synalinks.github.io/synalinks/Synalinks%20API/Metrics/)
+- [Optimizers](https://synalinks.github.io/synalinks/Synalinks%20API/Optimizers%20API/)
+- [Program Training API](https://synalinks.github.io/synalinks/Synalinks%20API/Programs%20API/Program%20training%20API/)
 """
 
 import asyncio

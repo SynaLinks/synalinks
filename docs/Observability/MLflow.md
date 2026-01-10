@@ -49,16 +49,22 @@ synalinks.enable_observability(
 )
 
 
+class Question(synalinks.DataModel):
+    question: str = synalinks.Field(description="The user's question")
+
+
 class Answer(synalinks.DataModel):
-    answer: str
+    answer: str = synalinks.Field(description="The answer to the question")
 
 
 async def main():
+    language_model = synalinks.LanguageModel(model="openai/gpt-4.1")
+
     # Create a simple question-answering program
-    inputs = synalinks.Input(data_model=synalinks.String)
-    outputs = synalinks.Generator(
+    inputs = synalinks.Input(data_model=Question)
+    outputs = await synalinks.Generator(
         data_model=Answer,
-        description="Answer the user's question",
+        language_model=language_model,
     )(inputs)
 
     program = synalinks.Program(
@@ -69,9 +75,9 @@ async def main():
     )
 
     # Run the program - traces will be sent to MLflow
-    result = await program(synalinks.String(text="What is the capital of France?"))
+    result = await program(Question(question="What is the capital of France?"))
     if result:
-      print(result.prettify_json())
+        print(result.prettify_json())
 
 if __name__ == "__main__":
     asyncio.run(main())

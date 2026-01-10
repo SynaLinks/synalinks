@@ -1,5 +1,5 @@
 """
-# Lesson 1c: The Sequential API
+# The Sequential API
 
 You've learned two ways to build programs: the Functional API (Lesson 1a) and
 Subclassing (Lesson 1b). Now, let's explore the simplest approach: the
@@ -41,19 +41,69 @@ program = synalinks.Sequential(
 ```
 
 Think of it like a recipe:
+
 1. Start with ingredients (Input)
 2. Apply steps in order (Modules)
 3. Get the final dish (Output)
 
-## Running the Example
+## Complete Example
 
-```bash
-uv run python examples/1c_sequential.py
+```python
+import asyncio
+from dotenv import load_dotenv
+import synalinks
+
+class Query(synalinks.DataModel):
+    query: str = synalinks.Field(description="The user query")
+
+class AnswerWithThinking(synalinks.DataModel):
+    thinking: str = synalinks.Field(description="Your step by step thinking")
+    answer: str = synalinks.Field(description="The correct answer")
+
+async def main():
+    load_dotenv()
+    language_model = synalinks.LanguageModel(model="openai/gpt-4.1")
+
+    # Create a sequential program - just a list of modules!
+    program = synalinks.Sequential(
+        [
+            synalinks.Input(data_model=Query),
+            synalinks.Generator(
+                data_model=AnswerWithThinking,
+                language_model=language_model,
+            ),
+        ],
+        name="chain_of_thought",
+    )
+
+    result = await program(Query(query="What is the capital of France?"))
+    print(f"Answer: {result['answer']}")
+
+asyncio.run(main())
 ```
+
+### Key Takeaways
+
+- **Sequential API**: The simplest way to build programs - just provide a
+    list of modules that execute in order.
+- **Linear Pipelines**: Best for simple data flows with no branching or
+    conditional logic.
+- **Minimal Boilerplate**: No need to manually connect inputs/outputs -
+    Sequential handles the wiring automatically.
+- **Quick Prototyping**: Great for testing ideas quickly before moving to
+    more complex architectures.
 
 ## Program Visualization
 
 ![chain_of_thought](../assets/examples/chain_of_thought.png)
+
+## API References
+
+- [DataModel](https://synalinks.github.io/synalinks/Synalinks%20API/Data%20Models%20API/The%20DataModel%20class/)
+- [LanguageModel](https://synalinks.github.io/synalinks/Synalinks%20API/Language%20Models%20API/)
+- [Generator](https://synalinks.github.io/synalinks/Synalinks%20API/Modules%20API/Core%20Modules/Generator%20module/)
+- [Input](https://synalinks.github.io/synalinks/Synalinks%20API/Modules%20API/Core%20Modules/Input%20module/)
+- [Sequential](https://synalinks.github.io/synalinks/Synalinks%20API/Programs%20API/The%20Sequential%20class/)
 """
 
 import asyncio

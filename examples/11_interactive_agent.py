@@ -1,5 +1,5 @@
 """
-# Interactive Agent
+# Interactive Agents
 
 Interactive agents represent a significant advancement in AI system design,
 enabling dynamic interactions with users through iterative processing and
@@ -15,12 +15,28 @@ autonomous agents, interactive agents require user validation at each step,
 ensuring accuracy and relevance in their responses.
 
 The architecture of an interactive agent follows several core stages:
+
 - The input stage captures the user's query or command.
 - The processing stage uses predefined tools and logic to process the input
   and generate a response.
 - The validation stage requires user input to validate the tool calls and
   their arguments.
 - The output stage returns the result to the user.
+
+```mermaid
+sequenceDiagram
+    participant User
+    participant Agent
+    participant Tool
+
+    User->>Agent: Query
+    Agent->>User: Propose tool call
+    User->>Agent: Validate/Edit args
+    Agent->>Tool: Execute
+    Tool-->>Agent: Result
+    Agent->>User: Response
+    Note over User,Agent: Repeat until done
+```
 
 Interactive agents are transforming the landscape of AI by facilitating
 dynamic and iterative interactions with users.
@@ -96,6 +112,13 @@ for iteration in range(MAX_ITERATIONS):
 ## Program Visualization
 
 ![interactive_math_agent](../assets/examples/interactive_math_agent.png)
+
+## API References
+
+- [FunctionCallingAgent](https://synalinks.github.io/synalinks/Synalinks%20API/Modules%20API/Agents%20Modules/FunctionCallingAgent%20module/)
+- [ChatMessages (Base DataModels)](https://synalinks.github.io/synalinks/Synalinks%20API/Data%20Models%20API/The%20Base%20DataModels/)
+- [LanguageModel](https://synalinks.github.io/synalinks/Synalinks%20API/Language%20Models%20API/)
+- [Program](https://synalinks.github.io/synalinks/Synalinks%20API/Programs%20API/The%20Program%20class/)
 """
 
 import asyncio

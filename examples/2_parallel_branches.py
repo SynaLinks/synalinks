@@ -1,5 +1,5 @@
 """
-# Lesson 2: Parallel Branches
+# Parallel Branches
 
 In Lesson 1, you learned to build simple linear programs. But what if you need
 to do multiple things at once? This lesson introduces **parallel branches** -
@@ -8,6 +8,7 @@ running multiple modules simultaneously for better performance.
 ## Why Parallel Execution?
 
 Imagine you're writing an essay and need to:
+
 1. Research the topic
 2. Find relevant quotes
 3. Check for similar existing essays
@@ -52,15 +53,76 @@ program = synalinks.Program(inputs=inputs, outputs=[answer1, answer2])
 3. **Redundancy**: Run the same task multiple times for reliability
 4. **Speed**: Process independent tasks concurrently
 
-## Running the Example
+## Complete Example
 
-```bash
-uv run python examples/2_parallel_branches.py
+```python
+import asyncio
+from dotenv import load_dotenv
+import synalinks
+
+class Query(synalinks.DataModel):
+    query: str = synalinks.Field(description="The user query")
+
+class AnswerWithThinking(synalinks.DataModel):
+    thinking: str = synalinks.Field(description="Your step by step thinking")
+    answer: str = synalinks.Field(description="The correct answer")
+
+async def main():
+    load_dotenv()
+    language_model = synalinks.LanguageModel(model="openai/gpt-4.1")
+
+    inputs = synalinks.Input(data_model=Query)
+
+    # Two generators sharing the same input -> parallel execution!
+    branch_1 = await synalinks.Generator(
+        data_model=AnswerWithThinking,
+        language_model=language_model,
+        name="branch_1",
+    )(inputs)
+
+    branch_2 = await synalinks.Generator(
+        data_model=AnswerWithThinking,
+        language_model=language_model,
+        name="branch_2",
+    )(inputs)
+
+    # Program with multiple outputs (as a list)
+    program = synalinks.Program(
+        inputs=inputs,
+        outputs=[branch_1, branch_2],
+        name="parallel_branches",
+    )
+
+    # Result is a LIST of outputs
+    results = await program(Query(query="What is the meaning of life?"))
+    for i, result in enumerate(results, 1):
+        print(f"Branch {i}: {result['answer'][:50]}...")
+
+asyncio.run(main())
 ```
+
+### Key Takeaways
+
+- **Automatic Parallelism**: When multiple modules share the same input,
+    Synalinks automatically runs them in parallel.
+- **Multiple Outputs**: Pass a list of outputs to `Program` to get multiple
+    results from parallel branches.
+- **Performance**: Parallel execution significantly speeds up programs that
+    need multiple independent operations.
+- **Ensemble Methods**: Use parallel branches to get multiple perspectives
+    or answers and combine them.
 
 ## Program Visualization
 
 ![parallel_branches](../assets/examples/parallel_branches.png)
+
+## API References
+
+- [DataModel](https://synalinks.github.io/synalinks/Synalinks%20API/Data%20Models%20API/The%20DataModel%20class/)
+- [LanguageModel](https://synalinks.github.io/synalinks/Synalinks%20API/Language%20Models%20API/)
+- [Generator](https://synalinks.github.io/synalinks/Synalinks%20API/Modules%20API/Core%20Modules/Generator%20module/)
+- [Input](https://synalinks.github.io/synalinks/Synalinks%20API/Modules%20API/Core%20Modules/Input%20module/)
+- [Program](https://synalinks.github.io/synalinks/Synalinks%20API/Programs%20API/The%20Program%20class/)
 """
 
 import asyncio

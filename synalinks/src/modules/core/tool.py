@@ -266,7 +266,7 @@ class Tool(Module):
         base_schema["additionalProperties"] = True
         return base_schema
 
-    def get_input_schema(self):
+    def get_input_schema(self) -> dict:
         """Get the JSON schema for this tool's input parameters.
 
         Returns:
@@ -287,13 +287,15 @@ class Tool(Module):
         retry=retry_if_exception_type((Exception,)),
         reraise=True,
     )
-    async def call(self, training=False, **kwargs):
+    async def call(
+        self, training: bool = False, **kwargs: typing.Any
+    ) -> typing.Optional[JsonDataModel]:
         """Execute the wrapped function with the provided arguments.
 
         Args:
             training (bool): Whether in training mode. Not used by Tool but
                 included for consistency with other modules.
-            **kwargs: The arguments to pass to the wrapped function.
+            **kwargs (Any): The arguments to pass to the wrapped function.
 
         Returns:
             JsonDataModel: The result wrapped in a JsonDataModel with the output schema.
@@ -314,24 +316,26 @@ class Tool(Module):
             name=f"{self.name}_output",
         )
 
-    async def compute_output_spec(self, training=False, **kwargs):
+    async def compute_output_spec(
+        self, training: bool = False, **kwargs: typing.Any
+    ) -> SymbolicDataModel:
         """Compute the output specification for the tool.
 
         Uses the function's schema to define the output structure.
 
         Args:
             training (bool): Whether in training mode.
-            **kwargs: The input arguments.
+            **kwargs (Any): The input arguments.
 
         Returns:
-            A SymbolicDataModel with the tool's output schema.
+            SymbolicDataModel: A SymbolicDataModel with the tool's output schema.
         """
         return SymbolicDataModel(
             schema=self._build_output_schema(),
             name=self.name,
         )
 
-    def get_tool_schema(self):
+    def get_tool_schema(self) -> dict:
         """Get the JSON schema for this tool's parameters.
 
         Returns:

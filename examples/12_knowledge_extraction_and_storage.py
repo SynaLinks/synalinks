@@ -6,6 +6,23 @@ and retrieving structured knowledge. This example demonstrates extracting
 structured information from invoices and documents, storing them, and
 querying them later.
 
+```mermaid
+graph LR
+    subgraph Extraction
+        A[Document] --> B[Generator]
+        B --> C[Structured Data]
+    end
+    subgraph Storage
+        C --> D[UpdateKnowledge]
+        D --> E[(KnowledgeBase)]
+    end
+    subgraph Retrieval
+        F[Query] --> G[RetrieveKnowledge]
+        E --> G
+        G --> H[Results]
+    end
+```
+
 ## Creating a Knowledge Base
 
 The `KnowledgeBase` uses DuckDB as the underlying storage engine, providing
@@ -80,6 +97,14 @@ results = await synalinks.RetrieveKnowledge(
 
 ### Business Q&A System
 ![business_qa](../assets/examples/business_qa.png)
+
+## API References
+
+- [KnowledgeBase](https://synalinks.github.io/synalinks/Synalinks%20API/Knowledge%20Bases%20API/)
+- [UpdateKnowledge](https://synalinks.github.io/synalinks/Synalinks%20API/Modules%20API/Knowledge%20Modules/UpdateKnowledge%20module/)
+- [RetrieveKnowledge](https://synalinks.github.io/synalinks/Synalinks%20API/Modules%20API/Knowledge%20Modules/RetrieveKnowledge%20module/)
+- [Generator](https://synalinks.github.io/synalinks/Synalinks%20API/Modules%20API/Core%20Modules/Generator%20module/)
+- [EmbeddingModel](https://synalinks.github.io/synalinks/Synalinks%20API/Embedding%20Models%20API/)
 """
 
 import asyncio

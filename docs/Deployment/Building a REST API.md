@@ -2,9 +2,9 @@
 
 The optimal approach to developing web-apps or micro-services using Synalinks involves building REST APIs and deploying them. You can deploy these APIs locally to test your system or on a cloud provider of your choice to scale to millions of users.
 
-For this purpose, you will need to use FastAPI, a Python library that makes it easy and straightforward to create REST APIs. If you use the default backend, the DataModel will be compatible with FastAPI as their both use Pydantic.
+For this purpose, you will need to use FastAPI, a Python library that makes it easy and straightforward to create REST APIs. If you use the default backend, the DataModel will be compatible with FastAPI as they both use Pydantic.
 
-In this tutorial we are going to make a backend that run locally to test our system.
+In this tutorial we are going to make a backend that runs locally to test our system.
 
 ## Project structure
 
@@ -14,8 +14,9 @@ Your project structure should look like this:
 demo/
 ├── backend/
 │   ├── app/
-│   │   ├── checkpoint.program.json
 │   │   └── main.py
+│   ├── programs/
+│   │   └── checkpoint.program.json
 │   ├── requirements.txt
 │   ├── Dockerfile
 ├── frontend/
@@ -27,21 +28,29 @@ demo/
 └── README.md
 ```
 
+## Your `.env.backend` file
+
+This file contains your API keys and configuration:
+
+```shell title=".env.backend"
+OPENAI_API_KEY=your-openai-api-key
+# Add other provider keys as needed
+```
+
 ## Your `requirements.txt` file
 
-Import additionally any necessary dependency
+Import additionally any necessary dependency:
 
 ```txt title="requirements.txt"
 fastapi[standard]
 uvicorn
+python-dotenv
 synalinks
-openinference-instrumentation-litellm
-arize-otel
 ```
 
-## Creating your endpoint using FastAPI and SynaLinks
+## Creating your endpoint using FastAPI and Synalinks
 
-Now you can create you endpoint using FastAPI.
+Now you can create your endpoint using FastAPI.
 
 ```python title="main.py"
 import argparse
@@ -53,21 +62,14 @@ from fastapi import FastAPI
 
 import synalinks
 
-# Import open-telemetry dependencies
-from arize.otel import register
-from openinference.instrumentation.litellm import LiteLLMInstrumentor
-
 # Load the environment variables
 load_dotenv()
 
-# Setup OTel via Arize Phoenix convenience function
-tracer_provider = register(
-    space_id = os.environ["ARIZE_SPACE_ID"], # in app space settings page
-    api_key = os.environ["ARIZE_API_KEY"], # in app space settings page
-    project_name = os.environ["ARIZE_PROJECT_NAME"], # name this to whatever you would like
+# Enable Synalinks built-in observability (uses MLflow)
+synalinks.enable_observability(
+    tracking_uri=os.environ.get("MLFLOW_TRACKING_URI", "http://mlflow:5000"),
+    experiment_name=os.environ.get("EXPERIMENT_NAME", "production"),
 )
-
-LiteLLMInstrumentor().instrument(tracer_provider=tracer_provider)
 
 # Set up logging
 logger = logging.getLogger(__name__)
@@ -75,6 +77,7 @@ logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s - %(levelname)s - %(message)s",
 )
+
 # Set up FastAPI
 app = FastAPI()
 
@@ -83,13 +86,14 @@ custom_modules = {}
 
 # Load your program
 program = synalinks.Program.load(
-    "checkpoint.program.json",
+    "programs/checkpoint.program.json",
     custom_modules=custom_modules,
 )
 
+
 @app.post("/v1/chat_completion")
 async def chat_completion(messages: synalinks.ChatMessages):
-    logger.info(messages.pretty_json())
+    logger.info(messages.prettify_json())
     try:
         result = await program(messages)
         if result:
@@ -98,7 +102,7 @@ async def chat_completion(messages: synalinks.ChatMessages):
         else:
             return None
     except Exception as e:
-        logger.error(f"Error occured: {str(e)}")
+        logger.error(f"Error occurred: {str(e)}")
         return None
 
 
@@ -112,7 +116,7 @@ if __name__ == "__main__":
 
 ## Creating the Dockerfile
 
-Here is the dockerfile to use according to FastAPI documentation.
+Here is the Dockerfile to use according to FastAPI documentation.
 
 ```Dockerfile title="Dockerfile"
 FROM python:3.13
@@ -124,6 +128,7 @@ COPY ./requirements.txt /code/requirements.txt
 RUN pip install --no-cache-dir --upgrade -r /code/requirements.txt
 
 COPY ./app /code/app
+COPY ./programs /code/programs
 
 CMD ["fastapi", "run", "app/main.py", "--port", "8000"]
 ```
@@ -134,11 +139,21 @@ And finally your docker compose file.
 
 ```yml title="docker-compose.yml"
 services:
-  arizephoenix:
-    image: arizephoenix/phoenix:latest
+  mlflow:
+    image: ghcr.io/mlflow/mlflow:latest
     ports:
-      - "6006:6006"
-      - "4317:4317"
+      - "5000:5000"
+    volumes:
+      - ./mlflow-data:/mlflow
+    command: >
+      mlflow server
+      --host 0.0.0.0
+      --port 5000
+      --backend-store-uri sqlite:///mlflow/mlflow.db
+      --default-artifact-root mlflow-artifacts:/
+      --serve-artifacts
+      --artifacts-destination /mlflow/artifacts
+    restart: unless-stopped
   backend:
     build:
       context: ./backend
@@ -147,17 +162,23 @@ services:
       - "8000:8000"
     env_file:
       - .env.backend
+    environment:
+      - MLFLOW_TRACKING_URI=http://mlflow:5000
+      - EXPERIMENT_NAME=production
     depends_on:
-      - arizephoenix
+      - mlflow
+    restart: unless-stopped
 ```
 
 ## Launching your backend
 
-Launch your backend using `docker compose`
+Launch your backend using `docker compose`:
 
 ```shell
 cd demo
 docker compose up
 ```
 
-Open you browser to `http://0.0.0.0:8000/docs` and test your API with the FastAPI UI
+Open your browser to `http://0.0.0.0:8000/docs` and test your API with the FastAPI UI.
+
+You can view traces and metrics at `http://0.0.0.0:5000` (MLflow UI).

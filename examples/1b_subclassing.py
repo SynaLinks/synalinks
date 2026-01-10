@@ -1,5 +1,5 @@
 """
-# Lesson 1b: Building Programs by Subclassing
+# Building Programs by Subclassing
 
 In Lesson 1a, you learned to build programs using the Functional API. Now,
 let's explore a more advanced approach: **subclassing** the Program class.
@@ -7,6 +7,7 @@ let's explore a more advanced approach: **subclassing** the Program class.
 ## When to Use Subclassing
 
 Subclassing is useful when you need:
+
 - **Custom logic** in your program's execution flow
 - **Stateful behavior** that persists across calls
 - **Reusable components** that can be shared across projects
@@ -23,6 +24,24 @@ When you subclass `synalinks.Program`, you must implement:
 2. **`call()`**: Define how data flows through your modules
 3. **`get_config()`**: Define how to save your program (serialization)
 4. **`from_config()`**: Define how to load your program (deserialization)
+
+```mermaid
+classDiagram
+    class Program {
+        +__init__()
+        +call(inputs)
+        +get_config()
+        +from_config(config)
+    }
+    class MyProgram {
+        +generator
+        +__init__(language_model)
+        +call(inputs)
+        +get_config()
+        +from_config(config)
+    }
+    Program <|-- MyProgram
+```
 
 ```python
 class MyProgram(synalinks.Program):
@@ -61,15 +80,79 @@ await program.build(InputDataModel)  # <-- Required before first call!
 If you used a subclassed module inside a functional API program,
 your module is built automatically!
 
-## Running the Example
+## Complete Example
 
-```bash
-uv run python examples/1b_subclassing.py
+```python
+import asyncio
+from dotenv import load_dotenv
+import synalinks
+
+class Query(synalinks.DataModel):
+    query: str = synalinks.Field(description="The user query")
+
+class AnswerWithThinking(synalinks.DataModel):
+    thinking: str = synalinks.Field(description="Your step by step thinking")
+    answer: str = synalinks.Field(description="The correct answer")
+
+class ChainOfThought(synalinks.Program):
+    def __init__(self, language_model=None):
+        super().__init__()
+        self.answer_generator = synalinks.Generator(
+            data_model=AnswerWithThinking,
+            language_model=language_model,
+        )
+
+    async def call(self, inputs, training=False):
+        return await self.answer_generator(inputs)
+
+    def get_config(self):
+        return {
+            "language_model": synalinks.saving.serialize_synalinks_object(
+                self.language_model
+            )
+        }
+
+    @classmethod
+    def from_config(cls, config):
+        language_model = synalinks.saving.deserialize_synalinks_object(
+            config.pop("language_model")
+        )
+        return cls(language_model=language_model)
+
+async def main():
+    load_dotenv()
+    language_model = synalinks.LanguageModel(model="openai/gpt-4.1")
+
+    program = ChainOfThought(language_model=language_model)
+    await program.build(Query)  # Required before first call!
+
+    result = await program(Query(query="What is 15% of 80?"))
+    print(f"Answer: {result['answer']}")
+
+asyncio.run(main())
 ```
+
+### Key Takeaways
+
+- **Subclassing**: Inherit from `synalinks.Program` for full control over
+    program behavior and custom logic.
+- **Four Methods**: Implement `__init__()`, `call()`, `get_config()`, and
+    `from_config()` for a complete subclassed program.
+- **Build Required**: Call `await program.build(InputDataModel)` before
+    first use when using standalone subclassed programs.
+- **Serialization**: `get_config()` and `from_config()` enable saving and
+    loading your custom programs.
 
 ## Program Visualization
 
 ![chain_of_thought](../assets/examples/chain_of_thought.png)
+
+## API References
+
+- [DataModel](https://synalinks.github.io/synalinks/Synalinks%20API/Data%20Models%20API/The%20DataModel%20class/)
+- [LanguageModel](https://synalinks.github.io/synalinks/Synalinks%20API/Language%20Models%20API/)
+- [Generator](https://synalinks.github.io/synalinks/Synalinks%20API/Modules%20API/Core%20Modules/Generator%20module/)
+- [Program](https://synalinks.github.io/synalinks/Synalinks%20API/Programs%20API/The%20Program%20class/)
 """
 
 import asyncio

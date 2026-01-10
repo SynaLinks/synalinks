@@ -7,6 +7,21 @@ questions based on your own documents.
 
 ## How RAG Works
 
+```mermaid
+graph LR
+    subgraph Indexing
+        A[Documents] --> B[Embeddings]
+        B --> C[(KnowledgeBase)]
+    end
+    subgraph Query Time
+        D[Question] --> E[RetrieveKnowledge]
+        C --> E
+        E --> F[Relevant Docs]
+        F --> G[Generator]
+        G --> H[Answer]
+    end
+```
+
 1. **Index**: Store documents in a knowledge base with embeddings
 2. **Retrieve**: When a question is asked, find relevant documents
 3. **Generate**: Use the retrieved context to generate an accurate answer
@@ -61,6 +76,14 @@ answer = await synalinks.Generator(
 ## Program Visualization
 
 ![document_rag](../assets/examples/document_rag.png)
+
+## API References
+
+- [KnowledgeBase](https://synalinks.github.io/synalinks/Synalinks%20API/Knowledge%20Bases%20API/)
+- [RetrieveKnowledge](https://synalinks.github.io/synalinks/Synalinks%20API/Modules%20API/Knowledge%20Modules/RetrieveKnowledge%20module/)
+- [Generator](https://synalinks.github.io/synalinks/Synalinks%20API/Modules%20API/Core%20Modules/Generator%20module/)
+- [EmbeddingModel](https://synalinks.github.io/synalinks/Synalinks%20API/Embedding%20Models%20API/)
+- [Program](https://synalinks.github.io/synalinks/Synalinks%20API/Programs%20API/The%20Program%20class/)
 """
 
 import asyncio

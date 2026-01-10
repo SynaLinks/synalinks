@@ -1,11 +1,22 @@
 """
-# Lesson 5a: Data Model Operators
+# Data Model Operators
 
 In previous lessons, you learned to create branches where some outputs can be
 `None`. How do we combine these outputs? This lesson introduces **operators**
 for merging and manipulating data models.
 
 ## The Five Operators
+
+```mermaid
+graph LR
+    subgraph Operators
+        CONCAT[A + B: Concatenate]
+        AND[A & B: Safe Merge]
+        OR[A | B: First Non-None]
+        XOR[A ^ B: Exclusive]
+        NOT[~A: Cancel]
+    end
+```
 
 Synalinks provides five Python operators for data models:
 
@@ -71,31 +82,87 @@ Useful for conditional flows where you want to "cancel" a path.
 
 ## Truth Table
 
-| A | B | A + B | A & B | A | B | A ^ B |
+| A | B | A `+` B | A `&` B | A `|` B | A `^` B |
 |---|---|-------|-------|--------|-------|
-| Data | Data | Merged | Merged | Merged | None |
-| Data | None | ERROR | None | A | A |
-| None | Data | ERROR | None | B | B |
-| None | None | ERROR | None | None | None |
+| Data | Data | Merged | Merged | Merged | `None` |
+| Data | `None` | `ERROR` | `None` | A | A |
+| `None` | Data | `ERROR` | `None` | B | B |
+| `None` | `None` | `ERROR` | `None` | `None` | `None` |
 
-| A | ~A |
+| A | `~`A |
 |---|----|
-| Data | None |
-| None | None* |
+| Data | `None` |
+| None | `None`* |
 
-*Note: ~None behavior depends on context (symbolic vs json)
+*Note: `~None` behavior depends on context (symbolic vs json)
 
-## Running the Example
+## Complete Example: Merging Branch Outputs
 
-```bash
-uv run python examples/5a_data_model_operators.py
+```python
+import asyncio
+from dotenv import load_dotenv
+import synalinks
+
+class Query(synalinks.DataModel):
+    query: str = synalinks.Field(description="The user query")
+
+class Answer(synalinks.DataModel):
+    answer: str = synalinks.Field(description="The correct answer")
+
+async def main():
+    load_dotenv()
+    language_model = synalinks.LanguageModel(model="openai/gpt-4.1")
+
+    inputs = synalinks.Input(data_model=Query)
+
+    # Branch returns (easy_result, hard_result) - only ONE is non-None
+    (easy, hard) = await synalinks.Branch(
+        question="Evaluate difficulty",
+        labels=["easy", "difficult"],
+        language_model=language_model,
+        branches=[
+            synalinks.Generator(data_model=Answer, language_model=language_model),
+            synalinks.Generator(data_model=Answer, language_model=language_model),
+        ],
+    )(inputs)
+
+    # Use | to get whichever branch was active
+    outputs = easy | hard
+
+    program = synalinks.Program(inputs=inputs, outputs=outputs)
+
+    result = await program(Query(query="What is 2 + 2?"))
+    print(f"Answer: {result['answer']}")  # Gets the non-None result
+
+asyncio.run(main())
 ```
+
+### Key Takeaways
+
+- **Concat (`+`)**: Merge all fields from two data models into one. Both
+    inputs must have data (no `None`).
+- **OR (`|`)**: Returns the first non-None input. Perfect for merging
+    conditional branch outputs.
+- **AND (`&`)**: Returns data only if both inputs have data; otherwise
+    returns `None`.
+- **XOR (`^`)**: Returns data only if exactly one input has data; returns
+    `None` if both or neither have data.
+- **NOT (`~`)**: Always returns `None`. Useful for canceling paths in
+    conditional flows.
 
 ## Program Visualizations
 
 ![concatenation](../assets/examples/concatenation.png)
 ![logical_or](../assets/examples/logical_or.png)
 ![logical_and](../assets/examples/logical_and.png)
+
+## API References
+
+- [DataModel](https://synalinks.github.io/synalinks/Synalinks%20API/Data%20Models%20API/The%20DataModel%20class/)
+- [LanguageModel](https://synalinks.github.io/synalinks/Synalinks%20API/Language%20Models%20API/)
+- [Branch](https://synalinks.github.io/synalinks/Synalinks%20API/Modules%20API/Core%20Modules/Branch%20module/)
+- [Generator](https://synalinks.github.io/synalinks/Synalinks%20API/Modules%20API/Core%20Modules/Generator%20module/)
+- [Merging Modules (And, Or, Xor, Concat)](https://synalinks.github.io/synalinks/Synalinks%20API/Modules%20API/Merging%20Modules/)
 """
 
 import asyncio

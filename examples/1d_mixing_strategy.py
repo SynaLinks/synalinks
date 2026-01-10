@@ -1,7 +1,8 @@
 """
-# Lesson 1d: The Mixing Strategy (Recommended)
+# The Mixing Strategy (Recommended)
 
 You've learned three ways to build programs:
+
 - **Functional API** (1a): Flexible graph building
 - **Subclassing** (1b): Full control but more boilerplate
 - **Sequential** (1c): Simplest for linear pipelines
@@ -19,6 +20,7 @@ Functional API. This gives you the best of both worlds!
 | **Mixing** | **High** | **Low** | **High** |
 
 The mixing strategy provides:
+
 1. **Encapsulation**: Your program is a reusable class
 2. **No boilerplate**: No need for `call()`, `get_config()`, or `from_config()`
 3. **Flexibility**: Full power of the Functional API inside
@@ -56,6 +58,22 @@ program = synalinks.Program(inputs=inputs, outputs=outputs)
 
 ## How It Works
 
+```mermaid
+sequenceDiagram
+    participant User
+    participant MyModule
+    participant FunctionalAPI
+    participant Graph
+
+    User->>MyModule: Create instance with config
+    User->>FunctionalAPI: inputs = Input(data_model)
+    User->>MyModule: await my_module(inputs)
+    MyModule->>MyModule: build(inputs) triggered
+    MyModule->>FunctionalAPI: Create internal graph
+    MyModule->>Graph: Re-initialize as Program
+    Graph-->>User: outputs (SymbolicDataModel)
+```
+
 1. **Define your class**: Implement `__init__()` and `build()` only
 2. **Create an instance**: Store configuration (language models, settings)
 3. **Use in Functional API**: Call the module with a symbolic `Input`
@@ -65,15 +83,77 @@ The key insight: **the mixing strategy creates reusable modules** that you
 compose using the Functional API. The `build()` method receives symbolic
 inputs when called during graph construction.
 
-## Running the Example
+## Complete Example
 
-```bash
-uv run python examples/1d_mixing_strategy.py
+```python
+import asyncio
+from dotenv import load_dotenv
+import synalinks
+
+class Query(synalinks.DataModel):
+    query: str = synalinks.Field(description="The user query")
+
+class AnswerWithThinking(synalinks.DataModel):
+    thinking: str = synalinks.Field(description="Your step by step thinking")
+    answer: str = synalinks.Field(description="The correct answer")
+
+class ChainOfThought(synalinks.Program):
+    \"\"\"Reusable module using the mixing strategy.\"\"\"
+
+    def __init__(self, language_model=None, name=None):
+        super().__init__(name=name)
+        self.language_model = language_model
+
+    async def build(self, inputs):
+        # Use Functional API inside build()
+        outputs = await synalinks.Generator(
+            data_model=AnswerWithThinking,
+            language_model=self.language_model,
+        )(inputs)
+
+        # Re-initialize as a Functional program
+        super().__init__(inputs=inputs, outputs=outputs, name=self.name)
+
+async def main():
+    load_dotenv()
+    language_model = synalinks.LanguageModel(model="openai/gpt-4.1")
+
+    # Use the mixed module in a functional program
+    chain_of_thought = ChainOfThought(language_model=language_model)
+
+    inputs = synalinks.Input(data_model=Query)
+    outputs = await chain_of_thought(inputs)  # Triggers build()
+
+    program = synalinks.Program(inputs=inputs, outputs=outputs)
+
+    result = await program(Query(query="What is 15% of 80?"))
+    print(f"Answer: {result['answer']}")
+
+asyncio.run(main())
 ```
+
+### Key Takeaways
+
+- **Mixing Strategy**: Combine subclassing with the Functional API for the
+    best of both worlds - encapsulation without boilerplate.
+- **build() Method**: Override `build()` to use the Functional API inside
+    your class, receiving symbolic inputs during graph construction.
+- **Automatic Serialization**: No need for `get_config()` or `from_config()`
+    when using the mixing strategy.
+- **Reusable Components**: Create library-quality modules that can be
+    composed into larger programs.
 
 ## Program Visualization
 
 ![chain_of_thought](../assets/examples/chain_of_thought.png)
+
+## API References
+
+- [DataModel](https://synalinks.github.io/synalinks/Synalinks%20API/Data%20Models%20API/The%20DataModel%20class/)
+- [LanguageModel](https://synalinks.github.io/synalinks/Synalinks%20API/Language%20Models%20API/)
+- [Generator](https://synalinks.github.io/synalinks/Synalinks%20API/Modules%20API/Core%20Modules/Generator%20module/)
+- [Input](https://synalinks.github.io/synalinks/Synalinks%20API/Modules%20API/Core%20Modules/Input%20module/)
+- [Program](https://synalinks.github.io/synalinks/Synalinks%20API/Programs%20API/The%20Program%20class/)
 """
 
 import asyncio
