@@ -1,5 +1,4 @@
 import heapq
-import json
 import os
 import re
 import warnings
@@ -11,6 +10,7 @@ from typing import Union
 
 import duckdb
 import duckdb.sqltypes
+import orjson
 
 from synalinks.src.backend import JsonDataModel
 from synalinks.src.backend import SymbolicDataModel
@@ -85,8 +85,8 @@ def _parse_json_columns(row: dict, json_columns: set) -> dict:
     for col in json_columns:
         if col in result and isinstance(result[col], str):
             try:
-                result[col] = json.loads(result[col])
-            except (json.JSONDecodeError, TypeError):
+                result[col] = orjson.loads(result[col])
+            except (orjson.JSONDecodeError, TypeError):
                 pass
     return result
 
@@ -264,7 +264,7 @@ class DuckDBAdapter(DatabaseAdapter):
                         "type": "string",
                         "format": "date",
                     }
-                elif dtype in (duckdb.sqltypes.TIMESTAMP, duckdb.sqltypes.TIMESTAMPTZ):
+                elif dtype in (duckdb.sqltypes.TIMESTAMP, duckdb.sqltypes.TIMESTAMP_TZ):
                     props[name] = {
                         "title": name.title(),
                         "type": "string",
@@ -438,7 +438,6 @@ class DuckDBAdapter(DatabaseAdapter):
             id_key = self._get_id_key(json_schema)
 
             if not col:
-                warnings.warn(f"Skipping FTS index for {table_name}: no FTS field found.")
                 return
             con.execute(
                 f"""
@@ -701,6 +700,9 @@ class DuckDBAdapter(DatabaseAdapter):
                 id_key = self._get_id_key(schema)
                 col = self._get_fts_field(schema)
                 if not col:
+                    warnings.warn(
+                        f"Skipping FTS search for {label}: no FTS field found."
+                    )
                     continue
 
                 fts_table = sanitize_identifier(f"fts_main_{label}")

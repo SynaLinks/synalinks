@@ -2,7 +2,7 @@
 # Original authors: François Chollet et al. (Keras Team)
 # License Apache 2.0: (c) 2025 Yoan Sallami (Synalinks Team)
 
-import json
+import orjson
 
 from synalinks.src.api_export import synalinks_export
 from synalinks.src.callbacks.callback import Callback
@@ -155,8 +155,8 @@ class BackupAndRestore(Callback):
             self.program.load_variables(self._variables_path)
 
         if file_utils.exists(self._training_metadata_path):
-            with file_utils.File(self._training_metadata_path, "r") as f:
-                training_metadata = json.loads(f.read())
+            with file_utils.File(self._training_metadata_path, "rb") as f:
+                training_metadata = orjson.loads(f.read())
             epoch = training_metadata["epoch"]
             self.program._initial_epoch = epoch
 
@@ -189,12 +189,12 @@ class BackupAndRestore(Callback):
                 self._training_metadata_path, self._prev_training_metadata_path
             )
         self.program.save_variables(filepath=self._variables_path, overwrite=True)
-        with file_utils.File(self._training_metadata_path, "w") as f:
+        with file_utils.File(self._training_metadata_path, "wb") as f:
             training_metadata = {
                 "epoch": self._current_epoch,
                 "batch": self._last_batch_seen,
             }
-            f.write(json.dumps(training_metadata))
+            f.write(orjson.dumps(training_metadata))
 
     def _should_save_on_batch(self, batch):
         """Handles batch-level saving logic, supports steps_per_execution."""

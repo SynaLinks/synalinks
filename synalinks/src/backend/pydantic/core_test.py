@@ -147,3 +147,41 @@ class CoreTest(testing.TestCase):
 
         self.assertTrue(Foo in FooBar)
         self.assertFalse(Bar in Foo)
+
+    def test_contains_string_key_meta_class(self):
+        class FooBar(DataModel):
+            foo: str
+            bar: str
+
+        self.assertTrue("foo" in FooBar)
+        self.assertTrue("bar" in FooBar)
+        self.assertFalse("baz" in FooBar)
+
+    def test_contains_data_model_instance(self):
+        class Foo(DataModel):
+            foo: str
+
+        class FooBar(DataModel):
+            foo: str
+            bar: str
+
+        class Bar(DataModel):
+            bar: str
+
+        foo_instance = Foo(foo="a")
+        foobar_instance = FooBar(foo="a", bar="b")
+        bar_instance = Bar(bar="c")
+
+        self.assertTrue(foo_instance in foobar_instance)
+        self.assertFalse(bar_instance in foo_instance)
+
+    def test_contains_string_key_data_model_instance(self):
+        class FooBar(DataModel):
+            foo: str
+            bar: str
+
+        foobar_instance = FooBar(foo="a", bar="b")
+
+        self.assertTrue("foo" in foobar_instance)
+        self.assertTrue("bar" in foobar_instance)
+        self.assertFalse("baz" in foobar_instance)

@@ -340,7 +340,7 @@ class Monitor(Callback):
             return
 
         try:
-            import json
+            import orjson
 
             # Get the state tree (trainable, non-trainable, optimizer variables)
             state_tree = self.program.get_state_tree()
@@ -359,13 +359,13 @@ class Monitor(Callback):
             with tempfile.TemporaryDirectory() as tmpdir:
                 # Save state tree
                 state_path = os.path.join(tmpdir, "state_tree.json")
-                with open(state_path, "w") as f:
-                    json.dump(state_tree, f, indent=2)
+                with open(state_path, "wb") as f:
+                    f.write(orjson.dumps(state_tree, option=orjson.OPT_INDENT_2))
 
                 # Save model info
                 info_path = os.path.join(tmpdir, "model_info.json")
-                with open(info_path, "w") as f:
-                    json.dump(model_info, f, indent=2)
+                with open(info_path, "wb") as f:
+                    f.write(orjson.dumps(model_info, option=orjson.OPT_INDENT_2))
 
                 # Upload artifacts
                 if self.tracking_uri:

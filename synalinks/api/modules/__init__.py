@@ -24,6 +24,9 @@ from synalinks.src.modules.knowledge.embed_knowledge import (
 from synalinks.src.modules.knowledge.retrieve_knowledge import (
     RetrieveKnowledge as RetrieveKnowledge,
 )
+from synalinks.src.modules.knowledge.stamp_knowledge import (
+    StampKnowledge as StampKnowledge,
+)
 from synalinks.src.modules.knowledge.update_knowledge import (
     UpdateKnowledge as UpdateKnowledge,
 )

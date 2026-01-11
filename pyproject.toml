@@ -41,6 +41,7 @@ dependencies = [
   "numpy",
   "openai",
   "optree",
+  "orjson",
   "pydantic",
   "pydotplus",
   "rich",

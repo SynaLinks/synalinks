@@ -72,3 +72,14 @@ class SymbolicDataModelTest(testing.TestCase):
 
         self.assertTrue(foo_symbolic in foobar_symbolic)
         self.assertFalse(bar_symbolic in foo_symbolic)
+
+    def test_contains_string_key_symbolic_data_model(self):
+        class FooBar(DataModel):
+            foo: str
+            bar: str
+
+        foobar_symbolic = SymbolicDataModel(data_model=FooBar)
+
+        self.assertTrue("foo" in foobar_symbolic)
+        self.assertTrue("bar" in foobar_symbolic)
+        self.assertFalse("baz" in foobar_symbolic)

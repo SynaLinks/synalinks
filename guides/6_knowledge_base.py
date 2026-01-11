@@ -93,7 +93,7 @@ Uses the BM25 algorithm for traditional keyword-based search:
 ```python
 results = await kb.fulltext_search(
     "machine learning neural networks",
-    data_models=[Document.to_symbolic_data_model()],
+    data_models=[Document], # If None search in all tables
     k=10,           # Number of results
     threshold=None, # Minimum score (optional)
 )
@@ -112,7 +112,7 @@ Uses embedding vectors for semantic search:
 ```python
 results = await kb.similarity_search(
     "how do computers learn",  # Semantically matches "machine learning"
-    data_models=[Document.to_symbolic_data_model()],
+    data_models=[Document], # If None search in all tables
     k=10,
     threshold=0.7,  # Minimum similarity score
 )
@@ -131,7 +131,7 @@ Combines both methods for best results:
 ```python
 results = await kb.hybrid_search(
     "machine learning basics",
-    data_models=[Document.to_symbolic_data_model()],
+    data_models=[Document],
     k=10,
     bm25_weight=0.5,    # Weight for BM25 scores
     vector_weight=0.5,  # Weight for vector scores
@@ -166,7 +166,7 @@ await kb.update(doc.to_json_data_model())
 ```python
 result = await kb.get(
     "doc1",  # Primary key value
-    data_models=[Document.to_symbolic_data_model()],
+    data_models=[Document],
 )
 ```
 
@@ -174,7 +174,7 @@ result = await kb.get(
 
 ```python
 all_docs = await kb.getall(
-    Document.to_symbolic_data_model(),
+    Document,
     limit=100,
     offset=0,
 )
@@ -185,7 +185,7 @@ all_docs = await kb.getall(
 ```python
 await kb.delete(
     "doc1",
-    data_models=[Document.to_symbolic_data_model()],
+    data_models=[Document],
 )
 ```
 
@@ -392,7 +392,7 @@ async def main():
     print("Example 1: Knowledge Base with Full-Text Search")
     print("=" * 60)
 
-    db_path = "guides_knowledge.db"
+    db_path = "guides/guides_knowledge.db"
     if os.path.exists(db_path):
         os.remove(db_path)
 
@@ -446,7 +446,7 @@ async def main():
 
     results = await kb.fulltext_search(
         "programming language",
-        data_models=[Document.to_symbolic_data_model()],
+        data_models=[Document],
         k=10,
         threshold=None,
     )
@@ -465,7 +465,7 @@ async def main():
 
     result = await kb.get(
         "doc2",
-        data_models=[Document.to_symbolic_data_model()],
+        data_models=[Document],
     )
 
     print("\nGet doc2:")
@@ -480,7 +480,7 @@ async def main():
     print("=" * 60)
 
     all_docs = await kb.getall(
-        Document.to_symbolic_data_model(),
+        Document,
         limit=50,
         offset=0,
     )

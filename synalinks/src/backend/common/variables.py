@@ -225,9 +225,9 @@ class Variable:
         Returns:
             (dict): The indented JSON schema.
         """
-        import json
+        import orjson
 
-        return json.dumps(self.get_schema(), indent=2)
+        return orjson.dumps(self.get_schema(), option=orjson.OPT_INDENT_2).decode()
 
     def prettify_json(self):
         """Get a pretty version of the JSON object for display.
@@ -235,9 +235,9 @@ class Variable:
         Returns:
             (dict): The indented JSON object.
         """
-        import json
+        import orjson
 
-        return json.dumps(self.get_json(), indent=2)
+        return orjson.dumps(self.get_json(), option=orjson.OPT_INDENT_2).decode()
 
     def assign(self, value):
         """Assigns a new value to the variable.
@@ -279,15 +279,21 @@ class Variable:
         return self._schema
 
     def __contains__(self, other):
-        """Check if the schema of `other` is contained within the schema of this variable.
+        """Check if the schema of `other` is contained within the schema of this variable,
+        or if a string key exists.
 
         Args:
-            other (SymbolicDataModel | DataModel): The data model to compare
-                against this variable's schema.
+            other (SymbolicDataModel | DataModel | str): The data model to compare
+                against this variable's schema, or a string key to check for in the
+                schema properties.
 
         Returns:
-            (bool): True if `other`'s schema is a subset of this variable's schema.
+            (bool): True if `other`'s schema is a subset of this variable's schema,
+                or if the string key exists in the schema properties.
         """
+        if isinstance(other, str):
+            schema = self.get_schema()
+            return other in schema.get("properties", {})
         from synalinks.src.backend.common.json_schema_utils import contains_schema
 
         return contains_schema(self.get_schema(), other.get_schema())

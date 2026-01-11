@@ -3,9 +3,10 @@
 # License Apache 2.0: (c) 2025 Yoan Sallami (Synalinks Team)
 
 import copy
-import json
 import os
 import sys
+
+import orjson
 
 from synalinks.src import tree
 from synalinks.src.api_export import synalinks_export
@@ -122,7 +123,7 @@ def make_module_label(module, **kwargs):
                 schema_list = schema
             nested_table = '<table border="0" cellborder="1" cellpadding="10">'
             for i in range(len(schema_list)):
-                schema_str = f"\n\n{json.dumps(schema_list[i], indent=2)}\n"
+                schema_str = f"\n\n{orjson.dumps(schema_list[i], option=orjson.OPT_INDENT_2).decode()}\n"
                 schema_str = schema_str.replace("\n", '<br align="left"/>')
                 nested_table += (
                     f'<tr><td align="left">'

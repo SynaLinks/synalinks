@@ -183,7 +183,7 @@ merged = await synalinks.Concat()([output_a, output_b])
 # Result has all fields from both A and B
 ```
 
-### And (&): Merge with None Check
+### Logical And (&): Merge with None Check
 
 Like Concat, but returns None if any input is None:
 
@@ -193,7 +193,7 @@ merged = await synalinks.And()([output_a, output_b])
 # Result: merged DataModel or None
 ```
 
-### Or (|): First Non-None
+### Logical Or (|): ignore None
 
 Returns the first non-None value:
 
@@ -205,7 +205,7 @@ result = await synalinks.Or()([primary, fallback])
 
 ### Xor (^): Exclusive Choice
 
-Returns None if both inputs have the same value:
+Returns None if both inputs are provided:
 
 ```python
 # For guard patterns

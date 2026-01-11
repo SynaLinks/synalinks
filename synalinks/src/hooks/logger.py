@@ -1,7 +1,8 @@
 # License Apache 2.0: (c) 2025 Yoan Sallami (Synalinks Team)
 
-import json
 import logging
+
+import orjson
 
 from synalinks.src import tree
 from synalinks.src.api_export import synalinks_export
@@ -106,10 +107,10 @@ class Logger(Hook):
                         module=str(self.module.__class__.__name__),
                         module_name=module_name,
                         module_description=module_description,
-                        data_model_schema=json.dumps(
+                        data_model_schema=orjson.dumps(
                             data_models_schemas,
-                            indent=2,
-                        ),
+                            option=orjson.OPT_INDENT_2,
+                        ).decode(),
                     ),
                 )
         else:
@@ -123,10 +124,10 @@ class Logger(Hook):
                         module=str(self.module.__class__.__name__),
                         module_name=module_name,
                         module_description=module_description,
-                        data_model_json=json.dumps(
+                        data_model_json=orjson.dumps(
                             data_models_jsons,
-                            indent=2,
-                        ),
+                            option=orjson.OPT_INDENT_2,
+                        ).decode(),
                     )
                 )
             # Log kwargs if no data models but kwargs present (e.g., Tool modules)
@@ -144,10 +145,10 @@ class Logger(Hook):
                             module=str(self.module.__class__.__name__),
                             module_name=module_name,
                             module_description=module_description,
-                            kwargs_json=json.dumps(
+                            kwargs_json=orjson.dumps(
                                 display_kwargs,
-                                indent=2,
-                            ),
+                                option=orjson.OPT_INDENT_2,
+                            ).decode(),
                         )
                     )
 
@@ -188,10 +189,10 @@ class Logger(Hook):
                         module=str(self.module.__class__.__name__),
                         module_name=module_name,
                         module_description=module_description,
-                        data_model_schema=json.dumps(
+                        data_model_schema=orjson.dumps(
                             data_models_schemas,
-                            indent=2,
-                        ),
+                            option=orjson.OPT_INDENT_2,
+                        ).decode(),
                     ),
                 )
         else:
@@ -207,9 +208,9 @@ class Logger(Hook):
                         module=str(self.module.__class__.__name__),
                         module_name=module_name,
                         module_description=module_description,
-                        data_model_json=json.dumps(
+                        data_model_json=orjson.dumps(
                             data_models_jsons,
-                            indent=2,
-                        ),
+                            option=orjson.OPT_INDENT_2,
+                        ).decode(),
                     )
                 )

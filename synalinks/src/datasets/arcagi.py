@@ -1,13 +1,13 @@
 # License Apache 2.0: (c) 2025 Yoan Sallami (Synalinks Team)
 
 import itertools
-import json
 import os
 from enum import Enum
 from typing import List
 
 import matplotlib.pyplot as plt
 import numpy as np
+import orjson
 from matplotlib import colors
 from matplotlib.gridspec import GridSpec
 
@@ -157,8 +157,8 @@ def load_data(
     """
     if filepath:
         try:
-            with open(filepath, "r") as f:
-                json_data = json.loads(f.read())
+            with open(filepath, "rb") as f:
+                json_data = orjson.loads(f.read())
         except Exception:
             raise ValueError(
                 f"Could not find task data at '{filepath}', "
@@ -188,8 +188,8 @@ def load_data(
         else:
             raise ValueError("Invalid `arc_version` provided, should be 1 or 2")
         file_path = file_utils.get_file(origin=url, progbar=False)
-        with open(file_path, "r") as f:
-            json_data = json.loads(f.read())
+        with open(file_path, "rb") as f:
+            json_data = orjson.loads(f.read())
 
     x_train = []
     y_train = []

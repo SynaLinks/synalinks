@@ -108,3 +108,16 @@ class VariablesTest(testing.TestCase):
 
         self.assertTrue(Foo in variable)
         self.assertFalse(FooBar in Foo)
+
+    def test_contains_string_key_operator(self):
+        class FooBar(DataModel):
+            foo: str = ""
+            bar: str = ""
+
+        variable = Variable(
+            initializer={"foo": "value", "bar": "value2"}, data_model=FooBar
+        )
+
+        self.assertTrue("foo" in variable)
+        self.assertTrue("bar" in variable)
+        self.assertFalse("baz" in variable)

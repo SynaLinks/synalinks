@@ -161,14 +161,19 @@ class MetaDataModel(type(pydantic.BaseModel)):
         return run_maybe_nested(ops.Xor().symbolic_call(other, cls))
 
     def __contains__(cls, other):
-        """Check if the schema of `other` is contained in this one.
+        """Check if the schema of `other` is contained in this one, or if a string key exists.
 
         Args:
-            other (SymbolicDataModel | DataModel): The other data model to compare with.
+            other (SymbolicDataModel | DataModel | str): The other data model to compare
+                with, or a string key to check for in the schema properties.
 
         Returns:
-            (bool): True if all properties of `other` are present in this one.
+            (bool): True if all properties of `other` are present in this one,
+                or if the string key exists in the schema properties.
         """
+        if isinstance(other, str):
+            schema = cls.get_schema()
+            return other in schema.get("properties", {})
         from synalinks.src.backend.common.json_schema_utils import contains_schema
 
         return contains_schema(cls.get_schema(), other.get_schema())
@@ -315,9 +320,9 @@ class DataModel(pydantic.BaseModel, SynalinksSaveable, metaclass=MetaDataModel):
         Returns:
             (str): The indented JSON schema.
         """
-        import json
+        import orjson
 
-        return json.dumps(cls.get_schema(), indent=2)
+        return orjson.dumps(cls.get_schema(), option=orjson.OPT_INDENT_2).decode()
 
     @classmethod
     def to_symbolic_data_model(cls, name=None):
@@ -346,9 +351,9 @@ class DataModel(pydantic.BaseModel, SynalinksSaveable, metaclass=MetaDataModel):
         Returns:
             (str): The indented JSON object.
         """
-        import json
+        import orjson
 
-        return json.dumps(self.get_json(), indent=2)
+        return orjson.dumps(self.get_json(), option=orjson.OPT_INDENT_2).decode()
 
     def __repr__(self):
         return f"<DataModel json={self.get_json()}, schema={self.get_schema()}>"
@@ -613,14 +618,19 @@ class DataModel(pydantic.BaseModel, SynalinksSaveable, metaclass=MetaDataModel):
             )
 
     def __contains__(cls, other):
-        """Check if the schema of `other` is contained in this one.
+        """Check if the schema of `other` is contained in this one, or if a string key exists.
 
         Args:
-            other (SymbolicDataModel | DataModel): The other data model to compare with.
+            other (SymbolicDataModel | DataModel | str): The other data model to compare
+                with, or a string key to check for in the schema properties.
 
         Returns:
-            (bool): True if all properties of `other` are present in this one.
+            (bool): True if all properties of `other` are present in this one,
+                or if the string key exists in the schema properties.
         """
+        if isinstance(other, str):
+            schema = cls.get_schema()
+            return other in schema.get("properties", {})
         from synalinks.src.backend.common.json_schema_utils import contains_schema
 
         return contains_schema(cls.get_schema(), other.get_schema())

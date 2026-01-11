@@ -2,9 +2,10 @@
 # Original authors: François Chollet et al. (Keras Team)
 # License Apache 2.0: (c) 2025 Yoan Sallami (Synalinks Team)
 
-import json
 import logging
 import os
+
+import orjson
 import random
 import re
 
@@ -530,8 +531,8 @@ if _api_key:
 _config_path = os.path.expanduser(os.path.join(_synalinks_DIR, "synalinks.json"))
 if os.path.exists(_config_path):
     try:
-        with open(_config_path) as f:
-            _config = json.load(f)
+        with open(_config_path, "rb") as f:
+            _config = orjson.loads(f.read())
     except ValueError:
         _config = {}
     _backend = _config.get("backend", _BACKEND)
@@ -569,8 +570,8 @@ if not os.path.exists(_config_path):
         "api_base": _SYNALINKS_API_BASE,
     }
     try:
-        with open(_config_path, "w") as f:
-            f.write(json.dumps(_config, indent=4))
+        with open(_config_path, "wb") as f:
+            f.write(orjson.dumps(_config, option=orjson.OPT_INDENT_2))
     except IOError:
         # Except permission denied.
         pass

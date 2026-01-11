@@ -109,6 +109,17 @@ class JsonDataModelTest(testing.TestCase):
         self.assertTrue(foo_json in foobar_json)
         self.assertFalse(bar_json in foo_json)
 
+    def test_contains_string_key_json_data_model(self):
+        class FooBar(DataModel):
+            foo: str
+            bar: str
+
+        foobar_json = JsonDataModel(data_model=FooBar(foo="a", bar="b"))
+
+        self.assertTrue("foo" in foobar_json)
+        self.assertTrue("bar" in foobar_json)
+        self.assertFalse("baz" in foobar_json)
+
     def test_not_json_data_model(self):
         class Foo(DataModel):
             foo: str

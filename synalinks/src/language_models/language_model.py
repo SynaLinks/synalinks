@@ -2,11 +2,11 @@
 
 import asyncio
 import copy
-import json
 import os
 import warnings
 
 import litellm
+import orjson
 
 from synalinks.src.api_export import synalinks_export
 from synalinks.src.backend import ChatRole
@@ -379,7 +379,7 @@ class LanguageModel(SynalinksSaveable):
                 else:
                     response_str = response["choices"][0]["message"]["content"].strip()
                 if schema:
-                    json_instance = json.loads(response_str)
+                    json_instance = orjson.loads(response_str)
                 else:
                     json_instance = {
                         "role": ChatRole.ASSISTANT,

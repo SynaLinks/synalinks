@@ -3,10 +3,10 @@
 # License Apache 2.0: (c) 2025 Yoan Sallami (Synalinks Team)
 
 import copy
-import json
 import re
 import shutil
 
+import orjson
 import rich
 import rich.table
 
@@ -49,7 +49,7 @@ def format_module_schema(module):
         schema = copy.deepcopy(schema)
         if "$defs" in schema:
             schema.pop("$defs")
-        return json.dumps(schema, indent=2)
+        return orjson.dumps(schema, option=orjson.OPT_INDENT_2).decode()
 
     # There are 2 approaches to get output schemas:
     # 1. Using `module._inbound_nodes`, which is possible if the program is a

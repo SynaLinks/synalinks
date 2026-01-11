@@ -82,6 +82,7 @@ nav:
     - Code Examples/Document RAG.md
     - Code Examples/RAG Agent.md
     - Code Examples/MCP Agent.md
+    - Code Examples/SQL Agent.md
   - Modules: Synalinks API/Modules API/index.md
   - FAQ.md
   - CheatSheet.md

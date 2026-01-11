@@ -2,7 +2,7 @@
 # Original authors: François Chollet et al. (Keras Team)
 # License Apache 2.0: (c) 2025 Yoan Sallami (Synalinks Team)
 
-import json
+import orjson
 
 from synalinks.src import tree
 from synalinks.src.api_export import synalinks_export
@@ -141,7 +141,7 @@ class SymbolicDataModel(SynalinksSaveable):
         Returns:
             (dict): The indented JSON schema.
         """
-        return json.dumps(self._schema, indent=2)
+        return orjson.dumps(self._schema, option=orjson.OPT_INDENT_2).decode()
 
     def __repr__(self):
         return f"<SymbolicDataModel schema={self._schema}, name={self.name}>"
@@ -285,14 +285,19 @@ class SymbolicDataModel(SynalinksSaveable):
         return run_maybe_nested(ops.Xor().symbolic_call(other, self))
 
     def __contains__(self, other):
-        """Check if the schema of `other` is contained in this one.
+        """Check if the schema of `other` is contained in this one, or if a string key exists.
 
         Args:
-            other (SymbolicDataModel | DataModel): The other data model to compare with.
+            other (SymbolicDataModel | DataModel | str): The other data model to compare
+                with, or a string key to check for in the schema properties.
 
         Returns:
-            (bool): True if all properties of `other` are present in this one.
+            (bool): True if all properties of `other` are present in this one,
+                or if the string key exists in the schema properties.
         """
+        if isinstance(other, str):
+            schema = self.get_schema()
+            return other in schema.get("properties", {})
         from synalinks.src.backend.common.json_schema_utils import contains_schema
 
         return contains_schema(self.get_schema(), other.get_schema())

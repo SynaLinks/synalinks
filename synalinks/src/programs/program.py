@@ -3,9 +3,10 @@
 # License Apache 2.0: (c) 2025 Yoan Sallami (Synalinks Team)
 
 import inspect
-import json
 import typing
 import warnings
+
+import orjson
 
 from synalinks.src import utils
 from synalinks.src.api_export import synalinks_export
@@ -471,7 +472,9 @@ class Program(Trainer, Module):
         program_config = serialization_lib.serialize_synalinks_object(self)
         variables_config = self.get_state_tree()
         program_config.update({"variables": variables_config})
-        program_config_string = json.dumps(program_config, indent=2)
+        program_config_string = orjson.dumps(
+            program_config, option=orjson.OPT_INDENT_2
+        ).decode()
         if file_utils.exists(filepath) and not overwrite:
             io_utils.ask_to_proceed_with_overwrite(filepath)
         with open(filepath, "w") as f:
@@ -533,7 +536,7 @@ class Program(Trainer, Module):
 
         Args:
             **kwargs (keyword arguments): Additional keyword arguments to be passed to
-                `json.dumps()`.
+                `orjson.dumps()`.
 
         Returns:
             (str): A JSON string.
@@ -541,7 +544,7 @@ class Program(Trainer, Module):
         from synalinks.src.saving import serialization_lib
 
         program_config = serialization_lib.serialize_synalinks_object(self)
-        return json.dumps(program_config, **kwargs)
+        return orjson.dumps(program_config, **kwargs).decode()
 
     @classmethod
     def from_config(cls, config, custom_objects=None):
@@ -733,7 +736,7 @@ class Program(Trainer, Module):
                 f"received filepath={filepath}"
             )
         config = self.get_state_tree()
-        config_string = json.dumps(config, indent=2)
+        config_string = orjson.dumps(config, option=orjson.OPT_INDENT_2).decode()
         if file_utils.exists(filepath) and not overwrite:
             io_utils.ask_to_proceed_with_overwrite(filepath)
         with open(filepath, "w") as f:
@@ -753,8 +756,8 @@ class Program(Trainer, Module):
                 "The filepath should ends with '.variables.json', "
                 f"received filepath={filepath}"
             )
-        with open(filepath, "r") as f:
-            state_tree_config = json.loads(f.read())
+        with open(filepath, "rb") as f:
+            state_tree_config = orjson.loads(f.read())
         self.set_state_tree(state_tree_config)
 
     @classmethod
@@ -833,7 +836,7 @@ def program_from_json(json_string, custom_objects=None):
     """
     from synalinks.src.saving import serialization_lib
 
-    program_config = json.loads(json_string)
+    program_config = orjson.loads(json_string)
     variables_config = program_config.get("variables")
     program = serialization_lib.deserialize_synalinks_object(
         program_config, custom_objects=custom_objects
