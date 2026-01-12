@@ -165,8 +165,9 @@ outputs = await synalinks.FunctionCallingAgent(
     data_model=SQLResult,
     language_model=lm,
     tools=[schema_tool, sample_tool, query_tool],
-    autonomous=True,      # Run until agent decides it's done
-    max_iterations=10,    # Safety limit to prevent infinite loops
+    autonomous=True,                    # Run until agent decides it's done
+    max_iterations=10,                  # Safety limit to prevent infinite loops
+    return_inputs_with_trajectory=True, # Include full tool call history
 )(inputs)
 
 sql_agent = synalinks.Program(
@@ -695,6 +696,7 @@ async def main():
         tools=[schema_tool, sample_tool, query_tool],
         autonomous=True,
         max_iterations=10,
+        return_inputs_with_trajectory=True,
     )(inputs)
 
     sql_agent = synalinks.Program(
@@ -726,8 +728,25 @@ async def main():
 
         try:
             result = await sql_agent(Query(query=query_text))
-            print(f"Query: {result['query']}")
-            print(f"Answer: {result['answer']}")
+
+            # Show trajectory (tool calls and results)
+            messages = result.get("messages", [])
+            tool_calls_count = 0
+            for msg in messages:
+                if msg.get("role") == "assistant" and msg.get("tool_calls"):
+                    for tool_call in msg["tool_calls"]:
+                        tool_calls_count += 1
+                        args = tool_call.get("arguments", {})
+                        args_str = ", ".join(f"{k}={repr(v)}" for k, v in args.items())
+                        print(f"Tool Call {tool_calls_count}: {tool_call['name']}({args_str})")
+                elif msg.get("role") == "tool":
+                    content = msg.get("content", "")
+                    # Truncate long results for readability
+                    if len(content) > 200:
+                        content = content[:200] + "..."
+                    print(f"Tool Result: {content}")
+
+            print(f"\nAnswer: {result['answer']}")
             print(f"SQL: {result['sql_query']}")
         except Exception as e:
             print(f"Error: {e}")
