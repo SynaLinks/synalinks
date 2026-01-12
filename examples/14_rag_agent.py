@@ -31,6 +31,15 @@ A RAG agent is smarter:
 
 ## Building a RAG Agent
 
+**Important Tool Constraints:**
+
+- **No Optional Parameters**: All tool parameters must be required. OpenAI
+  and other LLM providers require all parameters in their JSON schemas.
+
+- **Complete Docstring Required**: Every parameter must be documented in the
+  `Args:` section. The Tool extracts descriptions to build the JSON schema
+  sent to the LLM. Missing descriptions raise a ValueError.
+
 ```python
 # Define the search tool
 @synalinks.saving.register_synalinks_serializable()

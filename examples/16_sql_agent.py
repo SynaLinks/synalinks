@@ -96,7 +96,19 @@ SQL query used, providing transparency into the agent's reasoning.
 
 Each tool uses `kb.get_symbolic_data_models()` to dynamically discover
 available tables. This makes the agent adaptable to any database schema
-without hardcoding table names:
+without hardcoding table names.
+
+**Important Tool Constraints:**
+
+- **No Optional Parameters**: All tool parameters must be required. OpenAI
+  and other LLM providers require all parameters in their JSON schemas. Do
+  not use default values for parameters.
+
+- **Complete Docstring Required**: Every parameter must be documented in the
+  `Args:` section. The Tool extracts descriptions from the docstring to build
+  the JSON schema sent to the LLM. Missing descriptions raise a ValueError.
+
+Example tool definition:
 
 ```python
 from synalinks.src.saving.object_registration import register_synalinks_serializable

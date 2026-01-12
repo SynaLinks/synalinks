@@ -56,8 +56,9 @@ agent = await synalinks.FunctionCallingAgent(
 Tools are async Python functions wrapped with `synalinks.Tool()`. They must:
 
 1. Have type hints for all parameters
-2. Have a docstring describing what the tool does
+2. Have a complete docstring with an `Args:` section documenting every parameter
 3. Be asynchronous (use `async def`)
+4. **Have NO optional parameters** - all parameters must be required
 
 ```python
 import synalinks
@@ -80,6 +81,16 @@ calculator_tool = synalinks.Tool(calculator)
 
 The `synalinks.Tool()` wrapper extracts the function's schema from its type
 hints and docstring, making it available to the agent.
+
+**Important Tool Constraints:**
+
+- **No Optional Parameters**: OpenAI and other LLM providers require all
+  tool parameters to be required in their JSON schemas. Do not use default
+  values for parameters.
+
+- **Complete Docstring Required**: Every parameter must be documented in the
+  `Args:` section of the docstring. The Tool uses these descriptions to build
+  the JSON schema sent to the LLM. Missing descriptions will raise a ValueError.
 
 ### Tool Design Best Practices
 
@@ -342,7 +353,6 @@ import asyncio
 from dotenv import load_dotenv
 
 import synalinks
-
 
 # =============================================================================
 # Data Models

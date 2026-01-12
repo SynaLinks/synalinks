@@ -57,6 +57,14 @@ perform one **step at a time**.
 
 ## Creating an Interactive Agent
 
+Define tools as async functions with complete docstrings. **Important Tool Constraints:**
+
+- **No Optional Parameters**: All parameters must be required. OpenAI and
+  other providers require all tool parameters in their JSON schemas.
+
+- **Complete Docstring Required**: Every parameter must be documented in the
+  `Args:` section. The Tool extracts descriptions to build the JSON schema.
+
 Use `ChatMessages` as input and set `autonomous=False`:
 
 ```python

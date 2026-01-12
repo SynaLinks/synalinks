@@ -132,9 +132,31 @@ class Tool(Module):
     result = await tool(expression="2 + 2")
     ```
 
-    Note:
-        Optional parameters with default values in the wrapped function are not
-        supported. All function parameters must be required.
+    Important:
+        **No Optional Parameters**: All function parameters must be required.
+        Optional parameters with default values are not supported because
+        OpenAI and other providers require all parameters to be required
+        in their structured output JSON schemas.
+
+        **Complete Docstring Required**: The wrapped function must have a
+        complete docstring with an `Args:` section that documents every
+        parameter. The Tool extracts parameter descriptions from the docstring
+        to build the JSON schema sent to the language model. Missing
+        descriptions will raise a ValueError.
+
+        Example of a properly documented tool function:
+
+        ```python
+        async def search(query: str, limit: int):
+            \"\"\"Search the database for matching records.
+
+            Args:
+                query (str): The search query string.
+                limit (int): Maximum number of results to return.
+            \"\"\"
+            # Implementation here
+            return {"results": [...]}
+        ```
 
     Args:
         func (Callable): The async function to wrap as a tool.

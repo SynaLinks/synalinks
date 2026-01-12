@@ -90,6 +90,16 @@ async def search_web(query: str):
 tool = synalinks.Tool(search_web)
 ```
 
+**Important Tool Constraints:**
+
+- **No Optional Parameters**: All parameters must be required. OpenAI and
+  other LLM providers require all tool parameters to be required in their
+  JSON schemas. Do not use default values.
+
+- **Complete Docstring Required**: Every parameter must be documented in
+  the `Args:` section. The Tool extracts descriptions from the docstring
+  to build the JSON schema. Missing descriptions raise a ValueError.
+
 ## Control Flow Modules
 
 ### Decision: Single-Label Classification
@@ -430,7 +440,6 @@ import asyncio
 from dotenv import load_dotenv
 
 import synalinks
-
 
 # =============================================================================
 # Data Models

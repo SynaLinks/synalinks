@@ -39,17 +39,30 @@ for different use cases.
 
 ## Creating an Autonomous Agent
 
-Define tools as async functions with docstrings, then wrap them with `synalinks.Tool`:
+Define tools as async functions with complete docstrings, then wrap them with `synalinks.Tool`:
 
 ```python
 @synalinks.utils.register_synalinks_serializable()
 async def calculate(expression: str):
-    \"\"\"Calculate the result of a mathematical expression.\"\"\"
+    \"\"\"Calculate the result of a mathematical expression.
+
+    Args:
+        expression (str): The mathematical expression to calculate.
+    \"\"\"
     result = eval(expression)
     return {"result": result, "log": "Successfully executed"}
 
 tools = [synalinks.Tool(calculate)]
 ```
+
+**Important Tool Constraints:**
+
+- **No Optional Parameters**: All parameters must be required. OpenAI and
+  other providers require all tool parameters to be required in JSON schemas.
+
+- **Complete Docstring Required**: Every parameter must have a description
+  in the `Args:` section of the docstring. The Tool uses these to build the
+  JSON schema sent to the LLM.
 
 Create the agent with `FunctionCallingAgent` in autonomous mode:
 
