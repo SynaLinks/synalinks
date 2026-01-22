@@ -501,8 +501,12 @@ class FunctionCallingAgent(Module):
             if self.schema:
                 return await self.final_generator(trajectory)
             else:
+                # Convert dict messages to ChatMessage objects to avoid Pydantic warnings
+                validated_messages = ChatMessages(
+                    messages=[ChatMessage(**msg) for msg in agent_messages]
+                )
                 return JsonDataModel(
-                    json=trajectory.get_json(),
+                    json=validated_messages.get_json(),
                     schema=ChatMessages.get_schema(),
                     name=self.name,
                 )
@@ -575,8 +579,12 @@ class FunctionCallingAgent(Module):
             trajectory.update({"messages": agent_messages})
 
             if self.return_inputs_with_trajectory:
+                # Convert dict messages to ChatMessage objects to avoid Pydantic warnings
+                validated_messages = ChatMessages(
+                    messages=[ChatMessage(**msg) for msg in agent_messages]
+                )
                 return JsonDataModel(
-                    json=trajectory.get_json(),
+                    json=validated_messages.get_json(),
                     schema=ChatMessages.get_schema(),
                     name=self.name,
                 )

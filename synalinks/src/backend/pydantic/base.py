@@ -19,6 +19,7 @@ from typing import Optional
 from typing import Union
 
 from pydantic import Field
+from pydantic import field_validator
 
 from synalinks.src.api_export import synalinks_export
 from synalinks.src.backend.common.json_schema_utils import contains_schema
@@ -199,6 +200,17 @@ class ChatMessages(DataModel):
         description="The list of chat messages",
         default=[],
     )
+
+    @field_validator("messages", mode="before")
+    @classmethod
+    def convert_dicts_to_chat_messages(cls, v):
+        """Convert dict messages to ChatMessage objects."""
+        if isinstance(v, list):
+            return [
+                ChatMessage(**msg) if isinstance(msg, dict) else msg
+                for msg in v
+            ]
+        return v
 
 
 @synalinks_export(

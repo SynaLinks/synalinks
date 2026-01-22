@@ -186,7 +186,7 @@ async def main():
 
     # Initialize the language model
     language_model = synalinks.LanguageModel(
-        model="openai/gpt-4.1",
+        model="openai/gpt-5.2",
     )
 
     # Define the tools available to the agent

@@ -71,7 +71,9 @@ class ChainOfThoughtModuleTest(testing.TestCase):
         class Answer(DataModel):
             answer: str = Field(description="The correct answer")
 
-        language_model = LanguageModel(model="openai/gpt-5.2")
+        # Use Anthropic model because it exposes reasoning_content in the API response.
+        # OpenAI models support reasoning but do NOT expose reasoning_content.
+        language_model = LanguageModel(model="anthropic/claude-sonnet-4-20250514")
 
         x0 = Input(data_model=Query)
         x1 = await ChainOfThought(
@@ -124,7 +126,9 @@ class ChainOfThoughtModuleTest(testing.TestCase):
         class Answer(DataModel):
             answer: str = Field(description="The correct answer")
 
-        language_model = LanguageModel(model="openai/gpt-5.2")
+        # Use Anthropic model because it exposes reasoning_content in the API response.
+        # OpenAI models support reasoning but do NOT expose reasoning_content.
+        language_model = LanguageModel(model="anthropic/claude-sonnet-4-20250514")
 
         x0 = Input(data_model=Query)
         x1 = await ChainOfThought(

@@ -239,14 +239,27 @@ class LanguageModel(SynalinksSaveable):
             if not litellm.supports_reasoning(model=self.model):
                 use_reasoning = False
 
-        # If reasoning_effort is active, remove "thinking" field from schema
-        # The LM will use its internal reasoning (reasoning_content) instead
-        if use_reasoning and schema:
+        # Check if the model actually exposes reasoning_content in the response.
+        # Some models (like OpenAI) support the reasoning_effort parameter but
+        # do NOT return reasoning_content in the API response.
+        # Only Anthropic models expose reasoning content via thinking_blocks.
+        model_exposes_reasoning = self.model.startswith("anthropic")
+
+        # If reasoning_effort is active AND the model exposes reasoning content,
+        # remove "thinking" field from schema - the LM will use its internal
+        # reasoning (reasoning_content) instead.
+        # For models that don't expose reasoning (like OpenAI), keep the "thinking"
+        # field so the model generates it as part of structured output.
+        if use_reasoning and model_exposes_reasoning and schema:
             if "properties" in schema and "thinking" in schema["properties"]:
                 del schema["properties"]["thinking"]
                 thinking_removed = True
             if "required" in schema and "thinking" in schema["required"]:
                 schema["required"] = [r for r in schema["required"] if r != "thinking"]
+
+        # Pass reasoning_effort to LiteLLM when reasoning is enabled
+        if use_reasoning:
+            kwargs["reasoning_effort"] = reasoning_effort
 
         if schema:
             if self.model.startswith("groq"):
@@ -270,23 +283,17 @@ class LanguageModel(SynalinksSaveable):
                     }
                 )
             elif self.model.startswith("anthropic"):
-                # Use a tool created on the fly for anthropic
+                # Use response_format for Anthropic - LiteLLM handles this correctly:
+                # - For newer models (sonnet-4.5, opus-4.1): uses native output_format
+                # - For older models: uses tool call with proper tool_choice handling
+                #   (auto when thinking is enabled, forced otherwise)
                 kwargs.update(
                     {
-                        "tools": [
-                            {
-                                "name": "structured_output",
-                                "description": "Generate a valid JSON output",
-                                "input_schema": {
-                                    "type": "object",
-                                    "properties": schema.get("properties"),
-                                    "required": schema.get("required"),
-                                },
-                            }
-                        ],
-                        "tool_choice": {
-                            "type": "tool",
-                            "name": "structured_output",
+                        "response_format": {
+                            "type": "json_schema",
+                            "json_schema": {
+                                "schema": schema,
+                            },
                         },
                     }
                 )
@@ -390,13 +397,14 @@ class LanguageModel(SynalinksSaveable):
                         self.cumulated_cost += self.last_call_cost
                 if streaming:
                     return StreamingIterator(response)
-                if (
-                    self.model.startswith("groq") or self.model.startswith("anthropic")
-                ) and schema:
+                if self.model.startswith("groq") and schema:
+                    # Groq uses tool_calls for structured output
                     response_str = response["choices"][0]["message"]["tool_calls"][0][
                         "function"
                     ]["arguments"]
                 else:
+                    # Anthropic and other providers use response_format,
+                    # which returns content in message["content"]
                     response_str = response["choices"][0]["message"]["content"].strip()
                 if schema:
                     json_instance = orjson.loads(response_str)
@@ -406,7 +414,7 @@ class LanguageModel(SynalinksSaveable):
                         message = response["choices"][0]["message"]
                         reasoning_content = getattr(message, "reasoning_content", None)
                         # Always set thinking field if it was removed, default to empty
-                        json_instance["thinking"] = reasoning_content or ""
+                        json_instance = {"thinking": reasoning_content or "", **json_instance}
                 else:
                     json_instance = {
                         "role": ChatRole.ASSISTANT,
