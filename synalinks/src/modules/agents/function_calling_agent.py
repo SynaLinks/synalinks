@@ -341,6 +341,7 @@ class FunctionCallingAgent(Module):
         prompt_template=None,
         examples=None,
         instructions=None,
+        temperature=0.0,
         use_inputs_schema=False,
         use_outputs_schema=False,
         reasoning_effort=None,
@@ -364,6 +365,7 @@ class FunctionCallingAgent(Module):
         if not instructions:
             instructions = get_default_instructions()
         self.instructions = instructions
+        self.temperature = temperature
 
         self.examples = examples
         self.use_inputs_schema = use_inputs_schema
@@ -387,6 +389,7 @@ class FunctionCallingAgent(Module):
             prompt_template=self.prompt_template,
             examples=self.examples,
             instructions=self.instructions,
+            temperature=self.temperature,
             use_inputs_schema=self.use_inputs_schema,
             use_outputs_schema=self.use_outputs_schema,
             reasoning_effort=self.reasoning_effort,
@@ -399,6 +402,7 @@ class FunctionCallingAgent(Module):
                 schema=self.schema,
                 language_model=self.language_model,
                 instructions=self.instructions,
+                temperature=self.temperature,
                 reasoning_effort=self.reasoning_effort,
                 return_inputs=self.return_inputs_with_trajectory,
                 name="final_generator_" + self.name,
@@ -613,6 +617,7 @@ class FunctionCallingAgent(Module):
             "prompt_template": self.prompt_template,
             "examples": self.examples,
             "instructions": self.instructions,
+            "temperature": self.temperature,
             "use_inputs_schema": self.use_inputs_schema,
             "use_outputs_schema": self.use_outputs_schema,
             "reasoning_effort": self.reasoning_effort,
