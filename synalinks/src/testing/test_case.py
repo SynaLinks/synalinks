@@ -7,6 +7,7 @@ import tempfile
 import unittest
 
 from absl.testing import parameterized
+from dotenv import load_dotenv
 
 from synalinks.src.backend.common.global_state import clear_session
 from synalinks.src.backend.config import disable_telemetry
@@ -21,6 +22,8 @@ class TestCase(
         super().__init__(*args, **kwargs)
 
     def setUp(self):
+        # Load environment variables from .env file
+        load_dotenv()
         # clear global state so that test cases are independent
         clear_session(free_memory=False)
         disable_telemetry()

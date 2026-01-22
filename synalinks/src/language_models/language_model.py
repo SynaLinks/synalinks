@@ -405,8 +405,8 @@ class LanguageModel(SynalinksSaveable):
                     if use_reasoning and thinking_removed:
                         message = response["choices"][0]["message"]
                         reasoning_content = getattr(message, "reasoning_content", None)
-                        if reasoning_content:
-                            json_instance["thinking"] = reasoning_content
+                        # Always set thinking field if it was removed, default to empty
+                        json_instance["thinking"] = reasoning_content or ""
                 else:
                     json_instance = {
                         "role": ChatRole.ASSISTANT,

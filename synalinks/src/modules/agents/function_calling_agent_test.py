@@ -110,6 +110,57 @@ class FunctionCallingAgentTest(testing.TestCase):
         )
         self.assertIsNotNone(program)
 
+    async def test_agent_temperature_parameter(self):
+        """Test that temperature is correctly passed to generators."""
+        language_model = LanguageModel(model="ollama/mistral")
+        tools = [Tool(calculate)]
+
+        agent = FunctionCallingAgent(
+            language_model=language_model,
+            tools=tools,
+            temperature=0.7,
+            name="temp_test",
+        )
+
+        # Verify temperature is stored
+        self.assertEqual(agent.temperature, 0.7)
+        # Verify temperature is passed to tool_calls_generator
+        self.assertEqual(agent.tool_calls_generator.temperature, 0.7)
+
+    async def test_agent_reasoning_effort_parameter(self):
+        """Test that reasoning_effort is correctly passed to generators."""
+        language_model = LanguageModel(model="ollama/mistral")
+        tools = [Tool(calculate)]
+
+        agent = FunctionCallingAgent(
+            language_model=language_model,
+            tools=tools,
+            reasoning_effort="low",
+            name="reasoning_test",
+        )
+
+        # Verify reasoning_effort is stored
+        self.assertEqual(agent.reasoning_effort, "low")
+        # Verify reasoning_effort is passed to tool_calls_generator
+        self.assertEqual(agent.tool_calls_generator.reasoning_effort, "low")
+
+    async def test_agent_default_reasoning_effort_is_none(self):
+        """Test that default reasoning_effort is None (not 'low' like ChainOfThought)."""
+        language_model = LanguageModel(model="ollama/mistral")
+        tools = [Tool(calculate)]
+
+        agent = FunctionCallingAgent(
+            language_model=language_model,
+            tools=tools,
+            name="default_test",
+        )
+
+        # FunctionCallingAgent should default to None (no reasoning)
+        # But its ChainOfThought generators will default to "low"
+        self.assertIsNone(agent.reasoning_effort)
+        # The ChainOfThought inside defaults None to "low"
+        self.assertEqual(agent.tool_calls_generator.reasoning_effort, "low")
+
     @patch("litellm.acompletion")
     async def test_autonomous_mode_simple_calculation(self, mock_completion):
         """Test autonomous mode with a simple calculation."""
