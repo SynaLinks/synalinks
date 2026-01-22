@@ -24,15 +24,16 @@ class Thinking(DataModel):
 class ChainOfThought(Module):
     """Useful to answer in a step by step manner.
 
-    This component concatenate thinking fields to your data model/schema and generate
+    This component concatenate a thinking field to your data model/schema and generate
     a prediction allowing the LM to think step by step before answering.
 
-    The parameter K specify the number of thinking fields to add (Default to 1).
+    By default the reasoning_effort is set to 'low' which uses the model's internal
+    reasoning capabilities (extended thinking) to populate the thinking field.
 
     Example:
 
     ```python
-    import synalink
+    import synalinks
     import asyncio
 
     class Query(synalinks.DataModel):
@@ -48,14 +49,13 @@ class ChainOfThought(Module):
     async def main():
 
         language_model = synalinks.LanguageModel(
-            model="ollama/mistral",
+            model="anthropic/claude-3-7-sonnet-20250219",
         )
 
         x0 = synalinks.Input(data_model=Query)
         x1 = await synalinks.ChainOfThought(
             data_model=Answer,
             language_model=language_model,
-            k=3,
         )(x0)
 
         program = synalinks.Program(
@@ -85,11 +85,16 @@ class ChainOfThought(Module):
         seed_instructions (list): Optional. A list of instructions to use as seed for the
             optimization. If not provided, use the default instructions as seed.
         temperature (float): Optional. The temperature for the LM call.
+        reasoning_effort (string): Optional. The reasoning effort for the LM call
+            between ['minimal', 'low', 'medium', 'high', 'disable', 'none'].
+            (Default to 'low'). If reasoning effort is none or disabled, a thinking
+            field is automatically added to the output data model. Otherwise,
+            the thinking field is automatically populated by the model's 
+            reasoning content.
         use_inputs_schema (bool): Optional. Whether or not use the inputs schema in
             the prompt (Default to False) (see `Generator`).
         use_outputs_schema (bool): Optional. Whether or not use the outputs schema in
             the prompt (Default to False) (see `Generator`).
-        k (int): The number of thinking fields to add.
         return_inputs (bool): Optional. Whether or not to concatenate the inputs to
             the outputs (Default to False) (see `Generator`).
         name (str): Optional. The name of the module.
@@ -107,9 +112,9 @@ class ChainOfThought(Module):
         instructions=None,
         seed_instructions=None,
         temperature=0.0,
+        reasoning_effort=None,
         use_inputs_schema=False,
         use_outputs_schema=False,
-        k=1,
         return_inputs=False,
         name=None,
         description=None,
@@ -130,17 +135,15 @@ class ChainOfThought(Module):
         self.instructions = instructions
         self.seed_instructions = seed_instructions
         self.temperature = temperature
+        # Default to "low" reasoning effort for ChainOfThought
+        if reasoning_effort is None:
+            reasoning_effort = "low"
+        self.reasoning_effort = reasoning_effort
         self.use_inputs_schema = use_inputs_schema
         self.use_outputs_schema = use_outputs_schema
         self.return_inputs = return_inputs
-        self.k = k
 
-        thinking_data_model = Thinking
-        if k > 1:
-            for _ in range(k - 1):
-                thinking_data_model += Thinking
-
-        final_data_model = thinking_data_model + SymbolicDataModel(schema=self.schema)
+        final_data_model = Thinking + SymbolicDataModel(schema=self.schema)
 
         self.generator = Generator(
             data_model=final_data_model,
@@ -150,6 +153,7 @@ class ChainOfThought(Module):
             instructions=self.instructions,
             seed_instructions=self.seed_instructions,
             temperature=self.temperature,
+            reasoning_effort=self.reasoning_effort,
             use_inputs_schema=self.use_inputs_schema,
             use_outputs_schema=self.use_outputs_schema,
             return_inputs=self.return_inputs,
@@ -167,10 +171,10 @@ class ChainOfThought(Module):
             "instructions": self.instructions,
             "seed_instructions": self.seed_instructions,
             "temperature": self.temperature,
+            "reasoning_effort": self.reasoning_effort,
             "use_inputs_schema": self.use_inputs_schema,
             "use_outputs_schema": self.use_outputs_schema,
             "return_inputs": self.return_inputs,
-            "k": self.k,
             "name": self.name,
             "description": self.description,
             "trainable": self.trainable,

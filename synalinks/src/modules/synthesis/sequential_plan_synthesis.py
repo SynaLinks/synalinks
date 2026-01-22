@@ -111,6 +111,9 @@ class SequentialPlanSynthesis(Module):
         runner (Module | Program): Required. The runner that executes each step.
         return_inputs (bool): Optional. Whether or not to concatenate the inputs to
             the outputs (Default to False).
+        reasoning_effort (string): Optional. The reasoning effort for the LM call
+            between ['minimal', 'low', 'medium', 'high', 'disable', 'none', None].
+            Default to None (no reasoning).
         name (str): Optional. The name of the module.
         description (str): Optional. The description of the module.
         trainable (bool): Whether the module's variables should be trainable.
@@ -125,6 +128,7 @@ class SequentialPlanSynthesis(Module):
         seed_steps=None,
         runner=None,
         return_inputs=True,
+        reasoning_effort=None,
         name=None,
         description=None,
         trainable=True,
@@ -154,6 +158,7 @@ class SequentialPlanSynthesis(Module):
         self.language_model = language_model
         self.runner = runner
         self.return_inputs = return_inputs
+        self.reasoning_effort = reasoning_effort
 
         self.state = self.add_variable(
             initializer=SequentialPlan(
@@ -168,6 +173,7 @@ class SequentialPlanSynthesis(Module):
             schema=self.schema,
             language_model=self.language_model,
             return_inputs=self.return_inputs,
+            reasoning_effort=self.reasoning_effort,
             name="final_generator_" + self.name,
         )
 
@@ -215,6 +221,7 @@ class SequentialPlanSynthesis(Module):
             "steps": self.steps,
             "seed_steps": self.seed_steps,
             "return_inputs": self.return_inputs,
+            "reasoning_effort": self.reasoning_effort,
             "name": self.name,
             "description": self.description,
             "trainable": self.trainable,

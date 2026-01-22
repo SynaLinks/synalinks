@@ -127,6 +127,9 @@ class Generator(Module):
         return_inputs (bool): Optional. Whether or not to concatenate the inputs to
             the outputs (Default to False).
         temperature (float): Optional. The temperature for the LM call.
+        reasoning_effort (string): Optional. The reasoning effort for the LM call
+            between ['minimal', 'low', 'medium', 'high', 'disable', 'none', None].
+            Default to None (no reasoning).
         streaming (str): Optional. If true stream the LM response, enabled only if
             `schema` is `None` and only during inference (not during training).
         name (str): Optional. The name of the module.
@@ -147,6 +150,7 @@ class Generator(Module):
         use_outputs_schema=False,
         return_inputs=False,
         temperature=0.0,
+        reasoning_effort=None,
         streaming=False,
         name=None,
         description=None,
@@ -175,6 +179,12 @@ class Generator(Module):
         self.instructions = instructions
         self.return_inputs = return_inputs
         self.temperature = temperature
+        efforts = ["minimal", "low", "medium", "high", "disable", "none", None]
+        if reasoning_effort not in efforts:
+            raise ValueError(
+                f"The reasoning effort parameter should be one of: {efforts}"
+            )
+        self.reasoning_effort = reasoning_effort
         self.use_inputs_schema = use_inputs_schema
         self.use_outputs_schema = use_outputs_schema
         if schema and streaming:
@@ -226,6 +236,7 @@ class Generator(Module):
             streaming=streaming,
             name="prediction_" + self.name,
             temperature=self.temperature,
+            reasoning_effort=self.reasoning_effort,
         )
         if streaming:
             return result
@@ -310,6 +321,7 @@ class Generator(Module):
             "use_outputs_schema": self.use_outputs_schema,
             "return_inputs": self.return_inputs,
             "temperature": self.temperature,
+            "reasoning_effort": self.reasoning_effort,
             "name": self.name,
             "description": self.description,
             "trainable": self.trainable,

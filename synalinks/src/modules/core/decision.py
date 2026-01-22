@@ -83,6 +83,9 @@ class Decision(Module):
         seed_instructions (list): Optional. A list of instructions to use as seed for the
             optimization. If not provided, use the default instructions as seed.
         temperature (float): Optional. The temperature for the LM call.
+        reasoning_effort (string): Optional. The reasoning effort for the LM call
+            between ['minimal', 'low', 'medium', 'high', 'disable', 'none', None].
+            Default to None (no reasoning).
         use_inputs_schema (bool): Optional. Whether or not use the inputs schema in
             the prompt (Default to False) (see `Generator`).
         use_outputs_schema (bool): Optional. Whether or not use the outputs schema in
@@ -102,6 +105,7 @@ class Decision(Module):
         instructions=None,
         seed_instructions=None,
         temperature=0.0,
+        reasoning_effort=None,
         use_inputs_schema=False,
         use_outputs_schema=False,
         name=None,
@@ -130,6 +134,7 @@ class Decision(Module):
             instructions = default_decision_instructions(self.labels)
         self.instructions = instructions
         self.temperature = temperature
+        self.reasoning_effort = reasoning_effort
         self.use_inputs_schema = use_inputs_schema
         self.use_outputs_schema = use_outputs_schema
         self.decision = Generator(
@@ -139,6 +144,7 @@ class Decision(Module):
             examples=self.examples,
             instructions=self.instructions,
             temperature=self.temperature,
+            reasoning_effort=self.reasoning_effort,
             use_inputs_schema=self.use_inputs_schema,
             use_outputs_schema=self.use_outputs_schema,
             name="generator_" + self.name,
@@ -164,6 +170,7 @@ class Decision(Module):
             "instructions": self.instructions,
             "seed_instructions": self.seed_instructions,
             "temperature": self.temperature,
+            "reasoning_effort": self.reasoning_effort,
             "use_inputs_schema": self.use_inputs_schema,
             "use_outputs_schema": self.use_outputs_schema,
             "name": self.name,

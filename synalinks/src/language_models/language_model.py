@@ -228,6 +228,26 @@ class LanguageModel(SynalinksSaveable):
         json_instance = {}
         input_kwargs = copy.deepcopy(kwargs)
         schema = copy.deepcopy(schema)
+
+        # Handle reasoning_effort parameter
+        reasoning_effort = kwargs.pop("reasoning_effort", "none")
+        use_reasoning = reasoning_effort not in ("none", "disable")
+        thinking_removed = False
+
+        # Check if the model supports reasoning before using it
+        if use_reasoning:
+            if not litellm.supports_reasoning(model=self.model):
+                use_reasoning = False
+
+        # If reasoning_effort is active, remove "thinking" field from schema
+        # The LM will use its internal reasoning (reasoning_content) instead
+        if use_reasoning and schema:
+            if "properties" in schema and "thinking" in schema["properties"]:
+                del schema["properties"]["thinking"]
+                thinking_removed = True
+            if "required" in schema and "thinking" in schema["required"]:
+                schema["required"] = [r for r in schema["required"] if r != "thinking"]
+
         if schema:
             if self.model.startswith("groq"):
                 # Use a tool created on the fly for groq
@@ -380,6 +400,13 @@ class LanguageModel(SynalinksSaveable):
                     response_str = response["choices"][0]["message"]["content"].strip()
                 if schema:
                     json_instance = orjson.loads(response_str)
+                    # If reasoning_effort is active and thinking was removed from schema,
+                    # populate the "thinking" field from reasoning_content
+                    if use_reasoning and thinking_removed:
+                        message = response["choices"][0]["message"]
+                        reasoning_content = getattr(message, "reasoning_content", None)
+                        if reasoning_content:
+                            json_instance["thinking"] = reasoning_content
                 else:
                     json_instance = {
                         "role": ChatRole.ASSISTANT,

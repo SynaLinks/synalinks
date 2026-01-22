@@ -343,6 +343,7 @@ class FunctionCallingAgent(Module):
         instructions=None,
         use_inputs_schema=False,
         use_outputs_schema=False,
+        reasoning_effort=None,
         tools=None,
         autonomous=True,
         return_inputs_with_trajectory=True,
@@ -367,6 +368,7 @@ class FunctionCallingAgent(Module):
         self.examples = examples
         self.use_inputs_schema = use_inputs_schema
         self.use_outputs_schema = use_outputs_schema
+        self.reasoning_effort = reasoning_effort
         self.language_model = language_model
 
         self.tools = {}
@@ -387,6 +389,7 @@ class FunctionCallingAgent(Module):
             instructions=self.instructions,
             use_inputs_schema=self.use_inputs_schema,
             use_outputs_schema=self.use_outputs_schema,
+            reasoning_effort=self.reasoning_effort,
             language_model=self.language_model,
             name="tool_calls_generator_" + self.name,
         )
@@ -396,6 +399,7 @@ class FunctionCallingAgent(Module):
                 schema=self.schema,
                 language_model=self.language_model,
                 instructions=self.instructions,
+                reasoning_effort=self.reasoning_effort,
                 return_inputs=self.return_inputs_with_trajectory,
                 name="final_generator_" + self.name,
             )
@@ -611,6 +615,7 @@ class FunctionCallingAgent(Module):
             "instructions": self.instructions,
             "use_inputs_schema": self.use_inputs_schema,
             "use_outputs_schema": self.use_outputs_schema,
+            "reasoning_effort": self.reasoning_effort,
             "autonomous": self.autonomous,
             "max_iterations": self.max_iterations,
             "return_inputs_with_trajectory": self.return_inputs_with_trajectory,

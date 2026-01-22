@@ -274,6 +274,9 @@ class OMEGA(EvolutionaryOptimizer):
             the mutation programs.
         crossover_temperature (float): The temperature for the LM calls of
             the crossover programs.
+        reasoning_effort (string): Optional. The reasoning effort for the LM call
+            between ['minimal', 'low', 'medium', 'high', 'disable', 'none', None].
+            Default to None (no reasoning).
         algorithm (str): The mechanism to use for the genetic algorithm
             between ['ga', 'dns']. This parameter is provided for ablation
             studies and shouldn't be modified. (Default to 'dns').
@@ -301,6 +304,7 @@ class OMEGA(EvolutionaryOptimizer):
         distance_function=None,
         mutation_temperature=0.3,
         crossover_temperature=0.3,
+        reasoning_effort=None,
         merging_rate=0.02,
         algorithm="dns",
         selection="softmax",
@@ -325,6 +329,7 @@ class OMEGA(EvolutionaryOptimizer):
         if not instructions:
             instructions = ""
         self.instructions = instructions
+        self.reasoning_effort = reasoning_effort
 
         # DNS-specific parameters
         self.embedding_model = embedding_model
@@ -356,6 +361,7 @@ class OMEGA(EvolutionaryOptimizer):
                     data_model=symbolic_variable,
                     language_model=self.language_model,
                     temperature=self.mutation_temperature,
+                    reasoning_effort=self.reasoning_effort,
                     instructions=(
                         "\n".join(
                             [
@@ -389,6 +395,7 @@ class OMEGA(EvolutionaryOptimizer):
                     data_model=symbolic_variable,
                     language_model=self.language_model,
                     temperature=self.crossover_temperature,
+                    reasoning_effort=self.reasoning_effort,
                     instructions=(
                         "\n".join(
                             [
@@ -600,6 +607,7 @@ class OMEGA(EvolutionaryOptimizer):
         config.update(
             {
                 "instructions": self.instructions,
+                "reasoning_effort": self.reasoning_effort,
                 "k_nearest_fitter": self.k_nearest_fitter,
                 "algorithm": self.algorithm,
             }
