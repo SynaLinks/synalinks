@@ -229,37 +229,11 @@ class LanguageModel(SynalinksSaveable):
         input_kwargs = copy.deepcopy(kwargs)
         schema = copy.deepcopy(schema)
 
-        # Handle reasoning_effort parameter
+        # Handle reasoning_effort parameter - just forward to litellm if supported
         reasoning_effort = kwargs.pop("reasoning_effort", "none")
-        use_reasoning = reasoning_effort not in ("none", "disable")
-        thinking_removed = False
-
-        # Check if the model supports reasoning before using it
-        if use_reasoning:
-            if not litellm.supports_reasoning(model=self.model):
-                use_reasoning = False
-
-        # Check if the model actually exposes reasoning_content in the response.
-        # Some models (like OpenAI) support the reasoning_effort parameter but
-        # do NOT return reasoning_content in the API response.
-        # Only Anthropic models expose reasoning content via thinking_blocks.
-        model_exposes_reasoning = self.model.startswith("anthropic")
-
-        # If reasoning_effort is active AND the model exposes reasoning content,
-        # remove "thinking" field from schema - the LM will use its internal
-        # reasoning (reasoning_content) instead.
-        # For models that don't expose reasoning (like OpenAI), keep the "thinking"
-        # field so the model generates it as part of structured output.
-        if use_reasoning and model_exposes_reasoning and schema:
-            if "properties" in schema and "thinking" in schema["properties"]:
-                del schema["properties"]["thinking"]
-                thinking_removed = True
-            if "required" in schema and "thinking" in schema["required"]:
-                schema["required"] = [r for r in schema["required"] if r != "thinking"]
-
-        # Pass reasoning_effort to LiteLLM when reasoning is enabled
-        if use_reasoning:
-            kwargs["reasoning_effort"] = reasoning_effort
+        if reasoning_effort not in ("none", "disable"):
+            if litellm.supports_reasoning(model=self.model):
+                kwargs["reasoning_effort"] = reasoning_effort
 
         if schema:
             if self.model.startswith("groq"):
@@ -408,13 +382,6 @@ class LanguageModel(SynalinksSaveable):
                     response_str = response["choices"][0]["message"]["content"].strip()
                 if schema:
                     json_instance = orjson.loads(response_str)
-                    # If reasoning_effort is active and thinking was removed from schema,
-                    # populate the "thinking" field from reasoning_content
-                    if use_reasoning and thinking_removed:
-                        message = response["choices"][0]["message"]
-                        reasoning_content = getattr(message, "reasoning_content", None)
-                        # Always set thinking field if it was removed, default to empty
-                        json_instance = {"thinking": reasoning_content or "", **json_instance}
                 else:
                     json_instance = {
                         "role": ChatRole.ASSISTANT,
