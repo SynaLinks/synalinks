@@ -246,12 +246,8 @@ class Question(synalinks.DataModel):
 class Answer(synalinks.DataModel):
     """Output: An answer with reasoning."""
 
-    thinking: str = synalinks.Field(
-        description="Your step-by-step reasoning process"
-    )
-    answer: str = synalinks.Field(
-        description="The final answer based on your reasoning"
-    )
+    thinking: str = synalinks.Field(description="Your step-by-step reasoning process")
+    answer: str = synalinks.Field(description="The final answer based on your reasoning")
 
 
 async def main():

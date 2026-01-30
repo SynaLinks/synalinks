@@ -388,6 +388,7 @@ class LanguageModel(SynalinksSaveable):
                         "content": response_str,
                         "tool_call_id": None,
                         "tool_calls": [],
+                        "created_at": None,
                     }
                 return json_instance
             except Exception as e:

@@ -14,6 +14,7 @@ from synalinks.src.backend import ToolCall
 from synalinks.src.backend import is_chat_messages
 from synalinks.src.backend.common.dynamic_json_schema_utils import dynamic_tool_calls
 from synalinks.src.backend.common.json_utils import out_mask_json
+from synalinks.src.modules.core.generator import Generator
 from synalinks.src.modules.module import Module
 from synalinks.src.modules.ttc.chain_of_thought import ChainOfThought
 from synalinks.src.saving import serialization_lib
@@ -397,16 +398,15 @@ class FunctionCallingAgent(Module):
             name="tool_calls_generator_" + self.name,
         )
 
-        if self.schema and self.autonomous:
-            self.final_generator = ChainOfThought(
-                schema=self.schema,
-                language_model=self.language_model,
-                instructions=self.instructions,
-                temperature=self.temperature,
-                reasoning_effort=self.reasoning_effort,
-                return_inputs=self.return_inputs_with_trajectory,
-                name="final_generator_" + self.name,
-            )
+        self.final_generator = Generator(
+            schema=self.schema,
+            language_model=self.language_model,
+            instructions=self.instructions,
+            temperature=self.temperature,
+            reasoning_effort=self.reasoning_effort,
+            return_inputs=False,
+            name="final_generator_" + self.name,
+        )
 
     async def call(self, inputs, training=False):
         if not inputs:
@@ -449,7 +449,6 @@ class FunctionCallingAgent(Module):
                 )
 
                 if not tool_calls.get("tool_calls"):
-                    agent_messages.append(assistant_message.get_json())
                     break
 
                 tasks = []
@@ -498,10 +497,32 @@ class FunctionCallingAgent(Module):
                         )
 
                 trajectory.update({"messages": agent_messages})
+
             if self.schema:
-                return await self.final_generator(trajectory)
+                # With schema: return the structured data model
+                final_result = await self.final_generator(trajectory)
+                if self.return_inputs_with_trajectory:
+                    # Combine trajectory with structured output
+                    validated_messages = ChatMessages(
+                        messages=[ChatMessage(**msg) for msg in agent_messages]
+                    )
+                    return await ops.concat(
+                        JsonDataModel(
+                            json=validated_messages.get_json(),
+                            schema=ChatMessages.get_schema(),
+                            name=self.name,
+                        ),
+                        final_result,
+                        name=self.name,
+                    )
+                else:
+                    return final_result
             else:
-                # Convert dict messages to ChatMessage objects to avoid Pydantic warnings
+                # Without schema: append the ChatMessage to the trajectory
+                final_result = await self.final_generator(trajectory)
+                if final_result:
+                    agent_messages.append(final_result.get_json())
+
                 validated_messages = ChatMessages(
                     messages=[ChatMessage(**msg) for msg in agent_messages]
                 )
@@ -555,6 +576,51 @@ class FunctionCallingAgent(Module):
 
             tool_calls = await self.tool_calls_generator(trajectory)
 
+            # If no tool calls, call final generator
+            # without appending the empty tool calls message
+            if not tool_calls.get("tool_calls"):
+                final_result = await self.final_generator(trajectory)
+                if self.schema:
+                    # Combine messages with structured output
+                    if self.return_inputs_with_trajectory:
+                        validated_messages = ChatMessages(
+                            messages=[ChatMessage(**msg) for msg in agent_messages]
+                        )
+                    else:
+                        validated_messages = ChatMessages(messages=new_messages)
+                    return await ops.concat(
+                        JsonDataModel(
+                            json=validated_messages.get_json(),
+                            schema=ChatMessages.get_schema(),
+                            name=self.name,
+                        ),
+                        final_result,
+                        name=self.name,
+                    )
+                else:
+                    # Append ChatMessage to messages
+                    if final_result:
+                        if self.return_inputs_with_trajectory:
+                            agent_messages.append(final_result.get_json())
+                            validated_messages = ChatMessages(
+                                messages=[ChatMessage(**msg) for msg in agent_messages]
+                            )
+                        else:
+                            new_messages.append(ChatMessage(**final_result.get_json()))
+                            validated_messages = ChatMessages(messages=new_messages)
+                    else:
+                        if self.return_inputs_with_trajectory:
+                            validated_messages = ChatMessages(
+                                messages=[ChatMessage(**msg) for msg in agent_messages]
+                            )
+                        else:
+                            validated_messages = ChatMessages(messages=new_messages)
+                    return JsonDataModel(
+                        json=validated_messages.get_json(),
+                        schema=ChatMessages.get_schema(),
+                        name=self.name,
+                    )
+
             assistant_message = ChatMessage(
                 role=ChatRole.ASSISTANT,
                 content=tool_calls.get("thinking", ""),
@@ -599,8 +665,23 @@ class FunctionCallingAgent(Module):
         if self.autonomous:
             _ = await self.tool_calls_generator(inputs)
             if self.schema:
-                return await self.final_generator(inputs)
+                if self.return_inputs_with_trajectory:
+                    return await ops.logical_and(
+                        SymbolicDataModel(
+                            schema=ChatMessages.get_schema(),
+                            name=self.name,
+                        ),
+                        SymbolicDataModel(
+                            schema=self.schema,
+                            name="final_generator_" + self.name,
+                        ),
+                        name=self.name,
+                    )
+                else:
+                    return await self.final_generator(inputs)
             else:
+                # Without schema: return ChatMessages with final message appended
+                _ = await self.final_generator(inputs)
                 return SymbolicDataModel(
                     schema=ChatMessages.get_schema(),
                     name=self.name,
@@ -614,6 +695,9 @@ class FunctionCallingAgent(Module):
 
             _ = await self.tool_calls_generator(inputs)
 
+            # The output can be either the final generator output (when no tool calls)
+            # or ChatMessages (when there are tool calls)
+            # We use ChatMessages as the output spec since it's the common case
             return SymbolicDataModel(
                 schema=ChatMessages.get_schema(),
                 name=self.name,

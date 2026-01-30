@@ -123,7 +123,11 @@ def make_module_label(module, **kwargs):
                 schema_list = schema
             nested_table = '<table border="0" cellborder="1" cellpadding="10">'
             for i in range(len(schema_list)):
-                schema_str = f"\n\n{orjson.dumps(schema_list[i], option=orjson.OPT_INDENT_2).decode()}\n"
+                dumped = orjson.dumps(
+                    schema_list[i],
+                    option=orjson.OPT_INDENT_2,
+                ).decode()
+                schema_str = f"\n\n{dumped}\n"
                 schema_str = schema_str.replace("\n", '<br align="left"/>')
                 nested_table += (
                     f'<tr><td align="left">'

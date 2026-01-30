@@ -48,6 +48,8 @@ from synalinks.api import Score
 from synalinks.api import SelfCritique
 from synalinks.api import Sequential
 from synalinks.api import SimilaritySearch
+from synalinks.api import Stamp
+from synalinks.api import StampKnowledge
 from synalinks.api import StatelessScope
 from synalinks.api import SymbolicDataModel
 from synalinks.api import SymbolicScope
@@ -82,6 +84,7 @@ from synalinks.api import is_instructions
 from synalinks.api import is_observability_enabled
 from synalinks.api import is_prediction
 from synalinks.api import is_similarity_search
+from synalinks.api import is_stamped
 from synalinks.api import is_telemetry_enabled
 from synalinks.api import is_tool_call
 from synalinks.api import is_trainable

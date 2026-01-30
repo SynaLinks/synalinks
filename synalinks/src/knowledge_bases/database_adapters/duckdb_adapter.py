@@ -179,13 +179,11 @@ class DuckDBAdapter(DatabaseAdapter):
 
     def wipe_database(self):
         with self._connect(read_only=False) as con:
-            tables = con.execute(
-                f"""
+            tables = con.execute(f"""
                 SELECT table_name 
                 FROM information_schema.tables 
                 WHERE table_schema='{MAIN_TABLE}';
-            """
-            ).fetchall()
+            """).fetchall()
 
             for (table_name,) in tables:
                 try:
@@ -311,8 +309,20 @@ class DuckDBAdapter(DatabaseAdapter):
             if prop_name == self.vss_key:
                 continue
 
+            # Handle anyOf schemas (e.g. Optional[datetime] from Pydantic)
+            if not prop_type and "anyOf" in prop_spec:
+                for variant in prop_spec["anyOf"]:
+                    vtype = variant.get("type")
+                    if vtype and vtype != "null":
+                        prop_type = vtype
+                        prop_spec = variant
+                        break
+
             if not prop_type:
-                raise ValueError(f"Malformed JSON schema: missing type for '{prop_name}'")
+                raise ValueError(
+                    f"Malformed JSON schema: "
+                    f"missing type for '{prop_name}'"
+                )
 
             col_def = None
 
@@ -384,13 +394,11 @@ class DuckDBAdapter(DatabaseAdapter):
         remove_embedding=True,
     ) -> List[SymbolicDataModel]:
         with self._connect(read_only=True) as con:
-            tables = con.execute(
-                """
+            tables = con.execute("""
                 SELECT table_name 
                 FROM information_schema.tables 
                 WHERE table_schema='main';
-            """
-            ).fetchall()
+            """).fetchall()
 
             symbolic_data_models = []
             for (table_name,) in tables:
@@ -407,13 +415,11 @@ class DuckDBAdapter(DatabaseAdapter):
             json_schema = data_model.get_schema()
             table_name = sanitize_identifier(json_schema.get("title"))
 
-            exists = con.execute(
-                f"""
+            exists = con.execute(f"""
                 SELECT COUNT(*) 
                 FROM information_schema.tables 
                 WHERE table_schema='{MAIN_TABLE}' AND table_name='{table_name}';
-            """
-            ).fetchone()[0]
+            """).fetchone()[0]
 
             if exists:
                 return
@@ -439,8 +445,7 @@ class DuckDBAdapter(DatabaseAdapter):
 
             if not col:
                 return
-            con.execute(
-                f"""
+            con.execute(f"""
                 PRAGMA create_fts_index(
                     'main.{table_name}',
                     '{id_key}',
@@ -448,8 +453,7 @@ class DuckDBAdapter(DatabaseAdapter):
                     stemmer='{self.stemmer}',
                     overwrite={1 if overwrite else 0}
                 );
-            """
-            )
+            """)
 
     def _maybe_create_vector_index(
         self,
@@ -700,9 +704,7 @@ class DuckDBAdapter(DatabaseAdapter):
                 id_key = self._get_id_key(schema)
                 col = self._get_fts_field(schema)
                 if not col:
-                    warnings.warn(
-                        f"Skipping FTS search for {label}: no FTS field found."
-                    )
+                    warnings.warn(f"Skipping FTS search for {label}: no FTS field found.")
                     continue
 
                 fts_table = sanitize_identifier(f"fts_main_{label}")

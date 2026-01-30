@@ -46,6 +46,7 @@ from synalinks.src.backend.pydantic.base import Instructions as Instructions
 from synalinks.src.backend.pydantic.base import Prediction as Prediction
 from synalinks.src.backend.pydantic.base import Score as Score
 from synalinks.src.backend.pydantic.base import SimilaritySearch as SimilaritySearch
+from synalinks.src.backend.pydantic.base import Stamp as Stamp
 from synalinks.src.backend.pydantic.base import ToolCall as ToolCalling
 from synalinks.src.backend.pydantic.base import ToolCall as ToollCall
 from synalinks.src.backend.pydantic.base import Trainable as Trainable
@@ -60,6 +61,7 @@ from synalinks.src.backend.pydantic.base import is_prediction as is_prediction
 from synalinks.src.backend.pydantic.base import (
     is_similarity_search as is_similarity_search,
 )
+from synalinks.src.backend.pydantic.base import is_stamped as is_stamped
 from synalinks.src.backend.pydantic.base import is_tool_call as is_tool_call
 from synalinks.src.backend.pydantic.base import is_trainable as is_trainable
 from synalinks.src.backend.pydantic.base import is_triplet_search as is_triplet_search

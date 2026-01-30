@@ -449,14 +449,21 @@ class FunctionCallingAgentTest(testing.TestCase):
             name="non_autonomous_tool_messages_test",
         )
 
-        # Second LLM response after tool execution
+        # Second LLM response after tool execution (no more tool calls)
         tool_calls_response = {
             "thinking": "The calculation result is 25. Task complete.",
             "tool_calls": [],
         }
 
+        # Final generator response (ChatMessage format since no schema)
+        final_response = {
+            "role": "assistant",
+            "content": "The result of 5 * 5 is 25.",
+        }
+
         mock_responses = [
             {"choices": [{"message": {"content": json.dumps(tool_calls_response)}}]},
+            {"choices": [{"message": {"content": json.dumps(final_response)}}]},
         ]
 
         mock_completion.side_effect = mock_responses
@@ -484,11 +491,12 @@ class FunctionCallingAgentTest(testing.TestCase):
         )
         result = await agent(input_messages)
 
-        # Verify result is ChatMessages
+        # Verify result contains the new messages only (tool result + final assistant)
+        # With return_inputs_with_trajectory=False, only new messages are returned
         self.assertIsNotNone(result)
         self.assertTrue(is_chat_messages(result))
 
-        # Verify messages include both tool result and new assistant message
+        # The result should contain only the new messages (tool result + final assistant)
         messages = result.get("messages", [])
         self.assertEqual(len(messages), 2)
 
@@ -496,7 +504,7 @@ class FunctionCallingAgentTest(testing.TestCase):
         self.assertEqual(messages[0].get("role"), "tool")
         self.assertEqual(messages[0].get("tool_call_id"), "test-tool-call-id")
 
-        # Second message should be the assistant response
+        # Second message should be the final assistant response
         self.assertEqual(messages[1].get("role"), "assistant")
 
     @patch("litellm.acompletion")
@@ -657,10 +665,18 @@ class FunctionCallingAgentTest(testing.TestCase):
             "tool_calls": [],
         }
 
+        # Final generator response (ChatMessage format since no schema)
+        final_response = {
+            "role": "assistant",
+            "content": "The calculation is complete."
+            " 100 + 200 = 300, then 300 * 3 = 900.",
+        }
+
         mock_responses = [
             {"choices": [{"message": {"content": json.dumps(tool_calls_step1)}}]},
             {"choices": [{"message": {"content": json.dumps(tool_calls_step2)}}]},
             {"choices": [{"message": {"content": json.dumps(tool_calls_step3)}}]},
+            {"choices": [{"message": {"content": json.dumps(final_response)}}]},
         ]
         mock_completion.side_effect = mock_responses
 

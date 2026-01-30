@@ -309,6 +309,7 @@ class Query(synalinks.DataModel):
 
 class SQLResult(synalinks.DataModel):
     """The result of the SQL agent's analysis."""
+
     answer: str = synalinks.Field(
         description="A clear, natural language answer to the user's question"
     )
@@ -454,10 +455,7 @@ async def populate_knowledge_base(kb):
     # Sample customers
     customers = [
         Customer(
-            id="C001",
-            name="Alice Johnson",
-            email="alice@example.com",
-            country="USA"
+            id="C001", name="Alice Johnson", email="alice@example.com", country="USA"
         ),
         Customer(
             id="C002",
@@ -537,7 +535,7 @@ async def populate_knowledge_base(kb):
             stock=120,
         ),
         Product(
-            id="P008", 
+            id="P008",
             name="Notebook Set",
             category="Office",
             price=12.99,
@@ -738,7 +736,9 @@ async def main():
                         tool_calls_count += 1
                         args = tool_call.get("arguments", {})
                         args_str = ", ".join(f"{k}={repr(v)}" for k, v in args.items())
-                        print(f"Tool Call {tool_calls_count}: {tool_call['name']}({args_str})")
+                        print(
+                            f"Tool Call {tool_calls_count}: {tool_call['name']}({args_str})"
+                        )
                 elif msg.get("role") == "tool":
                     content = msg.get("content", "")
                     # Truncate long results for readability

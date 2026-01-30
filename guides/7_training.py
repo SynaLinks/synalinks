@@ -249,7 +249,10 @@ async def main():
         (MathProblem(problem="5 * 4"), MathAnswer(thinking="5 * 4 = 20", answer="20")),
         (MathProblem(problem="10 - 3"), MathAnswer(thinking="10 - 3 = 7", answer="7")),
         (MathProblem(problem="8 / 2"), MathAnswer(thinking="8 / 2 = 4", answer="4")),
-        (MathProblem(problem="3 + 3 + 3"), MathAnswer(thinking="3 + 3 + 3 = 9", answer="9")),
+        (
+            MathProblem(problem="3 + 3 + 3"),
+            MathAnswer(thinking="3 + 3 + 3 = 9", answer="9"),
+        ),
         (MathProblem(problem="7 * 2"), MathAnswer(thinking="7 * 2 = 14", answer="14")),
     ]
 
@@ -398,7 +401,6 @@ from dotenv import load_dotenv
 
 import synalinks
 
-
 # =============================================================================
 # Data Models
 # =============================================================================
@@ -478,7 +480,7 @@ async def main():
         ],
         dtype="object",
     )
-    y_test = np.array(
+    _y_test = np.array(  # noqa: F841
         [
             MathAnswer(thinking="4 + 5 = 9", answer="9"),
             MathAnswer(thinking="6 * 3 = 18", answer="18"),

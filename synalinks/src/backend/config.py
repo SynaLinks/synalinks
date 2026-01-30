@@ -4,12 +4,11 @@
 
 import logging
 import os
-
-import orjson
 import random
 import re
 
 import numpy as np
+import orjson
 
 from synalinks.src.api_export import synalinks_export
 

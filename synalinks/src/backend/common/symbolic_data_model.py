@@ -285,7 +285,8 @@ class SymbolicDataModel(SynalinksSaveable):
         return run_maybe_nested(ops.Xor().symbolic_call(other, self))
 
     def __contains__(self, other):
-        """Check if the schema of `other` is contained in this one, or if a string key exists.
+        """Check if the schema of `other` is contained in this one,
+        or if a string key exists.
 
         Args:
             other (SymbolicDataModel | DataModel | str): The other data model to compare

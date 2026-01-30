@@ -11,6 +11,7 @@ The check functions works for every type of data models (by checking the schema)
 e.g. `SymbolicDataModel`, `JsonDataModel`, `DataModel` or `Variable`.
 """
 
+from datetime import datetime
 from enum import Enum
 from typing import Any
 from typing import Dict
@@ -72,6 +73,43 @@ class GenericInputs(DataModel):
     inputs: Dict[str, Any] = Field(
         description="The inputs",
     )
+
+
+@synalinks_export(
+    [
+        "synalinks.backend.Stamp",
+        "synalinks.Stamp",
+    ]
+)
+class Stamp(DataModel):
+    created_at: Optional[datetime] = Field(
+        description="The creation time",
+        default=None,
+    )
+
+
+@synalinks_export(
+    [
+        "synalinks.backend.is_stamped",
+        "synalinks.is_stamped",
+    ]
+)
+def is_stamped(x):
+    """Checks if the given data model is stamped
+
+    Args:
+        x (DataModel | JsonDataModel | SymbolicDataModel | Variable):
+            The data model to check.
+
+    Returns:
+        (bool): True if the condition is met
+    """
+    schema = x.get_schema()
+    properties = schema.get("properties", None)
+    if properties:
+        if properties.get("created_at", None):
+            return True
+    return False
 
 
 @synalinks_export(
@@ -164,6 +202,10 @@ class ChatMessage(DataModel):
         description="The tool calls of the agent",
         default=[],
     )
+    created_at: Optional[datetime] = Field(
+        description="The creation time",
+        default=None,
+    )
 
 
 @synalinks_export(
@@ -206,10 +248,7 @@ class ChatMessages(DataModel):
     def convert_dicts_to_chat_messages(cls, v):
         """Convert dict messages to ChatMessage objects."""
         if isinstance(v, list):
-            return [
-                ChatMessage(**msg) if isinstance(msg, dict) else msg
-                for msg in v
-            ]
+            return [ChatMessage(**msg) if isinstance(msg, dict) else msg for msg in v]
         return v
 
 

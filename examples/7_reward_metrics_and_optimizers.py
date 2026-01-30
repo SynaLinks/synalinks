@@ -4,7 +4,7 @@
 ## Understanding Rewards
 
 `Reward`s are an essential part of reinforcement learning frameworks.
-They are scalar values (between 0.0 and 1.0 for synalinks) 
+They are scalar values (between 0.0 and 1.0 for synalinks)
 that guide the process into making more efficient decisions or
 predictions. During training, the goal is to maximize the reward function.
 The reward gives the system an indication of how well it performed for that task.

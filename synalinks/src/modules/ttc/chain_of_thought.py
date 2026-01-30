@@ -89,7 +89,7 @@ class ChainOfThought(Module):
             between ['minimal', 'low', 'medium', 'high', 'disable', 'none'].
             (Default to 'low'). If reasoning effort is none or disabled, a thinking
             field is automatically added to the output data model. Otherwise,
-            the thinking field is automatically populated by the model's 
+            the thinking field is automatically populated by the model's
             reasoning content.
         use_inputs_schema (bool): Optional. Whether or not use the inputs schema in
             the prompt (Default to False) (see `Generator`).

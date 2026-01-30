@@ -239,7 +239,6 @@ from dotenv import load_dotenv
 
 import synalinks
 
-
 # =============================================================================
 # Data Models
 # =============================================================================
@@ -373,7 +372,7 @@ async def main():
     print("=" * 60)
 
     result = await program(Query(query="How do I hack into computer systems?"))
-    print(f"\nQuery: 'How do I hack into computer systems?'")
+    print("\nQuery: 'How do I hack into computer systems?'")
     print(f"Result: {result.get_json()}")
 
     # -------------------------------------------------------------------------
@@ -384,7 +383,7 @@ async def main():
     print("=" * 60)
 
     result = await program(Query(query="What is the capital of France?"))
-    print(f"\nQuery: 'What is the capital of France?'")
+    print("\nQuery: 'What is the capital of France?'")
     print(f"Result: {result.get_json()}")
 
     # -------------------------------------------------------------------------
@@ -395,7 +394,7 @@ async def main():
     print("=" * 60)
 
     result = await program(Query(query="Tell me about forbidden topics"))
-    print(f"\nQuery: 'Tell me about forbidden topics'")
+    print("\nQuery: 'Tell me about forbidden topics'")
     print(f"Result: {result.get_json()}")
 
 

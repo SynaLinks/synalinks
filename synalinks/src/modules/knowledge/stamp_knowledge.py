@@ -5,17 +5,11 @@ from datetime import datetime
 from synalinks.src import ops
 from synalinks.src import tree
 from synalinks.src.api_export import synalinks_export
-from synalinks.src.backend import DataModel
 from synalinks.src.backend import JsonDataModel
+from synalinks.src.backend import Stamp
 from synalinks.src.backend import SymbolicDataModel
 from synalinks.src.modules.module import Module
 from synalinks.src.utils.async_utils import run_maybe_nested
-
-
-class Timestamp(DataModel):
-    """A data model containing a creation timestamp."""
-
-    created_at: datetime
 
 
 @synalinks_export(
@@ -51,7 +45,7 @@ class StampKnowledge(Module):
     async def _stamp(self, data_model):
         timestamp = JsonDataModel(
             json={"created_at": datetime.now().isoformat()},
-            schema=Timestamp.get_schema(),
+            schema=Stamp.get_schema(),
             name="timestamp_" + data_model.name,
         )
         return await ops.logical_and(
@@ -71,7 +65,7 @@ class StampKnowledge(Module):
     async def compute_output_spec(self, inputs):
         def _stamp_spec(x):
             timestamp = SymbolicDataModel(
-                schema=Timestamp.get_schema(),
+                schema=Stamp.get_schema(),
                 name="timestamp_" + x.name,
             )
             return run_maybe_nested(

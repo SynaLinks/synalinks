@@ -50,6 +50,7 @@ if backend() == "pydantic":
     from synalinks.src.backend.pydantic.base import Instructions
     from synalinks.src.backend.pydantic.base import Prediction
     from synalinks.src.backend.pydantic.base import Score
+    from synalinks.src.backend.pydantic.base import Stamp
     from synalinks.src.backend.pydantic.base import ToolCall
     from synalinks.src.backend.pydantic.base import Trainable
     from synalinks.src.backend.pydantic.base import is_chat_message
@@ -59,6 +60,7 @@ if backend() == "pydantic":
     from synalinks.src.backend.pydantic.base import is_embeddings
     from synalinks.src.backend.pydantic.base import is_instructions
     from synalinks.src.backend.pydantic.base import is_prediction
+    from synalinks.src.backend.pydantic.base import is_stamped
     from synalinks.src.backend.pydantic.base import is_tool_call
     from synalinks.src.backend.pydantic.base import is_trainable
     from synalinks.src.backend.pydantic.core import IS_THREAD_SAFE

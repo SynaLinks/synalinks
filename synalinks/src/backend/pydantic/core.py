@@ -161,7 +161,8 @@ class MetaDataModel(type(pydantic.BaseModel)):
         return run_maybe_nested(ops.Xor().symbolic_call(other, cls))
 
     def __contains__(cls, other):
-        """Check if the schema of `other` is contained in this one, or if a string key exists.
+        """Check if the schema of `other` is contained in this one,
+        or if a string key exists.
 
         Args:
             other (SymbolicDataModel | DataModel | str): The other data model to compare
@@ -618,7 +619,8 @@ class DataModel(pydantic.BaseModel, SynalinksSaveable, metaclass=MetaDataModel):
             )
 
     def __contains__(cls, other):
-        """Check if the schema of `other` is contained in this one, or if a string key exists.
+        """Check if the schema of `other` is contained in this one,
+        or if a string key exists.
 
         Args:
             other (SymbolicDataModel | DataModel | str): The other data model to compare
