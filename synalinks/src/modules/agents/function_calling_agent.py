@@ -332,6 +332,38 @@ class FunctionCallingAgent(Module):
         asyncio.run(main())
     ```
 
+    Args:
+        schema (dict): The target JSON schema.
+            If not provided use the `data_model` to infer it.
+        data_model (DataModel | SymbolicDataModel | JsonDataModel): The target data
+            model for structured output.
+        language_model (LanguageModel): The language model to use.
+        prompt_template (str): The jinja2 prompt template.
+        examples (list): The default list of examples, the examples
+            are a list of tuples containing input/output JSON pairs.
+        instructions (str): The default instructions being a string containing
+            instructions for the language model.
+        final_instructions (str): Optional. The instructions for the final generator
+            that produces the structured output. If not provided, use the same
+            instructions as the tool calls generator.
+        temperature (float): Optional. The temperature for the LM call.
+        use_inputs_schema (bool): Optional. Whether or not use the inputs schema in
+            the prompt (Default to False).
+        use_outputs_schema (bool): Optional. Whether or not use the outputs schema in
+            the prompt (Default to False).
+        reasoning_effort (string): Optional. The reasoning effort for the LM call
+            between ['minimal', 'low', 'medium', 'high', 'disable', 'none', None].
+            Default to None (no reasoning).
+        tools (list): The list of `Tool` or MCP tools available to the agent.
+        autonomous (bool): Optional. Whether the agent runs autonomously
+            (executing tools automatically) or in interactive mode where the user
+            validates tool arguments before execution (Default to True).
+        return_inputs_with_trajectory (bool): Optional. Whether or not to return the
+            inputs concatenated with the full message trajectory (Default to True).
+        max_iterations (int): Optional. The maximum number of tool calling iterations
+            in autonomous mode (Default to 5). Ignored in interactive mode.
+        name (str): Optional. The name of the module.
+        description (str): Optional. The description of the module.
     """
 
     def __init__(
@@ -342,6 +374,7 @@ class FunctionCallingAgent(Module):
         prompt_template=None,
         examples=None,
         instructions=None,
+        final_instructions=None,
         temperature=0.0,
         use_inputs_schema=False,
         use_outputs_schema=False,
@@ -366,6 +399,10 @@ class FunctionCallingAgent(Module):
         if not instructions:
             instructions = get_default_instructions()
         self.instructions = instructions
+        if not final_instructions:
+            self.final_instructions = instructions
+        else:
+            self.final_instructions = final_instructions
         self.temperature = temperature
 
         self.examples = examples
@@ -401,7 +438,7 @@ class FunctionCallingAgent(Module):
         self.final_generator = Generator(
             schema=self.schema,
             language_model=self.language_model,
-            instructions=self.instructions,
+            instructions=self.final_instructions,
             temperature=self.temperature,
             reasoning_effort=self.reasoning_effort,
             return_inputs=False,
@@ -709,6 +746,7 @@ class FunctionCallingAgent(Module):
             "prompt_template": self.prompt_template,
             "examples": self.examples,
             "instructions": self.instructions,
+            "final_instructions": self.final_instructions,
             "temperature": self.temperature,
             "use_inputs_schema": self.use_inputs_schema,
             "use_outputs_schema": self.use_outputs_schema,
