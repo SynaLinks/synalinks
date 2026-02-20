@@ -19,6 +19,9 @@ theme:
 extra_css:
   - stylesheets/extra.css
 
+extra_javascript:
+  - javascripts/summarize.js
+
 markdown_extensions:
   - admonition
   - pymdownx.highlight:

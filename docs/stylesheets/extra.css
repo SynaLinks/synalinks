@@ -19,6 +19,73 @@
     --md-footer-bg-color--dark: rgb(224, 224, 224);
 }
 
+/* Summarize with AI button */
+.summarize-ai-container {
+    position: fixed;
+    bottom: 1.5rem;
+    right: 1.5rem;
+    z-index: 200;
+}
+
+.summarize-ai-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.75rem 1.4rem;
+    border: 1px solid var(--md-default-fg-color--lightest);
+    border-radius: 2rem;
+    background: var(--md-code-bg-color);
+    color: var(--md-default-fg-color);
+    font-size: 0.9rem;
+    font-weight: 500;
+    font-family: inherit;
+    cursor: pointer;
+    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.15);
+    transition: background 0.2s, border-color 0.2s, box-shadow 0.2s;
+}
+
+.summarize-ai-btn:hover {
+    border-color: var(--md-accent-fg-color);
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+}
+
+.summarize-ai-btn svg {
+    flex-shrink: 0;
+}
+
+.summarize-ai-dropdown {
+    position: absolute;
+    bottom: calc(100% + 0.5rem);
+    right: 0;
+    flex-direction: column;
+    min-width: 160px;
+    background: var(--md-default-bg-color);
+    border: 1px solid var(--md-default-fg-color--lightest);
+    border-radius: 0.5rem;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
+    z-index: 201;
+    overflow: hidden;
+}
+
+.summarize-ai-option {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.55rem 0.85rem;
+    color: var(--md-default-fg-color);
+    text-decoration: none;
+    font-size: 0.8rem;
+    transition: background 0.15s;
+}
+
+.summarize-ai-option:hover {
+    background: var(--md-code-bg-color);
+}
+
+.summarize-ai-option img {
+    border-radius: 3px;
+}
+
 /* Dark mode */
 [data-md-color-scheme="slate"] {
     --md-default-bg-color: rgb(26, 26, 26);
