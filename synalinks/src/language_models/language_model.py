@@ -355,6 +355,9 @@ class LanguageModel(SynalinksSaveable):
             streaming = False
         if streaming:
             kwargs.update({"stream": True})
+        # Enable prompt caching for the system instructions (that only change during training not inference)
+        system_message_with_cache_control = {**formatted_messages[0], "cache_control": {"type": "ephemeral"}}
+        formatted_messages[0] = system_message_with_cache_control
         for i in range(self.retry):
             try:
                 response_str = ""

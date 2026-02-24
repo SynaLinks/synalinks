@@ -354,6 +354,8 @@ class FunctionCallingAgent(Module):
         reasoning_effort (string): Optional. The reasoning effort for the LM call
             between ['minimal', 'low', 'medium', 'high', 'disable', 'none', None].
             Default to None (no reasoning).
+        use_chain_of_thought (bool): Optional. Use chain of thought for tool calls generator,
+            usefull when using non-reasoning models. Default False.
         tools (list): The list of `Tool` or MCP tools available to the agent.
         autonomous (bool): Optional. Whether the agent runs autonomously
             (executing tools automatically) or in interactive mode where the user
@@ -379,6 +381,7 @@ class FunctionCallingAgent(Module):
         use_inputs_schema=False,
         use_outputs_schema=False,
         reasoning_effort=None,
+        use_chain_of_thought=False,
         tools=None,
         autonomous=True,
         return_inputs_with_trajectory=True,
@@ -409,6 +412,7 @@ class FunctionCallingAgent(Module):
         self.use_inputs_schema = use_inputs_schema
         self.use_outputs_schema = use_outputs_schema
         self.reasoning_effort = reasoning_effort
+        self.use_chain_of_thought = use_chain_of_thought
         self.language_model = language_model
 
         self.tools = {}
@@ -422,19 +426,34 @@ class FunctionCallingAgent(Module):
         self.return_inputs_with_trajectory = return_inputs_with_trajectory
         self.max_iterations = max_iterations
 
-        self.tool_calls_generator = ChainOfThought(
-            schema=tool_calls_schema,
-            prompt_template=self.prompt_template,
-            examples=self.examples,
-            instructions=self.instructions,
-            temperature=self.temperature,
-            use_inputs_schema=self.use_inputs_schema,
-            use_outputs_schema=self.use_outputs_schema,
-            reasoning_effort=self.reasoning_effort,
-            language_model=self.language_model,
-            name="tool_calls_generator_" + self.name,
-        )
+        if use_chain_of_thought:
+            self.tool_calls_generator = ChainOfThought(
+                schema=tool_calls_schema,
+                prompt_template=self.prompt_template,
+                examples=self.examples,
+                instructions=self.instructions,
+                temperature=self.temperature,
+                use_inputs_schema=self.use_inputs_schema,
+                use_outputs_schema=self.use_outputs_schema,
+                reasoning_effort=self.reasoning_effort,
+                language_model=self.language_model,
+                name="tool_calls_generator_" + self.name,
+            )
+        else:
+            self.tool_calls_generator = Generator(
+                schema=tool_calls_schema,
+                prompt_template=self.prompt_template,
+                examples=self.examples,
+                instructions=self.instructions,
+                temperature=self.temperature,
+                use_inputs_schema=self.use_inputs_schema,
+                use_outputs_schema=self.use_outputs_schema,
+                reasoning_effort=self.reasoning_effort,
+                language_model=self.language_model,
+                name="tool_calls_generator_" + self.name,
+            )
 
+        
         self.final_generator = Generator(
             schema=self.schema,
             language_model=self.language_model,

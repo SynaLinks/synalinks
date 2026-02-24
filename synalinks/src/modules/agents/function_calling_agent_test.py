@@ -152,6 +152,7 @@ class FunctionCallingAgentTest(testing.TestCase):
         agent = FunctionCallingAgent(
             language_model=language_model,
             tools=tools,
+            use_chain_of_thought=True,
             name="default_test",
         )
 
