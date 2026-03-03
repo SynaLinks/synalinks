@@ -16,7 +16,7 @@ from synalinks.src.utils.nlp_utils import shorten_text
 
 litellm.drop_params = True
 litellm.disable_aiohttp_transport = True
-
+litellm.drop_params = True
 
 @synalinks_export(
     [
@@ -37,19 +37,6 @@ class LanguageModel(SynalinksSaveable):
     allow to constrain the use of a specific tool like Groq or Anthropic.
 
     For the complete list of models, please refer to the providers documentation.
-
-    **Using OpenAI models**
-
-    ```python
-    import synalinks
-    import os
-
-    os.environ["OPENAI_API_KEY"] = "your-api-key"
-
-    language_model = synalinks.LanguageModel(
-        model="openai/gpt-4o-mini",
-    )
-    ```
 
     **Using Groq models**
 
@@ -150,13 +137,13 @@ class LanguageModel(SynalinksSaveable):
     import synalinks
     import os
 
-    os.environ["OPENAI_API_KEY"] = "your-api-key"
+    os.environ["GEMINI_API_KEY"] = "your-api-key"
     os.environ["ANTHROPIC_API_KEY"] = "your-api-key"
 
     language_model = synalinks.LanguageModel(
         model="anthropic/claude-3-sonnet-20240229",
         fallback=synalinks.LanguageModel(
-            model="openai/gpt-4o-mini",
+            model="gemini/gemini-3-flash-preview",
         )
     )
     ```
@@ -228,6 +215,7 @@ class LanguageModel(SynalinksSaveable):
         json_instance = {}
         input_kwargs = copy.deepcopy(kwargs)
         schema = copy.deepcopy(schema)
+        provider = self.model.split("/")[0]
 
         # Handle reasoning_effort parameter - just forward to litellm if supported
         reasoning_effort = kwargs.pop("reasoning_effort", "none")
@@ -282,7 +270,7 @@ class LanguageModel(SynalinksSaveable):
                         },
                     }
                 )
-            elif self.model.startswith("openai") or self.model.startswith("azure"):
+            elif self.model.startswith("azure"):
                 # Use constrained structured output for openai
                 # OpenAI require the field  "additionalProperties"
                 # Also OpenAI disallow the field "description" in $ref
@@ -356,8 +344,9 @@ class LanguageModel(SynalinksSaveable):
         if streaming:
             kwargs.update({"stream": True})
         # Enable prompt caching for the system instructions (that only change during training not inference)
-        system_message_with_cache_control = {**formatted_messages[0], "cache_control": {"type": "ephemeral"}}
-        formatted_messages[0] = system_message_with_cache_control
+        if provider in ("gemini", "anthropic"):
+            system_message_with_cache_control = {**formatted_messages[0], "cache_control": {"type": "ephemeral"}}
+            formatted_messages[0] = system_message_with_cache_control
         for i in range(self.retry):
             try:
                 response_str = ""

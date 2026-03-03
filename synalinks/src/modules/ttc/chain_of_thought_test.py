@@ -60,7 +60,7 @@ class ChainOfThoughtModuleTest(testing.TestCase):
         class Answer(DataModel):
             answer: str = Field(description="The correct answer")
 
-        language_model = LanguageModel(model="openai/gpt-4o")
+        language_model = LanguageModel(model="ollama/mistral")
 
         x0 = Input(data_model=Query)
         x1 = await ChainOfThought(

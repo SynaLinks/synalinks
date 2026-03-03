@@ -194,7 +194,5 @@ nav:
       - Synalinks API/Utilities/More plotting utilities.md
       - Synalinks API/Utilities/NLP utilities.md
     - Synalinks API/Config.md
-  - Deployment:
-    - Deployment/Building a REST API.md
   - Observability:
     - Observability/MLflow.md

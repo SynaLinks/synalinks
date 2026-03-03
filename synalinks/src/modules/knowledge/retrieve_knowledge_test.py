@@ -63,7 +63,7 @@ class RetrieveKnowledgeTest(testing.TestCase):
         ]
         await knowledge_base.update(docs)
 
-        language_model = LanguageModel(model="openai/gpt-4o-mini")
+        language_model = LanguageModel(model="ollama/mistral")
 
         retrieve_module = RetrieveKnowledge(
             knowledge_base=knowledge_base,
@@ -85,7 +85,7 @@ class RetrieveKnowledgeTest(testing.TestCase):
             data_models=[Document],
         )
 
-        language_model = LanguageModel(model="openai/gpt-4o-mini")
+        language_model = LanguageModel(model="ollama/mistral")
 
         retrieve_module = RetrieveKnowledge(
             knowledge_base=knowledge_base,
@@ -103,7 +103,7 @@ class RetrieveKnowledgeTest(testing.TestCase):
             data_models=[Document],
         )
 
-        language_model = LanguageModel(model="openai/gpt-4o-mini")
+        language_model = LanguageModel(model="ollama/mistral")
 
         retrieve_module = RetrieveKnowledge(
             knowledge_base=knowledge_base,

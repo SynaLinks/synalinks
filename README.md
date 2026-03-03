@@ -1,5 +1,5 @@
 <div align="center">
-<img height=200 src="https://github.com/SynaLinks/synalinks/blob/main/img/synalinks.png?raw=true">
+<img height=200 src="https://github.com/SynaLinks/synalinks/blob/main/img/synalinks.svg?raw=true">
 </div>
 
 <div align="center">
@@ -88,7 +88,7 @@ Building robust LM apps is hard. Synalinks simplifies it with:
 - **Constrained structured outputs** (JSON) for correctness
 - **Automatic async & parallel execution** by default
 - **Metrics, rewards & evaluations** built-in
-- **Native integrations**: OpenAI, Ollama, Anthropic, Mistral, Azure, Groq, Gemini, XAI
+- **Native integrations**: Ollama, Anthropic, Mistral, Azure, Groq, Gemini
 - **Embeddable fast knowledge base support**: based on DuckDB
 - **API-ready**: Deploy with FastAPI or FastMCP
 - **KerasTuner compatibility** for hyperparameter search
