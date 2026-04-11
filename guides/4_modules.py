@@ -92,9 +92,9 @@ tool = synalinks.Tool(search_web)
 
 **Important Tool Constraints:**
 
-- **No Optional Parameters**: All parameters must be required. OpenAI and
-  other LLM providers require all tool parameters to be required in their
-  JSON schemas. Do not use default values.
+- **No Optional Parameters**: All parameters must be required. LLM providers
+  require all tool parameters to be required in their JSON schemas. Do not
+  use default values.
 
 - **Complete Docstring Required**: Every parameter must be documented in
   the `Args:` section. The Tool extracts descriptions from the docstring
@@ -313,7 +313,7 @@ async def main():
     load_dotenv()
     synalinks.clear_session()
 
-    lm = synalinks.LanguageModel(model="openai/gpt-4.1-mini")
+    lm = synalinks.LanguageModel(model="gemini/gemini-2.0-flash")
 
     # -------------------------------------------------------------------------
     # Generator Example
@@ -479,7 +479,7 @@ async def main():
         experiment_name="guide_4_modules",
     )
 
-    lm = synalinks.LanguageModel(model="openai/gpt-4.1-mini")
+    lm = synalinks.LanguageModel(model="gemini/gemini-2.0-flash")
 
     # -------------------------------------------------------------------------
     # Generator Module

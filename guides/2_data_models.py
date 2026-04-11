@@ -249,7 +249,7 @@ async def main():
     load_dotenv()
     synalinks.clear_session()
 
-    language_model = synalinks.LanguageModel(model="openai/gpt-4.1-mini")
+    language_model = synalinks.LanguageModel(model="gemini/gemini-2.0-flash")
 
     # Build the program
     inputs = synalinks.Input(data_model=ReviewInput)
@@ -354,7 +354,7 @@ async def main():
         experiment_name="guide_2_data_models",
     )
 
-    language_model = synalinks.LanguageModel(model="openai/gpt-4.1-mini")
+    language_model = synalinks.LanguageModel(model="gemini/gemini-2.0-flash")
 
     inputs = synalinks.Input(data_model=ReviewInput)
     outputs = await synalinks.Generator(

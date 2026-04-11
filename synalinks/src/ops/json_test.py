@@ -9,6 +9,7 @@ from synalinks.src.backend import is_schema_equal
 from synalinks.src.backend import standardize_schema
 from synalinks.src.modules import Input
 from synalinks.src.ops.json import concat
+from synalinks.src.ops.json import decompose
 from synalinks.src.ops.json import factorize
 from synalinks.src.ops.json import in_mask
 from synalinks.src.ops.json import logical_and
@@ -321,6 +322,58 @@ class InMaskTest(testing.TestCase):
 
         i0 = Input(data_model=Test)
         x0 = await in_mask(i0, mask=["bar"])
+
+        program = Program(
+            inputs=i0,
+            outputs=x0,
+        )
+
+        config = program.get_config()
+        new_program = Program.from_config(config)
+        for var1 in program.variables:
+            for var2 in new_program.variables:
+                if remove_numerical_suffix(var2.path) == var1.path:
+                    self.assertEqual(var2.get_json(), var1.get_json())
+
+
+class DecomposeTest(testing.TestCase):
+    async def test_decompose_schema_list_property(self):
+        class Test(DataModel):
+            foos: List[str]
+
+        class Expected(DataModel):
+            foo: str
+            foo_1: str
+
+        i0 = Input(data_model=Test)
+        x0 = await decompose(i0)
+        self.assertTrue(
+            is_schema_equal(
+                standardize_schema(x0.get_schema()),
+                standardize_schema(Expected.get_schema()),
+            )
+        )
+
+    async def test_decompose_schema_non_list_property(self):
+        class Test(DataModel):
+            foo: str
+            bar: str
+
+        i0 = Input(data_model=Test)
+        x0 = await decompose(i0)
+        self.assertTrue(
+            is_schema_equal(
+                standardize_schema(x0.get_schema()),
+                standardize_schema(Test.get_schema()),
+            )
+        )
+
+    async def test_decompose_serialization(self):
+        class Test(DataModel):
+            foos: List[str]
+
+        i0 = Input(data_model=Test)
+        x0 = await decompose(i0)
 
         program = Program(
             inputs=i0,

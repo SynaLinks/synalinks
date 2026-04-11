@@ -76,7 +76,7 @@ class AnswerWithThinking(synalinks.DataModel):
 async def main():
     load_dotenv()
 
-    language_model = synalinks.LanguageModel(model="openai/gpt-4.1")
+    language_model = synalinks.LanguageModel(model="gemini/gemini-2.0-flash")
 
     # Build with Functional API
     inputs = synalinks.Input(data_model=Query)
@@ -184,9 +184,9 @@ async def main():
     # 2.1: Configure the Language Model
     # -------------------------------------------------------------------------
     # The LanguageModel is the AI brain that will process our requests.
-    # We're using OpenAI's GPT-4.1 model here.
+    # We're using Google's Gemini model here.
     language_model = synalinks.LanguageModel(
-        model="openai/gpt-4.1",
+        model="gemini/gemini-2.0-flash",
     )
 
     # -------------------------------------------------------------------------

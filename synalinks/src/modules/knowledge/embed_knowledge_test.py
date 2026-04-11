@@ -25,7 +25,7 @@ class EmbedKnowledgeTest(testing.TestCase):
         mock_embedding.return_value = {"data": [{"embedding": expected_value}]}
 
         embedding_model = EmbeddingModel(
-            model="openai/text-embedding-3-small",
+            model="gemini/text-embedding-004",
         )
 
         i0 = Input(data_model=Document)
@@ -56,7 +56,7 @@ class EmbedKnowledgeTest(testing.TestCase):
         mock_embedding.return_value = {"data": [{"embedding": expected_value}]}
 
         embedding_model = EmbeddingModel(
-            model="openai/text-embedding-3-small",
+            model="gemini/text-embedding-004",
         )
 
         i0 = Input(data_model=Document)

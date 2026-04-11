@@ -206,7 +206,7 @@ class Trainer:
         y_pred=None,
         training=True,
     ):
-        """Compute the total reward, validate it, and return it.
+        """Compute per-sample rewards for each prediction.
 
         Subclasses can optionally override this method to provide custom reward
         computation logic.
@@ -214,31 +214,36 @@ class Trainer:
         Args:
             x (list): Input data.
             y (list): Target data.
-            y_pred (list): Predictions returned by the program (output of `program(x)`).
-            training (bool): Whether we are training or evaluating the program.
+            y_pred (list): Predictions returned by the program
+                (output of `program(x)`).
+            training (bool): Whether we are training or evaluating
+                the program.
 
         Returns:
-            (float | None): The total reward as a scalar, or `None` if no reward results
-                (which is the case when called by `Program.test_step`).
+            (list[float]): A list of per-sample reward values,
+                one for each (y, y_pred) pair.
         """
         # The default implementation does not use `x` or `training`.
         del x
         del training
         rewards = []
         if self._compile_reward is not None:
-            for y_t, y_p in zip(y, y_pred):
-                reward = await self._compile_reward(y_t, y_p)
+            results = await asyncio.gather(
+                *[
+                    self._compile_reward(y_t, y_p)
+                    for y_t, y_p in zip(y, y_pred)
+                ]
+            )
+            for reward in results:
                 if reward is not None:
-                    rewards.append(reward)
+                    rewards.append(float(reward))
+                else:
+                    rewards.append(0.0)
         for reward in self.rewards:
-            rewards.append(numpy.sum(reward))
-        if len(rewards) == 1:
-            total_reward = rewards[0]
-        elif len(rewards) == 0:
-            total_reward = numpy.zeros(())
-        else:
-            total_reward = numpy.mean(rewards)
-        return float(total_reward)
+            rewards.append(float(numpy.sum(reward)))
+        if len(rewards) == 0:
+            rewards = [0.0]
+        return rewards
 
     def stateless_compute_reward(
         self,
@@ -882,12 +887,13 @@ class Trainer:
         else:
             warnings.warn("The program does not have any trainable variables.")
             y_pred = await self.predict_on_batch(val_x)
-            reward = await self.compute_reward(
+            rewards = await self.compute_reward(
                 x=val_x,
                 y=val_y,
                 y_pred=y_pred,
             )
-            await self._reward_tracker.update_state(reward)
+            mean_reward = float(numpy.mean(rewards))
+            await self._reward_tracker.update_state(mean_reward)
             metrics = await self.compute_metrics(val_x, val_y, y_pred)
 
         if return_dict:
@@ -917,13 +923,14 @@ class Trainer:
         """
         y_pred = await self.predict_on_batch(x)
 
-        reward = await self.compute_reward(
+        rewards = await self.compute_reward(
             x=x,
             y=y,
             y_pred=y_pred,
             training=False,
         )
-        await self._reward_tracker.update_state(reward)
+        mean_reward = float(numpy.mean(rewards))
+        await self._reward_tracker.update_state(mean_reward)
 
         metrics = await self.compute_metrics(x, y, y_pred)
 

@@ -52,11 +52,11 @@ uv pip install synalinks
 
 ## Environment Setup
 
-Synalinks works with any OpenAI-compatible API. Set up your credentials:
+Synalinks works with any LLM API. Set up your credentials:
 
 ```bash
 # Create a .env file in your project root
-OPENAI_API_KEY=your-api-key-here
+GEMINI_API_KEY=your-api-key-here
 
 # For Anthropic models
 ANTHROPIC_API_KEY=your-anthropic-key
@@ -151,7 +151,7 @@ async def main():
 
     # Step 2: Initialize the language model
     language_model = synalinks.LanguageModel(
-        model="openai/gpt-4.1-mini"  # Or "anthropic/claude-3-haiku", etc.
+        model="gemini/gemini-2.0-flash"  # Or "anthropic/claude-3-haiku", etc.
     )
 
     # Step 3: Build the program using the Functional API
@@ -259,7 +259,7 @@ async def main():
         experiment_name="guide_1_getting_started",
     )
 
-    language_model = synalinks.LanguageModel(model="openai/gpt-4.1-mini")
+    language_model = synalinks.LanguageModel(model="gemini/gemini-2.0-flash")
 
     inputs = synalinks.Input(data_model=Question)
     outputs = await synalinks.Generator(

@@ -2,6 +2,7 @@
 
 import collections
 import copy
+import re
 
 from synalinks.src.utils.nlp_utils import add_suffix
 from synalinks.src.utils.nlp_utils import is_plural
@@ -110,30 +111,66 @@ def factorize_json(json):
     return result_json
 
 
-def out_mask_json(json, mask=None, recursive=True):
+def decompose_json(json):
+    """Decompose a Json object by expanding list properties into individual ones.
+
+    This is the inverse of factorize_json. It takes list properties and
+    expands them into individual properties with numerical suffixes.
+    For example `foos: ["a", "b"]` becomes `foo: "a", foo_1: "b"`.
+
+    Args:
+        json (dict): The input Json object to decompose.
+
+    Returns:
+        (dict): A decomposed Json object with expanded properties.
+    """
+    json = copy.deepcopy(json)
+    result_json = {}
+
+    for prop_key, prop_value in json.items():
+        if is_plural(prop_key) and isinstance(prop_value, list):
+            singular_key = to_singular_without_numerical_suffix(prop_key)
+            for i, item in enumerate(prop_value):
+                if i == 0:
+                    result_json[singular_key] = item
+                else:
+                    result_json[add_suffix(singular_key, i)] = item
+        else:
+            result_json[prop_key] = prop_value
+
+    return result_json
+
+
+def out_mask_json(json, mask=None, pattern=None, recursive=True):
     """Mask specific fields of a Json object.
 
     This function look for properties to mask and remove them.
     It ignores the suffixes that other operations could add.
 
     Args:
-        json (dict): The input Json object to mask
-        mask (list): The base key list to remove
-        recursive (bool): Weither or not to remove
-            recursively for nested objects (default True)
+        json (dict): The input Json object to mask.
+        mask (list): The base key list to remove.
+        pattern (str): Optional. A regex pattern to match property keys
+            to remove. If provided, properties whose base key matches
+            the pattern will be removed.
+        recursive (bool): Whether or not to remove
+            recursively for nested objects (default True).
 
     Returns:
-        - (dict): A masked Json object with removed properties.
+        (dict): A masked Json object with removed properties.
     """
     json = copy.deepcopy(json)
 
-    if not mask:
+    if not mask and not pattern:
         return json
 
-    stack = collections.deque([json])
+    if mask:
+        # Ensure that the mask keys are in singular form
+        mask = [to_singular_without_numerical_suffix(k) for k in mask]
 
-    # Ensure that the mask keys are in singular form
-    mask = [to_singular_without_numerical_suffix(k) for k in mask]
+    compiled_pattern = re.compile(pattern) if pattern else None
+
+    stack = collections.deque([json])
 
     while stack:
         current = stack.pop()
@@ -142,7 +179,9 @@ def out_mask_json(json, mask=None, recursive=True):
         for prop_key, prop_value in current.items():
             base_key = to_singular_without_numerical_suffix(prop_key)
 
-            if base_key in mask:
+            if mask and base_key in mask:
+                keys_to_delete.append(prop_key)
+            elif compiled_pattern and compiled_pattern.search(base_key):
                 keys_to_delete.append(prop_key)
 
             if recursive:
@@ -159,30 +198,36 @@ def out_mask_json(json, mask=None, recursive=True):
     return json
 
 
-def in_mask_json(json, mask=None, recursive=True):
+def in_mask_json(json, mask=None, pattern=None, recursive=True):
     """Keep specific fields of a Json object.
 
     This function looks for properties to keep and removes all others.
     It ignores the suffixes that other operations could add.
 
     Args:
-        json (dict): The input Json object to mask
-        mask (list): The base key list to keep
+        json (dict): The input Json object to mask.
+        mask (list): The base key list to keep.
+        pattern (str): Optional. A regex pattern to match property keys
+            to keep. If provided, properties whose base key matches
+            the pattern will be kept.
         recursive (bool): Whether or not to keep
-            recursively for nested objects (default True)
+            recursively for nested objects (default True).
 
     Returns:
         (dict): A masked Json object with only the specified properties.
     """
     json = copy.deepcopy(json)
 
-    if not mask:
+    if not mask and not pattern:
         return {}
 
-    stack = collections.deque([json])
+    if mask:
+        # Ensure that the mask keys are in singular form
+        mask = [to_singular_without_numerical_suffix(k) for k in mask]
 
-    # Ensure that the mask keys are in singular form
-    mask = [to_singular_without_numerical_suffix(k) for k in mask]
+    compiled_pattern = re.compile(pattern) if pattern else None
+
+    stack = collections.deque([json])
 
     while stack:
         current = stack.pop()
@@ -191,7 +236,9 @@ def in_mask_json(json, mask=None, recursive=True):
         for prop_key, prop_value in current.items():
             base_key = to_singular_without_numerical_suffix(prop_key)
 
-            if base_key in mask:
+            if mask and base_key in mask:
+                keys_to_keep.append(prop_key)
+            elif compiled_pattern and compiled_pattern.search(base_key):
                 keys_to_keep.append(prop_key)
 
             if recursive:

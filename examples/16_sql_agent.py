@@ -100,9 +100,9 @@ without hardcoding table names.
 
 **Important Tool Constraints:**
 
-- **No Optional Parameters**: All tool parameters must be required. OpenAI
-  and other LLM providers require all parameters in their JSON schemas. Do
-  not use default values for parameters.
+- **No Optional Parameters**: All tool parameters must be required. LLM
+  providers require all parameters in their JSON schemas. Do not use default
+  values for parameters.
 
 - **Complete Docstring Required**: Every parameter must be documented in the
   `Args:` section. The Tool extracts descriptions from the docstring to build
@@ -152,7 +152,7 @@ kb = synalinks.KnowledgeBase(
 )
 
 # Configure language model
-lm = synalinks.LanguageModel(model="openai/gpt-4.1-mini")
+lm = synalinks.LanguageModel(model="gemini/gemini-2.0-flash")
 
 # Wrap async functions as Tool objects
 schema_tool = synalinks.Tool(get_database_schema)
@@ -679,7 +679,7 @@ async def main():
     # -------------------------------------------------------------------------
     print("\nBuilding SQL agent...")
 
-    lm = synalinks.LanguageModel(model="openai/gpt-4.1-mini")
+    lm = synalinks.LanguageModel(model="gemini/gemini-2.0-flash")
 
     # Wrap tools
     schema_tool = synalinks.Tool(get_database_schema)
