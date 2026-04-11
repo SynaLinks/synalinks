@@ -1,6 +1,9 @@
 # License Apache 2.0: (c) 2025 Yoan Sallami (Synalinks Team)
 
 from unittest.mock import patch
+from unittest.mock import sentinel
+
+import litellm
 
 from synalinks.src import testing
 from synalinks.src.backend import Embeddings
@@ -8,6 +11,31 @@ from synalinks.src.embedding_models.embedding_model import EmbeddingModel
 
 
 class EmbeddingModelTest(testing.TestCase):
+    @patch("httpx.AsyncClient")
+    def test_ollama_model_refreshes_litellm_async_client(self, mock_async_client):
+        previous_client = getattr(litellm, "module_level_aclient", None)
+        self.addCleanup(setattr, litellm, "module_level_aclient", previous_client)
+        mock_async_client.return_value = sentinel.client
+
+        EmbeddingModel(model="ollama/nomic-embed-text")
+
+        self.assertIs(litellm.module_level_aclient, sentinel.client)
+        mock_async_client.assert_called_once()
+        limits = mock_async_client.call_args.kwargs["limits"]
+        self.assertEqual(limits.max_keepalive_connections, 0)
+        self.assertEqual(limits.max_connections, 100)
+
+    @patch("httpx.AsyncClient")
+    def test_non_ollama_model_keeps_existing_async_client(self, mock_async_client):
+        previous_client = getattr(litellm, "module_level_aclient", None)
+        self.addCleanup(setattr, litellm, "module_level_aclient", previous_client)
+        litellm.module_level_aclient = sentinel.previous_client
+
+        EmbeddingModel(model="gemini/text-embedding-004")
+
+        self.assertIs(litellm.module_level_aclient, sentinel.previous_client)
+        mock_async_client.assert_not_called()
+
     @patch("litellm.aembedding")
     async def test_call_api(self, mock_embedding):
         embedding_model = EmbeddingModel(model="ollama/all-minilm")

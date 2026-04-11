@@ -16,6 +16,34 @@ from synalinks.src.saving.synalinks_saveable import SynalinksSaveable
 litellm.disable_aiohttp_transport = True
 
 
+def _refresh_litellm_client():
+    """Refresh LiteLLM's shared async client for local embedding backends.
+
+    Ollama-backed embedding calls can fail with ``Event loop is closed`` when
+    LiteLLM reuses a pooled module-level client across loop boundaries.
+    """
+    try:
+        import httpx
+    except ImportError:
+        warnings.warn(
+            "Could not import httpx to refresh LiteLLM async client.",
+            RuntimeWarning,
+            stacklevel=2,
+        )
+        return
+
+    try:
+        litellm.module_level_aclient = httpx.AsyncClient(
+            limits=httpx.Limits(max_keepalive_connections=0, max_connections=100),
+        )
+    except Exception as e:
+        warnings.warn(
+            f"Could not refresh LiteLLM async client: {e!r}",
+            RuntimeWarning,
+            stacklevel=2,
+        )
+
+
 @synalinks_export(
     [
         "synalinks.EmbeddingModel",
@@ -116,6 +144,8 @@ class EmbeddingModel(SynalinksSaveable):
             self.api_base = "http://localhost:11434"
         else:
             self.api_base = api_base
+        if self.model.startswith("ollama"):
+            _refresh_litellm_client()
         self.retry = retry
         self.fallback = fallback
         self.caching = caching
