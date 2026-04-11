@@ -131,7 +131,7 @@ async def main():
 
     # Initialize the language model
     language_model = synalinks.LanguageModel(
-        model="openai/gpt-4.1",
+        model="gemini/gemini-2.0-flash",
     )
 
     # ==========================================================================

@@ -14,6 +14,7 @@ from synalinks.src.backend import (
 from synalinks.src.ops.embedding_models import embedding as embedding
 from synalinks.src.ops.json import concat as concat
 from synalinks.src.ops.json import concat as concatenate
+from synalinks.src.ops.json import decompose as decompose
 from synalinks.src.ops.json import factorize as factorize
 from synalinks.src.ops.json import in_mask as in_mask
 from synalinks.src.ops.json import logical_and as logical_and

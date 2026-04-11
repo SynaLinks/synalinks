@@ -62,7 +62,7 @@ class AnswerWithThinking(synalinks.DataModel):
 
 async def main():
     load_dotenv()
-    language_model = synalinks.LanguageModel(model="openai/gpt-4.1")
+    language_model = synalinks.LanguageModel(model="gemini/gemini-2.0-flash")
 
     # Create a sequential program - just a list of modules!
     program = synalinks.Sequential(
@@ -153,7 +153,7 @@ async def main():
 
     # Initialize the language model
     language_model = synalinks.LanguageModel(
-        model="openai/gpt-4.1",
+        model="gemini/gemini-2.0-flash",
     )
 
     # -------------------------------------------------------------------------

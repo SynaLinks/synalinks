@@ -519,7 +519,7 @@ class Optimizer(SynalinksSaveable):
             training=True,
         )
 
-        reward = await self.program.compute_reward(
+        rewards = await self.program.compute_reward(
             x=x,
             y=y,
             y_pred=y_pred,
@@ -527,7 +527,7 @@ class Optimizer(SynalinksSaveable):
 
         await self.assign_reward_to_predictions(
             trainable_variables,
-            reward=reward,
+            rewards=rewards,
         )
 
         await self.propose_new_candidates(
@@ -544,7 +544,7 @@ class Optimizer(SynalinksSaveable):
             training=False,
         )
 
-        reward = await self.program.compute_reward(
+        rewards = await self.program.compute_reward(
             x=val_x,
             y=val_y,
             y_pred=y_pred,
@@ -553,17 +553,18 @@ class Optimizer(SynalinksSaveable):
         if self.trainable_variables:
             await self.assign_reward_to_predictions(
                 self.trainable_variables,
-                reward=reward,
+                rewards=rewards,
             )
 
+        mean_reward = float(sum(rewards) / len(rewards))
         for trainable_variable in trainable_variables:
             await self.maybe_add_candidate(
                 step,
                 trainable_variable,
-                reward=reward,
+                reward=mean_reward,
             )
 
-        await self.reward_tracker.update_state(reward)
+        await self.reward_tracker.update_state(mean_reward)
         metrics = await self.program.compute_metrics(val_x, val_y, y_pred)
         return metrics
 
@@ -583,34 +584,41 @@ class Optimizer(SynalinksSaveable):
     async def assign_reward_to_predictions(
         self,
         trainable_variables,
-        reward=None,
+        rewards=None,
     ):
-        """Assign rewards to predictions that don't have them yet.
+        """Assign per-sample rewards to predictions.
 
         This method updates all predictions in trainable variables that have
         None as their reward value. It's typically called after computing
         rewards for a batch of predictions.
 
         Args:
-            trainable_variables (list): Variables containing predictions
-            reward (float): Reward value to assign (defaults to 0.0 if None/False)
+            trainable_variables (list): Variables containing predictions.
+            rewards (list[float]): Per-sample reward values to assign.
+                Each reward corresponds to a prediction in order.
         """
-        if not reward:
-            reward = 0.0
+        if not rewards:
+            rewards = [0.0]
         for trainable_variable in trainable_variables:
-            current_predictions = trainable_variable.get("current_predictions")
+            current_predictions = trainable_variable.get(
+                "current_predictions"
+            )
             predictions = trainable_variable.get("predictions")
-            for p in current_predictions:
-                if p["reward"] is None:
-                    p["reward"] = reward
-                    nb_visit = trainable_variable.get("nb_visit")
-                    cumulative_reward = trainable_variable.get("cumulative_reward")
-                    trainable_variable.update(
-                        {
-                            "nb_visit": nb_visit + 1,
-                            "cumulative_reward": cumulative_reward + reward,
-                        }
-                    )
+            unassigned = [
+                p for p in current_predictions if p["reward"] is None
+            ]
+            for p, r in zip(unassigned, rewards):
+                p["reward"] = r
+                nb_visit = trainable_variable.get("nb_visit")
+                cumulative_reward = trainable_variable.get(
+                    "cumulative_reward"
+                )
+                trainable_variable.update(
+                    {
+                        "nb_visit": nb_visit + 1,
+                        "cumulative_reward": cumulative_reward + r,
+                    }
+                )
             trainable_variable.update(
                 {
                     "predictions": predictions + current_predictions,

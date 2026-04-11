@@ -634,7 +634,7 @@ class FunctionCallingAgent(Module):
 
             # If no tool calls, call final generator
             # without appending the empty tool calls message
-            if not tool_calls.get("tool_calls"):
+            if not tool_calls or not tool_calls.get("tool_calls"):
                 final_result = await self.final_generator(trajectory)
                 if self.schema:
                     # Combine messages with structured output

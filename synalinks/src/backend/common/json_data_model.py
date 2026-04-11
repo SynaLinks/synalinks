@@ -339,11 +339,27 @@ class JsonDataModel:
             ops.Factorize().call(self),
         )
 
-    def in_mask(self, mask=None, recursive=True):
+    def decompose(self):
+        """Decomposes the data model.
+
+        This is the inverse of factorize. It expands list properties
+        into individual properties with numerical suffixes.
+
+        Returns:
+            (JsonDataModel): The decomposed data model.
+        """
+        from synalinks.src import ops
+
+        return run_maybe_nested(
+            ops.Decompose().call(self),
+        )
+
+    def in_mask(self, mask=None, pattern=None, recursive=True):
         """Applies a mask to **keep only** specified keys of the data model.
 
         Args:
             mask (list): The mask to be applied.
+            pattern (str): Optional. A regex pattern to match keys to keep.
             recursive (bool): Optional. Whether to apply the mask recursively.
                 Defaults to True.
 
@@ -353,14 +369,17 @@ class JsonDataModel:
         from synalinks.src import ops
 
         return run_maybe_nested(
-            ops.InMask(mask=mask, recursive=recursive).call(self),
+            ops.InMask(
+                mask=mask, pattern=pattern, recursive=recursive
+            ).call(self),
         )
 
-    def out_mask(self, mask=None, recursive=True):
+    def out_mask(self, mask=None, pattern=None, recursive=True):
         """Applies a mask to **remove** specified keys of the data model.
 
         Args:
             mask (list): The mask to be applied.
+            pattern (str): Optional. A regex pattern to match keys to remove.
             recursive (bool): Optional. Whether to apply the mask recursively.
                 Defaults to True.
 
@@ -370,7 +389,9 @@ class JsonDataModel:
         from synalinks.src import ops
 
         return run_maybe_nested(
-            ops.OutMask(mask=mask, recursive=recursive).call(self),
+            ops.OutMask(
+                mask=mask, pattern=pattern, recursive=recursive
+            ).call(self),
         )
 
     def __invert__(self):

@@ -4,6 +4,7 @@ from synalinks.src.ops.embedding_models import Embedding
 from synalinks.src.ops.embedding_models import embedding
 from synalinks.src.ops.json import And
 from synalinks.src.ops.json import Concat
+from synalinks.src.ops.json import Decompose
 from synalinks.src.ops.json import Factorize
 from synalinks.src.ops.json import InMask
 from synalinks.src.ops.json import Not
@@ -11,6 +12,7 @@ from synalinks.src.ops.json import Or
 from synalinks.src.ops.json import OutMask
 from synalinks.src.ops.json import Xor
 from synalinks.src.ops.json import concat
+from synalinks.src.ops.json import decompose
 from synalinks.src.ops.json import factorize
 from synalinks.src.ops.json import in_mask
 from synalinks.src.ops.json import logical_and

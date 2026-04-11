@@ -57,8 +57,8 @@ tools = [synalinks.Tool(calculate)]
 
 **Important Tool Constraints:**
 
-- **No Optional Parameters**: All parameters must be required. OpenAI and
-  other providers require all tool parameters to be required in JSON schemas.
+- **No Optional Parameters**: All parameters must be required. LLM providers
+  require all tool parameters to be required in JSON schemas.
 
 - **Complete Docstring Required**: Every parameter must have a description
   in the `Args:` section of the docstring. The Tool uses these to build the
@@ -169,7 +169,7 @@ async def main():
 
     # Initialize the language model
     language_model = synalinks.LanguageModel(
-        model="openai/gpt-4.1",
+        model="gemini/gemini-2.0-flash",
     )
 
     # Define the tools available to the agent

@@ -84,7 +84,7 @@ hints and docstring, making it available to the agent.
 
 **Important Tool Constraints:**
 
-- **No Optional Parameters**: OpenAI and other LLM providers require all
+- **No Optional Parameters**: LLM providers require all
   tool parameters to be required in their JSON schemas. Do not use default
   values for parameters.
 
@@ -286,7 +286,7 @@ async def main():
     load_dotenv()
     synalinks.clear_session()
 
-    lm = synalinks.LanguageModel(model="openai/gpt-4.1-mini")
+    lm = synalinks.LanguageModel(model="gemini/gemini-2.0-flash")
 
     # Wrap async functions as Tool objects
     calculator_tool = synalinks.Tool(calculator)
@@ -428,7 +428,7 @@ async def main():
         experiment_name="guide_5_agents",
     )
 
-    lm = synalinks.LanguageModel(model="openai/gpt-4.1-mini")
+    lm = synalinks.LanguageModel(model="gemini/gemini-2.0-flash")
 
     # -------------------------------------------------------------------------
     # Autonomous Agent with Tools

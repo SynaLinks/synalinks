@@ -15,6 +15,7 @@ from synalinks.src.backend.common.dynamic_json_schema_utils import dynamic_tool_
 from synalinks.src.backend.common.dynamic_json_schema_utils import dynamic_tool_choice
 from synalinks.src.backend.common.json_schema_utils import concatenate_schema
 from synalinks.src.backend.common.json_schema_utils import contains_schema
+from synalinks.src.backend.common.json_schema_utils import decompose_schema
 from synalinks.src.backend.common.json_schema_utils import factorize_schema
 from synalinks.src.backend.common.json_schema_utils import in_mask_schema
 from synalinks.src.backend.common.json_schema_utils import is_schema_equal
@@ -23,6 +24,7 @@ from synalinks.src.backend.common.json_schema_utils import prefix_schema
 from synalinks.src.backend.common.json_schema_utils import standardize_schema
 from synalinks.src.backend.common.json_schema_utils import suffix_schema
 from synalinks.src.backend.common.json_utils import concatenate_json
+from synalinks.src.backend.common.json_utils import decompose_json
 from synalinks.src.backend.common.json_utils import factorize_json
 from synalinks.src.backend.common.json_utils import in_mask_json
 from synalinks.src.backend.common.json_utils import out_mask_json

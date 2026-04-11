@@ -85,7 +85,7 @@ async def main():
     synalinks.clear_session()
 
     # Initialize a language model
-    language_model = synalinks.LanguageModel(model="openai/gpt-4.1-mini")
+    language_model = synalinks.LanguageModel(model="gemini/gemini-2.0-flash")
 
     # Build the program using the Functional API
     inputs = synalinks.Input(data_model=Query)
@@ -239,7 +239,7 @@ async def main():
 
     # Initialize a language model
     language_model = synalinks.LanguageModel(
-        model="openai/gpt-4.1-mini",
+        model="gemini/gemini-2.0-flash",
     )
 
     # -------------------------------------------------------------------------

@@ -1,5 +1,8 @@
 <div align="center">
-<img height=200 src="https://github.com/SynaLinks/synalinks/blob/main/img/synalinks.svg?raw=true">
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="https://github.com/SynaLinks/synalinks/blob/main/img/synalinks-light.svg?raw=true">
+  <img height=200 alt="Synalinks" src="https://github.com/SynaLinks/synalinks/blob/main/img/synalinks-dark.svg?raw=true">
+</picture>
 </div>
 
 <div align="center">
@@ -88,7 +91,7 @@ Building robust LM apps is hard. Synalinks simplifies it with:
 - **Constrained structured outputs** (JSON) for correctness
 - **Automatic async & parallel execution** by default
 - **Metrics, rewards & evaluations** built-in
-- **Native integrations**: Ollama, Anthropic, Mistral, Azure, Groq, Gemini
+- **Native integrations**: Ollama, Anthropic, Mistral, Azure, Groq, Gemini, OpenAI
 - **Embeddable fast knowledge base support**: based on DuckDB
 - **API-ready**: Deploy with FastAPI or FastMCP
 - **KerasTuner compatibility** for hyperparameter search
@@ -229,6 +232,12 @@ synalinks.utils.plot_program(
     show_schemas=True,
 )
 ```
+
+<div align="center">
+<img src="https://github.com/SynaLinks/synalinks/blob/main/docs/assets/examples/math_agent.png?raw=true" alt="Math Agent Program" width="600">
+
+<em>The math agent program visualized with plot_program: Input → FunctionCallingAgent. Trainable modules are marked in green.</em>
+</div>
 
 ## Running your program
 

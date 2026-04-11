@@ -170,7 +170,7 @@ async def main():
     load_dotenv()
     synalinks.clear_session()
 
-    lm = synalinks.LanguageModel(model="openai/gpt-4.1-mini")
+    lm = synalinks.LanguageModel(model="gemini/gemini-2.0-flash")
 
     # Build the guarded program
     inputs = synalinks.Input(data_model=Query)
@@ -326,7 +326,7 @@ async def main():
         experiment_name="guide_9_input_guard",
     )
 
-    lm = synalinks.LanguageModel(model="openai/gpt-4.1-mini")
+    lm = synalinks.LanguageModel(model="gemini/gemini-2.0-flash")
 
     # -------------------------------------------------------------------------
     # Build Input Guarded Program

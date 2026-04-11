@@ -1,8 +1,13 @@
 # License Apache 2.0: (c) 2025 Yoan Sallami (Synalinks Team)
 
+import logging
 import warnings
 
 import litellm
+from tenacity import before_sleep_log
+from tenacity import retry
+from tenacity import stop_after_attempt
+from tenacity import wait_exponential
 
 from synalinks.src.api_export import synalinks_export
 from synalinks.src.saving import serialization_lib
@@ -26,24 +31,24 @@ class EmbeddingModel(SynalinksSaveable):
     within the data. These vector representations, known as embeddings,
     allow for more efficient and effective processing in various tasks.
 
-    Many providers are available like OpenAI, Azure OpenAI, Vertex AI or Ollama.
+    Many providers are available like Gemini, Azure, Vertex AI or Ollama.
 
     For the complete list of models, please refer to the providers documentation.
 
-    **Using OpenAI models**
+    **Using Gemini models**
 
     ```python
     import synalinks
     import os
 
-    os.environ["OPENAI_API_KEY"] = "your-api-key"
+    os.environ["GEMINI_API_KEY"] = "your-api-key"
 
     embedding_model = synalinks.EmbeddingModel(
-        model="openai/text-embedding-ada-002",
+        model="gemini/text-embedding-004",
     )
     ```
 
-    **Using Azure OpenAI models**
+    **Using Azure models**
 
     ```python
     import synalinks
@@ -126,7 +131,31 @@ class EmbeddingModel(SynalinksSaveable):
             (list): The list of corresponding vectors.
         """
 
-        for i in range(self.retry):
+        try:
+            return await self._call_with_retry(texts, **kwargs)
+        except Exception as e:
+            warnings.warn(
+                f"All retries failed for {self}: {e}"
+            )
+            if self.fallback:
+                return await self.fallback(
+                    texts,
+                    **kwargs,
+                )
+            else:
+                return None
+
+    async def _call_with_retry(self, texts, **kwargs):
+        """Perform the embedding call with tenacity retry logic."""
+        logger = logging.getLogger(__name__)
+
+        @retry(
+            stop=stop_after_attempt(self.retry),
+            wait=wait_exponential(multiplier=1, min=1, max=10),
+            before_sleep=before_sleep_log(logger, logging.WARNING),
+            reraise=True,
+        )
+        async def _do_call():
             try:
                 if self.api_base:
                     response = await litellm.aembedding(
@@ -148,14 +177,13 @@ class EmbeddingModel(SynalinksSaveable):
                     vectors.append(data["embedding"])
                 return {"embeddings": vectors}
             except Exception as e:
-                warnings.warn(f"Error occured while trying to call {self}: " + str(e))
-        if self.fallback:
-            return self.fallback(
-                texts,
-                **kwargs,
-            )
-        else:
-            return None
+                warnings.warn(
+                    f"Error occured while trying to call"
+                    f" {self}: {e}"
+                )
+                raise
+
+        return await _do_call()
 
     def _obj_type(self):
         return "EmbeddingModel"

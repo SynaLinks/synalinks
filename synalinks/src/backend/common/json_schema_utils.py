@@ -2,6 +2,7 @@
 
 import collections
 import copy
+import re
 
 from synalinks.src.utils.nlp_utils import add_suffix
 from synalinks.src.utils.nlp_utils import is_plural
@@ -249,7 +250,70 @@ def factorize_schema(schema):
     return result_schema
 
 
-def out_mask_schema(schema, mask=None, recursive=True):
+def decompose_schema(schema):
+    """Decompose a JSON schema by expanding list properties into individuals.
+
+    This is the inverse of factorize_schema. It takes array properties and
+    expands them into individual properties with numerical suffixes.
+    For example a `foos` array of strings becomes `foo: str, foo_1: str`.
+
+    Note: Since the schema doesn't carry information about how many items
+    the array contained, this produces exactly two individual properties
+    (the base and one suffixed) for each array property.
+
+    Args:
+        schema (dict): The input JSON schema to decompose.
+
+    Returns:
+        (dict): A decomposed JSON schema with expanded properties.
+    """
+    schema = copy.deepcopy(schema)
+    result_schema = {
+        "additionalProperties": False,
+        "properties": {},
+        "required": [],
+        "title": schema.get("title"),
+        "type": "object",
+    }
+
+    if schema.get("$defs"):
+        result_schema["$defs"] = schema.get("$defs")
+
+    schema_properties = schema.get("properties", {})
+
+    for prop_key, prop_value in schema_properties.items():
+        if is_plural(prop_key) and is_array(prop_value):
+            singular_key = to_singular_without_numerical_suffix(prop_key)
+            item_schema = prop_value.get("items", {})
+            # Create the base property
+            base_prop = copy.deepcopy(item_schema)
+            base_prop["title"] = singular_key.replace("_", " ").title()
+            if "description" in prop_value:
+                base_prop["description"] = prop_value["description"]
+            result_schema["properties"][singular_key] = base_prop
+            if singular_key not in result_schema["required"]:
+                result_schema["required"].append(singular_key)
+            # Create the suffixed property
+            suffixed_key = add_suffix(singular_key, 1)
+            suffixed_prop = copy.deepcopy(item_schema)
+            suffixed_prop["title"] = suffixed_key.replace("_", " ").title()
+            if "description" in prop_value:
+                suffixed_prop["description"] = prop_value["description"]
+            result_schema["properties"][suffixed_key] = suffixed_prop
+            if suffixed_key not in result_schema["required"]:
+                result_schema["required"].append(suffixed_key)
+        else:
+            result_schema["properties"][prop_key] = prop_value
+            if prop_key not in result_schema["required"]:
+                result_schema["required"].append(prop_key)
+
+    if "$defs" in result_schema and len(result_schema.get("$defs")) == 0:
+        del result_schema["$defs"]
+
+    return result_schema
+
+
+def out_mask_schema(schema, mask=None, pattern=None, recursive=True):
     """Mask specific fields of a JSON schema.
 
     This function looks for properties to mask and removes them.
@@ -258,6 +322,9 @@ def out_mask_schema(schema, mask=None, recursive=True):
     Args:
         schema (dict): The input JSON schema to mask.
         mask (list): The base key list to remove.
+        pattern (str): Optional. A regex pattern to match property keys
+            to remove. If provided, properties whose base key matches
+            the pattern will be removed.
         recursive (bool): Whether or not to remove
             recursively for nested objects (default True).
 
@@ -266,7 +333,7 @@ def out_mask_schema(schema, mask=None, recursive=True):
     """
     schema = copy.deepcopy(schema)
 
-    if not mask:
+    if not mask and not pattern:
         return schema
 
     stack_init = [schema]
@@ -278,8 +345,11 @@ def out_mask_schema(schema, mask=None, recursive=True):
 
     stack = collections.deque(stack_init)
 
-    # Ensure that the mask keys are in singular form
-    mask = [to_singular_without_numerical_suffix(k) for k in mask]
+    if mask:
+        # Ensure that the mask keys are in singular form
+        mask = [to_singular_without_numerical_suffix(k) for k in mask]
+
+    compiled_pattern = re.compile(pattern) if pattern else None
 
     while stack:
         current = stack.pop()
@@ -289,7 +359,9 @@ def out_mask_schema(schema, mask=None, recursive=True):
 
         for prop_key, prop_value in properties.items():
             base_key = to_singular_without_numerical_suffix(prop_key)
-            if base_key in mask:
+            if mask and base_key in mask:
+                keys_to_delete.append(prop_key)
+            elif compiled_pattern and compiled_pattern.search(base_key):
                 keys_to_delete.append(prop_key)
 
             if recursive:
@@ -319,24 +391,27 @@ def out_mask_schema(schema, mask=None, recursive=True):
     return schema
 
 
-def in_mask_schema(schema, mask=None, recursive=True):
+def in_mask_schema(schema, mask=None, pattern=None, recursive=True):
     """Keep specific fields of a JSON schema.
 
     This function looks for properties to keep and removes all others.
     It ignores the suffixes that other operations could add.
 
     Args:
-        - schema (dict): The input JSON schema to mask.
-        - mask (list): The base key list to keep.
-        - recursive (bool): Whether or not to keep
+        schema (dict): The input JSON schema to mask.
+        mask (list): The base key list to keep.
+        pattern (str): Optional. A regex pattern to match property keys
+            to keep. If provided, properties whose base key matches
+            the pattern will be kept.
+        recursive (bool): Whether or not to keep
             recursively for nested objects (default True).
 
     Returns:
-        - (dict): A masked JSON schema with only the specified properties.
+        (dict): A masked JSON schema with only the specified properties.
     """
     schema = copy.deepcopy(schema)
 
-    if not mask:
+    if not mask and not pattern:
         return {
             "additionalProperties": False,
             "properties": {},
@@ -353,8 +428,11 @@ def in_mask_schema(schema, mask=None, recursive=True):
 
     stack = collections.deque(stack_init)
 
-    # Ensure that the mask keys are in singular form
-    mask = [to_singular_without_numerical_suffix(k) for k in mask]
+    if mask:
+        # Ensure that the mask keys are in singular form
+        mask = [to_singular_without_numerical_suffix(k) for k in mask]
+
+    compiled_pattern = re.compile(pattern) if pattern else None
 
     while stack:
         current = stack.pop()
@@ -365,7 +443,9 @@ def in_mask_schema(schema, mask=None, recursive=True):
         for prop_key, prop_value in properties.items():
             base_key = to_singular_without_numerical_suffix(prop_key)
 
-            if base_key in mask:
+            if mask and base_key in mask:
+                keys_to_keep.append(prop_key)
+            elif compiled_pattern and compiled_pattern.search(base_key):
                 keys_to_keep.append(prop_key)
 
             if recursive:

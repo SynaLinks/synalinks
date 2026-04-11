@@ -239,7 +239,7 @@ async def main():
     load_dotenv()
     synalinks.clear_session()
 
-    lm = synalinks.LanguageModel(model="openai/gpt-4.1-mini")
+    lm = synalinks.LanguageModel(model="gemini/gemini-2.0-flash")
 
     # -------------------------------------------------------------------------
     # Prepare Training Data
@@ -433,7 +433,7 @@ async def main():
         experiment_name="guide_7_training",
     )
 
-    lm = synalinks.LanguageModel(model="openai/gpt-4.1-mini")
+    lm = synalinks.LanguageModel(model="gemini/gemini-2.0-flash")
 
     # -------------------------------------------------------------------------
     # Prepare Training Data (as NumPy arrays)
