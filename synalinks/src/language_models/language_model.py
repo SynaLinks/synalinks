@@ -359,8 +359,10 @@ class LanguageModel(SynalinksSaveable):
                 )
                 if hasattr(response, "_hidden_params"):
                     if "response_cost" in response._hidden_params:
-                        self.last_call_cost = response._hidden_params["response_cost"]
-                        self.cumulated_cost += self.last_call_cost
+                        response_cost = response._hidden_params["response_cost"]
+                        if response_cost is not None:
+                            self.last_call_cost = response_cost
+                            self.cumulated_cost += response_cost
                 if streaming:
                     return StreamingIterator(response)
                 if self.model.startswith("groq") and schema:

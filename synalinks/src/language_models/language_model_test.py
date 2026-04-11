@@ -105,3 +105,29 @@ class LanguageModelTest(testing.TestCase):
             result += msg.get("content")
 
         self.assertEqual(result, expected)
+
+    @patch("litellm.acompletion")
+    async def test_call_api_ignores_none_response_cost(self, mock_completion):
+        language_model = LanguageModel(model="hosted_vllm/Qwen/Qwen3-4B")
+
+        messages = ChatMessages(
+            messages=[ChatMessage(role=ChatRole.USER, content="Hello")]
+        )
+
+        class MockResponse(dict):
+            def __init__(self):
+                super().__init__(
+                    {"choices": [{"message": {"content": "Hello, how can I help you?"}}]}
+                )
+                self._hidden_params = {"response_cost": None}
+
+        mock_completion.return_value = MockResponse()
+
+        result = await language_model(messages)
+
+        expected = ChatMessage(
+            role=ChatRole.ASSISTANT, content="Hello, how can I help you?"
+        )
+        self.assertEqual(result, expected.get_json())
+        self.assertEqual(language_model.last_call_cost, 0.0)
+        self.assertEqual(language_model.cumulated_cost, 0.0)
