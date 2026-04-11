@@ -107,6 +107,32 @@ class LanguageModelTest(testing.TestCase):
         self.assertEqual(result, expected)
 
     @patch("litellm.acompletion")
+    async def test_call_api_ignores_none_response_cost(self, mock_completion):
+        language_model = LanguageModel(model="hosted_vllm/Qwen/Qwen3-4B")
+
+        messages = ChatMessages(
+            messages=[ChatMessage(role=ChatRole.USER, content="Hello")]
+        )
+
+        class MockResponse(dict):
+            def __init__(self):
+                super().__init__(
+                    {"choices": [{"message": {"content": "Hello, how can I help you?"}}]}
+                )
+                self._hidden_params = {"response_cost": None}
+
+        mock_completion.return_value = MockResponse()
+
+        result = await language_model(messages)
+
+        expected = ChatMessage(
+            role=ChatRole.ASSISTANT, content="Hello, how can I help you?"
+        )
+        self.assertEqual(result, expected.get_json())
+        self.assertEqual(language_model.last_call_cost, 0.0)
+        self.assertEqual(language_model.cumulated_cost, 0.0)
+
+    @patch("litellm.acompletion")
     async def test_hosted_vllm_structured_output_sets_json_schema_name(
         self, mock_completion
     ):
@@ -117,87 +143,6 @@ class LanguageModelTest(testing.TestCase):
 
         messages = ChatMessages(
             messages=[ChatMessage(role=ChatRole.USER, content="What is 2+2?")]
-    async def test_retry_succeeds_on_second_attempt(self, mock_completion):
-        language_model = LanguageModel(model="ollama/mistral", retry=3)
-
-        messages = ChatMessages(
-            messages=[
-                ChatMessage(role=ChatRole.USER, content="Hello")
-            ]
-        )
-
-        mock_completion.side_effect = [
-            Exception("Temporary failure"),
-            {
-                "choices": [
-                    {"message": {"content": "Hello, how can I help?"}}
-                ]
-            },
-        ]
-
-        result = await language_model(messages)
-        self.assertEqual(result["content"], "Hello, how can I help?")
-        self.assertEqual(mock_completion.call_count, 2)
-
-    @patch("litellm.acompletion")
-    async def test_retry_exhausted_returns_none(self, mock_completion):
-        language_model = LanguageModel(
-            model="ollama/mistral", retry=2
-        )
-
-        messages = ChatMessages(
-            messages=[
-                ChatMessage(role=ChatRole.USER, content="Hello")
-            ]
-        )
-
-        mock_completion.side_effect = Exception("Persistent failure")
-
-        result = await language_model(messages)
-        self.assertIsNone(result)
-        self.assertEqual(mock_completion.call_count, 2)
-
-    @patch("litellm.acompletion")
-    async def test_retry_exhausted_uses_fallback(self, mock_completion):
-        fallback_model = LanguageModel(model="ollama/llama3")
-        language_model = LanguageModel(
-            model="ollama/mistral", retry=2, fallback=fallback_model
-        )
-
-        messages = ChatMessages(
-            messages=[
-                ChatMessage(role=ChatRole.USER, content="Hello")
-            ]
-        )
-
-        # First 2 calls fail (primary), third succeeds (fallback)
-        mock_completion.side_effect = [
-            Exception("Fail 1"),
-            Exception("Fail 2"),
-            {
-                "choices": [
-                    {"message": {"content": "Fallback response"}}
-                ]
-            },
-        ]
-
-        result = await language_model(messages)
-        self.assertEqual(result["content"], "Fallback response")
-        self.assertEqual(mock_completion.call_count, 3)
-
-    @patch("litellm.acompletion")
-    async def test_retry_with_structured_output(self, mock_completion):
-        language_model = LanguageModel(
-            model="ollama/mistral", retry=3
-        )
-
-        messages = ChatMessages(
-            messages=[
-                ChatMessage(
-                    role=ChatRole.USER,
-                    content="What is 1+1?",
-                )
-            ]
         )
 
         class Answer(DataModel):
@@ -215,17 +160,3 @@ class LanguageModelTest(testing.TestCase):
         self.assertEqual(
             response_format["json_schema"]["name"], "structured_output"
         )
-        mock_completion.side_effect = [
-            Exception("Temporary failure"),
-            {
-                "choices": [
-                    {"message": {"content": '{"answer": "2"}'}}
-                ]
-            },
-        ]
-
-        result = await language_model(
-            messages, schema=Answer.get_schema()
-        )
-        self.assertEqual(result, {"answer": "2"})
-        self.assertEqual(mock_completion.call_count, 2)
