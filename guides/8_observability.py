@@ -169,7 +169,7 @@ Program Call: qa_program
 │   ├── Input: {"query": "What is Python?"}
 │   └── Duration: 0.001s
 ├── Module: Generator
-│   ├── LLM Call: openai/gpt-4.1-mini
+│   ├── LLM Call: gemini/gemini-2.0-flash
 │   │   ├── Prompt: [full text]
 │   │   ├── Response: [full text]
 │   │   ├── Input tokens: 150
@@ -216,7 +216,7 @@ async def main():
     # Enable logging
     synalinks.enable_logging(log_level="info")
 
-    lm = synalinks.LanguageModel(model="openai/gpt-4.1-mini")
+    lm = synalinks.LanguageModel(model="gemini/gemini-2.0-flash")
 
     # Create program
     inputs = synalinks.Input(data_model=Query)
@@ -369,7 +369,7 @@ async def main():
     print("Step 3: Create and Run Program (traces will be recorded)")
     print("=" * 60)
 
-    lm = synalinks.LanguageModel(model="openai/gpt-4.1-mini")
+    lm = synalinks.LanguageModel(model="gemini/gemini-2.0-flash")
 
     inputs = synalinks.Input(data_model=Query)
     outputs = await synalinks.Generator(

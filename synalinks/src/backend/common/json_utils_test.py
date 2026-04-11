@@ -7,6 +7,7 @@ from typing import Union
 from synalinks.src import testing
 from synalinks.src.backend import DataModel
 from synalinks.src.backend import concatenate_json
+from synalinks.src.backend import decompose_json
 from synalinks.src.backend import factorize_json
 from synalinks.src.backend import in_mask_json
 from synalinks.src.backend import out_mask_json
@@ -695,3 +696,137 @@ class JsonInMaskTest(testing.TestCase):
 
         result = in_mask_json(json, mask=["foo"], recursive=False)
         self.assertEqual(result, expected)
+
+    def test_in_mask_with_pattern(self):
+        json = {
+            "first_name": "John",
+            "last_name": "Doe",
+            "age": 30,
+            "email": "john@example.com",
+        }
+        expected = {"first_name": "John", "last_name": "Doe"}
+
+        result = in_mask_json(json, pattern="name$")
+        self.assertEqual(result, expected)
+
+    def test_out_mask_with_pattern(self):
+        json = {
+            "first_name": "John",
+            "last_name": "Doe",
+            "age": 30,
+            "email": "john@example.com",
+        }
+        expected = {"age": 30, "email": "john@example.com"}
+
+        result = out_mask_json(json, pattern="name$")
+        self.assertEqual(result, expected)
+
+    def test_in_mask_with_pattern_prefix(self):
+        json = {
+            "input_query": "hello",
+            "input_context": "world",
+            "output_answer": "hi",
+        }
+        expected = {
+            "input_query": "hello",
+            "input_context": "world",
+        }
+
+        result = in_mask_json(json, pattern="^input_")
+        self.assertEqual(result, expected)
+
+    def test_out_mask_with_pattern_no_match(self):
+        json = {"foo": "a", "bar": "b"}
+        expected = {"foo": "a", "bar": "b"}
+
+        result = out_mask_json(json, pattern="^xyz")
+        self.assertEqual(result, expected)
+
+
+class JsonDecomposeTest(testing.TestCase):
+    def test_decompose_json_with_list_property(self):
+        class Input(DataModel):
+            foos: List[str]
+
+        class Result(DataModel):
+            foo: str
+            foo_1: str
+
+        json = Input(foos=["test1", "test2"]).get_json()
+        expected = Result(foo="test1", foo_1="test2").get_json()
+
+        result = decompose_json(json)
+        self.assertEqual(result, expected)
+
+    def test_decompose_json_with_three_items(self):
+        class Input(DataModel):
+            foos: List[str]
+
+        json = Input(foos=["a", "b", "c"]).get_json()
+        expected = {"foo": "a", "foo_1": "b", "foo_2": "c"}
+
+        result = decompose_json(json)
+        self.assertEqual(result, expected)
+
+    def test_decompose_json_with_non_list_property(self):
+        class Input(DataModel):
+            foo: str
+            bar: str
+
+        json = Input(foo="test", bar="test").get_json()
+        expected = Input(foo="test", bar="test").get_json()
+
+        result = decompose_json(json)
+        self.assertEqual(result, expected)
+
+    def test_decompose_json_with_mixed_properties(self):
+        class Input(DataModel):
+            foos: List[str]
+            bar: str
+
+        json = Input(foos=["a", "b"], bar="c").get_json()
+        expected = {"foo": "a", "foo_1": "b", "bar": "c"}
+
+        result = decompose_json(json)
+        self.assertEqual(result, expected)
+
+    def test_decompose_json_with_multiple_list_properties(self):
+        class Input(DataModel):
+            foos: List[str]
+            bars: List[str]
+
+        json = Input(
+            foos=["a", "b"],
+            bars=["c", "d"],
+        ).get_json()
+
+        expected = {
+            "foo": "a",
+            "foo_1": "b",
+            "bar": "c",
+            "bar_1": "d",
+        }
+
+        result = decompose_json(json)
+        self.assertEqual(result, expected)
+
+    def test_decompose_json_single_item_list(self):
+        class Input(DataModel):
+            foos: List[str]
+
+        json = Input(foos=["only"]).get_json()
+        expected = {"foo": "only"}
+
+        result = decompose_json(json)
+        self.assertEqual(result, expected)
+
+    def test_decompose_is_inverse_of_factorize(self):
+        class Input(DataModel):
+            foo: str
+            foo_1: str
+            bar: str
+
+        json = Input(foo="a", foo_1="b", bar="c").get_json()
+        factorized = factorize_json(json)
+        result = decompose_json(factorized)
+        self.assertEqual(result, json)

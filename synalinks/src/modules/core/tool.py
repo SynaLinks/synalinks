@@ -135,7 +135,7 @@ class Tool(Module):
     Important:
         **No Optional Parameters**: All function parameters must be required.
         Optional parameters with default values are not supported because
-        OpenAI and other providers require all parameters to be required
+        LLM providers require all parameters to be required
         in their structured output JSON schemas.
 
         **Complete Docstring Required**: The wrapped function must have a

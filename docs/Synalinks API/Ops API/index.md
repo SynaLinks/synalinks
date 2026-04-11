@@ -5,6 +5,7 @@
 ## JSON Ops
 
 - [concat function](JSON Ops.md)
+- [decompose function](JSON Ops.md)
 - [factorize function](JSON Ops.md)
 - [in_mask function](JSON Ops.md)
 - [out_mask function](JSON Ops.md)

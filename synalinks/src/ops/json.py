@@ -6,6 +6,8 @@ from synalinks.src.backend import SymbolicDataModel
 from synalinks.src.backend import any_symbolic_data_models
 from synalinks.src.backend import concatenate_json
 from synalinks.src.backend import concatenate_schema
+from synalinks.src.backend import decompose_json
+from synalinks.src.backend import decompose_schema
 from synalinks.src.backend import factorize_json
 from synalinks.src.backend import factorize_schema
 from synalinks.src.backend import in_mask_json
@@ -379,12 +381,72 @@ async def factorize(x, name=None, description=None):
     )(x)
 
 
+class Decompose(Operation):
+    """Decompose a data model by expanding list properties into individuals."""
+
+    def __init__(
+        self,
+        name=None,
+        description=None,
+    ):
+        super().__init__(
+            name=name,
+            description=description,
+        )
+
+    async def call(self, x):
+        if not x:
+            return None
+        json = decompose_json(x.get_json())
+        schema = decompose_schema(x.get_schema())
+        return JsonDataModel(json=json, schema=schema, name=self.name)
+
+    async def compute_output_spec(self, x):
+        schema = decompose_schema(x.get_schema())
+        return SymbolicDataModel(schema=schema, name=self.name)
+
+
+@synalinks_export(
+    ["synalinks.ops.decompose", "synalinks.ops.json.decompose"]
+)
+async def decompose(x, name=None, description=None):
+    """Decompose a data model by expanding list properties into individuals.
+
+    Decomposition is the inverse of factorization. It takes list properties
+    and expands them into individual properties with numerical suffixes.
+    For example `foos: ["a", "b"]` becomes `foo: "a", foo_1: "b"`.
+
+    If the data models used is a metaclass or symbolic data model
+    the output is a symbolic data model.
+
+    This operation is implemented in `.decompose()`
+
+    Args:
+        x (JsonDataModel | SymbolicDataModel): the input data model.
+        name (str): Optional. The name of the operation.
+        description (str): Optional. The description of the operation.
+
+    Returns:
+        (JsonDataModel | SymbolicDataModel): The resulting data model.
+    """
+    if any_symbolic_data_models(x):
+        return await Decompose(
+            name=name,
+            description=description,
+        ).symbolic_call(x)
+    return await Decompose(
+        name=name,
+        description=description,
+    )(x)
+
+
 class OutMask(Operation):
     """Mask specific fields of a data model."""
 
     def __init__(
         self,
         mask=None,
+        pattern=None,
         recursive=True,
         name=None,
         description=None,
@@ -394,27 +456,53 @@ class OutMask(Operation):
             description=description,
         )
         self.mask = mask
+        self.pattern = pattern
         self.recursive = recursive
 
     async def call(self, x):
         if not x:
             return None
-        json = out_mask_json(x.get_json(), mask=self.mask, recursive=self.recursive)
-        schema = out_mask_schema(x.get_schema(), mask=self.mask, recursive=self.recursive)
+        json = out_mask_json(
+            x.get_json(),
+            mask=self.mask,
+            pattern=self.pattern,
+            recursive=self.recursive,
+        )
+        schema = out_mask_schema(
+            x.get_schema(),
+            mask=self.mask,
+            pattern=self.pattern,
+            recursive=self.recursive,
+        )
         return JsonDataModel(json=json, schema=schema, name=self.name)
 
     async def compute_output_spec(self, x):
-        schema = out_mask_schema(x.get_schema(), mask=self.mask, recursive=self.recursive)
+        schema = out_mask_schema(
+            x.get_schema(),
+            mask=self.mask,
+            pattern=self.pattern,
+            recursive=self.recursive,
+        )
         return SymbolicDataModel(schema=schema, name=self.name)
 
 
-@synalinks_export(["synalinks.ops.out_mask", "synalinks.ops.json.out_mask"])
-async def out_mask(x, mask=None, recursive=True, name=None, description=None):
+@synalinks_export(
+    ["synalinks.ops.out_mask", "synalinks.ops.json.out_mask"]
+)
+async def out_mask(
+    x,
+    mask=None,
+    pattern=None,
+    recursive=True,
+    name=None,
+    description=None,
+):
     """Mask specific fields of a data model.
 
-    Out masking consist in removing the properties that match with the keys given
-    in the mask. The masking process ignore the numerical suffixes that could be added
-    by other operations.
+    Out masking consist in removing the properties that match with the
+    keys given in the mask or the regex pattern. The masking process
+    ignores the numerical suffixes that could be added by other
+    operations.
 
     If the data models used is a metaclass or symbolic data model
     the output is a symbolic data model.
@@ -422,6 +510,8 @@ async def out_mask(x, mask=None, recursive=True, name=None, description=None):
     Args:
         x (JsonDataModel | SymbolicDataModel): the input data model.
         mask (list): the input mask (list of keys).
+        pattern (str): Optional. A regex pattern to match property keys
+            to remove.
         recursive (bool): Whether or not to remove
             recursively for nested objects (default True).
         name (str): Optional. The name of the operation.
@@ -430,17 +520,21 @@ async def out_mask(x, mask=None, recursive=True, name=None, description=None):
     Returns:
         (JsonDataModel | SymbolicDataModel): The resulting data model.
     """
-    if mask is None:
-        raise ValueError("You should specify the `mask` argument")
+    if mask is None and pattern is None:
+        raise ValueError(
+            "You should specify the `mask` or `pattern` argument"
+        )
     if any_symbolic_data_models(x):
         return await OutMask(
             mask=mask,
+            pattern=pattern,
             recursive=recursive,
             name=name,
             description=description,
         ).symbolic_call(x)
     return await OutMask(
         mask=mask,
+        pattern=pattern,
         recursive=recursive,
         name=name,
         description=description,
@@ -453,6 +547,7 @@ class InMask(Operation):
     def __init__(
         self,
         mask=None,
+        pattern=None,
         recursive=True,
         name=None,
         description=None,
@@ -462,34 +557,62 @@ class InMask(Operation):
             description=description,
         )
         self.mask = mask
+        self.pattern = pattern
         self.recursive = recursive
 
     async def call(self, x):
         if not x:
             return None
-        json = in_mask_json(x.get_json(), mask=self.mask, recursive=self.recursive)
-        schema = in_mask_schema(x.get_schema(), mask=self.mask, recursive=self.recursive)
+        json = in_mask_json(
+            x.get_json(),
+            mask=self.mask,
+            pattern=self.pattern,
+            recursive=self.recursive,
+        )
+        schema = in_mask_schema(
+            x.get_schema(),
+            mask=self.mask,
+            pattern=self.pattern,
+            recursive=self.recursive,
+        )
         return JsonDataModel(json=json, schema=schema, name=self.name)
 
     async def compute_output_spec(self, x):
-        schema = in_mask_schema(x.get_schema(), mask=self.mask, recursive=self.recursive)
+        schema = in_mask_schema(
+            x.get_schema(),
+            mask=self.mask,
+            pattern=self.pattern,
+            recursive=self.recursive,
+        )
         return SymbolicDataModel(schema=schema, name=self.name)
 
 
-@synalinks_export(["synalinks.ops.in_mask", "synalinks.ops.json.in_mask"])
-async def in_mask(x, mask=None, recursive=True, name=None, description=None):
+@synalinks_export(
+    ["synalinks.ops.in_mask", "synalinks.ops.json.in_mask"]
+)
+async def in_mask(
+    x,
+    mask=None,
+    pattern=None,
+    recursive=True,
+    name=None,
+    description=None,
+):
     """Keep specific fields of a data model.
 
-    In masking consists in keeping the properties that match with the keys given
-    in the mask. The masking process ignores the numerical suffixes that could be added
-    by other operations.
+    In masking consists in keeping the properties that match with the
+    keys given in the mask or the regex pattern. The masking process
+    ignores the numerical suffixes that could be added by other
+    operations.
 
     If the data models used is a metaclass or symbolic data model
     the output is a symbolic data model.
 
     Args:
-        x (JsonDataModel | SymbolicDataModel): the input data model
-        mask (list): the input mask (list of keys)
+        x (JsonDataModel | SymbolicDataModel): the input data model.
+        mask (list): the input mask (list of keys).
+        pattern (str): Optional. A regex pattern to match property keys
+            to keep.
         recursive (bool): Whether or not to keep
             recursively for nested objects (default True).
         name (str): Optional. The name of the operation.
@@ -498,17 +621,21 @@ async def in_mask(x, mask=None, recursive=True, name=None, description=None):
     Returns:
         (JsonDataModel | SymbolicDataModel): The resulting data model.
     """
-    if mask is None:
-        raise ValueError("You should specify the `mask` argument")
+    if mask is None and pattern is None:
+        raise ValueError(
+            "You should specify the `mask` or `pattern` argument"
+        )
     if any_symbolic_data_models(x):
         return await InMask(
             mask=mask,
+            pattern=pattern,
             recursive=recursive,
             name=name,
             description=description,
         ).symbolic_call(x)
     return await InMask(
         mask=mask,
+        pattern=pattern,
         recursive=recursive,
         name=name,
         description=description,

@@ -115,12 +115,12 @@ async def main():
 
     # Initialize the language model
     language_model = synalinks.LanguageModel(
-        model="openai/gpt-4.1",
+        model="gemini/gemini-2.0-flash",
     )
 
     # Initialize the embedding model for cosine similarity reward
     embedding_model = synalinks.EmbeddingModel(
-        model="openai/text-embedding-3-small",
+        model="gemini/text-embedding-004",
     )
 
     # ==========================================================================

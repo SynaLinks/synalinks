@@ -202,11 +202,25 @@ class MetaDataModel(type(pydantic.BaseModel)):
 
         return run_maybe_nested(ops.Factorize().symbolic_call(cls))
 
-    def in_mask(cls, mask=None, recursive=True):
+    def decompose(cls):
+        """Decomposes the data model.
+
+        This is the inverse of factorize. It expands list properties
+        into individual properties with numerical suffixes.
+
+        Returns:
+            (SymbolicDataModel): The decomposed data model.
+        """
+        from synalinks.src import ops
+
+        return run_maybe_nested(ops.Decompose().symbolic_call(cls))
+
+    def in_mask(cls, mask=None, pattern=None, recursive=True):
         """Applies a mask to **keep only** specified keys of the data model.
 
         Args:
             mask (list): The mask to be applied (list of keys).
+            pattern (str): Optional. A regex pattern to match keys to keep.
             recursive (bool): Optional. Whether to apply the mask recursively.
                 Defaults to `True`.
 
@@ -215,13 +229,18 @@ class MetaDataModel(type(pydantic.BaseModel)):
         """
         from synalinks.src import ops
 
-        return run_maybe_nested(ops.InMask(mask=mask, recursive=True).symbolic_call(cls))
+        return run_maybe_nested(
+            ops.InMask(
+                mask=mask, pattern=pattern, recursive=True
+            ).symbolic_call(cls)
+        )
 
-    def out_mask(cls, mask=None, recursive=True):
+    def out_mask(cls, mask=None, pattern=None, recursive=True):
         """Applies an mask to **remove** specified keys of the data model.
 
         Args:
             mask (list): The mask to be applied (list of keys).
+            pattern (str): Optional. A regex pattern to match keys to remove.
             recursive (bool): Optional. Whether to apply the mask recursively.
                 Defaults to `True`.
 
@@ -230,7 +249,11 @@ class MetaDataModel(type(pydantic.BaseModel)):
         """
         from synalinks.src import ops
 
-        return run_maybe_nested(ops.OutMask(mask=mask, recursive=True).symbolic_call(cls))
+        return run_maybe_nested(
+            ops.OutMask(
+                mask=mask, pattern=pattern, recursive=True
+            ).symbolic_call(cls)
+        )
 
     def prefix(cls, prefix=None):
         """Add a prefix to **all** the data model fields (non-recursive).

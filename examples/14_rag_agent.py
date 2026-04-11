@@ -33,8 +33,8 @@ A RAG agent is smarter:
 
 **Important Tool Constraints:**
 
-- **No Optional Parameters**: All tool parameters must be required. OpenAI
-  and other LLM providers require all parameters in their JSON schemas.
+- **No Optional Parameters**: All tool parameters must be required. LLM
+  providers require all parameters in their JSON schemas.
 
 - **Complete Docstring Required**: Every parameter must be documented in the
   `Args:` section. The Tool extracts descriptions to build the JSON schema
@@ -214,11 +214,11 @@ async def main():
 
     # Initialize models
     language_model = synalinks.LanguageModel(
-        model="openai/gpt-4.1",
+        model="gemini/gemini-2.0-flash",
     )
 
     embedding_model = synalinks.EmbeddingModel(
-        model="openai/text-embedding-3-small",
+        model="gemini/text-embedding-004",
     )
 
     # Clean up any existing database

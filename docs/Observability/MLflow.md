@@ -58,7 +58,7 @@ class Answer(synalinks.DataModel):
 
 
 async def main():
-    language_model = synalinks.LanguageModel(model="openai/gpt-4.1")
+    language_model = synalinks.LanguageModel(model="gemini/gemini-2.0-flash")
 
     # Create a simple question-answering program
     inputs = synalinks.Input(data_model=Question)

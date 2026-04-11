@@ -1,12 +1,16 @@
 # License Apache 2.0: (c) 2025 Yoan Sallami (Synalinks Team)
 
-import asyncio
 import copy
+import logging
 import os
 import warnings
 
 import litellm
 import orjson
+from tenacity import before_sleep_log
+from tenacity import retry
+from tenacity import stop_after_attempt
+from tenacity import wait_exponential
 
 from synalinks.src.api_export import synalinks_export
 from synalinks.src.backend import ChatRole
@@ -33,10 +37,23 @@ class LanguageModel(SynalinksSaveable):
     generation, translation, summarization, and answering questions.
 
     We support providers that implement *constrained structured output*
-    like OpenAI, Azure, Ollama or Mistral. In addition we support providers that otherwise
+    like Azure, Ollama or Mistral. In addition we support providers that otherwise
     allow to constrain the use of a specific tool like Groq or Anthropic.
 
     For the complete list of models, please refer to the providers documentation.
+
+    **Using OpenAI models**
+
+    ```python
+    import synalinks
+    import os
+
+    os.environ["OPENAI_API_KEY"] = "your-api-key"
+
+    language_model = synalinks.LanguageModel(
+        model="openai/gpt-4o-mini",
+    )
+    ```
 
     **Using Groq models**
 
@@ -88,15 +105,15 @@ class LanguageModel(SynalinksSaveable):
     )
     ```
 
-    **Using Azure OpenAI models**
+    **Using Azure models**
 
     ```python
     import synalinks
     import os
 
     os.environ["AZURE_API_KEY"] = "your-api-key"
-    os.environ["AZURE_API_BASE"] = "your-api-key"
-    os.environ["AZURE_API_VERSION"] = "your-api-key"
+    os.environ["AZURE_API_BASE"] = "your-api-base"
+    os.environ["AZURE_API_VERSION"] = "your-api-version"
 
     language_model = synalinks.LanguageModel(
         model="azure/<your_deployment_name>",
@@ -167,7 +184,7 @@ class LanguageModel(SynalinksSaveable):
         model=None,
         api_base=None,
         timeout=600,
-        retry=2,
+        retry=5,
         fallback=None,
         caching=False,
     ):
@@ -212,7 +229,6 @@ class LanguageModel(SynalinksSaveable):
             (dict): The generated structured response.
         """
         formatted_messages = messages.get_json().get("messages", [])
-        json_instance = {}
         input_kwargs = copy.deepcopy(kwargs)
         schema = copy.deepcopy(schema)
         provider = self.model.split("/")[0]
@@ -270,10 +286,10 @@ class LanguageModel(SynalinksSaveable):
                         },
                     }
                 )
-            elif self.model.startswith("azure"):
-                # Use constrained structured output for openai
-                # OpenAI require the field  "additionalProperties"
-                # Also OpenAI disallow the field "description" in $ref
+            elif self.model.startswith("openai") or self.model.startswith("azure"):
+                # Use constrained structured output for openai/azure
+                # OpenAI/Azure require the field  "additionalProperties"
+                # Also OpenAI/Azure disallow the field "description" in $ref
                 if "properties" in schema:
                     for prop_key, prop_value in schema["properties"].items():
                         if "$ref" in prop_value and "description" in prop_value:
@@ -343,13 +359,47 @@ class LanguageModel(SynalinksSaveable):
             streaming = False
         if streaming:
             kwargs.update({"stream": True})
-        # Enable prompt caching for the system instructions (that only change during training not inference)
+        # Enable prompt caching for the system instructions
+        # (that only change during training not inference)
         if provider in ("gemini", "anthropic"):
-            system_message_with_cache_control = {**formatted_messages[0], "cache_control": {"type": "ephemeral"}}
+            system_message_with_cache_control = {
+                **formatted_messages[0],
+                "cache_control": {"type": "ephemeral"},
+            }
             formatted_messages[0] = system_message_with_cache_control
-        for i in range(self.retry):
+        try:
+            return await self._call_with_retry(
+                formatted_messages, schema, streaming, **kwargs
+            )
+        except Exception as e:
+            warnings.warn(
+                f"All retries failed for {self}: {e}"
+            )
+            if self.fallback:
+                return await self.fallback(
+                    messages,
+                    schema=schema,
+                    streaming=streaming,
+                    **input_kwargs,
+                )
+            else:
+                return None
+
+    async def _call_with_retry(
+        self, formatted_messages, schema, streaming, **kwargs
+    ):
+        """Perform the LM call with tenacity retry logic."""
+        logger = logging.getLogger(__name__)
+
+        @retry(
+            stop=stop_after_attempt(self.retry),
+            wait=wait_exponential(multiplier=1, min=1, max=10),
+            before_sleep=before_sleep_log(logger, logging.WARNING),
+            reraise=True,
+        )
+        async def _do_call():
+            response_str = ""
             try:
-                response_str = ""
                 response = await litellm.acompletion(
                     model=self.model,
                     messages=formatted_messages,
@@ -359,19 +409,34 @@ class LanguageModel(SynalinksSaveable):
                 )
                 if hasattr(response, "_hidden_params"):
                     if "response_cost" in response._hidden_params:
-                        self.last_call_cost = response._hidden_params["response_cost"]
+                        self.last_call_cost = response._hidden_params[
+                            "response_cost"
+                        ]
                         self.cumulated_cost += self.last_call_cost
                 if streaming:
                     return StreamingIterator(response)
+                if not response.get("choices"):
+                    raise ValueError(
+                        "Empty response from the language model: "
+                        "no choices returned."
+                    )
                 if self.model.startswith("groq") and schema:
                     # Groq uses tool_calls for structured output
-                    response_str = response["choices"][0]["message"]["tool_calls"][0][
-                        "function"
-                    ]["arguments"]
+                    response_str = response["choices"][0]["message"][
+                        "tool_calls"
+                    ][0]["function"]["arguments"]
                 else:
                     # Anthropic and other providers use response_format,
                     # which returns content in message["content"]
-                    response_str = response["choices"][0]["message"]["content"].strip()
+                    response_str = response["choices"][0]["message"][
+                        "content"
+                    ]
+                    if not response_str:
+                        raise ValueError(
+                            "Empty response from the language model: "
+                            "no content returned."
+                        )
+                    response_str = response_str.strip()
                 if schema:
                     json_instance = orjson.loads(response_str)
                 else:
@@ -389,16 +454,9 @@ class LanguageModel(SynalinksSaveable):
                     + str(e)
                     + f"\nReceived response={shorten_text(response_str)}"
                 )
-            await asyncio.sleep(1)
-        if self.fallback:
-            return await self.fallback(
-                messages,
-                schema=schema,
-                streaming=streaming,
-                **input_kwargs,
-            )
-        else:
-            return None
+                raise
+
+        return await _do_call()
 
     def _obj_type(self):
         return "LanguageModel"

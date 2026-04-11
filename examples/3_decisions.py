@@ -64,7 +64,7 @@ class Query(synalinks.DataModel):
 
 async def main():
     load_dotenv()
-    language_model = synalinks.LanguageModel(model="openai/gpt-4.1")
+    language_model = synalinks.LanguageModel(model="gemini/gemini-2.0-flash")
 
     inputs = synalinks.Input(data_model=Query)
 
@@ -151,7 +151,7 @@ async def main():
     )
 
     language_model = synalinks.LanguageModel(
-        model="openai/gpt-4.1",
+        model="gemini/gemini-2.0-flash",
     )
 
     # -------------------------------------------------------------------------

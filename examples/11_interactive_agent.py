@@ -59,8 +59,8 @@ perform one **step at a time**.
 
 Define tools as async functions with complete docstrings. **Important Tool Constraints:**
 
-- **No Optional Parameters**: All parameters must be required. OpenAI and
-  other providers require all tool parameters in their JSON schemas.
+- **No Optional Parameters**: All parameters must be required. LLM providers
+  require all tool parameters in their JSON schemas.
 
 - **Complete Docstring Required**: Every parameter must be documented in the
   `Args:` section. The Tool extracts descriptions to build the JSON schema.
@@ -186,7 +186,7 @@ async def main():
 
     # Initialize the language model
     language_model = synalinks.LanguageModel(
-        model="openai/gpt-5.2",
+        model="gemini/gemini-2.0-flash",
     )
 
     # Define the tools available to the agent

@@ -39,7 +39,6 @@ dependencies = [
   "mlflow",
   "namex",
   "numpy",
-  "openai",
   "optree",
   "orjson",
   "pydantic",

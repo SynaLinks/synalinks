@@ -116,7 +116,7 @@ class ChainOfThought(synalinks.Program):
 
 async def main():
     load_dotenv()
-    language_model = synalinks.LanguageModel(model="openai/gpt-4.1")
+    language_model = synalinks.LanguageModel(model="gemini/gemini-2.0-flash")
 
     # Use the mixed module in a functional program
     chain_of_thought = ChainOfThought(language_model=language_model)
@@ -348,7 +348,7 @@ async def main():
     )
 
     language_model = synalinks.LanguageModel(
-        model="openai/gpt-4.1",
+        model="gemini/gemini-2.0-flash",
     )
 
     # -------------------------------------------------------------------------
