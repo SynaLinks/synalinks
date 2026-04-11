@@ -233,6 +233,12 @@ synalinks.utils.plot_program(
 )
 ```
 
+<div align="center">
+<img src="https://github.com/SynaLinks/synalinks/blob/main/docs/assets/examples/math_agent.png?raw=true" alt="Math Agent Program" width="600">
+
+<em>The math agent program visualized with plot_program: Input → FunctionCallingAgent. Trainable modules are marked in green.</em>
+</div>
+
 ## Running your program
 
 To run your program use the following:
