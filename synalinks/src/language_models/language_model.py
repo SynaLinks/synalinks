@@ -336,6 +336,7 @@ class LanguageModel(SynalinksSaveable):
                         "response_format": {
                             "type": "json_schema",
                             "json_schema": {
+                                "name": "structured_output",
                                 "schema": schema,
                             },
                             "strict": True,

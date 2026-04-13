@@ -131,3 +131,32 @@ class LanguageModelTest(testing.TestCase):
         self.assertEqual(result, expected.get_json())
         self.assertEqual(language_model.last_call_cost, 0.0)
         self.assertEqual(language_model.cumulated_cost, 0.0)
+
+    @patch("litellm.acompletion")
+    async def test_hosted_vllm_structured_output_sets_json_schema_name(
+        self, mock_completion
+    ):
+        language_model = LanguageModel(
+            model="hosted_vllm/Qwen/Qwen3-4B",
+            api_base="http://localhost:8000/v1",
+        )
+
+        messages = ChatMessages(
+            messages=[ChatMessage(role=ChatRole.USER, content="What is 2+2?")]
+        )
+
+        class Answer(DataModel):
+            answer: str
+
+        mock_completion.return_value = {
+            "choices": [{"message": {"content": '{"answer":"4"}'}}]
+        }
+
+        result = await language_model(messages, schema=Answer.get_schema())
+
+        self.assertEqual(result, {"answer": "4"})
+        response_format = mock_completion.call_args.kwargs["response_format"]
+        self.assertEqual(response_format["type"], "json_schema")
+        self.assertEqual(
+            response_format["json_schema"]["name"], "structured_output"
+        )
