@@ -37,6 +37,11 @@ class Optimizer(SynalinksSaveable):
     Args:
         population_size (int): The maximum number of best candidates to keep
             during the optimization process.
+        sampling_temperature (float): The temperature for softmax sampling of
+            which trainable variable to update at each step in
+            `select_variable_name_to_update`. Lower values concentrate updates
+            on under-visited / low-reward variables, higher values make the
+            choice more uniform (Default 0.3).
         name (str): Optional. The name of the optimizer.
         description (str): Optional. The description of the optimizer.
     """
@@ -44,6 +49,7 @@ class Optimizer(SynalinksSaveable):
     def __init__(
         self,
         population_size=10,
+        sampling_temperature=0.3,
         name=None,
         description=None,
         **kwargs,
@@ -55,6 +61,8 @@ class Optimizer(SynalinksSaveable):
         Args:
             population_size (int): The maximum number of best candidates to keep
                 during the optimization process.
+            sampling_temperature (float): The temperature for softmax sampling
+                of which trainable variable to update at each step.
             name (str): Optional name for the optimizer instance
             description (str): Optional description for the optimizer
             **kwargs (keyword params): Additional arguments (will raise error if provided)
@@ -68,6 +76,7 @@ class Optimizer(SynalinksSaveable):
             raise ValueError(f"Argument(s) not recognized: {kwargs}")
 
         self.population_size = population_size
+        self.sampling_temperature = sampling_temperature
 
         if name is None:
             name = auto_name(self.__class__.__name__)
