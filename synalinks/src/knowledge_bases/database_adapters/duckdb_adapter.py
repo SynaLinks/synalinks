@@ -299,30 +299,52 @@ class DuckDBAdapter(DatabaseAdapter):
         Uses the first property as the primary key.
         """
         properties = json_schema.get("properties", {})
+        defs = json_schema.get("$defs", {})
         out = []
         first_col = True
 
         for prop_name, prop_spec in properties.items():
             prop_name = sanitize_identifier(prop_name)
+
+            # Resolve $ref (Pydantic v2 emits these for enum.Enum and
+            # nested BaseModel fields). Preserve sibling keys like
+            # `description` from the referring property.
+            if "$ref" in prop_spec:
+                ref_name = prop_spec["$ref"].rsplit("/", 1)[-1]
+                if ref_name in defs:
+                    resolved = dict(defs[ref_name])
+                    resolved.update({k: v for k, v in prop_spec.items() if k != "$ref"})
+                    prop_spec = resolved
+
             prop_type = prop_spec.get("type")
 
             if prop_name == self.vss_key:
                 continue
 
-            # Handle anyOf schemas (e.g. Optional[datetime] from Pydantic)
+            # Handle anyOf schemas (e.g. Optional[datetime] or Optional[Enum])
             if not prop_type and "anyOf" in prop_spec:
                 for variant in prop_spec["anyOf"]:
+                    # Resolve $ref inside anyOf variants too
+                    if "$ref" in variant:
+                        ref_name = variant["$ref"].rsplit("/", 1)[-1]
+                        if ref_name in defs:
+                            variant = defs[ref_name]
                     vtype = variant.get("type")
                     if vtype and vtype != "null":
                         prop_type = vtype
                         prop_spec = variant
                         break
+                    if "enum" in variant:
+                        prop_type = "string"
+                        break
+
+            # Bare enum without explicit type (older Pydantic or non-typed
+            # Enum subclasses emit {"enum": [...]} with no "type").
+            if not prop_type and "enum" in prop_spec:
+                prop_type = "string"
 
             if not prop_type:
-                raise ValueError(
-                    f"Malformed JSON schema: "
-                    f"missing type for '{prop_name}'"
-                )
+                raise ValueError(f"Malformed JSON schema: missing type for '{prop_name}'")
 
             col_def = None
 

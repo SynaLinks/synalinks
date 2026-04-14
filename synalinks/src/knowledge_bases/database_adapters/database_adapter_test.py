@@ -394,6 +394,128 @@ class DuckDBAdapterSchemaConversionTest(testing.TestCase):
         self.assertIsNotNone(retrieved)
         self.assertEqual(retrieved.get_json()["metadata"], {"key": "value", "count": 42})
 
+    def test_json_schema_to_duckdb_columns_with_str_enum(self):
+        """Pydantic emits `$ref` + `$defs` for bare `str, Enum` fields.
+
+        Before the fix, DuckDBAdapter raised
+        `ValueError: Malformed JSON schema: missing type for '<field>'`.
+        """
+        from enum import Enum
+
+        class Status(str, Enum):
+            OK = "ok"
+            KO = "ko"
+
+        class Record(DataModel):
+            id: str
+            status: Status
+
+        adapter = DuckDBAdapter(uri=self.db_path)
+        columns = adapter._json_schema_to_duckdb_columns(Record.get_schema())
+
+        self.assertIn("id VARCHAR PRIMARY KEY", columns)
+        self.assertIn("status VARCHAR", columns)
+
+    def test_json_schema_to_duckdb_columns_with_int_enum(self):
+        """IntEnum emits `type: integer` inside `$defs` — must become INTEGER."""
+        from enum import IntEnum
+
+        class Priority(IntEnum):
+            LOW = 1
+            HIGH = 2
+
+        class Task(DataModel):
+            id: str
+            priority: Priority
+
+        adapter = DuckDBAdapter(uri=self.db_path)
+        columns = adapter._json_schema_to_duckdb_columns(Task.get_schema())
+
+        self.assertIn("id VARCHAR PRIMARY KEY", columns)
+        # IntEnum → integer column
+        self.assertTrue(
+            "priority INTEGER" in columns or "priority BIGINT" in columns,
+            f"Expected integer column for IntEnum, got: {columns}",
+        )
+
+    def test_json_schema_to_duckdb_columns_with_optional_enum(self):
+        """Optional[Enum] emits anyOf with `$ref` + null — must resolve."""
+        from enum import Enum
+        from typing import Optional
+
+        class Color(str, Enum):
+            RED = "red"
+            BLUE = "blue"
+
+        class Item(DataModel):
+            id: str
+            color: Optional[Color] = None
+
+        adapter = DuckDBAdapter(uri=self.db_path)
+        columns = adapter._json_schema_to_duckdb_columns(Item.get_schema())
+
+        self.assertIn("id VARCHAR PRIMARY KEY", columns)
+        self.assertIn("color VARCHAR", columns)
+
+    def test_json_schema_to_duckdb_columns_with_nested_datamodel(self):
+        """Nested DataModel emits `$ref` resolving to `type: object` — JSON column."""
+
+        class Address(DataModel):
+            city: str
+            zip_code: str
+
+        class Person(DataModel):
+            id: str
+            address: Address
+
+        adapter = DuckDBAdapter(uri=self.db_path)
+        columns = adapter._json_schema_to_duckdb_columns(Person.get_schema())
+
+        self.assertIn("id VARCHAR PRIMARY KEY", columns)
+        # Nested object → JSON column (objects are stored as JSON)
+        self.assertIn("address JSON", columns)
+
+    async def test_crud_with_str_enum_roundtrip(self):
+        """End-to-end roundtrip: insert then SELECT must preserve enum value."""
+        from enum import Enum
+
+        class Role(str, Enum):
+            ADMIN = "admin"
+            USER = "user"
+
+        class Account(DataModel):
+            id: str
+            role: Role
+
+        adapter = DuckDBAdapter(uri=self.db_path)
+        account = Account(id="acc1", role=Role.ADMIN)
+        json_dm = JsonDataModel(data_model=account)
+
+        result = await adapter.update(json_dm)
+        self.assertEqual(result, "acc1")
+
+        retrieved = await adapter.get("acc1", [Account.to_symbolic_data_model()])
+        self.assertIsNotNone(retrieved)
+        self.assertEqual(retrieved.get_json()["role"], "admin")
+
+    def test_json_schema_to_duckdb_columns_preserves_description_on_ref(self):
+        """When the referring property has `description`, it must not disappear
+        after `$ref` resolution — protects metadata the user attaches via
+        `Field(description=...)` on enum fields."""
+        from enum import Enum
+
+        class Status(str, Enum):
+            OK = "ok"
+
+        class Record(DataModel):
+            id: str
+            status: Status = Field(description="The record status.")
+
+        adapter = DuckDBAdapter(uri=self.db_path)
+        # Must not raise
+        columns = adapter._json_schema_to_duckdb_columns(Record.get_schema())
+        self.assertIn("status VARCHAR", columns)
+
 
 class DuckDBAdapterFulltextSearchTest(testing.TestCase):
     def setUp(self):
