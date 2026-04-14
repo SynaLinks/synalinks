@@ -190,3 +190,36 @@ class EvolutionaryOptimizerTest(testing.TestCase):
         ]
         result = optimizer.select_candidate(candidates)
         self.assertIn(result, candidates)
+
+    def test_sampling_temperature_default(self):
+        """EvolutionaryOptimizer must inherit `sampling_temperature` from the
+        base `Optimizer`, since `Optimizer.select_variable_name_to_update`
+        reads it. Before the fix, accessing this attribute on an
+        EvolutionaryOptimizer / OMEGA instance raised AttributeError."""
+        optimizer = EvolutionaryOptimizer()
+        self.assertEqual(optimizer.sampling_temperature, 0.3)
+
+    async def test_select_variable_name_to_update_does_not_raise(self):
+        """Regression test: `select_variable_name_to_update` on an
+        EvolutionaryOptimizer used to raise
+        `AttributeError: 'EvolutionaryOptimizer' object has no attribute
+        'sampling_temperature'`. It must now run and return a valid name."""
+        optimizer = EvolutionaryOptimizer()
+
+        class _Var:
+            def __init__(self, name, nb_visit, cumulative_reward):
+                self.name = name
+                self._d = {
+                    "nb_visit": nb_visit,
+                    "cumulative_reward": cumulative_reward,
+                }
+
+            def get(self, key):
+                return self._d[key]
+
+        variables = [
+            _Var("v0", nb_visit=1, cumulative_reward=0.5),
+            _Var("v1", nb_visit=1, cumulative_reward=0.2),
+        ]
+        name = await optimizer.select_variable_name_to_update(variables)
+        self.assertIn(name, {"v0", "v1"})
