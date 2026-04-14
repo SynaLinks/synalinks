@@ -2,6 +2,8 @@
 # Original authors: François Chollet et al. (Keras Team)
 # License Apache 2.0: (c) 2025 Yoan Sallami (Synalinks Team)
 
+import warnings
+
 from synalinks.src.api_export import synalinks_export
 from synalinks.src.rewards.reward import Reward
 from synalinks.src.saving import serialization_lib
@@ -129,6 +131,16 @@ class ProgramAsJudge(Reward):
 
     async def call(self, y_true, y_pred):
         result = await self.program([y_true, y_pred])
+        if result is None:
+            warnings.warn(
+                f"{self.__class__.__name__}: judge program returned None "
+                "(likely an LLM / provider failure). Scoring this sample as "
+                "0.0 and continuing. Check the underlying language model "
+                "and structured-output configuration.",
+                RuntimeWarning,
+                stacklevel=2,
+            )
+            return 0.0
         return float(result.get("reward", 0.0))
 
     def get_config(self):
