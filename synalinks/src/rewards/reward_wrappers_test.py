@@ -1,5 +1,6 @@
 # License Apache 2.0: (c) 2025 Yoan Sallami (Synalinks Team)
 
+import warnings
 from unittest.mock import AsyncMock
 from unittest.mock import MagicMock
 
@@ -92,6 +93,27 @@ class ProgramAsJudgeTest(testing.TestCase):
 
         reward = await judge(y_true, y_pred)
         self.assertEqual(reward, 0.0)
+
+    async def test_call_program_returns_none(self):
+        """Judge must return 0.0 and warn (not crash) when the program fails."""
+        class Answer(DataModel):
+            answer: str
+
+        mock_program = AsyncMock()
+        mock_program.return_value = None
+
+        judge = ProgramAsJudge(program=mock_program)
+        y_true = Answer(answer="hello")
+        y_pred = Answer(answer="world")
+
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            reward = await judge(y_true, y_pred)
+
+        self.assertEqual(reward, 0.0)
+        judge_warnings = [w for w in caught if issubclass(w.category, RuntimeWarning)]
+        self.assertEqual(len(judge_warnings), 1)
+        self.assertIn("returned None", str(judge_warnings[0].message))
 
     def test_get_config(self):
         mock_program = MagicMock()
