@@ -548,24 +548,30 @@ class Optimizer(SynalinksSaveable):
             training=True,
         )
 
-        y_pred = await self.program.predict_on_batch(
-            x=val_x,
-            training=False,
-        )
-
-        rewards = await self.program.compute_reward(
-            x=val_x,
-            y=val_y,
-            y_pred=y_pred,
-        )
-
-        if self.trainable_variables:
-            await self.assign_reward_to_predictions(
-                self.trainable_variables,
-                rewards=rewards,
+        if val_x is not None:
+            val_y_pred = await self.program.predict_on_batch(
+                x=val_x,
+                training=False,
             )
 
-        mean_reward = float(sum(rewards) / len(rewards))
+            val_rewards = await self.program.compute_reward(
+                x=val_x,
+                y=val_y,
+                y_pred=val_y_pred,
+            )
+
+            if self.trainable_variables:
+                await self.assign_reward_to_predictions(
+                    self.trainable_variables,
+                    rewards=val_rewards,
+                )
+
+            mean_reward = float(sum(val_rewards) / len(val_rewards))
+        else:
+            # No validation data — use training rewards for candidate selection
+            val_y_pred = y_pred
+            mean_reward = float(sum(rewards) / len(rewards))
+
         for trainable_variable in trainable_variables:
             await self.maybe_add_candidate(
                 step,
@@ -574,7 +580,12 @@ class Optimizer(SynalinksSaveable):
             )
 
         await self.reward_tracker.update_state(mean_reward)
-        metrics = await self.program.compute_metrics(val_x, val_y, y_pred)
+        if val_x is not None:
+            metrics = await self.program.compute_metrics(
+                val_x, val_y, val_y_pred
+            )
+        else:
+            metrics = await self.program.compute_metrics(x, y, val_y_pred)
         return metrics
 
     async def propose_new_candidates(

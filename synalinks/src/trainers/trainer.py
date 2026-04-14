@@ -458,7 +458,7 @@ class Trainer:
         """
         self._assert_compile_called("fit")
         self._eval_epoch_iterator = None
-        val_y, val_y = None, None
+        val_x, val_y = None, None
 
         if validation_split and validation_data is None:
             # Create the validation data using the training data. Only supported
@@ -552,7 +552,7 @@ class Trainer:
 
                     mini_val_x = None
                     mini_val_y = None
-                    if minibatch_size:
+                    if minibatch_size and val_x is not None:
                         if len(val_x) > minibatch_size:
                             indices = np.random.choice(
                                 len(val_x),
@@ -571,14 +571,17 @@ class Trainer:
                         return_dict=True,
                     )
 
-                    val_logs = await self.evaluate(
-                        x=val_x,
-                        y=val_y,
-                        batch_size=validation_batch_size or batch_size,
-                        steps=validation_steps,
-                        callbacks=callbacks,
-                        _use_cached_eval_dataset=False,
-                    )
+                    if val_x is not None:
+                        val_logs = await self.evaluate(
+                            x=val_x,
+                            y=val_y,
+                            batch_size=validation_batch_size or batch_size,
+                            steps=validation_steps,
+                            callbacks=callbacks,
+                            _use_cached_eval_dataset=False,
+                        )
+                    else:
+                        val_logs = {}
 
                     if self.trainable_variables and isinstance(
                         self.optimizer, optimizers_module.Optimizer
@@ -886,15 +889,17 @@ class Trainer:
             )
         else:
             warnings.warn("The program does not have any trainable variables.")
-            y_pred = await self.predict_on_batch(val_x)
+            eval_x = val_x if val_x is not None else x
+            eval_y = val_y if val_y is not None else y
+            y_pred = await self.predict_on_batch(eval_x)
             rewards = await self.compute_reward(
-                x=val_x,
-                y=val_y,
+                x=eval_x,
+                y=eval_y,
                 y_pred=y_pred,
             )
             mean_reward = float(numpy.mean(rewards))
             await self._reward_tracker.update_state(mean_reward)
-            metrics = await self.compute_metrics(val_x, val_y, y_pred)
+            metrics = await self.compute_metrics(eval_x, eval_y, y_pred)
 
         if return_dict:
             return metrics

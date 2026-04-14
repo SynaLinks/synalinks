@@ -14,6 +14,8 @@ from synalinks.src.language_models import LanguageModel
 from synalinks.src.testing.test_utils import AnswerWithRationale
 from synalinks.src.testing.test_utils import Query
 from synalinks.src.testing.test_utils import load_test_data
+from synalinks.src.testing.test_utils import mock_completion_data
+from synalinks.src.testing.test_utils import mock_incorrect_completion_data
 from synalinks.src.trainers.trainer import Trainer
 
 
@@ -174,3 +176,45 @@ class TestTrainer(testing.TestCase):
         self.assertEqual(len(y_data), len(x_train))
         self.assertIsInstance(y_data[0], JsonDataModel)
         self.assertIsInstance(y_data[1], JsonDataModel)
+
+    @patch("litellm.acompletion")
+    async def test_fit_without_validation_data(self, mock_completion):
+        """`fit()` must not crash when validation_split=0 and validation_data=None.
+
+        Regression test: previously `val_x` / `val_y` stayed `None` and were passed
+        unconditionally to `predict_on_batch`, `evaluate`, and `compute_metrics`,
+        raising at runtime.
+        """
+        inputs = modules.Input(data_model=Query)
+        outputs = await modules.Generator(
+            language_model=LanguageModel(model="ollama/mistral"),
+            data_model=AnswerWithRationale,
+        )(inputs)
+        program = programs.Program(
+            inputs=inputs,
+            outputs=outputs,
+            name="fit_no_val",
+            description="Fit without validation data",
+        )
+        program.compile(
+            optimizer=optimizers.random_few_shot.RandomFewShot(nb_min_examples=1),
+            reward=rewards.ExactMatch(in_mask=["answer"]),
+        )
+
+        (x_train, y_train), _ = load_test_data()
+
+        mock_responses = []
+        mock_responses.extend(mock_incorrect_completion_data())
+        mock_responses.extend(mock_completion_data())
+        mock_completion.side_effect = mock_responses
+
+        # Explicitly disable both validation paths.
+        history = await program.fit(
+            x=x_train,
+            y=y_train,
+            epochs=1,
+            batch_size=32,
+            validation_split=0.0,
+            validation_data=None,
+        )
+        self.assertIsNotNone(history)
