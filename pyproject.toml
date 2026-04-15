@@ -25,7 +25,7 @@ dependencies = [
   "datasets",
   "docstring-parser",
   "duckdb",
-  "fastmcp",
+  "fastmcp>=3.2.0",
   "graphviz",
   "greenlet",
   "inquirer",
