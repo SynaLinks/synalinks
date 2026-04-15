@@ -199,6 +199,77 @@ class EvolutionaryOptimizerTest(testing.TestCase):
         optimizer = EvolutionaryOptimizer()
         self.assertEqual(optimizer.sampling_temperature, 0.3)
 
+    async def test_propose_new_candidates_falls_back_to_seed_when_best_empty(
+        self,
+    ):
+        """Regression test: on the very first training step `best_candidates`
+        is still empty (it is populated later by `maybe_add_candidate`).
+        `propose_new_candidates` used to pass the resulting `None` into
+        `mutate_candidate`, which crashed downstream (e.g. OMEGA's
+        `selected_candidate.items()` in `omega.py`). It must instead fall
+        back to a random seed candidate, mirroring `on_batch_begin`.
+        """
+        seen = {}
+
+        class _RecordingOptimizer(EvolutionaryOptimizer):
+            async def mutate_candidate(
+                self,
+                step,
+                trainable_variable,
+                selected_candidate,
+                x=None,
+                y=None,
+                y_pred=None,
+                training=False,
+            ):
+                seen["selected_candidate"] = selected_candidate
+                return None
+
+            async def merge_candidate(
+                self,
+                step,
+                trainable_variable,
+                current_candidate,
+                other_candidate,
+                x=None,
+                y=None,
+                y_pred=None,
+                training=False,
+            ):
+                return None
+
+        # merging_rate=0 keeps the strategy on "mutation" regardless of epoch.
+        optimizer = _RecordingOptimizer(selection="random", merging_rate=0.0)
+
+        seed_candidate = {"prompt": "seed_prompt"}
+        trainable_variable = JsonDataModel(
+            json={
+                "seed_candidates": [seed_candidate],
+                "best_candidates": [],
+                "nb_visit": 0,
+                "cumulative_reward": 0.0,
+                "prompt": "initial",
+            },
+            schema={
+                "type": "object",
+                "properties": {
+                    "seed_candidates": {"type": "array"},
+                    "best_candidates": {"type": "array"},
+                    "nb_visit": {"type": "integer"},
+                    "cumulative_reward": {"type": "number"},
+                    "prompt": {"type": "string"},
+                },
+            },
+            name="trainable_var",
+        )
+
+        await optimizer.propose_new_candidates(
+            step=0,
+            trainable_variables=[trainable_variable],
+        )
+
+        self.assertEqual(seen.get("selected_candidate"), seed_candidate)
+
     async def test_select_variable_name_to_update_does_not_raise(self):
         """Regression test: `select_variable_name_to_update` on an
         EvolutionaryOptimizer used to raise

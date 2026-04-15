@@ -199,6 +199,16 @@ class EvolutionaryOptimizer(Optimizer):
                 best_candidates = trainable_variable.get("best_candidates")
                 selected_candidate = self.select_candidate(best_candidates)
 
+                # On the very first training step `best_candidates` is still
+                # empty (it is populated downstream by `maybe_add_candidate`).
+                # Fall back to a seed candidate so mutation/crossover has
+                # something to work with, mirroring the same fallback used in
+                # `on_batch_begin`.
+                if selected_candidate is None:
+                    seed_candidates = trainable_variable.get("seed_candidates")
+                    if seed_candidates:
+                        selected_candidate = random.choice(seed_candidates)
+
                 if strategy == "mutation":
                     new_candidate = await self.mutate_candidate(
                         step,
