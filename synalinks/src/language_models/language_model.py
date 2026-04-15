@@ -173,7 +173,7 @@ class LanguageModel(SynalinksSaveable):
         model (str): The model to use.
         api_base (str): Optional. The endpoint to use.
         timeout (int): Optional. The timeout value in seconds (Default to 600).
-        retry (int): Optional. The number of retry (default to 2).
+        retry (int): Optional. The number of retry (default to 5).
         fallback (LanguageModel): Optional. The language model to fallback
             if anything is wrong.
         caching (bool): Optional. Enable caching of LM calls (Default to False).
