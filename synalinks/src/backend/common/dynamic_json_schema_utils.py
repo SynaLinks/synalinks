@@ -44,6 +44,77 @@ def dynamic_enum(schema, prop_to_update, labels, description=None):
     return schema
 
 
+def dynamic_enum_array(schema, prop_to_update, labels, description=None):
+    """Update a schema with a dynamic Enum string applied to array items.
+
+    Mirrors :func:`dynamic_enum` but targets list-valued properties whose
+    items should be constrained to a string enum (i.e. ``list[str]`` /
+    ``list[Literal[...]]`` in pydantic).
+
+    The property is patched to ``{"type": "array", "items": {"$ref": ...}}``
+    with the referenced ``$defs`` entry holding the enum definition.
+
+    Args:
+        schema (dict): The schema to update.
+        prop_to_update (str): The array property to update.
+        labels (list): The list of labels (strings) allowed as items.
+        description (str, optional): An optional description for the enum.
+
+    Returns:
+        dict: The updated schema with the items-enum applied to the
+            specified property.
+    """
+    schema = copy.deepcopy(schema)
+    if schema.get("$defs"):
+        schema = {"$defs": schema.pop("$defs"), **schema}
+    else:
+        schema = {"$defs": {}, **schema}
+    title = prop_to_update.title().replace("_", "")
+
+    if description:
+        enum_definition = {
+            "enum": labels,
+            "description": description,
+            "title": title,
+            "type": "string",
+        }
+    else:
+        enum_definition = {
+            "enum": labels,
+            "title": title,
+            "type": "string",
+        }
+
+    schema["$defs"].update({title: enum_definition})
+
+    items_ref = {"$ref": f"#/$defs/{title}"}
+
+    # If the property is declared on a nested model (pydantic places these
+    # under ``$defs.<Model>.properties``), patch the first match there.
+    # Otherwise fall back to the top-level ``properties`` map, matching the
+    # behaviour of :func:`dynamic_enum`.
+    target_props = None
+    for def_name, def_body in schema["$defs"].items():
+        if def_name == title or not isinstance(def_body, dict):
+            continue
+        def_props = def_body.get("properties")
+        if isinstance(def_props, dict) and prop_to_update in def_props:
+            target_props = def_props
+            break
+    if target_props is None:
+        target_props = schema.setdefault("properties", {})
+
+    existing = target_props.get(prop_to_update)
+    if isinstance(existing, dict):
+        existing["type"] = "array"
+        existing["items"] = items_ref
+        existing.pop("enum", None)
+    else:
+        target_props[prop_to_update] = {"type": "array", "items": items_ref}
+
+    return schema
+
+
 def dynamic_tool_calls(tools):
     """
     Generates a dynamic schema for tool calls based on a list of tools.
