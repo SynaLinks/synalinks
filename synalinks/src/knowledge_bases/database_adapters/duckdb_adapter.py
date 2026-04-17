@@ -171,10 +171,18 @@ class DuckDBAdapter(DatabaseAdapter):
     def _install_extensions(self):
         """Install required extensions per-connection."""
         with self._connect(read_only=False) as con:
-            con.execute("INSTALL fts;")
+            installed = {
+                row[0]
+                for row in con.execute(
+                    "SELECT extension_name FROM duckdb_extensions() WHERE installed"
+                ).fetchall()
+            }
+            if "fts" not in installed:
+                con.execute("INSTALL fts;")
             con.execute("LOAD fts;")
             if self.embedding_model:
-                con.execute("INSTALL vss;")
+                if "vss" not in installed:
+                    con.execute("INSTALL vss;")
                 con.execute("LOAD vss;")
 
     def wipe_database(self):
