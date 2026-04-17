@@ -102,6 +102,83 @@ class DuckDBAdapterInitTest(testing.TestCase):
             self.assertEqual(adapter.embedding_model, embedding_model)
 
 
+class _FakeCursor:
+    def __init__(self, rows):
+        self._rows = rows
+
+    def fetchall(self):
+        return self._rows
+
+
+class _FakeConn:
+    def __init__(self, installed_extensions, executed):
+        self._installed = installed_extensions
+        self._executed = executed
+
+    def execute(self, sql, *args, **kwargs):
+        self._executed.append(sql)
+        if "duckdb_extensions" in sql:
+            return _FakeCursor([(name,) for name in self._installed])
+        return _FakeCursor([])
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+
+class DuckDBAdapterInstallExtensionsTest(testing.TestCase):
+    """Verify _install_extensions skips INSTALL when the extension is already
+    present in duckdb_extensions(). Prevents unnecessary network calls to
+    extensions.duckdb.org on every KnowledgeBase construction."""
+
+    def _make_adapter(self, installed, embedding_model=None):
+        executed = []
+        adapter = DuckDBAdapter.__new__(DuckDBAdapter)
+        adapter.embedding_model = embedding_model
+        adapter._connect = lambda read_only=False: _FakeConn(installed, executed)
+        adapter._install_extensions()
+        return executed
+
+    def test_skips_install_fts_when_already_installed(self):
+        executed = self._make_adapter(installed=["fts"])
+        install_calls = [s for s in executed if "INSTALL fts" in s]
+        load_calls = [s for s in executed if "LOAD fts" in s]
+        self.assertEqual(len(install_calls), 0)
+        self.assertEqual(len(load_calls), 1)
+
+    def test_runs_install_fts_when_not_installed(self):
+        executed = self._make_adapter(installed=[])
+        install_calls = [s for s in executed if "INSTALL fts" in s]
+        load_calls = [s for s in executed if "LOAD fts" in s]
+        self.assertEqual(len(install_calls), 1)
+        self.assertEqual(len(load_calls), 1)
+
+    def test_skips_install_vss_when_already_installed(self):
+        executed = self._make_adapter(
+            installed=["fts", "vss"], embedding_model=object()
+        )
+        install_fts = [s for s in executed if "INSTALL fts" in s]
+        install_vss = [s for s in executed if "INSTALL vss" in s]
+        load_vss = [s for s in executed if "LOAD vss" in s]
+        self.assertEqual(len(install_fts), 0)
+        self.assertEqual(len(install_vss), 0)
+        self.assertEqual(len(load_vss), 1)
+
+    def test_runs_install_vss_when_not_installed(self):
+        executed = self._make_adapter(installed=["fts"], embedding_model=object())
+        install_vss = [s for s in executed if "INSTALL vss" in s]
+        load_vss = [s for s in executed if "LOAD vss" in s]
+        self.assertEqual(len(install_vss), 1)
+        self.assertEqual(len(load_vss), 1)
+
+    def test_skips_vss_entirely_without_embedding_model(self):
+        executed = self._make_adapter(installed=[], embedding_model=None)
+        vss_calls = [s for s in executed if "vss" in s]
+        self.assertEqual(len(vss_calls), 0)
+
+
 class DuckDBAdapterDataModelTest(testing.TestCase):
     def setUp(self):
         super().setUp()
