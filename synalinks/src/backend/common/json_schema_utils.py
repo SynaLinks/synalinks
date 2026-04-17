@@ -233,7 +233,12 @@ def factorize_schema(schema):
                     else:
                         array_prop["items"] = prop_value["items"]
                 else:
-                    array_prop["items"] = {"type": prop_value["type"]}
+                    if "$ref" in prop_value:
+                        array_prop["items"] = {"$ref": prop_value["$ref"]}
+                    elif "type" in prop_value:
+                        array_prop["items"] = {"type": prop_value["type"]}
+                    else:
+                        array_prop["items"] = {"type": "string"}
 
                 result_schema["properties"][plural_key] = array_prop
                 if plural_key not in result_schema["required"]:
