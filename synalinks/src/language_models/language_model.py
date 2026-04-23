@@ -23,25 +23,44 @@ litellm.disable_aiohttp_transport = True
 litellm.drop_params = True
 
 
-def _get_strict_mode_value():
-    """Get the strict mode value from BIOSYNA_LLM_STRICT_MODE env var.
+def _get_strict_mode_config():
+    """Get strict mode configuration from environment variables.
+
+    Supports two modes:
+    1. Standard mode (BIOSYNA_LLM_STRICT_MODE):
+       - "true": Include "strict": true
+       - "false": Omit "strict" parameter
+       - Custom value: Use literally (e.g., "maybe", "fuzzy")
+
+    2. Custom parameter mode (BIOSYNA_LLM_STRUCTURED_PARAM + BIOSYNA_LLM_STRICT_MODE):
+       - BIOSYNA_LLM_STRUCTURED_PARAM: Parameter name (default: "strict")
+       - BIOSYNA_LLM_STRICT_MODE: Parameter value (default: "true")
+       - Allows different server implementations (e.g., "json_mode", "constrained")
 
     Returns:
-        bool or False:
-            - True if env var is "true"
-            - False if env var is "false"
-            - The literal value if anything else (can be passed as-is)
+        dict: {"param_name": str, "param_value": bool|str|None}
+              - param_name: The parameter to include in response_format
+              - param_value: The value to use, or None to omit parameter
     """
-    strict_mode = os.environ.get("BIOSYNA_LLM_STRICT_MODE", "true").lower()
+    # Get parameter name (default: "strict")
+    param_name = os.environ.get("BIOSYNA_LLM_STRUCTURED_PARAM", "strict").lower()
 
-    if strict_mode == "true":
-        return True
-    elif strict_mode == "false":
-        return False
+    # Get parameter value and parse it
+    param_value_str = os.environ.get("BIOSYNA_LLM_STRICT_MODE", "true").lower()
+
+    if param_value_str == "true":
+        param_value = True
+    elif param_value_str == "false":
+        param_value = False
     else:
-        # For other values, try to use them literally (e.g., "maybe")
-        # This allows flexibility for future/custom servers
-        return strict_mode if strict_mode else False
+        # Custom value: pass literally (allows "maybe", "fuzzy", "enabled", etc.)
+        param_value = param_value_str if param_value_str else False
+
+    # If param_value is False, omit the parameter entirely
+    if param_value is False:
+        param_value = None
+
+    return {"param_name": param_name, "param_value": param_value}
 
 
 @synalinks_export(
@@ -303,9 +322,9 @@ class LanguageModel(SynalinksSaveable):
                     "type": "json_schema",
                     "json_schema": {"schema": schema},
                 }
-                strict_val = _get_strict_mode_value()
-                if strict_val is not False:
-                    response_fmt["strict"] = strict_val
+                config = _get_strict_mode_config()
+                if config["param_value"] is not None:
+                    response_fmt[config["param_name"]] = config["param_value"]
                 kwargs.update({"response_format": response_fmt})
             elif self.model.startswith("openai") or self.model.startswith("azure"):
                 # Use constrained structured output for openai/azure
@@ -319,9 +338,9 @@ class LanguageModel(SynalinksSaveable):
                     "name": "structured_output",
                     "schema": schema,
                 }
-                strict_val = _get_strict_mode_value()
-                if strict_val is not False:
-                    json_schema["strict"] = strict_val
+                config = _get_strict_mode_config()
+                if config["param_value"] is not None:
+                    json_schema[config["param_name"]] = config["param_value"]
                 kwargs.update(
                     {
                         "response_format": {
@@ -337,9 +356,9 @@ class LanguageModel(SynalinksSaveable):
                         "schema": schema,
                     },
                 }
-                strict_val = _get_strict_mode_value()
-                if strict_val is not False:
-                    response_fmt["strict"] = strict_val
+                config = _get_strict_mode_config()
+                if config["param_value"] is not None:
+                    response_fmt[config["param_name"]] = config["param_value"]
                 kwargs.update({"response_format": response_fmt})
             elif self.model.startswith("xai"):
                 response_fmt = {
@@ -348,18 +367,18 @@ class LanguageModel(SynalinksSaveable):
                         "schema": schema,
                     },
                 }
-                strict_val = _get_strict_mode_value()
-                if strict_val is not False:
-                    response_fmt["strict"] = strict_val
+                config = _get_strict_mode_config()
+                if config["param_value"] is not None:
+                    response_fmt[config["param_name"]] = config["param_value"]
                 kwargs.update({"response_format": response_fmt})
             elif self.model.startswith("hosted_vllm"):
                 response_fmt_inner = {
                     "name": "structured_output",
                     "schema": schema,
                 }
-                strict_val = _get_strict_mode_value()
-                if strict_val is not False:
-                    response_fmt_inner["strict"] = strict_val
+                config = _get_strict_mode_config()
+                if config["param_value"] is not None:
+                    response_fmt_inner[config["param_name"]] = config["param_value"]
                 kwargs.update(
                     {
                         "response_format": {
