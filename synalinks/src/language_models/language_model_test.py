@@ -158,3 +158,92 @@ class LanguageModelTest(testing.TestCase):
         response_format = mock_completion.call_args.kwargs["response_format"]
         self.assertEqual(response_format["type"], "json_schema")
         self.assertEqual(response_format["json_schema"]["name"], "structured_output")
+
+    @patch("litellm.acompletion")
+    async def test_strict_mode_default_true_hosted_vllm(self, mock_completion):
+        language_model = LanguageModel(
+            model="hosted_vllm/Qwen/Qwen3-4B",
+            api_base="http://localhost:8000/v1",
+        )
+        messages = ChatMessages(
+            messages=[ChatMessage(role=ChatRole.USER, content="hi")]
+        )
+
+        class Answer(DataModel):
+            answer: str
+
+        mock_completion.return_value = {
+            "choices": [{"message": {"content": '{"answer":"4"}'}}]
+        }
+        await language_model(messages, schema=Answer.get_schema())
+        response_format = mock_completion.call_args.kwargs["response_format"]
+        self.assertEqual(response_format.get("strict"), True)
+
+    @patch("litellm.acompletion")
+    async def test_strict_mode_false_omits_strict_hosted_vllm(self, mock_completion):
+        language_model = LanguageModel(
+            model="hosted_vllm/Qwen/Qwen3-4B",
+            api_base="http://localhost:8000/v1",
+            strict_mode=False,
+        )
+        messages = ChatMessages(
+            messages=[ChatMessage(role=ChatRole.USER, content="hi")]
+        )
+
+        class Answer(DataModel):
+            answer: str
+
+        mock_completion.return_value = {
+            "choices": [{"message": {"content": '{"answer":"4"}'}}]
+        }
+        await language_model(messages, schema=Answer.get_schema())
+        response_format = mock_completion.call_args.kwargs["response_format"]
+        self.assertNotIn("strict", response_format)
+        self.assertNotIn("strict", response_format["json_schema"])
+
+    @patch("litellm.acompletion")
+    async def test_strict_mode_false_omits_strict_openai(self, mock_completion):
+        language_model = LanguageModel(
+            model="openai/gpt-4o-mini",
+            strict_mode=False,
+        )
+        messages = ChatMessages(
+            messages=[ChatMessage(role=ChatRole.USER, content="hi")]
+        )
+
+        class Answer(DataModel):
+            answer: str
+
+        mock_completion.return_value = {
+            "choices": [{"message": {"content": '{"answer":"4"}'}}]
+        }
+        await language_model(messages, schema=Answer.get_schema())
+        response_format = mock_completion.call_args.kwargs["response_format"]
+        self.assertNotIn("strict", response_format["json_schema"])
+
+    @patch("litellm.acompletion")
+    async def test_strict_mode_false_omits_strict_ollama(self, mock_completion):
+        language_model = LanguageModel(
+            model="ollama/mistral",
+            strict_mode=False,
+        )
+        messages = ChatMessages(
+            messages=[ChatMessage(role=ChatRole.USER, content="hi")]
+        )
+
+        class Answer(DataModel):
+            answer: str
+
+        mock_completion.return_value = {
+            "choices": [{"message": {"content": '{"answer":"4"}'}}]
+        }
+        await language_model(messages, schema=Answer.get_schema())
+        response_format = mock_completion.call_args.kwargs["response_format"]
+        self.assertNotIn("strict", response_format)
+
+    def test_strict_mode_roundtrip_via_get_config(self):
+        lm = LanguageModel(model="ollama/mistral", strict_mode=False)
+        config = lm.get_config()
+        self.assertEqual(config["strict_mode"], False)
+        restored = LanguageModel.from_config(config)
+        self.assertEqual(restored.strict_mode, False)

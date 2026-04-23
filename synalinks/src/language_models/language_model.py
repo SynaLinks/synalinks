@@ -178,6 +178,10 @@ class LanguageModel(SynalinksSaveable):
         fallback (LanguageModel): Optional. The language model to fallback
             if anything is wrong.
         caching (bool): Optional. Enable caching of LM calls (Default to False).
+        strict_mode (bool): Optional. Whether to include the `strict` field
+            in the `response_format` of structured output calls. Some OpenAI-
+            compatible servers (e.g. TensorRT-LLM) reject unknown fields and
+            fail when `strict` is present. Default to True.
     """
 
     def __init__(
@@ -188,6 +192,7 @@ class LanguageModel(SynalinksSaveable):
         retry=5,
         fallback=None,
         caching=False,
+        strict_mode=True,
     ):
         if model is None:
             raise ValueError("You need to set the `model` argument for any LanguageModel")
@@ -211,6 +216,7 @@ class LanguageModel(SynalinksSaveable):
         self.timeout = timeout
         self.retry = retry
         self.caching = caching
+        self.strict_mode = strict_mode
         self.cumulated_cost = 0.0
         self.last_call_cost = 0.0
 
@@ -278,15 +284,13 @@ class LanguageModel(SynalinksSaveable):
                 )
             elif self.model.startswith("ollama") or self.model.startswith("mistral"):
                 # Use constrained structured output for ollama/mistral
-                kwargs.update(
-                    {
-                        "response_format": {
-                            "type": "json_schema",
-                            "json_schema": {"schema": schema},
-                            "strict": True,
-                        },
-                    }
-                )
+                response_format = {
+                    "type": "json_schema",
+                    "json_schema": {"schema": schema},
+                }
+                if self.strict_mode:
+                    response_format["strict"] = True
+                kwargs.update({"response_format": response_format})
             elif self.model.startswith("openai") or self.model.startswith("azure"):
                 # Use constrained structured output for openai/azure
                 # OpenAI/Azure require the field  "additionalProperties"
@@ -295,55 +299,47 @@ class LanguageModel(SynalinksSaveable):
                     for prop_key, prop_value in schema["properties"].items():
                         if "$ref" in prop_value and "description" in prop_value:
                             del prop_value["description"]
+                json_schema = {
+                    "name": "structured_output",
+                    "schema": schema,
+                }
+                if self.strict_mode:
+                    json_schema["strict"] = True
                 kwargs.update(
                     {
                         "response_format": {
                             "type": "json_schema",
-                            "json_schema": {
-                                "name": "structured_output",
-                                "strict": True,
-                                "schema": schema,
-                            },
+                            "json_schema": json_schema,
                         }
                     }
                 )
             elif self.model.startswith("gemini"):
-                kwargs.update(
-                    {
-                        "response_format": {
-                            "type": "json_schema",
-                            "json_schema": {
-                                "schema": schema,
-                            },
-                            "strict": True,
-                        }
-                    }
-                )
+                response_format = {
+                    "type": "json_schema",
+                    "json_schema": {"schema": schema},
+                }
+                if self.strict_mode:
+                    response_format["strict"] = True
+                kwargs.update({"response_format": response_format})
             elif self.model.startswith("xai"):
-                kwargs.update(
-                    {
-                        "response_format": {
-                            "type": "json_schema",
-                            "json_schema": {
-                                "schema": schema,
-                            },
-                            "strict": True,
-                        }
-                    }
-                )
+                response_format = {
+                    "type": "json_schema",
+                    "json_schema": {"schema": schema},
+                }
+                if self.strict_mode:
+                    response_format["strict"] = True
+                kwargs.update({"response_format": response_format})
             elif self.model.startswith("hosted_vllm"):
-                kwargs.update(
-                    {
-                        "response_format": {
-                            "type": "json_schema",
-                            "json_schema": {
-                                "name": "structured_output",
-                                "schema": schema,
-                            },
-                            "strict": True,
-                        }
-                    }
-                )
+                response_format = {
+                    "type": "json_schema",
+                    "json_schema": {
+                        "name": "structured_output",
+                        "schema": schema,
+                    },
+                }
+                if self.strict_mode:
+                    response_format["strict"] = True
+                kwargs.update({"response_format": response_format})
             else:
                 provider = self.model.split("/")[0]
                 raise ValueError(
@@ -462,6 +458,7 @@ class LanguageModel(SynalinksSaveable):
             "timeout": self.timeout,
             "retry": self.retry,
             "caching": self.caching,
+            "strict_mode": self.strict_mode,
         }
         if self.fallback:
             fallback_config = {
