@@ -22,6 +22,28 @@ litellm.drop_params = True
 litellm.disable_aiohttp_transport = True
 litellm.drop_params = True
 
+
+def _get_strict_mode_value():
+    """Get the strict mode value from BIOSYNA_LLM_STRICT_MODE env var.
+
+    Returns:
+        bool or False:
+            - True if env var is "true"
+            - False if env var is "false"
+            - The literal value if anything else (can be passed as-is)
+    """
+    strict_mode = os.environ.get("BIOSYNA_LLM_STRICT_MODE", "true").lower()
+
+    if strict_mode == "true":
+        return True
+    elif strict_mode == "false":
+        return False
+    else:
+        # For other values, try to use them literally (e.g., "maybe")
+        # This allows flexibility for future/custom servers
+        return strict_mode if strict_mode else False
+
+
 @synalinks_export(
     [
         "synalinks.LanguageModel",
@@ -277,15 +299,14 @@ class LanguageModel(SynalinksSaveable):
                 )
             elif self.model.startswith("ollama") or self.model.startswith("mistral"):
                 # Use constrained structured output for ollama/mistral
-                kwargs.update(
-                    {
-                        "response_format": {
-                            "type": "json_schema",
-                            "json_schema": {"schema": schema},
-                            "strict": True,
-                        },
-                    }
-                )
+                response_fmt = {
+                    "type": "json_schema",
+                    "json_schema": {"schema": schema},
+                }
+                strict_val = _get_strict_mode_value()
+                if strict_val is not False:
+                    response_fmt["strict"] = strict_val
+                kwargs.update({"response_format": response_fmt})
             elif self.model.startswith("openai") or self.model.startswith("azure"):
                 # Use constrained structured output for openai/azure
                 # OpenAI/Azure require the field  "additionalProperties"
@@ -294,52 +315,56 @@ class LanguageModel(SynalinksSaveable):
                     for prop_key, prop_value in schema["properties"].items():
                         if "$ref" in prop_value and "description" in prop_value:
                             del prop_value["description"]
+                json_schema = {
+                    "name": "structured_output",
+                    "schema": schema,
+                }
+                strict_val = _get_strict_mode_value()
+                if strict_val is not False:
+                    json_schema["strict"] = strict_val
                 kwargs.update(
                     {
                         "response_format": {
                             "type": "json_schema",
-                            "json_schema": {
-                                "name": "structured_output",
-                                "strict": True,
-                                "schema": schema,
-                            },
+                            "json_schema": json_schema,
                         }
                     }
                 )
             elif self.model.startswith("gemini"):
-                kwargs.update(
-                    {
-                        "response_format": {
-                            "type": "json_schema",
-                            "json_schema": {
-                                "schema": schema,
-                            },
-                            "strict": True,
-                        }
-                    }
-                )
+                response_fmt = {
+                    "type": "json_schema",
+                    "json_schema": {
+                        "schema": schema,
+                    },
+                }
+                strict_val = _get_strict_mode_value()
+                if strict_val is not False:
+                    response_fmt["strict"] = strict_val
+                kwargs.update({"response_format": response_fmt})
             elif self.model.startswith("xai"):
-                kwargs.update(
-                    {
-                        "response_format": {
-                            "type": "json_schema",
-                            "json_schema": {
-                                "schema": schema,
-                            },
-                            "strict": True,
-                        }
-                    }
-                )
+                response_fmt = {
+                    "type": "json_schema",
+                    "json_schema": {
+                        "schema": schema,
+                    },
+                }
+                strict_val = _get_strict_mode_value()
+                if strict_val is not False:
+                    response_fmt["strict"] = strict_val
+                kwargs.update({"response_format": response_fmt})
             elif self.model.startswith("hosted_vllm"):
+                response_fmt_inner = {
+                    "name": "structured_output",
+                    "schema": schema,
+                }
+                strict_val = _get_strict_mode_value()
+                if strict_val is not False:
+                    response_fmt_inner["strict"] = strict_val
                 kwargs.update(
                     {
                         "response_format": {
                             "type": "json_schema",
-                            "json_schema": {
-                                "name": "structured_output",
-                                "schema": schema,
-                            },
-                            "strict": True,
+                            "json_schema": response_fmt_inner,
                         }
                     }
                 )
@@ -373,9 +398,7 @@ class LanguageModel(SynalinksSaveable):
                 formatted_messages, schema, streaming, **kwargs
             )
         except Exception as e:
-            warnings.warn(
-                f"All retries failed for {self}: {e}"
-            )
+            warnings.warn(f"All retries failed for {self}: {e}")
             if self.fallback:
                 return await self.fallback(
                     messages,
@@ -386,9 +409,7 @@ class LanguageModel(SynalinksSaveable):
             else:
                 return None
 
-    async def _call_with_retry(
-        self, formatted_messages, schema, streaming, **kwargs
-    ):
+    async def _call_with_retry(self, formatted_messages, schema, streaming, **kwargs):
         """Perform the LM call with tenacity retry logic."""
         logger = logging.getLogger(__name__)
 
@@ -418,24 +439,20 @@ class LanguageModel(SynalinksSaveable):
                     return StreamingIterator(response)
                 if not response.get("choices"):
                     raise ValueError(
-                        "Empty response from the language model: "
-                        "no choices returned."
+                        "Empty response from the language model: no choices returned."
                     )
                 if self.model.startswith("groq") and schema:
                     # Groq uses tool_calls for structured output
-                    response_str = response["choices"][0]["message"][
-                        "tool_calls"
-                    ][0]["function"]["arguments"]
+                    response_str = response["choices"][0]["message"]["tool_calls"][0][
+                        "function"
+                    ]["arguments"]
                 else:
                     # Anthropic and other providers use response_format,
                     # which returns content in message["content"]
-                    response_str = response["choices"][0]["message"][
-                        "content"
-                    ]
+                    response_str = response["choices"][0]["message"]["content"]
                     if not response_str:
                         raise ValueError(
-                            "Empty response from the language model: "
-                            "no content returned."
+                            "Empty response from the language model: no content returned."
                         )
                     response_str = response_str.strip()
                 if schema:
