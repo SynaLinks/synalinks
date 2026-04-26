@@ -1,6 +1,6 @@
 # Modified from: keras/src/backend/numpy/numpy.py
 # Original authors: François Chollet et al. (Keras Team)
-# License Apache 2.0: (c) 2025 Yoan Sallami (Synalinks Team)
+# License Apache 2.0: (c) 2025-2026 Yoan Sallami (Synalinks Team)
 
 # Because we only use tensors for metrics and rewards, we don't need much
 # and because we don't perform any gradient descent

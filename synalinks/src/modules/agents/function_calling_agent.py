@@ -1,4 +1,4 @@
-# License Apache 2.0: (c) 2025 Yoan Sallami (Synalinks Team)
+# License Apache 2.0: (c) 2025-2026 Yoan Sallami (Synalinks Team)
 
 import asyncio
 import uuid
@@ -453,7 +453,6 @@ class FunctionCallingAgent(Module):
                 name="tool_calls_generator_" + self.name,
             )
 
-        
         self.final_generator = Generator(
             schema=self.schema,
             language_model=self.language_model,

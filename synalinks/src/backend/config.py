@@ -1,6 +1,6 @@
 # Modified from: keras/src/backend/config.py
 # Original authors: François Chollet et al. (Keras Team)
-# License Apache 2.0: (c) 2025 Yoan Sallami (Synalinks Team)
+# License Apache 2.0: (c) 2025-2026 Yoan Sallami (Synalinks Team)
 
 import logging
 import os
@@ -56,13 +56,13 @@ class SynalinksLogFormatter(logging.Formatter):
     blue = "\x1b[34m"
     bold_red = "\x1b[31;1m"
     reset = "\x1b[0m"
-    prefix = "🧠🔗 Synalinks: "
+    prefix = "[Synalinks]"
 
     FORMATS = {
         logging.DEBUG: f"(DEBUG) {prefix}%(message)s",
         logging.INFO: f"{prefix}%(message)s",
         logging.WARNING: f"{prefix}%(message)s",
-        logging.ERROR: f"{bold_red}{prefix}%(message)s{reset}",
+        logging.ERROR: f"{bold_red}%(message)s{reset}",
         logging.CRITICAL: f"{bold_red}{prefix}%(message)s{reset}",
     }
 
@@ -80,32 +80,6 @@ class SynalinksFileFormatter(logging.Formatter):
     def format(self, record):
         record.msg = self.ANSI_ESCAPE_PATTERN.sub("", str(record.msg))
         return super().format(record)
-
-
-_ENABLE_TELEMETRY = True
-
-
-@synalinks_export(
-    [
-        "synalinks.config.disable_telemetry",
-        "synalinks.backend.disable_telemetry",
-        "synalinks.disable_telemetry",
-    ]
-)
-def disable_telemetry():
-    global _ENABLE_TELEMETRY
-    _ENABLE_TELEMETRY = False
-
-
-@synalinks_export(
-    [
-        "synalinks.config.is_telemetry_enabled",
-        "synalinks.backend.is_telemetry_enabled",
-        "synalinks.is_telemetry_enabled",
-    ]
-)
-def is_telemetry_enabled():
-    return _ENABLE_TELEMETRY
 
 
 @synalinks_export(["synalinks.config.floatx", "synalinks.backend.floatx"])

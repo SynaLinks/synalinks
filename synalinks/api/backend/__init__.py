@@ -15,7 +15,6 @@ from synalinks.src.backend.common.symbolic_data_model import (
 from synalinks.src.backend.config import api_base as api_base
 from synalinks.src.backend.config import api_key as api_key
 from synalinks.src.backend.config import backend as backend
-from synalinks.src.backend.config import disable_telemetry as disable_telemetry
 from synalinks.src.backend.config import enable_logging as enable_logging
 from synalinks.src.backend.config import enable_observability as enable_observability
 from synalinks.src.backend.config import epsilon as epsilon
@@ -24,7 +23,6 @@ from synalinks.src.backend.config import get_seed as get_seed
 from synalinks.src.backend.config import (
     is_observability_enabled as is_observability_enabled,
 )
-from synalinks.src.backend.config import is_telemetry_enabled as is_telemetry_enabled
 from synalinks.src.backend.config import mlflow_experiment_name as mlflow_experiment_name
 from synalinks.src.backend.config import mlflow_tracking_uri as mlflow_tracking_uri
 from synalinks.src.backend.config import set_api_base as set_api_base

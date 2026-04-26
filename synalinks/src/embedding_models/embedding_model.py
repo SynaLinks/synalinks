@@ -1,4 +1,4 @@
-# License Apache 2.0: (c) 2025 Yoan Sallami (Synalinks Team)
+# License Apache 2.0: (c) 2025-2026 Yoan Sallami (Synalinks Team)
 
 import logging
 import warnings
@@ -134,9 +134,7 @@ class EmbeddingModel(SynalinksSaveable):
         try:
             return await self._call_with_retry(texts, **kwargs)
         except Exception as e:
-            warnings.warn(
-                f"All retries failed for {self}: {e}"
-            )
+            warnings.warn(f"All retries failed for {self}: {e}")
             if self.fallback:
                 return await self.fallback(
                     texts,
@@ -177,10 +175,7 @@ class EmbeddingModel(SynalinksSaveable):
                     vectors.append(data["embedding"])
                 return {"embeddings": vectors}
             except Exception as e:
-                warnings.warn(
-                    f"Error occured while trying to call"
-                    f" {self}: {e}"
-                )
+                warnings.warn(f"Error occured while trying to call {self}: {e}")
                 raise
 
         return await _do_call()

@@ -34,15 +34,16 @@ dependencies = [
   "litellm>=1.82",
   "matplotlib",
   "mcp",
-  "mixpanel",
   "mlflow>=3.11.1",
   "namex",
   "numpy",
   "optree",
   "orjson",
   "pydantic",
+  "pydantic-monty",
   "pydotplus",
   "rich",
+  "synaops",
   "tenacity",
 ]
 

@@ -334,10 +334,13 @@ async def main():
 
     # Generate 2 different answers
     x1 = await synalinks.Generator(
-        data_model=Answer, language_model=language_model
+        data_model=Answer,
+        language_model=language_model,
     )(inputs)
+    
     x2 = await synalinks.Generator(
-        data_model=Answer, language_model=language_model
+        data_model=Answer,
+        language_model=language_model,
     )(inputs)
 
     # Concatenate then factorize: {answer, answer_1} -> {answers: [...]}

@@ -1,4 +1,4 @@
-# License Apache 2.0: (c) 2025 Yoan Sallami (Synalinks Team)
+# License Apache 2.0: (c) 2025-2026 Yoan Sallami (Synalinks Team)
 
 import copy
 import inspect
@@ -369,9 +369,7 @@ class JsonDataModel:
         from synalinks.src import ops
 
         return run_maybe_nested(
-            ops.InMask(
-                mask=mask, pattern=pattern, recursive=recursive
-            ).call(self),
+            ops.InMask(mask=mask, pattern=pattern, recursive=recursive).call(self),
         )
 
     def out_mask(self, mask=None, pattern=None, recursive=True):
@@ -389,9 +387,7 @@ class JsonDataModel:
         from synalinks.src import ops
 
         return run_maybe_nested(
-            ops.OutMask(
-                mask=mask, pattern=pattern, recursive=recursive
-            ).call(self),
+            ops.OutMask(mask=mask, pattern=pattern, recursive=recursive).call(self),
         )
 
     def __invert__(self):

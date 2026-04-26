@@ -1,6 +1,6 @@
 # Taken from: keras/src/utils/python_utils.py
 # Original authors: François Chollet et al. (Keras Team)
-# License Apache 2.0: (c) 2025 Yoan Sallami (Synalinks Team)
+# License Apache 2.0: (c) 2025-2026 Yoan Sallami (Synalinks Team)
 
 import binascii
 import codecs

@@ -134,7 +134,7 @@ invalid options.
 
 ### Using synalinks.Score for Confidence
 
-For confidence scores or ratings between 0 and 1, use `synalinks.Score`:
+For confidence scores or ratings between 0.0 and 1.0, use `synalinks.Score`:
 
 ```python
 class Analysis(synalinks.DataModel):
@@ -207,6 +207,69 @@ This is particularly useful when:
 - You want to hide intermediate reasoning from the final output
 - You're training and only want to evaluate certain fields
 - You're chaining modules and need to reshape data between them
+
+## Using Plain Pydantic Models
+
+`synalinks.DataModel` is a thin layer over Pydantic's `BaseModel` that adds
+operators (`+`, `&`, `|`, `^`), masking helpers, and the
+`.to_json_data_model()` / `.to_symbolic_data_model()` conversions. If you
+already have Pydantic models in your codebase (or prefer to keep them),
+you can use them directly by passing a **JSON schema** to any module that
+would otherwise take a `data_model`.
+
+Every module that accepts `data_model=` also accepts `schema=` — a plain
+JSON schema dict. Extract it from a Pydantic model with `.model_json_schema()`:
+
+```python
+from pydantic import BaseModel, Field
+import synalinks
+
+class Query(BaseModel):
+    query: str = Field(description="The user query")
+
+class Answer(BaseModel):
+    answer: str = Field(description="A concise answer")
+
+# Build the program from schemas instead of DataModels
+inputs = synalinks.Input(schema=Query.model_json_schema())
+outputs = await synalinks.Generator(
+    schema=Answer.model_json_schema(),
+    language_model=language_model,
+)(inputs)
+
+program = synalinks.Program(inputs=inputs, outputs=outputs)
+```
+
+At runtime, wrap a Pydantic instance as a `JsonDataModel` so it can flow
+through the program:
+
+```python
+query = Query(query="What is the capital of France?")
+
+payload = synalinks.JsonDataModel(
+    schema=Query.model_json_schema(),
+    json=query.model_dump(),
+)
+
+result = await program(payload)
+```
+
+### Tradeoffs
+
+Bare Pydantic models keep you decoupled from Synalinks at the type level,
+but you give up:
+
+- Operators (`+`, `&`, `|`, `^`, `~`) — these are defined on
+  `synalinks.DataModel`, not on `pydantic.BaseModel`.
+- `.to_json_data_model()` / `.to_symbolic_data_model()` — call
+  `.model_json_schema()` + `.model_dump()` manually as shown above.
+- `synalinks.Score` and other Synalinks-provided field types are still
+  usable since they're standard Python enums.
+
+If you need operators or masking on a Pydantic-defined shape, convert
+once by subclassing `synalinks.DataModel` with the same fields, or
+construct a `JsonDataModel` and use `synalinks.ops.in_mask` /
+`out_mask` directly.
 
 ## Complete Example
 

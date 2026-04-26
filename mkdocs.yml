@@ -59,6 +59,8 @@ nav:
     - guides/Programs.md
     - guides/Modules.md
     - guides/Agents.md
+    - guides/Code Mode Agent.md
+    - guides/Recursive Language Model Agent.md
     - guides/Knowledge Base.md
     - guides/Training.md
     - guides/Observability.md

@@ -1,4 +1,4 @@
-# License Apache 2.0: (c) 2025 Yoan Sallami (Synalinks Team)
+# License Apache 2.0: (c) 2025-2026 Yoan Sallami (Synalinks Team)
 
 import collections
 import copy
@@ -9,9 +9,18 @@ from synalinks.src.utils.nlp_utils import is_plural
 from synalinks.src.utils.nlp_utils import to_plural_without_numerical_suffix
 from synalinks.src.utils.nlp_utils import to_singular_without_numerical_suffix
 
+# Try to import rust based utils (faster)
+# while defaulting to python based one
+try:
+    import synaops
+except ImportError:
+    synaops = None
+
 
 def prefix_json(json, prefix):
     """Add a prefix to the json object keys"""
+    if synaops:
+        return synaops.prefix_json(json=json, prefix=prefix)
     json = copy.deepcopy(json)
     prefixed_json = {}
     for prop_key, prop_value in json.items():
@@ -21,6 +30,8 @@ def prefix_json(json, prefix):
 
 def suffix_json(json, suffix):
     """Add a suffix to the json object keys"""
+    if synaops:
+        return synaops.suffix_json(json=json, suffix=suffix)
     json = copy.deepcopy(json)
     suffixed_json = {}
     for prop_key, prop_value in json.items():
@@ -41,6 +52,12 @@ def concatenate_json(json1, json2):
     Returns:
         (dict): A new Json object that combines the properties of the input objects.
     """
+    if synaops:
+        return synaops.concatenate_json(
+            json1=json1,
+            json2=json2,
+        )
+    
     json1 = copy.deepcopy(json1)
     json2 = copy.deepcopy(json2)
 
@@ -76,6 +93,9 @@ def factorize_json(json):
     Returns:
         (dict): A factorized Json object with grouped properties.
     """
+    if synaops:
+        return synaops.factorize_json(json=json)
+    
     json = copy.deepcopy(json)
     # Initialize the resulting Json object
     result_json = {}
@@ -124,6 +144,9 @@ def decompose_json(json):
     Returns:
         (dict): A decomposed Json object with expanded properties.
     """
+    if synaops:
+        return synaops.decompose_json(json=json)
+    
     json = copy.deepcopy(json)
     result_json = {}
 
@@ -159,6 +182,14 @@ def out_mask_json(json, mask=None, pattern=None, recursive=True):
     Returns:
         (dict): A masked Json object with removed properties.
     """
+    if synaops:
+        return synaops.out_mask_json(
+            json=json,
+            mask=mask,
+            pattern=pattern,
+            recursive=recursive,
+        )
+        
     json = copy.deepcopy(json)
 
     if not mask and not pattern:
@@ -216,6 +247,14 @@ def in_mask_json(json, mask=None, pattern=None, recursive=True):
     Returns:
         (dict): A masked Json object with only the specified properties.
     """
+    if synaops:
+        return synaops.in_mask_json(
+            json=json,
+            mask=mask,
+            pattern=pattern,
+            recursive=recursive,
+        )
+    
     json = copy.deepcopy(json)
 
     if not mask and not pattern:

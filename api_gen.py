@@ -1,6 +1,6 @@
 # Modified from: keras/api_gen.py
 # Original authors: François Chollet et al. (Keras Team)
-# License Apache 2.0: (c) 2025 Yoan Sallami (Synalinks Team)
+# License Apache 2.0: (c) 2025-2026 Yoan Sallami (Synalinks Team)
 
 """Script to generate synalinks public API in `synalinks/api` directory.
 

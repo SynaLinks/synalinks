@@ -1,6 +1,6 @@
 # Modified from: keras/src/callbacks/history.py
 # Original authors: François Chollet et al. (Keras Team)
-# License Apache 2.0: (c) 2025 Yoan Sallami (Synalinks Team)
+# License Apache 2.0: (c) 2025-2026 Yoan Sallami (Synalinks Team)
 
 from synalinks.src.api_export import synalinks_export
 from synalinks.src.callbacks.callback import Callback

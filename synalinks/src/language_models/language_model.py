@@ -1,4 +1,4 @@
-# License Apache 2.0: (c) 2025 Yoan Sallami (Synalinks Team)
+# License Apache 2.0: (c) 2025-2026 Yoan Sallami (Synalinks Team)
 
 import copy
 import logging
@@ -21,6 +21,7 @@ from synalinks.src.utils.nlp_utils import shorten_text
 litellm.drop_params = True
 litellm.disable_aiohttp_transport = True
 litellm.drop_params = True
+
 
 @synalinks_export(
     [
@@ -373,9 +374,7 @@ class LanguageModel(SynalinksSaveable):
                 formatted_messages, schema, streaming, **kwargs
             )
         except Exception as e:
-            warnings.warn(
-                f"All retries failed for {self}: {e}"
-            )
+            warnings.warn(f"All retries failed for {self}: {e}")
             if self.fallback:
                 return await self.fallback(
                     messages,
@@ -386,9 +385,7 @@ class LanguageModel(SynalinksSaveable):
             else:
                 return None
 
-    async def _call_with_retry(
-        self, formatted_messages, schema, streaming, **kwargs
-    ):
+    async def _call_with_retry(self, formatted_messages, schema, streaming, **kwargs):
         """Perform the LM call with tenacity retry logic."""
         logger = logging.getLogger(__name__)
 
@@ -418,24 +415,20 @@ class LanguageModel(SynalinksSaveable):
                     return StreamingIterator(response)
                 if not response.get("choices"):
                     raise ValueError(
-                        "Empty response from the language model: "
-                        "no choices returned."
+                        "Empty response from the language model: no choices returned."
                     )
                 if self.model.startswith("groq") and schema:
                     # Groq uses tool_calls for structured output
-                    response_str = response["choices"][0]["message"][
-                        "tool_calls"
-                    ][0]["function"]["arguments"]
+                    response_str = response["choices"][0]["message"]["tool_calls"][0][
+                        "function"
+                    ]["arguments"]
                 else:
                     # Anthropic and other providers use response_format,
                     # which returns content in message["content"]
-                    response_str = response["choices"][0]["message"][
-                        "content"
-                    ]
+                    response_str = response["choices"][0]["message"]["content"]
                     if not response_str:
                         raise ValueError(
-                            "Empty response from the language model: "
-                            "no content returned."
+                            "Empty response from the language model: no content returned."
                         )
                     response_str = response_str.strip()
                 if schema:

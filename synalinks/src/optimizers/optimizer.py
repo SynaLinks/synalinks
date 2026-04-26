@@ -1,6 +1,6 @@
 # Modified from: keras/src/ops/optimizer.py
 # Original authors: François Chollet et al. (Keras Team)
-# License Apache 2.0: (c) 2025 Yoan Sallami (Synalinks Team)
+# License Apache 2.0: (c) 2025-2026 Yoan Sallami (Synalinks Team)
 
 import random
 import warnings
@@ -609,19 +609,13 @@ class Optimizer(SynalinksSaveable):
         if not rewards:
             rewards = [0.0]
         for trainable_variable in trainable_variables:
-            current_predictions = trainable_variable.get(
-                "current_predictions"
-            )
+            current_predictions = trainable_variable.get("current_predictions")
             predictions = trainable_variable.get("predictions")
-            unassigned = [
-                p for p in current_predictions if p["reward"] is None
-            ]
+            unassigned = [p for p in current_predictions if p["reward"] is None]
             for p, r in zip(unassigned, rewards):
                 p["reward"] = r
                 nb_visit = trainable_variable.get("nb_visit")
-                cumulative_reward = trainable_variable.get(
-                    "cumulative_reward"
-                )
+                cumulative_reward = trainable_variable.get("cumulative_reward")
                 trainable_variable.update(
                     {
                         "nb_visit": nb_visit + 1,

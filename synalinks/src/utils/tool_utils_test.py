@@ -1,4 +1,4 @@
-# License Apache 2.0: (c) 2025 Yoan Sallami (Synalinks Team)
+# License Apache 2.0: (c) 2025-2026 Yoan Sallami (Synalinks Team)
 
 import typing
 
@@ -169,9 +169,7 @@ class ToolValidationTest(testing.TestCase):
         schema = tool.get_tool_schema()
         self.assertIn("name", schema["required"])
         self.assertNotIn("greeting", schema["required"])
-        self.assertEqual(
-            schema["properties"]["greeting"]["default"], "Hello"
-        )
+        self.assertEqual(schema["properties"]["greeting"]["default"], "Hello")
 
     def test_missing_type_hint_raises(self):
         async def bad_fn(x):

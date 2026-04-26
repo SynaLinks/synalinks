@@ -18,6 +18,7 @@ from synalinks.api import ops as ops
 from synalinks.api import optimizers as optimizers
 from synalinks.api import programs as programs
 from synalinks.api import rewards as rewards
+from synalinks.api import sandboxes as sandboxes
 from synalinks.api import saving as saving
 from synalinks.api import tree as tree
 from synalinks.api import utils as utils
@@ -31,14 +32,12 @@ from synalinks.src.backend.common.symbolic_data_model import (
 )
 from synalinks.src.backend.common.symbolic_scope import SymbolicScope as SymbolicScope
 from synalinks.src.backend.config import api_base as api_base
-from synalinks.src.backend.config import disable_telemetry as disable_telemetry
 from synalinks.src.backend.config import enable_logging as enable_logging
 from synalinks.src.backend.config import enable_observability as enable_observability
 from synalinks.src.backend.config import get_seed as get_seed
 from synalinks.src.backend.config import (
     is_observability_enabled as is_observability_enabled,
 )
-from synalinks.src.backend.config import is_telemetry_enabled as is_telemetry_enabled
 from synalinks.src.backend.config import set_api_base as set_api_base
 from synalinks.src.backend.config import set_seed as set_seed
 from synalinks.src.backend.config import synalinks_home as synalinks_home
@@ -80,8 +79,15 @@ from synalinks.src.initializers.initializer import Initializer as Initializer
 from synalinks.src.knowledge_bases.knowledge_base import KnowledgeBase as KnowledgeBase
 from synalinks.src.language_models.language_model import LanguageModel as LanguageModel
 from synalinks.src.metrics.metric import Metric as Metric
+from synalinks.src.modules.agents.code_mode_agent import CodeModeAgent as CodeModeAgent
 from synalinks.src.modules.agents.function_calling_agent import (
     FunctionCallingAgent as FunctionCallingAgent,
+)
+from synalinks.src.modules.agents.recursive_language_model_agent import (
+    RecursiveLanguageModelAgent as RLM,
+)
+from synalinks.src.modules.agents.recursive_language_model_agent import (
+    RecursiveLanguageModelAgent as RecursiveLanguageModelAgent,
 )
 from synalinks.src.modules.core.action import Action as Action
 from synalinks.src.modules.core.branch import Branch as Branch
@@ -128,6 +134,9 @@ from synalinks.src.rewards.exact_match import ExactMatch as ExactMatch
 from synalinks.src.rewards.lm_as_judge import LMAsJudge as LMAsJudge
 from synalinks.src.rewards.reward import Reward as Reward
 from synalinks.src.rewards.reward_wrappers import ProgramAsJudge as ProgramAsJudge
+from synalinks.src.sandboxes.monty_sandbox import MontySandbox as MontySandbox
+from synalinks.src.sandboxes.sandbox import ExecutionResult as ExecutionResult
+from synalinks.src.sandboxes.sandbox import Sandbox as Sandbox
 from synalinks.src.utils.mcp.client import MultiServerMCPClient as MultiServerMCPClient
 from synalinks.src.version import __version__
 from synalinks.src.version import version as version

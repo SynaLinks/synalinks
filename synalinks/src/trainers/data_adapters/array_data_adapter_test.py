@@ -1,6 +1,6 @@
 # Modified from: keras/src/trainers/data_adapters/array_data_adapter_test.py
 # Original authors: François Chollet et al. (Keras Team)
-# License Apache 2.0: (c) 2025 Yoan Sallami (Synalinks Team)
+# License Apache 2.0: (c) 2025-2026 Yoan Sallami (Synalinks Team)
 
 from absl.testing import parameterized
 

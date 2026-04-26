@@ -73,12 +73,12 @@ Think Keras for Language Models applications, a clean, declarative API where:
 
 <div align="center">
 
-| Role                      | Why Synalinks Helps                                      |
-| ------------------------- | -------------------------------------------------------- |
-| 🧑‍💻 **Developers**      | Build complex LM apps without boilerplate.               |
-| 🧠 **Researchers**        | Prototype neuro-symbolic and RL-in-context systems fast. |
-| 🏢 **Data Scientists**    | Integrate LM workflows with APIs & databases.            |
-| 🎓 **Students/Hobbyists** | Learn AI composition in a clean, intuitive framework.    |
+| Role                      | Why Synalinks Helps                                         |
+| ------------------------- | ----------------------------------------------------------- |
+| 🧑‍💻 **AI Developers**      | Build complex production grade LM apps without boilerplate. |
+| 🧠 **AI Researchers**     | Prototype neuro-symbolic and RL-in-context systems fast.    |
+| 🏢 **Data Scientists**    | Integrate LM workflows with APIs & databases.               |
+| 🎓 **Students/Hobbyists** | Learn AI composition in a clean, intuitive framework.       |
 
 </div>
 
@@ -109,6 +109,17 @@ Building robust LM apps is hard. Synalinks simplifies it with:
 
 </div>
 
+### Notable differences with DSPy
+
+Beyond the Keras programming style, Synalinks:
+- Can optimize *anything*, not only prompts
+- Is fully async by default to prevent bad programming practices
+- Detect & run parallel branches automatically with `asyncio` to ease async programming
+- Implement logic-based python operators to easily manipulate data models and the app control flow
+- Use *constrained* JSON decoding to be robust in production
+- Is fully compatible with Pydantic BaseModel (via `schema=` in every module) to ease integration with FastAPI/FastMCP etc.
+- Have instrospection tools like `summarize()` and `plot_program()` to write better documentation
+
 ## Installation
 
 ```shell
@@ -128,7 +139,7 @@ class Query(synalinks.DataModel):
 
 class NumericalAnswer(synalinks.DataModel):
     answer: float = synalinks.Field(
-        description="The final numerical answer",
+        description="The correct final numerical answer",
     )
 
 language_model = synalinks.LanguageModel(

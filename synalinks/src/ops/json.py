@@ -1,4 +1,4 @@
-# License Apache 2.0: (c) 2025 Yoan Sallami (Synalinks Team)
+# License Apache 2.0: (c) 2025-2026 Yoan Sallami (Synalinks Team)
 
 from synalinks.src.api_export import synalinks_export
 from synalinks.src.backend import JsonDataModel
@@ -406,9 +406,7 @@ class Decompose(Operation):
         return SymbolicDataModel(schema=schema, name=self.name)
 
 
-@synalinks_export(
-    ["synalinks.ops.decompose", "synalinks.ops.json.decompose"]
-)
+@synalinks_export(["synalinks.ops.decompose", "synalinks.ops.json.decompose"])
 async def decompose(x, name=None, description=None):
     """Decompose a data model by expanding list properties into individuals.
 
@@ -486,9 +484,7 @@ class OutMask(Operation):
         return SymbolicDataModel(schema=schema, name=self.name)
 
 
-@synalinks_export(
-    ["synalinks.ops.out_mask", "synalinks.ops.json.out_mask"]
-)
+@synalinks_export(["synalinks.ops.out_mask", "synalinks.ops.json.out_mask"])
 async def out_mask(
     x,
     mask=None,
@@ -521,9 +517,7 @@ async def out_mask(
         (JsonDataModel | SymbolicDataModel): The resulting data model.
     """
     if mask is None and pattern is None:
-        raise ValueError(
-            "You should specify the `mask` or `pattern` argument"
-        )
+        raise ValueError("You should specify the `mask` or `pattern` argument")
     if any_symbolic_data_models(x):
         return await OutMask(
             mask=mask,
@@ -587,9 +581,7 @@ class InMask(Operation):
         return SymbolicDataModel(schema=schema, name=self.name)
 
 
-@synalinks_export(
-    ["synalinks.ops.in_mask", "synalinks.ops.json.in_mask"]
-)
+@synalinks_export(["synalinks.ops.in_mask", "synalinks.ops.json.in_mask"])
 async def in_mask(
     x,
     mask=None,
@@ -622,9 +614,7 @@ async def in_mask(
         (JsonDataModel | SymbolicDataModel): The resulting data model.
     """
     if mask is None and pattern is None:
-        raise ValueError(
-            "You should specify the `mask` or `pattern` argument"
-        )
+        raise ValueError("You should specify the `mask` or `pattern` argument")
     if any_symbolic_data_models(x):
         return await InMask(
             mask=mask,

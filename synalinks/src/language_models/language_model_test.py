@@ -1,4 +1,4 @@
-# License Apache 2.0: (c) 2025 Yoan Sallami (Synalinks Team)
+# License Apache 2.0: (c) 2025-2026 Yoan Sallami (Synalinks Team)
 
 from unittest.mock import patch
 
@@ -157,6 +157,4 @@ class LanguageModelTest(testing.TestCase):
         self.assertEqual(result, {"answer": "4"})
         response_format = mock_completion.call_args.kwargs["response_format"]
         self.assertEqual(response_format["type"], "json_schema")
-        self.assertEqual(
-            response_format["json_schema"]["name"], "structured_output"
-        )
+        self.assertEqual(response_format["json_schema"]["name"], "structured_output")

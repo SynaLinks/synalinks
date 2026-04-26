@@ -1,4 +1,4 @@
-# License Apache 2.0: (c) 2025 Yoan Sallami (Synalinks Team)
+# License Apache 2.0: (c) 2025-2026 Yoan Sallami (Synalinks Team)
 
 import warnings
 from unittest.mock import AsyncMock
@@ -96,6 +96,7 @@ class ProgramAsJudgeTest(testing.TestCase):
 
     async def test_call_program_returns_none(self):
         """Judge must return 0.0 and warn (not crash) when the program fails."""
+
         class Answer(DataModel):
             answer: str
 

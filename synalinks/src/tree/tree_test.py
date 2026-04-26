@@ -1,6 +1,6 @@
 # Modified from: keras/src/tree/tree_test.py
 # Original authors: François Chollet et al. (Keras Team)
-# License Apache 2.0: (c) 2025 Yoan Sallami (Synalinks Team)
+# License Apache 2.0: (c) 2025-2026 Yoan Sallami (Synalinks Team)
 
 import functools
 from collections import OrderedDict

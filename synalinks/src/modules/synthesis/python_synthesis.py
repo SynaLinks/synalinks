@@ -1,12 +1,4 @@
-# License Apache 2.0: (c) 2025 Yoan Sallami (Synalinks Team)
-
-import asyncio
-import copy
-import sys
-import traceback
-from io import StringIO
-from multiprocessing import Process
-from multiprocessing import Queue
+# License Apache 2.0: (c) 2025-2026 Yoan Sallami (Synalinks Team)
 
 import jsonschema
 from jsonschema import ValidationError
@@ -19,19 +11,74 @@ from synalinks.src.backend import JsonDataModel
 from synalinks.src.backend import SymbolicDataModel
 from synalinks.src.backend import Trainable
 from synalinks.src.modules.module import Module
-
-
-class TimeoutException(Exception):
-    """Exception raised when script execution times out"""
-
-    pass
+from synalinks.src.sandboxes.monty_sandbox import MontySandbox
+from synalinks.src.saving import serialization_lib
+from synalinks.src.saving.object_registration import get_registered_name
+from synalinks.src.saving.object_registration import get_registered_object
 
 
 class PythonScript(Trainable):
-    """The python code to transform a JSON object into another JSON object"""
+    """The python code to transform a JSON object into another JSON object.
+
+    The script is executed inside the Monty
+    (https://github.com/pydantic/monty) sandboxed Python interpreter, which
+    implements only a subset of Python. Scripts must observe the following
+    constraints:
+
+    - The input JSON object is exposed as a dict named ``inputs``; the script
+      must assign the output JSON object to a variable named ``result`` before
+      it ends.
+    - Only this subset of the standard library is importable: ``sys``,
+      ``os``, ``typing``, ``asyncio``, ``re``, ``datetime``, ``json``,
+      ``math``, ``pathlib``. Notably, ``time``, ``random``, ``itertools``,
+      ``collections``, ``functools`` and the rest of the stdlib are **not**
+      available.
+    - No third-party libraries can be imported (e.g. ``numpy``, ``pandas``,
+      ``pydantic``).
+    - ``class`` definitions and ``match`` statements are not supported; use
+      functions and ``if``/``elif`` chains instead.
+    - The host filesystem, environment variables and network are not
+      reachable from the script. ``os``, ``sys`` and ``pathlib`` import but
+      their dangerous surface is pruned or gated: ``open()``, ``os.system``,
+      ``os.listdir``, ``os.environ``, ``os.path``, ``sys.argv`` and
+      ``Path.read_text`` are all unavailable.
+    - ``asyncio`` is also a stub: only ``asyncio.run`` and ``asyncio.gather``
+      are exposed. There is no ``asyncio.sleep``, ``wait_for``, ``Future``,
+      ``create_task`` or ``TaskGroup``, and no time primitives of any kind
+      (``time`` is not importable either).
+    - Tools bound to the module are exposed as **global async callables**
+      under their tool name. They must be awaited inside an ``async def``
+      and driven with ``asyncio.run(...)``. Every tool call returns a
+      **dict**: a tool wrapping ``async def f(x) -> int`` yields
+      ``{"result": <value>}``, a tool that already returns a dict yields
+      that dict directly. For example, with a bound tool ``web_search``:
+
+      ```python
+      import asyncio
+
+      async def main():
+          hits = await web_search(query=inputs.get("q"))
+          # hits is a dict — index the field you need
+          return {"answer": hits["results"][0]["title"]}
+
+      result = asyncio.run(main())
+      ```
+
+      Independent tool calls can be fanned out with ``asyncio.gather``.
+      Calling a tool without ``await`` returns a coroutine object, not the
+      real value.
+    - Execution is bounded by the module's ``timeout`` and by Monty's memory
+      limits; long-running or allocation-heavy scripts will be aborted.
+    """
 
     python_script: str = Field(
-        description="The python script to transform a JSON object into another object"
+        description=(
+            "A Python script that transforms a JSON input into a JSON "
+            "output. The script reads the input from a dict named "
+            "`inputs` and must assign the output dict to a variable "
+            "named `result` before it ends. Exact language and stdlib "
+            "constraints depend on the active sandbox."
+        ),
     )
 
 
@@ -40,64 +87,98 @@ class PythonConsoleLog(DataModel):
     stderr: str = Field(description="The python console's stderr")
 
 
-def _execute_script_in_process(python_script, inputs_json, schema, result_queue):
-    """Execute the script in a separate process.
-
-    This function runs in a separate process and can be forcefully terminated.
+def _adapt_tool_for_sandbox(tool):
+    """Route a sandbox tool call through the `Tool` Module (preserving
+    observability/retry) and return a plain dict the sandbox can marshal back.
     """
-    result = None
 
-    # Capture stdout and stderr
-    old_stdout = sys.stdout
-    old_stderr = sys.stderr
-    stdout_capture = StringIO()
-    stderr_capture = StringIO()
-    sys.stdout = stdout_capture
-    sys.stderr = stderr_capture
+    async def adapter(**kwargs):
+        result = await tool(**kwargs)
+        if result is None:
+            return None
+        if hasattr(result, "get_json"):
+            return result.get_json()
+        return result
+
+    return adapter
+
+
+def _relabel_error(error: str) -> str:
+    """Translate a MontyError class name into the module's legacy label.
+
+    ``MontySandbox.run`` surfaces errors as ``"MontyXxxError: ..."``; the
+    historical contract of this module is ``"Syntax Error: ..."`` /
+    ``"Runtime Error: ..."`` (matching the rest of the stdout/stderr).
+    """
+    head, _, rest = error.partition(":")
+    label = "Syntax Error" if head == "MontySyntaxError" else "Runtime Error"
+    return f"{label}:{rest}"
+
+
+async def _run_script(
+    python_script,
+    inputs_json,
+    schema,
+    timeout,
+    tools,
+    sandbox=None,
+    sandbox_type=MontySandbox,
+):
+    """Execute the script inside a ``MontySandbox``.
+
+    The script contract is unchanged: assign the output to a variable named
+    ``result``. A trailing ``result`` expression is appended so the
+    sandbox's last-expression return captures that value.
+
+    ``tools`` is a ``{name: Tool}`` mapping; each ``Tool`` is exposed as a
+    global async callable inside the sandbox and must be ``await``-ed.
+
+    ``sandbox`` is optional. When ``None``, a fresh ``MontySandbox`` is
+    built for just this call — the normal case, giving every input an
+    independent namespace. When supplied, the caller owns the sandbox
+    and state persists across calls (useful at training time to explore
+    scripts that build on each other).
+    """
+    code = python_script + "\nresult\n"
+    if sandbox is None:
+        sandbox = sandbox_type(timeout=timeout)
+    external_functions = (
+        {name: _adapt_tool_for_sandbox(tool) for name, tool in tools.items()}
+        if tools
+        else None
+    )
+
+    execution = await sandbox.run(
+        code,
+        inputs={"inputs": inputs_json},
+        external_functions=external_functions,
+    )
+
+    if execution.error:
+        relabelled = _relabel_error(execution.error)
+        # Syntax errors happen at compile time — no script output precedes them.
+        if execution.error.startswith("MontySyntaxError"):
+            return None, "", f"{relabelled}\n"
+        return (
+            None,
+            execution.stdout,
+            execution.stderr + f"{relabelled}\n",
+        )
+
+    result = execution.result
+    if not result:
+        return None, execution.stdout, execution.stderr
 
     try:
-        # Create a local namespace with the inputs
-        local_namespace = {"inputs": copy.deepcopy(inputs_json)}
+        jsonschema.validate(result, schema)
+    except ValidationError as validation_error:
+        return (
+            None,
+            execution.stdout,
+            execution.stderr + f"Validation Error: {validation_error}\n",
+        )
 
-        # Execute the entire script
-        exec(python_script, local_namespace)
-
-        # Look for the result variable in the namespace
-        if "result" in local_namespace:
-            result = local_namespace["result"]
-
-            if result:
-                try:
-                    jsonschema.validate(result, schema)
-                except ValidationError as validation_error:
-                    stdout = stdout_capture.getvalue()
-                    stderr = (
-                        stderr_capture.getvalue()
-                        + f"Validation Error: {validation_error}\n"
-                    )
-                    result_queue.put((None, stdout, stderr))
-                    return
-        else:
-            stdout = stdout_capture.getvalue()
-            stderr = (
-                stderr_capture.getvalue()
-                + "Error: No 'result' variable found after script execution\n"
-            )
-            result_queue.put((None, stdout, stderr))
-            return
-
-    except Exception as e:
-        stdout = stdout_capture.getvalue()
-        stderr = stderr_capture.getvalue() + f"Error: {str(e)}\n{traceback.format_exc()}"
-        result_queue.put((None, stdout, stderr))
-        return
-    finally:
-        stdout = stdout_capture.getvalue()
-        stderr = stderr_capture.getvalue()
-        sys.stdout = old_stdout
-        sys.stderr = old_stderr
-
-    result_queue.put((result, stdout, stderr))
+    return result, execution.stdout, execution.stderr
 
 
 @synalinks_export(
@@ -109,9 +190,12 @@ def _execute_script_in_process(python_script, inputs_json, schema, result_queue)
 class PythonSynthesis(Module):
     """A code Python code transformation on JSON data.
 
-    **Note**: This module is **NOT** completly safe (yet) for business applications.
-        Its is only provided for reseach purposes on program synthesis.
-        Altought the code don't evolve during inference, so it can't be prompt injected.
+    The script runs inside the `Monty <https://github.com/pydantic/monty>`_
+    sandboxed Python interpreter: the host filesystem, environment and network
+    are unreachable from the script. Monty only supports a subset of Python
+    (no third-party libraries, limited standard library, no class or match
+    statements), so the generated script must stay within what Monty can
+    execute.
 
     This module features a python code as trainable variable, allowing the optimizers
     to refine the code during the training loop based on iterative feedback and
@@ -170,12 +254,39 @@ class PythonSynthesis(Module):
             for the evolution. If not provided, create a seed from the default
             configuration.
         default_return_value (dict): Default return value.
-        return_python_script (bool): Wether or not to return the python script for 
+        return_python_script (bool): Wether or not to return the python script for
             evaluation. (Default to False).
         timeout (int): Maximum execution time in seconds. (Default 5 seconds).
+        tools (list): Optional. A list of `Tool` (or MCP tools) exposed to the
+            script as global async callables. Because `Tool`s are async,
+            scripts must call them inside an `async def` and `await` them
+            (see the ``PythonScript`` docs). Passing `None` or an empty list
+            means no tools are bound.
+
+            **Naming gotcha**: each tool is registered inside the sandbox
+            under ``tool.name``, which is ``tool._func.__name__``. So
+            ``Tool(_my_helper)`` registers as ``_my_helper`` (underscore
+            preserved) and the script must call ``await _my_helper(...)``.
+            Name your tool functions exactly as you want them to appear
+            inside the generated script — rename the function, don't rely
+            on an alias.
+        sandbox_type (type): Optional. The ``Sandbox`` subclass used to
+            build a fresh sandbox per call when no ``sandbox`` is
+            injected. Defaults to ``MontySandbox``. Any ``Sandbox``
+            subclass whose ``__init__`` accepts ``(timeout=..., name=...)``
+            works; register custom subclasses with
+            ``@register_synalinks_serializable`` so they round-trip
+            through ``get_config`` / ``from_config``.
         name (str): Optional. The name of the module.
         description (str): Optional. The description of the module.
         trainable (bool): Whether the module's variables should be trainable.
+
+    ``call`` also accepts an optional ``sandbox`` kwarg. If given, the
+    script executes inside the caller-supplied ``MontySandbox`` and any
+    state (variables, imports, function defs) persists across successive
+    calls — useful at training time when candidate scripts share
+    cached state. When omitted, a fresh sandbox is built per call
+    (independent execution, the normal runtime contract).
     """
 
     def __init__(
@@ -187,7 +298,8 @@ class PythonSynthesis(Module):
         default_return_value=None,
         return_python_script=False,
         timeout=5,
-        sandbox=False,
+        tools=None,
+        sandbox_type=None,
         name=None,
         description=None,
         trainable=True,
@@ -219,6 +331,15 @@ class PythonSynthesis(Module):
         self.return_python_script = return_python_script
         self.timeout = timeout
 
+        self.tools = {}
+        if tools:
+            for tool in tools:
+                self.tools[tool.name] = tool
+
+        # Which Sandbox subclass to instantiate when no caller-supplied
+        # sandbox is passed to `call()`. Defaults to MontySandbox.
+        self.sandbox_type = sandbox_type or MontySandbox
+
         if not seed_scripts:
             seed_scripts = []
         self.seed_scripts = seed_scripts
@@ -236,51 +357,25 @@ class PythonSynthesis(Module):
             name="state_" + self.name,
         )
 
-    async def execute(self, inputs, python_script):
-        """Execute the Python script with timeout using multiprocessing."""
-        result_queue = Queue()
-
-        process = Process(
-            target=_execute_script_in_process,
-            args=(python_script, inputs.get_json(), self.schema, result_queue),
+    async def execute(self, inputs, python_script, sandbox=None):
+        """Execute the Python script in the sandbox with a timeout."""
+        return await _run_script(
+            python_script,
+            inputs.get_json(),
+            self.schema,
+            self.timeout,
+            self.tools,
+            sandbox=sandbox,
+            sandbox_type=self.sandbox_type,
         )
-        process.start()
 
-        start_time = asyncio.get_event_loop().time()
-        timeout_remaining = self.timeout
-
-        while process.is_alive() and timeout_remaining > 0:
-            await asyncio.sleep(0.1)
-            elapsed = asyncio.get_event_loop().time() - start_time
-            timeout_remaining = self.timeout - elapsed
-
-        if process.is_alive():
-            process.terminate()
-            process.join(timeout=1)
-
-            if process.is_alive():
-                process.kill()
-                process.join()
-
-            return (
-                None,
-                "",
-                f"Timeout Error: Script execution exceeded {self.timeout} second(s)\n",
-            )
-
-        process.join()
-
-        if not result_queue.empty():
-            result, stdout, stderr = result_queue.get()
-            return result, stdout, stderr
-        else:
-            return None, "", "Error: Process terminated unexpectedly\n"
-
-    async def call(self, inputs, training=False):
+    async def call(self, inputs, training=False, sandbox=None):
         if not inputs:
             return None
         python_script = self.state.get("python_script")
-        result, stdout, stderr = await self.execute(inputs, python_script)
+        result, stdout, stderr = await self.execute(
+            inputs, python_script, sandbox=sandbox
+        )
         if training:
             predictions = self.state.get("current_predictions")
             if result:
@@ -415,12 +510,28 @@ class PythonSynthesis(Module):
             "seed_scripts": self.seed_scripts,
             "default_return_value": self.default_return_value,
             "return_python_script": self.return_python_script,
+            "timeout": self.timeout,
+            "sandbox_type": get_registered_name(self.sandbox_type),
             "name": self.name,
             "description": self.description,
             "trainable": self.trainable,
         }
-        return config
+        tools_config = {
+            "tools": [
+                serialization_lib.serialize_synalinks_object(tool)
+                for tool in self.tools.values()
+            ]
+        }
+        return {**config, **tools_config}
 
     @classmethod
     def from_config(cls, config):
-        return cls(**config)
+        tools = [
+            serialization_lib.deserialize_synalinks_object(tool)
+            for tool in config.pop("tools", [])
+        ]
+        sandbox_type_name = config.pop("sandbox_type", None)
+        sandbox_type = (
+            get_registered_object(sandbox_type_name) if sandbox_type_name else None
+        )
+        return cls(tools=tools or None, sandbox_type=sandbox_type, **config)

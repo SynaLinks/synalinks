@@ -1,4 +1,4 @@
-# License Apache 2.0: (c) 2025 Yoan Sallami (Synalinks Team)
+# License Apache 2.0: (c) 2025-2026 Yoan Sallami (Synalinks Team)
 
 import inspect
 
@@ -230,9 +230,7 @@ class MetaDataModel(type(pydantic.BaseModel)):
         from synalinks.src import ops
 
         return run_maybe_nested(
-            ops.InMask(
-                mask=mask, pattern=pattern, recursive=True
-            ).symbolic_call(cls)
+            ops.InMask(mask=mask, pattern=pattern, recursive=True).symbolic_call(cls)
         )
 
     def out_mask(cls, mask=None, pattern=None, recursive=True):
@@ -250,9 +248,7 @@ class MetaDataModel(type(pydantic.BaseModel)):
         from synalinks.src import ops
 
         return run_maybe_nested(
-            ops.OutMask(
-                mask=mask, pattern=pattern, recursive=True
-            ).symbolic_call(cls)
+            ops.OutMask(mask=mask, pattern=pattern, recursive=True).symbolic_call(cls)
         )
 
     def prefix(cls, prefix=None):

@@ -1,4 +1,4 @@
-# License Apache 2.0: (c) 2025 Yoan Sallami (Synalinks Team)
+# License Apache 2.0: (c) 2025-2026 Yoan Sallami (Synalinks Team)
 
 import os
 import tempfile
@@ -156,9 +156,7 @@ class DuckDBAdapterInstallExtensionsTest(testing.TestCase):
         self.assertEqual(len(load_calls), 1)
 
     def test_skips_install_vss_when_already_installed(self):
-        executed = self._make_adapter(
-            installed=["fts", "vss"], embedding_model=object()
-        )
+        executed = self._make_adapter(installed=["fts", "vss"], embedding_model=object())
         install_fts = [s for s in executed if "INSTALL fts" in s]
         install_vss = [s for s in executed if "INSTALL vss" in s]
         load_vss = [s for s in executed if "LOAD vss" in s]

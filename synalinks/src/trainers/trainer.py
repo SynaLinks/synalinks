@@ -1,6 +1,6 @@
 # Modified from: keras/src/trainers/trainer.py
 # Original authors: François Chollet et al. (Keras Team)
-# License Apache 2.0: (c) 2025 Yoan Sallami (Synalinks Team)
+# License Apache 2.0: (c) 2025-2026 Yoan Sallami (Synalinks Team)
 
 import asyncio
 import inspect
@@ -229,10 +229,7 @@ class Trainer:
         rewards = []
         if self._compile_reward is not None:
             results = await asyncio.gather(
-                *[
-                    self._compile_reward(y_t, y_p)
-                    for y_t, y_p in zip(y, y_pred)
-                ]
+                *[self._compile_reward(y_t, y_p) for y_t, y_p in zip(y, y_pred)]
             )
             for reward in results:
                 if reward is not None:

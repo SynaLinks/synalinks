@@ -1,4 +1,4 @@
-# License Apache 2.0: (c) 2025 Yoan Sallami (Synalinks Team)
+# License Apache 2.0: (c) 2025-2026 Yoan Sallami (Synalinks Team)
 
 import collections
 import copy
@@ -8,6 +8,13 @@ from synalinks.src.utils.nlp_utils import add_suffix
 from synalinks.src.utils.nlp_utils import is_plural
 from synalinks.src.utils.nlp_utils import to_plural_without_numerical_suffix
 from synalinks.src.utils.nlp_utils import to_singular_without_numerical_suffix
+
+# Try to import rust based utils (faster)
+# while defaulting to python based one
+try:
+    import synaops
+except ImportError:
+    synaops = None
 
 
 def standardize_schema(schema):
@@ -26,6 +33,8 @@ def _default_title_from_key(key: str) -> str:
 
 def prefix_schema(schema, prefix):
     """Add a prefix to the schema properties"""
+    if synaops:
+        return synaops.prefix_schema(schema=schema, prefix=prefix)
     schema = copy.deepcopy(schema)
     new_properties = {}
 
@@ -41,6 +50,8 @@ def prefix_schema(schema, prefix):
 
 def suffix_schema(schema, suffix):
     """Add a suffix to the schema properties"""
+    if synaops:
+        return synaops.suffix_schema(schema=schema, suffix=suffix)
     schema = copy.deepcopy(schema)
     new_properties = {}
 
@@ -105,6 +116,12 @@ def concatenate_schema(schema1, schema2):
     Returns:
         (dict): A new JSON schema that combines the properties of the input schemas.
     """
+    if synaops:
+        return synaops.concatenate_schema(
+            schema1=schema1,
+            schema2=schema2,
+        )
+    
     schema1 = copy.deepcopy(schema1)
     schema2 = copy.deepcopy(schema2)
     # Initialize the resulting schema
@@ -178,6 +195,9 @@ def factorize_schema(schema):
     Returns:
         (dict): A factorized JSON schema with grouped properties.
     """
+    if synaops:
+        return synaops.factorize_schema(schema=schema)
+    
     schema = copy.deepcopy(schema)
     # Initialize the resulting schema
     result_schema = {
@@ -272,6 +292,9 @@ def decompose_schema(schema):
     Returns:
         (dict): A decomposed JSON schema with expanded properties.
     """
+    if synaops:
+        return synaops.decompose_schema(schema=schema)
+    
     schema = copy.deepcopy(schema)
     result_schema = {
         "additionalProperties": False,
@@ -336,6 +359,14 @@ def out_mask_schema(schema, mask=None, pattern=None, recursive=True):
     Returns:
         (dict): A masked JSON schema with removed properties.
     """
+    if synaops:
+        return synaops.out_mask_schema(
+            schema=schema,
+            mask=mask,
+            pattern=pattern,
+            recursive=recursive,
+        )
+    
     schema = copy.deepcopy(schema)
 
     if not mask and not pattern:
@@ -414,6 +445,14 @@ def in_mask_schema(schema, mask=None, pattern=None, recursive=True):
     Returns:
         (dict): A masked JSON schema with only the specified properties.
     """
+    if synaops:
+        return synaops.in_mask_schema(
+            schema=schema,
+            mask=mask,
+            pattern=pattern,
+            recursive=recursive,
+        )
+    
     schema = copy.deepcopy(schema)
 
     if not mask and not pattern:
