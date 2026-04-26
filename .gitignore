@@ -137,6 +137,9 @@ nosetests.xml
 *.mo
 *.pot
 
+# Claude Code
+.claude/
+
 # MLflow
 mlflow-data/
 mlruns/

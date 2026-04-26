@@ -339,21 +339,6 @@ class JsonDataModel:
             ops.Factorize().call(self),
         )
 
-    def decompose(self):
-        """Decomposes the data model.
-
-        This is the inverse of factorize. It expands list properties
-        into individual properties with numerical suffixes.
-
-        Returns:
-            (JsonDataModel): The decomposed data model.
-        """
-        from synalinks.src import ops
-
-        return run_maybe_nested(
-            ops.Decompose().call(self),
-        )
-
     def in_mask(self, mask=None, pattern=None, recursive=True):
         """Applies a mask to **keep only** specified keys of the data model.
 

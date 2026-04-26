@@ -202,19 +202,6 @@ class MetaDataModel(type(pydantic.BaseModel)):
 
         return run_maybe_nested(ops.Factorize().symbolic_call(cls))
 
-    def decompose(cls):
-        """Decomposes the data model.
-
-        This is the inverse of factorize. It expands list properties
-        into individual properties with numerical suffixes.
-
-        Returns:
-            (SymbolicDataModel): The decomposed data model.
-        """
-        from synalinks.src import ops
-
-        return run_maybe_nested(ops.Decompose().symbolic_call(cls))
-
     def in_mask(cls, mask=None, pattern=None, recursive=True):
         """Applies a mask to **keep only** specified keys of the data model.
 

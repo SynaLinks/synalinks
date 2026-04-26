@@ -9,7 +9,6 @@ from synalinks.src.backend import DataModel
 from synalinks.src.backend import standardize_schema
 from synalinks.src.backend.common.json_schema_utils import concatenate_schema
 from synalinks.src.backend.common.json_schema_utils import contains_schema
-from synalinks.src.backend.common.json_schema_utils import decompose_schema
 from synalinks.src.backend.common.json_schema_utils import factorize_schema
 from synalinks.src.backend.common.json_schema_utils import in_mask_schema
 from synalinks.src.backend.common.json_schema_utils import is_schema_equal
@@ -609,63 +608,3 @@ class JsonSchemaContainsTest(testing.TestCase):
         schema2 = standardize_schema(Input2.get_schema())
 
         self.assertFalse(contains_schema(schema1, schema2))
-
-
-class JsonSchemaDecomposeTest(testing.TestCase):
-    def test_decompose_schema_with_list_property(self):
-        class Input(DataModel):
-            foos: List[str]
-
-        class Expected(DataModel):
-            foo: str
-            foo_1: str
-
-        schema = standardize_schema(Input.get_schema())
-        expected = standardize_schema(Expected.get_schema())
-
-        result = decompose_schema(schema)
-        self.assertTrue(is_schema_equal(result, expected))
-
-    def test_decompose_schema_with_non_list_property(self):
-        class Input(DataModel):
-            foo: str
-            bar: str
-
-        schema = standardize_schema(Input.get_schema())
-        expected = standardize_schema(Input.get_schema())
-
-        result = decompose_schema(schema)
-        self.assertTrue(is_schema_equal(result, expected))
-
-    def test_decompose_schema_with_mixed_properties(self):
-        class Input(DataModel):
-            foos: List[str]
-            bar: str
-
-        class Expected(DataModel):
-            foo: str
-            foo_1: str
-            bar: str
-
-        schema = standardize_schema(Input.get_schema())
-        expected = standardize_schema(Expected.get_schema())
-
-        result = decompose_schema(schema)
-        self.assertTrue(is_schema_equal(result, expected))
-
-    def test_decompose_schema_with_multiple_list_properties(self):
-        class Input(DataModel):
-            foos: List[str]
-            bars: List[str]
-
-        class Expected(DataModel):
-            foo: str
-            foo_1: str
-            bar: str
-            bar_1: str
-
-        schema = standardize_schema(Input.get_schema())
-        expected = standardize_schema(Expected.get_schema())
-
-        result = decompose_schema(schema)
-        self.assertTrue(is_schema_equal(result, expected))

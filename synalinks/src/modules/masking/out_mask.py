@@ -66,6 +66,7 @@ class OutMask(Module):
     def __init__(
         self,
         mask=None,
+        pattern=None,
         name=None,
         description=None,
         trainable=False,
@@ -77,10 +78,11 @@ class OutMask(Module):
             description=description,
         )
         self.mask = mask
+        self.pattern = pattern
 
     async def call(self, inputs):
         outputs = tree.map_structure(
-            lambda x: x.out_mask(mask=self.mask),
+            lambda x: x.out_mask(mask=self.mask, pattern=self.pattern),
             inputs,
         )
         return outputs

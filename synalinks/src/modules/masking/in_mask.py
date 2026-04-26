@@ -68,6 +68,7 @@ class InMask(Module):
     def __init__(
         self,
         mask=None,
+        pattern=None,
         name=None,
         description=None,
         trainable=False,
@@ -79,10 +80,11 @@ class InMask(Module):
             description=description,
         )
         self.mask = mask
+        self.pattern = pattern
 
     async def call(self, inputs):
         outputs = tree.map_structure(
-            lambda x: x.in_mask(mask=self.mask),
+            lambda x: x.in_mask(mask=self.mask, pattern=pattern),
             inputs,
         )
         return outputs

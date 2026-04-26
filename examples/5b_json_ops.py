@@ -28,7 +28,6 @@ and reshaping data models.
 | Operation | Description | Example |
 |-----------|-------------|---------|
 | `factorize` | Group similar fields into lists | `ops.factorize(combined)` |
-| `decompose` | Expand lists into individual fields | `ops.decompose(factorized)` |
 
 ### 4. Logical Operations (Function Form)
 
@@ -102,8 +101,6 @@ asyncio.run(main())
 - **prefix/suffix**: Add constant text before/after field values.
 - **factorize**: Group similar fields (e.g. `answer`, `answer_1`) into
     lists (e.g. `answers: [...]`).
-- **decompose**: The inverse of factorize. Expand list fields back into
-    individual fields with numerical suffixes.
 - **Training Integration**: Use masks to evaluate only relevant fields
     when computing rewards during training.
 
@@ -117,7 +114,7 @@ asyncio.run(main())
 - [DataModel](https://synalinks.github.io/synalinks/Synalinks%20API/Data%20Models%20API/The%20DataModel%20class/)
 - [LanguageModel](https://synalinks.github.io/synalinks/Synalinks%20API/Language%20Models%20API/)
 - [Generator](https://synalinks.github.io/synalinks/Synalinks%20API/Modules%20API/Core%20Modules/Generator%20module/)
-- [JSON Ops (in_mask, out_mask, prefix, suffix, factorize, decompose)](https://synalinks.github.io/synalinks/Synalinks%20API/Ops%20API/JSON%20Ops/)
+- [JSON Ops (in_mask, out_mask, prefix, suffix, factorize)](https://synalinks.github.io/synalinks/Synalinks%20API/Ops%20API/JSON%20Ops/)
 - [Masking Modules](https://synalinks.github.io/synalinks/Synalinks%20API/Modules%20API/Masking%20Modules/)
 """
 
@@ -323,50 +320,10 @@ async def main():
         print(f"  answers has {len(result['answers'])} items")
 
     # =========================================================================
-    # EXAMPLE 6: Decompose - Expand Lists into Individual Fields
+    # EXAMPLE 6: Pattern Masking - Regex-based Field Filtering
     # =========================================================================
     print("\n" + "=" * 60)
-    print("Example 6: Decompose - Expand Lists into Individual Fields")
-    print("=" * 60)
-    print("The inverse of factorize: expands list fields into individuals.\n")
-
-    inputs = synalinks.Input(data_model=Query)
-
-    # Generate 2 different answers
-    x1 = await synalinks.Generator(
-        data_model=Answer,
-        language_model=language_model,
-    )(inputs)
-    
-    x2 = await synalinks.Generator(
-        data_model=Answer,
-        language_model=language_model,
-    )(inputs)
-
-    # Concatenate then factorize: {answer, answer_1} -> {answers: [...]}
-    combined = x1 + x2
-    factorized = await synalinks.ops.factorize(combined)
-
-    # Decompose back: {answers: [...]} -> {answer, answer_1}
-    outputs = await synalinks.ops.decompose(factorized)
-
-    program = synalinks.Program(
-        inputs=inputs,
-        outputs=outputs,
-        name="decompose_example",
-        description="Factorize then decompose back",
-    )
-
-    synalinks.utils.plot_program(program, to_folder="examples")
-
-    result = await program(Query(query="What is 7 + 7?"))
-    print(f"After decompose: {list(result.keys())}")
-
-    # =========================================================================
-    # EXAMPLE 7: Pattern Masking - Regex-based Field Filtering
-    # =========================================================================
-    print("\n" + "=" * 60)
-    print("Example 7: Pattern Masking - Regex-based Field Filtering")
+    print("Example 6: Pattern Masking - Regex-based Field Filtering")
     print("=" * 60)
     print("Use regex patterns instead of explicit key lists.\n")
 
@@ -393,10 +350,10 @@ async def main():
     print(f"After in_mask(pattern='answer$'): {list(result.keys())}")
 
     # =========================================================================
-    # EXAMPLE 8: Concat Function (Named Operations)
+    # EXAMPLE 7: Concat Function (Named Operations)
     # =========================================================================
     print("\n" + "=" * 60)
-    print("Example 8: Concat Function with Custom Naming")
+    print("Example 7: Concat Function with Custom Naming")
     print("=" * 60)
     print("Using function form allows custom names for operations.\n")
 
