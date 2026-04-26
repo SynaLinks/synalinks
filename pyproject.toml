@@ -31,7 +31,7 @@ dependencies = [
   "inquirer",
   "jinja2",
   "jsonschema",
-  "litellm>=1.82",
+  "litellm>=1.83.7",
   "matplotlib",
   "mcp",
   "mlflow>=3.11.1",
