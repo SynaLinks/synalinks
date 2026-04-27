@@ -61,7 +61,7 @@ def _py_concatenate_json(json1, json2):
 
     Returns:
         (dict): A new Json object that combines the properties of the input objects.
-    """    
+    """
     json1 = copy.deepcopy(json1)
     json2 = copy.deepcopy(json2)
 
@@ -120,7 +120,7 @@ def _py_factorize_json(json):
 
     Returns:
         (dict): A factorized Json object with grouped properties.
-    """    
+    """
     json = copy.deepcopy(json)
     # Initialize the resulting Json object
     result_json = {}
@@ -191,7 +191,7 @@ def _py_out_mask_json(json, mask=None, pattern=None, recursive=True):
 
     Returns:
         (dict): A masked Json object with removed properties.
-    """        
+    """
     json = copy.deepcopy(json)
 
     if not mask and not pattern:
@@ -281,7 +281,7 @@ def _py_in_mask_json(json, mask=None, pattern=None, recursive=True):
 
     Returns:
         (dict): A masked Json object with only the specified properties.
-    """    
+    """
     json = copy.deepcopy(json)
 
     if not mask and not pattern:

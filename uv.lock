@@ -4583,23 +4583,23 @@ requires-dist = [
     { name = "pydantic-monty" },
     { name = "pydotplus" },
     { name = "rich" },
-    { name = "synaops" },
+    { name = "synaops", specifier = ">=0.2.0" },
     { name = "tenacity" },
 ]
 
 [[package]]
 name = "synaops"
-version = "0.1.0"
+version = "0.2.0"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/3a/f6/1a6d69d7523a917b945de1490cc17addb39d2b8f147e4cce1eefeea8fac5/synaops-0.1.0.tar.gz", hash = "sha256:61b791265680fbc7ce10db81707a9b73dcb1b6defb11ce8a47d7c8b27cf63c06", size = 450083 }
+sdist = { url = "https://files.pythonhosted.org/packages/c3/5b/c15e994f7ebff956b3de9adfcf6d6f16f5fa0213be09025bc0ad47959308/synaops-0.2.0.tar.gz", hash = "sha256:5144e92cf41973e4a2a15377dd5498048f949dedaeade55d812f352c5249dfda", size = 406037 }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/7a/16/e8c7de3fa45358a6215a280f79778e86740507c85831cd193ae92b086a69/synaops-0.1.0-cp310-abi3-macosx_10_12_x86_64.whl", hash = "sha256:89a09dbbac59a8f7761239d3c24fe71d146aec32db973c0bfbfae54bb91018db", size = 955100 },
-    { url = "https://files.pythonhosted.org/packages/d7/72/de410d35585c9945fbd1c192cc5a663c83a7e0880adfae77c7e4a8dc20e7/synaops-0.1.0-cp310-abi3-macosx_11_0_arm64.whl", hash = "sha256:0e90f0d7cedda93be4b7975838b37f340d236b643b0077ff430956181ff164e6", size = 914533 },
-    { url = "https://files.pythonhosted.org/packages/6d/fb/04506d1958c52e070265f9331bba1fb9ec5a3efedb689ae19b65a661ba70/synaops-0.1.0-cp310-abi3-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:4464fa478982b77807c66beb020518b914603d02fb4ee82a22fc33406974e5d3", size = 1044879 },
-    { url = "https://files.pythonhosted.org/packages/2d/69/d664152adc0a4c079563ef324170ae4c61a39ee6775379eb38c74635edea/synaops-0.1.0-cp310-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:a3b134de202c1dbe662636dded146fd786dfa2b98bef373d6190708ca45ba9b2", size = 1065184 },
-    { url = "https://files.pythonhosted.org/packages/d7/5a/68c03699835042087a6b7a632b31c0d5c13d5a9cce713b13c28ae1ef5503/synaops-0.1.0-cp310-abi3-musllinux_1_2_aarch64.whl", hash = "sha256:e02b5f618a2fd43290ed97abbe6257ed590d29857ea209a3b59a3857acbe2faa", size = 1219713 },
-    { url = "https://files.pythonhosted.org/packages/bf/69/16e7178ada6f2c39e3cdc351b925174281d6b3fc69a65e6fd3b0427b074d/synaops-0.1.0-cp310-abi3-musllinux_1_2_x86_64.whl", hash = "sha256:1f0d54c439640e4575cd09f4e6e78b4322d2ab08d8720ebc8bfccb932a29babc", size = 1299113 },
-    { url = "https://files.pythonhosted.org/packages/f9/40/05d748f8805c29aeb226ecb9ccaa723cef9e6a36d6776c6c90b5b2580177/synaops-0.1.0-cp310-abi3-win_amd64.whl", hash = "sha256:47e81fb3adcde5cdfb71b6aaa8b97ceced6d7b3bf878f94df390a905c7cca59b", size = 824703 },
+    { url = "https://files.pythonhosted.org/packages/3e/c5/39e9e02ceeb39163c560d5f288bbf0a0d695fbed7ea7a6c04237e35e5c4f/synaops-0.2.0-cp310-abi3-macosx_10_12_x86_64.whl", hash = "sha256:e79611ba633ed4db138badfa3e766bb506f42e61047f3954f045b528245587de", size = 954877 },
+    { url = "https://files.pythonhosted.org/packages/19/d7/742183516f9ba8e61363588c77cc35ba4e109a6e0bd590ad1d0ca6584d3e/synaops-0.2.0-cp310-abi3-macosx_11_0_arm64.whl", hash = "sha256:1b5100601528c7f1ad9290629efd586594218f038fe40d46f9105ee75ccdcfba", size = 914059 },
+    { url = "https://files.pythonhosted.org/packages/f3/dd/0fc37b8bf18f93a783d345468f2c7a02297d6d0de0cf44713bebca312f2e/synaops-0.2.0-cp310-abi3-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:388fb6dfbd94a343d1b5c8b73dfe1e7ed0304e6af9eee40d01f43f1613410e19", size = 1044762 },
+    { url = "https://files.pythonhosted.org/packages/e3/22/c11b047a50573652fbc6efe4676f4c9ff82bf6171833e4155997861fc3ae/synaops-0.2.0-cp310-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:b16520a70bdf932b375198f0328e36b739b79cc133a9caa01e6fac482a2a356e", size = 1064441 },
+    { url = "https://files.pythonhosted.org/packages/42/88/0d335d6352b6b2e9708e1e099cb0675f68e420f822b98d438987d82de773/synaops-0.2.0-cp310-abi3-musllinux_1_2_aarch64.whl", hash = "sha256:7c6bf35c12f20054346e60613fa6f1aacf52244e91ac879f35831168ee0744ff", size = 1220726 },
+    { url = "https://files.pythonhosted.org/packages/5e/16/1dded525e078ee9d5c4986d2bea224c5cdb1cb9f817b9d6d2c36afb46105/synaops-0.2.0-cp310-abi3-musllinux_1_2_x86_64.whl", hash = "sha256:1a8e38a9db5928d8db3903589badd78c829d9e8fcb58cf6a96e2c85b3daeab39", size = 1297134 },
+    { url = "https://files.pythonhosted.org/packages/a6/1a/af17717ca1f5b0dc7c1f36af9af17860fccf7f4bb4003c5a2fda43273c63/synaops-0.2.0-cp310-abi3-win_amd64.whl", hash = "sha256:28353d0313d8c501df8f4f47b8ecb438d8d41775da691c01eb4a7feee5bb7c5d", size = 823563 },
 ]
 
 [[package]]

@@ -220,7 +220,7 @@ def _py_factorize_schema(schema):
 
     Returns:
         (dict): A factorized JSON schema with grouped properties.
-    """    
+    """
     schema = copy.deepcopy(schema)
     # Initialize the resulting schema
     result_schema = {
@@ -334,7 +334,7 @@ def _py_out_mask_schema(schema, mask=None, pattern=None, recursive=True):
 
     Returns:
         (dict): A masked JSON schema with removed properties.
-    """    
+    """
     schema = copy.deepcopy(schema)
 
     if not mask and not pattern:

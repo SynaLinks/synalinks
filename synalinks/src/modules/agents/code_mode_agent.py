@@ -422,8 +422,8 @@ class CodeModeAgent(Module):
             code/execute/observe loop until the LM emits empty ``code`` or
             ``max_iterations`` is reached, then produce a structured final
             answer. If False, require a ``ChatMessages`` input and execute
-            a single code turn per call, returning the updated trajectory
-           , suitable for human-in-the-loop use. For cross-call REPL
+            a single code turn per call, returning the updated trajectory,
+            suitable for human-in-the-loop use. For cross-call REPL
             state in interactive mode, hand a ``Sandbox`` to ``call`` via
             the ``sandbox`` kwarg; the agent itself stays stateless.
         timeout (int): Per-turn execution budget in seconds (Default 5).
@@ -521,8 +521,7 @@ class CodeModeAgent(Module):
             for tool in tools:
                 if tool.name in self._RESERVED_TOOL_NAMES:
                     raise ValueError(
-                        f"Tool name '{tool.name}' is reserved by "
-                        f"{type(self).__name__}."
+                        f"Tool name '{tool.name}' is reserved by {type(self).__name__}."
                     )
                 self.tools[tool.name] = tool
 
