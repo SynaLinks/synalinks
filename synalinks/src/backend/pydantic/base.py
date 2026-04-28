@@ -202,6 +202,16 @@ class ChatMessage(DataModel):
         description="The tool calls of the agent",
         default=[],
     )
+    thinking: Optional[str] = Field(
+        description=(
+            "The reasoning/thinking trace emitted by the model before the "
+            "final answer. Populated from the provider's `reasoning_content` "
+            "field when available (e.g. reasoning-parser-enabled vLLM, "
+            "TensorRT-LLM, Gemini thinking models). None for models that do "
+            "not emit separate thinking traces."
+        ),
+        default=None,
+    )
     created_at: Optional[datetime] = Field(
         description="The creation time",
         default=None,

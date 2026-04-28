@@ -439,6 +439,7 @@ class LanguageModel(SynalinksSaveable):
                         "content": response_str,
                         "tool_call_id": None,
                         "tool_calls": [],
+                        "thinking": None,
                         "created_at": None,
                     }
                 return json_instance
