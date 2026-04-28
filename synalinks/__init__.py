@@ -85,6 +85,7 @@ from synalinks.api import MontySandbox
 from synalinks.api import MultiDecision
 from synalinks.api import MultiServerMCPClient
 from synalinks.api import Not
+from synalinks.api import OAuthLanguageModel
 from synalinks.api import Operation
 from synalinks.api import Or
 from synalinks.api import OutMask

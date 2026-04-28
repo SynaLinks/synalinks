@@ -197,6 +197,9 @@ from synalinks.src.metrics.lm_metrics import (
 from synalinks.src.metrics.lm_metrics import (
     LMRewardsOperationalMetric as LMRewardsOperationalMetric,
 )
+from synalinks.src.modules.language_models.oauth_language_model import (
+    OAuthLanguageModel as OAuthLanguageModel,
+)
 from synalinks.src.metrics.metric import Metric as Metric
 from synalinks.src.metrics.program_metrics import (
     ProgramOperationalMetric as ProgramOperationalMetric,
