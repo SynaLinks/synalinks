@@ -36,6 +36,7 @@ from synalinks.api import LMAsJudge
 from synalinks.api import Metric
 from synalinks.api import Module
 from synalinks.api import MontySandbox
+from synalinks.api import MultiDecision
 from synalinks.api import MultiServerMCPClient
 from synalinks.api import Not
 from synalinks.api import Operation
