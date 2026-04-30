@@ -2,7 +2,7 @@
 import copy
 
 
-def dynamic_enum(schema, prop_to_update, labels, description=None):
+def dynamic_enum(schema, prop_to_update, labels, description=None, inline=True):
     """Update a schema with dynamic Enum string.
 
     Args:
@@ -10,41 +10,43 @@ def dynamic_enum(schema, prop_to_update, labels, description=None):
         prop_to_update (str): The property to update.
         labels (list): The list of labels (strings).
         description (str, optional): An optional description for the enum.
+        inline (bool): If True, write the enum directly into the property
+            instead of placing it under `$defs` and pointing to it via a
+            `$ref`. Useful for providers whose structured-output backend
+            does not resolve `$ref`s strictly (Default to False).
 
     Returns:
         dict: The updated schema with the enum applied to the specified property.
     """
     schema = copy.deepcopy(schema)
-    if schema.get("$defs"):
-        schema = {"$defs": schema.pop("$defs"), **schema}
-    else:
-        schema = {"$defs": {}, **schema}
     title = prop_to_update.title().replace("_", "")
 
+    enum_definition = {
+        "enum": labels,
+        "title": title,
+        "type": "string",
+    }
     if description:
-        enum_definition = {
-            "enum": labels,
-            "description": description,
-            "title": title,
-            "type": "string",
-        }
+        enum_definition["description"] = description
+
+    if inline:
+        schema.setdefault("properties", {}).update(
+            {prop_to_update: enum_definition}
+        )
     else:
-        enum_definition = {
-            "enum": labels,
-            "title": title,
-            "type": "string",
-        }
-
-    schema["$defs"].update({title: enum_definition})
-
-    schema.setdefault("properties", {}).update(
-        {prop_to_update: {"$ref": f"#/$defs/{title}"}}
-    )
+        if schema.get("$defs"):
+            schema = {"$defs": schema.pop("$defs"), **schema}
+        else:
+            schema = {"$defs": {}, **schema}
+        schema["$defs"].update({title: enum_definition})
+        schema.setdefault("properties", {}).update(
+            {prop_to_update: {"$ref": f"#/$defs/{title}"}}
+        )
 
     return schema
 
 
-def dynamic_tool_calls(tools):
+def dynamic_tool_calls(tools, inline=True):
     """
     Generates a dynamic schema for tool calls based on a list of tools.
 
@@ -55,6 +57,10 @@ def dynamic_tool_calls(tools):
     Args:
         tools (list): A list of tool objects, each with a name() method and
             an obj_schema() method that returns the schema of the tool.
+        inline (bool): If True, embed each per-tool sub-schema directly in
+            the `anyOf` branches and skip `$defs`/`$ref` indirection.
+            Useful for providers whose structured-output backend does not
+            resolve `$ref`s strictly (Default to False).
 
     Returns:
         (dict): A schema dictionary that defines the structure for tool calls. The schema
@@ -84,16 +90,29 @@ def dynamic_tool_calls(tools):
             schema["required"] = ["tool_name"]
         tools_schemas_with_tool_names[schema["title"]] = schema
 
+    tool_names = [tool.name for tool in tools]
+    if inline:
+        any_of = list(tools_schemas_with_tool_names.values())
+    else:
+        any_of = [
+            {"$ref": "#/$defs/" + schema_key}
+            for schema_key in tools_schemas_with_tool_names.keys()
+        ]
     tool_calls_schema = {
-        "$defs": tools_schemas_with_tool_names,
         "additionalProperties": False,
         "properties": {
             "tool_calls": {
                 "items": {
-                    "anyOf": [
-                        {"$ref": "#/$defs/" + schema_key}
-                        for schema_key in tools_schemas_with_tool_names.keys()
-                    ]
+                    "type": "object",
+                    "properties": {
+                        "tool_name": {
+                            "enum": tool_names,
+                            "type": "string",
+                            "title": "Tool Name",
+                        }
+                    },
+                    "required": ["tool_name"],
+                    "anyOf": any_of,
                 },
                 "title": "Tool Calls",
                 "type": "array",
@@ -103,11 +122,16 @@ def dynamic_tool_calls(tools):
         "title": "ToolCalls",
         "type": "object",
     }
+    if not inline:
+        tool_calls_schema = {
+            "$defs": tools_schemas_with_tool_names,
+            **tool_calls_schema,
+        }
 
     return tool_calls_schema
 
 
-def dynamic_tool_choice(tools):
+def dynamic_tool_choice(tools, inline=True):
     tools_schemas_with_tool_names = {}
 
     for tool in tools:
@@ -130,15 +154,28 @@ def dynamic_tool_choice(tools):
             schema["required"] = ["tool_name"]
         tools_schemas_with_tool_names[schema["title"]] = schema
 
+    tool_names = [tool.name for tool in tools]
+    if inline:
+        any_of = list(tools_schemas_with_tool_names.values())
+    else:
+        any_of = [
+            {"$ref": "#/$defs/" + schema_key}
+            for schema_key in tools_schemas_with_tool_names.keys()
+        ]
     tool_choice_schema = {
-        "$defs": tools_schemas_with_tool_names,
         "additionalProperties": False,
         "properties": {
             "tool_choice": {
-                "anyOf": [
-                    {"$ref": "#/$defs/" + schema_key}
-                    for schema_key in tools_schemas_with_tool_names.keys()
-                ],
+                "type": "object",
+                "properties": {
+                    "tool_name": {
+                        "enum": tool_names,
+                        "type": "string",
+                        "title": "Tool Name",
+                    }
+                },
+                "required": ["tool_name"],
+                "anyOf": any_of,
                 "title": "Tool Choice",
             }
         },
@@ -146,5 +183,10 @@ def dynamic_tool_choice(tools):
         "title": "ToolChoice",
         "type": "object",
     }
+    if not inline:
+        tool_choice_schema = {
+            "$defs": tools_schemas_with_tool_names,
+            **tool_choice_schema,
+        }
 
     return tool_choice_schema

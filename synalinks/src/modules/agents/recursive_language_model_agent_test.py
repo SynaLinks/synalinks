@@ -315,6 +315,51 @@ class RecursiveLanguageModelAgentTest(testing.TestCase):
         self.assertIn("second", joined)
         self.assertNotIn("budget exhausted", joined)
 
+    @patch("litellm.acompletion")
+    async def test_schemaless_run_returns_trajectory(self, mock_completion):
+        """Schemaless run: data_model=None => agent returns a trajectory of
+        ChatMessages and never produces a structured `answer` field.
+        Sub-LM calls (`llm_query`) still work in this mode."""
+        language_model = LanguageModel(model="ollama/mistral")
+
+        inputs = Input(data_model=Query)
+        outputs = await RecursiveLanguageModelAgent(
+            language_model=language_model,
+            max_iterations=2,
+        )(inputs)
+        agent = Program(inputs=inputs, outputs=outputs, name="schemaless_recursive")
+
+        turn1 = {
+            "python_code": (
+                "import asyncio\n"
+                "async def main():\n"
+                "    out = await llm_query(prompt='gist?')\n"
+                "    await submit(result={'note': out['result']})\n"
+                "asyncio.run(main())"
+            )
+        }
+
+        mock_completion.side_effect = [
+            {"choices": [{"message": {"content": json.dumps(turn1)}}]},
+            {"choices": [{"message": {"content": "the gist"}}]},
+        ]
+
+        result = await agent(Query(query="hi"))
+        result_json = result.get_json()
+        self.assertIn("messages", result_json)
+        self.assertNotIn("answer", result_json)
+        assistant_msgs = [
+            m for m in result.get("messages") if m.get("role") == "assistant"
+        ]
+        self.assertTrue(
+            any(
+                isinstance(m.get("content"), dict)
+                and m["content"].get("note") == "the gist"
+                for m in assistant_msgs
+            ),
+            f"submitted payload not appended; got: {assistant_msgs}",
+        )
+
     async def test_config_round_trip(self):
         primary = LanguageModel(model="ollama/mistral")
         cheap = LanguageModel(model="ollama/llama3")

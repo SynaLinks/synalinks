@@ -6,6 +6,8 @@ from unittest.mock import patch
 from synalinks.src import testing
 from synalinks.src.backend import ChatMessage
 from synalinks.src.backend import ChatMessages
+from synalinks.src.backend import DataModel
+from synalinks.src.backend import Field
 from synalinks.src.backend import is_chat_messages
 from synalinks.src.language_models import LanguageModel
 from synalinks.src.modules.agents.function_calling_agent import FunctionCallingAgent
@@ -372,6 +374,197 @@ class FunctionCallingAgentTest(testing.TestCase):
         self.assertIn("user", roles)
         self.assertIn("assistant", roles)
         self.assertIn("tool", roles)
+
+    @patch("litellm.acompletion")
+    async def test_autonomous_mode_no_data_model_with_custom_input(
+        self, mock_completion
+    ):
+        """Autonomous agent with data_model=None and a non-ChatMessages input.
+
+        Exercises the path where the final_generator has schema=None and the
+        resulting ChatMessage is appended to the trajectory.
+        """
+
+        class Query(DataModel):
+            query: str = Field(description="The user query")
+
+        language_model = LanguageModel(model="ollama/mistral")
+        tools = [Tool(calculate)]
+        inputs = Input(data_model=Query)
+        outputs = await FunctionCallingAgent(
+            language_model=language_model,
+            tools=tools,
+            autonomous=True,
+            max_iterations=3,
+        )(inputs)
+        agent = Program(
+            inputs=inputs,
+            outputs=outputs,
+            name="autonomous_no_schema_custom_input_test",
+        )
+
+        tool_calls = {
+            "thinking": "I need to add 1 + 1.",
+            "tool_calls": [{"tool_name": "calculate", "expression": "1 + 1"}],
+        }
+        tool_calls_done = {
+            "thinking": "Result is 2.",
+            "tool_calls": [],
+        }
+        # final_generator returns a ChatMessage with thinking populated from
+        # reasoning_content (no schema path).
+        final_message = {
+            "choices": [
+                {
+                    "message": {
+                        "content": "The answer is 2.",
+                        "reasoning_content": "1 + 1 equals 2.",
+                    }
+                }
+            ]
+        }
+
+        mock_completion.side_effect = [
+            {"choices": [{"message": {"content": json.dumps(tool_calls)}}]},
+            {"choices": [{"message": {"content": json.dumps(tool_calls_done)}}]},
+            final_message,
+        ]
+
+        result = await agent(Query(query="How much is 1 + 1?"))
+
+        self.assertIsNotNone(result)
+        self.assertTrue(is_chat_messages(result))
+        messages = result.get("messages", [])
+        # Final assistant message must come from the no-schema final_generator
+        # and carry the thinking field populated from reasoning_content.
+        last = messages[-1]
+        self.assertEqual(last.get("role"), "assistant")
+        self.assertEqual(last.get("content"), "The answer is 2.")
+        self.assertEqual(last.get("thinking"), "1 + 1 equals 2.")
+
+    @patch("litellm.acompletion")
+    async def test_autonomous_mode_no_data_model_with_chain_of_thought(
+        self, mock_completion
+    ):
+        """Autonomous agent with data_model=None and use_chain_of_thought=True.
+
+        Exercises the CoT-based tool_calls_generator and the no-schema
+        final_generator together.
+        """
+        language_model = LanguageModel(model="ollama/mistral")
+        tools = [Tool(calculate)]
+        inputs = Input(data_model=ChatMessages)
+        outputs = await FunctionCallingAgent(
+            language_model=language_model,
+            tools=tools,
+            autonomous=True,
+            max_iterations=3,
+            use_chain_of_thought=True,
+        )(inputs)
+        agent = Program(
+            inputs=inputs,
+            outputs=outputs,
+            name="autonomous_no_schema_cot_test",
+        )
+
+        tool_calls_done = {
+            "thinking": "Nothing to do.",
+            "tool_calls": [],
+        }
+        final_message = {
+            "choices": [
+                {
+                    "message": {
+                        "content": "Done.",
+                        "reasoning_content": "No work needed.",
+                    }
+                }
+            ]
+        }
+
+        mock_completion.side_effect = [
+            {"choices": [{"message": {"content": json.dumps(tool_calls_done)}}]},
+            final_message,
+        ]
+
+        input_messages = ChatMessages(
+            messages=[ChatMessage(role="user", content="hi")]
+        )
+        result = await agent(input_messages)
+
+        self.assertIsNotNone(result)
+        self.assertTrue(is_chat_messages(result))
+        last = result.get("messages")[-1]
+        self.assertEqual(last.get("role"), "assistant")
+        self.assertEqual(last.get("content"), "Done.")
+        self.assertEqual(last.get("thinking"), "No work needed.")
+
+    @patch("litellm.acompletion")
+    async def test_autonomous_mode_streaming_final_answer(self, mock_completion):
+        """With streaming=True and no data_model, the agent returns a
+        StreamingIterator from the final generator instead of a wrapped
+        trajectory."""
+        language_model = LanguageModel(model="ollama/mistral")
+        tools = [Tool(calculate)]
+        inputs = Input(data_model=ChatMessages)
+        outputs = await FunctionCallingAgent(
+            language_model=language_model,
+            tools=tools,
+            autonomous=True,
+            max_iterations=2,
+            streaming=True,
+        )(inputs)
+        agent = Program(
+            inputs=inputs,
+            outputs=outputs,
+            name="autonomous_streaming_test",
+        )
+
+        # Tool-calling step: no tools to call, agent moves to final answer.
+        no_more_tools = {"thinking": "done.", "tool_calls": []}
+        # Final generator streams its response.
+        stream_chunks = iter(
+            [
+                {"choices": [{"delta": {"content": "Hello "}}]},
+                {"choices": [{"delta": {"content": "world."}}]},
+            ]
+        )
+
+        mock_completion.side_effect = [
+            {"choices": [{"message": {"content": json.dumps(no_more_tools)}}]},
+            stream_chunks,
+        ]
+
+        input_messages = ChatMessages(
+            messages=[ChatMessage(role="user", content="say hi")]
+        )
+        stream = await agent(input_messages)
+
+        # The result must be the StreamingIterator itself, not a wrapped
+        # ChatMessages — the caller drains it.
+        collected = ""
+        async for chunk in stream:
+            collected += chunk.get("content", "")
+        self.assertEqual(collected, "Hello world.")
+
+    @patch("litellm.acompletion")
+    async def test_streaming_disabled_when_schema_provided(self, _mock_completion):
+        """`streaming=True` alongside a structured `data_model` is silently
+        downgraded, since structured output needs the full response."""
+
+        class FinalAnswer(DataModel):
+            answer: str = Field(description="The final answer")
+
+        language_model = LanguageModel(model="ollama/mistral")
+        agent = FunctionCallingAgent(
+            language_model=language_model,
+            tools=[Tool(calculate)],
+            data_model=FinalAnswer,
+            streaming=True,
+            name="streaming_with_schema",
+        )
+        self.assertFalse(agent.streaming)
+        self.assertFalse(agent.final_generator.streaming)
 
     @patch("litellm.acompletion")
     async def test_non_autonomous_mode_returns_chat_messages(self, mock_completion):

@@ -364,6 +364,11 @@ class FunctionCallingAgent(Module):
             inputs concatenated with the full message trajectory (Default to True).
         max_iterations (int): Optional. The maximum number of tool calling iterations
             in autonomous mode (Default to 5). Ignored in interactive mode.
+        streaming (bool): Optional. If true, stream the final answer. Only takes
+            effect when no `data_model`/`schema` is provided. When streaming,
+            the agent returns a `StreamingIterator` instead of a wrapped
+            trajectory; the caller iterates it to consume the final response.
+            (Default to False).
         name (str): Optional. The name of the module.
         description (str): Optional. The description of the module.
     """
@@ -386,6 +391,7 @@ class FunctionCallingAgent(Module):
         autonomous=True,
         return_inputs_with_trajectory=True,
         max_iterations=5,
+        streaming=False,
         name=None,
         description=None,
     ):
@@ -425,6 +431,10 @@ class FunctionCallingAgent(Module):
         self.autonomous = autonomous
         self.return_inputs_with_trajectory = return_inputs_with_trajectory
         self.max_iterations = max_iterations
+        # Streaming is only meaningful for the final answer (no schema).
+        if self.schema and streaming:
+            streaming = False
+        self.streaming = streaming
 
         if use_chain_of_thought:
             self.tool_calls_generator = ChainOfThought(
@@ -460,6 +470,7 @@ class FunctionCallingAgent(Module):
             temperature=self.temperature,
             reasoning_effort=self.reasoning_effort,
             return_inputs=False,
+            streaming=self.streaming,
             name="final_generator_" + self.name,
         )
 
@@ -575,6 +586,10 @@ class FunctionCallingAgent(Module):
             else:
                 # Without schema: append the ChatMessage to the trajectory
                 final_result = await self.final_generator(trajectory)
+                if self.streaming and not training:
+                    # Streaming bypasses trajectory wrapping — caller iterates
+                    # the StreamingIterator directly to consume final answer.
+                    return final_result
                 if final_result:
                     agent_messages.append(final_result.get_json())
 
@@ -635,6 +650,8 @@ class FunctionCallingAgent(Module):
             # without appending the empty tool calls message
             if not tool_calls or not tool_calls.get("tool_calls"):
                 final_result = await self.final_generator(trajectory)
+                if self.streaming and not training and not self.schema:
+                    return final_result
                 if self.schema:
                     # Combine messages with structured output
                     if self.return_inputs_with_trajectory:
@@ -772,6 +789,7 @@ class FunctionCallingAgent(Module):
             "autonomous": self.autonomous,
             "max_iterations": self.max_iterations,
             "return_inputs_with_trajectory": self.return_inputs_with_trajectory,
+            "streaming": self.streaming,
             "name": self.name,
             "description": self.description,
         }

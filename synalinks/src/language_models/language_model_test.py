@@ -101,7 +101,7 @@ class LanguageModelTest(testing.TestCase):
         response = await language_model(messages, streaming=True)
 
         result = ""
-        for msg in response:
+        async for msg in response:
             result += msg.get("content")
 
         self.assertEqual(result, expected)

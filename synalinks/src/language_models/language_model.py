@@ -236,9 +236,20 @@ class LanguageModel(SynalinksSaveable):
 
         # Handle reasoning_effort parameter - just forward to litellm if supported
         reasoning_effort = kwargs.pop("reasoning_effort", "none")
+        schema_had_thinking = bool(schema) and "thinking" in (
+            schema.get("properties") or {}
+        )
         if reasoning_effort not in ("none", "disable"):
             if litellm.supports_reasoning(model=self.model):
                 kwargs["reasoning_effort"] = reasoning_effort
+                if schema_had_thinking:
+                    # The LM produces a native reasoning trace via
+                    # `reasoning_content` — strip `thinking` from the LM
+                    # schema to save tokens; we re-inject it after the call.
+                    schema["properties"].pop("thinking", None)
+                    required = schema.get("required")
+                    if isinstance(required, list) and "thinking" in required:
+                        required.remove("thinking")
 
         if schema:
             if self.model.startswith("groq"):
@@ -371,7 +382,11 @@ class LanguageModel(SynalinksSaveable):
             formatted_messages[0] = system_message_with_cache_control
         try:
             return await self._call_with_retry(
-                formatted_messages, schema, streaming, **kwargs
+                formatted_messages,
+                schema,
+                streaming,
+                schema_had_thinking,
+                **kwargs,
             )
         except Exception as e:
             warnings.warn(f"All retries failed for {self}: {e}")
@@ -385,7 +400,9 @@ class LanguageModel(SynalinksSaveable):
             else:
                 return None
 
-    async def _call_with_retry(self, formatted_messages, schema, streaming, **kwargs):
+    async def _call_with_retry(
+        self, formatted_messages, schema, streaming, schema_had_thinking, **kwargs
+    ):
         """Perform the LM call with tenacity retry logic."""
         logger = logging.getLogger(__name__)
 
@@ -417,25 +434,30 @@ class LanguageModel(SynalinksSaveable):
                     raise ValueError(
                         "Empty response from the language model: no choices returned."
                     )
+                response_message = response["choices"][0]["message"]
                 if self.model.startswith("groq") and schema:
                     # Groq uses tool_calls for structured output
-                    response_str = response["choices"][0]["message"]["tool_calls"][0][
+                    response_str = response_message["tool_calls"][0][
                         "function"
                     ]["arguments"]
                 else:
                     # Anthropic and other providers use response_format,
                     # which returns content in message["content"]
-                    response_str = response["choices"][0]["message"]["content"]
+                    response_str = response_message["content"]
                     if not response_str:
                         raise ValueError(
                             "Empty response from the language model: no content returned."
                         )
                     response_str = response_str.strip()
+                reasoning_content = response_message.get("reasoning_content")
                 if schema:
                     json_instance = orjson.loads(response_str)
+                    if reasoning_content and schema_had_thinking:
+                        json_instance["thinking"] = reasoning_content
                 else:
                     json_instance = {
                         "role": ChatRole.ASSISTANT,
+                        "thinking": reasoning_content,
                         "content": response_str,
                         "tool_call_id": None,
                         "tool_calls": [],
@@ -489,15 +511,43 @@ class LanguageModel(SynalinksSaveable):
 
 
 class StreamingIterator:
+    """Async iterator over LM stream chunks.
+
+    Wraps litellm's `CustomStreamWrapper` (which is async-iterable via
+    `__aiter__`/`__anext__`) and yields one normalized dict per
+    non-empty chunk: `{"role": "assistant", "thinking": ..., "content": ...}`.
+    Chunks containing only role/finish markers are skipped so reasoning-only
+    deltas don't terminate the stream prematurely.
+
+    Also accepts a plain sync iterator — useful for tests that mock
+    `litellm.acompletion`.
+    """
+
     def __init__(self, iterator):
         self._iterator = iterator
+        self._is_async = hasattr(iterator, "__anext__") or hasattr(
+            iterator, "__aiter__"
+        )
 
-    def __iter__(self):
+    def __aiter__(self):
         return self
 
-    def __next__(self):
-        content = self._iterator.__next__()["choices"][0]["delta"]["content"]
-        if content:
-            return {"role": ChatRole.ASSISTANT, "content": content}
-        else:
-            raise StopIteration
+    async def __anext__(self):
+        while True:
+            try:
+                if self._is_async:
+                    chunk = await self._iterator.__anext__()
+                else:
+                    chunk = next(self._iterator)
+            except (StopAsyncIteration, StopIteration):
+                raise StopAsyncIteration
+            delta = chunk["choices"][0].get("delta") or {}
+            content = delta.get("content")
+            thinking = delta.get("reasoning_content")
+            if content or thinking:
+                out = {"role": ChatRole.ASSISTANT}
+                if thinking:
+                    out["thinking"] = thinking
+                if content:
+                    out["content"] = content
+                return out

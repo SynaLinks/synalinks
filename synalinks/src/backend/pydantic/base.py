@@ -190,6 +190,10 @@ class ChatMessage(DataModel):
     role: ChatRole = Field(
         description="The chat message role",
     )
+    thinking: Optional[str] = Field(
+        description="The thinking/reasoning content of the message",
+        default=None,
+    )
     content: Union[str, Dict[str, Any]] = Field(
         description="The content of the message",
         default="",

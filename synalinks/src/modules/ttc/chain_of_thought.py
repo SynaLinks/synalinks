@@ -97,6 +97,8 @@ class ChainOfThought(Module):
             the prompt (Default to False) (see `Generator`).
         return_inputs (bool): Optional. Whether or not to concatenate the inputs to
             the outputs (Default to False) (see `Generator`).
+        streaming (bool): Optional. If true, stream the LM response. Only takes
+            effect when `data_model`/`schema` is `None` (Default to False).
         name (str): Optional. The name of the module.
         description (str): Optional. The description of the module.
         trainable (bool): Whether the module's variables should be trainable.
@@ -116,6 +118,7 @@ class ChainOfThought(Module):
         use_inputs_schema=False,
         use_outputs_schema=False,
         return_inputs=False,
+        streaming=False,
         name=None,
         description=None,
         trainable=True,
@@ -142,8 +145,15 @@ class ChainOfThought(Module):
         self.use_inputs_schema = use_inputs_schema
         self.use_outputs_schema = use_outputs_schema
         self.return_inputs = return_inputs
+        # Streaming is only meaningful when there is no structured schema.
+        if self.schema and streaming:
+            streaming = False
+        self.streaming = streaming
 
-        final_data_model = Thinking + SymbolicDataModel(schema=self.schema)
+        if self.schema:
+            final_data_model = Thinking + SymbolicDataModel(schema=self.schema)
+        else:
+            final_data_model = None
 
         self.generator = Generator(
             data_model=final_data_model,
@@ -157,6 +167,7 @@ class ChainOfThought(Module):
             use_inputs_schema=self.use_inputs_schema,
             use_outputs_schema=self.use_outputs_schema,
             return_inputs=self.return_inputs,
+            streaming=self.streaming,
             name="generator_" + self.name,
         )
 
@@ -175,6 +186,7 @@ class ChainOfThought(Module):
             "use_inputs_schema": self.use_inputs_schema,
             "use_outputs_schema": self.use_outputs_schema,
             "return_inputs": self.return_inputs,
+            "streaming": self.streaming,
             "name": self.name,
             "description": self.description,
             "trainable": self.trainable,
