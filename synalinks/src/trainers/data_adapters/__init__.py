@@ -32,6 +32,18 @@ def get_data_adapter(
             raise_unsupported_arg("y", "the targets", "PyDataset")
         return GeneratorDataAdapter(x)
 
+    elif hasattr(x, "__iter__") and not isinstance(x, (str, bytes, dict)):
+        # Custom iterable (e.g. a user-defined `Dataset` class). If it also
+        # exposes `__len__`, pass that through as `num_batches` so synalinks
+        # knows the epoch is bounded.
+        if y is not None:
+            raise_unsupported_arg("y", "the targets", "PyDataset")
+        try:
+            num_batches = len(x)
+        except (TypeError, NotImplementedError):
+            num_batches = None
+        return GeneratorDataAdapter(iter(x), num_batches=num_batches)
+
     else:
         raise ValueError(f"Unrecognized data type: x={x} (of type {type(x)})")
 

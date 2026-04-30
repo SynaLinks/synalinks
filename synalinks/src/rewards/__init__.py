@@ -6,16 +6,22 @@ from synalinks.src.rewards.cosine_similarity import cosine_similarity
 from synalinks.src.rewards.exact_match import ExactMatch
 from synalinks.src.rewards.exact_match import exact_match
 from synalinks.src.rewards.reward import Reward
+from synalinks.src.rewards.reward_wrappers import ProgramAsJudge
 from synalinks.src.rewards.reward_wrappers import RewardFunctionWrapper
 from synalinks.src.saving import serialization_lib
 from synalinks.src.utils.naming import to_snake_case
 
+# `LMAsJudge` lives in this set but is imported lazily at the bottom of this
+# module to avoid a circular import (`lm_as_judge` -> `programs.Program` ->
+# `trainers.Trainer` -> `synalinks.src.rewards`).
 ALL_OBJECTS = {
     # Base
     Reward,
     RewardFunctionWrapper,
+    # Concrete
     ExactMatch,
     CosineSimilarity,
+    ProgramAsJudge,
 }
 
 ALL_OBJECTS_DICT = {cls.__name__: cls for cls in ALL_OBJECTS}
@@ -100,3 +106,11 @@ def get(identifier):
         return obj
     else:
         raise ValueError(f"Could not interpret reward identifier: {identifier}")
+
+
+# Late import to break a cycle: `lm_as_judge` -> `programs.Program` ->
+# `trainers.Trainer` -> back to `synalinks.src.rewards`.
+from synalinks.src.rewards.lm_as_judge import LMAsJudge  # noqa: E402
+
+ALL_OBJECTS.add(LMAsJudge)
+ALL_OBJECTS_DICT[LMAsJudge.__name__] = LMAsJudge

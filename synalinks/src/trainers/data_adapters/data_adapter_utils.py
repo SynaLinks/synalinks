@@ -2,9 +2,31 @@
 # Original authors: François Chollet et al. (Keras Team)
 # License Apache 2.0: (c) 2025-2026 Yoan Sallami (Synalinks Team)
 
+import numpy as np
+
+from synalinks.src import tree
 from synalinks.src.api_export import synalinks_export
 
 NUM_BATCHES_FOR_SPEC = 2
+
+
+def get_numpy_iterator(iterable):
+    """Wraps an iterable so each yielded structure has numpy-array leaves.
+
+    Synalinks data adapters yield batches as `(x,)` or `(x, y)` tuples whose
+    leaves are arrays of `DataModel` instances. This helper walks each batch
+    with `tree.map_structure` and ensures every leaf is a numpy object array,
+    matching the format produced by `ArrayDataAdapter.get_numpy_iterator`.
+    Items that are already `np.ndarray` are passed through unchanged.
+    """
+
+    def _to_numpy(leaf):
+        if isinstance(leaf, np.ndarray):
+            return leaf
+        return np.asarray(leaf, dtype="object")
+
+    for batch in iterable:
+        yield tree.map_structure(_to_numpy, batch)
 
 
 @synalinks_export("synalinks.utils.unpack_x_y")

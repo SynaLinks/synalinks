@@ -11,11 +11,12 @@ from synalinks.src.trainers.data_adapters.data_adapter import DataAdapter
 class GeneratorDataAdapter(DataAdapter):
     """Adapter for Python generators."""
 
-    def __init__(self, generator):
+    def __init__(self, generator, num_batches=None):
         first_batches, generator = peek_and_restore(generator)
         self.generator = generator
         self._first_batches = first_batches
         self._output_signature = None
+        self._num_batches = num_batches
         if not isinstance(first_batches[0], tuple):
             raise ValueError(
                 "When passing a Python generator to a Synalinks program, "
@@ -29,7 +30,7 @@ class GeneratorDataAdapter(DataAdapter):
 
     @property
     def num_batches(self):
-        return None
+        return self._num_batches
 
     @property
     def batch_size(self):

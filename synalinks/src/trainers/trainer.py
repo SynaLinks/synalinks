@@ -104,7 +104,8 @@ class Trainer:
         """
         self._clear_previous_trainer_metrics()
         self._optimizer = optimizer
-        self._optimizer.set_program(self)
+        if self._optimizer is not None:
+            self._optimizer.set_program(self)
 
         if hasattr(self, "output_names"):
             output_names = self.output_names

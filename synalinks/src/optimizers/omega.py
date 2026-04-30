@@ -9,6 +9,7 @@ from typing import Optional
 if TYPE_CHECKING:
     from synalinks.src.backend.common.variables import Variable
     from synalinks.src.embedding_models.embedding_model import EmbeddingModel
+    from synalinks.src.programs.program import Program
 
 
 from synalinks.src import tree
@@ -21,7 +22,6 @@ from synalinks.src.backend.common import numpy as np
 from synalinks.src.modules.core.input_module import Input
 from synalinks.src.modules.ttc.chain_of_thought import ChainOfThought
 from synalinks.src.optimizers.evolutionary_optimizer import EvolutionaryOptimizer
-from synalinks.src.programs.program import Program
 from synalinks.src.rewards.reward import squeeze_or_expand_to_same_rank
 from synalinks.src.saving import serialization_lib
 
@@ -348,6 +348,10 @@ class OMEGA(EvolutionaryOptimizer):
         Args:
             trainable_variables (list): List of variables that will be optimized
         """
+        # Lazy import: `Program` -> `Trainer` -> `synalinks.rewards` triggers
+        # a cycle if `omega` loads before `programs.program` finishes.
+        from synalinks.src.programs.program import Program
+
         for trainable_variable in trainable_variables:
             schema_id = id(trainable_variable.get_schema())
             mask = list(Trainable.keys())
