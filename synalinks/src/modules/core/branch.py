@@ -12,13 +12,26 @@ from synalinks.src.saving import serialization_lib
 
 @synalinks_export(["synalinks.modules.Branch", "synalinks.Branch"])
 class Branch(Module):
-    """Use a `LanguageModel` to select which module to call based on an arbitrary
-        input, a question and a list of labels.
+    """Use a `LanguageModel` to select which module(s) to call based on an
+        arbitrary input, a question and a list of labels.
 
-    The selected branch output the data model computed using
-    the inputs and module's branch, while the others output `None`.
+    The selected branch(es) output the data model computed using the inputs
+    and module's branch, while the others output `None`. The output is
+    always a tuple of length `len(branches)` so each label has a fixed
+    positional slot regardless of which one was selected.
 
-    Example:
+    The behaviour of the selector depends on `decision_type`:
+
+    - `decision_type=Decision` (default) — exactly **one** branch is
+      selected per call. All other slots are `None`.
+    - `decision_type=MultiDecision` — **one or more** branches are
+      selected per call. Non-selected slots remain `None`. Use this for
+      multi-label routing where several branches may need to fire at
+      once (e.g., an article that spans both `science` and `finance`,
+      or a query that should be answered by both a retrieval and a
+      tool-using sub-program).
+
+    Single-label example (one branch active per call):
 
     ```python
     import synalinks
@@ -69,6 +82,65 @@ class Branch(Module):
         asyncio.run(main())
     ```
 
+    Multi-label example (zero, one, or several branches active per call):
+
+    ```python
+    import synalinks
+    import asyncio
+
+    async def main():
+        class Article(synalinks.DataModel):
+            text: str
+
+        class ScienceSummary(synalinks.DataModel):
+            thinking: str
+            science_summary: str
+
+        class FinanceSummary(synalinks.DataModel):
+            thinking: str
+            finance_summary: str
+
+        class SportsSummary(synalinks.DataModel):
+            thinking: str
+            sports_summary: str
+
+        language_model = synalinks.LanguageModel(model="ollama/mistral")
+
+        x0 = synalinks.Input(data_model=Article)
+        # Each label has a fixed slot in the output tuple. With
+        # MultiDecision, several may be populated at once; the rest
+        # are None.
+        (sci, fin, spo) = await synalinks.Branch(
+            question="Which topics does this article cover?",
+            labels=["science", "finance", "sports"],
+            branches=[
+                synalinks.Generator(
+                    data_model=ScienceSummary,
+                    language_model=language_model,
+                ),
+                synalinks.Generator(
+                    data_model=FinanceSummary,
+                    language_model=language_model,
+                ),
+                synalinks.Generator(
+                    data_model=SportsSummary,
+                    language_model=language_model,
+                ),
+            ],
+            decision_type=synalinks.MultiDecision,
+            language_model=language_model,
+        )(x0)
+
+    if __name__ == "__main__":
+        asyncio.run(main())
+    ```
+
+    For a biotech-startup article the result might be
+    `(<ScienceSummary>, <FinanceSummary>, None)` — `science` and
+    `finance` are both active, `sports` stays `None`. The non-active
+    slots can be combined downstream with `|` (logical OR) the same
+    way as in the single-label example.
+
     Args:
         question (str): The question to ask.
         labels (list): The list of labels to choose from (strings).
@@ -93,7 +165,10 @@ class Branch(Module):
             schema in the decision prompt (Default to False) (see `Decision`).
         use_outputs_schema (bool): Optional. Whether or not use the outputs
             schema in the decision prompt (Default to False) (see `Decision`).
-        decision_type (bool): Optional. The type of decision module to use.
+        decision_type (type): Optional. The decision module class. Defaults to
+            `Decision` (single-label, exactly one branch active). Pass
+            `MultiDecision` to enable multi-label routing where several
+            branches may be active simultaneously.
         name (str): Optional. The name of the module.
         description (str): Optional. The description of the module.
         trainable (bool): Whether the module's variables should be trainable.
