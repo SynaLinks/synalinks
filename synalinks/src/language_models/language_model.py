@@ -147,6 +147,92 @@ class LanguageModel(SynalinksSaveable):
     )
     ```
 
+    **Using Cohere models**
+
+    ```python
+    import synalinks
+    import os
+
+    os.environ["COHERE_API_KEY"] = "your-api-key"
+
+    language_model = synalinks.LanguageModel(
+        model="cohere/command-r-plus",
+    )
+    ```
+
+    **Using DeepSeek models**
+
+    ```python
+    import synalinks
+    import os
+
+    os.environ["DEEPSEEK_API_KEY"] = "your-api-key"
+
+    language_model = synalinks.LanguageModel(
+        model="deepseek/deepseek-chat",
+    )
+    ```
+
+    **Using Together AI models**
+
+    ```python
+    import synalinks
+    import os
+
+    os.environ["TOGETHER_AI_API_KEY"] = "your-api-key"
+
+    language_model = synalinks.LanguageModel(
+        model="together_ai/meta-llama/Meta-Llama-3.1-70B-Instruct-Turbo",
+    )
+    ```
+
+    **Using OpenRouter models**
+
+    ```python
+    import synalinks
+    import os
+
+    os.environ["OPENROUTER_API_KEY"] = "your-api-key"
+
+    language_model = synalinks.LanguageModel(
+        model="openrouter/anthropic/claude-3-haiku",
+    )
+    ```
+
+    **Using AWS Bedrock models**
+
+    ```python
+    import synalinks
+    import os
+
+    os.environ["AWS_ACCESS_KEY_ID"] = "your-access-key"
+    os.environ["AWS_SECRET_ACCESS_KEY"] = "your-secret-key"
+    os.environ["AWS_REGION_NAME"] = "us-east-1"
+
+    language_model = synalinks.LanguageModel(
+        model="bedrock/anthropic.claude-3-sonnet-20240229-v1:0",
+    )
+    ```
+
+    **Using Doubleword models**
+
+    Doubleword exposes an OpenAI-compatible API. The `doubleword/`
+    prefix is rewritten to `openai/` internally and `api_base` is
+    defaulted to `https://api.doubleword.ai/v1`, so structured outputs
+    flow through the standard OpenAI path. Set `OPENAI_API_KEY` to your
+    Doubleword API key (or pass `api_base` explicitly to override).
+
+    ```python
+    import synalinks
+    import os
+
+    os.environ["OPENAI_API_KEY"] = "your-doubleword-api-key"
+
+    language_model = synalinks.LanguageModel(
+        model="doubleword/qwen-qwen3-5-397b-a17b-fp8-dottxt",
+    )
+    ```
+
     To cascade models in case there is anything wrong with
     the model provider (hence making your pipelines more robust).
     Use the `fallback` argument like in this example:
@@ -198,6 +284,13 @@ class LanguageModel(SynalinksSaveable):
             model = model.replace("ollama", "ollama_chat")
         if model_provider == "vllm":
             model = model.replace("vllm", "hosted_vllm")
+        if model_provider == "doubleword":
+            # Doubleword is OpenAI-compatible (strict JSON schema + same
+            # request/response shape) — route via litellm's `openai`
+            # provider with the Doubleword endpoint as `api_base`.
+            model = model.replace("doubleword", "openai", 1)
+            if not api_base:
+                api_base = "https://api.doubleword.ai/v1"
         self.model = model
         self.fallback = fallback
         if self.model.startswith("ollama") and not api_base:
@@ -252,8 +345,17 @@ class LanguageModel(SynalinksSaveable):
                         required.remove("thinking")
 
         if schema:
-            if self.model.startswith("groq"):
-                # Use a tool created on the fly for groq
+            if (
+                self.model.startswith("groq")
+                or self.model.startswith("cohere")
+                or self.model.startswith("openrouter")
+                or self.model.startswith("bedrock")
+            ):
+                # Use a tool created on the fly. These providers either
+                # don't support native JSON schema (cohere, most bedrock
+                # models) or proxy heterogeneous backends with mixed
+                # support (openrouter), so tool-call structured output
+                # is the most reliable path.
                 kwargs.update(
                     {
                         "tools": [
@@ -298,8 +400,15 @@ class LanguageModel(SynalinksSaveable):
                         },
                     }
                 )
-            elif self.model.startswith("openai") or self.model.startswith("azure"):
+            elif (
+                self.model.startswith("openai")
+                or self.model.startswith("azure")
+                or self.model.startswith("deepseek")
+                or self.model.startswith("together_ai")
+            ):
                 # Use constrained structured output for openai/azure
+                # plus deepseek and together_ai which expose
+                # OpenAI-compatible APIs that honor the same payload.
                 # OpenAI/Azure require the field  "additionalProperties"
                 # Also OpenAI/Azure disallow the field "description" in $ref
                 if "properties" in schema:

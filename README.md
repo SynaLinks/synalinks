@@ -91,7 +91,7 @@ Building robust LM apps is hard. Synalinks simplifies it with:
 - **Constrained structured outputs** (JSON) for correctness
 - **Automatic async & parallel execution** by default
 - **Metrics, rewards & evaluations** built-in
-- **Native integrations**: Ollama, Anthropic, Mistral, Azure, Groq, Gemini, OpenAI
+- **Native integrations**: Ollama, vLLM, OpenAI, Azure, Anthropic, Mistral, Groq, Gemini, xAI, Cohere, DeepSeek, Together AI, OpenRouter, AWS Bedrock, Doubleword
 - **Embeddable fast knowledge base support**: based on DuckDB
 - **API-ready**: Deploy with FastAPI or FastMCP
 - **KerasTuner compatibility** for hyperparameter search
