@@ -1,11 +1,14 @@
 # License Apache 2.0: (c) 2025-2026 Yoan Sallami (Synalinks Team)
 
 from enum import Enum
+from typing import List
 
 from synalinks.src import testing
 from synalinks.src.backend import DataModel
+from synalinks.src.backend import Field
 from synalinks.src.backend import is_schema_equal
 from synalinks.src.backend.common.dynamic_json_schema_utils import dynamic_enum
+from synalinks.src.backend.common.dynamic_json_schema_utils import dynamic_enum_array
 from synalinks.src.backend.common.dynamic_json_schema_utils import dynamic_tool_calls
 from synalinks.src.backend.common.dynamic_json_schema_utils import dynamic_tool_choice
 from synalinks.src.utils.tool_utils import Tool
@@ -94,6 +97,108 @@ class DynamicEnumTest(testing.TestCase):
         # No indirection through $defs.
         self.assertNotIn("$ref", choice)
         self.assertNotIn("Choice", schema.get("$defs", {}))
+
+
+class DynamicEnumArrayTest(testing.TestCase):
+    """Cover the `list[Literal[...]]` patching used by `MultiDecision`."""
+
+    def test_inline_basic(self):
+        class MultiDecisionAnswer(DataModel):
+            thinking: str
+            choices: List[str] = Field(default_factory=list)
+
+        labels = ["a", "b", "c"]
+        schema = dynamic_enum_array(
+            MultiDecisionAnswer.get_schema(),
+            "choices",
+            labels,
+            inline=True,
+        )
+        choices = schema["properties"]["choices"]
+        self.assertEqual(choices["type"], "array")
+        self.assertEqual(choices["items"], {"type": "string", "enum": labels})
+        self.assertNotIn("Choices", schema.get("$defs", {}))
+
+    def test_ref_mode(self):
+        class MultiDecisionAnswer(DataModel):
+            thinking: str
+            choices: List[str] = Field(default_factory=list)
+
+        labels = ["x", "y"]
+        schema = dynamic_enum_array(
+            MultiDecisionAnswer.get_schema(),
+            "choices",
+            labels,
+            inline=False,
+        )
+        choices = schema["properties"]["choices"]
+        self.assertEqual(choices["type"], "array")
+        self.assertEqual(choices["items"], {"$ref": "#/$defs/Choices"})
+        self.assertIn("Choices", schema["$defs"])
+        self.assertEqual(schema["$defs"]["Choices"]["enum"], labels)
+
+    def test_with_description(self):
+        class MultiDecisionAnswer(DataModel):
+            thinking: str
+            choices: List[str] = Field(default_factory=list)
+
+        schema = dynamic_enum_array(
+            MultiDecisionAnswer.get_schema(),
+            "choices",
+            ["a", "b"],
+            description="Pick one or more",
+        )
+        self.assertEqual(
+            schema["properties"]["choices"]["description"], "Pick one or more"
+        )
+
+    def test_empty_labels(self):
+        class MultiDecisionAnswer(DataModel):
+            thinking: str
+            choices: List[str] = Field(default_factory=list)
+
+        schema = dynamic_enum_array(
+            MultiDecisionAnswer.get_schema(),
+            "choices",
+            [],
+        )
+        self.assertEqual(schema["properties"]["choices"]["items"]["enum"], [])
+
+    def test_property_in_defs(self):
+        """Pydantic puts nested models in `$defs` — the helper must
+        traverse them when matching the property name."""
+
+        class Inner(DataModel):
+            choices: List[str] = Field(default_factory=list)
+
+        class Outer(DataModel):
+            inner: Inner = Field(default_factory=Inner)
+
+        schema = dynamic_enum_array(
+            Outer.get_schema(),
+            "choices",
+            ["a", "b"],
+            inline=True,
+        )
+        # Property is inside $defs.Inner.properties.
+        inner_def = schema["$defs"]["Inner"]
+        self.assertEqual(
+            inner_def["properties"]["choices"]["items"],
+            {"type": "string", "enum": ["a", "b"]},
+        )
+
+    def test_not_found_raises(self):
+        class MultiDecisionAnswer(DataModel):
+            thinking: str
+            choices: List[str] = Field(default_factory=list)
+
+        with self.assertRaises(ValueError) as ctx:
+            dynamic_enum_array(
+                MultiDecisionAnswer.get_schema(),
+                "missing_field",
+                ["a", "b"],
+            )
+        self.assertIn("missing_field", str(ctx.exception))
 
 
 class DynamicToolCallsSchemaTest(testing.TestCase):

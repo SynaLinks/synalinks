@@ -44,6 +44,95 @@ def dynamic_enum(schema, prop_to_update, labels, description=None, inline=True):
     return schema
 
 
+def dynamic_enum_array(schema, prop_to_update, labels, description=None, inline=True):
+    """Update a schema with a dynamic Enum string applied to array items.
+
+    Mirrors :func:`dynamic_enum` but targets list-valued properties whose
+    items should be constrained to a string enum (i.e. ``list[str]`` /
+    ``list[Literal[...]]`` in pydantic).
+
+    The property may live at the top level under ``properties``, or nested
+    inside any ``$defs`` entry (typical for pydantic schemas that factor
+    nested models out to ``$defs``). The first match is patched.
+
+    Args:
+        schema (dict): The schema to update (not mutated — deep-copied).
+        prop_to_update (str): The array property to update.
+        labels (list): The list of labels (strings) allowed as items.
+        description (str, optional): An optional description for the
+            property.
+        inline (bool): When True the enum is placed directly in the
+            array items (no ``$defs`` / ``$ref`` indirection). Defaults
+            to True for parity with :func:`dynamic_enum`.
+
+    Returns:
+        dict: The updated schema with the items-enum applied to the
+            specified property.
+
+    Raises:
+        ValueError: If no matching property is found anywhere in the
+            schema.
+    """
+    schema = copy.deepcopy(schema)
+    labels_list = list(labels)
+
+    if inline:
+        items_value = {"type": "string", "enum": labels_list}
+    else:
+        if schema.get("$defs"):
+            schema = {"$defs": schema.pop("$defs"), **schema}
+        else:
+            schema = {"$defs": {}, **schema}
+        title = prop_to_update.title().replace("_", "")
+
+        enum_definition = {
+            "enum": labels_list,
+            "title": title,
+            "type": "string",
+        }
+        if description:
+            enum_definition["description"] = description
+        schema["$defs"].update({title: enum_definition})
+        items_value = {"$ref": f"#/$defs/{title}"}
+
+    def _patch_in_properties(props):
+        if not isinstance(props, dict) or prop_to_update not in props:
+            return False
+        prop = props[prop_to_update]
+        if not isinstance(prop, dict):
+            return False
+        prop["type"] = "array"
+        prop["items"] = items_value
+        prop.pop("enum", None)
+        if description:
+            prop["description"] = description
+        return True
+
+    seen_keys = []
+    defs = schema.get("$defs") or {}
+    for def_name, def_body in defs.items():
+        if not isinstance(def_body, dict):
+            continue
+        if not inline and def_name == prop_to_update.title().replace("_", ""):
+            continue
+        def_props = def_body.get("properties")
+        if isinstance(def_props, dict):
+            seen_keys.extend(f"$defs.{def_name}.{k}" for k in def_props)
+            if _patch_in_properties(def_props):
+                return schema
+
+    top_props = schema.get("properties")
+    if isinstance(top_props, dict):
+        seen_keys.extend(top_props.keys())
+        if _patch_in_properties(top_props):
+            return schema
+
+    raise ValueError(
+        f"dynamic_enum_array: property {prop_to_update!r} not found. "
+        f"Seen keys: {seen_keys!r}"
+    )
+
+
 def dynamic_tool_calls(tools, inline=True):
     """
     Generates a dynamic schema for tool calls based on a list of tools.
