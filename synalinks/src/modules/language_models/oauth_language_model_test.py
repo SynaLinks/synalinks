@@ -3,10 +3,17 @@
 import pytest
 
 from synalinks.src import testing
-from synalinks.src.language_models.oauth_language_model import OAuthLanguageModel
-from synalinks.src.language_models.oauth_language_model import _extract_json
-from synalinks.src.language_models.oauth_language_model import _make_strict_schema
-from synalinks.src.language_models.oauth_language_model import ask_llm_via_cli
+from synalinks.src.modules.language_models.oauth_language_model import (
+    OAuthLanguageModel,
+)
+from synalinks.src.modules.language_models.oauth_language_model import (
+    _build_gemini_cmd,
+)
+from synalinks.src.modules.language_models.oauth_language_model import _extract_json
+from synalinks.src.modules.language_models.oauth_language_model import (
+    _make_strict_schema,
+)
+from synalinks.src.modules.language_models.oauth_language_model import ask_llm_via_cli
 
 
 class OAuthLanguageModelTest(testing.TestCase):
@@ -95,6 +102,17 @@ class OAuthLanguageModelTest(testing.TestCase):
         self.assertEqual(rebuilt.model, "claude/claude-sonnet-4-6")
         self.assertEqual(rebuilt.provider, "claude")
         self.assertEqual(rebuilt.cli_model, "claude-sonnet-4-6")
+
+    def test_gemini_cmd_routes_prompt_through_p_flag(self):
+        # Regression guard: piping the prompt on stdin hangs
+        # `gemini-2.5-flash`, so the prompt must appear inline after `-p`
+        # (and never as an empty string).
+        cmd = _build_gemini_cmd("gemini-2.5-flash", "hello world")
+        self.assertIn("-p", cmd)
+        idx = cmd.index("-p")
+        self.assertEqual(cmd[idx + 1], "hello world")
+        self.assertNotIn("", cmd[idx + 1 : idx + 2])
+        self.assertEqual(cmd[-2:], ["-m", "gemini-2.5-flash"])
 
     def test_invalid_model_string_raises(self):
         with pytest.raises(ValueError, match="expects model"):

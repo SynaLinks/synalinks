@@ -54,7 +54,7 @@ from typing import Any
 
 from synalinks.src.api_export import synalinks_export
 from synalinks.src.backend import ChatRole
-from synalinks.src.language_models.language_model import LanguageModel
+from synalinks.src.modules.language_models.language_model import LanguageModel
 from synalinks.src.saving.object_registration import register_synalinks_serializable
 
 logger = logging.getLogger(__name__)
@@ -201,13 +201,15 @@ def _build_claude_cmd(
     return cmd
 
 
-def _build_gemini_cmd(model: str) -> list[str]:
+def _build_gemini_cmd(model: str, prompt: str) -> list[str]:
     # `-m` is mandatory — omitting it triples cold-start latency.
     # `-e ""` disables extensions; `--approval-mode yolo` skips prompts.
+    # The prompt MUST go through `-p`; piping it on stdin hangs
+    # `gemini-2.5-flash` (the default on most accounts).
     cmd = [
         "gemini",
         "-p",
-        "",
+        prompt,
         "-o",
         "text",
         "--approval-mode",
@@ -394,7 +396,6 @@ async def ask_llm_via_cli(
 
         elif provider == "gemini":
             ensure_minimal_gemini_home()
-            cmd = _build_gemini_cmd(model)
             if schema:
                 prompt = (
                     "Return ONLY one valid JSON object matching this schema. "
@@ -402,6 +403,7 @@ async def ask_llm_via_cli(
                     f"Schema:\n{json.dumps(schema, indent=2)}\n\n"
                     f"Conversation:\n{prompt}\n"
                 )
+            cmd = _build_gemini_cmd(model, prompt)
         else:
             return (
                 f"❌ Unknown provider '{provider}' (expected: claude|codex|gemini)",
@@ -411,11 +413,25 @@ async def ask_llm_via_cli(
         env = {k: v for k, v in os.environ.items() if k not in _API_KEY_VARS}
         if provider == "gemini":
             env["HOME"] = ensure_minimal_gemini_home()
+            # Gemini CLI v0.37+ refuses to run in an "untrusted" workspace
+            # without an interactive trust prompt; subprocess invocations
+            # are non-interactive by definition, so opt in explicitly.
+            env["GEMINI_CLI_TRUST_WORKSPACE"] = "true"
+
+        # gemini receives the prompt via `-p`, not stdin: piping the prompt
+        # in hangs `gemini-2.5-flash`. codex/claude still read prompt from
+        # stdin.
+        if provider == "gemini":
+            stdin_mode = asyncio.subprocess.DEVNULL
+            stdin_payload: bytes | None = None
+        else:
+            stdin_mode = asyncio.subprocess.PIPE
+            stdin_payload = prompt.encode("utf-8")
 
         try:
             proc = await asyncio.create_subprocess_exec(
                 *cmd,
-                stdin=asyncio.subprocess.PIPE,
+                stdin=stdin_mode,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
                 env=env,
@@ -425,7 +441,7 @@ async def ask_llm_via_cli(
 
         try:
             stdout_b, stderr_b = await asyncio.wait_for(
-                proc.communicate(input=prompt.encode("utf-8")),
+                proc.communicate(input=stdin_payload),
                 timeout=float(timeout),
             )
         except asyncio.TimeoutError:
@@ -540,6 +556,7 @@ class OAuthLanguageModel(LanguageModel):
         retry=5,
         fallback=None,
         caching=False,
+        **kwargs,  # parent-compat (name, description, etc. ignored)
     ):
         if model is None:
             raise ValueError("You need to set the `model` argument for any LanguageModel")
