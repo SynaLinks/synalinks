@@ -7,7 +7,9 @@ from synalinks.src.modules.embedding_models import EmbeddingModel
 
 class CosineSimilarityTest(testing.TestCase):
     def test_init_defaults(self):
-        metric = CosineSimilarity(embedding_model=EmbeddingModel(model="ollama/mxbai-embed-large"))
+        metric = CosineSimilarity(
+            embedding_model=EmbeddingModel(model="ollama/mxbai-embed-large")
+        )
         self.assertEqual(metric.name, "cosine_similarity")
         self.assertEqual(metric.axis, -1)
         self.assertIsInstance(metric.embedding_model, EmbeddingModel)

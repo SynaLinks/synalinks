@@ -769,8 +769,7 @@ class RecursiveLanguageModelAgent(Module):
             for tool in tools:
                 if tool.name in reserved:
                     raise ValueError(
-                        f"Tool name '{tool.name}' is reserved by "
-                        f"{type(self).__name__}."
+                        f"Tool name '{tool.name}' is reserved by {type(self).__name__}."
                     )
                 self.tools[tool.name] = tool
 

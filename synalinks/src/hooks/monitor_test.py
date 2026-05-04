@@ -126,9 +126,7 @@ class MonitorEndToEndTest(testing.TestCase):
     async def test_language_model_call_traces_without_crashing(
         self, mock_completion, mock_mlflow
     ):
-        mock_completion.return_value = {
-            "choices": [{"message": {"content": "Hi there"}}]
-        }
+        mock_completion.return_value = {"choices": [{"message": {"content": "Hi there"}}]}
         fake_span = AsyncMock()
         fake_span.set_attributes = lambda *a, **kw: None
         fake_span.set_inputs = lambda *a, **kw: None
