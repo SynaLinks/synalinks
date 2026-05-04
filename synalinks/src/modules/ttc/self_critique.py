@@ -117,6 +117,7 @@ class SelfCritique(Module):
 
     def __init__(
         self,
+        *,
         language_model=None,
         prompt_template=None,
         examples=None,

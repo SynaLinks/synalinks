@@ -65,6 +65,7 @@ class OutMask(Module):
 
     def __init__(
         self,
+        *,
         mask=None,
         pattern=None,
         name=None,

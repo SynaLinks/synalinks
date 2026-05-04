@@ -83,6 +83,7 @@ ignore = [
 "**/random.py" = ["F401"]  # imported but unused
 "examples/*" = ["I", "E"]
 "notebooks/*" = ["I", "E", "F"]
+"guides/*" = ["I", "E", "F"]
 "*/cli/*" = ["I", "E", "F"]
 
 [tool.ruff.lint.isort]
@@ -101,8 +102,10 @@ filterwarnings = [
 ]
 addopts = "--cov-report xml --cov=synalinks -v"
 
-# Do not run tests in the `build` folders
-norecursedirs = ["build"]
+# Do not run tests in the `build` folders or in the gitignored
+# `synalinks-research` stash (research-only code, not part of the
+# released package).
+norecursedirs = ["build", "synalinks-research"]
 
 [tool.coverage.report]
 exclude_lines = [

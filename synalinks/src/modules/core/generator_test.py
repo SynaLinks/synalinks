@@ -9,9 +9,9 @@ from synalinks.src import testing
 from synalinks.src.backend import ChatMessage
 from synalinks.src.backend import ChatMessages
 from synalinks.src.backend import DataModel
-from synalinks.src.language_models import LanguageModel
 from synalinks.src.modules import Generator
 from synalinks.src.modules import Input
+from synalinks.src.modules.language_models import LanguageModel
 from synalinks.src.programs import Program
 
 

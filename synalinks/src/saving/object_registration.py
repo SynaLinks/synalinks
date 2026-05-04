@@ -97,6 +97,7 @@ def get_custom_objects():
     [
         "synalinks.saving.register_synalinks_serializable",
         "synalinks.utils.register_synalinks_serializable",
+        "synalinks.register_synalinks_serializable",
     ]
 )
 def register_synalinks_serializable(package="Custom", name=None):

@@ -114,7 +114,11 @@ class Logger(Hook):
                     ),
                 )
         else:
-            data_models_jsons = [dm.get_json() for dm in flatten_inputs if dm is not None]
+            data_models_jsons = [
+                dm.get_json()
+                for dm in flatten_inputs
+                if dm is not None and hasattr(dm, "get_json")
+            ]
             if data_models_jsons:
                 self.logger.info(
                     _DATA_LOG_TEMPLATE.format(

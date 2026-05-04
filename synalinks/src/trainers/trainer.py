@@ -12,6 +12,7 @@ from synalinks.src import backend
 from synalinks.src import callbacks as callbacks_module
 from synalinks.src import metrics as metrics_module
 from synalinks.src import optimizers as optimizers_module
+from synalinks.src import rewards as rewards_module
 from synalinks.src.backend.common import numpy
 from synalinks.src.saving import serialization_lib
 from synalinks.src.trainers.compile_utils import CompileMetrics
@@ -103,7 +104,10 @@ class Trainer:
                 each compiled function execution).
         """
         self._clear_previous_trainer_metrics()
-        self._optimizer = optimizer
+        # Resolve string/dict identifiers (Keras-style) into instances.
+        # Reward and metrics flow through `CompileReward`/`CompileMetrics`
+        # which already call `rewards.get` / `metrics.get`.
+        self._optimizer = optimizers_module.get(optimizer)
         if self._optimizer is not None:
             self._optimizer.set_program(self)
 
@@ -112,6 +116,7 @@ class Trainer:
         else:
             output_names = None
         if reward is not None:
+            reward = rewards_module.get(reward)
             self._compile_reward = CompileReward(
                 reward, reward_weights, output_names=output_names
             )

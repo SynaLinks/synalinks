@@ -32,6 +32,7 @@ class StampKnowledge(Module):
 
     def __init__(
         self,
+        *,
         name=None,
         description=None,
         trainable=False,

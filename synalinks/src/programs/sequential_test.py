@@ -8,8 +8,8 @@ from synalinks.src import testing
 from synalinks.src.backend import DataModel
 from synalinks.src.backend import SymbolicDataModel
 from synalinks.src.backend import standardize_schema
-from synalinks.src.language_models import LanguageModel
 from synalinks.src.modules import Input
+from synalinks.src.modules.language_models import LanguageModel
 from synalinks.src.programs import Sequential
 
 

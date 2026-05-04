@@ -89,6 +89,10 @@ class CosineSimilarity(RewardFunctionWrapper):
         name (str): (Optional) string name of the reward instance.
         in_mask (list): (Optional) list of keys to keep to compute the reward.
         out_mask (list): (Optional) list of keys to remove to compute the reward.
+        in_mask_pattern (str): Optional. Regex pattern; fields whose names match
+            are kept (combined with ``in_mask`` via OR).
+        out_mask_pattern (str): Optional. Regex pattern; fields whose names match
+            are dropped (combined with ``out_mask`` via OR).
     """
 
     def __init__(
@@ -98,12 +102,16 @@ class CosineSimilarity(RewardFunctionWrapper):
         name="cosine_similarity",
         in_mask=None,
         out_mask=None,
+        in_mask_pattern=None,
+        out_mask_pattern=None,
     ):
         super().__init__(
             fn=cosine_similarity,
             name=name,
             in_mask=in_mask,
             out_mask=out_mask,
+            in_mask_pattern=in_mask_pattern,
+            out_mask_pattern=out_mask_pattern,
             axis=axis,
             embedding_model=embedding_model,
         )

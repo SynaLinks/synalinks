@@ -84,7 +84,14 @@ async def embedding(x, embedding_model=None, name=None, description=None, **kwar
         (JsonDataModel | SymbolicDataModel): The resulting data_model
     """
     if embedding_model is None:
-        raise ValueError("You should provide the `embedding_model` argument")
+        from synalinks.src.backend.config import default_embedding_model
+
+        embedding_model = default_embedding_model()
+    if embedding_model is None:
+        raise ValueError(
+            "You should provide the `embedding_model` argument or set a "
+            "default via `synalinks.set_default_embedding_model(...)`."
+        )
     if any_symbolic_data_models(x):
         return await Embedding(
             embedding_model=embedding_model,

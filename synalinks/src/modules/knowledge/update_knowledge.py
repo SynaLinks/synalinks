@@ -28,6 +28,7 @@ class UpdateKnowledge(Module):
 
     def __init__(
         self,
+        *,
         knowledge_base=None,
         name=None,
         description=None,

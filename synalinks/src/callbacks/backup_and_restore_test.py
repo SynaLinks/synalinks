@@ -10,7 +10,7 @@ from synalinks.src import modules
 from synalinks.src import testing
 from synalinks.src.backend import DataModel
 from synalinks.src.callbacks.backup_and_restore import BackupAndRestore
-from synalinks.src.language_models import LanguageModel
+from synalinks.src.modules.language_models import LanguageModel
 from synalinks.src.optimizers.random_few_shot import RandomFewShot
 from synalinks.src.programs import Sequential
 from synalinks.src.rewards import ExactMatch

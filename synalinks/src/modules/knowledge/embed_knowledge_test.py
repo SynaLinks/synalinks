@@ -7,8 +7,8 @@ import numpy as np
 from synalinks.src import testing
 from synalinks.src.backend import DataModel
 from synalinks.src.backend import Field
-from synalinks.src.embedding_models import EmbeddingModel
 from synalinks.src.modules import Input
+from synalinks.src.modules.embedding_models import EmbeddingModel
 from synalinks.src.modules.knowledge.embed_knowledge import EmbedKnowledge
 from synalinks.src.programs import Program
 

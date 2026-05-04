@@ -291,6 +291,7 @@ class PythonSynthesis(Module):
 
     def __init__(
         self,
+        *,
         schema=None,
         data_model=None,
         python_script=None,

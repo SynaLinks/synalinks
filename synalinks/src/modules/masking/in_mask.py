@@ -67,6 +67,7 @@ class InMask(Module):
 
     def __init__(
         self,
+        *,
         mask=None,
         pattern=None,
         name=None,

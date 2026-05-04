@@ -6,8 +6,8 @@ from unittest.mock import patch
 from synalinks.src import testing
 from synalinks.src.backend import DataModel
 from synalinks.src.backend import Field
-from synalinks.src.language_models import LanguageModel
 from synalinks.src.modules.core.input_module import Input
+from synalinks.src.modules.language_models import LanguageModel
 from synalinks.src.modules.ttc.chain_of_thought import ChainOfThought
 from synalinks.src.modules.ttc.self_critique import SelfCritique
 from synalinks.src.programs.program import Program

@@ -9,10 +9,10 @@ from synalinks.src.backend import ChatMessages
 from synalinks.src.backend import DataModel
 from synalinks.src.backend import Field
 from synalinks.src.backend import is_chat_messages
-from synalinks.src.language_models import LanguageModel
 from synalinks.src.modules.agents.function_calling_agent import FunctionCallingAgent
 from synalinks.src.modules.core.input_module import Input
 from synalinks.src.modules.core.tool import Tool
+from synalinks.src.modules.language_models import LanguageModel
 from synalinks.src.programs import Program
 from synalinks.src.saving.object_registration import register_synalinks_serializable
 
@@ -376,9 +376,7 @@ class FunctionCallingAgentTest(testing.TestCase):
         self.assertIn("tool", roles)
 
     @patch("litellm.acompletion")
-    async def test_autonomous_mode_no_data_model_with_custom_input(
-        self, mock_completion
-    ):
+    async def test_autonomous_mode_no_data_model_with_custom_input(self, mock_completion):
         """Autonomous agent with data_model=None and a non-ChatMessages input.
 
         Exercises the path where the final_generator has schema=None and the
@@ -487,9 +485,7 @@ class FunctionCallingAgentTest(testing.TestCase):
             final_message,
         ]
 
-        input_messages = ChatMessages(
-            messages=[ChatMessage(role="user", content="hi")]
-        )
+        input_messages = ChatMessages(messages=[ChatMessage(role="user", content="hi")])
         result = await agent(input_messages)
 
         self.assertIsNotNone(result)

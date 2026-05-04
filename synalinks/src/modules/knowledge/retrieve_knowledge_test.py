@@ -9,8 +9,8 @@ from synalinks.src.backend import DataModel
 from synalinks.src.backend import Field
 from synalinks.src.backend import JsonDataModel
 from synalinks.src.knowledge_bases import KnowledgeBase
-from synalinks.src.language_models import LanguageModel
 from synalinks.src.modules.knowledge.retrieve_knowledge import RetrieveKnowledge
+from synalinks.src.modules.language_models import LanguageModel
 
 
 class Document(DataModel):

@@ -5,12 +5,12 @@ from unittest.mock import patch
 
 from synalinks.src import testing
 from synalinks.src.backend import DataModel
-from synalinks.src.language_models import LanguageModel
 from synalinks.src.modules.agents.recursive_language_model_agent import (
     RecursiveLanguageModelAgent,
 )
 from synalinks.src.modules.core.input_module import Input
 from synalinks.src.modules.core.tool import Tool
+from synalinks.src.modules.language_models import LanguageModel
 from synalinks.src.programs import Program
 from synalinks.src.saving.object_registration import register_synalinks_serializable
 

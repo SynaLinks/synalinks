@@ -6,8 +6,8 @@ from unittest.mock import patch
 from synalinks.src import testing
 from synalinks.src.backend import DataModel
 from synalinks.src.backend import Field
-from synalinks.src.language_models import LanguageModel
 from synalinks.src.modules.core.input_module import Input
+from synalinks.src.modules.language_models import LanguageModel
 from synalinks.src.modules.ttc.chain_of_thought import ChainOfThought
 from synalinks.src.programs.program import Program
 
@@ -110,9 +110,9 @@ class ChainOfThoughtModuleTest(testing.TestCase):
         self.assertEqual(result_json["answer"], "Paris")
 
         # The schema actually sent to the LM had `thinking` stripped.
-        sent_schema = mock_completion.call_args.kwargs["response_format"][
-            "json_schema"
-        ]["schema"]
+        sent_schema = mock_completion.call_args.kwargs["response_format"]["json_schema"][
+            "schema"
+        ]
         self.assertIn("answer", sent_schema["properties"])
         self.assertNotIn("thinking", sent_schema["properties"])
 
@@ -159,9 +159,9 @@ class ChainOfThoughtModuleTest(testing.TestCase):
         self.assertEqual(result_json["thinking"], "prompted trace")
         self.assertEqual(result_json["answer"], "Paris")
 
-        sent_schema = mock_completion.call_args.kwargs["response_format"][
-            "json_schema"
-        ]["schema"]
+        sent_schema = mock_completion.call_args.kwargs["response_format"]["json_schema"][
+            "schema"
+        ]
         self.assertIn("thinking", sent_schema["properties"])
 
     @patch("litellm.supports_reasoning")
@@ -257,9 +257,7 @@ class ChainOfThoughtModuleTest(testing.TestCase):
         self.assertEqual(result_json["role"], "assistant")
 
     @patch("litellm.acompletion")
-    async def test_chain_of_thought_streaming_without_data_model(
-        self, mock_completion
-    ):
+    async def test_chain_of_thought_streaming_without_data_model(self, mock_completion):
         """ChainOfThought(data_model=None, streaming=True) streams the LM
         response as a StreamingIterator. Reasoning chunks (delta has
         `reasoning_content` only, empty content) are exposed as `thinking`

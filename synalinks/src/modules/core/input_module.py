@@ -15,6 +15,7 @@ from synalinks.src.ops.node import Node
 class InputModule(Module):
     def __init__(
         self,
+        *,
         schema=None,
         input_data_model=None,
         optional=False,

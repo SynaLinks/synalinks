@@ -354,8 +354,8 @@ class FunctionCallingAgent(Module):
         reasoning_effort (string): Optional. The reasoning effort for the LM call
             between ['minimal', 'low', 'medium', 'high', 'disable', 'none', None].
             Default to None (no reasoning).
-        use_chain_of_thought (bool): Optional. Use chain of thought for tool calls generator,
-            usefull when using non-reasoning models. Default False.
+        use_chain_of_thought (bool): Optional. Use chain of thought for tool
+            calls generator, usefull when using non-reasoning models. Default False.
         tools (list): The list of `Tool` or MCP tools available to the agent.
         autonomous (bool): Optional. Whether the agent runs autonomously
             (executing tools automatically) or in interactive mode where the user
@@ -375,6 +375,7 @@ class FunctionCallingAgent(Module):
 
     def __init__(
         self,
+        *,
         schema=None,
         data_model=None,
         language_model=None,

@@ -7,7 +7,6 @@ from synalinks.api import ChainOfThought
 from synalinks.api import ChatMessage
 from synalinks.api import ChatMessages
 from synalinks.api import ChatRole
-from synalinks.api import CodeModeAgent
 from synalinks.api import Concat
 from synalinks.api import Concatenate
 from synalinks.api import CosineSimilarity
@@ -73,6 +72,8 @@ from synalinks.api import callbacks
 from synalinks.api import clear_session
 from synalinks.api import config
 from synalinks.api import datasets
+from synalinks.api import default_embedding_model
+from synalinks.api import default_language_model
 from synalinks.api import default_prompt_template
 from synalinks.api import embedding_models
 from synalinks.api import enable_logging
@@ -100,10 +101,13 @@ from synalinks.api import name_scope
 from synalinks.api import ops
 from synalinks.api import optimizers
 from synalinks.api import programs
+from synalinks.api import register_synalinks_serializable
 from synalinks.api import rewards
 from synalinks.api import sandboxes
 from synalinks.api import saving
 from synalinks.api import set_api_base
+from synalinks.api import set_default_embedding_model
+from synalinks.api import set_default_language_model
 from synalinks.api import set_seed
 from synalinks.api import synalinks_home
 from synalinks.api import tree

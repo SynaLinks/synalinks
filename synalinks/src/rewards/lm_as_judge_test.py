@@ -5,7 +5,7 @@ from unittest.mock import patch
 from synalinks.src import testing
 from synalinks.src.backend import DataModel
 from synalinks.src.backend import Field
-from synalinks.src.language_models import LanguageModel
+from synalinks.src.modules.language_models import LanguageModel
 from synalinks.src.rewards.lm_as_judge import LMAsJudge
 
 

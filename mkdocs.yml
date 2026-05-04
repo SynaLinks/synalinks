@@ -59,7 +59,6 @@ nav:
     - guides/Programs.md
     - guides/Modules.md
     - guides/Agents.md
-    - guides/Code Mode Agent.md
     - guides/Recursive Language Model Agent.md
     - guides/Knowledge Base.md
     - guides/Training.md
@@ -128,7 +127,6 @@ nav:
       - Agents Modules:
         - Synalinks API/Modules API/Agents Modules/index.md
         - Synalinks API/Modules API/Agents Modules/FunctionCallingAgent module.md
-        - Synalinks API/Modules API/Agents Modules/CodeModeAgent module.md
         - Synalinks API/Modules API/Agents Modules/RecursiveLanguageModelAgent module.md
       - Knowledge Modules:
         - Synalinks API/Modules API/Knowledge Modules/index.md

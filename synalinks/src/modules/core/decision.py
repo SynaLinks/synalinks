@@ -97,6 +97,7 @@ class Decision(Module):
 
     def __init__(
         self,
+        *,
         question=None,
         labels=None,
         language_model=None,

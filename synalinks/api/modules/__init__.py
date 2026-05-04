@@ -6,7 +6,6 @@ since your modifications would be overwritten.
 
 from synalinks.src.modules import deserialize as deserialize
 from synalinks.src.modules import serialize as serialize
-from synalinks.src.modules.agents.code_mode_agent import CodeModeAgent as CodeModeAgent
 from synalinks.src.modules.agents.function_calling_agent import (
     FunctionCallingAgent as FunctionCallingAgent,
 )

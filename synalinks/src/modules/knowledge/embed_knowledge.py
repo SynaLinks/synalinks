@@ -122,6 +122,7 @@ class EmbedKnowledge(Module):
 
     def __init__(
         self,
+        *,
         embedding_model=None,
         in_mask=None,
         out_mask=None,

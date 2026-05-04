@@ -32,6 +32,10 @@ from synalinks.src.backend.common.symbolic_data_model import (
 )
 from synalinks.src.backend.common.symbolic_scope import SymbolicScope as SymbolicScope
 from synalinks.src.backend.config import api_base as api_base
+from synalinks.src.backend.config import (
+    default_embedding_model as default_embedding_model,
+)
+from synalinks.src.backend.config import default_language_model as default_language_model
 from synalinks.src.backend.config import enable_logging as enable_logging
 from synalinks.src.backend.config import enable_observability as enable_observability
 from synalinks.src.backend.config import get_seed as get_seed
@@ -39,6 +43,12 @@ from synalinks.src.backend.config import (
     is_observability_enabled as is_observability_enabled,
 )
 from synalinks.src.backend.config import set_api_base as set_api_base
+from synalinks.src.backend.config import (
+    set_default_embedding_model as set_default_embedding_model,
+)
+from synalinks.src.backend.config import (
+    set_default_language_model as set_default_language_model,
+)
 from synalinks.src.backend.config import set_seed as set_seed
 from synalinks.src.backend.config import synalinks_home as synalinks_home
 from synalinks.src.backend.pydantic.base import ChatMessage as ChatMessage
@@ -72,14 +82,9 @@ from synalinks.src.backend.pydantic.base import is_stamped as is_stamped
 from synalinks.src.backend.pydantic.base import is_tool_call as is_tool_call
 from synalinks.src.backend.pydantic.base import is_trainable as is_trainable
 from synalinks.src.backend.pydantic.base import is_triplet_search as is_triplet_search
-from synalinks.src.embedding_models.embedding_model import (
-    EmbeddingModel as EmbeddingModel,
-)
 from synalinks.src.initializers.initializer import Initializer as Initializer
 from synalinks.src.knowledge_bases.knowledge_base import KnowledgeBase as KnowledgeBase
-from synalinks.src.language_models.language_model import LanguageModel as LanguageModel
 from synalinks.src.metrics.metric import Metric as Metric
-from synalinks.src.modules.agents.code_mode_agent import CodeModeAgent as CodeModeAgent
 from synalinks.src.modules.agents.function_calling_agent import (
     FunctionCallingAgent as FunctionCallingAgent,
 )
@@ -100,6 +105,9 @@ from synalinks.src.modules.core.identity import Identity as Identity
 from synalinks.src.modules.core.input_module import Input as Input
 from synalinks.src.modules.core.not_module import Not as Not
 from synalinks.src.modules.core.tool import Tool as Tool
+from synalinks.src.modules.embedding_models.embedding_model import (
+    EmbeddingModel as EmbeddingModel,
+)
 from synalinks.src.modules.knowledge.embed_knowledge import (
     EmbedKnowledge as EmbedKnowledge,
 )
@@ -111,6 +119,9 @@ from synalinks.src.modules.knowledge.stamp_knowledge import (
 )
 from synalinks.src.modules.knowledge.update_knowledge import (
     UpdateKnowledge as UpdateKnowledge,
+)
+from synalinks.src.modules.language_models.language_model import (
+    LanguageModel as LanguageModel,
 )
 from synalinks.src.modules.masking.in_mask import InMask as InMask
 from synalinks.src.modules.masking.out_mask import OutMask as OutMask
@@ -137,6 +148,9 @@ from synalinks.src.rewards.reward_wrappers import ProgramAsJudge as ProgramAsJud
 from synalinks.src.sandboxes.monty_sandbox import MontySandbox as MontySandbox
 from synalinks.src.sandboxes.sandbox import ExecutionResult as ExecutionResult
 from synalinks.src.sandboxes.sandbox import Sandbox as Sandbox
+from synalinks.src.saving.object_registration import (
+    register_synalinks_serializable as register_synalinks_serializable,
+)
 from synalinks.src.utils.mcp.client import MultiServerMCPClient as MultiServerMCPClient
 from synalinks.src.version import __version__
 from synalinks.src.version import version as version

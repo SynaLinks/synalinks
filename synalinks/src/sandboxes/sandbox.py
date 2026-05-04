@@ -64,7 +64,7 @@ class Sandbox(SynalinksSaveable):
     flow through Synalinks' normal serialization pipeline.
 
     Ownership is the **caller's** responsibility: construct a sandbox,
-    hand it to a code-executing module (e.g. ``CodeModeAgent``) across
+    hand it to a code-executing module (e.g. ``RecursiveLanguageModelAgent``) across
     successive interactive turns, and build a new one for a fresh
     conversation. The consuming module stays stateless.
 
@@ -77,13 +77,13 @@ class Sandbox(SynalinksSaveable):
         timeout (float): Per-snippet execution budget in seconds
             (Default 5). Backends that cannot enforce this should treat
             it as advisory; modules that instantiate sandboxes (e.g.
-            ``CodeModeAgent``) pass this through.
+            ``RecursiveLanguageModelAgent``) pass this through.
         name (str): Optional. Human-readable name for the sandbox.
     """
 
     # A natural-language description of the sandbox's constraints,
     # intended for inclusion in LM prompts. Consumers (e.g.
-    # ``CodeModeAgent``, ``PythonSynthesis``) compose this text into
+    # ``RecursiveLanguageModelAgent``, ``PythonSynthesis``) compose this text into
     # their instructions or schema descriptions so the language model /
     # optimizer knows which stdlib subset, builtins, and language
     # features are available. Subclasses override with a concise,

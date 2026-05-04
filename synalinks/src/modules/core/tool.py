@@ -170,6 +170,7 @@ class Tool(Module):
     def __init__(
         self,
         func: typing.Callable,
+        *,
         name=None,
         description=None,
         trainable=False,

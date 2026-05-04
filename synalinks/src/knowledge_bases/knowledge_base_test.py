@@ -10,8 +10,8 @@ from synalinks.src import testing
 from synalinks.src.backend import DataModel
 from synalinks.src.backend import Field
 from synalinks.src.backend import JsonDataModel
-from synalinks.src.embedding_models import EmbeddingModel
 from synalinks.src.knowledge_bases import KnowledgeBase
+from synalinks.src.modules.embedding_models import EmbeddingModel
 
 
 class Document(DataModel):

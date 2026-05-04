@@ -36,6 +36,16 @@ _MLFLOW_TRACKING_URI = None
 # MLflow experiment name for observability
 _MLFLOW_EXPERIMENT_NAME = "synalinks_traces"
 
+# Default language model (cached instance) and the identifier to persist.
+# The instance is materialized lazily because language_models depends on
+# modules which depends on backend.
+_DEFAULT_LANGUAGE_MODEL = None
+_DEFAULT_LANGUAGE_MODEL_IDENTIFIER = None
+
+# Default embedding model (same shape as language model above).
+_DEFAULT_EMBEDDING_MODEL = None
+_DEFAULT_EMBEDDING_MODEL_IDENTIFIER = None
+
 # Available backends
 _AVAILABLE_BACKEND = ["pydantic"]
 
@@ -459,6 +469,129 @@ else:
     _synalinks_DIR = os.path.join(_synalinks_base_dir, ".synalinks")
 
 
+@synalinks_export(
+    [
+        "synalinks.config.default_language_model",
+        "synalinks.default_language_model",
+    ]
+)
+def default_language_model():
+    """Return the default `LanguageModel` instance, or `None` if unset.
+
+    The instance is constructed lazily on first call when set from a
+    persisted identifier (e.g. via `~/.synalinks/synalinks.json`).
+    """
+    global _DEFAULT_LANGUAGE_MODEL
+    if _DEFAULT_LANGUAGE_MODEL is None and _DEFAULT_LANGUAGE_MODEL_IDENTIFIER is not None:
+        from synalinks.src.modules.language_models import get as _get_lm
+
+        _DEFAULT_LANGUAGE_MODEL = _get_lm(_DEFAULT_LANGUAGE_MODEL_IDENTIFIER)
+    return _DEFAULT_LANGUAGE_MODEL
+
+
+@synalinks_export(
+    [
+        "synalinks.config.set_default_language_model",
+        "synalinks.set_default_language_model",
+    ]
+)
+def set_default_language_model(identifier):
+    """Set the default `LanguageModel`.
+
+    Args:
+        identifier: A model string (e.g. `"openai/gpt-4o-mini"`), a config
+            dict, an existing `LanguageModel` instance, or `None` to clear.
+            Strings persist into the on-disk config; instances do not.
+    """
+    global _DEFAULT_LANGUAGE_MODEL, _DEFAULT_LANGUAGE_MODEL_IDENTIFIER
+    if identifier is None:
+        _DEFAULT_LANGUAGE_MODEL = None
+        _DEFAULT_LANGUAGE_MODEL_IDENTIFIER = None
+        _persist_config()
+        return
+    from synalinks.src.modules.language_models import get as _get_lm
+
+    _DEFAULT_LANGUAGE_MODEL = _get_lm(identifier)
+    _DEFAULT_LANGUAGE_MODEL_IDENTIFIER = (
+        identifier if isinstance(identifier, str) else None
+    )
+    _persist_config()
+
+
+@synalinks_export(
+    [
+        "synalinks.config.default_embedding_model",
+        "synalinks.default_embedding_model",
+    ]
+)
+def default_embedding_model():
+    """Return the default `EmbeddingModel` instance, or `None` if unset."""
+    global _DEFAULT_EMBEDDING_MODEL
+    if (
+        _DEFAULT_EMBEDDING_MODEL is None
+        and _DEFAULT_EMBEDDING_MODEL_IDENTIFIER is not None
+    ):
+        from synalinks.src.modules.embedding_models import get as _get_em
+
+        _DEFAULT_EMBEDDING_MODEL = _get_em(_DEFAULT_EMBEDDING_MODEL_IDENTIFIER)
+    return _DEFAULT_EMBEDDING_MODEL
+
+
+@synalinks_export(
+    [
+        "synalinks.config.set_default_embedding_model",
+        "synalinks.set_default_embedding_model",
+    ]
+)
+def set_default_embedding_model(identifier):
+    """Set the default `EmbeddingModel`.
+
+    Args:
+        identifier: A model string (e.g. `"openai/text-embedding-3-small"`),
+            a config dict, an existing `EmbeddingModel` instance, or `None`
+            to clear. Strings persist into the on-disk config; instances do
+            not.
+    """
+    global _DEFAULT_EMBEDDING_MODEL, _DEFAULT_EMBEDDING_MODEL_IDENTIFIER
+    if identifier is None:
+        _DEFAULT_EMBEDDING_MODEL = None
+        _DEFAULT_EMBEDDING_MODEL_IDENTIFIER = None
+        _persist_config()
+        return
+    from synalinks.src.modules.embedding_models import get as _get_em
+
+    _DEFAULT_EMBEDDING_MODEL = _get_em(identifier)
+    _DEFAULT_EMBEDDING_MODEL_IDENTIFIER = (
+        identifier if isinstance(identifier, str) else None
+    )
+    _persist_config()
+
+
+def _persist_config():
+    """Rewrite `~/.synalinks/synalinks.json` with the current config."""
+    if not os.path.exists(_synalinks_DIR):
+        try:
+            os.makedirs(_synalinks_DIR)
+        except OSError:
+            return
+    payload = {
+        "backend": _BACKEND,
+        "floatx": _FLOATX,
+        "epsilon": _EPSILON,
+        "seed": _RANDOM_SEED,
+        "api_base": _SYNALINKS_API_BASE,
+    }
+    if _DEFAULT_LANGUAGE_MODEL_IDENTIFIER is not None:
+        payload["language_model"] = _DEFAULT_LANGUAGE_MODEL_IDENTIFIER
+    if _DEFAULT_EMBEDDING_MODEL_IDENTIFIER is not None:
+        payload["embedding_model"] = _DEFAULT_EMBEDDING_MODEL_IDENTIFIER
+    try:
+        with open(_config_path, "wb") as f:
+            f.write(orjson.dumps(payload, option=orjson.OPT_INDENT_2))
+    except IOError:
+        pass
+
+
 @synalinks_export(["synalinks.config.synalinks_home", "synalinks.synalinks_home"])
 def synalinks_home():
     # Private accessor for the synalinks home location.
@@ -525,26 +658,18 @@ if os.path.exists(_config_path):
     set_seed(_seed)
     set_api_base(_SYNALINKS_API_BASE)
 
-# Save config file, if possible.
-if not os.path.exists(_synalinks_DIR):
-    try:
-        os.makedirs(_synalinks_DIR)
-    except OSError:
-        # Except permission denied and potential race conditions
-        # in multi-threaded environments.
-        pass
+    # Default LM/Embedding identifiers are stored as strings; the cached
+    # instances are materialized lazily on first `default_*_model()` call
+    # because `language_models`/`embedding_models` aren't loaded yet.
+    _lm_identifier = _config.get("language_model")
+    if _lm_identifier is not None:
+        assert isinstance(_lm_identifier, str)
+        _DEFAULT_LANGUAGE_MODEL_IDENTIFIER = _lm_identifier
+    _em_identifier = _config.get("embedding_model")
+    if _em_identifier is not None:
+        assert isinstance(_em_identifier, str)
+        _DEFAULT_EMBEDDING_MODEL_IDENTIFIER = _em_identifier
 
+# Save config file with current values, creating the directory if needed.
 if not os.path.exists(_config_path):
-    _config = {
-        "backend": _BACKEND,
-        "floatx": _FLOATX,
-        "epsilon": _EPSILON,
-        "seed": _RANDOM_SEED,
-        "api_base": _SYNALINKS_API_BASE,
-    }
-    try:
-        with open(_config_path, "wb") as f:
-            f.write(orjson.dumps(_config, option=orjson.OPT_INDENT_2))
-    except IOError:
-        # Except permission denied.
-        pass
+    _persist_config()

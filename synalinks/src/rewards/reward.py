@@ -17,7 +17,16 @@ class Reward(SynalinksSaveable):
     This is the class to subclass in order to create new custom rewards.
 
     Args:
-        name: Optional name for the reward instance.
+        name (str): Optional name for the reward instance.
+        reduction (str): Optional. Reduction to apply to the per-sample rewards.
+        in_mask (list): Optional. List of exact field names to keep before
+            computing the reward.
+        out_mask (list): Optional. List of exact field names to drop before
+            computing the reward.
+        in_mask_pattern (str): Optional. Regex pattern; fields whose names
+            match are kept (combined with ``in_mask`` via OR).
+        out_mask_pattern (str): Optional. Regex pattern; fields whose names
+            match are dropped (combined with ``out_mask`` via OR).
 
     To be implemented by subclasses:
 
@@ -31,11 +40,15 @@ class Reward(SynalinksSaveable):
         reduction="mean",
         in_mask=None,
         out_mask=None,
+        in_mask_pattern=None,
+        out_mask_pattern=None,
     ):
         self.name = name or auto_name(self.__class__.__name__)
         self.reduction = standardize_reduction(reduction)
         self.in_mask = in_mask
         self.out_mask = out_mask
+        self.in_mask_pattern = in_mask_pattern
+        self.out_mask_pattern = out_mask_pattern
 
     async def __call__(self, y_true, y_pred):
         with ops.name_scope(self.name):
@@ -46,21 +59,29 @@ class Reward(SynalinksSaveable):
                 lambda x: ops.convert_to_json_data_model(x), y_true
             )
 
-            if self.in_mask and y_pred:
+            if (self.in_mask or self.in_mask_pattern) and y_pred:
                 y_pred = tree.map_structure(
-                    lambda x: x.in_mask(mask=self.in_mask), y_pred
+                    lambda x: x.in_mask(mask=self.in_mask, pattern=self.in_mask_pattern),
+                    y_pred,
                 )
-            if self.in_mask and y_true:
+            if (self.in_mask or self.in_mask_pattern) and y_true:
                 y_true = tree.map_structure(
-                    lambda x: x.in_mask(mask=self.in_mask), y_true
+                    lambda x: x.in_mask(mask=self.in_mask, pattern=self.in_mask_pattern),
+                    y_true,
                 )
-            if self.out_mask and y_pred:
+            if (self.out_mask or self.out_mask_pattern) and y_pred:
                 y_pred = tree.map_structure(
-                    lambda x: x.out_mask(mask=self.out_mask), y_pred
+                    lambda x: x.out_mask(
+                        mask=self.out_mask, pattern=self.out_mask_pattern
+                    ),
+                    y_pred,
                 )
-            if self.out_mask and y_true:
+            if (self.out_mask or self.out_mask_pattern) and y_true:
                 y_true = tree.map_structure(
-                    lambda x: x.out_mask(mask=self.out_mask), y_true
+                    lambda x: x.out_mask(
+                        mask=self.out_mask, pattern=self.out_mask_pattern
+                    ),
+                    y_true,
                 )
 
             rewards = await self.call(y_true, y_pred)
@@ -78,6 +99,8 @@ class Reward(SynalinksSaveable):
             "reduction": self.reduction,
             "in_mask": self.in_mask,
             "out_mask": self.out_mask,
+            "in_mask_pattern": self.in_mask_pattern,
+            "out_mask_pattern": self.out_mask_pattern,
         }
 
     @classmethod

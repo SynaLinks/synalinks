@@ -64,6 +64,10 @@ class FBetaScore(Metric):
         name (str): (Optional) string name of the metric instance.
         in_mask (list): (Optional) list of keys to keep to compute the metric.
         out_mask (list): (Optional) list of keys to remove to compute the metric.
+        in_mask_pattern (str): (Optional) Regex pattern; fields whose names match
+            are kept (combined with ``in_mask`` via OR).
+        out_mask_pattern (str): (Optional) Regex pattern; fields whose names match
+            are dropped (combined with ``out_mask`` via OR).
     """
 
     def __init__(
@@ -73,11 +77,15 @@ class FBetaScore(Metric):
         name="fbeta_score",
         in_mask=None,
         out_mask=None,
+        in_mask_pattern=None,
+        out_mask_pattern=None,
     ):
         super().__init__(
             name=name,
             in_mask=in_mask,
             out_mask=out_mask,
+            in_mask_pattern=in_mask_pattern,
+            out_mask_pattern=out_mask_pattern,
         )
         if average not in (None, "micro", "macro", "weighted"):
             raise ValueError(
@@ -106,12 +114,24 @@ class FBetaScore(Metric):
         y_pred = tree.map_structure(lambda x: ops.convert_to_json_data_model(x), y_pred)
         y_true = tree.map_structure(lambda x: ops.convert_to_json_data_model(x), y_true)
 
-        if self.in_mask:
-            y_pred = tree.map_structure(lambda x: x.in_mask(mask=self.in_mask), y_pred)
-            y_true = tree.map_structure(lambda x: x.in_mask(mask=self.in_mask), y_true)
-        if self.out_mask:
-            y_pred = tree.map_structure(lambda x: x.out_mask(mask=self.out_mask), y_pred)
-            y_true = tree.map_structure(lambda x: x.out_mask(mask=self.out_mask), y_true)
+        if self.in_mask or self.in_mask_pattern:
+            y_pred = tree.map_structure(
+                lambda x: x.in_mask(mask=self.in_mask, pattern=self.in_mask_pattern),
+                y_pred,
+            )
+            y_true = tree.map_structure(
+                lambda x: x.in_mask(mask=self.in_mask, pattern=self.in_mask_pattern),
+                y_true,
+            )
+        if self.out_mask or self.out_mask_pattern:
+            y_pred = tree.map_structure(
+                lambda x: x.out_mask(mask=self.out_mask, pattern=self.out_mask_pattern),
+                y_pred,
+            )
+            y_true = tree.map_structure(
+                lambda x: x.out_mask(mask=self.out_mask, pattern=self.out_mask_pattern),
+                y_true,
+            )
 
         y_true = tree.flatten(tree.map_structure(lambda x: str(x), y_true.get_json()))
         y_pred = tree.flatten(tree.map_structure(lambda x: str(x), y_pred.get_json()))
@@ -260,6 +280,10 @@ class F1Score(FBetaScore):
         name (str): (Optional) string name of the metric instance.
         in_mask (list): (Optional) list of keys to keep to compute the metric.
         out_mask (list): (Optional) list of keys to remove to compute the metric.
+        in_mask_pattern (str): (Optional) Regex pattern; fields whose names match
+            are kept (combined with ``in_mask`` via OR).
+        out_mask_pattern (str): (Optional) Regex pattern; fields whose names match
+            are dropped (combined with ``out_mask`` via OR).
     """
 
     def __init__(
@@ -268,6 +292,8 @@ class F1Score(FBetaScore):
         name="f1_score",
         in_mask=None,
         out_mask=None,
+        in_mask_pattern=None,
+        out_mask_pattern=None,
     ):
         super().__init__(
             average=average,
@@ -275,6 +301,8 @@ class F1Score(FBetaScore):
             name=name,
             in_mask=in_mask,
             out_mask=out_mask,
+            in_mask_pattern=in_mask_pattern,
+            out_mask_pattern=out_mask_pattern,
         )
 
     def get_config(self):
@@ -364,6 +392,10 @@ class BinaryFBetaScore(FBetaScore):
         name (str): (Optional) string name of the metric instance.
         in_mask (list): (Optional) list of keys to keep to compute the metric.
         out_mask (list): (Optional) list of keys to remove to compute the metric.
+        in_mask_pattern (str): (Optional) Regex pattern; fields whose names match
+            are kept (combined with ``in_mask`` via OR).
+        out_mask_pattern (str): (Optional) Regex pattern; fields whose names match
+            are dropped (combined with ``out_mask`` via OR).
     """
 
     def __init__(
@@ -374,6 +406,8 @@ class BinaryFBetaScore(FBetaScore):
         name="binary_fbeta_score",
         in_mask=None,
         out_mask=None,
+        in_mask_pattern=None,
+        out_mask_pattern=None,
     ):
         super().__init__(
             average=average,
@@ -381,6 +415,8 @@ class BinaryFBetaScore(FBetaScore):
             name=name,
             in_mask=in_mask,
             out_mask=out_mask,
+            in_mask_pattern=in_mask_pattern,
+            out_mask_pattern=out_mask_pattern,
         )
         if not isinstance(threshold, float):
             raise ValueError(
@@ -401,12 +437,24 @@ class BinaryFBetaScore(FBetaScore):
         y_pred = tree.map_structure(lambda x: ops.convert_to_json_data_model(x), y_pred)
         y_true = tree.map_structure(lambda x: ops.convert_to_json_data_model(x), y_true)
 
-        if self.in_mask:
-            y_pred = tree.map_structure(lambda x: x.in_mask(mask=self.in_mask), y_pred)
-            y_true = tree.map_structure(lambda x: x.in_mask(mask=self.in_mask), y_true)
-        if self.out_mask:
-            y_pred = tree.map_structure(lambda x: x.out_mask(mask=self.out_mask), y_pred)
-            y_true = tree.map_structure(lambda x: x.out_mask(mask=self.out_mask), y_true)
+        if self.in_mask or self.in_mask_pattern:
+            y_pred = tree.map_structure(
+                lambda x: x.in_mask(mask=self.in_mask, pattern=self.in_mask_pattern),
+                y_pred,
+            )
+            y_true = tree.map_structure(
+                lambda x: x.in_mask(mask=self.in_mask, pattern=self.in_mask_pattern),
+                y_true,
+            )
+        if self.out_mask or self.out_mask_pattern:
+            y_pred = tree.map_structure(
+                lambda x: x.out_mask(mask=self.out_mask, pattern=self.out_mask_pattern),
+                y_pred,
+            )
+            y_true = tree.map_structure(
+                lambda x: x.out_mask(mask=self.out_mask, pattern=self.out_mask_pattern),
+                y_true,
+            )
 
         def convert_to_binary(x):
             if isinstance(x, bool):
@@ -516,6 +564,10 @@ class BinaryF1Score(BinaryFBetaScore):
         name (str): (Optional) string name of the metric instance.
         in_mask (list): (Optional) list of keys to keep to compute the metric.
         out_mask (list): (Optional) list of keys to remove to compute the metric.
+        in_mask_pattern (str): (Optional) Regex pattern; fields whose names match
+            are kept (combined with ``in_mask`` via OR).
+        out_mask_pattern (str): (Optional) Regex pattern; fields whose names match
+            are dropped (combined with ``out_mask`` via OR).
     """
 
     def __init__(
@@ -525,6 +577,8 @@ class BinaryF1Score(BinaryFBetaScore):
         name="binary_f1_score",
         in_mask=None,
         out_mask=None,
+        in_mask_pattern=None,
+        out_mask_pattern=None,
     ):
         super().__init__(
             average=average,
@@ -533,6 +587,8 @@ class BinaryF1Score(BinaryFBetaScore):
             name=name,
             in_mask=in_mask,
             out_mask=out_mask,
+            in_mask_pattern=in_mask_pattern,
+            out_mask_pattern=out_mask_pattern,
         )
 
     def get_config(self):
@@ -598,6 +654,8 @@ class ListFBetaScore(FBetaScore):
         name="list_fbeta_score",
         in_mask=None,
         out_mask=None,
+        in_mask_pattern=None,
+        out_mask_pattern=None,
     ):
         super().__init__(
             average=average,
@@ -605,18 +663,32 @@ class ListFBetaScore(FBetaScore):
             name=name,
             in_mask=in_mask,
             out_mask=out_mask,
+            in_mask_pattern=in_mask_pattern,
+            out_mask_pattern=out_mask_pattern,
         )
 
     async def update_state(self, y_true, y_pred):
         y_pred = tree.map_structure(lambda x: ops.convert_to_json_data_model(x), y_pred)
         y_true = tree.map_structure(lambda x: ops.convert_to_json_data_model(x), y_true)
 
-        if self.in_mask:
-            y_pred = tree.map_structure(lambda x: x.in_mask(mask=self.in_mask), y_pred)
-            y_true = tree.map_structure(lambda x: x.in_mask(mask=self.in_mask), y_true)
-        if self.out_mask:
-            y_pred = tree.map_structure(lambda x: x.out_mask(mask=self.out_mask), y_pred)
-            y_true = tree.map_structure(lambda x: x.out_mask(mask=self.out_mask), y_true)
+        if self.in_mask or self.in_mask_pattern:
+            y_pred = tree.map_structure(
+                lambda x: x.in_mask(mask=self.in_mask, pattern=self.in_mask_pattern),
+                y_pred,
+            )
+            y_true = tree.map_structure(
+                lambda x: x.in_mask(mask=self.in_mask, pattern=self.in_mask_pattern),
+                y_true,
+            )
+        if self.out_mask or self.out_mask_pattern:
+            y_pred = tree.map_structure(
+                lambda x: x.out_mask(mask=self.out_mask, pattern=self.out_mask_pattern),
+                y_pred,
+            )
+            y_true = tree.map_structure(
+                lambda x: x.out_mask(mask=self.out_mask, pattern=self.out_mask_pattern),
+                y_true,
+            )
 
         y_true = tree.flatten(tree.map_structure(lambda x: x, y_true.get_json()))
         y_pred = tree.flatten(tree.map_structure(lambda x: x, y_pred.get_json()))
@@ -745,6 +817,10 @@ class ListF1Score(ListFBetaScore):
         name (str): (Optional) string name of the metric instance.
         in_mask (list): (Optional) list of keys to keep to compute the metric.
         out_mask (list): (Optional) list of keys to remove to compute the metric.
+        in_mask_pattern (str): (Optional) Regex pattern; fields whose names match
+            are kept (combined with ``in_mask`` via OR).
+        out_mask_pattern (str): (Optional) Regex pattern; fields whose names match
+            are dropped (combined with ``out_mask`` via OR).
     """
 
     def __init__(
@@ -753,6 +829,8 @@ class ListF1Score(ListFBetaScore):
         name="list_f1_score",
         in_mask=None,
         out_mask=None,
+        in_mask_pattern=None,
+        out_mask_pattern=None,
     ):
         super().__init__(
             average=average,
@@ -760,6 +838,8 @@ class ListF1Score(ListFBetaScore):
             name=name,
             in_mask=in_mask,
             out_mask=out_mask,
+            in_mask_pattern=in_mask_pattern,
+            out_mask_pattern=out_mask_pattern,
         )
 
     def get_config(self):

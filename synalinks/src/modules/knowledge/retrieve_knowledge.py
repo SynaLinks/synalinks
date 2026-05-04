@@ -89,6 +89,7 @@ class RetrieveKnowledge(Module):
 
     def __init__(
         self,
+        *,
         knowledge_base=None,
         language_model=None,
         data_models=None,

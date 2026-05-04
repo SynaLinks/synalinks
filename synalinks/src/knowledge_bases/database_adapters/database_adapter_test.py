@@ -12,7 +12,6 @@ from synalinks.src.backend import DataModel
 from synalinks.src.backend import Field
 from synalinks.src.backend import JsonDataModel
 from synalinks.src.backend import SymbolicDataModel
-from synalinks.src.embedding_models import EmbeddingModel
 from synalinks.src.knowledge_bases.database_adapters.duckdb_adapter import DuckDBAdapter
 from synalinks.src.knowledge_bases.database_adapters.duckdb_adapter import (
     sanitize_identifier,
@@ -20,6 +19,7 @@ from synalinks.src.knowledge_bases.database_adapters.duckdb_adapter import (
 from synalinks.src.knowledge_bases.database_adapters.duckdb_adapter import (
     sanitize_properties,
 )
+from synalinks.src.modules.embedding_models import EmbeddingModel
 
 
 class Document(DataModel):

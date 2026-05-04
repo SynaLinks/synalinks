@@ -1,5 +1,6 @@
 # License Apache 2.0: (c) 2025-2026 Yoan Sallami (Synalinks Team)
 
+import copy
 import logging
 import warnings
 
@@ -10,8 +11,8 @@ from tenacity import stop_after_attempt
 from tenacity import wait_exponential
 
 from synalinks.src.api_export import synalinks_export
+from synalinks.src.modules.module import Module
 from synalinks.src.saving import serialization_lib
-from synalinks.src.saving.synalinks_saveable import SynalinksSaveable
 
 litellm.disable_aiohttp_transport = True
 
@@ -22,7 +23,7 @@ litellm.disable_aiohttp_transport = True
         "synalinks.embedding_models.EmbeddingModel",
     ]
 )
-class EmbeddingModel(SynalinksSaveable):
+class EmbeddingModel(Module):
     """An embedding model API wrapper.
 
     Embedding models are a type of machine learning model used to convert
@@ -97,16 +98,35 @@ class EmbeddingModel(SynalinksSaveable):
         fallback (EmbeddingModel): Optional. The embedding model to fallback
             if anything is wrong.
         caching (bool): Enables caching (Default to True).
+        name (str): Optional. The name of the module.
+        description (str): Optional. The description of the module.
+        hooks (list): Optional. Hooks to attach to this module's calls.
+        **default_kwargs: Optional. Default parameters (e.g. `dimensions`,
+            `encoding_format`) forwarded to every call. Per-call kwargs
+            override these.
     """
 
     def __init__(
         self,
+        *,
         model=None,
         api_base=None,
         retry=5,
         fallback=None,
         caching=True,
+        name=None,
+        description=None,
+        hooks=None,
+        **default_kwargs,
     ):
+        super().__init__(
+            trainable=False,
+            name=name,
+            description=description,
+            hooks=hooks,
+        )
+        # `texts` is a list[str], not a JsonDataModel; relax the strict guard.
+        self._allow_non_json_data_model_positional_args = True
         if model is None:
             raise ValueError(
                 "You need to set the `model` argument for any EmbeddingModel"
@@ -117,10 +137,20 @@ class EmbeddingModel(SynalinksSaveable):
         else:
             self.api_base = api_base
         self.retry = retry
+        if fallback is not None:
+            # Lazy import: `get` lives in the package __init__ which imports
+            # this file at load time.
+            from synalinks.src.modules.embedding_models import get as _get_em
+
+            fallback = _get_em(fallback)
         self.fallback = fallback
         self.caching = caching
+        self.default_kwargs = default_kwargs
+        # No state depends on the input shape, so mark built up-front and
+        # skip Module's auto-build path (which would try to trace `call`).
+        self.built = True
 
-    async def __call__(self, texts, **kwargs):
+    async def call(self, texts, **kwargs):
         """
         Call method to get dense embeddings vectors
 
@@ -131,6 +161,9 @@ class EmbeddingModel(SynalinksSaveable):
             (list): The list of corresponding vectors.
         """
 
+        input_kwargs = copy.deepcopy(kwargs)
+        # Merge instance-level defaults; per-call kwargs win.
+        kwargs = {**self.default_kwargs, **kwargs}
         try:
             return await self._call_with_retry(texts, **kwargs)
         except Exception as e:
@@ -138,7 +171,7 @@ class EmbeddingModel(SynalinksSaveable):
             if self.fallback:
                 return await self.fallback(
                     texts,
-                    **kwargs,
+                    **input_kwargs,
                 )
             else:
                 return None
@@ -188,6 +221,9 @@ class EmbeddingModel(SynalinksSaveable):
             "model": self.model,
             "api_base": self.api_base,
             "retry": self.retry,
+            "name": self.name,
+            "description": self.description,
+            **self.default_kwargs,
         }
         if self.fallback:
             fallback_config = {

@@ -121,6 +121,7 @@ class SequentialPlanSynthesis(Module):
 
     def __init__(
         self,
+        *,
         schema=None,
         data_model=None,
         language_model=None,

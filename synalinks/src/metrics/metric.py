@@ -18,14 +18,27 @@ class Metric(SynalinksSaveable):
         name (str): (Optional) string name of the metric instance.
         in_mask (list): (Optional) list of keys to keep to compute the metric.
         out_mask (list): (Optional) list of keys to remove to compute the metric.
+        in_mask_pattern (str): (Optional) Regex pattern; fields whose names match
+            are kept (combined with ``in_mask`` via OR).
+        out_mask_pattern (str): (Optional) Regex pattern; fields whose names match
+            are dropped (combined with ``out_mask`` via OR).
     """
 
-    def __init__(self, name=None, in_mask=None, out_mask=None):
+    def __init__(
+        self,
+        name=None,
+        in_mask=None,
+        out_mask=None,
+        in_mask_pattern=None,
+        out_mask_pattern=None,
+    ):
         self.name = name or auto_name(self.__class__.__name__)
         self._metrics = []
         self._variables = []
         self.in_mask = in_mask
         self.out_mask = out_mask
+        self.in_mask_pattern = in_mask_pattern
+        self.out_mask_pattern = out_mask_pattern
         self._tracker = Tracker(
             {
                 "variables": (
@@ -139,6 +152,8 @@ class Metric(SynalinksSaveable):
         return {
             "in_mask": self.in_mask,
             "out_mask": self.out_mask,
+            "in_mask_pattern": self.in_mask_pattern,
+            "out_mask_pattern": self.out_mask_pattern,
             "name": self.name,
         }
 

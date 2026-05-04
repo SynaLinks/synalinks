@@ -30,9 +30,7 @@ def dynamic_enum(schema, prop_to_update, labels, description=None, inline=True):
         enum_definition["description"] = description
 
     if inline:
-        schema.setdefault("properties", {}).update(
-            {prop_to_update: enum_definition}
-        )
+        schema.setdefault("properties", {}).update({prop_to_update: enum_definition})
     else:
         if schema.get("$defs"):
             schema = {"$defs": schema.pop("$defs"), **schema}

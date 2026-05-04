@@ -7,6 +7,10 @@ since your modifications would be overwritten.
 from synalinks.src.backend.config import api_base as api_base
 from synalinks.src.backend.config import api_key as api_key
 from synalinks.src.backend.config import backend as backend
+from synalinks.src.backend.config import (
+    default_embedding_model as default_embedding_model,
+)
+from synalinks.src.backend.config import default_language_model as default_language_model
 from synalinks.src.backend.config import enable_logging as enable_logging
 from synalinks.src.backend.config import enable_observability as enable_observability
 from synalinks.src.backend.config import epsilon as epsilon
@@ -20,6 +24,12 @@ from synalinks.src.backend.config import mlflow_tracking_uri as mlflow_tracking_
 from synalinks.src.backend.config import set_api_base as set_api_base
 from synalinks.src.backend.config import set_api_key as set_api_key
 from synalinks.src.backend.config import set_backend as set_backend
+from synalinks.src.backend.config import (
+    set_default_embedding_model as set_default_embedding_model,
+)
+from synalinks.src.backend.config import (
+    set_default_language_model as set_default_language_model,
+)
 from synalinks.src.backend.config import set_epsilon as set_epsilon
 from synalinks.src.backend.config import set_floatx as set_floatx
 from synalinks.src.backend.config import set_seed as set_seed

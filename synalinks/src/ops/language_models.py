@@ -5,7 +5,7 @@ from synalinks.src.backend import ChatMessage
 from synalinks.src.backend import JsonDataModel
 from synalinks.src.backend import SymbolicDataModel
 from synalinks.src.backend import any_symbolic_data_models
-from synalinks.src.language_models.language_model import StreamingIterator
+from synalinks.src.modules.language_models.language_model import StreamingIterator
 from synalinks.src.ops.operation import Operation
 from synalinks.src.saving import serialization_lib
 
@@ -113,7 +113,14 @@ async def predict(
         (JsonDataModel | SymbolicDataModel): The resulting data model.
     """
     if language_model is None:
-        raise ValueError("You should provide the `language_model` argument")
+        from synalinks.src.backend.config import default_language_model
+
+        language_model = default_language_model()
+    if language_model is None:
+        raise ValueError(
+            "You should provide the `language_model` argument or set a "
+            "default via `synalinks.set_default_language_model(...)`."
+        )
     if any_symbolic_data_models(x):
         return await Predict(
             schema=schema,

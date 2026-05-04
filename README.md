@@ -142,9 +142,10 @@ class NumericalAnswer(synalinks.DataModel):
         description="The correct final numerical answer",
     )
 
-language_model = synalinks.LanguageModel(
-    model="gemini/gemini-2.5-pro",
-)
+# Set the defaults once — modules and string-form optimizers/rewards
+# pick them up automatically.
+synalinks.set_default_language_model("gemini/gemini-2.5-pro")
+synalinks.set_default_embedding_model("gemini/text-embedding-004")
 
 @synalinks.saving.register_synalinks_serializable()
 async def calculate(expression: str):
@@ -181,7 +182,6 @@ async def main():
         tools=[
             synalinks.Tool(calculate),
         ],
-        language_model=language_model,
     )(inputs)
 
     program = synalinks.Program(
@@ -271,20 +271,23 @@ result = await program(
 ## Training your program/agent
 
 ```python
+
+# Setting the default language/embedding models allows you
+# to use the string identifier (Keras-like) to configure your pipeline/training.
+# You can still instantiate the classes if you want fine-grained control.
+synalinks.set_default_language_model("gemini/gemini-2.5-pro")
+synalinks.set_default_embedding_model("gemini/text-embedding-004")
+
 async def main():
+    
 
     # ... your program definition
 
     (x_train, y_train), (x_test, y_test) = synalinks.datasets.gsm8k.load_data()
 
     program.compile(
-        reward=synalinks.rewards.ExactMatch(
-            in_mask=["answer"],
-        ),
-        optimizer=synalinks.optimizers.OMEGA(
-            language_model=language_model,
-            embedding_model=embedding_model,
-        ),
+        reward=synalinks.rewards.ExactMatch(in_mask=["answer"]),
+        optimizer="omega",
     )
 
     batch_size=1

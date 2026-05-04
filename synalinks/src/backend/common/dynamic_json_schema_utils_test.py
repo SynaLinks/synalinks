@@ -1,13 +1,9 @@
 # License Apache 2.0: (c) 2025-2026 Yoan Sallami (Synalinks Team)
 
 from enum import Enum
-from typing import List
-from typing import Literal
-from typing import Union
 
 from synalinks.src import testing
 from synalinks.src.backend import DataModel
-from synalinks.src.backend import Field
 from synalinks.src.backend import is_schema_equal
 from synalinks.src.backend.common.dynamic_json_schema_utils import dynamic_enum
 from synalinks.src.backend.common.dynamic_json_schema_utils import dynamic_tool_calls
@@ -71,9 +67,7 @@ class DynamicEnumTest(testing.TestCase):
         labels = ["easy", "difficult", "unkown"]
 
         # inline=False matches the Pydantic-generated $defs/$ref layout.
-        schema = dynamic_enum(
-            DecisionAnswer.get_schema(), "choice", labels, inline=False
-        )
+        schema = dynamic_enum(DecisionAnswer.get_schema(), "choice", labels, inline=False)
 
         self.assertTrue(is_schema_equal(Decision.get_schema(), schema))
 

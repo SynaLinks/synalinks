@@ -30,6 +30,10 @@ class CosineSimilarity(MeanMetricWrapper):
         name (str): (Optional) string name of the metric instance.
         in_mask (list): (Optional) list of keys to keep to compute the metric.
         out_mask (list): (Optional) list of keys to remove to compute the metric.
+        in_mask_pattern (str): (Optional) Regex pattern; fields whose names match
+            are kept (combined with ``in_mask`` via OR).
+        out_mask_pattern (str): (Optional) Regex pattern; fields whose names match
+            are dropped (combined with ``out_mask`` via OR).
     """
 
     def __init__(
@@ -39,12 +43,16 @@ class CosineSimilarity(MeanMetricWrapper):
         embedding_model=None,
         in_mask=None,
         out_mask=None,
+        in_mask_pattern=None,
+        out_mask_pattern=None,
     ):
         super().__init__(
             fn=cosine_similarity,
             name=name,
             in_mask=in_mask,
             out_mask=out_mask,
+            in_mask_pattern=in_mask_pattern,
+            out_mask_pattern=out_mask_pattern,
         )
         self.axis = axis
         self.embedding_model = embedding_model
@@ -56,6 +64,8 @@ class CosineSimilarity(MeanMetricWrapper):
             "name": self.name,
             "in_mask": self.in_mask,
             "out_mask": self.out_mask,
+            "in_mask_pattern": self.in_mask_pattern,
+            "out_mask_pattern": self.out_mask_pattern,
         }
         embedding_model_config = {
             "embedding_model": serialization_lib.serialize_synalinks_object(

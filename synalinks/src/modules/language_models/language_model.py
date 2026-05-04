@@ -14,8 +14,8 @@ from tenacity import wait_exponential
 
 from synalinks.src.api_export import synalinks_export
 from synalinks.src.backend import ChatRole
+from synalinks.src.modules.module import Module
 from synalinks.src.saving import serialization_lib
-from synalinks.src.saving.synalinks_saveable import SynalinksSaveable
 from synalinks.src.utils.nlp_utils import shorten_text
 
 litellm.drop_params = True
@@ -29,7 +29,7 @@ litellm.drop_params = True
         "synalinks.language_models.LanguageModel",
     ]
 )
-class LanguageModel(SynalinksSaveable):
+class LanguageModel(Module):
     """A language model API wrapper.
 
     A language model is a type of AI model designed to generate, and interpret human
@@ -264,6 +264,12 @@ class LanguageModel(SynalinksSaveable):
         fallback (LanguageModel): Optional. The language model to fallback
             if anything is wrong.
         caching (bool): Optional. Enable caching of LM calls (Default to False).
+        name (str): Optional. The name of the module.
+        description (str): Optional. The description of the module.
+        hooks (list): Optional. Hooks to attach to this module's calls.
+        **default_kwargs: Optional. Default generation parameters (e.g.
+            `temperature`, `top_p`, `top_k`, `max_tokens`, `reasoning_effort`)
+            forwarded to every call. Per-call kwargs override these.
     """
 
     def __init__(
@@ -274,7 +280,20 @@ class LanguageModel(SynalinksSaveable):
         retry=5,
         fallback=None,
         caching=False,
+        name=None,
+        description=None,
+        hooks=None,
+        **default_kwargs,
     ):
+        super().__init__(
+            trainable=False,
+            name=name,
+            description=description,
+            hooks=hooks,
+        )
+        # `messages` may be passed as a Pydantic DataModel; the strict
+        # JsonDataModel guard would otherwise reject it.
+        self._allow_non_json_data_model_positional_args = True
         if model is None:
             raise ValueError("You need to set the `model` argument for any LanguageModel")
         model_provider = model.split("/")[0]
@@ -292,6 +311,12 @@ class LanguageModel(SynalinksSaveable):
             if not api_base:
                 api_base = "https://api.doubleword.ai/v1"
         self.model = model
+        if fallback is not None:
+            # Lazy import: `get` lives in the package __init__ which imports
+            # this file at load time.
+            from synalinks.src.modules.language_models import get as _get_lm
+
+            fallback = _get_lm(fallback)
         self.fallback = fallback
         if self.model.startswith("ollama") and not api_base:
             self.api_base = "http://localhost:11434"
@@ -304,10 +329,14 @@ class LanguageModel(SynalinksSaveable):
         self.timeout = timeout
         self.retry = retry
         self.caching = caching
+        self.default_kwargs = default_kwargs
         self.cumulated_cost = 0.0
         self.last_call_cost = 0.0
+        # No state depends on the input shape, so mark built up-front and
+        # skip Module's auto-build path (which would try to trace `call`).
+        self.built = True
 
-    async def __call__(self, messages, schema=None, streaming=False, **kwargs):
+    async def call(self, messages, schema=None, streaming=False, **kwargs):
         """
         Call method to generate a response using the language model.
 
@@ -324,6 +353,8 @@ class LanguageModel(SynalinksSaveable):
         """
         formatted_messages = messages.get_json().get("messages", [])
         input_kwargs = copy.deepcopy(kwargs)
+        # Merge instance-level defaults; per-call kwargs win.
+        kwargs = {**self.default_kwargs, **kwargs}
         schema = copy.deepcopy(schema)
         provider = self.model.split("/")[0]
 
@@ -546,9 +577,9 @@ class LanguageModel(SynalinksSaveable):
                 response_message = response["choices"][0]["message"]
                 if self.model.startswith("groq") and schema:
                     # Groq uses tool_calls for structured output
-                    response_str = response_message["tool_calls"][0][
-                        "function"
-                    ]["arguments"]
+                    response_str = response_message["tool_calls"][0]["function"][
+                        "arguments"
+                    ]
                 else:
                     # Anthropic and other providers use response_format,
                     # which returns content in message["content"]
@@ -593,6 +624,9 @@ class LanguageModel(SynalinksSaveable):
             "timeout": self.timeout,
             "retry": self.retry,
             "caching": self.caching,
+            "name": self.name,
+            "description": self.description,
+            **self.default_kwargs,
         }
         if self.fallback:
             fallback_config = {
@@ -634,9 +668,7 @@ class StreamingIterator:
 
     def __init__(self, iterator):
         self._iterator = iterator
-        self._is_async = hasattr(iterator, "__anext__") or hasattr(
-            iterator, "__aiter__"
-        )
+        self._is_async = hasattr(iterator, "__anext__") or hasattr(iterator, "__aiter__")
 
     def __aiter__(self):
         return self

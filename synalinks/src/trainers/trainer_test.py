@@ -10,7 +10,7 @@ from synalinks.src import programs
 from synalinks.src import rewards
 from synalinks.src import testing
 from synalinks.src.backend import JsonDataModel
-from synalinks.src.language_models import LanguageModel
+from synalinks.src.modules.language_models import LanguageModel
 from synalinks.src.testing.test_utils import AnswerWithRationale
 from synalinks.src.testing.test_utils import Query
 from synalinks.src.testing.test_utils import load_test_data
@@ -174,3 +174,90 @@ class TestTrainer(testing.TestCase):
         self.assertEqual(len(y_data), len(x_train))
         self.assertIsInstance(y_data[0], JsonDataModel)
         self.assertIsInstance(y_data[1], JsonDataModel)
+
+
+class TestCompileStringIdentifiers(testing.TestCase):
+    """Keras-style: pass lowercase strings to `compile(...)` instead of
+    instances. Lookup is case-insensitive — CamelCase still works but
+    lowercase is the idiomatic form."""
+
+    def _make_program(self):
+        return ExampleProgram(
+            data_model=Query,
+            language_model=LanguageModel(model="ollama/mistral"),
+        )
+
+    def test_optimizer_string(self):
+        program = self._make_program()
+        program.compile(optimizer="randomfewshot", reward=rewards.ExactMatch())
+        self.assertIsInstance(program.optimizer, optimizers.RandomFewShot)
+
+    def test_optimizer_string_camelcase_also_works(self):
+        program = self._make_program()
+        program.compile(optimizer="RandomFewShot", reward=rewards.ExactMatch())
+        self.assertIsInstance(program.optimizer, optimizers.RandomFewShot)
+
+    def test_reward_string(self):
+        program = self._make_program()
+        program.compile(optimizer="randomfewshot", reward="exactmatch")
+        self.assertIsInstance(program.reward, rewards.ExactMatch)
+
+    def test_reward_string_camelcase_also_works(self):
+        program = self._make_program()
+        program.compile(optimizer="randomfewshot", reward="ExactMatch")
+        self.assertIsInstance(program.reward, rewards.ExactMatch)
+
+    def test_metrics_strings(self):
+        program = self._make_program()
+        program.compile(
+            optimizer="randomfewshot",
+            reward="exactmatch",
+            metrics=["mean"],
+        )
+        # Metrics get wrapped in CompileMetrics; the underlying instance is
+        # constructed via metrics.get(...).
+        self.assertIsNotNone(program._compile_metrics)
+
+    def test_full_keras_style_compile(self):
+        program = self._make_program()
+        program.compile(
+            optimizer="randomfewshot",
+            reward="exactmatch",
+            metrics=["mean"],
+        )
+        self.assertIsInstance(program.optimizer, optimizers.RandomFewShot)
+        self.assertIsInstance(program.reward, rewards.ExactMatch)
+        self.assertTrue(program.compiled)
+
+    def test_unknown_optimizer_string_raises(self):
+        program = self._make_program()
+        with self.assertRaises(ValueError):
+            program.compile(
+                optimizer="notarealoptimizer",
+                reward=rewards.ExactMatch(),
+            )
+
+    def test_unknown_reward_string_raises(self):
+        program = self._make_program()
+        with self.assertRaises(ValueError):
+            program.compile(
+                optimizer="randomfewshot",
+                reward="notarealreward",
+            )
+
+    def test_instance_pass_through_unchanged(self):
+        program = self._make_program()
+        opt = optimizers.RandomFewShot()
+        rew = rewards.ExactMatch()
+        program.compile(optimizer=opt, reward=rew)
+        # Instances should be stored as-is (no re-instantiation).
+        self.assertIs(program.optimizer, opt)
+        self.assertIs(program.reward, rew)
+
+    def test_dict_config_optimizer(self):
+        program = self._make_program()
+        program.compile(
+            optimizer={"class_name": "randomfewshot", "config": {}},
+            reward=rewards.ExactMatch(),
+        )
+        self.assertIsInstance(program.optimizer, optimizers.RandomFewShot)

@@ -9,7 +9,6 @@ from synalinks.src.rewards.reward import Reward
 from synalinks.src.rewards.reward_wrappers import ProgramAsJudge
 from synalinks.src.rewards.reward_wrappers import RewardFunctionWrapper
 from synalinks.src.saving import serialization_lib
-from synalinks.src.utils.naming import to_snake_case
 
 # `LMAsJudge` lives in this set but is imported lazily at the bottom of this
 # module to avoid a circular import (`lm_as_judge` -> `programs.Program` ->
@@ -24,7 +23,7 @@ ALL_OBJECTS = {
     ProgramAsJudge,
 }
 
-ALL_OBJECTS_DICT = {cls.__name__: cls for cls in ALL_OBJECTS}
+ALL_OBJECTS_DICT = {cls.__name__.lower(): cls for cls in ALL_OBJECTS}
 
 
 @synalinks_export("synalinks.rewards.serialize")
@@ -53,6 +52,9 @@ def deserialize(name, custom_objects=None):
     Returns:
         A Keras `Reward` instance or a reward function.
     """
+    # Make deserialization case-insensitive for built-in rewards.
+    if name["class_name"].lower() in ALL_OBJECTS_DICT:
+        name["class_name"] = name["class_name"].lower()
     return serialization_lib.deserialize_synalinks_object(
         name,
         module_objects=ALL_OBJECTS_DICT,
@@ -62,41 +64,39 @@ def deserialize(name, custom_objects=None):
 
 @synalinks_export("synalinks.rewards.get")
 def get(identifier):
-    """Retrieves a Synalinks reward as a `function`/`Reward` class instance.
+    """Retrieves a Synalinks reward as a `Reward` class instance.
 
-    The `identifier` may be the string name of a reward function or `Reward` class.
+    The `identifier` may be the string class name of a reward class
+    (case-insensitive). LM/EM dependencies (e.g. for `LMAsJudge` or
+    `CosineSimilarity`) are resolved at call time via
+    `synalinks.set_default_language_model(...)` /
+    `synalinks.set_default_embedding_model(...)` when not passed
+    explicitly.
 
-    >>> reward = rewards.get("exact_match")
-    >>> type(reward)
-    <class 'function'>
     >>> reward = rewards.get("ExactMatch")
     >>> type(reward)
     <class '...ExactMatch'>
-
-    You can also specify `config` of the reward to this function by passing dict
-    containing `class_name` and `config` as an identifier. Also note that the
-    `class_name` must map to a `Reward` class
-
-    >>> identifier = {"class_name": "ExactMatch",
-    ...               "config": {"in_mask": ["answer"]}}
-    >>> reward = rewards.get(identifier)
+    >>> reward = rewards.get("lmasjudge")
     >>> type(reward)
-    <class '...ExactMatch'>
+    <class '...LMAsJudge'>
+
+    You can also pass a config dict (`{"class_name": ..., "config": ...}`)
+    or an existing `Reward` instance / reward function (returned unchanged).
 
     Args:
-        identifier: A reward identifier. One of None or string name of a reward
-            function/class or reward configuration dictionary or a reward function
-            or a reward class instance.
+        identifier: A reward identifier. One of `None`, a string class name
+            (case-insensitive), a configuration dictionary, a `Reward`
+            instance, or a reward function.
 
     Returns:
-        A Synalinks reward as a `function`/ `Reward` class instance.
+        A Synalinks `Reward` instance or reward function.
     """
     if identifier is None:
         return None
     if isinstance(identifier, dict):
         obj = deserialize(identifier)
     elif isinstance(identifier, str):
-        obj = ALL_OBJECTS_DICT.get(identifier, None)
+        obj = ALL_OBJECTS_DICT.get(identifier.lower(), None)
     else:
         obj = identifier
 
@@ -113,4 +113,4 @@ def get(identifier):
 from synalinks.src.rewards.lm_as_judge import LMAsJudge  # noqa: E402
 
 ALL_OBJECTS.add(LMAsJudge)
-ALL_OBJECTS_DICT[LMAsJudge.__name__] = LMAsJudge
+ALL_OBJECTS_DICT[LMAsJudge.__name__.lower()] = LMAsJudge

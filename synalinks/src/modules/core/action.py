@@ -117,6 +117,7 @@ class Action(Module):
 
     def __init__(
         self,
+        *,
         tool,
         language_model=None,
         prompt_template=None,

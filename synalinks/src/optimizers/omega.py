@@ -8,8 +8,7 @@ from typing import Optional
 
 if TYPE_CHECKING:
     from synalinks.src.backend.common.variables import Variable
-    from synalinks.src.embedding_models.embedding_model import EmbeddingModel
-    from synalinks.src.programs.program import Program
+    from synalinks.src.modules.embedding_models.embedding_model import EmbeddingModel
 
 
 from synalinks.src import tree

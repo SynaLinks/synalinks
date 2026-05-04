@@ -100,6 +100,7 @@ class Branch(Module):
 
     def __init__(
         self,
+        *,
         question=None,
         labels=None,
         branches=None,

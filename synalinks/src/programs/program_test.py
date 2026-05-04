@@ -6,10 +6,10 @@ from synalinks.src import optimizers
 from synalinks.src import rewards
 from synalinks.src import testing
 from synalinks.src.backend import DataModel
-from synalinks.src.language_models import LanguageModel
 from synalinks.src.modules import Generator
 from synalinks.src.modules import Input
 from synalinks.src.modules import default_instructions
+from synalinks.src.modules.language_models import LanguageModel
 from synalinks.src.programs import Program
 from synalinks.src.utils.nlp_utils import remove_numerical_suffix
 

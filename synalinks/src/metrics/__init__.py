@@ -6,7 +6,6 @@ from synalinks.src.metrics.reduction_metrics import Mean
 from synalinks.src.metrics.reduction_metrics import MeanMetricWrapper
 from synalinks.src.metrics.reduction_metrics import Sum
 from synalinks.src.saving import serialization_lib
-from synalinks.src.utils.naming import to_snake_case
 
 ALL_OBJECTS = {
     # Base
@@ -16,8 +15,7 @@ ALL_OBJECTS = {
     Sum,
 }
 
-ALL_OBJECTS_DICT = {cls.__name__: cls for cls in ALL_OBJECTS}
-ALL_OBJECTS_DICT.update({to_snake_case(cls.__name__): cls for cls in ALL_OBJECTS})
+ALL_OBJECTS_DICT = {cls.__name__.lower(): cls for cls in ALL_OBJECTS}
 
 
 @synalinks_export("synalinks.metrics.serialize")
@@ -46,6 +44,9 @@ def deserialize(config, custom_objects=None):
     Returns:
         A Synalinks `Metric` instance or a metric function.
     """
+    # Make deserialization case-insensitive for built-in metrics.
+    if config["class_name"].lower() in ALL_OBJECTS_DICT:
+        config["class_name"] = config["class_name"].lower()
     return serialization_lib.deserialize_synalinks_object(
         config,
         module_objects=ALL_OBJECTS_DICT,
@@ -89,7 +90,7 @@ def get(identifier):
     if isinstance(identifier, dict):
         obj = deserialize(identifier)
     elif isinstance(identifier, str):
-        obj = ALL_OBJECTS_DICT.get(identifier, None)
+        obj = ALL_OBJECTS_DICT.get(identifier.lower(), None)
     else:
         obj = identifier
     if callable(obj):

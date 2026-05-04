@@ -4,7 +4,7 @@ from unittest.mock import patch
 
 from synalinks.src import testing
 from synalinks.src.backend import DataModel
-from synalinks.src.embedding_models import EmbeddingModel
+from synalinks.src.modules.embedding_models import EmbeddingModel
 from synalinks.src.rewards.cosine_similarity import CosineSimilarity
 
 

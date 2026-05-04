@@ -139,6 +139,7 @@ class Generator(Module):
 
     def __init__(
         self,
+        *,
         schema=None,
         data_model=None,
         language_model=None,
@@ -164,8 +165,8 @@ class Generator(Module):
         if not schema and data_model:
             schema = data_model.get_schema()
         self.schema = schema
-        if not language_model:
-            raise ValueError("You should provide `language_model` parameter.")
+        # `language_model` may be None; `ops.predict` resolves the default
+        # at call time (or raises if none is set).
         self.language_model = language_model
         if not prompt_template:
             prompt_template = default_prompt_template()

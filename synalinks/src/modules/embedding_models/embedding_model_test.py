@@ -4,7 +4,7 @@ from unittest.mock import patch
 
 from synalinks.src import testing
 from synalinks.src.backend import Embeddings
-from synalinks.src.embedding_models.embedding_model import EmbeddingModel
+from synalinks.src.modules.embedding_models.embedding_model import EmbeddingModel
 
 
 class EmbeddingModelTest(testing.TestCase):
