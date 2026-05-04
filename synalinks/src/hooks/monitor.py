@@ -13,6 +13,7 @@ from synalinks.src import tree
 from synalinks.src.api_export import synalinks_export
 from synalinks.src.backend import DataModel
 from synalinks.src.backend import any_symbolic_data_models
+from synalinks.src.backend import is_data_model
 from synalinks.src.backend.config import mlflow_experiment_name
 from synalinks.src.backend.config import mlflow_tracking_uri
 from synalinks.src.hooks.hook import Hook
@@ -123,14 +124,31 @@ class Monitor(Hook):
         self._setup_done = True
 
     def _serialize_data(self, data):
-        """Serialize data models to JSON-compatible format."""
-        flatten_data = tree.flatten(data)
+        """Serialize data models to JSON-compatible format.
+
+        Standard module IO carries DataModels, which are flattened and
+        unwrapped via `get_json` / `get_schema`. `LanguageModel` and
+        `EmbeddingModel` instead pass raw `list[str]` / `dict` payloads
+        — for those we skip flattening (which would drop dict keys) and
+        return the value as-is, since it's already JSON-serializable.
+        """
         is_symbolic = any_symbolic_data_models(data)
+        flatten_data = tree.flatten(data)
+        has_data_models = any(
+            is_data_model(d) or hasattr(d, "get_schema") for d in flatten_data
+        )
+
+        if not has_data_models:
+            return [data], is_symbolic
 
         if is_symbolic:
             serialized = [dm.get_schema() for dm in flatten_data if dm is not None]
         else:
-            serialized = [dm.get_json() for dm in flatten_data if dm is not None]
+            serialized = [
+                dm.get_json() if hasattr(dm, "get_json") else dm
+                for dm in flatten_data
+                if dm is not None
+            ]
 
         return serialized, is_symbolic
 
@@ -142,8 +160,10 @@ class Monitor(Hook):
         module_class = self.module.__class__.__name__
 
         # Map module types to MLflow span types
-        if module_class in ("Generator", "ChainOfThought", "SelfCritique"):
-            return SpanType.LLM
+        if module_class == "LanguageModel":
+            return SpanType.CHAT_MODEL
+        elif module_class == "EmbeddingModel":
+            return SpanType.EMBEDDING
         elif module_class in ("FunctionCallingAgent",):
             return SpanType.AGENT
         elif module_class in ("EmbedKnowledge", "RetrieveKnowledge", "UpdateKnowledge"):
