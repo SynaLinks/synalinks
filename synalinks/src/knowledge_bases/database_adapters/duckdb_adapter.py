@@ -18,6 +18,7 @@ from synalinks.src.backend.config import synalinks_home
 from synalinks.src.knowledge_bases.database_adapters.database_adapter import (
     DatabaseAdapter,
 )
+from synalinks.src.modules.embedding_models import get as _get_em
 from synalinks.src.utils.async_utils import run_maybe_nested
 
 FTS_KEYS = ["description", "text", "content", "message", "name", "query", "question"]
@@ -129,7 +130,7 @@ class DuckDBAdapter(DatabaseAdapter):
         uri = uri.replace("duckdb://", "") if uri else None
         self.uri = uri
 
-        self.embedding_model = embedding_model
+        self.embedding_model = _get_em(embedding_model)
 
         if self.embedding_model:
             if not vector_dim:

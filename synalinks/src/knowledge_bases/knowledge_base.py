@@ -9,6 +9,7 @@ from typing import Union
 from synalinks.src.api_export import synalinks_export
 from synalinks.src.backend import is_symbolic_data_model
 from synalinks.src.knowledge_bases import database_adapters
+from synalinks.src.modules.embedding_models import get as _get_em
 from synalinks.src.saving import serialization_lib
 from synalinks.src.saving.synalinks_saveable import SynalinksSaveable
 from synalinks.src.utils.naming import auto_name
@@ -111,7 +112,7 @@ class KnowledgeBase(SynalinksSaveable):
         )
         self.uri = uri
         self.data_models = data_models or []
-        self.embedding_model = embedding_model
+        self.embedding_model = _get_em(embedding_model)
         self.metric = metric
         self.wipe_on_start = wipe_on_start
         if not name:

@@ -15,6 +15,7 @@ from synalinks.src.backend import is_chat_messages
 from synalinks.src.backend.common.dynamic_json_schema_utils import dynamic_tool_calls
 from synalinks.src.backend.common.json_utils import out_mask_json
 from synalinks.src.modules.core.generator import Generator
+from synalinks.src.modules.language_models import get as _get_lm
 from synalinks.src.modules.module import Module
 from synalinks.src.modules.ttc.chain_of_thought import ChainOfThought
 from synalinks.src.saving import serialization_lib
@@ -420,7 +421,7 @@ class FunctionCallingAgent(Module):
         self.use_outputs_schema = use_outputs_schema
         self.reasoning_effort = reasoning_effort
         self.use_chain_of_thought = use_chain_of_thought
-        self.language_model = language_model
+        self.language_model = _get_lm(language_model)
 
         self.tools = {}
         if not tools:

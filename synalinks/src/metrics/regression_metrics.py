@@ -4,6 +4,7 @@
 
 from synalinks.src.api_export import synalinks_export
 from synalinks.src.metrics.reduction_metrics import MeanMetricWrapper
+from synalinks.src.modules.embedding_models import get as _get_em
 from synalinks.src.rewards.cosine_similarity import cosine_similarity
 from synalinks.src.saving import serialization_lib
 
@@ -55,7 +56,7 @@ class CosineSimilarity(MeanMetricWrapper):
             out_mask_pattern=out_mask_pattern,
         )
         self.axis = axis
-        self.embedding_model = embedding_model
+        self.embedding_model = _get_em(embedding_model)
         self._fn_kwargs = {"axis": axis, "embedding_model": embedding_model}
 
     def get_config(self):

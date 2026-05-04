@@ -5,6 +5,7 @@ import asyncio
 from synalinks.src import ops
 from synalinks.src.api_export import synalinks_export
 from synalinks.src.modules.core.decision import Decision
+from synalinks.src.modules.language_models import get as _get_lm
 from synalinks.src.modules.module import Module
 from synalinks.src.saving import serialization_lib
 
@@ -137,7 +138,7 @@ class Branch(Module):
         self.branches = {labels[i]: m for i, m in enumerate(branches)}
         self.inject_decision = inject_decision
         self.return_decision = return_decision
-        self.language_model = language_model
+        self.language_model = _get_lm(language_model)
         self.prompt_template = prompt_template
         self.examples = examples
         self.instructions = instructions

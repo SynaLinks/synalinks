@@ -1,10 +1,11 @@
 # License Apache 2.0: (c) 2025-2026 Yoan Sallami (Synalinks Team)
 
 from unittest.mock import AsyncMock
-from unittest.mock import MagicMock
 
 from synalinks.src import testing
 from synalinks.src.backend import JsonDataModel
+from synalinks.src.modules.embedding_models import EmbeddingModel
+from synalinks.src.modules.language_models import LanguageModel
 from synalinks.src.optimizers.evolutionary_optimizer import EvolutionaryOptimizer
 from synalinks.src.optimizers.omega import OMEGA
 from synalinks.src.optimizers.omega import base_instructions
@@ -36,13 +37,13 @@ class OMEGATest(testing.TestCase):
 
     def test_init_custom_parameters(self):
         """Test initialization with custom parameters."""
-        mock_lm = MagicMock()
-        mock_em = MagicMock()
+        lm = LanguageModel(model="ollama/mistral")
+        em = EmbeddingModel(model="ollama/mxbai-embed-large")
 
         optimizer = OMEGA(
             instructions="Test instructions",
-            language_model=mock_lm,
-            embedding_model=mock_em,
+            language_model=lm,
+            embedding_model=em,
             mutation_temperature=0.5,
             crossover_temperature=0.7,
             k_nearest_fitter=10,
@@ -55,8 +56,8 @@ class OMEGATest(testing.TestCase):
             description="Test OMEGA optimizer",
         )
 
-        self.assertEqual(optimizer.language_model, mock_lm)
-        self.assertEqual(optimizer.embedding_model, mock_em)
+        self.assertIs(optimizer.language_model, lm)
+        self.assertIs(optimizer.embedding_model, em)
         self.assertEqual(optimizer.mutation_temperature, 0.5)
         self.assertEqual(optimizer.crossover_temperature, 0.7)
         self.assertEqual(optimizer.k_nearest_fitter, 10)
@@ -129,7 +130,7 @@ class OMEGATest(testing.TestCase):
     async def test_competition_filters_candidates(self):
         """Test that competition filters candidates based on DNS."""
         # Create mock embedding model
-        mock_embedding_model = AsyncMock()
+        mock_embedding_model = AsyncMock(spec=EmbeddingModel)
         mock_embedding_model.return_value = {
             "embeddings": [[0.1, 0.2, 0.3], [0.4, 0.5, 0.6]]
         }
@@ -193,7 +194,7 @@ class OMEGATest(testing.TestCase):
     async def test_on_epoch_end_with_dns(self):
         """Test on_epoch_end applies DNS competition when algorithm='dns'."""
         # Create mock embedding model
-        mock_embedding_model = AsyncMock()
+        mock_embedding_model = AsyncMock(spec=EmbeddingModel)
         mock_embedding_model.return_value = {"embeddings": [[0.1, 0.2, 0.3]]}
 
         optimizer = OMEGA(
@@ -235,7 +236,7 @@ class OMEGATest(testing.TestCase):
 class SimilarityDistanceTest(testing.TestCase):
     async def test_similarity_distance_identical_candidates(self):
         """Test similarity_distance returns 0 for identical candidates."""
-        mock_embedding_model = AsyncMock()
+        mock_embedding_model = AsyncMock(spec=EmbeddingModel)
         mock_embedding_model.return_value = {"embeddings": [[1.0, 0.0, 0.0]]}
 
         candidate = {"prompt": "test"}

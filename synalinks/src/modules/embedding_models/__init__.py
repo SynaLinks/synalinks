@@ -50,19 +50,38 @@ def deserialize(config, custom_objects=None):
 def get(identifier):
     """Retrieves a Synalinks EmbeddingModel instance.
 
+    Resolution order: a concrete instance (or string / config dict) is
+    always preferred; ``None`` falls back to the configured default
+    (``synalinks.config.default_embedding_model()``). If no default is
+    configured, a ``ValueError`` is raised — this function never
+    returns ``None``.
+
     Args:
-        identifier (str | dict | LanguageModel): EmbeddingModel identifier, one of:
+        identifier (str | dict | EmbeddingModel | None): EmbeddingModel
+            identifier, one of:
             - String: a model name (e.g. `"openai/text-embedding-3-small"`),
               used to construct an `EmbeddingModel(model=identifier)`.
             - Dictionary: configuration dictionary.
-            - Synalinks EmbeddingModel instance (it will be returned unchanged).
+            - Synalinks EmbeddingModel instance (returned unchanged).
+            - ``None``: resolved against
+              ``synalinks.set_default_embedding_model(...)``.
 
     Returns:
-        A Synalinks EmbeddingModel instance.
+        (EmbeddingModel): A concrete Synalinks EmbeddingModel instance.
     """
     if identifier is None:
-        return None
-    elif isinstance(identifier, dict):
+        # Lazy import to avoid a backend → modules cycle. ``None`` falls
+        # back to the configured default (which itself may be ``None``
+        # when no default has been registered, in which case ``None``
+        # is what we return — callers that *require* a concrete
+        # instance see the error from the actual call site).
+        from synalinks.src.backend.config import default_embedding_model
+
+        identifier = default_embedding_model()
+        if identifier is None:
+            return None
+
+    if isinstance(identifier, dict):
         obj = deserialize(identifier)
     elif isinstance(identifier, str):
         obj = EmbeddingModel(model=identifier)

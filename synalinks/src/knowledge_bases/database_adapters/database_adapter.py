@@ -1,10 +1,11 @@
 # License Apache 2.0: (c) 2025-2026 Yoan Sallami (Synalinks Team)
-
 from typing import Any
 from typing import Dict
 from typing import List
 from typing import Optional
 from typing import Union
+
+from synalinks.src.modules.embedding_models import get as _get_em
 
 
 class DatabaseAdapter:
@@ -41,7 +42,7 @@ class DatabaseAdapter:
             name (str): Optional name for the adapter instance.
         """
         self.uri = uri
-        self.embedding_model = embedding_model
+        self.embedding_model = _get_em(embedding_model)
         self.data_models = data_models or []
         self.metric = metric
         self.name = name

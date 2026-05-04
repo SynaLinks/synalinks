@@ -1,32 +1,31 @@
 # License Apache 2.0: (c) 2025-2026 Yoan Sallami (Synalinks Team)
 
-from unittest.mock import MagicMock
-
 from synalinks.src import testing
 from synalinks.src.metrics.regression_metrics import CosineSimilarity
+from synalinks.src.modules.embedding_models import EmbeddingModel
 
 
 class CosineSimilarityTest(testing.TestCase):
     def test_init_defaults(self):
-        metric = CosineSimilarity()
+        metric = CosineSimilarity(embedding_model=EmbeddingModel(model="ollama/mxbai-embed-large"))
         self.assertEqual(metric.name, "cosine_similarity")
         self.assertEqual(metric.axis, -1)
-        self.assertIsNone(metric.embedding_model)
+        self.assertIsInstance(metric.embedding_model, EmbeddingModel)
         self.assertIsNone(metric.in_mask)
         self.assertIsNone(metric.out_mask)
 
     def test_init_custom_params(self):
-        mock_model = MagicMock()
+        em = EmbeddingModel(model="ollama/mxbai-embed-large")
         metric = CosineSimilarity(
             name="my_cosine",
             axis=0,
-            embedding_model=mock_model,
+            embedding_model=em,
             in_mask=["field1"],
             out_mask=["field2"],
         )
         self.assertEqual(metric.name, "my_cosine")
         self.assertEqual(metric.axis, 0)
-        self.assertEqual(metric.embedding_model, mock_model)
+        self.assertIs(metric.embedding_model, em)
         self.assertEqual(metric.in_mask, ["field1"])
         self.assertEqual(metric.out_mask, ["field2"])
 
@@ -34,6 +33,7 @@ class CosineSimilarityTest(testing.TestCase):
         metric = CosineSimilarity(
             name="test_metric",
             axis=1,
+            embedding_model=EmbeddingModel(model="ollama/mxbai-embed-large"),
             in_mask=["a"],
             out_mask=["b"],
         )
@@ -45,7 +45,7 @@ class CosineSimilarityTest(testing.TestCase):
         self.assertIn("embedding_model", config)
 
     def test_fn_kwargs(self):
-        mock_model = MagicMock()
-        metric = CosineSimilarity(axis=2, embedding_model=mock_model)
+        em = EmbeddingModel(model="ollama/mxbai-embed-large")
+        metric = CosineSimilarity(axis=2, embedding_model=em)
         self.assertEqual(metric._fn_kwargs["axis"], 2)
-        self.assertEqual(metric._fn_kwargs["embedding_model"], mock_model)
+        self.assertIs(metric._fn_kwargs["embedding_model"], em)

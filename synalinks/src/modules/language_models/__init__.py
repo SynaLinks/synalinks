@@ -50,19 +50,38 @@ def deserialize(config, custom_objects=None):
 def get(identifier):
     """Retrieves a Synalinks LanguageModel instance.
 
+    Resolution order: a concrete instance (or string / config dict) is
+    always preferred; ``None`` falls back to the configured default
+    (``synalinks.config.default_language_model()``). If no default is
+    configured, a ``ValueError`` is raised — this function never
+    returns ``None``.
+
     Args:
-        identifier (str | dict | LanguageModel): LanguageModel identifier, one of:
-            - String: a model name (e.g. `"openai/gpt-4o-mini"`), used to
-              construct a `LanguageModel(model=identifier)`.
+        identifier (str | dict | LanguageModel | None): LanguageModel
+            identifier, one of:
+            - String: a model name (e.g. `"openai/gpt-4o-mini"`), used
+              to construct a `LanguageModel(model=identifier)`.
             - Dictionary: configuration dictionary.
-            - Synalinks LanguageModel instance (it will be returned unchanged).
+            - Synalinks LanguageModel instance (returned unchanged).
+            - ``None``: resolved against
+              ``synalinks.set_default_language_model(...)``.
 
     Returns:
-        A Synalinks LanguageModel instance.
+        (LanguageModel): A concrete Synalinks LanguageModel instance.
     """
     if identifier is None:
-        return None
-    elif isinstance(identifier, dict):
+        # Lazy import to avoid a backend → modules cycle. ``None`` falls
+        # back to the configured default (which itself may be ``None`` when
+        # no default has been registered, in which case ``None`` is what
+        # we return — callers that *require* a concrete instance see the
+        # error from the actual call site, not from this resolver).
+        from synalinks.src.backend.config import default_language_model
+
+        identifier = default_language_model()
+        if identifier is None:
+            return None
+
+    if isinstance(identifier, dict):
         obj = deserialize(identifier)
     elif isinstance(identifier, str):
         obj = LanguageModel(model=identifier)

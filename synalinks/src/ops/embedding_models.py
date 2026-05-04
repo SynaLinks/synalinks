@@ -6,6 +6,7 @@ from synalinks.src.backend import Embeddings
 from synalinks.src.backend import JsonDataModel
 from synalinks.src.backend import SymbolicDataModel
 from synalinks.src.backend import any_symbolic_data_models
+from synalinks.src.modules.embedding_models import get as _get_em
 from synalinks.src.ops.operation import Operation
 from synalinks.src.saving import serialization_lib
 
@@ -32,7 +33,7 @@ class Embedding(Operation):
             name=name,
             description=description,
         )
-        self.embedding_model = embedding_model
+        self.embedding_model = _get_em(embedding_model)
         self.em_kwargs = kwargs
 
     async def call(self, x):
@@ -83,15 +84,6 @@ async def embedding(x, embedding_model=None, name=None, description=None, **kwar
     Returns:
         (JsonDataModel | SymbolicDataModel): The resulting data_model
     """
-    if embedding_model is None:
-        from synalinks.src.backend.config import default_embedding_model
-
-        embedding_model = default_embedding_model()
-    if embedding_model is None:
-        raise ValueError(
-            "You should provide the `embedding_model` argument or set a "
-            "default via `synalinks.set_default_embedding_model(...)`."
-        )
     if any_symbolic_data_models(x):
         return await Embedding(
             embedding_model=embedding_model,

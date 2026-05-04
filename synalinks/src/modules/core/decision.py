@@ -7,6 +7,7 @@ from synalinks.src.backend import DataModel
 from synalinks.src.backend import Field
 from synalinks.src.backend import dynamic_enum
 from synalinks.src.modules.core.generator import Generator
+from synalinks.src.modules.language_models import get as _get_lm
 from synalinks.src.modules.module import Module
 from synalinks.src.saving import serialization_lib
 
@@ -128,7 +129,7 @@ class Decision(Module):
         self.schema = schema
         self.question = question
         self.labels = labels
-        self.language_model = language_model
+        self.language_model = _get_lm(language_model)
         self.prompt_template = prompt_template
         self.examples = examples
         if not instructions:

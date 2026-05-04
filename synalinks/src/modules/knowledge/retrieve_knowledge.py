@@ -12,6 +12,7 @@ from synalinks.src.backend import JsonDataModel
 from synalinks.src.backend import SymbolicDataModel
 from synalinks.src.backend import is_symbolic_data_model
 from synalinks.src.modules.core.generator import Generator
+from synalinks.src.modules.language_models import get as _get_lm
 from synalinks.src.modules.module import Module
 from synalinks.src.saving import serialization_lib
 
@@ -117,7 +118,7 @@ class RetrieveKnowledge(Module):
             trainable=trainable,
         )
         self.knowledge_base = knowledge_base
-        self.language_model = language_model
+        self.language_model = _get_lm(language_model)
 
         if search_type not in SEARCH_TYPES:
             raise ValueError(

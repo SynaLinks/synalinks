@@ -7,6 +7,7 @@ from synalinks.src.backend import GenericIO
 from synalinks.src.backend import JsonDataModel
 from synalinks.src.backend import SymbolicDataModel
 from synalinks.src.modules.core.generator import Generator
+from synalinks.src.modules.language_models import get as _get_lm
 from synalinks.src.modules.module import Module
 from synalinks.src.saving import serialization_lib
 
@@ -139,7 +140,7 @@ class Action(Module):
         )
         self.tool = tool
         schema = self.tool.get_input_schema()
-        self.language_model = language_model
+        self.language_model = _get_lm(language_model)
         self.prompt_template = prompt_template
         self.examples = examples
         self.instructions = instructions

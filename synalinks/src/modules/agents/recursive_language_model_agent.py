@@ -19,6 +19,7 @@ from synalinks.src.backend import SymbolicDataModel
 from synalinks.src.backend import is_chat_messages
 from synalinks.src.modules.core.generator import Generator
 from synalinks.src.modules.core.tool import Tool
+from synalinks.src.modules.language_models import get as _get_lm
 from synalinks.src.modules.module import Module
 from synalinks.src.modules.ttc.chain_of_thought import ChainOfThought
 from synalinks.src.sandboxes.monty_sandbox import MontySandbox
@@ -711,8 +712,14 @@ class RecursiveLanguageModelAgent(Module):
         # a final assistant message appended) instead of a typed answer.
         self.schema = schema
 
-        self.language_model = language_model
-        self.sub_language_model = sub_language_model or language_model
+        self.language_model = _get_lm(language_model)
+        # `sub_language_model` defaults to the primary LM when omitted.
+        # ``get(None)`` would raise, so resolve only when a value is given.
+        self.sub_language_model = (
+            _get_lm(sub_language_model)
+            if sub_language_model is not None
+            else self.language_model
+        )
         self.recursive = recursive
         self.prompt_template = prompt_template
         self.examples = examples

@@ -112,15 +112,6 @@ async def predict(
     Returns:
         (JsonDataModel | SymbolicDataModel): The resulting data model.
     """
-    if language_model is None:
-        from synalinks.src.backend.config import default_language_model
-
-        language_model = default_language_model()
-    if language_model is None:
-        raise ValueError(
-            "You should provide the `language_model` argument or set a "
-            "default via `synalinks.set_default_language_model(...)`."
-        )
     if any_symbolic_data_models(x):
         return await Predict(
             schema=schema,

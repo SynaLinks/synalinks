@@ -19,6 +19,7 @@ from synalinks.src.backend import Trainable
 from synalinks.src.backend import out_mask_json
 from synalinks.src.backend.common import numpy as np
 from synalinks.src.modules.core.input_module import Input
+from synalinks.src.modules.embedding_models import get as _get_em
 from synalinks.src.modules.ttc.chain_of_thought import ChainOfThought
 from synalinks.src.optimizers.evolutionary_optimizer import EvolutionaryOptimizer
 from synalinks.src.rewards.reward import squeeze_or_expand_to_same_rank
@@ -331,7 +332,7 @@ class OMEGA(EvolutionaryOptimizer):
         self.reasoning_effort = reasoning_effort
 
         # DNS-specific parameters
-        self.embedding_model = embedding_model
+        self.embedding_model = _get_em(embedding_model)
         self.k_nearest_fitter = k_nearest_fitter
         self.distance_function = distance_function
 

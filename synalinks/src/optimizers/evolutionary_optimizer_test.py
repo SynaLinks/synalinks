@@ -1,9 +1,8 @@
 # License Apache 2.0: (c) 2025-2026 Yoan Sallami (Synalinks Team)
 
-from unittest.mock import MagicMock
-
 from synalinks.src import testing
 from synalinks.src.backend import JsonDataModel
+from synalinks.src.modules.language_models import LanguageModel
 from synalinks.src.optimizers.evolutionary_optimizer import EvolutionaryOptimizer
 from synalinks.src.optimizers.omega import OMEGA
 from synalinks.src.optimizers.optimizer import Optimizer
@@ -29,10 +28,10 @@ class EvolutionaryOptimizerTest(testing.TestCase):
 
     def test_init_custom_parameters(self):
         """Test initialization with custom parameters."""
-        mock_lm = MagicMock()
+        lm = LanguageModel(model="ollama/mistral")
 
         optimizer = EvolutionaryOptimizer(
-            language_model=mock_lm,
+            language_model=lm,
             mutation_temperature=0.5,
             crossover_temperature=0.7,
             selection="best",
@@ -43,7 +42,7 @@ class EvolutionaryOptimizerTest(testing.TestCase):
             description="Test evolutionary optimizer",
         )
 
-        self.assertEqual(optimizer.language_model, mock_lm)
+        self.assertIs(optimizer.language_model, lm)
         self.assertEqual(optimizer.mutation_temperature, 0.5)
         self.assertEqual(optimizer.crossover_temperature, 0.7)
         self.assertEqual(optimizer.selection, "best")

@@ -7,6 +7,7 @@ from synalinks.src import tree
 from synalinks.src.api_export import synalinks_export
 from synalinks.src.backend import Embedding as EmbeddingVector
 from synalinks.src.backend import JsonDataModel
+from synalinks.src.modules.embedding_models import get as _get_em
 from synalinks.src.modules.module import Module
 from synalinks.src.saving import serialization_lib
 from synalinks.src.utils.async_utils import run_maybe_nested
@@ -135,7 +136,7 @@ class EmbedKnowledge(Module):
             description=description,
             trainable=trainable,
         )
-        self.embedding_model = embedding_model
+        self.embedding_model = _get_em(embedding_model)
         self.in_mask = in_mask
         self.out_mask = out_mask
 

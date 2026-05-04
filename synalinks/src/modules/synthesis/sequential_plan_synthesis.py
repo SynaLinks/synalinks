@@ -6,6 +6,7 @@ from synalinks.src import ops
 from synalinks.src.backend import DataModel
 from synalinks.src.backend import Field
 from synalinks.src.backend import Trainable
+from synalinks.src.modules.language_models import get as _get_lm
 from synalinks.src.modules.module import Module
 from synalinks.src.modules.ttc.chain_of_thought import ChainOfThought
 from synalinks.src.saving import serialization_lib
@@ -156,7 +157,7 @@ class SequentialPlanSynthesis(Module):
         if not isinstance(runner, Module):
             raise ValueError("The `runner` parameter should be a `Module` or `Program`.")
 
-        self.language_model = language_model
+        self.language_model = _get_lm(language_model)
         self.runner = runner
         self.return_inputs = return_inputs
         self.reasoning_effort = reasoning_effort

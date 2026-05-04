@@ -12,6 +12,7 @@ from synalinks.src.backend import ChatRole
 from synalinks.src.backend import Instructions
 from synalinks.src.backend import Prediction
 from synalinks.src.backend import SymbolicDataModel
+from synalinks.src.modules.language_models import get as _get_lm
 from synalinks.src.modules.module import Module
 from synalinks.src.saving import serialization_lib
 
@@ -167,7 +168,7 @@ class Generator(Module):
         self.schema = schema
         # `language_model` may be None; `ops.predict` resolves the default
         # at call time (or raises if none is set).
-        self.language_model = language_model
+        self.language_model = _get_lm(language_model)
         if not prompt_template:
             prompt_template = default_prompt_template()
         self.prompt_template = prompt_template
