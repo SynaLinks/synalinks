@@ -1,3 +1,3 @@
 # Embedding Models API
 
-::: synalinks.src.embedding_models.embedding_model
+::: synalinks.src.modules.embedding_models.embedding_model

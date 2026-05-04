@@ -283,7 +283,7 @@ class LanguageModel(Module):
         name=None,
         description=None,
         hooks=None,
-        **default_kwargs,
+        **default_kwargs: object,
     ):
         super().__init__(
             trainable=False,

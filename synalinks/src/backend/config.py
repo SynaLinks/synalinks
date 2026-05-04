@@ -495,13 +495,14 @@ def default_language_model():
         "synalinks.set_default_language_model",
     ]
 )
-def set_default_language_model(identifier):
+def set_default_language_model(identifier: "str | dict | object | None"):
     """Set the default `LanguageModel`.
 
     Args:
-        identifier: A model string (e.g. `"openai/gpt-4o-mini"`), a config
-            dict, an existing `LanguageModel` instance, or `None` to clear.
-            Strings persist into the on-disk config; instances do not.
+        identifier (str | dict | LanguageModel | None): A model string
+            (e.g. `"openai/gpt-4o-mini"`), a config dict, an existing
+            `LanguageModel` instance, or `None` to clear. Strings persist
+            into the on-disk config; instances do not.
     """
     global _DEFAULT_LANGUAGE_MODEL, _DEFAULT_LANGUAGE_MODEL_IDENTIFIER
     if identifier is None:
@@ -543,14 +544,14 @@ def default_embedding_model():
         "synalinks.set_default_embedding_model",
     ]
 )
-def set_default_embedding_model(identifier):
+def set_default_embedding_model(identifier: "str | dict | object | None"):
     """Set the default `EmbeddingModel`.
 
     Args:
-        identifier: A model string (e.g. `"openai/text-embedding-3-small"`),
-            a config dict, an existing `EmbeddingModel` instance, or `None`
-            to clear. Strings persist into the on-disk config; instances do
-            not.
+        identifier (str | dict | EmbeddingModel | None): A model string
+            (e.g. `"openai/text-embedding-3-small"`), a config dict, an
+            existing `EmbeddingModel` instance, or `None` to clear.
+            Strings persist into the on-disk config; instances do not.
     """
     global _DEFAULT_EMBEDDING_MODEL, _DEFAULT_EMBEDDING_MODEL_IDENTIFIER
     if identifier is None:
