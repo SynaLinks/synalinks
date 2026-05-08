@@ -53,7 +53,7 @@ class BackupAndRestore(Callback):
 
     try:
         program.fit(..., callbacks=[callback, InterruptingCallback()], verbose=0)
-    except:
+    except Exception:
         pass
 
     history = program.fit(

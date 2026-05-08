@@ -492,7 +492,7 @@ class Program(Trainer, Module):
                 try:
                     await self.build(config["input_schema"])
                     status = True
-                except:
+                except Exception:
                     pass
             self._build_schemas_dict = config
 
@@ -504,7 +504,7 @@ class Program(Trainer, Module):
                 try:
                     await self.build(**config["schemas_dict"])
                     status = True
-                except:
+                except Exception:
                     pass
             self._build_schemas_dict = config["schemas_dict"]
 

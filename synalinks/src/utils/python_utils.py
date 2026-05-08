@@ -175,7 +175,7 @@ def pythonify_logs(logs):
         else:
             try:
                 value = float(value)
-            except:
+            except Exception:
                 pass
             result[key] = value
     return result
