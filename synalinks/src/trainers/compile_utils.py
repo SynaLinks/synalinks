@@ -540,7 +540,7 @@ class CompileReward(rewards_module.Reward):
 
         try:
             output_names = tree.pack_sequence_as(y_pred, flat_output_names)
-        except:
+        except Exception:
             inferred_flat_output_names = self._get_y_pred_output_names(y_pred)
             output_names = tree.pack_sequence_as(y_pred, inferred_flat_output_names)
 
@@ -662,14 +662,14 @@ class CompileReward(rewards_module.Reward):
 
             try:
                 y_true = tree.pack_sequence_as(y_pred, y_true)
-            except:
+            except Exception:
                 # Check case where y_true has the same structure but uses
                 # different (but reconcilable) container types,
                 # e.g `list` vs `tuple`.
                 try:
                     tree.assert_same_paths(y_true, y_pred)
                     y_true = tree.pack_sequence_as(y_pred, tree.flatten(y_true))
-                except:
+                except Exception:
                     try:
                         # Check case where reward is partially defined over y_pred
                         flat_y_true = tree.flatten(y_true)
@@ -684,7 +684,7 @@ class CompileReward(rewards_module.Reward):
                         for y_t, (i, reward) in zip(flat_y_true, flat_reward_non_nones):
                             y_true[i] = y_t
                         y_true = tree.pack_sequence_as(self._user_reward, y_true)
-                    except:
+                    except Exception:
                         y_true_struct = tree.map_structure(lambda _: "*", y_true)
                         y_pred_struct = tree.map_structure(lambda _: "*", y_pred)
                         raise ValueError(
