@@ -22,6 +22,7 @@ from synalinks.src.modules.core.generator import Generator as Generator
 from synalinks.src.modules.core.identity import Identity as Identity
 from synalinks.src.modules.core.input_module import Input as Input
 from synalinks.src.modules.core.input_module import InputModule as InputModule
+from synalinks.src.modules.core.multi_decision import MultiDecision as MultiDecision
 from synalinks.src.modules.core.not_module import Not as Not
 from synalinks.src.modules.core.tool import Tool as Tool
 from synalinks.src.modules.knowledge.embed_knowledge import (
