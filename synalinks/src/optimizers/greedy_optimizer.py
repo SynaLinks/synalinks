@@ -3,6 +3,7 @@
 import numpy as np
 
 from synalinks.src.api_export import synalinks_export
+from synalinks.src.backend.common import numpy as np_backend
 from synalinks.src.optimizers.optimizer import Optimizer
 
 
@@ -98,10 +99,14 @@ class GreedyOptimizer(Optimizer):
                     )
                     selected_predictions = sorted_predictions[:nb_examples]
                 elif self.sampling == "softmax":
-                    rewards = np.array([pred.get("reward", 0) for pred in predictions])
+                    rewards = np_backend.convert_to_tensor(
+                        [pred.get("reward", 0) for pred in predictions]
+                    )
                     scaled_rewards = rewards / self.sampling_temperature
-                    exp_rewards = np.exp(scaled_rewards - np.max(scaled_rewards))
-                    probabilities = exp_rewards / np.sum(exp_rewards)
+                    exp_rewards = np_backend.exp(
+                        scaled_rewards - np_backend.max(scaled_rewards)
+                    )
+                    probabilities = exp_rewards / np_backend.sum(exp_rewards)
                     selected_predictions = np.random.choice(
                         predictions,
                         size=nb_examples,

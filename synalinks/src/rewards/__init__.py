@@ -1,11 +1,14 @@
 import inspect
 
 from synalinks.src.api_export import synalinks_export
+from synalinks.src.rewards.batch_reward import BatchReward
+from synalinks.src.rewards.batch_reward import BatchRewardFunctionWrapper
 from synalinks.src.rewards.cosine_similarity import CosineSimilarity
 from synalinks.src.rewards.cosine_similarity import cosine_similarity
 from synalinks.src.rewards.exact_match import ExactMatch
 from synalinks.src.rewards.exact_match import exact_match
 from synalinks.src.rewards.reward import Reward
+from synalinks.src.rewards.reward import reduce_rewards
 from synalinks.src.rewards.reward_wrappers import ProgramAsJudge
 from synalinks.src.rewards.reward_wrappers import RewardFunctionWrapper
 from synalinks.src.saving import serialization_lib
@@ -17,6 +20,8 @@ ALL_OBJECTS = {
     # Base
     Reward,
     RewardFunctionWrapper,
+    BatchReward,
+    BatchRewardFunctionWrapper,
     # Concrete
     ExactMatch,
     CosineSimilarity,

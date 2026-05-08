@@ -127,4 +127,6 @@ omit = [
   "*/__init__.py",
   "*/cli/*",
   "*/async_utils.py",
+  "*_test.py",
+  "*/testing/*",
 ]

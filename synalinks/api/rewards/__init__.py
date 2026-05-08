@@ -7,6 +7,10 @@ since your modifications would be overwritten.
 from synalinks.src.rewards import deserialize as deserialize
 from synalinks.src.rewards import get as get
 from synalinks.src.rewards import serialize as serialize
+from synalinks.src.rewards.batch_reward import BatchReward as BatchReward
+from synalinks.src.rewards.batch_reward import (
+    BatchRewardFunctionWrapper as BatchRewardFunctionWrapper,
+)
 from synalinks.src.rewards.cosine_similarity import CosineSimilarity as CosineSimilarity
 from synalinks.src.rewards.cosine_similarity import cosine_similarity as cosine_similarity
 from synalinks.src.rewards.exact_match import ExactMatch as ExactMatch

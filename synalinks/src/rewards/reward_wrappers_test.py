@@ -64,6 +64,22 @@ class RewardFunctionWrapperTest(testing.TestCase):
         repr_str = repr(wrapper)
         self.assertIn("RewardFunctionWrapper", repr_str)
 
+    def test_get_config_kwargs_namespaced(self):
+        # Regression: previously _fn_kwargs was merged into the top-level
+        # config dict and could overwrite base-class fields like `name` or
+        # `reduction`. Kwargs must be stored under their own key.
+        wrapper = RewardFunctionWrapper(
+            fn=custom_reward_fn,
+            name="my_wrapper",
+            reduction="sum",
+            weight=2.0,
+        )
+        config = wrapper.get_config()
+        self.assertEqual(config["name"], "my_wrapper")
+        self.assertEqual(config["reduction"], "sum")
+        self.assertIn("fn", config)
+        self.assertIn("fn_kwargs", config)
+
 
 class ProgramAsJudgeTest(testing.TestCase):
     async def test_call(self):
@@ -118,6 +134,7 @@ class ProgramAsJudgeTest(testing.TestCase):
 
     def test_get_config(self):
         mock_program = MagicMock()
+        mock_program.get_config.return_value = {}
         judge = ProgramAsJudge(program=mock_program)
         config = judge.get_config()
         self.assertIn("program", config)
@@ -127,3 +144,27 @@ class ProgramAsJudgeTest(testing.TestCase):
         judge = ProgramAsJudge(program=mock_program)
         repr_str = repr(judge)
         self.assertIn("ProgramAsJudge", repr_str)
+
+    async def test_get_config_serializes_program(self):
+        # Regression: previously stored the raw Program object in the config
+        # dict, which doesn't survive JSON round-trips. Should serialize
+        # like RewardFunctionWrapper does for `fn`.
+        from synalinks.src import modules
+        from synalinks.src import programs
+        from synalinks.src.modules.language_models import LanguageModel
+        from synalinks.src.testing.test_utils import AnswerWithRationale
+        from synalinks.src.testing.test_utils import Query
+
+        x0 = modules.Input(data_model=Query)
+        x1 = await modules.Generator(
+            data_model=AnswerWithRationale,
+            language_model=LanguageModel(model="ollama/mistral"),
+        )(x0)
+        program = programs.Program(inputs=x0, outputs=x1, name="judge")
+
+        judge = ProgramAsJudge(program=program)
+        config = judge.get_config()
+        self.assertIn("program", config)
+        # A serialized synalinks object is a dict, not a Program.
+        self.assertIsInstance(config["program"], dict)
+        self.assertIn("class_name", config["program"])

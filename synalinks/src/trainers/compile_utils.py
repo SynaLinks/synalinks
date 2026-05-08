@@ -2,6 +2,7 @@
 # Original authors: François Chollet et al. (Keras Team)
 # License Apache 2.0: (c) 2025-2026 Yoan Sallami (Synalinks Team)
 
+import asyncio
 from collections import namedtuple
 
 from synalinks.src import metrics as metrics_module
@@ -10,6 +11,7 @@ from synalinks.src import rewards as rewards_module
 from synalinks.src import tree
 from synalinks.src.backend.common import numpy
 from synalinks.src.backend.common.symbolic_data_model import SymbolicDataModel
+from synalinks.src.rewards.batch_reward import BatchReward
 from synalinks.src.utils.naming import get_object_name
 from synalinks.src.utils.tracking import Tracker
 
@@ -74,6 +76,10 @@ def get_reward(identifier, y_true, y_pred):
     reward_obj = rewards_module.get(identifier)
 
     if not isinstance(reward_obj, rewards_module.Reward):
+        # A bare callable is auto-wrapped as a per-sample reward. Batched
+        # callables must be passed already wrapped in
+        # `BatchRewardFunctionWrapper` since their signature
+        # (batch -> list[float]) is not distinguishable at this point.
         if isinstance(identifier, str):
             reward_name = identifier
         else:
@@ -566,6 +572,63 @@ class CompileReward(rewards_module.Reward):
             output_names = [None] * len(flat_y_pred)
         return output_names
 
+    @property
+    def has_batch_rewards(self):
+        """True if any flat reward is a ``BatchReward`` instance."""
+        if not self.built or not self._flat_rewards:
+            return False
+        return any(
+            isinstance(_reward.reward, BatchReward) for _reward in self._flat_rewards
+        )
+
+    async def compute_batch(self, y_true_batch, y_pred_batch):
+        """Run flat rewards over a whole batch, returning per-sample totals.
+
+        Each ``BatchReward`` is invoked once with the full per-sample list;
+        per-sample rewards are invoked sample-by-sample via
+        ``asyncio.gather``. Their per-sample outputs are summed
+        element-wise across flat rewards. Returns a ``list[float]`` of
+        length ``len(y_pred_batch)``.
+        """
+        if not self.built:
+            sample_y_true = (
+                y_true_batch[0] if hasattr(y_true_batch, "__len__") else y_true_batch
+            )
+            sample_y_pred = (
+                y_pred_batch[0] if hasattr(y_pred_batch, "__len__") else y_pred_batch
+            )
+            self.build(sample_y_true, sample_y_pred)
+
+        n = len(y_pred_batch)
+        metrics = [None] if len(self.metrics) == 0 else self.metrics
+        totals = [0.0] * n
+
+        def resolve_path(path, obj):
+            for _path in path:
+                obj = obj[_path]
+            return obj
+
+        for (path, reward_fn, _reward_weight, _name), metric in zip(
+            self._flat_rewards, metrics
+        ):
+            y_t_batch = [resolve_path(path, y_t) for y_t in y_true_batch]
+            y_p_batch = [resolve_path(path, y_p) for y_p in y_pred_batch]
+
+            if isinstance(reward_fn, BatchReward):
+                per_sample = await reward_fn.compute_batch(y_t_batch, y_p_batch)
+            else:
+                results = await asyncio.gather(
+                    *[reward_fn(y_t, y_p) for y_t, y_p in zip(y_t_batch, y_p_batch)]
+                )
+                per_sample = [float(v) if v is not None else 0.0 for v in results]
+
+            if metric is not None:
+                metric.update_state(numpy.convert_to_tensor(per_sample))
+            for i, v in enumerate(per_sample):
+                totals[i] += float(v)
+
+        return totals
+
     async def __call__(self, y_true, y_pred):
         with ops.name_scope(self.name):
             return await self.call(y_true, y_pred)
@@ -660,7 +723,7 @@ class CompileReward(rewards_module.Reward):
         ):
             y_t, y_p = resolve_path(path, y_true), resolve_path(path, y_pred)
 
-            value = numpy.convert_to_tensor(reward_fn(y_t, y_p))
+            value = numpy.convert_to_tensor(await reward_fn(y_t, y_p))
             # Record *unweighted* individual rewards.
             if metric:
                 metric.update_state(value)

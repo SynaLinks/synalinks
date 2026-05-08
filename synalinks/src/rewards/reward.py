@@ -18,7 +18,17 @@ class Reward(SynalinksSaveable):
 
     Args:
         name (str): Optional name for the reward instance.
-        reduction (str): Optional. Reduction to apply to the per-sample rewards.
+        reduction (str): Optional. One of ``"mean"``, ``"sum"``, ``"min"``,
+            ``"max"``, ``"none"`` or ``None``. Applied by ``__call__`` when
+            invoked on a batch directly (standalone evaluation) and
+            propagated through ``compile`` to control how the
+            trainer/optimizer reduce per-sample rewards into the scalar
+            shown in progress logs and used for candidate scoring. Use
+            ``"min"`` to score by the worst sample (robust/pessimistic) or
+            ``"max"`` for the best (optimistic / best-of-N). ``"none"``/
+            ``None`` falls back to ``"mean"`` for those scalar consumers
+            (per-sample values are always preserved for the optimizer's RL
+            bookkeeping).
         in_mask (list): Optional. List of exact field names to keep before
             computing the reward.
         out_mask (list): Optional. List of exact field names to drop before
@@ -52,38 +62,14 @@ class Reward(SynalinksSaveable):
 
     async def __call__(self, y_true, y_pred):
         with ops.name_scope(self.name):
-            y_pred = tree.map_structure(
-                lambda x: ops.convert_to_json_data_model(x), y_pred
+            y_true, y_pred = apply_masks(
+                y_true,
+                y_pred,
+                in_mask=self.in_mask,
+                in_mask_pattern=self.in_mask_pattern,
+                out_mask=self.out_mask,
+                out_mask_pattern=self.out_mask_pattern,
             )
-            y_true = tree.map_structure(
-                lambda x: ops.convert_to_json_data_model(x), y_true
-            )
-
-            if (self.in_mask or self.in_mask_pattern) and y_pred:
-                y_pred = tree.map_structure(
-                    lambda x: x.in_mask(mask=self.in_mask, pattern=self.in_mask_pattern),
-                    y_pred,
-                )
-            if (self.in_mask or self.in_mask_pattern) and y_true:
-                y_true = tree.map_structure(
-                    lambda x: x.in_mask(mask=self.in_mask, pattern=self.in_mask_pattern),
-                    y_true,
-                )
-            if (self.out_mask or self.out_mask_pattern) and y_pred:
-                y_pred = tree.map_structure(
-                    lambda x: x.out_mask(
-                        mask=self.out_mask, pattern=self.out_mask_pattern
-                    ),
-                    y_pred,
-                )
-            if (self.out_mask or self.out_mask_pattern) and y_true:
-                y_true = tree.map_structure(
-                    lambda x: x.out_mask(
-                        mask=self.out_mask, pattern=self.out_mask_pattern
-                    ),
-                    y_true,
-                )
-
             rewards = await self.call(y_true, y_pred)
             return reduce_values(
                 rewards,
@@ -111,12 +97,53 @@ class Reward(SynalinksSaveable):
         return "Reward"
 
 
+def apply_masks(
+    y_true,
+    y_pred,
+    in_mask=None,
+    in_mask_pattern=None,
+    out_mask=None,
+    out_mask_pattern=None,
+):
+    """Convert ``y_true``/``y_pred`` to ``JsonDataModel`` and apply field masks.
+
+    Works on both a single sample (a leaf ``JsonDataModel``) and a list/tree
+    of samples — ``tree.map_structure`` handles either uniformly.
+    """
+    y_pred = tree.map_structure(lambda x: ops.convert_to_json_data_model(x), y_pred)
+    y_true = tree.map_structure(lambda x: ops.convert_to_json_data_model(x), y_true)
+
+    if (in_mask or in_mask_pattern) and y_pred:
+        y_pred = tree.map_structure(
+            lambda x: x.in_mask(mask=in_mask, pattern=in_mask_pattern),
+            y_pred,
+        )
+    if (in_mask or in_mask_pattern) and y_true:
+        y_true = tree.map_structure(
+            lambda x: x.in_mask(mask=in_mask, pattern=in_mask_pattern),
+            y_true,
+        )
+    if (out_mask or out_mask_pattern) and y_pred:
+        y_pred = tree.map_structure(
+            lambda x: x.out_mask(mask=out_mask, pattern=out_mask_pattern),
+            y_pred,
+        )
+    if (out_mask or out_mask_pattern) and y_true:
+        y_true = tree.map_structure(
+            lambda x: x.out_mask(mask=out_mask, pattern=out_mask_pattern),
+            y_true,
+        )
+    return y_true, y_pred
+
+
 def standardize_reduction(reduction):
     allowed = {
         "sum",
         None,
         "none",
         "mean",
+        "min",
+        "max",
     }
     if reduction not in allowed:
         raise ValueError(
@@ -149,10 +176,37 @@ def squeeze_or_expand_to_same_rank(x1, x2, expand_rank_1=True):
 
 
 def reduce_values(values, reduction="mean"):
-    if reduction is None or reduction == "none" or not hasattr(values, "__len__"):
+    if reduction is None or reduction == "none":
+        # Preserve the per-sample structure: scalars stay scalars, lists/
+        # arrays are returned unreduced.
+        return values if hasattr(values, "__len__") else float(values)
+    if not hasattr(values, "__len__"):
         return float(values)
+    values = np.convert_to_tensor(values)
+    if reduction == "min":
+        return float(np.min(values))
+    if reduction == "max":
+        return float(np.max(values))
     reward = np.sum(values)
     if reduction == "mean":
         divisor = np.prod(np.convert_to_tensor(np.shape(values)))
         reward = np.divide_no_nan(reward, divisor)
     return float(reward)
+
+
+def reduce_rewards(rewards, reduction="mean"):
+    """Reduce a per-sample reward list to a scalar for trackers/scoring.
+
+    ``reduction="none"`` / ``None`` falls back to ``"mean"`` since callers
+    here always need a scalar (progress logs, candidate scoring).
+    """
+    if not rewards:
+        return 0.0
+    rewards = np.convert_to_tensor(rewards)
+    if reduction == "sum":
+        return float(np.sum(rewards))
+    if reduction == "min":
+        return float(np.min(rewards))
+    if reduction == "max":
+        return float(np.max(rewards))
+    return float(np.mean(rewards))

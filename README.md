@@ -118,7 +118,7 @@ Beyond the Keras programming style, Synalinks:
 - Implement logic-based python operators to easily manipulate data models and the app control flow
 - Use *constrained* JSON decoding to be robust in production
 - Is fully compatible with Pydantic BaseModel (via `schema=` in every module) to ease integration with FastAPI/FastMCP etc.
-- Have instrospection tools like `summarize()` and `plot_program()` to write better documentation
+- Have instrospection tools like `summary()` and `plot_program()` to write better documentation
 
 ## Installation
 

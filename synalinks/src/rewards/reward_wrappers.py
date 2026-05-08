@@ -19,20 +19,19 @@ class RewardFunctionWrapper(Reward):
     Example:
 
     ```python
-
-    def my_reward(y_true, y_pred):
+    async def my_reward(y_true, y_pred):
         # ...
         return reward
 
     program.compile(
-        reward=synalinks.rewards.RewardFunctionWrapper,
-        optimizer=synalinks.optimizers.RandomFewShot()
+        reward=synalinks.rewards.RewardFunctionWrapper(fn=my_reward),
+        optimizer=synalinks.optimizers.RandomFewShot(),
     )
     ```
 
     Args:
-        fn (callable): The reward function to wrap, with signature
-            `fn(y_true, y_pred, **kwargs)`.
+        fn (callable): Async reward function to wrap, with signature
+            ``fn(y_true, y_pred, **kwargs)``.
         name (str): Optional. string name of the reward instance.
         in_mask (list): Optional. list of keys to keep to compute the reward.
         out_mask (list): Optional. list of keys to remove to compute the reward.
@@ -70,15 +69,20 @@ class RewardFunctionWrapper(Reward):
 
     def get_config(self):
         config = super().get_config()
-        config.update({"fn": serialization_lib.serialize_synalinks_object(self.fn)})
-        config.update(serialization_lib.serialize_synalinks_object(self._fn_kwargs))
+        config["fn"] = serialization_lib.serialize_synalinks_object(self.fn)
+        # Keep fn kwargs under their own key so they cannot collide with
+        # base-class fields like ``name`` or ``reduction``.
+        config["fn_kwargs"] = serialization_lib.serialize_synalinks_object(
+            self._fn_kwargs
+        )
         return config
 
     @classmethod
     def from_config(cls, config):
         if "fn" in config:
             config = serialization_lib.deserialize_synalinks_object(config)
-        return cls(**config)
+        fn_kwargs = config.pop("fn_kwargs", None) or {}
+        return cls(**config, **fn_kwargs)
 
     def __repr__(self):
         return f"<RewardFunctionWrapper({self.fn}, kwargs={self._fn_kwargs})>"
@@ -161,8 +165,14 @@ class ProgramAsJudge(Reward):
 
     def get_config(self):
         config = super().get_config()
-        config.update({"program": self.program})
+        config["program"] = serialization_lib.serialize_synalinks_object(self.program)
         return config
+
+    @classmethod
+    def from_config(cls, config):
+        if "program" in config:
+            config = serialization_lib.deserialize_synalinks_object(config)
+        return cls(**config)
 
     def __repr__(self):
         return f"<ProgramAsJudge({self.program})>"

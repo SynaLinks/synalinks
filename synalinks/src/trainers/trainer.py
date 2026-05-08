@@ -117,8 +117,12 @@ class Trainer:
             output_names = None
         if reward is not None:
             reward = rewards_module.get(reward)
+            reduction = getattr(reward, "reduction", "mean")
             self._compile_reward = CompileReward(
-                reward, reward_weights, output_names=output_names
+                reward,
+                reward_weights,
+                reduction=reduction,
+                output_names=output_names,
             )
             self.reward = reward
         if metrics is not None:
@@ -234,9 +238,14 @@ class Trainer:
         del training
         rewards = []
         if self._compile_reward is not None:
-            results = await asyncio.gather(
-                *[self._compile_reward(y_t, y_p) for y_t, y_p in zip(y, y_pred)]
-            )
+            if not self._compile_reward.built:
+                self._compile_reward.build(y[0], y_pred[0])
+            if self._compile_reward.has_batch_rewards:
+                results = await self._compile_reward.compute_batch(y, y_pred)
+            else:
+                results = await asyncio.gather(
+                    *[self._compile_reward(y_t, y_p) for y_t, y_p in zip(y, y_pred)]
+                )
             for reward in results:
                 if reward is not None:
                     rewards.append(float(reward))
@@ -895,8 +904,13 @@ class Trainer:
                 y=val_y,
                 y_pred=y_pred,
             )
-            mean_reward = float(numpy.mean(rewards))
-            await self._reward_tracker.update_state(mean_reward)
+            reduction = (
+                self._compile_reward.reduction
+                if self._compile_reward is not None
+                else "mean"
+            )
+            scalar_reward = rewards_module.reduce_rewards(rewards, reduction)
+            await self._reward_tracker.update_state(scalar_reward)
             metrics = await self.compute_metrics(val_x, val_y, y_pred)
 
         if return_dict:
@@ -932,8 +946,11 @@ class Trainer:
             y_pred=y_pred,
             training=False,
         )
-        mean_reward = float(numpy.mean(rewards))
-        await self._reward_tracker.update_state(mean_reward)
+        reduction = (
+            self._compile_reward.reduction if self._compile_reward is not None else "mean"
+        )
+        scalar_reward = rewards_module.reduce_rewards(rewards, reduction)
+        await self._reward_tracker.update_state(scalar_reward)
 
         metrics = await self.compute_metrics(x, y, y_pred)
 

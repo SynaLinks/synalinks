@@ -2,10 +2,11 @@
 
 import random
 
-import numpy
+import numpy as np
 
 from synalinks.src.api_export import synalinks_export
 from synalinks.src.backend import out_mask_json
+from synalinks.src.backend.common import numpy as np_backend
 from synalinks.src.optimizers.optimizer import Optimizer
 from synalinks.src.saving import serialization_lib
 
@@ -99,13 +100,13 @@ class EvolutionaryOptimizer(Optimizer):
                 reverse=True,
             )[0]
         elif self.selection == "softmax":
-            rewards = numpy.array(
+            rewards = np_backend.convert_to_tensor(
                 [candidate.get("reward", 0) for candidate in candidates]
             )
             scaled_rewards = rewards / self.selection_temperature
-            exp_rewards = numpy.exp(scaled_rewards - numpy.max(scaled_rewards))
-            probabilities = exp_rewards / numpy.sum(exp_rewards)
-            return numpy.random.choice(
+            exp_rewards = np_backend.exp(scaled_rewards - np_backend.max(scaled_rewards))
+            probabilities = exp_rewards / np_backend.sum(exp_rewards)
+            return np.random.choice(
                 candidates,
                 size=1,
                 replace=False,

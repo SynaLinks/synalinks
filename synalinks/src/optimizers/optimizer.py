@@ -11,10 +11,12 @@ import numpy as np
 from synalinks.src import backend
 from synalinks.src.backend import DataModel
 from synalinks.src.backend import Trainable
+from synalinks.src.backend.common import numpy as np_backend
 from synalinks.src.backend.common.json_utils import out_mask_json
 from synalinks.src.initializers import Empty
 from synalinks.src.metrics import Metric
 from synalinks.src.modules import Module
+from synalinks.src.rewards.reward import reduce_rewards
 from synalinks.src.saving.synalinks_saveable import SynalinksSaveable
 from synalinks.src.utils import tracking
 from synalinks.src.utils.naming import auto_name
@@ -265,11 +267,11 @@ class Optimizer(SynalinksSaveable):
             else:
                 variable_reward = cumulative_reward / nb_visit
             rewards.append(variable_reward)
-        rewards = np.array(rewards)
+        rewards = np_backend.convert_to_tensor(rewards)
         inverted_rewards = -rewards
         scaled_rewards = inverted_rewards / self.sampling_temperature
-        exp_rewards = np.exp(scaled_rewards - np.max(scaled_rewards))
-        probabilities = exp_rewards / np.sum(exp_rewards)
+        exp_rewards = np_backend.exp(scaled_rewards - np_backend.max(scaled_rewards))
+        probabilities = exp_rewards / np_backend.sum(exp_rewards)
         selected_variable = np.random.choice(
             trainable_variables,
             size=1,
@@ -565,15 +567,17 @@ class Optimizer(SynalinksSaveable):
                 rewards=rewards,
             )
 
-        mean_reward = float(sum(rewards) / len(rewards))
+        compile_reward = getattr(self.program, "_compile_reward", None)
+        reduction = compile_reward.reduction if compile_reward is not None else "mean"
+        scalar_reward = reduce_rewards(rewards, reduction)
         for trainable_variable in trainable_variables:
             await self.maybe_add_candidate(
                 step,
                 trainable_variable,
-                reward=mean_reward,
+                reward=scalar_reward,
             )
 
-        await self.reward_tracker.update_state(mean_reward)
+        await self.reward_tracker.update_state(scalar_reward)
         metrics = await self.program.compute_metrics(val_x, val_y, y_pred)
         return metrics
 

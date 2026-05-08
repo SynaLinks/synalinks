@@ -82,6 +82,10 @@ from synalinks.src.backend.pydantic.base import is_stamped as is_stamped
 from synalinks.src.backend.pydantic.base import is_tool_call as is_tool_call
 from synalinks.src.backend.pydantic.base import is_trainable as is_trainable
 from synalinks.src.backend.pydantic.base import is_triplet_search as is_triplet_search
+from synalinks.src.datasets.dataset import Dataset as Dataset
+from synalinks.src.datasets.huggingface_dataset import (
+    HuggingFaceDataset as HuggingFaceDataset,
+)
 from synalinks.src.initializers.initializer import Initializer as Initializer
 from synalinks.src.knowledge_bases.knowledge_base import KnowledgeBase as KnowledgeBase
 from synalinks.src.metrics.metric import Metric as Metric
@@ -140,6 +144,7 @@ from synalinks.src.ops.function import Function as Function
 from synalinks.src.ops.operation import Operation as Operation
 from synalinks.src.programs.program import Program as Program
 from synalinks.src.programs.sequential import Sequential as Sequential
+from synalinks.src.rewards.batch_reward import BatchReward as BatchReward
 from synalinks.src.rewards.cosine_similarity import CosineSimilarity as CosineSimilarity
 from synalinks.src.rewards.exact_match import ExactMatch as ExactMatch
 from synalinks.src.rewards.lm_as_judge import LMAsJudge as LMAsJudge

@@ -2,6 +2,7 @@
 from synalinks.api import RLM
 from synalinks.api import Action
 from synalinks.api import And
+from synalinks.api import BatchReward
 from synalinks.api import Branch
 from synalinks.api import ChainOfThought
 from synalinks.api import ChatMessage
@@ -11,6 +12,7 @@ from synalinks.api import Concat
 from synalinks.api import Concatenate
 from synalinks.api import CosineSimilarity
 from synalinks.api import DataModel
+from synalinks.api import Dataset
 from synalinks.api import Decision
 from synalinks.api import EmbeddingModel
 from synalinks.api import Embeddings
@@ -24,6 +26,7 @@ from synalinks.api import GenericInputs
 from synalinks.api import GenericIO
 from synalinks.api import GenericOutputs
 from synalinks.api import GenericResult
+from synalinks.api import HuggingFaceDataset
 from synalinks.api import Identity
 from synalinks.api import Initializer
 from synalinks.api import InMask

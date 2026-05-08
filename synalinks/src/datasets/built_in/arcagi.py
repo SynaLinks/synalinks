@@ -14,8 +14,8 @@ from matplotlib.gridspec import GridSpec
 from synalinks.src.api_export import synalinks_export
 from synalinks.src.backend import DataModel
 from synalinks.src.backend import Field
-from synalinks.src.datasets.arcagi1_tasks import EVALUATION_TASK_NAMES
-from synalinks.src.datasets.arcagi1_tasks import TRAINING_TASK_NAMES
+from synalinks.src.datasets.built_in.arcagi1_tasks import EVALUATION_TASK_NAMES
+from synalinks.src.datasets.built_in.arcagi1_tasks import TRAINING_TASK_NAMES
 from synalinks.src.utils import file_utils
 
 ARCAGI1_BASE_URL = (
@@ -472,5 +472,5 @@ def plot_task(
         from IPython import display
 
         return display.Image(filename=filepath)
-    except ImportError:
+    except ImportError:  # pragma: no cover - IPython is optional
         pass

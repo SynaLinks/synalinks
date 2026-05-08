@@ -186,6 +186,7 @@ nav:
       - Synalinks API/Rewards/CosineSimilarity reward.md
       - Synalinks API/Rewards/LMAsJudge reward.md
       - Synalinks API/Rewards/Reward wrappers.md
+      - Synalinks API/Rewards/Batch reward wrappers.md
     - Built-in Datasets:
       - Synalinks API/Built-in Datasets/index.md
       - Synalinks API/Built-in Datasets/GSM8K.md
