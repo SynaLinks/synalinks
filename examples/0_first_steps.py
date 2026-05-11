@@ -85,7 +85,7 @@ async def main():
     synalinks.clear_session()
 
     # Initialize a language model
-    language_model = synalinks.LanguageModel(model="gemini/gemini-2.0-flash")
+    language_model = synalinks.LanguageModel(model="gemini/gemini-3.1-flash-lite-preview")
 
     # Build the program using the Functional API
     inputs = synalinks.Input(data_model=Query)
@@ -239,7 +239,7 @@ async def main():
 
     # Initialize a language model
     language_model = synalinks.LanguageModel(
-        model="gemini/gemini-2.0-flash",
+        model="gemini/gemini-3.1-flash-lite-preview",
     )
 
     # -------------------------------------------------------------------------

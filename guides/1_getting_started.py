@@ -151,7 +151,7 @@ async def main():
 
     # Step 2: Initialize the language model
     language_model = synalinks.LanguageModel(
-        model="gemini/gemini-2.0-flash"  # Or "anthropic/claude-3-haiku", etc.
+        model="gemini/gemini-3.1-flash-lite-preview"  # Or "anthropic/claude-3-haiku", etc.
     )
 
     # Step 3: Build the program using the Functional API
@@ -259,7 +259,7 @@ async def main():
         experiment_name="guide_1_getting_started",
     )
 
-    language_model = synalinks.LanguageModel(model="gemini/gemini-2.0-flash")
+    language_model = synalinks.LanguageModel(model="gemini/gemini-3.1-flash-lite-preview")
 
     inputs = synalinks.Input(data_model=Question)
     outputs = await synalinks.Generator(

@@ -152,7 +152,7 @@ kb = synalinks.KnowledgeBase(
 )
 
 # Configure language model
-lm = synalinks.LanguageModel(model="gemini/gemini-2.0-flash")
+lm = synalinks.LanguageModel(model="gemini/gemini-3.1-flash-lite-preview")
 
 # Wrap async functions as Tool objects
 schema_tool = synalinks.Tool(get_database_schema)
@@ -679,7 +679,7 @@ async def main():
     # -------------------------------------------------------------------------
     print("\nBuilding SQL agent...")
 
-    lm = synalinks.LanguageModel(model="gemini/gemini-2.0-flash")
+    lm = synalinks.LanguageModel(model="gemini/gemini-3.1-flash-lite-preview")
 
     # Wrap tools
     schema_tool = synalinks.Tool(get_database_schema)

@@ -73,6 +73,27 @@ class RecursiveLanguageModelAgentTest(testing.TestCase):
                 tools=[Tool(llm_query)],
             )
 
+    async def test_reserved_tool_names_rejected_when_non_recursive(self):
+        """`llm_query` / `llm_query_batched` stay reserved with `recursive=False`."""
+        language_model = LanguageModel(model="ollama/mistral")
+
+        @register_synalinks_serializable()
+        async def llm_query_batched(prompts: list[str]) -> dict:
+            """Reserved name.
+
+            Args:
+                prompts (list[str]): the prompts.
+            """
+            return {}
+
+        with self.assertRaises(ValueError):
+            RecursiveLanguageModelAgent(
+                data_model=Answer,
+                language_model=language_model,
+                recursive=False,
+                tools=[Tool(llm_query_batched)],
+            )
+
     async def test_user_tools_pass_through(self):
         language_model = LanguageModel(model="ollama/mistral")
         agent = RecursiveLanguageModelAgent(

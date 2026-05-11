@@ -84,7 +84,7 @@ async def main():
     load_dotenv()
     synalinks.clear_session()
 
-    lm = synalinks.LanguageModel(model="gemini/gemini-2.0-flash")
+    lm = synalinks.LanguageModel(model="gemini/gemini-3.1-flash-lite-preview")
 
     # Step 1: Define the entry point
     inputs = synalinks.Input(data_model=Query)
@@ -182,7 +182,7 @@ class Thinking(synalinks.DataModel):
 class Answer(synalinks.DataModel):
     answer: str = synalinks.Field(description="The final answer")
 
-lm = synalinks.LanguageModel(model="gemini/gemini-2.0-flash")
+lm = synalinks.LanguageModel(model="gemini/gemini-3.1-flash-lite-preview")
 
 # Simple linear pipeline using .add() method
 program = synalinks.Sequential(
@@ -423,7 +423,7 @@ async def main():
         experiment_name="guide_3_programs",
     )
 
-    lm = synalinks.LanguageModel(model="gemini/gemini-2.0-flash")
+    lm = synalinks.LanguageModel(model="gemini/gemini-3.1-flash-lite-preview")
 
     # -------------------------------------------------------------------------
     # Functional API

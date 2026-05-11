@@ -312,7 +312,7 @@ async def main():
     load_dotenv()
     synalinks.clear_session()
 
-    language_model = synalinks.LanguageModel(model="gemini/gemini-2.0-flash")
+    language_model = synalinks.LanguageModel(model="gemini/gemini-3.1-flash-lite-preview")
 
     # Build the program
     inputs = synalinks.Input(data_model=ReviewInput)
@@ -417,7 +417,7 @@ async def main():
         experiment_name="guide_2_data_models",
     )
 
-    language_model = synalinks.LanguageModel(model="gemini/gemini-2.0-flash")
+    language_model = synalinks.LanguageModel(model="gemini/gemini-3.1-flash-lite-preview")
 
     inputs = synalinks.Input(data_model=ReviewInput)
     outputs = await synalinks.Generator(

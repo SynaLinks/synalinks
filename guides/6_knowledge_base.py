@@ -273,7 +273,7 @@ async def main():
     load_dotenv()
     synalinks.clear_session()
 
-    lm = synalinks.LanguageModel(model="gemini/gemini-2.0-flash")
+    lm = synalinks.LanguageModel(model="gemini/gemini-3.1-flash-lite-preview")
 
     # Assume kb is already populated
     kb = synalinks.KnowledgeBase(
@@ -495,7 +495,7 @@ async def main():
     print("Example 5: RAG Pipeline")
     print("=" * 60)
 
-    lm = synalinks.LanguageModel(model="gemini/gemini-2.0-flash")
+    lm = synalinks.LanguageModel(model="gemini/gemini-3.1-flash-lite-preview")
 
     inputs = synalinks.Input(data_model=Query)
 

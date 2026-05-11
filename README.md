@@ -27,7 +27,8 @@
   <a href="https://synalinks.github.io/synalinks" target="_blank"><strong>Documentation</strong></a> ·
   <a href="https://synalinks.github.io/synalinks/FAQ/" target="_blank"><strong>FAQ</strong></a> ·
   <a href="https://discord.gg/82nt97uXcM" target="_blank"><strong>Discord</strong></a> ·
-  <a href="https://github.com/SynaLinks/synalinks/tree/main/examples" target="_blank"><strong>Code Examples</strong></a>
+  <a href="https://github.com/SynaLinks/synalinks/tree/main/examples" target="_blank"><strong>Code Examples</strong></a> .
+  <a href="https://github.com/SynaLinks/synalinks/tree/main/guides" target="_blank"><strong>Guides</strong></a>
 </p>
 
 </div>
@@ -144,7 +145,7 @@ class NumericalAnswer(synalinks.DataModel):
 
 # Set the defaults once — modules and string-form optimizers/rewards
 # pick them up automatically.
-synalinks.set_default_language_model("gemini/gemini-2.5-pro")
+synalinks.set_default_language_model("gemini/gemini-3.1-flash-lite-preview")
 synalinks.set_default_embedding_model("gemini/text-embedding-004")
 
 @synalinks.saving.register_synalinks_serializable()
@@ -275,7 +276,7 @@ result = await program(
 # Setting the default language/embedding models allows you
 # to use the string identifier (Keras-like) to configure your pipeline/training.
 # You can still instantiate the classes if you want fine-grained control.
-synalinks.set_default_language_model("gemini/gemini-2.5-pro")
+synalinks.set_default_language_model("gemini/gemini-3.1-flash-lite-preview")
 synalinks.set_default_embedding_model("gemini/text-embedding-004")
 
 async def main():

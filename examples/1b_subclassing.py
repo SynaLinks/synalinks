@@ -121,7 +121,7 @@ class ChainOfThought(synalinks.Program):
 
 async def main():
     load_dotenv()
-    language_model = synalinks.LanguageModel(model="gemini/gemini-2.0-flash")
+    language_model = synalinks.LanguageModel(model="gemini/gemini-3.1-flash-lite-preview")
 
     program = ChainOfThought(language_model=language_model)
     await program.build(Query)  # Required before first call!
@@ -276,7 +276,7 @@ async def main():
 
     # Initialize the language model
     language_model = synalinks.LanguageModel(
-        model="gemini/gemini-2.0-flash",
+        model="gemini/gemini-3.1-flash-lite-preview",
     )
 
     # -------------------------------------------------------------------------

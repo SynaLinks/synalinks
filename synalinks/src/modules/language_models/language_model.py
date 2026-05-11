@@ -130,7 +130,7 @@ class LanguageModel(Module):
     os.environ["GEMINI_API_KEY"] = "your-api-key"
 
     language_model = synalinks.LanguageModel(
-        model="gemini/gemini-2.5-pro",
+        model="gemini/gemini-3.1-flash-lite-preview",
     )
     ```
 
@@ -247,7 +247,7 @@ class LanguageModel(Module):
     language_model = synalinks.LanguageModel(
         model="anthropic/claude-3-sonnet-20240229",
         fallback=synalinks.LanguageModel(
-            model="gemini/gemini-3-flash-preview",
+            model="gemini/gemini-3.1-flash-lite-preview",
         )
     )
     ```

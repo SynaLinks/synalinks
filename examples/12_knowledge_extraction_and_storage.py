@@ -195,7 +195,7 @@ async def main():
 
     # Initialize models
     language_model = synalinks.LanguageModel(
-        model="gemini/gemini-2.0-flash",
+        model="gemini/gemini-3.1-flash-lite-preview",
     )
 
     embedding_model = synalinks.EmbeddingModel(

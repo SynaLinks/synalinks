@@ -3,14 +3,16 @@
 """
 # Recursive Language Model Agent
 
-The `RecursiveLanguageModelAgent` (also exported as `synalinks.RLM`) is a
-specialization of `CodeModeAgent` for tasks where the *input itself* is
-too large or too noisy to feed straight into the language model. Instead
+The `RecursiveLanguageModelAgent` (also exported as `synalinks.RLM`) is
+a Python-snippet reasoning agent built for tasks where the *input
+itself* is too large or too noisy to feed straight into the language
+model. Instead
 of packing a whole book, log dump, or scraped corpus into the primary
 LM's context, the agent treats those inputs as an **external
-environment**: it writes Python that programmatically slices, filters,
-and aggregates the data, and recursively delegates semantic work to a
-*sub-LM* on the snippets it actually cares about.
+environment**: the LM writes Python that programmatically slices,
+filters, and aggregates the data inside a persistent sandbox, and
+recursively delegates semantic work to a *sub-LM* on the snippets it
+actually cares about.
 
 The pattern follows
 [Recursive Language Models (Zhang, Kraska, Khattab — 2025)](https://arxiv.org/abs/2512.24601).
@@ -92,10 +94,9 @@ its preview and length.
 
 ## Inputs as External Environment
 
-`RecursiveLanguageModelAgent` inherits the `CodeModeAgent` rule that
-the user input is bound as a dict named `inputs` inside the sandbox —
-but it leans on it harder. The primary LM sees an `InputsSummary` in
-its prompt instead of the raw values:
+The user input is bound as a dict named `inputs` inside the sandbox,
+holding the full, untruncated value. The primary LM never receives
+that value directly — it sees only an `InputsSummary` in its prompt:
 
 ```text
 fields:
@@ -164,28 +165,34 @@ so an exception doesn't get silently treated as data.
 ### Budget
 
 Both helpers share one counter capped at `max_llm_calls` (default 50).
-When exhausted, both short-circuit:
+Neither helper consumes quota when it short-circuits, and the counter
+resets on every `agent(...)` invocation — concurrent calls get
+independent budgets.
+
+`llm_query` short-circuits when the counter is already at the cap:
 
 ```text
-{"result": <empty>, "error": "sub-LM call budget exhausted (50/50). ..."}
+{"result": "", "error": "sub-LM call budget exhausted (50/50). ..."}
 ```
 
-No quota is consumed by the short-circuit, and the error message
-explicitly tells the LM to fall back to code-side aggregation. The
-counter resets on every `agent(...)` invocation — concurrent calls
-get independent budgets.
+`llm_query_batched` is checked all-or-nothing: it short-circuits when
+the requested batch size would push the counter past the cap (e.g. a
+batch of 10 with 5 calls remaining) rather than partially fulfilling:
 
-For `llm_query_batched`, the budget is checked all-or-nothing: a batch
-of 10 with 5 calls remaining short-circuits with `{"result": [], ...}`
-rather than partially fulfilling.
+```text
+{"result": [], "error": "sub-LM call budget would be exceeded: 45 + 10 > 50. ..."}
+```
+
+Both error messages tell the LM to fall back to code-side aggregation.
+Check `error` before trusting `result`.
 
 ## Adding Your Own Tools
 
-`RecursiveLanguageModelAgent` inherits the `tools=` argument from
-`CodeModeAgent`. The names ``llm_query``, ``llm_query_batched``, and
-``submit`` are reserved, but anything else you bind is exposed inside
-the sandbox as a global async callable — alongside the recursive
-helpers — and can be composed with them in the same snippet.
+`RecursiveLanguageModelAgent` accepts a `tools=` list. The names
+``llm_query``, ``llm_query_batched``, and ``submit`` are reserved, but
+anything else you bind is exposed inside the sandbox as a global async
+callable — alongside the recursive helpers — and can be composed with
+them in the same snippet.
 
 Because tool **bodies run on the host with full Python privileges**
 (filesystem, network, third-party libraries), they're how the agent
@@ -216,9 +223,15 @@ agent = synalinks.RLM(
 
 Inside a snippet the LM can now interleave host effects with recursive
 sub-LM work — fetch a page, hand its body to ``llm_query`` for
-classification, then ``submit``. See *Binding Tools — The Bridge to
-the Host* in the `CodeModeAgent` guide for the full contract,
-naming gotchas, and the security implications of bound tools.
+classification, then ``submit``.
+
+Tool bodies are the bridge between the sandboxed snippet and the host
+process: the sandbox itself enforces a whitelist of allowed imports
+and syscalls, but a bound tool runs in the host with full Python
+privileges. Treat each tool the way you would treat a public HTTP
+endpoint — validate arguments, scope filesystem and network access,
+and never bind a tool that wraps a destructive shell call unless the
+agent's deployment context expects that.
 
 ## Choosing a Sub-LM
 
@@ -276,26 +289,26 @@ You can replace these with your own `instructions=` if your task wants
 a different operational style, but the defaults are tuned for the
 "long input, sparse query" workload RLM is built for.
 
-## Defaults Differ from `CodeModeAgent`
+## Default Settings
 
-| Setting          | `CodeModeAgent` | `RecursiveLanguageModelAgent` | Why                                                                     |
-|------------------|-----------------|-------------------------------|-------------------------------------------------------------------------|
-| `max_iterations` | 5               | 20                            | RLM workflows explore → carve → batch-query → aggregate → submit.       |
-| `timeout`        | 5s              | 60s                           | One `llm_query_batched(20 prompts)` snippet routinely needs >5s.        |
-| `max_llm_calls`  | n/a             | 50                            | Hard ceiling; the LM is told about it and falls back to code on overrun.|
+| Setting          | Default | Why                                                                     |
+|------------------|---------|-------------------------------------------------------------------------|
+| `max_iterations` | 20      | RLM workflows explore → carve → batch-query → aggregate → submit.       |
+| `timeout`        | 60s     | One `llm_query_batched(20 prompts)` snippet routinely needs >5s.        |
+| `max_llm_calls`  | 50      | Hard ceiling on sub-LM calls per run; the LM is told about it and falls back to code on overrun. |
 
 Override any of them if your workload knows better.
 
-## RLM vs `CodeModeAgent` vs `FunctionCallingAgent`
+## RLM vs `FunctionCallingAgent`
 
-| Aspect              | FunctionCallingAgent              | CodeModeAgent                        | RecursiveLanguageModelAgent              |
-|---------------------|-----------------------------------|--------------------------------------|------------------------------------------|
-| Action shape        | JSON tool call                    | Python snippet                       | Python snippet                           |
-| Primary LM context  | Full input + tool catalog         | InputsSummary + tool catalog         | InputsSummary + tool catalog             |
-| Long-input handling | Stuff into prompt                 | Stuff into prompt (read via `inputs`)| Treat as external environment            |
-| Recursive sub-LM    | —                                 | —                                    | `llm_query` / `llm_query_batched` built-in |
-| Cost lever          | Pick one model                    | Pick one model                       | Pick a cheap `sub_language_model`        |
-| Best for            | Discrete, well-typed actions      | Composition / batching / control flow| Long inputs, sparse / semantic queries   |
+| Aspect              | FunctionCallingAgent              | RecursiveLanguageModelAgent                |
+|---------------------|-----------------------------------|--------------------------------------------|
+| Action shape        | JSON tool call                    | Python snippet executed in a sandbox       |
+| Primary LM context  | Full input + tool catalog         | InputsSummary + tool catalog               |
+| Long-input handling | Stuff into prompt                 | Treat as external environment              |
+| Recursive sub-LM    | —                                 | `llm_query` / `llm_query_batched` built-in |
+| Cost lever          | Pick one model                    | Pick a cheap `sub_language_model`          |
+| Best for            | Discrete, well-typed actions      | Long inputs, sparse / semantic queries     |
 
 Reach for `RecursiveLanguageModelAgent` when the input dwarfs the
 question — long documents, large logs, big lists where only a few
@@ -368,15 +381,18 @@ cheap sub-LM, aggregates the answers, and calls `submit`.
   workload. Override `instructions=` if your task wants a different
   style.
 
-- **Same `submit` discipline as `CodeModeAgent`**: the LM ends a run by
-  calling `submit(result={...})`. Schema validation, the
-  `max_iterations` fallback, and the per-snippet `timeout` semantics
-  all carry over unchanged from `CodeModeAgent`.
+- **`submit` is the preferred termination path**: the LM ends a run
+  by calling `submit(result={...})`. The payload is validated against
+  the configured output schema; validation errors come back as a
+  retry observation on the next turn. If `max_iterations` is reached
+  without a successful `submit`, a final LM inference step formats
+  the accumulated trajectory into the target schema. Each snippet is
+  wall-clocked by `timeout`.
 
 ## API References
 
 - [RecursiveLanguageModelAgent](https://synalinks.github.io/synalinks/Synalinks%20API/Modules%20API/Agents%20Modules/RecursiveLanguageModelAgent%20module/)
-- [CodeModeAgent](https://synalinks.github.io/synalinks/Synalinks%20API/Modules%20API/Agents%20Modules/CodeModeAgent%20module/)
+- [FunctionCallingAgent](https://synalinks.github.io/synalinks/Synalinks%20API/Modules%20API/Agents%20Modules/FunctionCallingAgent%20module/)
 - [Tool](https://synalinks.github.io/synalinks/Synalinks%20API/Modules%20API/Core%20Modules/Tool%20module/)
 - [DataModel](https://synalinks.github.io/synalinks/Synalinks%20API/Data%20Models%20API/The%20DataModel%20class/)
 - [LanguageModel](https://synalinks.github.io/synalinks/Synalinks%20API/Language%20Models%20API/)

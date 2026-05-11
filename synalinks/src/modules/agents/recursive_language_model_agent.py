@@ -29,7 +29,7 @@ from synalinks.src.saving.object_registration import get_registered_object
 
 
 def get_default_instructions():
-    """Default instructions for non-recursive code-mode reasoning."""
+    """Default instructions for non-recursive Python-snippet reasoning."""
     return """
 You solve the user task by writing and executing Python snippets inside a
 persistent sandbox. Each turn you emit ONE snippet via the `python_code`
@@ -69,7 +69,7 @@ Don't run out of iterations without calling it.
 
 
 def get_recursive_instructions():
-    """Default instructions for recursive (sub-LM) code-mode reasoning.
+    """Default instructions for recursive (sub-LM) Python-snippet reasoning.
 
     The ``{max_llm_calls}`` placeholder is substituted at construction time.
     """
@@ -153,7 +153,7 @@ calling it.
 
 
 class CodeStep(DataModel):
-    """One turn of code-mode reasoning: a Python snippet to execute next."""
+    """One turn of Python-snippet reasoning: a Python snippet to execute next."""
 
     python_code: str = Field(
         description=(
@@ -166,7 +166,7 @@ class CodeStep(DataModel):
 
 
 class ToolSpec(DataModel):
-    """Description of one tool exposed in the code-mode sandbox."""
+    """Description of one tool exposed in the sandbox."""
 
     name: str = Field(
         description=(
@@ -187,7 +187,7 @@ class ToolSpec(DataModel):
 
 
 class ToolsCatalog(DataModel):
-    """Catalog of tools bound to the code-mode sandbox."""
+    """Catalog of tools bound to the sandbox."""
 
     tools: list[ToolSpec] = Field(
         default=[],
@@ -497,9 +497,9 @@ def _format_observation(stdout, stderr, result, error, max_output_chars=None):
 class RecursiveLanguageModelAgent(Module):
     """A recursive-language-model agent.
 
-    A code-mode reasoning agent that emits Python snippets each turn
-    and executes them in a persistent
-    `Monty <https://github.com/pydantic/monty>`_ REPL sandbox. State
+    An agent that emits Python snippets each turn and executes them in
+    a persistent `Monty <https://github.com/pydantic/monty>`_ REPL
+    sandbox. State
     (variables, imports, function definitions) accumulates across turns
     so the agent can build up intermediate values, probe data, and
     iterate.
@@ -514,9 +514,9 @@ class RecursiveLanguageModelAgent(Module):
     huge context for many small ones, which both fits inside provider
     limits and reduces the chance of long-context regressions.
 
-    When ``recursive=False``, the agent runs as a plain code-mode agent
-    with no sub-LM helpers, useful when the task is purely
-    computational and recursion would only add cost.
+    When ``recursive=False``, the agent runs without the sub-LM helpers,
+    useful when the task is purely computational and recursion would
+    only add cost.
 
     Bound user tools (if any) appear inside the sandbox as global
     **async** callables; scripts must ``await`` them inside an
@@ -589,13 +589,15 @@ class RecursiveLanguageModelAgent(Module):
             ``recursive=False``.
         recursive (bool): Optional. If ``True`` (default), expose
             ``llm_query`` and ``llm_query_batched`` inside the sandbox
-            and use the recursive instructions. If ``False``, run as a
-            plain code-mode agent with no sub-LM helpers.
+            and use the recursive instructions. If ``False``, run
+            without the sub-LM helpers.
         tools (list): Optional. Extra :class:`Tool` instances exposed to
             the sandbox in addition to ``submit`` (and ``llm_query`` /
             ``llm_query_batched`` when ``recursive=True``). The names
             ``submit``, ``llm_query``, and ``llm_query_batched`` are
-            reserved when their corresponding helpers are active.
+            always reserved at construction time, even when
+            ``recursive=False``, so tool naming stays stable across the
+            two modes.
 
             **Naming gotcha**: each tool is registered under
             ``tool.name == tool._func.__name__``. ``Tool(_my_helper)``
@@ -803,13 +805,13 @@ class RecursiveLanguageModelAgent(Module):
     def _reserved_tool_names(self) -> frozenset:
         """Names a user tool cannot collide with at construction time.
 
-        Computed from ``self.recursive`` so non-recursive runs free up
-        ``llm_query`` / ``llm_query_batched`` for user tools.
+        ``submit``, ``llm_query``, and ``llm_query_batched`` are always
+        reserved, even when ``recursive=False``, so that tool naming
+        stays stable across the two modes and a user tool can't quietly
+        shadow a helper name that would reappear if ``recursive`` is
+        flipped back on.
         """
-        names = {"submit"}
-        if self.recursive:
-            names.update({"llm_query", "llm_query_batched"})
-        return frozenset(names)
+        return frozenset({"submit", "llm_query", "llm_query_batched"})
 
     def _build_extra_call_tools(self) -> dict:
         """Build the per-call recursive helpers when ``recursive=True``.

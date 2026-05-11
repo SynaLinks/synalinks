@@ -64,7 +64,7 @@ class Query(synalinks.DataModel):
 
 async def main():
     load_dotenv()
-    language_model = synalinks.LanguageModel(model="gemini/gemini-2.0-flash")
+    language_model = synalinks.LanguageModel(model="gemini/gemini-3.1-flash-lite-preview")
 
     inputs = synalinks.Input(data_model=Query)
 
@@ -151,7 +151,7 @@ async def main():
     )
 
     language_model = synalinks.LanguageModel(
-        model="gemini/gemini-2.0-flash",
+        model="gemini/gemini-3.1-flash-lite-preview",
     )
 
     # -------------------------------------------------------------------------

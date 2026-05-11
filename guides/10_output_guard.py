@@ -137,7 +137,7 @@ async def main():
     load_dotenv()
     synalinks.clear_session()
 
-    lm = synalinks.LanguageModel(model="gemini/gemini-2.0-flash")
+    lm = synalinks.LanguageModel(model="gemini/gemini-3.1-flash-lite-preview")
 
     # Build the guarded program
     inputs = synalinks.Input(data_model=Query)
@@ -284,7 +284,7 @@ async def main():
         experiment_name="guide_10_output_guard",
     )
 
-    lm = synalinks.LanguageModel(model="gemini/gemini-2.0-flash")
+    lm = synalinks.LanguageModel(model="gemini/gemini-3.1-flash-lite-preview")
 
     # -------------------------------------------------------------------------
     # Build Output Guarded Program

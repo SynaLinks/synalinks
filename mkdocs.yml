@@ -82,6 +82,7 @@ nav:
     - Code Examples/Implementing Custom Modules Via Subclassing.md
     - Code Examples/Autonomous Agent.md
     - Code Examples/Interactive Agent.md
+    - Code Examples/Recursive Language Model Agent.md
     - Code Examples/Knowledge Extraction and Storage.md
     - Code Examples/Document RAG.md
     - Code Examples/RAG Agent.md
