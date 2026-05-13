@@ -1,64 +1,150 @@
 """
 # Agents
 
-**Agents** represent a paradigm shift from simple LLM calls to autonomous
-systems that can reason, plan, and take action. While a Generator produces
-a single output, an Agent iteratively thinks, selects tools, executes them,
-and uses the results to inform its next steps - continuing until it achieves
-its goal or reaches a limit.
+Picture a language model as a person sitting at a desk. A plain
+`Generator` (which you have seen since [Guide 1](Getting%20Started.md)) lets that person read
+one question and write one answer, then stop. An **agent** gives them
+more freedom: the person may also pick up the phone and call a
+helper — a calculator, a search engine, a clock — read the helper's
+reply, think again, and repeat until they decide they have enough
+information to write a final answer.
+
+A `Generator` maps one input to one structured output in a single LM
+call. An agent generalizes that into a small **control loop**. At each
+step:
+
+1. The model proposes an *action* — usually one or more **tool calls**,
+   meaning "please run this helper function with these arguments."
+2. The framework runs the tools and collects the results
+   (**observations**).
+3. The running log of `(input, actions, observations)` is fed back
+   into the next prompt.
+
+We keep iterating until the model declines to act (it returns an
+empty list of tool calls), at which point a final LM call — the
+**terminal generator** — looks at the accumulated log and produces
+the output object the caller asked for.
+
+In principle, an agent could loop forever. To guarantee termination we
+also impose a hard upper bound on iterations, called `max_iterations`.
+
+Three ingredients are enough to build an agent:
+
+- A **language model** that supports both structured output (returns
+  JSON matching a schema) and **function calling** (can ask to invoke
+  named tools with typed arguments).
+- A finite set of **tools**: typed Python `async` functions that may
+  have side effects (read a clock, query a database, hit a web API).
+- A **trajectory**: an append-only log (you only ever add to the end,
+  never rewrite earlier entries) of the agent's thoughts, tool calls,
+  and tool results.
+
+Everything in this guide is built from these three.
 
 ## The Agent Loop
 
-The `FunctionCallingAgent` uses an internal **ChainOfThought** module to
-reason about which tools to call. Here's the complete autonomous loop:
+At every step, the agent must make exactly one decision: "call more
+tools, or stop?" It signals "stop" by producing an empty list of tool
+calls.
+
+Synalinks' `FunctionCallingAgent` wraps a `ChainOfThought` module (the
+one you met in [Guide 4](Modules.md)). At each step that module must produce two
+things: a free-form `thinking` field (so we — and downstream optimizers
+— can see the model's intermediate reasoning), and a `tool_calls`
+array (the list of helper calls it wants to make this turn). An empty
+`tool_calls` array is the agent's only way to stop early; otherwise the
+loop runs until the iteration cap.
 
 ```mermaid
 flowchart TD
-    A[Input + Trajectory] --> B[ChainOfThought]
-    B --> C[thinking + tool_calls]
-    C --> D{tool_calls empty?}
-    D -->|Yes| E[Final Generator]
-    E --> F[Formatted Output]
-    D -->|No| G[Execute Tools in Parallel]
-    G --> H[Append Results to Trajectory]
-    H --> I{max_iterations?}
-    I -->|No| A
-    I -->|Yes| E
+    A["Input + Trajectory"] --> B["ChainOfThought (decision module)"]
+    B --> C["thinking + tool_calls[]"]
+    C --> D{"tool_calls == []"}
+    D -->|"yes"| E["Final Generator"]
+    E --> F["Output (Answer schema)"]
+    D -->|"no"| G["asyncio.gather(tool_i(args_i))"]
+    G --> H["Append calls + results to trajectory"]
+    H --> I{"iter < max_iterations"}
+    I -->|"yes"| A
+    I -->|"no"| E
 ```
 
-At each iteration, the agent:
+Each iteration has four phases — **think → decide → act → observe**:
 
-1. **Thinks**: Uses ChainOfThought to analyze the trajectory and decide next action
-2. **Decides**: Returns `tool_calls` array (empty if done) with reasoning in `thinking`
-3. **Acts**: Executes all requested tools in parallel using `asyncio.gather`
-4. **Observes**: Appends tool results to trajectory for next iteration
+1. **Think.** The decision module reads the current trajectory and
+   produces a structured object containing `thinking` and
+   `tool_calls`.
+2. **Decide.** If `tool_calls` is empty, control exits the loop.
+   Otherwise the array tells us which tools to invoke and with what
+   arguments.
+3. **Act.** All requested calls are scheduled at the same time using
+   `asyncio.gather` (Python's standard way to run several `async`
+   tasks concurrently). Doing them in parallel is correct only when
+   the tools in a single batch are *independent* — that is, the order
+   in which they finish does not change the answer.
+4. **Observe.** Each tool's return value is appended to the
+   trajectory. Because the prompt on the next *think* step includes
+   the trajectory, the model now sees the new observations.
 
-## FunctionCallingAgent: The Primary Agent
+Three failure modes are worth naming up front, so you can recognize
+them when you see them:
 
-The `FunctionCallingAgent` is Synalinks' main agent module. It uses the
-language model's function calling capabilities to intelligently select and
-invoke tools:
+- **Non-termination.** If the model never emits an empty
+  `tool_calls`, the loop runs all the way to `max_iterations`. The
+  terminal generator still runs and produces *some* output, but it
+  may be incomplete.
+- **Hallucinated calls.** The model may "hallucinate" — confidently
+  invent — a tool that does not exist, or pass arguments of the wrong
+  type. Whether this raises depends on the tool; we will talk about
+  error handling below.
+- **Skipped tools.** A weaker model may answer from its **priors**
+  (knowledge baked in during pre-training) and never call any tool at
+  all, even when the correct answer needs one. The "what time is it"
+  example below reliably reproduces this on small open-weight models.
+
+## FunctionCallingAgent: Constructing an Agent
 
 ```python
 import synalinks
 
 agent = await synalinks.FunctionCallingAgent(
-    data_model=Answer,           # Output schema
-    language_model=lm,           # Which LLM to use
-    tools=[tool1, tool2, tool3], # Available tools
-    autonomous=True,             # Run until complete
-    max_iterations=10,           # Safety limit
+    data_model=Answer,           # terminal output schema (Pydantic DataModel)
+    language_model=lm,           # backing LM (must support structured output)
+    tools=[tool1, tool2, tool3], # finite tool set, fixed at construction time
+    autonomous=True,             # iterate until termination signal
+    max_iterations=10,           # hard upper bound on loop steps
 )(inputs)
 ```
 
+Note that `data_model` only constrains the **final** output. The
+intermediate think-decide steps use a different, fixed schema with
+`thinking` and `tool_calls` fields. Keeping the two schemas separate
+is what lets you reuse the same generic agent for many different
+output shapes — you only need to change `data_model`.
+
 ## Defining Tools
 
-Tools are async Python functions wrapped with `synalinks.Tool()`. They must:
+A tool is just an `async` Python function with typed parameters and a
+JSON-serializable return value (typically a `dict`). The
+`synalinks.Tool(fn)` wrapper **introspects** the function — that is,
+it reads the function's type hints and docstring at runtime — and
+builds a JSON schema describing the tool. That schema is what the LM
+sees when deciding whether to call this tool.
 
-1. Have type hints for all parameters
-2. Have a complete docstring with an `Args:` section documenting every parameter
-3. Be asynchronous (use `async def`)
-4. **Have NO optional parameters** - all parameters must be required
+Four requirements, each either enforced by the framework or relied on
+by it:
+
+1. **Type hints on every parameter.** Used to generate the JSON
+   Schema `type` field (e.g. `"string"`, `"number"`).
+2. **A Google-style `Args:` block describing every parameter.** Each
+   description becomes that parameter's `description` in the schema,
+   and the agent reads it to decide what to pass.
+3. **`async def`, not `def`.** The agent runs tools concurrently with
+   `await`; a synchronous function would block the event loop and
+   freeze every other tool in the batch.
+4. **No optional parameters and no defaults.** Most LM providers
+   reject schemas where an optional parameter is missing from the
+   `required` list, so Synalinks insists every parameter be required.
 
 ```python
 import synalinks
@@ -75,127 +161,46 @@ async def calculator(expression: str):
     except Exception as e:
         return {"error": str(e)}
 
-# Wrap the function as a Tool
 calculator_tool = synalinks.Tool(calculator)
 ```
 
-The `synalinks.Tool()` wrapper extracts the function's schema from its type
-hints and docstring, making it available to the agent.
+Two non-obvious points to keep in mind:
 
-**Important Tool Constraints:**
+- **The docstring is part of the program.** It is not just
+  documentation for human readers. The LM reads it to decide *when* to
+  call this tool, so a vague docstring leads to worse tool selection.
+  Treat the docstring with the same care as the function's signature.
+- **Return errors as values, not exceptions.** Writing
+  `return {"error": "..."}` lets the agent see the failure on its next
+  *think* step and try something different. Raising an exception, by
+  contrast, aborts the whole agent run.
 
-- **No Optional Parameters**: LLM providers require all
-  tool parameters to be required in their JSON schemas. Do not use default
-  values for parameters.
-
-- **Complete Docstring Required**: Every parameter must be documented in the
-  `Args:` section of the docstring. The Tool uses these descriptions to build
-  the JSON schema sent to the LLM. Missing descriptions will raise a ValueError.
-
-### Tool Design Best Practices
+### Tool Design Checklist
 
 ```mermaid
 graph LR
-    A[Good Tool Design] --> B[Clear Name]
-    A --> C[Detailed Docstring]
-    A --> D[Type Hints]
-    A --> E[Error Handling]
-    A --> F[Return Dict]
+    A["Tool"] --> B["Descriptive name"]
+    A --> C["Complete Args docstring"]
+    A --> D["Typed parameters"]
+    A --> E["Errors as values"]
+    A --> F["Dict-shaped return"]
 ```
 
-1. **Clear Names**: Use descriptive function names (e.g., `search_database`,
-   not `search` or `db_query`)
-
-2. **Detailed Docstrings**: The docstring is sent to the LLM - be specific
-   about what the tool does, its parameters, and expected output
-
-3. **Type Hints**: All parameters must have types. The types are converted
-   to JSON schema for the LLM
-
-4. **Error Handling**: Return error messages in the result dict rather than
-   raising exceptions
-
-5. **Return Dicts**: Tools should return dictionaries with meaningful keys
+1. **Names are part of the prompt.** The LM sees the function name
+   when choosing tools. `search_pubmed` beats `search`; `search`
+   beats `do_query`.
+2. **Docstrings are sent verbatim** — copied as-is into the prompt.
+   Specify units, formats, and edge cases.
+3. **Type hints are non-negotiable.** Without them, schema generation
+   fails.
+4. **Surface errors as data.** Return `{"error": msg}`; do not raise.
+5. **Always return a dict.** A bare scalar return value (e.g. just a
+   number) makes the trajectory harder for the LM to parse on later
+   steps.
 
 ## Agent Modes
 
-### Autonomous Mode
-
-In autonomous mode, the agent runs until it decides to output a final answer
-or reaches `max_iterations`:
-
-```python
-calculator_tool = synalinks.Tool(calculator)
-
-outputs = await synalinks.FunctionCallingAgent(
-    data_model=Answer,
-    language_model=lm,
-    tools=[calculator_tool],
-    autonomous=True,       # Keep running until done
-    max_iterations=10,     # Safety limit
-)(inputs)
-```
-
-Use autonomous mode when:
-
-- The task requires multiple tool calls
-- You want the agent to figure out the workflow
-- The number of steps is not known in advance
-
-### Non-Autonomous Mode (Single Step)
-
-In non-autonomous mode, the agent executes one iteration and returns:
-
-```python
-calculator_tool = synalinks.Tool(calculator)
-
-outputs = await synalinks.FunctionCallingAgent(
-    data_model=Answer,
-    language_model=lm,
-    tools=[calculator_tool],
-    autonomous=False,      # Single step only
-    max_iterations=1,
-)(inputs)
-```
-
-Use non-autonomous mode when:
-
-- You want manual control over each step
-- You're building a human-in-the-loop system
-- You need to inspect/modify state between steps
-
-## Parallel Tool Calling
-
-Modern LLMs support calling multiple tools in parallel. Synalinks agents
-leverage this for efficiency:
-
-```mermaid
-graph LR
-    A[Query] --> B[Agent]
-    B --> C[Tool Call 1]
-    B --> D[Tool Call 2]
-    B --> E[Tool Call 3]
-    C --> F[Results]
-    D --> F
-    E --> F
-    F --> G[Continue/Output]
-```
-
-When the LLM determines that multiple tool calls are independent, it can
-request them simultaneously. Synalinks executes these in parallel:
-
-```python
-# Agent might decide to call multiple tools at once
-# Query: "What's 2+2 and what's 3*3?"
-# Parallel calls: calculator("2+2"), calculator("3*3")
-```
-
-This significantly reduces latency for complex tasks.
-
-## Trajectory Tracking
-
-Use `return_inputs_with_trajectory=True` to include the full history of
-tool calls in the output:
+### Autonomous
 
 ```python
 calculator_tool = synalinks.Tool(calculator)
@@ -205,21 +210,83 @@ outputs = await synalinks.FunctionCallingAgent(
     language_model=lm,
     tools=[calculator_tool],
     autonomous=True,
-    return_inputs_with_trajectory=True,  # Include history
+    max_iterations=10,
 )(inputs)
-
-# Output includes:
-# - Original input
-# - All tool calls made
-# - All tool results
-# - Final answer
 ```
 
-This is useful for:
+Use autonomous mode when you do not know in advance how many steps
+will be needed and you trust the model to stop on its own. The agent
+owns the control flow — it decides itself when to keep looping and
+when to stop.
 
-- Debugging agent behavior
-- Creating training data
-- Auditing agent decisions
+### Non-Autonomous (Single Step)
+
+```python
+calculator_tool = synalinks.Tool(calculator)
+
+outputs = await synalinks.FunctionCallingAgent(
+    data_model=Answer,
+    language_model=lm,
+    tools=[calculator_tool],
+    autonomous=False,
+    max_iterations=1,
+)(inputs)
+```
+
+In non-autonomous mode the loop body runs exactly once. The caller
+(your code, or a surrounding program) owns the control flow. This is
+useful for human-in-the-loop systems (a human approves each step),
+step-by-step debugging, or wiring the agent into a larger controller
+such as a planner or critic.
+
+## Parallel Tool Calling
+
+If the LM puts several entries in `tool_calls` on the same turn, the
+agent runs them at the same time rather than one after another:
+
+```mermaid
+graph LR
+    A["Query"] --> B["Decision step"]
+    B --> C["tool_a(args_a)"]
+    B --> D["tool_b(args_b)"]
+    B --> E["tool_c(args_c)"]
+    C --> F["results[]"]
+    D --> F
+    E --> F
+    F --> G["Next iteration or terminate"]
+```
+
+Running calls in parallel only gives the right answer when the calls
+do not depend on each other. The agent has no way to check this; it
+is the model's responsibility to put dependent calls on *separate*
+turns. This is a **soft contract** — something the framework requests
+but cannot enforce — and small models often break it. For example, a
+weak model may ask the calculator to multiply two numbers in parallel
+that should have been computed sequentially.
+
+## Trajectory Tracking
+
+Setting `return_inputs_with_trajectory=True` makes the output include the
+original input plus the full trace (every decision and every observation):
+
+```python
+calculator_tool = synalinks.Tool(calculator)
+
+outputs = await synalinks.FunctionCallingAgent(
+    data_model=Answer,
+    language_model=lm,
+    tools=[calculator_tool],
+    autonomous=True,
+    return_inputs_with_trajectory=True,
+)(inputs)
+```
+
+Use this output shape to:
+
+- inspect why a particular answer was produced (debugging),
+- collect supervision data for in-context optimisers (training signals
+  built from real runs),
+- audit which tools were called and with what arguments.
 
 ## Complete Example
 
@@ -228,10 +295,6 @@ import asyncio
 from dotenv import load_dotenv
 import synalinks
 
-# =============================================================================
-# Data Models
-# =============================================================================
-
 class Query(synalinks.DataModel):
     \"\"\"User request.\"\"\"
     query: str = synalinks.Field(description="User request")
@@ -239,10 +302,6 @@ class Query(synalinks.DataModel):
 class Answer(synalinks.DataModel):
     \"\"\"Final answer.\"\"\"
     answer: str = synalinks.Field(description="Final answer to the user")
-
-# =============================================================================
-# Tools (define async functions, then wrap with synalinks.Tool)
-# =============================================================================
 
 async def calculator(expression: str):
     \"\"\"Evaluate a mathematical expression.
@@ -270,30 +329,22 @@ async def convert_temperature(value: float, from_unit: str, to_unit: str):
         to_unit (str): Target unit ('celsius' or 'fahrenheit').
     \"\"\"
     if from_unit.lower() == "celsius" and to_unit.lower() == "fahrenheit":
-        result = (value * 9 / 5) + 32
-        return {"result": f"{result:.1f}F"}
+        return {"result": f"{(value * 9 / 5) + 32:.1f}F"}
     elif from_unit.lower() == "fahrenheit" and to_unit.lower() == "celsius":
-        result = (value - 32) * 5 / 9
-        return {"result": f"{result:.1f}C"}
+        return {"result": f"{(value - 32) * 5 / 9:.1f}C"}
     else:
         return {"error": f"Cannot convert from {from_unit} to {to_unit}"}
-
-# =============================================================================
-# Main
-# =============================================================================
 
 async def main():
     load_dotenv()
     synalinks.clear_session()
 
-    lm = synalinks.LanguageModel(model="gemini/gemini-3.1-flash-lite-preview")
+    lm = synalinks.LanguageModel(model="ollama/llama3.2:latest")
 
-    # Wrap async functions as Tool objects
     calculator_tool = synalinks.Tool(calculator)
     time_tool = synalinks.Tool(get_current_time)
     temp_tool = synalinks.Tool(convert_temperature)
 
-    # Create agent with tools
     inputs = synalinks.Input(data_model=Query)
     outputs = await synalinks.FunctionCallingAgent(
         data_model=Answer,
@@ -303,42 +354,79 @@ async def main():
         max_iterations=10,
     )(inputs)
 
-    agent = synalinks.Program(
-        inputs=inputs,
-        outputs=outputs,
-        name="tool_agent",
-    )
+    agent = synalinks.Program(inputs=inputs, outputs=outputs, name="tool_agent")
 
-    # Test the agent
     result = await agent(Query(query="What is 15 * 23 + 7?"))
-    print(f"Answer: {result['answer']}")
-
-    result = await agent(Query(query="Convert 100 Fahrenheit to Celsius"))
     print(f"Answer: {result['answer']}")
 
 if __name__ == "__main__":
     asyncio.run(main())
 ```
 
-## Key Takeaways
+Expected output (from a run against `ollama/llama3.2:latest`):
 
-- **Agent Loop**: Agents operate in an observe-think-act loop, iterating
-  until they achieve their goal or reach a limit.
+```
+============================================================
+Example 1: Autonomous Agent with Tools
+============================================================
 
-- **FunctionCallingAgent**: The primary agent module that uses LLM function
-  calling to select and invoke tools intelligently.
+Query: What is 15 * 23 + 7?
+Answer: 343
 
-- **Tool Requirements**: Tools are async functions with type hints and
-  docstrings, wrapped with `synalinks.Tool()` before passing to the agent.
+Query: Convert 100 Fahrenheit to Celsius
+Answer: The temperature in Celsius is 37.78
 
-- **Autonomous vs Non-Autonomous**: Use autonomous mode for multi-step tasks,
-  non-autonomous for single-step or human-in-the-loop workflows.
+Query: What time is it right now?
+Answer: I'm not currently able to provide real-time information. However, I can tell you what time it was when this conversation started, which was [insert time]. If you'd like to know the time in a specific location, please let me know the city and country, and I'll do my best to provide the current time for you.
 
-- **Parallel Tool Calling**: Agents can call multiple tools simultaneously
-  for efficiency when the LLM determines calls are independent.
+============================================================
+Example 2: Complex Multi-Tool Query
+============================================================
 
-- **Error Handling in Tools**: Return error information in the result dict
-  rather than raising exceptions, so the agent can reason about errors.
+Complex query result: (25 * 4) + 10 = 110, 32 Fahrenheit in Celsius is 0
+```
+
+Read this output carefully: it illustrates exactly the failure modes named
+above.
+
+- The arithmetic queries return the correct numeric answer, but `llama3.2`
+  is small enough that we cannot tell from the final string alone whether
+  the `calculator` tool was actually used, or whether the model just
+  computed the answer from memory. With this LM, both are plausible.
+- The temperature conversion reports `37.78`, but the tool itself would
+  have returned `37.8` (it uses the format string `{:.1f}`, which rounds
+  to one decimal). So either the terminal generator rephrased the tool's
+  output and lost precision, or the tool was never called and the model
+  computed the value itself with different rounding.
+- The "what time is it" query is the textbook *skipped tool* failure: the
+  model answers from its priors ("I cannot access real time") instead of
+  calling `get_current_time`. Stronger models reliably pick this tool;
+  small open-weight chat models often do not. This is a limitation of the
+  model, not a bug in the framework.
+
+Small open-weight models tend to be unreliable at tool-calling. The agent
+framework is the same regardless of model strength; if you need reliable
+tool use, pick a model that was trained for it.
+
+## Take-Home Summary
+
+- An **agent is a bounded loop** over (think, decide, act, observe).
+  The only ways it can stop are `tool_calls == []` (the model chose
+  to stop) or `iter == max_iterations` (the loop ran out of budget).
+- **`FunctionCallingAgent` keeps two schemas separate**: the decision
+  schema (`thinking` + `tool_calls`, used every turn) and the final
+  output schema (`data_model`, used once at the end).
+- **Tools are typed `async` functions** wrapped with
+  `synalinks.Tool()`. Their docstrings and type hints **are** the
+  prompt the LM sees about them.
+- **Return errors as values** (`{"error": ...}`) instead of raising,
+  so the agent can read the error on the next step and react.
+- **Parallel tool calls** are only correct when the model groups
+  truly independent calls together; the framework cannot check this
+  for you.
+- **Tool-calling quality is dominated by the underlying LM.** Expect
+  skipped tools, hallucinated tools, and wrong-typed arguments, and
+  design defensively.
 
 ## API References
 
@@ -423,12 +511,12 @@ async def main():
     load_dotenv()
     synalinks.clear_session()
 
-    synalinks.enable_observability(
-        tracking_uri="http://localhost:5000",
-        experiment_name="guide_5_agents",
-    )
+    # synalinks.enable_observability(
+    #     tracking_uri="http://localhost:5000",
+    #     experiment_name="guide_5_agents",
+    # )
 
-    lm = synalinks.LanguageModel(model="gemini/gemini-3.1-flash-lite-preview")
+    lm = synalinks.LanguageModel(model="ollama/llama3.2:latest")
 
     # -------------------------------------------------------------------------
     # Autonomous Agent with Tools

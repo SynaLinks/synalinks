@@ -11,7 +11,6 @@ theme:
     - content.code.copy
   icon:
     repo: fontawesome/brands/github
-  theme:
   palette:
     - media: "(prefers-color-scheme: light)"
       scheme: default
@@ -59,12 +58,19 @@ nav:
     - guides/Programs.md
     - guides/Modules.md
     - guides/Agents.md
-    - guides/Recursive Language Model Agent.md
     - guides/Knowledge Base.md
-    - guides/Training.md
-    - guides/Observability.md
     - guides/Input Guard.md
     - guides/Output Guard.md
+    - guides/Observability.md
+    - guides/Datasets.md
+    - guides/Trainable Variables.md
+    - guides/Rewards.md
+    - guides/Metrics.md
+    - guides/Training.md
+    - guides/Callbacks.md
+    - guides/Hyperparameter Search.md
+    - guides/Multi-Objective LM Selection.md
+    - guides/Recursive Language Model Agent.md
   - Code Examples:
     - Code Examples/First Steps.md
     - Code Examples/Functional API.md
@@ -193,6 +199,20 @@ nav:
       - Synalinks API/Built-in Datasets/GSM8K.md
       - Synalinks API/Built-in Datasets/HotpotQA.md
       - Synalinks API/Built-in Datasets/ARC-AGI.md
+      - Synalinks API/Built-in Datasets/ARC-Challenge.md
+      - Synalinks API/Built-in Datasets/BBH.md
+      - Synalinks API/Built-in Datasets/BBQ.md
+      - Synalinks API/Built-in Datasets/BoolQ.md
+      - Synalinks API/Built-in Datasets/DROP.md
+      - Synalinks API/Built-in Datasets/HellaSwag.md
+      - Synalinks API/Built-in Datasets/HumanEval.md
+      - Synalinks API/Built-in Datasets/IFEval.md
+      - Synalinks API/Built-in Datasets/LAMBADA.md
+      - Synalinks API/Built-in Datasets/LogiQA.md
+      - Synalinks API/Built-in Datasets/MMLU.md
+      - Synalinks API/Built-in Datasets/SQuAD.md
+      - Synalinks API/Built-in Datasets/TruthfulQA.md
+      - Synalinks API/Built-in Datasets/WinoGrande.md
     - Utilities:
       - Synalinks API/Utilities/Program plotting utilities.md
       - Synalinks API/Utilities/More plotting utilities.md

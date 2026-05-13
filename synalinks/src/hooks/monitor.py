@@ -28,6 +28,14 @@ except ImportError:
     MLFLOW_AVAILABLE = False
     SpanType = None
 
+# Module-level logger. Keeping the logger off the `Monitor` instance is
+# load-bearing: the hook is attached to a Module and reachable from every
+# `TrackedDict` via the synalinks `Tracker`. A `logging.Logger` reaches the
+# global logging tree (handlers carry a `_thread.RLock`), so a `self.logger`
+# attribute would make any `copy.deepcopy` of a tracked schema/dict fail
+# with `cannot pickle '_thread.lock' object`.
+_LOGGER = logging.getLogger(__name__)
+
 # Global registry to track spans across hook instances for parent-child relationships
 _GLOBAL_SPANS_REGISTRY: Dict[str, Any] = {}
 
@@ -108,8 +116,6 @@ class Monitor(Hook):
         self.tracking_uri = tracking_uri or mlflow_tracking_uri()
         self.experiment_name = experiment_name or mlflow_experiment_name()
         self.call_start_times = {}
-        self._spans = {}
-        self.logger = logging.getLogger(__name__)
         self._setup_done = False
 
     def _setup_mlflow(self):
@@ -200,8 +206,9 @@ class Monitor(Hook):
             parent_span=parent_span_obj,
         )
 
-        # Store in both local and global registry
-        self._spans[call_id] = span
+        # Store only in the module-level registry. Storing the span on the
+        # hook instance would expose mlflow's internal `_thread.lock` state
+        # through the tracker graph (see comment on `_LOGGER` above).
         _GLOBAL_SPANS_REGISTRY[call_id] = span
 
         span.set_attributes(
@@ -215,13 +222,12 @@ class Monitor(Hook):
             }
         )
 
-        # Set inputs as a dictionary (MLflow handles serialization)
         inputs_dict = {"data": serialized_inputs}
         if serialized_kwargs:
             inputs_dict["kwargs"] = serialized_kwargs
         span.set_inputs(inputs_dict)
 
-        self.logger.debug(f"Started span for call {call_id}: {span_name}")
+        _LOGGER.debug(f"Started span for call {call_id}: {span_name}")
 
     def on_call_begin(
         self,
@@ -301,13 +307,12 @@ class Monitor(Hook):
         else:
             span.set_status("OK")
 
-        # Set outputs as a dictionary (MLflow handles serialization)
         span.set_outputs({"data": serialized_outputs})
 
         await asyncio.to_thread(span.end)
 
         success = exception is None
-        self.logger.debug(
+        _LOGGER.debug(
             f"Ended span for call {call_id}, duration={duration:.3f}s, success={success}"
         )
 
@@ -325,12 +330,10 @@ class Monitor(Hook):
         start_time = self.call_start_times.pop(call_id, end_time)
         duration = end_time - start_time
 
-        span = self._spans.pop(call_id, None)
-        # Also remove from global registry
-        _GLOBAL_SPANS_REGISTRY.pop(call_id, None)
+        span = _GLOBAL_SPANS_REGISTRY.pop(call_id, None)
 
         if span is None:
-            self.logger.warning(f"No span found for call_id {call_id}")
+            _LOGGER.warning(f"No span found for call_id {call_id}")
             return
 
         serialized_outputs, _ = self._serialize_data(outputs)
@@ -352,10 +355,9 @@ class Monitor(Hook):
 
     def __del__(self):
         """Cleanup any open spans."""
-        if hasattr(self, "_spans"):
-            for call_id, span in list(self._spans.items()):
-                try:
-                    span.end()
-                except Exception:
-                    pass
-            self._spans.clear()
+        for call_id, span in list(_GLOBAL_SPANS_REGISTRY.items()):
+            try:
+                span.end()
+            except Exception:
+                pass
+        _GLOBAL_SPANS_REGISTRY.clear()

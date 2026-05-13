@@ -1,59 +1,112 @@
 """
 # Knowledge Base
 
-A **Knowledge Base** in Synalinks is a structured storage system that enables
-your LM applications to retrieve and reason over external data. Unlike simple
-prompt injection, a Knowledge Base provides semantic search capabilities,
-automatic chunking, and efficient retrieval - the foundation for building
-Retrieval-Augmented Generation (RAG) systems.
+So far the programs you have built have used only what the language
+model already knows from its pre-training. That works for "What is the
+capital of France?" — but not for "What did our company decide in
+yesterday's meeting?" In this guide we add a memory that lives
+*outside* the LM: a **knowledge base** (KB) the program can search at
+runtime.
 
-## Why Knowledge Bases Matter
+The mental picture to start with is a labeled filing cabinet. Each
+drawer (which we'll call a **table**) holds records of one shape; an
+**index** is a precomputed lookup structure (like the index at the back
+of a textbook) that makes searches fast; a **query** is a request that
+returns the records that best match.
 
-Language models have a knowledge cutoff and limited context windows. A
-Knowledge Base solves both problems:
+A slightly more formal description: a knowledge base is a triple
+`(S, I, Q)`.
+
+- `S` is the set of stored records. Every record obeys a fixed schema
+  (it has a known set of typed fields).
+- `I` is one or more indices built over `S`.
+- `Q` is a family of query operators that take a search request and
+  return a **ranked** subset of `S` — records sorted from most to
+  least relevant.
+
+In Synalinks, `S` is defined by `DataModel` classes (the Pydantic-style
+typed records you have seen since [Guide 2](Data%20Models.md)). The indices are provided by
+**DuckDB**, an embedded SQL engine, plus a couple of DuckDB extensions
+for text and vector search. `Q` is exposed as three methods on a
+`KnowledgeBase` object: `fulltext_search`, `similarity_search`, and
+`hybrid_search`.
+
+## Why Put Knowledge Outside the Model
+
+A language model is a fixed function. Once trained, its weights are
+frozen. At inference time the only "memory" the model has is whatever
+text you put into its **context window** — the bounded buffer of tokens
+it reads on each call. That gives us two hard limits:
+
+1. **Parameter cutoff.** Weights are frozen at the end of training. A
+   fact discovered yesterday simply cannot appear in the model unless
+   you either retrain it (expensive) or paste the fact into the
+   context window at query time (cheap).
+2. **Context bound.** The context window is finite — typically a few
+   thousand to a few hundred thousand tokens. You cannot paste an
+   entire corpus into every prompt. And even if you could, longer
+   contexts degrade quality and cost more.
+
+A knowledge base **externalizes** state. Retrieval — picking the
+records relevant to a question — becomes a deterministic, auditable
+preprocessing step that selects the small slice of context the
+(non-deterministic) generator will then read. When something goes
+wrong, you can isolate the bug to the boundary between *symbolic*
+retrieval and *neural* generation, which is much easier to debug than
+"the model just hallucinated."
 
 ```mermaid
 graph LR
-    subgraph Without Knowledge Base
-        A[Query] --> B[LLM]
-        B --> C[Hallucination Risk]
-    end
-    subgraph With Knowledge Base
-        D[Query] --> E[Retrieve Relevant Docs]
-        E --> F[LLM + Context]
-        F --> G[Grounded Answer]
-    end
+    A["Query"] --> B["Retriever (KB)"]
+    B --> C["Top-k records"]
+    C --> D["Generator (LM)"]
+    A --> D
+    D --> E["Grounded answer"]
 ```
 
-Knowledge Bases provide:
+The arrow from `Query` directly into the `Generator` is deliberate:
+the original query is needed both to *select* the context (via the
+retriever) and to tell the generator what the user actually asked.
 
-1. **Grounded Responses**: Answers based on actual data, not hallucinations
-2. **Unlimited Knowledge**: Store documents beyond context limits
-3. **Up-to-Date Information**: Add new data without retraining
-4. **Source Attribution**: Track where answers come from
+This whole pattern — retrieve, then generate — has a name you will see
+everywhere in the field: **RAG**, for Retrieval-Augmented Generation.
 
 ## Architecture
 
-Synalinks Knowledge Base is built on DuckDB, providing:
+A single DuckDB file stores both the rows and the indices. DuckDB is
+an **embedded SQL database**, similar in spirit to SQLite: it runs
+inside your Python process, and the entire database is one file on
+disk. Each `DataModel` class maps to one SQL table. Indices are built
+lazily — the first call to a search method on a table triggers index
+construction; subsequent calls reuse it.
 
 ```mermaid
 graph TD
-    A[DataModels] --> B[KnowledgeBase]
-    B --> C[DuckDB Storage]
-    B --> D[Full-Text Index]
-    B --> E[Vector Index]
-    F[Search Query] --> G{Search Type}
-    G -->|fulltext| D
-    G -->|similarity| E
-    G -->|hybrid| H[Combine Both]
-    D --> I[Results]
+    A["DataModel classes"] --> B["KnowledgeBase"]
+    B --> C["DuckDB file"]
+    C --> D["Row store"]
+    C --> E["FTS index (BM25)"]
+    C --> F["HNSW vector index"]
+    G["Search call"] --> H{"search_type"}
+    H -->|fulltext| E
+    H -->|similarity| F
+    H -->|hybrid| I["Reciprocal-rank fusion"]
     E --> I
-    H --> I
+    F --> I
+    D --> J["Ranked records"]
+    E --> J
+    F --> J
+    I --> J
 ```
 
-## Creating a Knowledge Base
+Because DuckDB is embedded, the database lives inside your Python
+process. There is no server to start, no network hop, no separate
+lifecycle to manage. The trade-off: two processes that try to write to
+the same file at once have to coordinate through the filesystem, which
+is fragile. For a production workload with many concurrent writers,
+use a hosted store instead.
 
-Define DataModels for your documents, then create the Knowledge Base:
+## Building a Knowledge Base
 
 ```python
 import synalinks
@@ -64,92 +117,150 @@ class Document(synalinks.DataModel):
     title: str = synalinks.Field(description="Document title")
     content: str = synalinks.Field(description="Document content")
 
-# Create the knowledge base
 kb = synalinks.KnowledgeBase(
-    uri="duckdb://my_database.db",    # Storage location
-    data_models=[Document],            # What types to store
-    embedding_model=embedding_model,   # For vector search (optional)
-    metric="cosine",                   # Similarity metric
-    wipe_on_start=False,               # Preserve existing data
+    uri="duckdb://my_database.db",
+    data_models=[Document],
+    embedding_model=embedding_model,  # required only for similarity/hybrid
+    metric="cosine",
+    wipe_on_start=False,
 )
 ```
 
-### Key Parameters
+Two rules the system relies on are worth burning into memory:
 
-| Parameter | Description |
-|-----------|-------------|
-| `uri` | Database connection string (e.g., `duckdb://path.db`) |
-| `data_models` | List of DataModel classes to store |
-| `embedding_model` | EmbeddingModel for vector search (optional) |
-| `metric` | Similarity metric: `cosine`, `l2`, or `ip` |
-| `wipe_on_start` | Clear database on initialization |
+- **The first declared field is the primary key.** A **primary key**
+  is the field that uniquely identifies a record. `update()` here is
+  an **upsert** (insert-or-update): if a record with the same key
+  exists, it is replaced; if not, a new row is inserted. The big trap:
+  reordering the fields of your `DataModel` silently changes which
+  field is the key, which breaks deduplication. Keep the key field
+  first and do not move it.
+- **One table per `DataModel` class.** If you call `search` with a
+  class you never passed to `data_models=[...]`, you get a loud error
+  rather than a silent empty result. The framework prefers to fail
+  loudly.
 
-## Search Methods
+| Parameter | Meaning |
+|-----------|---------|
+| `uri` | Connection string. For embedded DuckDB use `duckdb://<path>`. |
+| `data_models` | Schema set. Each class becomes a table. |
+| `embedding_model` | Required for vector indices; optional otherwise. |
+| `metric` | `cosine`, `l2` (Euclidean), or `ip` (inner product). |
+| `wipe_on_start` | If `True`, drops all tables on construction. |
 
-### Full-Text Search (BM25)
+## The Three Search Operators
 
-Uses the BM25 algorithm for traditional keyword-based search:
+### 1. Full-text search (BM25)
+
+Full-text search answers the question: *"which records contain the
+words in my query?"* The classic scoring function for this is **BM25**.
+Intuitively, BM25 gives a record a higher score when:
+
+- it contains more of the query terms (**term frequency** — the more
+  often a word appears, the more relevant the record is),
+- those terms are *rare* in the corpus overall (**inverse document
+  frequency** — words like "the" appear everywhere and tell you almost
+  nothing about which document is relevant; rare words are more
+  informative), and
+- the record is not unusually long (long records are penalized so they
+  do not win just by accident of size).
+
+Term-frequency contribution **saturates**, meaning each successive
+occurrence of a word counts less than the previous one. The tenth
+occurrence of "neural" adds less to the score than the first. BM25
+ignores meaning entirely; it sees only the literal words.
 
 ```python
 results = await kb.fulltext_search(
     "machine learning neural networks",
-    data_models=[Document], # If None search in all tables
-    k=10,           # Number of results
-    threshold=None, # Minimum score (optional)
+    data_models=[Document],  # None means: search every registered table
+    k=10,
+    threshold=None,          # optional lower bound on BM25 score
 )
 ```
 
-Best for:
+Use BM25 when the user's vocabulary tends to match the corpus's
+vocabulary, and when speed and predictability matter. Its main failure
+mode is the **lexical gap**: a query like "how do computers learn?"
+will find nothing in a corpus that only contains the phrase "machine
+learning", because no query word literally appears in the documents.
 
-- Exact keyword matching
-- When users search with specific terms
-- Quick, lightweight search
+### 2. Similarity search (vector)
 
-### Similarity Search (Vector)
+A **vector embedding** is a fixed-length list of numbers — typically a
+few hundred floats — produced by a neural network. The network is
+trained so that *semantically* similar texts get *numerically* nearby
+vectors. So "machine learning" and "how computers learn" land close
+together in the vector space even though they share no words.
 
-Uses embedding vectors for semantic search:
+Similarity search works in three steps:
+
+1. **At insert time**, each record's designated text field is
+   converted to a vector by the embedding model.
+2. **At query time**, the query is embedded by the *same* model.
+3. The index returns the `k` records whose vectors are closest to the
+   query vector under your chosen `metric` (typically cosine
+   similarity).
+
+The index structure is called **HNSW** — Hierarchical Navigable Small
+World, an *approximate* nearest-neighbor data structure. The word
+"approximate" is important: exact nearest-neighbor search over
+millions of vectors would be too slow, so HNSW trades a tiny amount of
+accuracy for orders-of-magnitude speedup.
 
 ```python
 results = await kb.similarity_search(
-    "how do computers learn",  # Semantically matches "machine learning"
-    data_models=[Document], # If None search in all tables
+    "how do computers learn",   # semantic match for "machine learning"
+    data_models=[Document],
     k=10,
-    threshold=0.7,  # Minimum similarity score
+    threshold=0.7,              # cosine similarity floor
 )
 ```
 
-Best for:
+This closes the lexical gap. Two cautions:
 
-- Semantic meaning matching
-- Natural language queries
-- Finding conceptually related content
+- **Embeddings are not free.** You pay for a model call at both
+  insert time (per record) and query time (per query).
+- **`threshold` is metric-dependent.** A value of `0.7` under cosine
+  similarity (a score bounded in `[-1, 1]`, where 1 means identical)
+  means "fairly similar." Under L2 distance (Euclidean distance,
+  unbounded, where smaller means closer), `0.7` means something
+  *entirely* different. Always pick the threshold in the units of the
+  metric you actually configured.
 
-### Hybrid Search
+### 3. Hybrid search
 
-Combines both methods for best results:
+Hybrid search runs both retrievers — BM25 *and* vector — and **fuses**
+their rankings into a single combined ranking. Synalinks uses
+**Reciprocal Rank Fusion (RRF)**: each candidate's final score is a
+weighted sum of `1 / (k + rank)` from each retriever, where `rank` is
+its position in that retriever's list. The intuition: being near the
+top of *either* list is strong evidence, and RRF rewards documents
+that show up well in multiple rankings — without requiring the
+underlying scores to be on comparable scales.
 
 ```python
 results = await kb.hybrid_search(
     "machine learning basics",
     data_models=[Document],
     k=10,
-    bm25_weight=0.5,    # Weight for BM25 scores
-    vector_weight=0.5,  # Weight for vector scores
+    bm25_weight=0.5,
+    vector_weight=0.5,
 )
 ```
 
-Best for:
+Hybrid is the standard default for production RAG. BM25 anchors
+precise terminology (proper names, product codes, identifiers) where
+literal matching is essential, while the vector path recovers
+paraphrases and synonyms.
 
-- Production RAG systems
-- When you need both exact and semantic matching
-- Complex queries that benefit from both approaches
+## CRUD: Storing and Reading Records
 
-## CRUD Operations
+**CRUD** stands for **C**reate, **R**ead, **U**pdate, **D**elete —
+the four basic database operations. Synalinks exposes them as async
+methods on `KnowledgeBase`.
 
-### Create/Update
-
-The `update` method performs upsert (insert or update). The first field in
-your DataModel is used as the primary key:
+### Upsert
 
 ```python
 doc = Document(
@@ -161,16 +272,20 @@ doc = Document(
 await kb.update(doc.to_json_data_model())
 ```
 
-### Read by ID
+Calling `update` twice with the same primary key replaces the existing
+row; it does not append. If you want append semantics, generate a fresh
+unique key (for example a UUID) per record before calling `update`.
+
+### Read by primary key
 
 ```python
 result = await kb.get(
-    "doc1",  # Primary key value
+    "doc1",
     data_models=[Document],
 )
 ```
 
-### List All
+### Enumerate
 
 ```python
 all_docs = await kb.getall(
@@ -189,9 +304,7 @@ await kb.delete(
 )
 ```
 
-### Raw SQL
-
-For complex queries, use raw SQL:
+### Raw SQL escape hatch
 
 ```python
 results = await kb.query(
@@ -200,34 +313,49 @@ results = await kb.query(
 )
 ```
 
-## Knowledge Modules
+Always use **parameterized queries**: the `?` placeholder is filled in
+by the database *after* the SQL has been parsed, so user input can
+never be mistaken for SQL syntax. This is how you avoid SQL injection
+attacks — a class of security vulnerability you should learn to spot
+even if you never become a security engineer.
 
-Synalinks provides modules for integrating Knowledge Bases into programs:
+## Knowledge Modules: KB Operations Inside Programs
+
+The methods above are the low-level interface. **Modules** wrap them
+as reusable building blocks for the Functional API, so you can drop
+retrieval directly into a larger `Program`.
 
 ### RetrieveKnowledge
 
-Retrieves relevant documents using LM-generated search queries:
+`RetrieveKnowledge` takes an input record (often the user query), asks the
+language model to write a good search string from it, runs the chosen
+search operator, and emits both the original input and the retrieved
+records downstream.
 
 ```mermaid
 graph LR
-    A[Input] --> B[Generate Query]
-    B --> C[Search KB]
-    C --> D[Context + Input]
+    A["Input record"] --> B["LM: synthesise query"]
+    B --> C["KB.search (type)"]
+    C --> D["Retrieved records"]
+    A --> E["Output"]
+    D --> E
 ```
 
 ```python
 retrieved = await synalinks.RetrieveKnowledge(
     knowledge_base=kb,
     language_model=lm,
-    search_type="hybrid",  # fulltext, similarity, or hybrid
+    search_type="hybrid",   # fulltext | similarity | hybrid
     k=10,
-    return_inputs=True,    # Include original input in output
+    return_inputs=True,
 )(inputs)
 ```
 
-### UpdateKnowledge
+Setting `return_inputs=False` discards the original input from the output.
+That is rarely what you want, because the generator downstream usually
+needs both the question and the retrieved context to write a good answer.
 
-Stores DataModels in the Knowledge Base:
+### UpdateKnowledge
 
 ```python
 stored = await synalinks.UpdateKnowledge(
@@ -237,25 +365,27 @@ stored = await synalinks.UpdateKnowledge(
 
 ### EmbedKnowledge
 
-Generates embeddings for DataModels:
-
 ```python
 embedded = await synalinks.EmbedKnowledge(
     embedding_model=embedding_model,
-    in_mask=["content"],  # Which fields to embed
+    in_mask=["content"],   # subset of fields to embed
 )(inputs)
 ```
 
-## Building a RAG Pipeline
+`in_mask` is the explicit list of textual fields that get
+concatenated and fed to the embedding model. Think of it as a
+contract you set: embedding *every* field is wasteful and dilutes the
+signal; embedding *none* means vector search will never find this
+record (zero recall).
 
-A complete RAG system combines retrieval with generation:
+## A minimal RAG pipeline
 
 ```mermaid
 graph LR
-    A[Query] --> B[RetrieveKnowledge]
-    B --> C[Context + Query]
-    C --> D[Generator]
-    D --> E[Grounded Answer]
+    A["Query"] --> B["RetrieveKnowledge"]
+    B --> C["{query, retrieved}"]
+    C --> D["Generator"]
+    D --> E["Answer"]
 ```
 
 ```python
@@ -273,9 +403,8 @@ async def main():
     load_dotenv()
     synalinks.clear_session()
 
-    lm = synalinks.LanguageModel(model="gemini/gemini-3.1-flash-lite-preview")
+    lm = synalinks.LanguageModel(model="ollama/llama3.2:latest")
 
-    # Assume kb is already populated
     kb = synalinks.KnowledgeBase(
         uri="duckdb://knowledge.db",
         data_models=[Document],
@@ -283,7 +412,6 @@ async def main():
 
     inputs = synalinks.Input(data_model=Query)
 
-    # Retrieve relevant documents
     retrieved = await synalinks.RetrieveKnowledge(
         knowledge_base=kb,
         language_model=lm,
@@ -292,7 +420,6 @@ async def main():
         return_inputs=True,
     )(inputs)
 
-    # Generate answer using retrieved context
     outputs = await synalinks.Generator(
         data_model=Answer,
         language_model=lm,
@@ -311,24 +438,117 @@ if __name__ == "__main__":
     asyncio.run(main())
 ```
 
-## Key Takeaways
+## Expected output
 
-- **DuckDB Backend**: Fast, embedded database with full-text and vector search
-  capabilities. No external services required.
+Running the demonstration below produces:
 
-- **Three Search Types**: Full-text (BM25) for keywords, similarity for
-  semantics, hybrid for best of both.
+```
+============================================================
+Example 1: Knowledge Base with Full-Text Search
+============================================================
 
-- **DataModel as Schema**: Your DataModels define the structure of stored
-  documents. The first field is the primary key.
+Storing documents...
+  Stored: Introduction to Python
+  Stored: Machine Learning Basics
+  Stored: Deep Learning
+  Stored: Natural Language Processing
 
-- **RetrieveKnowledge Module**: Automates query generation and retrieval for
-  RAG pipelines. Combines seamlessly with Generator.
+============================================================
+Example 2: Full-Text Search
+============================================================
 
-- **Upsert Semantics**: The `update` method inserts new records or updates
-  existing ones based on the primary key.
+Search: 'programming language'
+Found 2 results:
+  - Natural Language Processing: NLP enables computers to understand and process hu...
+  - Introduction to Python: Python is a high-level programming language....
 
-- **Raw SQL Access**: For complex queries, you can use raw SQL directly.
+============================================================
+Example 3: Get by ID
+============================================================
+
+Get doc2:
+  Title: Machine Learning Basics
+  Content: Machine learning is a subset of AI that enables systems to learn.
+
+============================================================
+Example 4: Get All Records
+============================================================
+
+All documents (4):
+  - doc1: Introduction to Python
+  - doc2: Machine Learning Basics
+  - doc3: Deep Learning
+  - doc4: Natural Language Processing
+
+============================================================
+Example 5: RAG Pipeline
+============================================================
+
+RAG Query: What is Python?
+Answer: Python is a high-level programming language.
+
+RAG Query: Tell me about neural networks
+Answer: Deep learning uses neural networks with many layers.
+
+============================================================
+Example 6: Raw SQL Query
+============================================================
+
+SQL: SELECT WHERE title LIKE '%Learning%'
+  - doc2: Machine Learning Basics
+  - doc3: Deep Learning
+```
+
+Notice that BM25 ranks "Natural Language Processing" above "Introduction
+to Python" for the query "programming language". The NLP record contains
+the literal substring "Language" prominently (in a short title and body),
+which gives it a high term-frequency contribution, even though the Python
+record is the more semantically relevant answer. This is the textbook
+lexical-overlap trap, and a good argument for hybrid search whenever
+recall (finding the right answer) matters more than raw throughput.
+
+## Things That Will Bite You
+
+A short list of failure modes worth scanning for before you ship a KB:
+
+- **Schema drift.** If you add, rename, or retype a field on a
+  `DataModel`, existing rows do *not* automatically migrate to the
+  new shape. During development, drop the database
+  (`wipe_on_start=True`) or write a migration script.
+- **Missing embedding model.** Calling `similarity_search` on a KB
+  built with `embedding_model=None` raises an error at *query* time,
+  not at construction time. Decide up front whether you will need
+  vector search.
+- **Primary-key collision.** `update` silently overwrites the
+  existing row on a key match. If that is wrong for your use case,
+  generate a unique key per record (a UUID, say) before calling
+  `update`.
+- **Threshold semantics depend on the metric.** Cosine thresholds are
+  bounded in `[-1, 1]`; L2 thresholds are unbounded distances
+  (smaller = closer); BM25 thresholds are unbounded scores. Tune the
+  threshold per dataset *and* per metric; never reuse a magic number
+  across them.
+
+## Take-Home Summary
+
+- A **knowledge base** is the triple `(S, I, Q)`: a set of
+  typed records, one or more indices over them, and a family
+  of query operators that return ranked matches.
+- One `DataModel` class → one table. **The first declared
+  field is the primary key.** `update` is an upsert.
+- Three search operators:
+  **`fulltext_search`** (BM25, lexical),
+  **`similarity_search`** (vector, semantic, needs an
+  embedding model), and
+  **`hybrid_search`** (Reciprocal-Rank-Fusion of both — the
+  standard default for production RAG).
+- The **`RetrieveKnowledge`** module drops retrieval into a
+  `Program` directly; combined with a downstream `Generator`,
+  that is **RAG** (Retrieval-Augmented Generation).
+- Externalizing state is what beats the LM's two hard limits:
+  the parameter cutoff (frozen weights) and the context
+  bound (finite window). Retrieval becomes a deterministic,
+  auditable preprocessing step you can debug.
 
 ## API References
 
@@ -379,10 +599,10 @@ async def main():
     load_dotenv()
     synalinks.clear_session()
 
-    synalinks.enable_observability(
-        tracking_uri="http://localhost:5000",
-        experiment_name="guide_6_knowledge_base",
-    )
+    # synalinks.enable_observability(
+    #     tracking_uri="http://localhost:5000",
+    #     experiment_name="guide_6_knowledge_base",
+    # )
 
     # -------------------------------------------------------------------------
     # Create Knowledge Base
@@ -495,7 +715,7 @@ async def main():
     print("Example 5: RAG Pipeline")
     print("=" * 60)
 
-    lm = synalinks.LanguageModel(model="gemini/gemini-3.1-flash-lite-preview")
+    lm = synalinks.LanguageModel(model="ollama/llama3.2:latest")
 
     inputs = synalinks.Input(data_model=Query)
 

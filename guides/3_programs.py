@@ -1,70 +1,154 @@
 """
 # Programs
 
-A **Program** in Synalinks is the fundamental unit of deployment and training.
-Just as a function encapsulates logic in traditional programming, a Program
-encapsulates the entire computation graph of your Language Model application,
-from input to output, including all intermediate transformations.
+So far you have seen `Generator` calls one at a time. Real applications
+chain several of them together — answer the question, then summarize the
+answer, then translate the summary. In this guide we meet `Program`, the
+object that bundles many modules into one thing you can call, save,
+load, and (later on) train.
 
-## Why Programs Matter
+The mental picture to start with is a **flowchart**: each box is a
+`Module`, the arrows show how data flows between boxes, and the whole
+flowchart is itself a `Module` you can drop inside an even bigger
+flowchart. The framework keeps this flowchart as inspectable data — not
+just as a hidden chain of Python function calls — and that distinction
+is what makes saving and training possible.
 
-In traditional LLM development, you write procedural code that calls APIs:
+A **Module**, recall, is the smallest reusable building block — one
+input, one output, maybe some internal state. A **Program** is simply a
+`Module` built out of other `Module`s, wired together.
+
+If you like a slightly more formal description: a `Program` is a pair
+`(G, θ)`.
+
+- `G = (V, E)` is a **directed acyclic graph** ("DAG" — a flowchart
+  where you can't loop back to a box you've already visited). The
+  vertices `V` are modules; the edges `E` carry typed placeholders
+  (`SymbolicDataModel`s — they describe the *shape* of the data that
+  will flow, not the data itself).
+- `θ` (the Greek letter "theta") is the bag of **trainable
+  variables** attached to the modules. In a neural network these
+  would be floating-point weights. Here each variable is a
+  **JSON object** with a fixed schema — an *interpretable* data
+  structure the optimizer is allowed to rewrite. The most common
+  cases are a `Generator`'s system instruction (a JSON variable
+  whose main field is a string of natural-language guidance) and
+  its few-shot examples (a JSON variable whose main field is a
+  list of input/output pairs), but in general a trainable variable
+  can hold any structured state — see [Guide 11](Trainable%20Variables.md).
+
+In one sentence: a `Program` is a flowchart of modules plus the knobs
+the framework is allowed to tune.
+
+Why wrap a flowchart this way instead of just writing a regular Python
+function that calls `generator1`, then `generator2`, and so on? Three
+reasons:
+
+1. **Trainability.** The optimizers in `synalinks.optimizers` reach into
+   `θ` and update those knobs in place. Only variables exposed on graph
+   vertices are visible to the optimizer; variables hidden inside an
+   ordinary Python function are invisible to it.
+2. **Serializability.** `program.save(...)` writes the flowchart and
+   the current values of every knob to a JSON file, and
+   `Program.load(...)` reads them back. Your trained program survives
+   process restarts.
+3. **Introspectability.** `program.summary()` lists every box in the
+   order it will run, the shape of its output, and how many tunable
+   knobs it owns. It is your main debugging tool.
+
+`Program` inherits from two classes you will see in API docs:
+
+- `Trainer` — provides `compile()` and `fit()`, the training loop.
+- `Module` — provides `__call__`, `build`, `call`, `get_config`, and
+  the variable-tracking machinery.
+
+A `Program` is itself a `Module`, so you can drop one inside another
+larger program as a single box. That nesting is how big systems are
+assembled.
+
+## Why a Graph Is Better Than a Function
+
+A `Program` is **declarative**: you describe the flowchart once, as
+data, and the runtime walks it every time you call the program. This is
+not how a normal Python script works. A normal script is
+**procedural** — the framework only sees a sequence of opaque function
+calls, and cannot reason about their structure or improve them.
 
 ```mermaid
 graph LR
-    subgraph Traditional Approach
-        A[Function] --> B[API Call 1]
-        B --> C[Parse]
-        C --> D[API Call 2]
-        D --> E[Return]
-    end
+    A["Function"] --> B["API call 1"]
+    B --> C["Parse"]
+    C --> D["API call 2"]
+    D --> E["Return"]
 ```
 
-This approach has limitations: no training, no serialization, no visualization.
-
-Synalinks Programs provide a **declarative computation graph**:
+A `Program` exposes the same chain as data the framework can read and act
+on:
 
 ```mermaid
 graph LR
-    subgraph Synalinks Program
-        A[Input DataModel] --> B[Module 1]
-        B --> C[Module 2]
-        C --> D[Output DataModel]
-    end
-    E[Training] -.-> B
-    E -.-> C
-    F[Save/Load] -.-> B
-    F -.-> C
+    A["Input DataModel"] --> B["Module 1"]
+    B --> C["Module 2"]
+    C --> D["Output DataModel"]
+    T["Optimizer"] -.-> B
+    T -.-> C
+    S["save / load"] -.-> B
+    S -.-> C
 ```
 
-Programs provide:
+The solid arrows are the **forward pass** — the flow of data when you
+run the program. The dashed arrows are *not* part of execution; they
+represent extra things the framework can do *to* each module (train it,
+save it) precisely because it knows the module is there. A plain Python
+function hides its insides from the framework, so no dashed arrows are
+possible.
 
-1. **Trainability**: Optimize instructions and examples over time
-2. **Serialization**: Save and load trained state
-3. **Visualization**: Understand your computation graph
-4. **Composability**: Nest programs within programs
+## Four Ways to Build a Program
 
-## The Four Program Creation Strategies
-
-Synalinks offers four distinct strategies for creating programs, each suited
-to different use cases:
+There are four ways to build a `Program`. They differ in (a) how much
+code you write and (b) how much of the structure the framework can see
+ahead of time. We will look at each in turn.
 
 ```mermaid
 graph TD
-    A[Program Creation] --> B[Functional API]
-    A --> C[Subclassing API]
-    A --> D[Sequential API]
-    A --> E[Mixing Strategy]
-    B --> F["Most Flexible<br>(Recommended)"]
-    C --> G["Custom Logic<br>in call()"]
-    D --> H["Simple Linear<br>Pipelines"]
-    E --> I["Reusable<br>Components"]
+    A["Program construction"] --> B["Functional API"]
+    A --> C["Subclassing API"]
+    A --> D["Sequential API"]
+    A --> E["Mixing strategy"]
+    B --> F["Explicit DAG; full introspection"]
+    C --> G["Imperative call(); opaque body"]
+    D --> H["Linear chain; sugar over Functional"]
+    E --> I["Deferred build(); reusable component"]
 ```
 
-### Strategy 1: The Functional API (Recommended)
+The **Functional API** is the default; reach for it first. The other
+three exist for situations where a single fixed flowchart is either
+*impossible* (Subclassing, when the next step depends on runtime data)
+or *overkill* (Sequential, Mixing).
 
-The **Functional API** is the most powerful and flexible approach. You build
-a computation graph by chaining module calls, starting from an `Input` node:
+### Strategy 1: Functional API
+
+Think of building a Functional program as wiring up Lego bricks: you
+start from an input piece, snap modules onto it one at a time, and at
+the end you tell `Program` which piece is the entrance and which is the
+exit. The framework records the wiring as it happens.
+
+Concretely, you create an `Input` placeholder, call modules on
+**symbolic** values (placeholders that say "a value of this shape will
+arrive here at runtime"), and pass the resulting endpoints to
+`Program(inputs=..., outputs=...)`.
+
+Because every wire is a `SymbolicDataModel` — a typed placeholder
+rather than real data — the framework can do three useful things
+*before* the program ever runs:
+
+- Sort the modules into the right execution order (a **topological
+  sort** — picking an order in which every box runs only after its
+  inputs are ready).
+- Check that the output type of one module matches the input type of
+  the next.
+- Catch type mismatches up front, instead of mid-run after several LM
+  calls have already happened.
 
 ```python
 import asyncio
@@ -84,25 +168,25 @@ async def main():
     load_dotenv()
     synalinks.clear_session()
 
-    lm = synalinks.LanguageModel(model="gemini/gemini-3.1-flash-lite-preview")
+    lm = synalinks.LanguageModel(model="ollama/llama3.2:latest")
 
-    # Step 1: Define the entry point
+    # 1. Symbolic entry point.
     inputs = synalinks.Input(data_model=Query)
 
-    # Step 2: Chain module calls (this builds the graph)
+    # 2. Calling a module on a symbolic value adds a vertex to the graph.
     outputs = await synalinks.Generator(
         data_model=Answer,
         language_model=lm,
     )(inputs)
 
-    # Step 3: Wrap in a Program
+    # 3. Freeze the graph as a Program.
     program = synalinks.Program(
         inputs=inputs,
         outputs=outputs,
         name="qa_program",
     )
 
-    # Step 4: Use the program
+    # 4. Calling with a concrete DataModel runs the forward pass.
     result = await program(Query(query="What is 2+2?"))
     print(f"Answer: {result['answer']}")
 
@@ -110,16 +194,29 @@ if __name__ == "__main__":
     asyncio.run(main())
 ```
 
-The Functional API excels at:
+A very common trap: the line `await Generator(...)(inputs)` returns a
+`SymbolicDataModel` — still a placeholder, *not* real data. If you try
+to read `outputs.answer` at this point you get back the placeholder's
+metadata, not an actual answer. Real data only appears once you call
+`program(concrete_input)`. (This is the same construction-vs-execution
+distinction you saw in [Guide 1](Getting%20Started.md): defining and running are two separate
+steps.)
 
-- **Parallel branches**: Multiple modules can process the same input
-- **Complex routing**: Decisions and branches based on content
-- **Merging**: Combining outputs from multiple paths
+Because the wiring is just Python expressions on symbolic values, you
+can express parallel branches, merges (where two branches join back
+into one), and content-dependent routing using normal Python syntax.
 
-### Strategy 2: The Subclassing API
+### Strategy 2: Subclassing API
 
-The **Subclassing API** gives you complete control over the execution logic.
-You inherit from `synalinks.Program` and override the `call()` method:
+Sometimes the flowchart is not fixed in advance — which module runs
+next depends on the actual data. You might want to keep calling an LM
+until its answer passes a check (a `while` loop), branch on what the
+user asked (an `if`), or retry on failure. No single static graph can
+capture that. The **Subclassing API** is the escape hatch: you write
+the forward pass as ordinary async Python and trade some framework
+visibility for full programming flexibility.
+
+To use it, you inherit from `synalinks.Program` and override `call`:
 
 ```python
 import synalinks
@@ -131,12 +228,13 @@ class Answer(synalinks.DataModel):
     answer: str = synalinks.Field(description="The final answer")
 
 class QAProgram(synalinks.Program):
-    \"\"\"A custom QA program using subclassing.\"\"\"
+    \"\"\"QA program built by subclassing.\"\"\"
 
     def __init__(self, language_model, **kwargs):
         super().__init__(**kwargs)
         self.language_model = language_model
-        # Create modules in __init__
+        # Create sub-modules in __init__ so they are tracked as attributes
+        # and their variables are picked up by the optimizer.
         self.generator = synalinks.Generator(
             data_model=Answer,
             language_model=language_model,
@@ -147,27 +245,36 @@ class QAProgram(synalinks.Program):
         inputs: synalinks.JsonDataModel,
         training: bool = False,
     ) -> synalinks.JsonDataModel:
-        # Custom logic here
         return await self.generator(inputs, training=training)
 ```
 
-Use the Subclassing API when you need:
+Three rules to remember when subclassing:
 
-- Custom logic that doesn't fit the functional paradigm
-- State management beyond trainable variables
-- Integration with external systems during execution
+- **Create sub-modules as attributes in `__init__`** (or in `build`).
+  The act of assigning a module to `self.something` is what tells the
+  framework "this is mine, track its variables." A module created as a
+  *local variable* inside `call` is invisible to the optimizer, and its
+  knobs will never get trained.
+- `call` receives **concrete** `JsonDataModel` values — real data —
+  not symbolic placeholders.
+- The framework cannot peek inside your `call`, so `program.summary()`
+  shows a subclassed program as a single opaque box rather than
+  enumerating its inner modules.
 
-### Strategy 3: The Sequential API
+### Strategy 3: Sequential API
 
-The **Sequential API** is the simplest approach for linear pipelines where
-each module feeds directly into the next:
+If your flowchart is a straight line — one input, one output, no
+branches — writing out the Functional API by hand is just repetitive.
+`Sequential` is a shorthand for the case where step *i+1* takes
+whatever step *i* produced. Mathematically, you are computing
+`f_n(... f_2(f_1(x)) ...)`:
 
 ```mermaid
 graph LR
-    A[Input] --> B[Module 1]
-    B --> C[Module 2]
-    C --> D[Module 3]
-    D --> E[Output]
+    A["Input"] --> B["Module 1"]
+    B --> C["Module 2"]
+    C --> D["Module 3"]
+    D --> E["Output"]
 ```
 
 ```python
@@ -182,9 +289,8 @@ class Thinking(synalinks.DataModel):
 class Answer(synalinks.DataModel):
     answer: str = synalinks.Field(description="The final answer")
 
-lm = synalinks.LanguageModel(model="gemini/gemini-3.1-flash-lite-preview")
+lm = synalinks.LanguageModel(model="ollama/llama3.2:latest")
 
-# Simple linear pipeline using .add() method
 program = synalinks.Sequential(
     name="sequential_qa",
     description="A sequential question-answering pipeline",
@@ -194,28 +300,31 @@ program.add(synalinks.Generator(data_model=Thinking, language_model=lm))
 program.add(synalinks.Generator(data_model=Answer, language_model=lm))
 ```
 
-The Sequential API is ideal for:
+The output type of each stage must be a valid input type for the
+next. The moment the chain branches, merges, or has more than one
+input or output, switch to the Functional API.
 
-- Simple, linear processing pipelines
-- Quick prototyping
-- When each step naturally flows to the next
+### Strategy 4: Mixing strategy (deferred build)
 
-### Strategy 4: The Mixing Strategy
+Suppose you want to write a *reusable component* — say, a generic
+"Chain of Thought" wrapper — whose internal flowchart depends on the
+type of input it receives. You cannot build the flowchart in
+`__init__` because at that point you do not yet know the input shape.
 
-The **Mixing Strategy** combines subclassing with the Functional API to create
-**reusable components** that can be used inside other programs:
+The fix is called **deferred build**: store the hyperparameters in
+`__init__`, and override `build(inputs)`. The framework calls `build`
+exactly once, with a symbolic placeholder, the first time the
+component is used. Inside `build` you assemble the Functional graph
+using that placeholder, then call `super().__init__(inputs=...,
+outputs=...)` a second time to install the graph onto the component
+itself.
 
 ```mermaid
 graph TD
-    subgraph Reusable Component
-        A[build] --> B[Create Functional Graph]
-        B --> C[Reinitialize as Program]
-    end
-    subgraph Main Program
-        D[Input] --> E[Component]
-        E --> F[More Processing]
-        F --> G[Output]
-    end
+    A["__init__ stores hyperparameters"] --> B["First call with SymbolicDataModel"]
+    B --> C["build(inputs) creates Functional DAG"]
+    C --> D["super().__init__ installs DAG"]
+    D --> E["Component now behaves like a Functional Program"]
 ```
 
 ```python
@@ -229,13 +338,12 @@ class ChainOfThought(synalinks.Program):
         self.language_model = language_model
 
     async def build(self, inputs: synalinks.SymbolicDataModel) -> None:
-        \"\"\"Build the computation graph when first called.\"\"\"
         outputs = await synalinks.Generator(
             data_model=AnswerWithThinking,
             language_model=self.language_model,
         )(inputs)
 
-        # Reinitialize with the built graph
+        # Re-initialize *this* program with the freshly built graph.
         super().__init__(
             inputs=inputs,
             outputs=outputs,
@@ -243,77 +351,136 @@ class ChainOfThought(synalinks.Program):
         )
 ```
 
-The Mixing Strategy is powerful for:
+The trap to watch for: calling `super().__init__` a **second** time
+inside `build` looks like a mistake, but it is intentional. The first
+call (in `__init__`) registers the object as a bare `Program` with no
+graph yet; the second call upgrades it to a fully wired Functional
+`Program` now that the input type is known. Skip the second call and
+your component has no graph and refuses to run.
 
-- Creating library components
-- Encapsulating complex sub-graphs
-- Building a toolkit of reusable patterns
+## What You Get for Free
 
-## Program Features
+Once you have a `Program`, the framework offers three conveniences you
+do not have to write yourself.
 
-### Saving and Loading
+### Saving and loading
 
-Programs serialize their entire state to JSON:
+A `Program` saves to a single JSON file. The file contains the
+flowchart structure, the configuration of every module, and the
+current values of every trainable variable. Loading reconstructs an
+equivalent program with all training progress intact — no separate
+checkpoint format, no per-module surgery.
 
 ```python
-# Save a program
 program.save("my_program.json")
-
-# Load a program
 loaded = synalinks.Program.load("my_program.json")
 ```
 
-This includes all trainable variables (optimized instructions and examples).
+### `program.summary()`
 
-### Program Summary
+Call `program.summary()` and you get a table: every module in the
+program, listed in execution order, with its name, its type, the JSON
+schema of its output, and the number of trainable variables it owns.
+This is your main debugging tool for checking that a Functional
+program is wired the way you intended. Note: `summary()` cannot see
+inside a subclassed `call`, so a subclassed program appears as a
+single opaque box.
 
-Inspect your program's structure:
+### Batch inference
 
-```python
-program.summary()
-```
-
-Output:
-```
-Program: qa_program
-===============================
-| Module          | Trainable |
-|-----------------|-----------|
-| Input           | No        |
-| Generator       | Yes       |
-===============================
-Total parameters: 2
-Trainable parameters: 2
-```
-
-### Batch Inference
-
-Process multiple inputs efficiently:
+`program.predict(xs)` runs the program on every element of the list
+`xs` concurrently — in parallel — and returns the list of results.
+Use it when you have many independent inputs and want the total wall
+time to be roughly that of a single call instead of the sum. If the
+inputs are *not* independent — say the output of one feeds the next
+— call them one at a time instead.
 
 ```python
 results = await program.predict([query1, query2, query3])
 ```
 
-## Key Takeaways
+## Expected output
 
-- **Functional API**: The recommended approach for most use cases. Build
-  computation graphs by chaining module calls from `Input` to outputs. Supports
-  parallel branches, decisions, and complex routing.
+Running this file end-to-end (with `ollama/llama3.2:latest` and the prompts
+below) produces:
 
-- **Subclassing API**: Use when you need custom logic in the `call()` method.
-  Gives you complete control but loses some declarative benefits.
+```
+============================================================
+Strategy 1: Functional API
+============================================================
 
-- **Sequential API**: Perfect for simple linear pipelines where modules feed
-  directly into each other. Minimal boilerplate.
+Functional API Result: 4
 
-- **Mixing Strategy**: Create reusable components that can be embedded in
-  other programs. Best for building a library of patterns.
+============================================================
+Strategy 2: Subclassing API
+============================================================
 
-- **Serialization**: All programs can be saved to JSON and loaded back,
-  preserving trained state and configuration.
+Subclassing API Result: 6
 
-- **Program.summary()**: Use this to inspect your program's structure and
-  identify trainable modules.
+============================================================
+Strategy 3: Sequential API
+============================================================
+
+Sequential API Result: 8
+
+============================================================
+Strategy 4: Mixing Strategy
+============================================================
+
+Mixing Strategy Result: 10
+
+============================================================
+Program Features
+============================================================
+
+Program Summary:
+Program: functional_qa
+description: 'A `Functional` program is a `Program` defined as a directed graph
+of modules.'
+(table: input_module / generator, variable counts 0 and 1)
+
+Saved program to functional_qa.json
+Loaded program: functional_qa
+```
+
+The numeric answers are stable across runs because the prompts are simple
+arithmetic. The `thinking` strings vary from run to run (they come from a
+non-deterministic language model) and are therefore not shown.
+
+## Which Strategy When
+
+A quick decision guide:
+
+- **The flowchart is fixed up front, with branches allowed.** Use the
+  **Functional API**. It is the only strategy where `summary()` and
+  most graph-level optimizations can see the full structure.
+- **The forward pass needs Python control flow** — `if`, `while`,
+  recursion, retry-on-failure. Use **Subclassing**, and accept that
+  the framework sees your `call` as a black box.
+- **The flowchart is a strict linear chain, no branches.** Use
+  **Sequential** for less boilerplate. Switch to Functional the moment
+  you add a second output or a side branch.
+- **You are writing a reusable component whose internal graph depends
+  on the input type.** Use the **Mixing strategy** so the graph is
+  built lazily, once the input type is known, and then frozen.
+
+## Take-Home Summary
+
+- A **`Program`** is the pair `(G, θ)` — a DAG of modules plus
+  the trainable JSON variables attached to them.
+- **Construction is not execution.** Building a Program draws
+  the flowchart; calling it runs the flowchart. Confusing the
+  two is the single most common Functional-API confusion.
+- Four ways to build: **Functional** (the default — explicit
+  DAG), **Subclassing** (when the forward pass needs Python
+  control flow), **Sequential** (linear chains, sugar over
+  Functional), and the **Mixing strategy** (deferred-build
+  reusable components).
+- A `Program` is itself a `Module`, so it can be nested inside
+  another `Program` as a single box.
+- Three things you get for free: **`save` / `load`**,
+  **`summary()`**, and **`predict()`** (parallel batch
+  inference).
 
 ## API References
 
@@ -418,12 +585,12 @@ async def main():
     load_dotenv()
     synalinks.clear_session()
 
-    synalinks.enable_observability(
-        tracking_uri="http://localhost:5000",
-        experiment_name="guide_3_programs",
-    )
+    # synalinks.enable_observability(
+    #     tracking_uri="http://localhost:5000",
+    #     experiment_name="guide_3_programs",
+    # )
 
-    lm = synalinks.LanguageModel(model="gemini/gemini-3.1-flash-lite-preview")
+    lm = synalinks.LanguageModel(model="ollama/llama3.2:latest")
 
     # -------------------------------------------------------------------------
     # Functional API

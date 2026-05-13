@@ -4,6 +4,7 @@
 
 import collections
 import inspect
+import time
 import uuid
 import warnings
 from functools import wraps
@@ -149,6 +150,18 @@ class Module(BackendModule, Operation, SynalinksSaveable):
             hooks=hooks,
             module=self,
         )
+        # Top-level invocation counters. Bumped only when this module is the
+        # entry module of a `CallContext` — i.e., when it's the outermost
+        # `__call__` in the stack. Nested calls leave these untouched.
+        # Phase routing follows the same `synalinks_op_scope` convention as
+        # LanguageModel / EmbeddingModel.
+        # Named `invocations` (not `calls`) to avoid colliding with the
+        # LM/EM `cumulated_calls` semantic (= one provider call per increment).
+        self.cumulated_invocations = 0
+        self.cumulated_invocation_elapsed_s = 0.0
+        for _phase in ("inference", "reward", "optimizer"):
+            setattr(self, f"{_phase}_cumulated_invocations", 0)
+            setattr(self, f"{_phase}_cumulated_invocation_elapsed_s", 0.0)
         self._initialize_tracker()
 
     @tracking.no_automatic_dependency_tracking
@@ -700,7 +713,26 @@ class Module(BackendModule, Operation, SynalinksSaveable):
 
     def _maybe_reset_call_context(self):
         module_call_ctx = global_state.get_global_attribute("current_call_ctx")
-        if module_call_ctx is None or module_call_ctx.entry_module == self:
+        if module_call_ctx is None:
+            global_state.set_global_attribute("current_call_ctx", None)
+            return
+        if module_call_ctx.entry_module is self:
+            elapsed_s = time.perf_counter() - module_call_ctx.start_time
+            self.cumulated_invocations += 1
+            self.cumulated_invocation_elapsed_s += elapsed_s
+            op_scope = global_state.get_global_attribute("synalinks_op_scope")
+            if op_scope in ("inference", "reward", "optimizer"):
+                setattr(
+                    self,
+                    f"{op_scope}_cumulated_invocations",
+                    getattr(self, f"{op_scope}_cumulated_invocations") + 1,
+                )
+                setattr(
+                    self,
+                    f"{op_scope}_cumulated_invocation_elapsed_s",
+                    getattr(self, f"{op_scope}_cumulated_invocation_elapsed_s")
+                    + elapsed_s,
+                )
             global_state.set_global_attribute("current_call_ctx", None)
 
     def _flatten_modules(self, include_self=True, recursive=True):
@@ -886,6 +918,7 @@ class CallContext:
         self.call_id = call_id
         self.parent_call_id = parent_call_id
         self.cost = 0.0
+        self.start_time = time.perf_counter()
 
 
 def might_have_unbuilt_state(module):

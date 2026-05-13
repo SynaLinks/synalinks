@@ -1,13 +1,17 @@
 # License Apache 2.0: (c) 2025-2026 Yoan Sallami (Synalinks Team)
 """Re-export built-in datasets at the top level.
 
-Each module under ``built_in/`` is also addressable as
-``synalinks.src.datasets.<name>``, so callers can use either path:
+Each module under ``built_in/`` is exposed on the public API as
+``synalinks.datasets.<name>``, so callers can use any of these forms:
 
 ```python
-from synalinks.src.datasets import gsm8k
-from synalinks.src.datasets.gsm8k import load_data    # works too
-import synalinks.src.datasets.gsm8k as gsm8k          # works too
+import synalinks
+
+(x_train, y_train), (x_test, y_test) = synalinks.datasets.gsm8k.load_data()
+
+# Or import the module directly:
+from synalinks.datasets import gsm8k
+from synalinks.datasets.gsm8k import load_data
 ```
 """
 

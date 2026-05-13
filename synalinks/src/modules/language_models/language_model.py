@@ -3,6 +3,7 @@
 import copy
 import logging
 import os
+import time
 import warnings
 
 import litellm
@@ -14,6 +15,7 @@ from tenacity import wait_exponential
 
 from synalinks.src.api_export import synalinks_export
 from synalinks.src.backend import ChatRole
+from synalinks.src.backend.common import global_state
 from synalinks.src.modules.module import Module
 from synalinks.src.saving import serialization_lib
 from synalinks.src.utils.nlp_utils import shorten_text
@@ -21,6 +23,109 @@ from synalinks.src.utils.nlp_utils import shorten_text
 litellm.drop_params = True
 litellm.disable_aiohttp_transport = True
 litellm.drop_params = True
+
+
+def _safe_get(obj, key, default=None):
+    """Get `key` from obj that may be a dict or a pydantic-style object."""
+    if obj is None:
+        return default
+    if hasattr(obj, "get"):
+        v = obj.get(key)
+    else:
+        v = getattr(obj, key, None)
+    return default if v is None else v
+
+
+def _to_int(v):
+    try:
+        return int(v) if v is not None else 0
+    except (TypeError, ValueError):
+        return 0
+
+
+# Long-tail Usage fields we sum into `<phase>_cumulated_details` for
+# introspection (no dedicated metric — read via `lm.<phase>_cumulated_details`).
+_PROMPT_DETAIL_KEYS = (
+    "audio_tokens",
+    "text_tokens",
+    "image_tokens",
+    "video_tokens",
+    "web_search_requests",
+    "character_count",
+    "image_count",
+    "video_length_seconds",
+)
+_COMPLETION_DETAIL_KEYS = (
+    "audio_tokens",
+    "text_tokens",
+    "image_tokens",
+    "video_tokens",
+    "accepted_prediction_tokens",
+    "rejected_prediction_tokens",
+)
+_SERVER_TOOL_KEYS = ("web_search_requests", "tool_search_requests")
+_CACHE_CREATION_TTL_KEYS = (
+    "ephemeral_5m_input_tokens",
+    "ephemeral_1h_input_tokens",
+)
+
+
+def _extract_lm_extras(usage, response):
+    """Pull tier-1 counters + long-tail details from a LiteLLM ModelResponse.
+
+    Returns ``(cached_tokens, cache_creation_tokens, reasoning_tokens, extras)``
+    where ``extras`` is a dict of long-tail key -> incremental count.
+    """
+    prompt_details = _safe_get(usage, "prompt_tokens_details")
+    completion_details = _safe_get(usage, "completion_tokens_details")
+    server_tool = _safe_get(usage, "server_tool_use")
+    hidden = getattr(response, "_hidden_params", None) or {}
+
+    cached = _to_int(_safe_get(prompt_details, "cached_tokens"))
+    cache_creation = _to_int(_safe_get(prompt_details, "cache_creation_tokens"))
+    reasoning = _to_int(_safe_get(completion_details, "reasoning_tokens"))
+
+    extras = {}
+    for key in _PROMPT_DETAIL_KEYS:
+        v = _safe_get(prompt_details, key)
+        if v:
+            extras[f"prompt_{key}"] = v
+    cache_create_ttl = _safe_get(prompt_details, "cache_creation_token_details")
+    for key in _CACHE_CREATION_TTL_KEYS:
+        v = _safe_get(cache_create_ttl, key)
+        if v:
+            extras[f"cache_creation_{key}"] = v
+    for key in _COMPLETION_DETAIL_KEYS:
+        v = _safe_get(completion_details, key)
+        if v:
+            extras[f"completion_{key}"] = v
+    for key in _SERVER_TOOL_KEYS:
+        v = _safe_get(server_tool, key)
+        if v:
+            extras[f"server_{key}"] = v
+    overhead = (
+        hidden.get("litellm_overhead_time_ms") if isinstance(hidden, dict) else None
+    )
+    if overhead is not None:
+        extras["litellm_overhead_time_ms"] = overhead
+    return cached, cache_creation, reasoning, extras
+
+
+def _accumulate(obj, phase_prefix, increments, extras):
+    """Bump ``obj.{phase_prefix}cumulated_<suffix>`` by each ``increments[suffix]``
+    and merge ``extras`` into ``obj.{phase_prefix}cumulated_details``.
+    """
+    for suffix, delta in increments.items():
+        attr = f"{phase_prefix}cumulated_{suffix}"
+        setattr(obj, attr, getattr(obj, attr) + delta)
+    if extras:
+        details_attr = f"{phase_prefix}cumulated_details"
+        details = getattr(obj, details_attr, None)
+        if details is None:
+            details = {}
+            setattr(obj, details_attr, details)
+        for k, v in extras.items():
+            details[k] = details.get(k, 0) + v
 
 
 @synalinks_export(
@@ -332,6 +437,43 @@ class LanguageModel(Module):
         self.default_kwargs = default_kwargs
         self.cumulated_cost = 0.0
         self.last_call_cost = 0.0
+        # All-time counters across every LM call (training + inference).
+        # Useful for raw debugging; operational metrics use the
+        # inference-scoped counters below instead.
+        self.cumulated_calls = 0
+        self.cumulated_prompt_tokens = 0
+        self.cumulated_completion_tokens = 0
+        self.cumulated_tokens = 0
+        self.cumulated_elapsed_s = 0.0
+        self.cumulated_cached_tokens = 0
+        self.cumulated_cache_creation_tokens = 0
+        self.cumulated_reasoning_tokens = 0
+        self.cumulated_details = {}
+        self.last_call_prompt_tokens = 0
+        self.last_call_completion_tokens = 0
+        self.last_call_tokens = 0
+        self.last_call_elapsed_s = 0.0
+        # Phase-scoped counters — populated based on `synalinks_op_scope` set
+        # by the trainer: "inference" inside `predict_on_batch`, "reward"
+        # inside `compute_reward`, "optimizer" inside `optimizer.optimize`.
+        # Calls made outside any scope (e.g. standalone debugging) are
+        # tracked only in the all-time `cumulated_*` set above.
+        #
+        # Tier 1 extras (first-class, drive dedicated KPI metrics):
+        #   cached_tokens, cache_creation_tokens, reasoning_tokens.
+        # Tier 2 long tail (multimodal split, tool use, LiteLLM overhead)
+        # lives in `<phase>_cumulated_details` — a dict accumulated per call.
+        for _phase in ("inference", "reward", "optimizer"):
+            setattr(self, f"{_phase}_cumulated_calls", 0)
+            setattr(self, f"{_phase}_cumulated_prompt_tokens", 0)
+            setattr(self, f"{_phase}_cumulated_completion_tokens", 0)
+            setattr(self, f"{_phase}_cumulated_tokens", 0)
+            setattr(self, f"{_phase}_cumulated_elapsed_s", 0.0)
+            setattr(self, f"{_phase}_cumulated_cost", 0.0)
+            setattr(self, f"{_phase}_cumulated_cached_tokens", 0)
+            setattr(self, f"{_phase}_cumulated_cache_creation_tokens", 0)
+            setattr(self, f"{_phase}_cumulated_reasoning_tokens", 0)
+            setattr(self, f"{_phase}_cumulated_details", {})
         # No state depends on the input shape, so mark built up-front and
         # skip Module's auto-build path (which would try to trace `call`).
         self.built = True
@@ -555,6 +697,7 @@ class LanguageModel(Module):
         async def _do_call():
             response_str = ""
             try:
+                t0 = time.perf_counter()
                 response = await litellm.acompletion(
                     model=self.model,
                     messages=formatted_messages,
@@ -562,12 +705,47 @@ class LanguageModel(Module):
                     caching=self.caching,
                     **kwargs,
                 )
+                elapsed_s = time.perf_counter() - t0
+                op_scope = global_state.get_global_attribute("synalinks_op_scope")
+                if op_scope not in ("inference", "reward", "optimizer"):
+                    op_scope = None
+                response_cost = None
                 if hasattr(response, "_hidden_params"):
                     if "response_cost" in response._hidden_params:
                         response_cost = response._hidden_params["response_cost"]
                         if response_cost is not None:
                             self.last_call_cost = response_cost
-                            self.cumulated_cost += response_cost
+                # Streaming usage isn't known until the stream completes,
+                # so skip counter updates in that case.
+                if not streaming:
+                    usage = response.get("usage") or {}
+                    prompt_tokens = int(usage.get("prompt_tokens") or 0)
+                    completion_tokens = int(usage.get("completion_tokens") or 0)
+                    total_tokens = int(
+                        usage.get("total_tokens") or (prompt_tokens + completion_tokens)
+                    )
+                    cached, cache_creation, reasoning, extras = _extract_lm_extras(
+                        usage, response
+                    )
+                    self.last_call_prompt_tokens = prompt_tokens
+                    self.last_call_completion_tokens = completion_tokens
+                    self.last_call_tokens = total_tokens
+                    self.last_call_elapsed_s = elapsed_s
+                    flat_increments = {
+                        "calls": 1,
+                        "prompt_tokens": prompt_tokens,
+                        "completion_tokens": completion_tokens,
+                        "tokens": total_tokens,
+                        "elapsed_s": elapsed_s,
+                        "cached_tokens": cached,
+                        "cache_creation_tokens": cache_creation,
+                        "reasoning_tokens": reasoning,
+                    }
+                    if response_cost is not None:
+                        flat_increments["cost"] = response_cost
+                    _accumulate(self, "", flat_increments, extras)
+                    if op_scope is not None:
+                        _accumulate(self, f"{op_scope}_", flat_increments, extras)
                 if streaming:
                     return StreamingIterator(response)
                 if not response.get("choices"):

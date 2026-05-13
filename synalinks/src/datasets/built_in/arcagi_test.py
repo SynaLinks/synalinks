@@ -145,10 +145,13 @@ class LoadDataTest(testing.TestCase):
 
     def test_arcagi2_unknown_task_raises(self):
         # Mock the task-name listings so we can prove the unknown-task path.
-        with patch.object(
-            arcagi_module, "get_arcagi2_training_task_names", return_value=["a", "b"]
-        ), patch.object(
-            arcagi_module, "get_arcagi2_evaluation_task_names", return_value=["c"]
+        with (
+            patch.object(
+                arcagi_module, "get_arcagi2_training_task_names", return_value=["a", "b"]
+            ),
+            patch.object(
+                arcagi_module, "get_arcagi2_evaluation_task_names", return_value=["c"]
+            ),
         ):
             with pytest.raises(ValueError, match="not recognized"):
                 load_data(task_name="not-listed", arc_version=2)
@@ -161,9 +164,7 @@ class LoadDataTest(testing.TestCase):
         task_name = names[0]
         with tempfile.TemporaryDirectory() as tmp:
             path = _write_task(tmp)
-            with patch.object(
-                arcagi_module.file_utils, "get_file", return_value=path
-            ):
+            with patch.object(arcagi_module.file_utils, "get_file", return_value=path):
                 (x_train, _), (x_test, _) = load_data(task_name=task_name)
         self.assertEqual(len(x_train), 2)
         self.assertEqual(len(x_test), 1)
@@ -174,21 +175,23 @@ class LoadDataTest(testing.TestCase):
         self.assertGreater(len(eval_names), 0)
         with tempfile.TemporaryDirectory() as tmp:
             path = _write_task(tmp)
-            with patch.object(
-                arcagi_module.file_utils, "get_file", return_value=path
-            ):
+            with patch.object(arcagi_module.file_utils, "get_file", return_value=path):
                 (x_train, _), _ = load_data(task_name=eval_names[0], arc_version=1)
         self.assertEqual(len(x_train), 2)
 
     def test_arcagi2_via_url_with_mocked_fetch(self):
         with tempfile.TemporaryDirectory() as tmp:
             path = _write_task(tmp)
-            with patch.object(
-                arcagi_module, "get_arcagi2_training_task_names", return_value=["TASK"]
-            ), patch.object(
-                arcagi_module, "get_arcagi2_evaluation_task_names", return_value=[]
-            ), patch.object(
-                arcagi_module.file_utils, "get_file", return_value=path
+            with (
+                patch.object(
+                    arcagi_module,
+                    "get_arcagi2_training_task_names",
+                    return_value=["TASK"],
+                ),
+                patch.object(
+                    arcagi_module, "get_arcagi2_evaluation_task_names", return_value=[]
+                ),
+                patch.object(arcagi_module.file_utils, "get_file", return_value=path),
             ):
                 (x_train, _), _ = load_data(task_name="TASK", arc_version=2)
         self.assertEqual(len(x_train), 2)
@@ -196,14 +199,16 @@ class LoadDataTest(testing.TestCase):
     def test_arcagi2_evaluation_via_url_with_mocked_fetch(self):
         with tempfile.TemporaryDirectory() as tmp:
             path = _write_task(tmp)
-            with patch.object(
-                arcagi_module, "get_arcagi2_training_task_names", return_value=[]
-            ), patch.object(
-                arcagi_module,
-                "get_arcagi2_evaluation_task_names",
-                return_value=["TASK"],
-            ), patch.object(
-                arcagi_module.file_utils, "get_file", return_value=path
+            with (
+                patch.object(
+                    arcagi_module, "get_arcagi2_training_task_names", return_value=[]
+                ),
+                patch.object(
+                    arcagi_module,
+                    "get_arcagi2_evaluation_task_names",
+                    return_value=["TASK"],
+                ),
+                patch.object(arcagi_module.file_utils, "get_file", return_value=path),
             ):
                 (x_train, _), _ = load_data(task_name="TASK", arc_version=2)
         self.assertEqual(len(x_train), 2)
@@ -241,9 +246,7 @@ class PlotTaskTest(testing.TestCase):
     def test_plot_with_y_true_only(self):
         with tempfile.TemporaryDirectory() as tmp:
             plot_task(x=self._x(), y_true=self._y(), to_folder=tmp)
-            self.assertTrue(
-                os.path.exists(os.path.join(tmp, "arc_agi_task.png"))
-            )
+            self.assertTrue(os.path.exists(os.path.join(tmp, "arc_agi_task.png")))
 
     def test_plot_with_y_pred_only(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -294,7 +297,8 @@ class PlotTaskTest(testing.TestCase):
         x = ARCAGIInput(
             examples=[
                 ARCAGITask(
-                    input_grid=[[0, 1]], output_grid=[[1, 0]],
+                    input_grid=[[0, 1]],
+                    output_grid=[[1, 0]],
                 ),
             ],
             input_grid=[[2, 2]],

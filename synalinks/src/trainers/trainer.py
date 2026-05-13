@@ -13,6 +13,8 @@ from synalinks.src import callbacks as callbacks_module
 from synalinks.src import metrics as metrics_module
 from synalinks.src import optimizers as optimizers_module
 from synalinks.src import rewards as rewards_module
+from synalinks.src import tree
+from synalinks.src.backend.common import global_state
 from synalinks.src.backend.common import numpy
 from synalinks.src.saving import serialization_lib
 from synalinks.src.trainers.compile_utils import CompileMetrics
@@ -127,6 +129,12 @@ class Trainer:
             self.reward = reward
         if metrics is not None:
             self._compile_metrics = CompileMetrics(metrics, output_names=output_names)
+            # Operational metrics (e.g. TotalTokens, Throughput) accept
+            # `language_model=None`; bind them to every LM reachable from
+            # the program so counters aggregate automatically.
+            for m in tree.flatten(metrics):
+                if hasattr(m, "bind_program"):
+                    m.bind_program(self)
         self.run_eagerly = run_eagerly
         self.stop_training = False
         self.compiled = True
@@ -237,25 +245,30 @@ class Trainer:
         del x
         del training
         rewards = []
-        if self._compile_reward is not None:
-            if not self._compile_reward.built:
-                self._compile_reward.build(y[0], y_pred[0])
-            if self._compile_reward.has_batch_rewards:
-                results = await self._compile_reward.compute_batch(y, y_pred)
-            else:
-                results = await asyncio.gather(
-                    *[self._compile_reward(y_t, y_p) for y_t, y_p in zip(y, y_pred)]
-                )
-            for reward in results:
-                if reward is not None:
-                    rewards.append(float(reward))
+        prev_scope = global_state.get_global_attribute("synalinks_op_scope")
+        global_state.set_global_attribute("synalinks_op_scope", "reward")
+        try:
+            if self._compile_reward is not None:
+                if not self._compile_reward.built:
+                    self._compile_reward.build(y[0], y_pred[0])
+                if self._compile_reward.has_batch_rewards:
+                    results = await self._compile_reward.compute_batch(y, y_pred)
                 else:
-                    rewards.append(0.0)
-        for reward in self.rewards:
-            rewards.append(float(numpy.sum(reward)))
-        if len(rewards) == 0:
-            rewards = [0.0]
-        return rewards
+                    results = await asyncio.gather(
+                        *[self._compile_reward(y_t, y_p) for y_t, y_p in zip(y, y_pred)]
+                    )
+                for reward in results:
+                    if reward is not None:
+                        rewards.append(float(reward))
+                    else:
+                        rewards.append(0.0)
+            for reward in self.rewards:
+                rewards.append(float(numpy.sum(reward)))
+            if len(rewards) == 0:
+                rewards = [0.0]
+            return rewards
+        finally:
+            global_state.set_global_attribute("synalinks_op_scope", prev_scope)
 
     def stateless_compute_reward(
         self,
@@ -471,6 +484,26 @@ class Trainer:
         self._assert_compile_called("fit")
         self._eval_epoch_iterator = None
         val_y, val_y = None, None
+
+        if self._optimizer is None:
+            # No optimizer ⇒ no parameter updates possible. Iterating the
+            # training loop here would just burn LM calls / wall-clock time
+            # without changing anything. Warn loudly and return an empty
+            # History so callers that inspect `.history` keep working.
+            warnings.warn(
+                "`Program.fit()` was called but no optimizer is set on the "
+                "compiled program — training cannot update any variables, so "
+                "iterating the training data would be wasted compute. "
+                "Skipping the fit loop. If you intended to evaluate, call "
+                "`program.evaluate(x=..., y=...)` directly. If you intended "
+                "to train, recompile with an optimizer (e.g. "
+                "`program.compile(optimizer=synalinks.optimizers.RandomFewShot(), "
+                "reward=..., metrics=...)`).",
+                stacklevel=2,
+            )
+            history = callbacks_module.History()
+            self.history = history
+            return history
 
         if validation_split and validation_data is None:
             # Create the validation data using the training data. Only supported
@@ -888,14 +921,19 @@ class Trainer:
         if self.trainable_variables and isinstance(
             self.optimizer, optimizers_module.Optimizer
         ):
-            metrics = await self.optimizer.optimize(
-                step,
-                self.trainable_variables,
-                x=x,
-                y=y,
-                val_x=val_x,
-                val_y=val_y,
-            )
+            prev_scope = global_state.get_global_attribute("synalinks_op_scope")
+            global_state.set_global_attribute("synalinks_op_scope", "optimizer")
+            try:
+                metrics = await self.optimizer.optimize(
+                    step,
+                    self.trainable_variables,
+                    x=x,
+                    y=y,
+                    val_x=val_x,
+                    val_y=val_y,
+                )
+            finally:
+                global_state.set_global_attribute("synalinks_op_scope", prev_scope)
         else:
             warnings.warn("The program does not have any trainable variables.")
             y_pred = await self.predict_on_batch(val_x)
@@ -968,11 +1006,21 @@ class Trainer:
         Returns:
             (list): list(s) of JsonDataModel predictions.
         """
-        tasks = []
-        for inputs in x:
-            tasks.append(self(inputs, training=training))
-        y_pred = await asyncio.gather(*tasks)
-        return y_pred
+        # Tag this work as "inference" so LanguageModel / EmbeddingModel can
+        # attribute token / latency / cost to the program's forward pass
+        # only. See synalinks.src.backend.common.global_state key
+        # `synalinks_op_scope` — value is one of "inference", "reward",
+        # "optimizer", or None.
+        prev_scope = global_state.get_global_attribute("synalinks_op_scope")
+        global_state.set_global_attribute("synalinks_op_scope", "inference")
+        try:
+            tasks = []
+            for inputs in x:
+                tasks.append(self(inputs, training=training))
+            y_pred = await asyncio.gather(*tasks)
+            return y_pred
+        finally:
+            global_state.set_global_attribute("synalinks_op_scope", prev_scope)
 
     def get_compile_config(self):
         """Returns a serialized config with information for compiling the program.

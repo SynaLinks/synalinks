@@ -2,6 +2,7 @@
 
 import copy
 import logging
+import time
 import warnings
 
 import litellm
@@ -11,10 +12,75 @@ from tenacity import stop_after_attempt
 from tenacity import wait_exponential
 
 from synalinks.src.api_export import synalinks_export
+from synalinks.src.backend.common import global_state
 from synalinks.src.modules.module import Module
 from synalinks.src.saving import serialization_lib
 
 litellm.disable_aiohttp_transport = True
+
+
+def _safe_get(obj, key, default=None):
+    if obj is None:
+        return default
+    if hasattr(obj, "get"):
+        v = obj.get(key)
+    else:
+        v = getattr(obj, key, None)
+    return default if v is None else v
+
+
+def _to_int(v):
+    try:
+        return int(v) if v is not None else 0
+    except (TypeError, ValueError):
+        return 0
+
+
+# Embedding-specific long-tail keys (smaller than the LM set — embeddings
+# have no completion phase, no reasoning, no tool use).
+_EM_PROMPT_DETAIL_KEYS = (
+    "audio_tokens",
+    "text_tokens",
+    "image_tokens",
+    "video_tokens",
+    "character_count",
+    "image_count",
+)
+
+
+def _extract_em_extras(usage, response):
+    """Pull tier-1 counters + long-tail details from a LiteLLM EmbeddingResponse.
+
+    Returns ``(cached_tokens, extras)``.
+    """
+    prompt_details = _safe_get(usage, "prompt_tokens_details")
+    hidden = getattr(response, "_hidden_params", None) or {}
+    cached = _to_int(_safe_get(prompt_details, "cached_tokens"))
+    extras = {}
+    for key in _EM_PROMPT_DETAIL_KEYS:
+        v = _safe_get(prompt_details, key)
+        if v:
+            extras[f"prompt_{key}"] = v
+    overhead = (
+        hidden.get("litellm_overhead_time_ms") if isinstance(hidden, dict) else None
+    )
+    if overhead is not None:
+        extras["litellm_overhead_time_ms"] = overhead
+    return cached, extras
+
+
+def _accumulate(obj, phase_prefix, increments, extras):
+    for suffix, delta in increments.items():
+        attr = f"{phase_prefix}cumulated_{suffix}"
+        setattr(obj, attr, getattr(obj, attr) + delta)
+    if extras:
+        details_attr = f"{phase_prefix}cumulated_details"
+        details = getattr(obj, details_attr, None)
+        if details is None:
+            details = {}
+            setattr(obj, details_attr, details)
+        for k, v in extras.items():
+            details[k] = details.get(k, 0) + v
 
 
 @synalinks_export(
@@ -146,6 +212,35 @@ class EmbeddingModel(Module):
         self.fallback = fallback
         self.caching = caching
         self.default_kwargs = default_kwargs
+        # All-time counters across every embedding call (training + inference).
+        # Operational metrics use the inference-scoped counters below instead.
+        self.cumulated_calls = 0
+        self.cumulated_prompt_tokens = 0
+        self.cumulated_tokens = 0
+        self.cumulated_vectors = 0
+        self.cumulated_elapsed_s = 0.0
+        self.cumulated_cost = 0.0
+        self.cumulated_cached_tokens = 0
+        self.cumulated_details = {}
+        self.last_call_prompt_tokens = 0
+        self.last_call_tokens = 0
+        self.last_call_vectors = 0
+        self.last_call_elapsed_s = 0.0
+        self.last_call_cost = 0.0
+        # Phase-scoped counters — populated based on `synalinks_op_scope` set
+        # by the trainer: "inference" inside `predict_on_batch`, "reward"
+        # inside `compute_reward`, "optimizer" inside `optimizer.optimize`.
+        # `cached_tokens` is the only tier-1 extra that makes sense for
+        # embeddings (no completion phase, no reasoning, no tool use).
+        for _phase in ("inference", "reward", "optimizer"):
+            setattr(self, f"{_phase}_cumulated_calls", 0)
+            setattr(self, f"{_phase}_cumulated_prompt_tokens", 0)
+            setattr(self, f"{_phase}_cumulated_tokens", 0)
+            setattr(self, f"{_phase}_cumulated_vectors", 0)
+            setattr(self, f"{_phase}_cumulated_elapsed_s", 0.0)
+            setattr(self, f"{_phase}_cumulated_cost", 0.0)
+            setattr(self, f"{_phase}_cumulated_cached_tokens", 0)
+            setattr(self, f"{_phase}_cumulated_details", {})
         # No state depends on the input shape, so mark built up-front and
         # skip Module's auto-build path (which would try to trace `call`).
         self.built = True
@@ -188,6 +283,7 @@ class EmbeddingModel(Module):
         )
         async def _do_call():
             try:
+                t0 = time.perf_counter()
                 if self.api_base:
                     response = await litellm.aembedding(
                         model=self.model,
@@ -203,9 +299,41 @@ class EmbeddingModel(Module):
                         caching=self.caching,
                         **kwargs,
                     )
+                elapsed_s = time.perf_counter() - t0
+                op_scope = global_state.get_global_attribute("synalinks_op_scope")
+                if op_scope not in ("inference", "reward", "optimizer"):
+                    op_scope = None
+                response_cost = None
+                if hasattr(response, "_hidden_params"):
+                    if "response_cost" in response._hidden_params:
+                        response_cost = response._hidden_params["response_cost"]
+                        if response_cost is not None:
+                            self.last_call_cost = response_cost
                 vectors = []
                 for data in response["data"]:
                     vectors.append(data["embedding"])
+                n_vectors = len(vectors)
+                usage = response.get("usage") or {}
+                prompt_tokens = int(usage.get("prompt_tokens") or 0)
+                total_tokens = int(usage.get("total_tokens") or prompt_tokens)
+                cached, extras = _extract_em_extras(usage, response)
+                self.last_call_prompt_tokens = prompt_tokens
+                self.last_call_tokens = total_tokens
+                self.last_call_vectors = n_vectors
+                self.last_call_elapsed_s = elapsed_s
+                flat_increments = {
+                    "calls": 1,
+                    "prompt_tokens": prompt_tokens,
+                    "tokens": total_tokens,
+                    "vectors": n_vectors,
+                    "elapsed_s": elapsed_s,
+                    "cached_tokens": cached,
+                }
+                if response_cost is not None:
+                    flat_increments["cost"] = response_cost
+                _accumulate(self, "", flat_increments, extras)
+                if op_scope is not None:
+                    _accumulate(self, f"{op_scope}_", flat_increments, extras)
                 return {"embeddings": vectors}
             except Exception as e:
                 warnings.warn(f"Error occured while trying to call {self}: {e}")

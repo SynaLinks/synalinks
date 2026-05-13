@@ -1,2 +1,2 @@
 
-::: guides.10_output_guard
+::: guides.8_output_guard

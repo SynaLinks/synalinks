@@ -137,6 +137,7 @@ class HuggingFaceDataset(Dataset):
         return self._total_batches(num_rows)
 
 
+@synalinks_export(["synalinks.datasets.load_split"])
 def load_split(
     path,
     *,
@@ -151,10 +152,15 @@ def load_split(
 ):
     """Materialize a single HF split into one ``(x, y)`` (or ``(x,)``) pair.
 
-    Wraps ``HuggingFaceDataset`` with ``streaming=False`` and
-    ``batch_size=None`` so the entire split lands in a single batch we can
-    unpack and return as numpy object arrays. Used by the built-in
-    benchmark loaders in ``synalinks/src/datasets/built_in/``.
+    A thin convenience wrapper around
+    ``HuggingFaceDataset(streaming=False).materialize()`` that takes
+    the same arguments as the ``HuggingFaceDataset`` constructor and
+    returns numpy object arrays directly.
+
+    Use this when you want a whole HF split as in-memory NumPy
+    arrays — for evaluation, head/tail train/test splits via
+    ``split_train_test``, or quick experiments. For streaming use
+    cases, construct ``HuggingFaceDataset`` directly.
     """
     ds = HuggingFaceDataset(
         path=path,
@@ -169,23 +175,4 @@ def load_split(
         limit=limit,
         **load_kwargs,
     )
-    return next(iter(ds))
-
-
-def split_train_test(x, y, validation_split=0.2):
-    """Deterministic head/tail split — used for HF datasets that ship a
-    single labeled split (eval-only benchmarks like HumanEval, IFEval,
-    LAMBADA, BBH, TruthfulQA, BBQ).
-
-    Args:
-        x: Input numpy object array.
-        y: Target numpy object array.
-        validation_split (float): Fraction of the data that goes to the
-            test set. Defaults to ``0.2`` (Keras convention).
-
-    Returns:
-        ``(x_train, y_train), (x_test, y_test)``.
-    """
-    n = len(x)
-    cut = int(n * (1.0 - validation_split))
-    return (x[:cut], y[:cut]), (x[cut:], y[cut:])
+    return ds.materialize()

@@ -10,6 +10,14 @@ from synalinks.src.backend import concatenate_json
 from synalinks.src.backend import factorize_json
 from synalinks.src.backend import in_mask_json
 from synalinks.src.backend import out_mask_json
+from synalinks.src.backend.common.json_utils import _py_concatenate_json
+from synalinks.src.backend.common.json_utils import _py_factorize_json
+from synalinks.src.backend.common.json_utils import _py_in_mask_json
+from synalinks.src.backend.common.json_utils import _py_out_mask_json
+from synalinks.src.backend.common.json_utils import _py_prefix_json
+from synalinks.src.backend.common.json_utils import _py_suffix_json
+from synalinks.src.backend.common.json_utils import prefix_json
+from synalinks.src.backend.common.json_utils import suffix_json
 
 
 class JsonConcatenateTest(testing.TestCase):
@@ -740,3 +748,85 @@ class JsonInMaskTest(testing.TestCase):
 
         result = out_mask_json(json, pattern="^xyz")
         self.assertEqual(result, expected)
+
+
+class JsonPrefixSuffixTest(testing.TestCase):
+    def test_prefix_json(self):
+        result = prefix_json({"a": 1, "b": 2}, prefix="x")
+        self.assertEqual(result, {"x_a": 1, "x_b": 2})
+
+    def test_suffix_json(self):
+        result = suffix_json({"a": 1, "b": 2}, suffix="y")
+        self.assertEqual(result, {"a_y": 1, "b_y": 2})
+
+    def test_prefix_does_not_mutate_input(self):
+        original = {"a": 1}
+        prefix_json(original, "x")
+        self.assertEqual(original, {"a": 1})
+
+
+# The "_py_*" tests explicitly exercise the Python fallback path, even when
+# the Rust `synaops` extension is installed.
+class PyJsonHelpersTest(testing.TestCase):
+    def test_py_prefix_json(self):
+        self.assertEqual(_py_prefix_json({"a": 1}, "x"), {"x_a": 1})
+
+    def test_py_suffix_json(self):
+        self.assertEqual(_py_suffix_json({"a": 1}, "y"), {"a_y": 1})
+
+    def test_py_concatenate_collision_renames(self):
+        json = {"a": 1}
+        result = _py_concatenate_json(json, json)
+        self.assertEqual(result, {"a": 1, "a_1": 1})
+
+    def test_py_concatenate_disjoint(self):
+        self.assertEqual(
+            _py_concatenate_json({"a": 1}, {"b": 2}), {"a": 1, "b": 2}
+        )
+
+    def test_py_factorize_groups_scalars(self):
+        result = _py_factorize_json({"foo": "x", "foo_1": "y"})
+        self.assertEqual(result, {"foos": ["x", "y"]})
+
+    def test_py_factorize_extends_existing_array(self):
+        result = _py_factorize_json({"foos": ["a"], "foo": "b"})
+        self.assertEqual(result, {"foos": ["a", "b"]})
+
+    def test_py_factorize_keeps_unrelated_keys(self):
+        result = _py_factorize_json({"foo": "x", "foo_1": "y", "bar": "z"})
+        self.assertEqual(result, {"foos": ["x", "y"], "bar": "z"})
+
+    def test_py_factorize_no_grouping_returns_singular(self):
+        result = _py_factorize_json({"single": "v"})
+        self.assertEqual(result, {"single": "v"})
+
+    def test_py_out_mask_no_args_returns_input(self):
+        self.assertEqual(_py_out_mask_json({"a": 1}), {"a": 1})
+
+    def test_py_in_mask_no_args_returns_empty(self):
+        self.assertEqual(_py_in_mask_json({"a": 1}), {})
+
+    def test_py_out_mask_with_pattern_recursive(self):
+        result = _py_out_mask_json(
+            {"foo": 1, "nested": {"foo": 2, "bar": 3}}, mask=["foo"]
+        )
+        self.assertEqual(result, {"nested": {"bar": 3}})
+
+    def test_py_out_mask_descends_into_arrays(self):
+        result = _py_out_mask_json(
+            {"items": [{"foo": 1, "bar": 2}, {"foo": 3, "bar": 4}]},
+            mask=["foo"],
+        )
+        self.assertEqual(result, {"items": [{"bar": 2}, {"bar": 4}]})
+
+    def test_py_in_mask_pattern_match(self):
+        result = _py_in_mask_json(
+            {"input_a": 1, "output_b": 2}, pattern="^input_"
+        )
+        self.assertEqual(result, {"input_a": 1})
+
+    def test_py_in_mask_non_recursive_drops_arrays(self):
+        result = _py_in_mask_json(
+            {"foo": 1, "nested": {"foo": 2}}, mask=["foo"], recursive=False
+        )
+        self.assertEqual(result, {"foo": 1})

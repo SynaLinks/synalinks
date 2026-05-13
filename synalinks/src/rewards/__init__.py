@@ -12,6 +12,7 @@ from synalinks.src.rewards.reward import reduce_rewards
 from synalinks.src.rewards.reward_wrappers import ProgramAsJudge
 from synalinks.src.rewards.reward_wrappers import RewardFunctionWrapper
 from synalinks.src.saving import serialization_lib
+from synalinks.src.utils.naming import to_snake_case
 
 # `LMAsJudge` lives in this set but is imported lazily at the bottom of this
 # module to avoid a circular import (`lm_as_judge` -> `programs.Program` ->
@@ -29,6 +30,7 @@ ALL_OBJECTS = {
 }
 
 ALL_OBJECTS_DICT = {cls.__name__.lower(): cls for cls in ALL_OBJECTS}
+ALL_OBJECTS_DICT.update({to_snake_case(cls.__name__): cls for cls in ALL_OBJECTS})
 
 
 @synalinks_export("synalinks.rewards.serialize")
@@ -119,3 +121,4 @@ from synalinks.src.rewards.lm_as_judge import LMAsJudge  # noqa: E402
 
 ALL_OBJECTS.add(LMAsJudge)
 ALL_OBJECTS_DICT[LMAsJudge.__name__.lower()] = LMAsJudge
+ALL_OBJECTS_DICT[to_snake_case(LMAsJudge.__name__)] = LMAsJudge

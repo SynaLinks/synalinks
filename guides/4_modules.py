@@ -1,18 +1,62 @@
 """
 # Modules
 
-**Modules** are the fundamental building blocks of Synalinks programs. Just as
-neurons are the basic units of computation in a neural network, modules are
-the basic units of computation in a Synalinks program. Each module performs
-a specific transformation on data, and modules can be composed together to
-build complex LM applications.
+In [Guide 3](Programs.md) we treated a `Program` as a flowchart made of `Module`s. So
+far the only module you have seen up close is `Generator`. This guide
+introduces the rest of the catalogue — the bricks you snap together to
+build interesting programs.
+
+The mental picture is, once again, **Lego**. Every module is a single
+brick. It takes one structured piece of data in, produces one
+structured piece of data out, and snaps together with other bricks. A
+program is what you get when you click many bricks together.
+
+A slightly more formal way to say it: a module is an asynchronous
+function `f: DataModel -> DataModel`. **Asynchronous** just means the
+function is defined with `async def`, so it can wait for slow
+operations like an LM call without freezing the rest of the program. A
+`DataModel` (you met it in [Guide 2](Data%20Models.md)) is a Pydantic-based class that
+pins down which fields exist and what type each one is.
+
+Some modules carry **trainable state** — JSON objects that the
+optimizer is allowed to rewrite during training. Each trainable
+variable obeys a fixed schema (a subclass of `synalinks.Trainable`
+— [Guide 11](Trainable%20Variables.md) shows you how to write your own). The two most common
+shapes for that JSON object are:
+
+- `instructions` — a variable whose primary field is the system
+  prompt the module sends to the LM, and
+- `examples` — a variable whose primary field is a list of
+  few-shot examples demonstrating the task.
+
+These are special cases. A trainable variable can in general hold
+*any* structured data its schema describes — a persona, a
+configuration record, a small knowledge base, anything you can
+express as a Pydantic class. The important thing to internalize is
+that these variables are **parameters of the module**, not
+constants you hard-code. In a neural network, the parameters are
+floating-point weights; here, they are JSON objects. The
+optimizer's job is to improve them. Treat them accordingly.
+
+A `Program`, recall, is a DAG (a directed acyclic graph — a flowchart
+with no cycles) whose nodes are modules and whose arrows carry
+DataModels. Synalinks checks types twice: once when you *wire* the
+graph (using `SymbolicDataModel`, the schema-only stand-in for a real
+value), and again at runtime when a real value flows through (using
+ordinary Pydantic validation).
+
+The split between **schema** (the static type — known at construction
+time) and **value** (the actual runtime instance) is the central idea.
+Everything below follows from it.
 
 ## Core Modules
 
-### Input: The Entry Point
+### Input: the entry node
 
-Every program starts with an `Input` module. It defines the schema of data
-entering your program:
+`Input` declares where data enters the graph. It performs no
+computation. Its only job is to give the graph a typed entry point, the
+same way the parameter list of a function tells you what arguments to
+expect.
 
 ```python
 import synalinks
@@ -20,24 +64,40 @@ import synalinks
 class Query(synalinks.DataModel):
     query: str = synalinks.Field(description="User question")
 
-# Define the entry point - no computation happens here
+# Declares a typed entry. No work happens here.
 inputs = synalinks.Input(data_model=Query)
 ```
 
-The `Input` module doesn't transform data - it simply marks where data enters
-the computation graph. Think of it as the "x" in f(x).
+A useful analogy: `Input` plays the same role as the parameter list of
+a Python function. `def f(x):` names `x` so the body can refer to it;
+`Input(data_model=Query)` names a slot in the graph so everything
+downstream can refer to it.
 
-### Generator: The Core LLM Module
+### Generator: calling a language model with a typed output
 
-The `Generator` is the heart of Synalinks. It takes input data and uses a
-language model to produce structured output:
+`Generator` is the only module that talks to a language model
+directly. It turns its input DataModel into a prompt, asks the model
+to fill in the output DataModel, and returns a validated instance.
+
+Two terms used below, worth pinning down:
+
+- **JSON schema**: a JSON document that describes the shape of *other*
+  JSON — which fields exist, what type each one is, which are
+  required. Every Synalinks DataModel comes with one automatically.
+- **Constrained decoding**: when the LM produces output, it is
+  restricted token by token to choices that keep the output valid
+  against the schema. Tokens that would break the schema are simply
+  not allowed to come out. The result is JSON that parses, every
+  time.
 
 ```mermaid
 graph LR
-    A[Input DataModel] --> B[Generator]
-    B --> C[LLM Call]
-    C --> D[Constrained Decoding]
-    D --> E[Output DataModel]
+    A["Input DataModel"] --> B["Generator"]
+    B --> C["Prompt construction"]
+    C --> D["LM call"]
+    D --> E["Constrained decoding"]
+    E --> F["Pydantic validation"]
+    F --> G["Output DataModel"]
 ```
 
 ```python
@@ -49,30 +109,45 @@ class Answer(synalinks.DataModel):
 outputs = await synalinks.Generator(
     data_model=Answer,
     language_model=language_model,
-    instructions="Be concise and accurate.",  # Extra guidance
+    instructions="Be concise and accurate.",
 )(inputs)
 ```
 
-Key Generator features:
+Three rules to memorize:
 
-- **Constrained Output**: Output always matches your DataModel schema
-- **Automatic Prompting**: Synalinks constructs the prompt from your schema
-- **Instructions Parameter**: Add extra guidance without modifying the schema
-- **Trainable**: Instructions and examples can be optimized
+- **The output is either valid or you get an exception.** A
+  `Generator` never returns a half-built object. Either it matches the
+  schema, or it raises. There is no silent truncation.
+- **The prompt is built from the schema.** Field names and their
+  `description` strings end up in the prompt. Rename a field or
+  rewrite a description and you change the model's behavior, even if
+  no other code changed.
+- **`instructions` is a parameter, not a constant.** A Synalinks
+  optimizer can rewrite it during training, in the same way gradient
+  descent rewrites a weight in a neural network.
 
-### Identity: Pass-Through
+Two common ways this goes wrong: empty or vague `description` strings
+leave the model with too little to work with, and very deeply nested
+schemas make constrained decoding more likely to fail on weaker models.
 
-The `Identity` module passes data unchanged. Useful for creating parallel
-paths or as a placeholder:
+### Identity: a placeholder that passes data through
+
+`Identity` returns its input unchanged. It is the mathematical
+identity function `f(x) = x`, expressed as a module. You use it to
+keep graphs symmetric: when one branch transforms the data and a
+parallel branch should leave it alone, `Identity` fills the slot so
+you do not need a special case for "no module here."
 
 ```python
-# Just pass the data through
 unchanged = await synalinks.Identity()(inputs)
 ```
 
-### Tool: Wrap Any Function
+### Tool: turning a Python function into a module
 
-The `Tool` module wraps async Python functions for use in programs:
+`Tool` wraps an async Python function so an agent can call it. The
+wrapper reads the function's signature and docstring to build a JSON
+schema, which is the format that providers like OpenAI, Anthropic, and
+Gemini expect when you declare a tool the model is allowed to call.
 
 ```python
 import synalinks
@@ -84,36 +159,47 @@ async def search_web(query: str):
     Args:
         query (str): The search query.
     \"\"\"
-    # Your search implementation
     return {"results": [...]}
 
 tool = synalinks.Tool(search_web)
 ```
 
-**Important Tool Constraints:**
+Two rules to remember; these come from the LM providers
+(OpenAI/Anthropic/etc.), not from Synalinks itself:
 
-- **No Optional Parameters**: All parameters must be required. LLM providers
-  require all tool parameters to be required in their JSON schemas. Do not
-  use default values.
+- **Every parameter must be required.** Tool-calling providers treat
+  every declared parameter as required, so Python default values are
+  rejected. If a parameter is *conceptually* optional, model that
+  explicitly — for example, have callers pass `""` or `None` and
+  treat that value as "absent" inside the function.
+- **Every parameter needs an entry under `Args:` in the docstring.**
+  That text becomes the parameter's `description` in the JSON schema.
+  Forgetting one raises a `ValueError` when you wrap the function (so
+  you catch it early), not later when an agent tries to call the
+  tool.
 
-- **Complete Docstring Required**: Every parameter must be documented in
-  the `Args:` section. The Tool extracts descriptions from the docstring
-  to build the JSON schema. Missing descriptions raise a ValueError.
+## Control-Flow Modules
 
-## Control Flow Modules
+These modules give your program the LM equivalent of `if`, `elif`, and
+`switch`. Use them when the *next step* of the flowchart needs to
+depend on what the data actually looks like.
 
-### Decision: Single-Label Classification
+### Decision: pick one label from a fixed list
 
-The `Decision` module classifies input into one of several categories,
-enabling intelligent routing:
+`Decision` asks the LM to pick exactly one label from a **closed
+set** of choices that *you* supply. ("Closed" means the model is not
+allowed to invent a new one.) The output schema is fixed:
+`{"choice": <one of labels>}`. Conceptually, `Decision` is the LM
+version of an `if`/`elif` chain where the condition is "what kind of
+input is this?"
 
 ```mermaid
 graph LR
-    A[Input] --> B[Decision]
-    B --> C{Which Label?}
-    C -->|math| D[Math Handler]
-    C -->|general| E[General Handler]
-    C -->|code| F[Code Handler]
+    A["Input"] --> B["Decision"]
+    B --> C{"Which label?"}
+    C -->|"math"| D["math"]
+    C -->|"general"| E["general"]
+    C -->|"code"| F["code"]
 ```
 
 ```python
@@ -122,14 +208,21 @@ decision = await synalinks.Decision(
     labels=["math", "general", "code"],
     language_model=language_model,
 )(inputs)
-
-# Result: {"choice": "math"} or {"choice": "general"} etc.
+# decision is a DataModel with a single field "choice".
 ```
 
-### Branch: Conditional Execution
+Because constrained decoding enforces the label set, the result is
+guaranteed to be one of your labels. If you want a *free-form*
+category instead, use an ordinary `Generator` whose output schema
+contains a string field.
 
-The `Branch` module combines decision-making with routing. It takes a question,
-labels, and corresponding branch modules:
+### Branch: classify, then route
+
+`Branch` is the combination of a `Decision` and a *k*-way switch (a
+`switch`/`case` statement with *k* possible paths). It returns a
+tuple of *k* outputs, one slot per branch. At runtime, only the
+branch picked by the classifier actually runs; the other *k* − 1
+slots come back as `None`.
 
 ```python
 (math_output, general_output) = await synalinks.Branch(
@@ -150,110 +243,165 @@ labels, and corresponding branch modules:
     language_model=lm,
 )(inputs)
 
-# Combine with OR - only the selected branch produces output
+# Collapse the tuple to a single output via Or.
 outputs = math_output | general_output
 ```
 
-The Branch module:
+What happens, step by step:
 
-1. Asks the question to classify the input
-2. Routes to the corresponding branch (others return None)
-3. Use OR to combine the outputs
+1. The classifier picks an index `i` between 0 and *k* − 1.
+2. Branch number `i` runs; the other branches skip and yield `None`.
+3. Code downstream must cope with `None` from the skipped branches.
+   The usual way to do that is the `Or` operator (`|`) you will meet
+   in a moment, which returns the first operand that is not `None`.
 
-### Action: Context Injection
+### Action: let the LM call one specific tool
 
-The `Action` module executes with injected context from previous steps:
+`Action` is the bridge between a typed input and a `Tool` call. You
+give it a single `Tool` and a `LanguageModel`; at call time, the LM
+reads the input DataModel, infers the tool's arguments from it, and
+the framework actually runs the tool. The output bundles together
+the arguments the LM produced *and* the value the tool returned.
+
+Think of `Action` as a single-tool, single-shot version of a
+function-calling agent: there is no loop, no choice between tools —
+just "given this input, fill in this tool's arguments and run it."
 
 ```python
+@synalinks.saving.register_synalinks_serializable()
+async def calculate(expression: str):
+    \"\"\"Calculate a math expression.
+
+    Args:
+        expression (str): A math expression such as '2 + 2'.
+    \"\"\"
+    return {"result": eval(expression, {"__builtins__": None}, {})}
+
 outputs = await synalinks.Action(
+    tool=synalinks.Tool(calculate),
     language_model=language_model,
-    data_model=Answer,
-    context_key="search_results",  # Inject under this key
-)(inputs, search_results)
+)(inputs)
 ```
 
 ## Merging Modules
 
-When you have multiple data streams, merging modules combine them:
+A merging module takes several DataModels and combines them into one.
+What separates the four merging modules from each other is how they
+react to two specific situations: (1) one of the inputs is missing
+(it is `None`), and (2) two inputs both declare a field with the same
+name (a **schema collision**).
 
 ```mermaid
 graph LR
-    A[DataModel A] --> C[Merge Module]
-    B[DataModel B] --> C
-    C --> D[Combined DataModel]
+    A["DataModel A"] --> C["Merge module"]
+    B["DataModel B"] --> C
+    C --> D["Combined DataModel"]
 ```
 
-### Concat (+): Merge All Fields
+The four operators form a small algebra. The table below is a lookup
+chart: pick the row for the operator, then the column for which inputs
+are missing, and read what happens. "Union fields" means the result
+keeps every field from every input; "drop A" means A's fields are left
+out of the result.
 
-Combines all fields from multiple DataModels:
+| Operator | Symbol | A=None | B=None | both present |
+|----------|--------|--------|--------|--------------|
+| Concat   | `+`    | drop A | drop B | union fields |
+| And      | `&`    | None   | None   | union fields |
+| Or       | `\\|`  | B      | A      | A            |
+| Xor      | `^`    | B      | A      | None         |
+
+### Concat (+)
+
+Combines the fields of every non-`None` input into one DataModel. When
+two inputs use the same field name, Synalinks renames the duplicates by
+appending a numeric suffix (`answer`, `answer_1`, `answer_2`, ...) so
+no information is lost.
 
 ```python
-# Merge two outputs
 merged = await synalinks.Concat()([output_a, output_b])
-# Result has all fields from both A and B
 ```
 
-### Logical And (&): Merge with None Check
+### And (&)
 
-Like Concat, but returns None if any input is None:
+Behaves like `Concat` when every input is present, but if any input is
+`None`, the whole result is `None`. Use this when every branch is a
+prerequisite for what comes next: missing any one means the next stage
+should not run.
 
 ```python
-# Only merge if both exist
 merged = await synalinks.And()([output_a, output_b])
-# Result: merged DataModel or None
 ```
 
-### Logical Or (|): ignore None
+### Or (|)
 
-Returns the first non-None value:
+Returns the first input that is not `None`. This is the standard way to
+collapse a `Branch` back into a single output.
 
 ```python
-# Fallback pattern
 result = await synalinks.Or()([primary, fallback])
-# Returns primary if not None, else fallback
 ```
 
-### Xor (^): Exclusive Choice
+### Xor (^)
 
-Returns None if both inputs are provided:
+Stands for "exclusive or". Returns `None` when both inputs are present.
+This is useful as a guard: if a warning fires (so both the warning and
+the data are present), the data path is suppressed.
 
 ```python
-# For guard patterns
 result = await synalinks.Xor()([warning, data])
-# If warning exists, data becomes None
 ```
 
 ## Masking Modules
 
-Masking modules filter fields from DataModels:
+Masking selects a subset of the fields of a DataModel. `InMask` keeps
+only the fields you list (a whitelist); `OutMask` removes the fields
+you list (a blacklist). In both cases the original DataModel is left
+untouched, and a new DataModel with fewer fields is returned.
 
-### InMask: Keep Specified Fields
+### InMask
 
 ```python
-# Keep only "answer" field, drop everything else
 filtered = await synalinks.InMask(mask=["answer"])(full_output)
 ```
 
-### OutMask: Remove Specified Fields
+### OutMask
 
 ```python
-# Remove "thinking" field, keep everything else
 filtered = await synalinks.OutMask(mask=["thinking"])(full_output)
 ```
 
-Masking is useful for:
+Why narrowing fields matters:
 
-- Hiding intermediate reasoning from final output
-- Reducing token usage in downstream modules
-- Focusing training on specific fields
+- **Smaller prompts.** Generators further down the graph receive less
+  text, which means fewer tokens and lower cost.
+- **Information hiding.** A scratch field (for example `thinking`) used
+  for intermediate work does not need to appear in the final output.
+- **Cleaner training.** When the reward function only scores a subset
+  of fields, the optimizer gets a clearer signal about what to improve.
 
 ## Test-Time Compute Modules
 
-These modules use extra computation at inference time to improve quality:
+These modules spend *extra* LM work when you run the program, in
+exchange for better accuracy — trading speed for quality.
+"Test-time" is a term borrowed from machine learning: it means "at the
+time the model is being used," as opposed to "training-time," when
+weights or prompts are being adjusted.
 
-### ChainOfThought: Automatic Reasoning
+### ChainOfThought
 
-Adds a "thinking" field to encourage step-by-step reasoning:
+A **chain of thought** is a sequence of reasoning steps the model
+writes out before committing to an answer — the LM equivalent of
+"showing your work" on a math problem.
+
+`ChainOfThought` adds a `thinking` field to the output schema, placed
+*before* the fields you defined. Constrained decoders emit fields in
+the order they appear in the schema, so the model writes the
+reasoning first and the answer second. And because LMs generate one
+token at a time — each token conditioned on the ones already written
+— putting the reasoning *before* the answer means the answer ends up
+*conditioned on* the reasoning. That tiny ordering trick is the entire
+mechanism behind chain-of-thought prompting.
 
 ```python
 outputs = await synalinks.ChainOfThought(
@@ -261,17 +409,21 @@ outputs = await synalinks.ChainOfThought(
     language_model=language_model,
 )(inputs)
 
-# Result includes both "thinking" and "answer" fields
-print(result['thinking'])  # Step-by-step reasoning
-print(result['answer'])    # Final answer
+print(result['thinking'])
+print(result['answer'])
 ```
 
-The thinking field is automatically added to your schema - you don't need
-to include it in your DataModel.
+You do *not* add `thinking` to your DataModel yourself. The
+`ChainOfThought` module inserts it for you. This is the main reason
+field order matters in Synalinks — order changes *behavior*, not just
+appearance.
 
-### SelfCritique: Self-Evaluation
+### SelfCritique
 
-Generates output, then evaluates it with a reward function:
+Generates an answer, then scores it with a reward function, and returns
+both the answer and the score. A downstream module can use the score to
+decide whether to accept the answer, retry, or escalate to a stronger
+model.
 
 ```python
 outputs = await synalinks.SelfCritique(
@@ -313,10 +465,10 @@ async def main():
     load_dotenv()
     synalinks.clear_session()
 
-    lm = synalinks.LanguageModel(model="gemini/gemini-3.1-flash-lite-preview")
+    lm = synalinks.LanguageModel(model="ollama/llama3.2:latest")
 
     # -------------------------------------------------------------------------
-    # Generator Example
+    # Generator
     # -------------------------------------------------------------------------
     print("=" * 60)
     print("Module 1: Generator")
@@ -333,7 +485,7 @@ async def main():
     print(f"Generator output: {result['answer'][:100]}...")
 
     # -------------------------------------------------------------------------
-    # Branch Example (in docstring)
+    # Branch
     # -------------------------------------------------------------------------
     print("\\n" + "=" * 60)
     print("Module 2: Branch")
@@ -365,7 +517,7 @@ async def main():
     print(f"Math result: {result['answer']}")
 
     # -------------------------------------------------------------------------
-    # ChainOfThought Example
+    # ChainOfThought
     # -------------------------------------------------------------------------
     print("\\n" + "=" * 60)
     print("Module 3: ChainOfThought")
@@ -383,7 +535,7 @@ async def main():
     print(f"Answer: {result['answer']}")
 
     # -------------------------------------------------------------------------
-    # Masking Example
+    # Masking
     # -------------------------------------------------------------------------
     print("\\n" + "=" * 60)
     print("Module 4: Masking")
@@ -395,7 +547,6 @@ async def main():
         language_model=lm,
     )(inputs)
 
-    # Keep only the answer field
     masked = await synalinks.InMask(mask=["answer"])(full_output)
 
     program = synalinks.Program(inputs=inputs, outputs=masked)
@@ -406,24 +557,68 @@ if __name__ == "__main__":
     asyncio.run(main())
 ```
 
-## Key Takeaways
+Expected output (with `ollama/llama3.2:latest`; LM outputs are
+non-deterministic, so exact strings will vary):
 
-- **Input**: Defines the entry point of your program. Every program needs at least one.
+```
+============================================================
+Module 1: Generator
+============================================================
 
-- **Generator**: The core LLM module. Takes input, produces structured output
-  matching your DataModel schema. Supports instructions and is trainable.
+Generator output: Python is a high-level, interpreted programming language that is widely used for various purposes su...
 
-- **Decision + Branch**: Enable intelligent routing. Decision classifies,
-  Branch routes to the appropriate handler.
+============================================================
+Module 2: Decision
+============================================================
 
-- **ChainOfThought**: Automatically adds step-by-step reasoning to improve
-  accuracy on complex tasks.
+Decision output: calculation
+Decision output: factual
 
-- **Merging Operators**: `+` (Concat), `&` (And), `|` (Or), `^` (Xor) combine
-  DataModels in different ways for different use cases.
+============================================================
+Module 3: Branch (includes decision-making)
+============================================================
 
-- **InMask/OutMask**: Filter fields to hide intermediate work or focus on
-  specific outputs.
+Math branch result: 345
+General branch result: William Shakespeare
+
+============================================================
+Module 4: ChainOfThought
+============================================================
+
+Thinking: To find out how many apples you will have left after giving 1 away, we need to subtract 1 from the t...
+Answer: 2
+
+============================================================
+Module 5: Concat (Merging)
+============================================================
+
+Merged fields: ['answer', 'thinking', 'answer_1']
+
+============================================================
+Module 6: InMask and OutMask
+============================================================
+
+Masked output fields: ['answer']
+Answer: 2
+```
+
+## Take-Home Summary
+
+- **`Input`** declares the entry type. It does no work.
+- **`Generator`** is the only module that calls a language model.
+  Its prompt is determined entirely by the input and output
+  schemas plus the trainable `instructions` variable (a JSON
+  object whose primary field is the system-prompt text).
+- **`Decision`** and **`Branch`** give you safe, fixed-size control
+  flow. Because the labels are a closed set, the choice is always one
+  you named — the model cannot invent a new category at runtime.
+- **`Concat`, `And`, `Or`, `Xor`** are four ways to merge DataModels.
+  Pick one by deciding how it should treat missing inputs.
+- **`InMask`** and **`OutMask`** narrow a schema without changing the
+  original DataModel.
+- **`ChainOfThought`** uses the order of fields in the schema to make
+  the model reason before it answers. In Synalinks, field order is
+  part of the behavior.
 
 ## API References
 
@@ -474,12 +669,12 @@ async def main():
     load_dotenv()
     synalinks.clear_session()
 
-    synalinks.enable_observability(
-        tracking_uri="http://localhost:5000",
-        experiment_name="guide_4_modules",
-    )
+    # synalinks.enable_observability(
+    #     tracking_uri="http://localhost:5000",
+    #     experiment_name="guide_4_modules",
+    # )
 
-    lm = synalinks.LanguageModel(model="gemini/gemini-3.1-flash-lite-preview")
+    lm = synalinks.LanguageModel(model="ollama/llama3.2:latest")
 
     # -------------------------------------------------------------------------
     # Generator Module

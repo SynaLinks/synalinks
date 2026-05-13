@@ -6,10 +6,10 @@ from unittest.mock import patch
 from synalinks.src import testing
 from synalinks.src.backend import DataModel
 from synalinks.src.backend import dynamic_enum_array
-from synalinks.src.modules.language_models import LanguageModel
 from synalinks.src.modules import Input
 from synalinks.src.modules.core.multi_decision import MultiDecision
 from synalinks.src.modules.core.multi_decision import MultiDecisionAnswer
+from synalinks.src.modules.language_models import LanguageModel
 from synalinks.src.programs import Program
 
 

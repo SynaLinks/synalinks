@@ -209,6 +209,57 @@ class Dataset:
         """Number of batches, if known. Override when the size is finite."""
         raise NotImplementedError
 
+    def materialize(self):
+        """Iterate the dataset to exhaustion and concatenate every batch.
+
+        Returns a single ``(x,)`` or ``(x, y)`` pair — numpy object
+        arrays of ``DataModel`` instances — suitable for
+        ``program.evaluate(x=x, y=y)``, ``program.fit(x=x, y=y)``,
+        or for slicing into train/test splits with
+        ``split_train_test``.
+
+        This is the streaming-to-arrays bridge: any ``Dataset``
+        subclass — ``HuggingFaceDataset``, a custom CSV loader,
+        anything else — can be force-evaluated into in-memory NumPy
+        object arrays with a single method call. Use it for small
+        benchmark datasets that fit comfortably in memory; for huge
+        sources, iterate via ``ds()`` instead so rows stream on
+        demand.
+
+        Returns:
+            ``(x,)`` if the dataset is inputs-only (no
+            ``output_template`` configured), otherwise ``(x, y)``.
+        """
+        inputs_only = self._output_tmpl is None
+        x_buf, y_buf = [], []
+        for batch in self:
+            x_buf.extend(batch[0])
+            if not inputs_only:
+                y_buf.extend(batch[1])
+        x = np.array(x_buf, dtype="object")
+        if inputs_only:
+            return (x,)
+        return (x, np.array(y_buf, dtype="object"))
+
+
+@synalinks_export(["synalinks.datasets.split_train_test"])
+def split_train_test(x, y, validation_split=0.2):
+    """Deterministic head/tail split — for sources that ship a single
+    labeled split (HumanEval, IFEval, BBH, TruthfulQA, BBQ, ...).
+
+    Args:
+        x: Input numpy object array.
+        y: Target numpy object array.
+        validation_split (float): Fraction of the data that goes to
+            the test set. Defaults to ``0.2`` (Keras convention).
+
+    Returns:
+        ``(x_train, y_train), (x_test, y_test)``.
+    """
+    n = len(x)
+    cut = int(n * (1.0 - validation_split))
+    return (x[:cut], y[:cut]), (x[cut:], y[cut:])
+
 
 def _batch(x_buf, y_buf, inputs_only):
     x = np.array(x_buf, dtype="object")

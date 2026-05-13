@@ -361,9 +361,7 @@ class GettersAndIterableSurfaceTest(testing.TestCase):
             mod = importlib.import_module(f"synalinks.src.datasets.built_in.{name}")
             inp = mod.get_input_data_model()
             out = mod.get_output_data_model()
-            self.assertTrue(
-                issubclass(inp, DataModel), f"{name}: input is not DataModel"
-            )
+            self.assertTrue(issubclass(inp, DataModel), f"{name}: input is not DataModel")
             self.assertTrue(
                 issubclass(out, DataModel), f"{name}: output is not DataModel"
             )
@@ -376,13 +374,9 @@ class GettersAndIterableSurfaceTest(testing.TestCase):
         # Empty list satisfies the streaming-path constructor without
         # reaching the templates (we're proving the function body runs,
         # not iterating rows).
-        with patch.object(
-            hf_module, "load_dataset", return_value=_FakeListDataset()
-        ):
+        with patch.object(hf_module, "load_dataset", return_value=_FakeListDataset()):
             for name in _BENCHMARKS:
-                mod = importlib.import_module(
-                    f"synalinks.src.datasets.built_in.{name}"
-                )
+                mod = importlib.import_module(f"synalinks.src.datasets.built_in.{name}")
                 ds = mod.iterable_dataset(repeat=1, batch_size=1, limit=2)
                 self.assertIsInstance(
                     ds, HuggingFaceDataset, f"{name}: not a HuggingFaceDataset"
