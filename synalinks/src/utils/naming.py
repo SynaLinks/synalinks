@@ -28,11 +28,75 @@ def uniquify(name):
     return unique_name
 
 
-def to_snake_case(name):
-    name = re.sub(r"\W+", "", name)
-    name = re.sub("(.)([A-Z][a-z]+)", r"\1_\2", name)
-    name = re.sub("([a-z])([A-Z])", r"\1_\2", name).lower()
-    return name
+def to_snake_case(text: str) -> str:
+    """Convert a string to snake_case.
+
+    The mirror image of :func:`to_pascal_case`: splits on non-
+    alphanumeric separators *and* on case boundaries, then lowercases
+    each remaining word and joins them with underscores.
+
+    Examples:
+
+    - ``"FirstName"`` → ``"first_name"``
+    - ``"firstName"`` → ``"first_name"``
+    - ``"First Name"`` / ``"first-name"`` / ``"first.name"``
+      → ``"first_name"``
+    - ``"FIRST_NAME"`` → ``"first_name"``
+    - ``"HTTPResponse"`` → ``"http_response"``
+    - ``"id"`` → ``"id"``
+
+    Used to canonicalize column / property names so that database
+    schemas always use snake_case regardless of the casing convention
+    in the source file.
+
+    Args:
+        text (str): The text to convert.
+
+    Returns:
+        (str): The snake_case form, or ``""`` when no alphanumeric content remains.
+    """
+    if not text:
+        return ""
+    name = re.sub(r"(?<=[a-z0-9])(?=[A-Z])", "_", text)
+    name = re.sub(r"(?<=[A-Z])(?=[A-Z][a-z])", "_", name)
+    parts = re.split(r"[^a-zA-Z0-9]+", name)
+    return "_".join(p.lower() for p in parts if p)
+
+
+def to_pascal_case(text: str) -> str:
+    """Convert a string to PascalCase.
+
+    Splits on non-alphanumeric separators (``-``, ``_``, spaces, dots,
+    etc.) and on case boundaries (``myDocs`` and ``XMLParser`` both
+    have boundaries) and then capitalizes each remaining word.
+
+    Examples:
+
+    - ``"my-docs"`` → ``"MyDocs"``
+    - ``"my_docs"`` → ``"MyDocs"``
+    - ``"my docs"`` → ``"MyDocs"``
+    - ``"myDocs"`` → ``"MyDocs"``
+    - ``"XMLParser"`` → ``"XmlParser"``
+    - ``"docs"`` → ``"Docs"``
+
+    Used to coerce free-form names (filenames, user-supplied table
+    titles) into a shape acceptable to SQL-identifier validators —
+    note that this does *not* validate identifier rules itself (a
+    leading digit, for example, survives this step and must be
+    rejected downstream).
+
+    Args:
+        text (str): The text to convert.
+
+    Returns:
+        (str): The PascalCase form, or ``""`` when no alphanumeric content remains.
+    """
+    if not text:
+        return ""
+    name = re.sub(r"(?<=[a-z0-9])(?=[A-Z])", " ", text)
+    name = re.sub(r"(?<=[A-Z])(?=[A-Z][a-z])", " ", name)
+    parts = re.split(r"[^a-zA-Z0-9]+", name)
+    return "".join(p[:1].upper() + p[1:].lower() for p in parts if p)
 
 
 def to_pkg_name(name):

@@ -299,6 +299,72 @@ result = {"doubled": memo["count"] * 2}
         r2 = await agent_followup(_IntIn(value=4), sandbox=sandbox)
         self.assertEqual(r2.get("doubled"), 14)  # (3 + 4) * 2
 
+    async def test_constructor_sandbox_preserves_state_across_calls(self):
+        """A ``sandbox`` passed at construction time is reused on every
+        ``call()``, so state from one run is visible to the next without
+        the caller re-injecting it per call."""
+        seed_script = """
+memo = {"count": inputs.get("value")}
+result = {"doubled": memo["count"] * 2}
+"""
+        followup_script = """
+memo["count"] += inputs.get("value")
+result = {"doubled": memo["count"] * 2}
+"""
+
+        sandbox = MontySandbox()
+        agent_seed = PythonSynthesis(
+            data_model=_IntOut,
+            python_script=seed_script,
+            default_return_value={"doubled": -1},
+            sandbox=sandbox,
+        )
+        agent_followup = PythonSynthesis(
+            data_model=_IntOut,
+            python_script=followup_script,
+            default_return_value={"doubled": -1},
+            sandbox=sandbox,
+        )
+
+        r1 = await agent_seed(_IntIn(value=3))
+        self.assertEqual(r1.get("doubled"), 6)
+        r2 = await agent_followup(_IntIn(value=4))
+        self.assertEqual(r2.get("doubled"), 14)  # (3 + 4) * 2
+
+    async def test_call_sandbox_overrides_constructor_sandbox(self):
+        """Resolution order: per-call ``sandbox`` kwarg wins over the
+        constructor-supplied one. A fresh sandbox at call time should
+        not see state from the constructor's sandbox."""
+        seed_script = """
+memo = {"count": inputs.get("value")}
+result = {"doubled": memo["count"] * 2}
+"""
+        followup_script = """
+memo["count"] += inputs.get("value")
+result = {"doubled": memo["count"] * 2}
+"""
+
+        ctor_sandbox = MontySandbox()
+        agent_seed = PythonSynthesis(
+            data_model=_IntOut,
+            python_script=seed_script,
+            default_return_value={"doubled": -1},
+            sandbox=ctor_sandbox,
+        )
+        agent_followup = PythonSynthesis(
+            data_model=_IntOut,
+            python_script=followup_script,
+            default_return_value={"doubled": -1},
+            sandbox=ctor_sandbox,
+        )
+
+        await agent_seed(_IntIn(value=3))
+        # Per-call sandbox is fresh — `memo` is undefined inside it.
+        fresh = MontySandbox()
+        r = await agent_followup(_IntIn(value=4), sandbox=fresh)
+        self.assertEqual(r.get("doubled"), -1)
+        self.assertIn("Runtime Error", r.get("stderr"))
+
     async def test_default_sandbox_is_fresh_each_call(self):
         """Without an injected sandbox, state from a previous call must
         not leak into the next one."""

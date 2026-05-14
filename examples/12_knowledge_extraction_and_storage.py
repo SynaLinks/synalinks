@@ -362,13 +362,17 @@ async def main():
 
     # Full-text search for invoices
     print("\nSearch for 'cloud' in invoices:")
-    results = await knowledge_base.fulltext_search("cloud", k=5)
+    results = await knowledge_base.fulltext_search(
+        "cloud", table_name="Invoice", k=5
+    )
     for r in results:
         print(f"  Found: {r}")
 
-    # Hybrid search
+    # Hybrid search (vector + BM25 fulltext, fused with RRF)
     print("\nSearch for 'office equipment purchase':")
-    results = await knowledge_base.hybrid_search("office equipment purchase", k=5)
+    results = await knowledge_base.hybrid_fts_search(
+        "office equipment purchase", table_name="Invoice", k=5
+    )
     for r in results:
         print(f"  Found: {r}")
 
@@ -433,7 +437,9 @@ async def main():
 
     for dm in data_models:
         table_name = dm.get_schema()["title"]
-        records = await knowledge_base.getall(dm, limit=10)
+        records = await knowledge_base.getall(
+            table_name=table_name, limit=10
+        )
         print(f"\n{table_name} ({len(records)} records):")
         for record in records:
             json_data = record.get_json()

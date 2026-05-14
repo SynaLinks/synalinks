@@ -30,6 +30,10 @@ markdown_extensions:
         - name: mermaid
           class: mermaid
           format: !!python/name:pymdownx.superfences.fence_code_format
+  - pymdownx.snippets:
+      base_path:
+        - .
+      check_paths: true
 
 plugins:
   - search
@@ -71,6 +75,11 @@ nav:
     - guides/Hyperparameter Search.md
     - guides/Multi-Objective LM Selection.md
     - guides/Recursive Language Model Agent.md
+    - guides/SQL Agent.md
+    - guides/Vector RAG Agent.md
+    - guides/Deep Agent.md
+    - guides/FastAPI Deployment.md
+    - guides/FastMCP Deployment.md
   - Code Examples:
     - Code Examples/First Steps.md
     - Code Examples/Functional API.md
@@ -91,9 +100,10 @@ nav:
     - Code Examples/Recursive Language Model Agent.md
     - Code Examples/Knowledge Extraction and Storage.md
     - Code Examples/Document RAG.md
-    - Code Examples/RAG Agent.md
+    - Code Examples/Vector RAG Agent.md
     - Code Examples/MCP Agent.md
     - Code Examples/SQL Agent.md
+    - Code Examples/Deep Agent.md
   - Modules: Synalinks API/Modules API/index.md
   - FAQ.md
   - CheatSheet.md
@@ -135,6 +145,9 @@ nav:
         - Synalinks API/Modules API/Agents Modules/index.md
         - Synalinks API/Modules API/Agents Modules/FunctionCallingAgent module.md
         - Synalinks API/Modules API/Agents Modules/RecursiveLanguageModelAgent module.md
+        - Synalinks API/Modules API/Agents Modules/SQLAgent module.md
+        - Synalinks API/Modules API/Agents Modules/VectorRAGAgent module.md
+        - Synalinks API/Modules API/Agents Modules/DeepAgent module.md
       - Knowledge Modules:
         - Synalinks API/Modules API/Knowledge Modules/index.md
         - Synalinks API/Modules API/Knowledge Modules/EmbedKnowledge module.md

@@ -142,7 +142,7 @@ class StampKnowledgeTest(testing.TestCase):
         symbolic_models = knowledge_base.get_symbolic_data_models()
         self.assertTrue(len(symbolic_models) > 0)
 
-        retrieved = await knowledge_base.get("doc1", symbolic_models)
+        retrieved = await knowledge_base.get("doc1", table_name="Document")
         self.assertIsNotNone(retrieved)
         self.assertEqual(retrieved.get_json()["id"], "doc1")
         self.assertEqual(retrieved.get_json()["text"], "test document")
@@ -179,8 +179,8 @@ class StampKnowledgeTest(testing.TestCase):
         symbolic_models = knowledge_base.get_symbolic_data_models()
         self.assertTrue(len(symbolic_models) > 0)
 
-        retrieved1 = await knowledge_base.get("doc1", symbolic_models)
-        retrieved2 = await knowledge_base.get("doc2", symbolic_models)
+        retrieved1 = await knowledge_base.get("doc1", table_name="Document")
+        retrieved2 = await knowledge_base.get("doc2", table_name="Document")
         self.assertIsNotNone(retrieved1)
         self.assertIsNotNone(retrieved2)
         self.assertIn("created_at", retrieved1.get_json())

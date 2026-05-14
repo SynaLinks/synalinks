@@ -5,6 +5,7 @@ from synalinks.src.utils.naming import auto_name
 from synalinks.src.utils.naming import get_object_name
 from synalinks.src.utils.naming import get_uid
 from synalinks.src.utils.naming import reset_uids
+from synalinks.src.utils.naming import to_pascal_case
 from synalinks.src.utils.naming import to_pkg_name
 from synalinks.src.utils.naming import to_snake_case
 from synalinks.src.utils.naming import uniquify
@@ -22,6 +23,34 @@ class NamingTest(testing.TestCase):
 
     def test_to_snake_case_with_special_chars(self):
         self.assertEqual(to_snake_case("Hello World!"), "hello_world")
+
+    def test_to_pascal_case_separators(self):
+        # Common separator styles collapse into PascalCase.
+        self.assertEqual(to_pascal_case("my-docs"), "MyDocs")
+        self.assertEqual(to_pascal_case("my_docs"), "MyDocs")
+        self.assertEqual(to_pascal_case("my docs"), "MyDocs")
+        self.assertEqual(to_pascal_case("my.docs"), "MyDocs")
+        self.assertEqual(to_pascal_case("docs"), "Docs")
+
+    def test_to_pascal_case_case_boundaries(self):
+        # Already-cased input gets re-segmented at case boundaries so
+        # "myDocs" / "MyDocs" / "XMLParser" all canonicalise the same.
+        self.assertEqual(to_pascal_case("myDocs"), "MyDocs")
+        self.assertEqual(to_pascal_case("MyDocs"), "MyDocs")
+        self.assertEqual(to_pascal_case("XMLParser"), "XmlParser")
+        self.assertEqual(to_pascal_case("HTTPSConnection"), "HttpsConnection")
+
+    def test_to_pascal_case_edge_cases(self):
+        # Empty / whitespace / pure-separator inputs return "" so the
+        # caller can detect "no identifier survived" and reject.
+        self.assertEqual(to_pascal_case(""), "")
+        self.assertEqual(to_pascal_case("   "), "")
+        self.assertEqual(to_pascal_case("---"), "")
+        # Digits stay where they are — note this means a leading digit
+        # survives, so callers that need SQL-identifier safety must
+        # still validate afterwards.
+        self.assertEqual(to_pascal_case("2024_articles"), "2024Articles")
+        self.assertEqual(to_pascal_case("test123"), "Test123")
 
     def test_to_pkg_name_dashes(self):
         self.assertEqual(to_pkg_name("my-package"), "my_package")

@@ -22,7 +22,11 @@ from synalinks.api.datasets import mmlu as mmlu
 from synalinks.api.datasets import squad as squad
 from synalinks.api.datasets import truthfulqa as truthfulqa
 from synalinks.api.datasets import winogrande as winogrande
+from synalinks.src.datasets.csv_dataset import CSVDataset as CSVDataset
 from synalinks.src.datasets.dataset import Dataset as Dataset
 from synalinks.src.datasets.dataset import split_train_test as split_train_test
 from synalinks.src.datasets.huggingface_dataset import HuggingFaceDataset as HuggingFaceDataset
 from synalinks.src.datasets.huggingface_dataset import load_split as load_split
+from synalinks.src.datasets.json_dataset import JSONDataset as JSONDataset
+from synalinks.src.datasets.json_dataset import JSONLDataset as JSONLDataset
+from synalinks.src.datasets.parquet_dataset import ParquetDataset as ParquetDataset

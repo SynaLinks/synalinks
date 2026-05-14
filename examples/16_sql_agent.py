@@ -34,11 +34,12 @@ SQL Agents provide:
 
 ## Architecture
 
-The SQL Agent uses three specialized tools to interact with the Knowledge Base:
+`synalinks.SQLAgent` wires a `FunctionCallingAgent` with three pre-built
+tools bound to a `KnowledgeBase`:
 
 ```mermaid
 flowchart TD
-    A[User Question] --> B[FunctionCallingAgent]
+    A[User Question] --> B[SQLAgent]
     B --> C{Select Tool}
     C -->|Discover structure| D[get_database_schema]
     C -->|View sample data| E[get_table_sample]
@@ -52,22 +53,24 @@ flowchart TD
     B --> J[Natural Language Answer + SQL]
 ```
 
-The agent follows an autonomous loop: it first discovers the schema, optionally
-samples data to understand the format, then constructs and executes SQL queries.
-This process repeats until the agent has enough information to answer.
+The agent follows an autonomous loop: it first discovers the schema (or
+reads the tables from the system instructions), optionally samples data to
+understand the format, then constructs and executes SQL queries until it
+has enough information to answer.
 
 ## Available Tools
 
 | Tool | Description |
 |------|-------------|
 | `get_database_schema` | Returns all tables and their columns with types |
-| `get_table_sample` | Fetches sample rows from a table with pagination |
-| `run_sql_query` | Executes read-only SELECT queries safely |
+| `get_table_sample` | Fetches sample rows with `LIMIT`/`OFFSET` pagination |
+| `run_sql_query` | Executes read-only `SELECT` queries |
+
+Result sets are rendered as **CSV** by default so the LM spends fewer
+input tokens reading tabular data. Set `output_format="json"` on the
+`SQLAgent` if you want list-of-dicts instead.
 
 ## Defining Input and Output Models
-
-First, define DataModels for the agent's input (user query) and output
-(answer with SQL):
 
 ```python
 import synalinks
@@ -88,61 +91,14 @@ class SQLResult(synalinks.DataModel):
     )
 ```
 
-The `Query` model captures the user's natural language question. The `SQLResult`
-model structures the output to include both a human-readable answer and the
-SQL query used, providing transparency into the agent's reasoning.
+The `Query` model captures the user's natural language question. The
+`SQLResult` model structures the output to include both a human-readable
+answer and the SQL used, providing transparency into the agent's reasoning.
 
-## Tool Design for Database Access
+## Building the Agent
 
-Each tool uses `kb.get_symbolic_data_models()` to dynamically discover
-available tables. This makes the agent adaptable to any database schema
-without hardcoding table names.
-
-**Important Tool Constraints:**
-
-- **No Optional Parameters**: All tool parameters must be required. LLM
-  providers require all parameters in their JSON schemas. Do not use default
-  values for parameters.
-
-- **Complete Docstring Required**: Every parameter must be documented in the
-  `Args:` section. The Tool extracts descriptions from the docstring to build
-  the JSON schema sent to the LLM. Missing descriptions raise a ValueError.
-
-Example tool definition:
-
-```python
-from synalinks.src.saving.object_registration import register_synalinks_serializable
-
-@register_synalinks_serializable()
-async def get_database_schema():
-    \"\"\"Get the complete database schema including all tables and columns.\"\"\"
-    kb = get_knowledge_base()
-    symbolic_models = kb.get_symbolic_data_models()
-
-    schema_info = []
-    for model in symbolic_models:
-        schema = model.get_schema()
-        table_name = schema.get("title", "Unknown")
-        properties = schema.get("properties", {})
-
-        columns = []
-        for col_name, col_info in properties.items():
-            col_type = col_info.get("type", "unknown")
-            columns.append(f"  - {col_name} ({col_type})")
-
-        schema_info.append(f"Table: {table_name}\\n" + "\\n".join(columns))
-
-    return {"schema": "\\n\\n".join(schema_info), "table_count": len(symbolic_models)}
-```
-
-The `@register_synalinks_serializable()` decorator enables the tool to be
-saved and loaded with the program. The tool extracts table names and column
-information from the JSON schema of each symbolic data model.
-
-## Building the SQL Agent
-
-Wrap the tool functions with `synalinks.Tool()` and create the agent using
-`FunctionCallingAgent`:
+`SQLAgent` takes a `KnowledgeBase` + `LanguageModel` + output data model
+and handles tool wiring internally — no manual `Tool` definitions needed.
 
 ```python
 # Create Knowledge Base with your data models
@@ -154,20 +110,13 @@ kb = synalinks.KnowledgeBase(
 # Configure language model
 lm = synalinks.LanguageModel(model="gemini/gemini-3.1-flash-lite-preview")
 
-# Wrap async functions as Tool objects
-schema_tool = synalinks.Tool(get_database_schema)
-sample_tool = synalinks.Tool(get_table_sample)
-query_tool = synalinks.Tool(run_sql_query)
-
-# Build the agent using Functional API
+# Build the agent via the Functional API
 inputs = synalinks.Input(data_model=Query)
-outputs = await synalinks.FunctionCallingAgent(
-    data_model=SQLResult,
+outputs = await synalinks.SQLAgent(
+    knowledge_base=kb,
     language_model=lm,
-    tools=[schema_tool, sample_tool, query_tool],
-    autonomous=True,                    # Run until agent decides it's done
-    max_iterations=10,                  # Safety limit to prevent infinite loops
-    return_inputs_with_trajectory=True, # Include full tool call history
+    data_model=SQLResult,
+    max_iterations=10,
 )(inputs)
 
 sql_agent = synalinks.Program(
@@ -177,38 +126,24 @@ sql_agent = synalinks.Program(
 )
 ```
 
-The `autonomous=True` setting allows the agent to make multiple tool calls
-until it has gathered enough information. The `max_iterations` parameter
-prevents runaway execution.
-
 ## Safety Considerations
 
-The `run_sql_query` tool enforces read-only access through multiple layers:
+Safety is the **Knowledge Base's** responsibility, not the agent's. The
+DuckDB adapter treats `read_only=True` (which `run_sql_query` passes by
+default) as the whole safety contract, enforced at two layers — both
+using DuckDB's own machinery, so there are no hand-rolled keyword
+blocklists (which leak false negatives via comments, string literals,
+casing, or stacked statements like `SELECT 1; DROP TABLE x`):
 
-1. **SELECT Only**: Rejects queries not starting with SELECT
-2. **Keyword Filtering**: Blocks DROP, DELETE, INSERT, UPDATE, ALTER, etc.
-3. **Read-Only Mode**: Uses `kb.query(sql, read_only=True)`
-
-```python
-@register_synalinks_serializable()
-async def run_sql_query(sql_query: str):
-    \"\"\"Execute a read-only SQL query.\"\"\"
-    kb = get_knowledge_base()
-
-    # Validate query is read-only
-    query_upper = sql_query.strip().upper()
-    if not query_upper.startswith("SELECT"):
-        return {"error": "Only SELECT queries are allowed.", "success": False}
-
-    # Check for dangerous keywords
-    dangerous = ["DROP", "DELETE", "INSERT", "UPDATE", "ALTER", "CREATE"]
-    for keyword in dangerous:
-        if keyword in query_upper:
-            return {"error": f"Forbidden keyword: {keyword}", "success": False}
-
-    results = await kb.query(sql_query, read_only=True)
-    return {"success": True, "results": results, "row_count": len(results)}
-```
+1. **Parser check (blocks writes).** Each statement is parsed with
+   DuckDB's own parser and rejected unless it's a `SELECT`. This catches
+   multi-statement injection, `COPY (SELECT ...) TO 'file'` exfiltration,
+   `ATTACH`, `EXPORT`, and every other side-effecting statement.
+2. **Sandbox (blocks external I/O).** The persistent connection has
+   `enable_external_access=false` applied at construction time, so
+   `SELECT` table functions that touch the host filesystem or network —
+   `read_csv`, `read_parquet`, `read_json`, `read_blob`, `read_text`,
+   `glob`, the httpfs/S3 variants — return a permission error.
 
 ## Example Usage
 
@@ -234,35 +169,38 @@ The agent automatically:
 
 ## Key Takeaways
 
-- **Dynamic Schema Discovery**: Use `kb.get_symbolic_data_models()` to make
-  tools adaptable to any database structure without hardcoding.
+- **One module, three tools**: `synalinks.SQLAgent` bundles schema discovery,
+  table sampling, and read-only SQL execution into a single ready-to-use
+  module. No manual tool wiring.
 
-- **Autonomous Reasoning**: The `FunctionCallingAgent` with `autonomous=True`
-  iteratively calls tools until it can answer the question.
+- **Token-efficient by default**: `output_format="csv"` minimizes LM input
+  tokens on wide result sets. Switch to `"json"` only if downstream code
+  needs typed structured data.
 
-- **Safety First**: Always validate SQL queries and use read-only mode to
-  prevent accidental data modifications.
+- **Pagination**: `get_table_sample` accepts `limit` / `offset`; for
+  arbitrary queries the LM is instructed to include `LIMIT` clauses.
 
-- **Transparent Outputs**: Include the generated SQL in the output so users
-  can verify and learn from the agent's reasoning.
+- **Safety First**: The `run_sql_query` tool always passes
+  `read_only=True` to `kb.query(...)`. Non-`SELECT` statements are
+  rejected at the parser; the sandbox blocks `read_csv` / httpfs.
 
-- **Tool Serialization**: Use `@register_synalinks_serializable()` on tool
-  functions to enable program saving and loading.
+- **Transparent Outputs**: Include the generated SQL in the output schema
+  so users can verify and learn from the agent's reasoning.
 
 ## API References
 
+- [SQLAgent](https://synalinks.github.io/synalinks/Synalinks%20API/Modules%20API/Agent%20Modules/SQLAgent%20module/)
 - [FunctionCallingAgent](https://synalinks.github.io/synalinks/Synalinks%20API/Modules%20API/Agent%20Modules/FunctionCallingAgent%20module/)
 - [KnowledgeBase](https://synalinks.github.io/synalinks/Synalinks%20API/Knowledge%20Base%20API/)
-- [Tool](https://synalinks.github.io/synalinks/Synalinks%20API/Modules%20API/Core%20Modules/Tool%20module/)
 """
 
+# --8<-- [start:source]
 import asyncio
 import os
 
 from dotenv import load_dotenv
 
 import synalinks
-from synalinks.src.saving.object_registration import register_synalinks_serializable
 
 # =============================================================================
 # Data Models
@@ -319,132 +257,6 @@ class SQLResult(synalinks.DataModel):
 
 
 # =============================================================================
-# Global Knowledge Base (set in main)
-# =============================================================================
-
-_knowledge_base = None
-
-
-def get_knowledge_base():
-    """Get the global knowledge base instance."""
-    global _knowledge_base
-    return _knowledge_base
-
-
-# =============================================================================
-# SQL Agent Tools
-# =============================================================================
-
-
-@register_synalinks_serializable()
-async def get_database_schema():
-    """Get the complete database schema including all tables and their columns.
-
-    Returns a list of all tables with their column names and types.
-    Use this tool first to understand what data is available before writing queries.
-    """
-    kb = get_knowledge_base()
-    symbolic_models = kb.get_symbolic_data_models()
-
-    schema_info = []
-    for model in symbolic_models:
-        schema = model.get_schema()
-        table_name = schema.get("title", "Unknown")
-        properties = schema.get("properties", {})
-
-        columns = []
-        for col_name, col_info in properties.items():
-            col_type = col_info.get("type", "unknown")
-            col_desc = col_info.get("description", "")
-            columns.append(f"  - {col_name} ({col_type}): {col_desc}")
-
-        schema_info.append(f"Table: {table_name}\n" + "\n".join(columns))
-
-    return {
-        "schema": "\n\n".join(schema_info),
-        "table_count": len(symbolic_models),
-    }
-
-
-@register_synalinks_serializable()
-async def get_table_sample(table_name: str, limit: int, offset: int):
-    """Get a sample of rows from a specific table to understand the data format.
-
-    Args:
-        table_name (str): The name of the table to sample.
-        limit (int): Number of sample rows to return (recommended: 3-5).
-        offset (int): Number of rows to skip before returning results (use 0 for start).
-    """
-    kb = get_knowledge_base()
-    symbolic_models = kb.get_symbolic_data_models()
-
-    # Find the matching symbolic model by table name
-    target_model = None
-    available_tables = []
-    for model in symbolic_models:
-        schema = model.get_schema()
-        name = schema.get("title", "Unknown")
-        available_tables.append(name)
-        if name == table_name:
-            target_model = model
-            break
-
-    if target_model is None:
-        return {"error": f"Table '{table_name}' not found. Available: {available_tables}"}
-
-    try:
-        results = await kb.getall(target_model, limit=limit, offset=offset)
-        return {
-            "table": table_name,
-            "sample_data": [dict(r) for r in results],
-            "row_count": len(results),
-        }
-    except Exception as e:
-        return {"error": str(e)}
-
-
-@register_synalinks_serializable()
-async def run_sql_query(sql_query: str):
-    """Execute a read-only SQL query and return the results.
-
-    Args:
-        sql_query (str): A SELECT SQL query to execute. Only SELECT queries are allowed.
-
-    Important:
-        - Only SELECT queries are permitted for safety
-        - Use get_database_schema first to discover available tables
-        - Use proper JOIN syntax for multi-table queries
-        - Include LIMIT clause for large result sets
-    """
-    kb = get_knowledge_base()
-
-    # Validate query is read-only
-    query_upper = sql_query.strip().upper()
-    if not query_upper.startswith("SELECT"):
-        return {
-            "error": "Only SELECT queries are allowed.",
-            "success": False,
-        }
-
-    # Check for dangerous patterns
-    dangerous = ["DROP", "DELETE", "INSERT", "UPDATE", "ALTER", "CREATE", "TRUNCATE"]
-    for keyword in dangerous:
-        if keyword in query_upper:
-            return {"error": f"Forbidden keyword: {keyword}", "success": False}
-
-    try:
-        results = await kb.query(sql_query, read_only=True)
-        return {
-            "success": True,
-            "query": sql_query,
-            "row_count": len(results),
-            "results": results,
-        }
-    except Exception as e:
-        return {"success": False, "error": str(e), "query": sql_query}
-
-
-# =============================================================================
 # Database Setup
 # =============================================================================
 
@@ -452,17 +264,11 @@ async def run_sql_query(sql_query: str):
 async def populate_knowledge_base(kb):
     """Populate the knowledge base with sample data."""
 
-    # Sample customers
     customers = [
         Customer(
             id="C001", name="Alice Johnson", email="alice@example.com", country="USA"
         ),
-        Customer(
-            id="C002",
-            name="Bob Smith",
-            email="bob@example.com",
-            country="UK",
-        ),
+        Customer(id="C002", name="Bob Smith", email="bob@example.com", country="UK"),
         Customer(
             id="C003",
             name="Carlos Garcia",
@@ -470,20 +276,13 @@ async def populate_knowledge_base(kb):
             country="Spain",
         ),
         Customer(
-            id="C004",
-            name="Diana Chen",
-            email="diana@example.com",
-            country="China",
+            id="C004", name="Diana Chen", email="diana@example.com", country="China"
         ),
         Customer(
-            id="C005",
-            name="Emma Wilson",
-            email="emma@example.com",
-            country="Canada",
+            id="C005", name="Emma Wilson", email="emma@example.com", country="Canada"
         ),
     ]
 
-    # Sample products
     products = [
         Product(
             id="P001",
@@ -528,11 +327,7 @@ async def populate_knowledge_base(kb):
             stock=80,
         ),
         Product(
-            id="P007",
-            name="Desk Lamp",
-            category="Office",
-            price=45.99,
-            stock=120,
+            id="P007", name="Desk Lamp", category="Office", price=45.99, stock=120
         ),
         Product(
             id="P008",
@@ -543,7 +338,6 @@ async def populate_knowledge_base(kb):
         ),
     ]
 
-    # Sample orders
     orders = [
         SalesOrder(
             id="O001",
@@ -627,7 +421,6 @@ async def populate_knowledge_base(kb):
         ),
     ]
 
-    # Store all data
     for customer in customers:
         await kb.update(customer.to_json_data_model())
     for product in products:
@@ -647,14 +440,9 @@ async def populate_knowledge_base(kb):
 
 async def main():
     """Demonstrate the SQL agent with natural language queries."""
-    global _knowledge_base
-
     load_dotenv()
     synalinks.clear_session()
 
-    # -------------------------------------------------------------------------
-    # Create Knowledge Base
-    # -------------------------------------------------------------------------
     print("=" * 60)
     print("SQL Agent with Knowledge Base")
     print("=" * 60)
@@ -664,7 +452,7 @@ async def main():
         os.remove(db_path)
 
     print("\nCreating knowledge base...")
-    _knowledge_base = synalinks.KnowledgeBase(
+    kb = synalinks.KnowledgeBase(
         uri=f"duckdb://{db_path}",
         data_models=[Customer, Product, SalesOrder],
         wipe_on_start=True,
@@ -672,29 +460,18 @@ async def main():
     )
 
     print("Populating with sample data...")
-    await populate_knowledge_base(_knowledge_base)
+    await populate_knowledge_base(kb)
 
-    # -------------------------------------------------------------------------
-    # Create SQL Agent
-    # -------------------------------------------------------------------------
     print("\nBuilding SQL agent...")
 
     lm = synalinks.LanguageModel(model="gemini/gemini-3.1-flash-lite-preview")
 
-    # Wrap tools
-    schema_tool = synalinks.Tool(get_database_schema)
-    sample_tool = synalinks.Tool(get_table_sample)
-    query_tool = synalinks.Tool(run_sql_query)
-
-    # Build the SQL agent
     inputs = synalinks.Input(data_model=Query)
-    outputs = await synalinks.FunctionCallingAgent(
-        data_model=SQLResult,
+    outputs = await synalinks.SQLAgent(
+        knowledge_base=kb,
         language_model=lm,
-        tools=[schema_tool, sample_tool, query_tool],
-        autonomous=True,
+        data_model=SQLResult,
         max_iterations=10,
-        return_inputs_with_trajectory=True,
     )(inputs)
 
     sql_agent = synalinks.Program(
@@ -706,9 +483,6 @@ async def main():
 
     sql_agent.summary()
 
-    # -------------------------------------------------------------------------
-    # Demo Queries
-    # -------------------------------------------------------------------------
     example_queries = [
         "What tables are available in the database?",
         "Who are the top 3 customers by total order amount?",
@@ -742,6 +516,8 @@ async def main():
                 elif msg.get("role") == "tool":
                     content = msg.get("content", "")
                     # Truncate long results for readability
+                    if isinstance(content, dict):
+                        content = str(content)
                     if len(content) > 200:
                         content = content[:200] + "..."
                     print(f"Tool Result: {content}")
@@ -753,7 +529,6 @@ async def main():
 
         print()
 
-    # Cleanup
     if os.path.exists(db_path):
         os.remove(db_path)
 

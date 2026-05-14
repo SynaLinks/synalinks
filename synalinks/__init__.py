@@ -64,8 +64,12 @@ from synalinks.api import is_similarity_search
 from synalinks.api import is_stamped
 from synalinks.api import is_tool_call
 from synalinks.api import is_trainable
+from synalinks.api import CSVDataset
 from synalinks.api import Dataset
 from synalinks.api import HuggingFaceDataset
+from synalinks.api import JSONDataset
+from synalinks.api import JSONLDataset
+from synalinks.api import ParquetDataset
 from synalinks.api import Initializer
 from synalinks.api import KnowledgeBase
 from synalinks.api import EmbeddingModelOperationalMetric
@@ -77,8 +81,11 @@ from synalinks.api import LMRewardsOperationalMetric
 from synalinks.api import Metric
 from synalinks.api import ProgramOperationalMetric
 from synalinks.api import FunctionCallingAgent
+from synalinks.api import DeepAgent
 from synalinks.api import RLM
 from synalinks.api import RecursiveLanguageModelAgent
+from synalinks.api import SQLAgent
+from synalinks.api import VectorRAGAgent
 from synalinks.api import Action
 from synalinks.api import Branch
 from synalinks.api import Decision

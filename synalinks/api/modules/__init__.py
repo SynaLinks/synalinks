@@ -8,8 +8,11 @@ since your modifications would be overwritten.
 from synalinks.src.modules import deserialize as deserialize
 from synalinks.src.modules import serialize as serialize
 from synalinks.src.modules.agents.function_calling_agent import FunctionCallingAgent as FunctionCallingAgent
+from synalinks.src.modules.agents.deep_agent import DeepAgent as DeepAgent
 from synalinks.src.modules.agents.recursive_language_model_agent import RecursiveLanguageModelAgent as RLM
 from synalinks.src.modules.agents.recursive_language_model_agent import RecursiveLanguageModelAgent as RecursiveLanguageModelAgent
+from synalinks.src.modules.agents.sql_agent import SQLAgent as SQLAgent
+from synalinks.src.modules.agents.vector_rag_agent import VectorRAGAgent as VectorRAGAgent
 from synalinks.src.modules.core.action import Action as Action
 from synalinks.src.modules.core.branch import Branch as Branch
 from synalinks.src.modules.core.decision import Decision as Decision

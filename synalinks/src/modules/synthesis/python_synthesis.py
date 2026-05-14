@@ -270,9 +270,19 @@ class PythonSynthesis(Module):
             Name your tool functions exactly as you want them to appear
             inside the generated script — rename the function, don't rely
             on an alias.
+        sandbox (Sandbox): Optional. A pre-built ``Sandbox`` instance to
+            reuse across calls. When supplied, the module will not build
+            its own sandbox at ``call()`` time and ``sandbox_type`` is
+            derived from ``type(sandbox)``. Pass this when the caller
+            owns the sandbox lifecycle and state (variables, imports,
+            function defs) must persist across successive calls — useful
+            at training time when candidate scripts share cached state.
+            When omitted, a fresh sandbox of ``sandbox_type`` is built
+            per call.
         sandbox_type (type): Optional. The ``Sandbox`` subclass used to
             build a fresh sandbox per call when no ``sandbox`` is
-            injected. Defaults to ``MontySandbox``. Any ``Sandbox``
+            injected. Defaults to ``MontySandbox``, or to
+            ``type(sandbox)`` when ``sandbox`` is given. Any ``Sandbox``
             subclass whose ``__init__`` accepts ``(timeout=..., name=...)``
             works; register custom subclasses with
             ``@register_synalinks_serializable`` so they round-trip
@@ -281,12 +291,11 @@ class PythonSynthesis(Module):
         description (str): Optional. The description of the module.
         trainable (bool): Whether the module's variables should be trainable.
 
-    ``call`` also accepts an optional ``sandbox`` kwarg. If given, the
-    script executes inside the caller-supplied ``MontySandbox`` and any
-    state (variables, imports, function defs) persists across successive
-    calls — useful at training time when candidate scripts share
-    cached state. When omitted, a fresh sandbox is built per call
-    (independent execution, the normal runtime contract).
+    ``call`` also accepts an optional ``sandbox`` kwarg. The resolution
+    order is: per-call kwarg > constructor-supplied ``sandbox`` > a
+    fresh sandbox of ``sandbox_type``. The first two cases let the
+    caller keep sandbox state alive across calls; the third is the
+    stateless-per-call default.
     """
 
     def __init__(
@@ -300,6 +309,7 @@ class PythonSynthesis(Module):
         return_python_script=False,
         timeout=5,
         tools=None,
+        sandbox=None,
         sandbox_type=None,
         name=None,
         description=None,
@@ -337,9 +347,16 @@ class PythonSynthesis(Module):
             for tool in tools:
                 self.tools[tool.name] = tool
 
-        # Which Sandbox subclass to instantiate when no caller-supplied
-        # sandbox is passed to `call()`. Defaults to MontySandbox.
-        self.sandbox_type = sandbox_type or MontySandbox
+        # Sandbox handling mirrors RecursiveLanguageModelAgent: if a
+        # concrete sandbox is supplied at construction, reuse it across
+        # calls and derive `sandbox_type` from its class. Otherwise fall
+        # back to `sandbox_type` (default MontySandbox) and build one
+        # fresh per `call()`.
+        self.sandbox = sandbox
+        if sandbox is not None:
+            self.sandbox_type = type(sandbox)
+        else:
+            self.sandbox_type = sandbox_type or MontySandbox
 
         if not seed_scripts:
             seed_scripts = []
@@ -374,6 +391,11 @@ class PythonSynthesis(Module):
         if not inputs:
             return None
         python_script = self.state.get("python_script")
+        # Sandbox resolution order: per-call kwarg > constructor-supplied
+        # sandbox > fresh sandbox of `sandbox_type` (built inside
+        # `_run_script` when `sandbox` is still None).
+        if sandbox is None:
+            sandbox = self.sandbox
         result, stdout, stderr = await self.execute(
             inputs, python_script, sandbox=sandbox
         )
@@ -482,7 +504,7 @@ class PythonSynthesis(Module):
                     name=self.name,
                 )
 
-    async def compute_output_spec(self, inputs, training=False):
+    async def compute_output_spec(self, inputs, training=False, sandbox=None):
         if self.return_python_script:
             return await ops.concat(
                 await ops.out_mask(
@@ -517,13 +539,20 @@ class PythonSynthesis(Module):
             "description": self.description,
             "trainable": self.trainable,
         }
+        sandbox_config = {
+            "sandbox": (
+                serialization_lib.serialize_synalinks_object(self.sandbox)
+                if self.sandbox is not None
+                else None
+            )
+        }
         tools_config = {
             "tools": [
                 serialization_lib.serialize_synalinks_object(tool)
                 for tool in self.tools.values()
             ]
         }
-        return {**config, **tools_config}
+        return {**config, **sandbox_config, **tools_config}
 
     @classmethod
     def from_config(cls, config):
@@ -531,8 +560,20 @@ class PythonSynthesis(Module):
             serialization_lib.deserialize_synalinks_object(tool)
             for tool in config.pop("tools", [])
         ]
+        sandbox = None
+        if "sandbox" in config:
+            sandbox_serialized = config.pop("sandbox")
+            if sandbox_serialized is not None:
+                sandbox = serialization_lib.deserialize_synalinks_object(
+                    sandbox_serialized
+                )
         sandbox_type_name = config.pop("sandbox_type", None)
         sandbox_type = (
             get_registered_object(sandbox_type_name) if sandbox_type_name else None
         )
-        return cls(tools=tools or None, sandbox_type=sandbox_type, **config)
+        return cls(
+            tools=tools or None,
+            sandbox=sandbox,
+            sandbox_type=sandbox_type,
+            **config,
+        )

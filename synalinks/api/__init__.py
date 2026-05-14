@@ -70,8 +70,12 @@ from synalinks.src.backend.pydantic.base import is_similarity_search as is_simil
 from synalinks.src.backend.pydantic.base import is_stamped as is_stamped
 from synalinks.src.backend.pydantic.base import is_tool_call as is_tool_call
 from synalinks.src.backend.pydantic.base import is_trainable as is_trainable
+from synalinks.src.datasets.csv_dataset import CSVDataset as CSVDataset
 from synalinks.src.datasets.dataset import Dataset as Dataset
 from synalinks.src.datasets.huggingface_dataset import HuggingFaceDataset as HuggingFaceDataset
+from synalinks.src.datasets.json_dataset import JSONDataset as JSONDataset
+from synalinks.src.datasets.json_dataset import JSONLDataset as JSONLDataset
+from synalinks.src.datasets.parquet_dataset import ParquetDataset as ParquetDataset
 from synalinks.src.initializers.initializer import Initializer as Initializer
 from synalinks.src.knowledge_bases.knowledge_base import KnowledgeBase as KnowledgeBase
 from synalinks.src.metrics.em_metrics import EmbeddingModelOperationalMetric as EmbeddingModelOperationalMetric
@@ -83,8 +87,11 @@ from synalinks.src.metrics.lm_metrics import LMRewardsOperationalMetric as LMRew
 from synalinks.src.metrics.metric import Metric as Metric
 from synalinks.src.metrics.program_metrics import ProgramOperationalMetric as ProgramOperationalMetric
 from synalinks.src.modules.agents.function_calling_agent import FunctionCallingAgent as FunctionCallingAgent
+from synalinks.src.modules.agents.deep_agent import DeepAgent as DeepAgent
 from synalinks.src.modules.agents.recursive_language_model_agent import RecursiveLanguageModelAgent as RLM
 from synalinks.src.modules.agents.recursive_language_model_agent import RecursiveLanguageModelAgent as RecursiveLanguageModelAgent
+from synalinks.src.modules.agents.sql_agent import SQLAgent as SQLAgent
+from synalinks.src.modules.agents.vector_rag_agent import VectorRAGAgent as VectorRAGAgent
 from synalinks.src.modules.core.action import Action as Action
 from synalinks.src.modules.core.branch import Branch as Branch
 from synalinks.src.modules.core.decision import Decision as Decision

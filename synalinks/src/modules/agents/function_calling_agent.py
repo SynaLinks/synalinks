@@ -427,6 +427,13 @@ class FunctionCallingAgent(Module):
         if not tools:
             raise ValueError("You must set the `tools` argument")
         for tool in tools:
+            if tool.name.startswith("_"):
+                raise ValueError(
+                    f"Tool name {tool.name!r} starts with an underscore. "
+                    f"Tools exposed to the LM must have public names — "
+                    f"rename the function or pass an explicit `name=` to "
+                    f"Tool(...)."
+                )
             self.tools[tool.name] = tool
         tool_calls_schema = dynamic_tool_calls(tools=tools)
 

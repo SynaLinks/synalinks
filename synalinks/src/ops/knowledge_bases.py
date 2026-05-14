@@ -113,6 +113,7 @@ class SimilaritySearch(Operation):
     def __init__(
         self,
         knowledge_base=None,
+        table_name=None,
         k=10,
         threshold=0.7,
         name=None,
@@ -122,13 +123,20 @@ class SimilaritySearch(Operation):
             name=name,
             description=description,
         )
+        if table_name is None:
+            raise ValueError(
+                "SimilaritySearch requires a `table_name` — the adapter's "
+                "search API is single-table."
+            )
         self.knowledge_base = knowledge_base
+        self.table_name = table_name
         self.k = k
         self.threshold = threshold
 
     async def call(self, x):
         result = await self.knowledge_base.similarity_search(
             x,
+            table_name=self.table_name,
             k=self.k,
             threshold=self.threshold,
         )
@@ -146,6 +154,7 @@ class SimilaritySearch(Operation):
 
     def get_config(self):
         config = {
+            "table_name": self.table_name,
             "k": self.k,
             "threshold": self.threshold,
             "name": self.name,
@@ -173,6 +182,7 @@ class SimilaritySearch(Operation):
 async def similarity_search(
     x,
     knowledge_base=None,
+    table_name=None,
     k=10,
     threshold=0.7,
     name=None,
@@ -180,15 +190,13 @@ async def similarity_search(
 ):
     """Search for similar entities in the given knowledge base.
 
-    This function performs a similarity search in the specified knowledge base
-    using the input data as the query.
-
     Args:
         x (JsonDataModel | SymbolicDataModel): The query for the similarity search.
         knowledge_base (KnowledgeBase): The knowledge base to search in.
+        table_name (str): Target table to search (required — searches are
+            now single-table).
         k (int): Maximum number of results to return (Defaults to 10).
-        threshold (float): Similarity threshold for filtering results. Only results with
-            similarity scores above this threshold will be returned (Defaults to 0.7).
+        threshold (float): Similarity threshold for filtering results.
         name (str): Optional name for the operation.
         description (str): Optional description for the operation.
 
@@ -196,13 +204,14 @@ async def similarity_search(
         (JsonDataModel): A data model containing the search results.
 
     Raises:
-        ValueError: If knowledge_base is not provided.
+        ValueError: If knowledge_base or table_name is not provided.
     """
     if knowledge_base is None:
         raise ValueError("You should provide the `knowledge_base` argument")
     if any_symbolic_data_models(x):
         return await SimilaritySearch(
             knowledge_base=knowledge_base,
+            table_name=table_name,
             k=k,
             threshold=threshold,
             name=name,
@@ -210,6 +219,7 @@ async def similarity_search(
         ).symbolic_call(x)
     return await SimilaritySearch(
         knowledge_base=knowledge_base,
+        table_name=table_name,
         k=k,
         threshold=threshold,
         name=name,

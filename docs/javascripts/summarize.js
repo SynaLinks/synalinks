@@ -1,9 +1,15 @@
 document.addEventListener("DOMContentLoaded", function () {
 
+  // Favicons served via DuckDuckGo's icon proxy. Hot-linking directly
+  // from claude.ai / chatgpt.com is unreliable: both sit behind
+  // Cloudflare bot-mitigation, which can challenge or block the
+  // request when the browser fetches the icon cross-origin from our
+  // docs site. The DuckDuckGo proxy returns the same favicons over
+  // plain HTTPS with no bot wall.
   var AI_PROVIDERS = [
     {
       name: "Claude",
-      icon: "https://claude.ai/favicon.ico",
+      icon: "https://icons.duckduckgo.com/ip3/claude.ai.ico",
       buildUrl: function (prompt) {
         return (
           "https://claude.ai/new?q=" + encodeURIComponent(prompt)
@@ -12,7 +18,7 @@ document.addEventListener("DOMContentLoaded", function () {
     },
     {
       name: "ChatGPT",
-      icon: "https://chatgpt.com/favicon.ico",
+      icon: "https://icons.duckduckgo.com/ip3/chatgpt.com.ico",
       buildUrl: function (prompt) {
         return (
           "https://chatgpt.com/?q=" + encodeURIComponent(prompt)

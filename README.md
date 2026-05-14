@@ -11,7 +11,7 @@
 
 <em>The first neuro-symbolic Language Model (LM) framework leveraging the simplicity of Keras and the rigor of Deep Learning best practices.</em>
 
-<b>Build RAGs, autonomous agents, multi-agents systems, self-evolving systems and more in just few lines</b>
+<b>Build [RAGs](https://synalinks.github.io/synalinks/guides/Knowledge%20Base/), [autonomous agents](https://synalinks.github.io/synalinks/guides/Agents/), multi-agents systems, [self-evolving systems](https://synalinks.github.io/synalinks/guides/Recursive%20Language%20Model%20Agent/) and more in just few lines</b>
 
 [Deutsch](https://zdoc.app/de/SynaLinks/synalinks) | 
 [English](https://zdoc.app/en/SynaLinks/synalinks) | 
@@ -60,15 +60,15 @@ Synalinks is an open-source neuro-symbolic framework that makes it simple to cre
 
 Think Keras for Language Models applications, a clean, declarative API where:
 
-- 🧩 You **compose** `Module`s like you would with deep learning `Layer`s.
-- ⚙️ You **train & optimize** with in-context reinforcement learning.
-- 🌐 You **deploy** as REST APIs or MCP servers.
+- 🧩 You **compose** [`Module`s](https://synalinks.github.io/synalinks/guides/Modules/) like you would with deep learning `Layer`s.
+- ⚙️ You **[train & optimize](https://synalinks.github.io/synalinks/guides/Training/)** with in-context reinforcement learning.
+- 🌐 You **deploy** as [REST APIs](https://synalinks.github.io/synalinks/guides/FastAPI%20Deployment/) or [MCP servers](https://synalinks.github.io/synalinks/guides/FastMCP%20Deployment/).
 
 ### Key Principles
 
-- **Progressive complexity**: Start simple and grow advanced naturally.
-- **Neuro-symbolic learning**: Combine logic, structure, and language models.
-- **In-context optimization**: Improve model reasoning without retraining weights.
+- **Progressive complexity**: [Start simple and grow advanced naturally](https://synalinks.github.io/synalinks/guides/Getting%20Started/).
+- **Neuro-symbolic learning**: Combine [logic, structure](https://synalinks.github.io/synalinks/guides/Data%20Models/), and [language models](https://synalinks.github.io/synalinks/guides/Modules/).
+- **In-context optimization**: [Improve model reasoning without retraining weights](https://synalinks.github.io/synalinks/guides/Trainable%20Variables/).
 
 ## Who Is It For?
 
@@ -87,16 +87,16 @@ Think Keras for Language Models applications, a clean, declarative API where:
 
 Building robust LM apps is hard. Synalinks simplifies it with:
 
-- **Prompt/Anything optimization** per module via In-Context RL
-- **Versionable**, JSON-serializable pipelines
-- **Constrained structured outputs** (JSON) for correctness
-- **Automatic async & parallel execution** by default
-- **Metrics, rewards & evaluations** built-in
-- **Native integrations**: Ollama, vLLM, OpenAI, Azure, Anthropic, Mistral, Groq, Gemini, xAI, Cohere, DeepSeek, Together AI, OpenRouter, AWS Bedrock, Doubleword
-- **Embeddable fast knowledge base support**: based on DuckDB
-- **API-ready**: Deploy with FastAPI or FastMCP
-- **KerasTuner compatibility** for hyperparameter search
-- **Built-In MLFlow callbacks and hooks** for observability
+- **[Prompt/Anything optimization](https://synalinks.github.io/synalinks/guides/Trainable%20Variables/)** per module via [In-Context RL](https://synalinks.github.io/synalinks/guides/Training/)
+- **Versionable**, JSON-serializable [pipelines](https://synalinks.github.io/synalinks/guides/Programs/)
+- **[Constrained structured outputs](https://synalinks.github.io/synalinks/guides/Data%20Models/)** (JSON) for correctness
+- **Automatic [async & parallel execution](https://synalinks.github.io/synalinks/guides/Programs/)** by default
+- **[Metrics](https://synalinks.github.io/synalinks/guides/Metrics/), [rewards](https://synalinks.github.io/synalinks/guides/Rewards/) & [evaluations](https://synalinks.github.io/synalinks/guides/Datasets/)** built-in
+- **Native integrations**: Ollama, vLLM, OpenAI, Azure, Anthropic, Mistral, Groq, Gemini, xAI, Cohere, DeepSeek, Together AI, OpenRouter, AWS Bedrock, Doubleword — see [Getting Started](https://synalinks.github.io/synalinks/guides/Getting%20Started/)
+- **[Embeddable fast knowledge base support](https://synalinks.github.io/synalinks/guides/Knowledge%20Base/)**: based on DuckDB
+- **API-ready**: Deploy with [FastAPI](https://synalinks.github.io/synalinks/guides/FastAPI%20Deployment/) or [FastMCP](https://synalinks.github.io/synalinks/guides/FastMCP%20Deployment/)
+- **[KerasTuner compatibility](https://synalinks.github.io/synalinks/guides/Hyperparameter%20Search/)** for hyperparameter search, with [multi-objective LM selection](https://synalinks.github.io/synalinks/guides/Multi-Objective%20LM%20Selection/)
+- **Built-In MLFlow [callbacks](https://synalinks.github.io/synalinks/guides/Callbacks/) and hooks** for [observability](https://synalinks.github.io/synalinks/guides/Observability/)
 
 <div align="center">
 
@@ -113,12 +113,12 @@ Building robust LM apps is hard. Synalinks simplifies it with:
 ### Notable differences with DSPy
 
 Beyond the Keras programming style, Synalinks:
-- Can optimize *anything*, not only prompts
-- Is fully async by default to prevent bad programming practices
-- Detect & run parallel branches automatically with `asyncio` to ease async programming
-- Implement logic-based python operators to easily manipulate data models and the app control flow
-- Use *constrained* JSON decoding to be robust in production
-- Is fully compatible with Pydantic BaseModel (via `schema=` in every module) to ease integration with FastAPI/FastMCP etc.
+- Can [optimize *anything*](https://synalinks.github.io/synalinks/guides/Trainable%20Variables/), not only prompts
+- Is [fully async by default](https://synalinks.github.io/synalinks/guides/Programs/) to prevent bad programming practices
+- Detect & run [parallel branches automatically](https://synalinks.github.io/synalinks/guides/Programs/) with `asyncio` to ease async programming
+- Implement logic-based python operators to easily [manipulate data models and the app control flow](https://synalinks.github.io/synalinks/guides/Data%20Models/)
+- Use [*constrained* JSON decoding](https://synalinks.github.io/synalinks/guides/Data%20Models/) to be robust in production
+- Is fully compatible with Pydantic BaseModel (via `schema=` in every [module](https://synalinks.github.io/synalinks/guides/Modules/)) to ease integration with FastAPI/FastMCP etc.
 - Have instrospection tools like `summary()` and `plot_program()` to write better documentation
 
 ## Installation
@@ -371,7 +371,7 @@ monitor = synalinks.callbacks.Monitor(
 await program.fit(x=train_x, y=train_y, callbacks=[monitor])
 ```
 
-See the [Observability documentation](https://synalinks.github.io/synalinks/Observability/MLflow/) for Docker setup and advanced configuration.
+See the [Observability guide](https://synalinks.github.io/synalinks/guides/Observability/) for Docker setup and advanced configuration.
 
 ### Learn more
 

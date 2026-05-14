@@ -241,10 +241,12 @@ class FBetaScore(Metric):
             score = np.sum(score * weights)
         elif self.average is not None:  # [micro, macro]
             score = np.mean(score, self.axis)
-        try:
-            return float(score)
-        except Exception:
-            return list(score)
+        # numpy 1.25+ deprecates float() on a >0-D array even when size == 1,
+        # so go through .item() / .tolist() to always hand back Python scalars.
+        score_arr = np.convert_to_numpy(score)
+        if score_arr.size == 1:
+            return float(score_arr.item())
+        return [float(v) for v in score_arr.tolist()]
 
     def get_config(self):
         """Return the serializable config of the metric.

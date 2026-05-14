@@ -52,7 +52,7 @@ class UpdateKnowledgeTest(testing.TestCase):
         self.assertIsNotNone(result)
 
         # Verify document was stored
-        retrieved = await knowledge_base.get("doc1", [Document.to_symbolic_data_model()])
+        retrieved = await knowledge_base.get("doc1", table_name="Document")
         self.assertIsNotNone(retrieved)
         self.assertEqual(retrieved.get_json()["text"], "test document")
 
@@ -74,8 +74,8 @@ class UpdateKnowledgeTest(testing.TestCase):
         self.assertEqual(len(results), 2)
 
         # Verify both documents were stored
-        retrieved1 = await knowledge_base.get("doc1", [Document.to_symbolic_data_model()])
-        retrieved2 = await knowledge_base.get("doc2", [Document.to_symbolic_data_model()])
+        retrieved1 = await knowledge_base.get("doc1", table_name="Document")
+        retrieved2 = await knowledge_base.get("doc2", table_name="Document")
         self.assertIsNotNone(retrieved1)
         self.assertIsNotNone(retrieved2)
 
@@ -96,7 +96,7 @@ class UpdateKnowledgeTest(testing.TestCase):
         await update_module(doc1_updated)
 
         # Verify update
-        retrieved = await knowledge_base.get("doc1", [Document.to_symbolic_data_model()])
+        retrieved = await knowledge_base.get("doc1", table_name="Document")
         self.assertEqual(retrieved.get_json()["text"], "updated text")
 
     async def test_update_knowledge_none_input(self):
