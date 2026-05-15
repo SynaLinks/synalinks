@@ -401,6 +401,37 @@ class DataModel(pydantic.BaseModel, SynalinksSaveable, metaclass=MetaDataModel):
             name=name,
         )
 
+    def get_nested_entity(self, key):
+        """Retrieve a nested Entity and convert it to a JsonDataModel.
+
+        The entity's `label` field is used as the discriminator to look up
+        its schema in this model's `$defs`. Returns ``None`` when the value
+        at ``key`` has no ``label`` or when the schema cannot be resolved.
+
+        Args:
+            key (str): The field name holding the nested entity.
+
+        Returns:
+            (JsonDataModel | None): A typed JsonDataModel wrapping the
+                nested entity, or ``None`` if the value isn't an entity.
+        """
+        return self.to_json_data_model().get_nested_entity(key)
+
+    def get_nested_entity_list(self, key):
+        """Retrieve a nested Entity list and convert it to typed JsonDataModels.
+
+        Each item is resolved against this model's `$defs` using its
+        ``label`` field as discriminator. Items without a ``label`` field
+        or an unresolved schema are skipped.
+
+        Args:
+            key (str): The field name holding the list of nested entities.
+
+        Returns:
+            (list[JsonDataModel]): One JsonDataModel per resolved entity.
+        """
+        return self.to_json_data_model().get_nested_entity_list(key)
+
     def __add__(self, other):
         """Concatenates this data model with another.
 

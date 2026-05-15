@@ -467,6 +467,76 @@ class JsonDataModel:
             clone.name = auto_name("clone_" + self.name)
         return clone
 
+    def get_nested_entity(self, key):
+        """Retrieve a nested Entity and convert it to a JsonDataModel.
+
+        The entity's `label` field is used as the discriminator to look up
+        its schema in the parent's `$defs`. Returns ``None`` when the value
+        at ``key`` has no ``label`` or when the schema cannot be resolved.
+
+        Args:
+            key (str): The field name holding the nested entity.
+
+        Returns:
+            (JsonDataModel | None): A typed JsonDataModel wrapping the
+                nested entity, or ``None`` if the value isn't an entity.
+        """
+        json = copy.deepcopy(self.get(key))
+        if not json or "label" not in json:
+            return None
+        schema_key = json.get("label")
+        defs = self.get_schema().get("$defs") or {}
+        schema = copy.deepcopy(defs.get(schema_key))
+        if not schema:
+            return None
+
+        nested_defs = {}
+        for obj_key, obj_schema in copy.deepcopy(defs).items():
+            if str(schema).find(f"#/$defs/{obj_key}") > 0:
+                nested_defs[obj_key] = obj_schema
+        if nested_defs:
+            schema.update({"$defs": nested_defs})
+
+        return JsonDataModel(json=json, schema=schema, name=key + "_" + self.name)
+
+    def get_nested_entity_list(self, key):
+        """Retrieve a nested Entity list and convert it to typed JsonDataModels.
+
+        Each item is resolved against the parent's `$defs` using its
+        ``label`` field as discriminator. Items without a ``label`` field
+        or an unresolved schema are skipped.
+
+        Args:
+            key (str): The field name holding the list of nested entities.
+
+        Returns:
+            (list[JsonDataModel]): One JsonDataModel per resolved entity.
+        """
+        items = self.get(key) or []
+        outputs = []
+        defs = self.get_schema().get("$defs") or {}
+        for i, item_json in enumerate(items):
+            if "label" not in item_json:
+                continue
+            schema_key = item_json.get("label")
+            schema = copy.deepcopy(defs.get(schema_key))
+            if not schema:
+                continue
+            nested_defs = {}
+            for obj_key, obj_schema in copy.deepcopy(defs).items():
+                if str(schema).find(f"#/$defs/{obj_key}") > 0:
+                    nested_defs[obj_key] = obj_schema
+            if nested_defs:
+                schema.update({"$defs": nested_defs})
+            outputs.append(
+                JsonDataModel(
+                    json=item_json,
+                    schema=schema,
+                    name=key + f"_{i}_" + self.name,
+                )
+            )
+        return outputs
+
     def __repr__(self):
         return f"<JsonDataModel schema={self._schema}, json={self._json}>"
 
