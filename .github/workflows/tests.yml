@@ -8,26 +8,43 @@ on:
 
 jobs:
   build:
-
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
+        os: [ubuntu-latest]
         python-version: ["3.10", "3.11", "3.12", "3.13"]
+        include:
+          - os: macos-latest
+            python-version: "3.13"
+          - os: windows-latest
+            python-version: "3.13"
+
+    defaults:
+      run:
+        shell: bash
 
     steps:
-      - uses: actions/checkout@v3
-      - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v4
+      - uses: actions/checkout@v4
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
         with:
           python-version: ${{ matrix.python-version }}
+          enable-cache: true
       - name: Display Python version
         run: python -c "import sys; print(sys.version)"
-      - name: Install Project Manager
-        run: ./shell/uv.sh
+      - name: Install graphviz (macOS)
+        if: runner.os == 'macOS'
+        run: brew install graphviz
+      - name: Install graphviz (Windows)
+        if: runner.os == 'Windows'
+        run: choco install graphviz --no-progress -y
       - name: Install Synalinks
         run: ./shell/install.sh
       - name: Install pytest
         run: uv pip install pytest pytest-cov
       - name: Run the tests
-        run: ./shell/test.sh
+        run: uv run pytest --cov-config=pyproject.toml
+      - name: Generate coverage badge
+        if: runner.os == 'Linux'
+        run: uvx --from 'genbadge[coverage]' genbadge coverage -i coverage.xml
