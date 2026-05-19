@@ -12,7 +12,6 @@ e.g. `SymbolicDataModel`, `JsonDataModel`, `DataModel` or `Variable`.
 """
 
 from datetime import datetime
-from enum import Enum
 from typing import Any
 from typing import Dict
 from typing import List
@@ -20,78 +19,10 @@ from typing import Optional
 from typing import Union
 
 from pydantic import Field
-from pydantic import field_validator
 
 from synalinks.src.api_export import synalinks_export
 from synalinks.src.backend.common.json_schema_utils import contains_schema
 from synalinks.src.backend.pydantic.core import DataModel
-
-
-@synalinks_export(
-    [
-        "synalinks.backend.Score",
-        "synalinks.Score",
-    ]
-)
-class Score(float, Enum):
-    """A discretized confidence score on an 11-level scale from 0.0 to 1.0.
-
-    Use `Score` as the type of a `DataModel` field when you want the
-    language model to pick a confidence level from a fixed set of named
-    values rather than to emit an arbitrary float. Because `Score` is
-    both a `float` and an `Enum`, the JSON schema constrains the model
-    to one of the eleven labels, while downstream Python code can use
-    the value in arithmetic directly (e.g. `0.95` is `Score.GOOD + 0.05`).
-
-    The labels:
-
-    | Name           | Value |
-    | -------------- | ----- |
-    | `VERY_BAD`     | 0.0   |
-    | `POOR`         | 0.1   |
-    | `BELOW_AVERAGE`| 0.2   |
-    | `LOW_AVERAGE`  | 0.3   |
-    | `MEDIUM_LOW`   | 0.4   |
-    | `MEDIUM`       | 0.5   |
-    | `MEDIUM_HIGH`  | 0.6   |
-    | `ABOVE_AVERAGE`| 0.7   |
-    | `HIGH_AVERAGE` | 0.8   |
-    | `GOOD`         | 0.9   |
-    | `VERY_GOOD`    | 1.0   |
-
-    Example:
-
-    ```python
-    import synalinks
-
-    class Sentiment(synalinks.DataModel):
-        joy: synalinks.Score = synalinks.Field(
-            description="How strongly the text expresses joy",
-        )
-        anger: synalinks.Score = synalinks.Field(
-            description="How strongly the text expresses anger",
-        )
-
-    # Score values are real floats, usable in arithmetic.
-    blended = synalinks.Score.GOOD + 0.05  # approx 0.95
-    ```
-
-    See `synalinks/src/metrics/f_score_metrics.py` and
-    `examples/19_multi_objective_lm_selection.py` for end-to-end usage
-    inside metrics and multi-label classification.
-    """
-
-    VERY_BAD = 0.0
-    POOR = 0.1
-    BELOW_AVERAGE = 0.2
-    LOW_AVERAGE = 0.3
-    MEDIUM_LOW = 0.4
-    MEDIUM = 0.5
-    MEDIUM_HIGH = 0.6
-    ABOVE_AVERAGE = 0.7
-    HIGH_AVERAGE = 0.8
-    GOOD = 0.9
-    VERY_GOOD = 1.0
 
 
 @synalinks_export(
@@ -192,157 +123,16 @@ class GenericResult(DataModel):
 
 @synalinks_export(
     [
-        "synalinks.backend.ChatRole",
-        "synalinks.ChatRole",
+        "synalinks.backend.EmbeddingRequest",
+        "synalinks.EmbeddingRequest",
     ]
 )
-class ChatRole(str, Enum):
-    """The chat message roles"""
+class EmbeddingRequest(DataModel):
+    """Input for an embedding model: a single text or a batch."""
 
-    SYSTEM = "system"
-    USER = "user"
-    ASSISTANT = "assistant"
-    TOOL = "tool"
-
-
-@synalinks_export(
-    [
-        "synalinks.backend.ToolCalling",
-        "synalinks.ToolCalling",
-        "synalinks.ToolCall",
-        "synalinks.backend.ToollCall",
-    ]
-)
-class ToolCall(DataModel):
-    id: str = Field(
-        description="The id of the tool call",
+    texts: Union[str, List[str]] = Field(
+        description="A text or list of texts to embed",
     )
-    name: str = Field(
-        description="The name of the function called",
-    )
-    arguments: Dict[str, Any] = Field(
-        description="The arguments of the tool call",
-    )
-
-
-@synalinks_export(
-    [
-        "synalinks.backend.ChatMessage",
-        "synalinks.ChatMessage",
-    ]
-)
-class ChatMessage(DataModel):
-    """A chat message"""
-
-    role: ChatRole = Field(
-        description="The chat message role",
-    )
-    thinking: Optional[str] = Field(
-        description="The thinking/reasoning content of the message",
-        default=None,
-    )
-    content: Union[str, Dict[str, Any]] = Field(
-        description="The content of the message",
-        default="",
-    )
-    tool_call_id: Optional[str] = Field(
-        description="The id of the tool call if role is `tool`",
-        default=None,
-    )
-    tool_calls: List[ToolCall] = Field(
-        description="The tool calls of the agent",
-        default=[],
-    )
-    created_at: Optional[datetime] = Field(
-        description="The creation time",
-        default=None,
-    )
-
-
-@synalinks_export(
-    [
-        "synalinks.backend.is_chat_message",
-        "synalinks.is_chat_message",
-    ]
-)
-def is_chat_message(x):
-    """Checks if the given data model is a chat message
-
-    Args:
-        x (DataModel | JsonDataModel | SymbolicDataModel | Variable):
-            The data model to check.
-
-    Returns:
-        (bool): True if the condition is met
-    """
-    if contains_schema(x.get_schema(), ChatMessage.get_schema()):
-        return True
-    return False
-
-
-@synalinks_export(
-    [
-        "synalinks.backend.ChatMessages",
-        "synalinks.ChatMessages",
-    ]
-)
-class ChatMessages(DataModel):
-    """A list of chat messages"""
-
-    messages: List[ChatMessage] = Field(
-        description="The list of chat messages",
-        default=[],
-    )
-
-    @field_validator("messages", mode="before")
-    @classmethod
-    def convert_dicts_to_chat_messages(cls, v):
-        """Convert dict messages to ChatMessage objects."""
-        if isinstance(v, list):
-            return [ChatMessage(**msg) if isinstance(msg, dict) else msg for msg in v]
-        return v
-
-
-@synalinks_export(
-    [
-        "synalinks.backend.is_chat_messages",
-        "synalinks.is_chat_messages",
-    ]
-)
-def is_chat_messages(x):
-    """Checks if the given data model are chat messages
-
-    Args:
-        x (DataModel | JsonDataModel | SymbolicDataModel | Variable):
-            The data model to check.
-
-    Returns:
-        (bool): True if the condition is met
-    """
-    if contains_schema(x.get_schema(), ChatMessages.get_schema()):
-        return True
-    return False
-
-
-@synalinks_export(
-    [
-        "synalinks.backend.is_tool_call",
-        "synalinks.is_tool_call",
-    ]
-)
-def is_tool_call(x):
-    """Checks if the given data model is a tool call
-
-    Args:
-        x (DataModel | JsonDataModel | SymbolicDataModel | Variable):
-            The data model to check.
-
-    Returns:
-        (bool): True if the condition is met
-    """
-    if contains_schema(x.get_schema(), ToolCall.get_schema()):
-        return True
-    return False
 
 
 @synalinks_export(
@@ -811,45 +601,4 @@ def is_instructions(x):
     """
     if contains_schema(x.get_schema(), Instructions.get_schema()):
         return True
-    return False
-
-
-@synalinks_export(
-    [
-        "synalinks.backend.SimilaritySearch",
-        "synalinks.SimilaritySearch",
-    ]
-)
-class SimilaritySearch(DataModel):
-    entity_label: str = Field(
-        description=("The label of the entity to look for(use `*` to match them all)"),
-    )
-    similarity_search: str = Field(
-        description=("The natural language similarity query to match specific entities"),
-    )
-
-
-@synalinks_export(
-    [
-        "synalinks.backend.is_similarity_search",
-        "synalinks.is_similarity_search",
-    ]
-)
-def is_similarity_search(x):
-    """Checks if is a similarity search data model
-
-    Args:
-        x (DataModel | JsonDataModel | SymbolicDataModel | Variable):
-            The data model to check.
-
-    Returns:
-        (bool): True if the condition is met
-    """
-    schema = x.get_schema()
-    properties = schema.get("properties", None)
-    if properties:
-        if properties.get("entity_label", None) and properties.get(
-            "similarity_search", None
-        ):
-            return True
     return False

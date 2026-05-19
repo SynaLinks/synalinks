@@ -6,6 +6,7 @@ from synalinks.src import ops
 from synalinks.src import tree
 from synalinks.src.api_export import synalinks_export
 from synalinks.src.backend import Embedding as EmbeddingVector
+from synalinks.src.backend import EmbeddingRequest
 from synalinks.src.backend import JsonDataModel
 from synalinks.src.modules.embedding_models import get as _get_em
 from synalinks.src.modules.module import Module
@@ -167,11 +168,13 @@ class EmbedKnowledge(Module):
                 recursive=False,
                 name="in_mask_" + data_model.name,
             )
-        embeddings = await ops.embedding(
-            masked_data_model,
-            embedding_model=self.embedding_model,
-            name=data_model.name + "_embedding",
+        # Flatten the masked data model's fields to strings and embed
+        # them in one batch — same logic that lived in `ops.embedding`,
+        # inlined here since this is its only remaining caller.
+        texts = tree.flatten(
+            tree.map_structure(lambda f: str(f), masked_data_model.get_json())
         )
+        embeddings = await self.embedding_model(EmbeddingRequest(texts=texts))
         if not embeddings or not embeddings.get("embeddings"):
             warnings.warn(
                 f"No embeddings generated for data model {data_model.name}. "

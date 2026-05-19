@@ -4,15 +4,40 @@ from synalinks.src import testing
 from synalinks.src.backend.common import global_state
 from synalinks.src.metrics.lm_metrics import AvgCostPerCall
 from synalinks.src.metrics.lm_metrics import AvgInputTokensPerCall
+from synalinks.src.metrics.lm_metrics import AvgOptimizerCostPerCall
+from synalinks.src.metrics.lm_metrics import AvgOptimizerInputTokensPerCall
+from synalinks.src.metrics.lm_metrics import AvgOptimizerOutputTokensPerCall
 from synalinks.src.metrics.lm_metrics import AvgOutputTokensPerCall
+from synalinks.src.metrics.lm_metrics import AvgRewardCostPerCall
+from synalinks.src.metrics.lm_metrics import AvgRewardInputTokensPerCall
+from synalinks.src.metrics.lm_metrics import AvgRewardOutputTokensPerCall
+from synalinks.src.metrics.lm_metrics import CacheCreationTokens
+from synalinks.src.metrics.lm_metrics import CachedTokens
+from synalinks.src.metrics.lm_metrics import CacheHitRate
 from synalinks.src.metrics.lm_metrics import Cost
 from synalinks.src.metrics.lm_metrics import InputTokens
+from synalinks.src.metrics.lm_metrics import OptimizerCacheCreationTokens
+from synalinks.src.metrics.lm_metrics import OptimizerCachedTokens
+from synalinks.src.metrics.lm_metrics import OptimizerCacheHitRate
 from synalinks.src.metrics.lm_metrics import OptimizerCost
 from synalinks.src.metrics.lm_metrics import OptimizerInputTokens
+from synalinks.src.metrics.lm_metrics import OptimizerReasoningTokens
+from synalinks.src.metrics.lm_metrics import OptimizerReasoningTokenShare
+from synalinks.src.metrics.lm_metrics import OptimizerThroughput
+from synalinks.src.metrics.lm_metrics import OptimizerTokensPerSecond
 from synalinks.src.metrics.lm_metrics import OptimizerTotalTokens
 from synalinks.src.metrics.lm_metrics import OutputTokens
+from synalinks.src.metrics.lm_metrics import ReasoningTokens
+from synalinks.src.metrics.lm_metrics import ReasoningTokenShare
+from synalinks.src.metrics.lm_metrics import RewardCacheCreationTokens
+from synalinks.src.metrics.lm_metrics import RewardCachedTokens
+from synalinks.src.metrics.lm_metrics import RewardCacheHitRate
 from synalinks.src.metrics.lm_metrics import RewardCost
 from synalinks.src.metrics.lm_metrics import RewardInputTokens
+from synalinks.src.metrics.lm_metrics import RewardReasoningTokens
+from synalinks.src.metrics.lm_metrics import RewardReasoningTokenShare
+from synalinks.src.metrics.lm_metrics import RewardThroughput
+from synalinks.src.metrics.lm_metrics import RewardTokensPerSecond
 from synalinks.src.metrics.lm_metrics import RewardTotalTokens
 from synalinks.src.metrics.lm_metrics import Throughput
 from synalinks.src.metrics.lm_metrics import TokensPerSecond
@@ -203,9 +228,7 @@ class LMPhaseRoutingTest(testing.TestCase):
 
         _record(lm, prompt=100, completion=20, elapsed=0.0, cost=0.001, phase="inference")
         _record(lm, prompt=50, completion=10, elapsed=0.0, cost=0.0005, phase="reward")
-        _record(
-            lm, prompt=200, completion=40, elapsed=0.0, cost=0.002, phase="optimizer"
-        )
+        _record(lm, prompt=200, completion=40, elapsed=0.0, cost=0.002, phase="optimizer")
 
         self.assertEqual(m_inf.result(), 120)
         self.assertEqual(m_rew.result(), 60)
@@ -215,9 +238,7 @@ class LMPhaseRoutingTest(testing.TestCase):
         lm = _stub_lm()
         m = _bind(RewardInputTokens(), [lm])
         _record(lm, prompt=300, completion=10, elapsed=0.0, cost=0.0, phase="reward")
-        _record(
-            lm, prompt=999, completion=999, elapsed=0.0, cost=0.0, phase="inference"
-        )
+        _record(lm, prompt=999, completion=999, elapsed=0.0, cost=0.0, phase="inference")
         self.assertEqual(m.result(), 300)
 
     def test_optimizer_input_tokens(self):
@@ -264,3 +285,139 @@ class OpScopeFlagTest(testing.TestCase):
                 )
         finally:
             global_state.set_global_attribute("synalinks_op_scope", prev)
+
+
+# The reward- and optimizer-phase metric classes mirror the inference set
+# one-for-one; their `result()` methods are otherwise uncovered.
+
+
+def _bump(lm, suffix, n, phase):
+    attr = f"{phase}_cumulated_{suffix}"
+    setattr(lm, attr, getattr(lm, attr, 0) + n)
+
+
+# `_stub_lm` only resets the suffixes in `_LM_SUFFIXES`; the cache/reasoning
+# counters live on real LMs but aren't pre-populated by the stub. Zero them
+# explicitly so `_bump` has a clean baseline.
+def _stub_lm_with_extras():
+    lm = _stub_lm()
+    for phase in ("inference", "reward", "optimizer"):
+        for suffix in ("cached_tokens", "cache_creation_tokens", "reasoning_tokens"):
+            setattr(lm, f"{phase}_cumulated_{suffix}", 0)
+    return lm
+
+
+class LMRatesAndCachePerPhaseTest(testing.TestCase):
+    """`result()` paths for rate / per-call / cache-hit / reasoning-share
+    metrics. The inference set is covered by tests above; this class extends
+    the contract to the reward and optimizer phases — same shape, different
+    counter prefix — and adds cached-tokens / cache-creation / reasoning
+    coverage for inference."""
+
+    PHASES = (
+        (
+            "inference",
+            TokensPerSecond,
+            Throughput,
+            AvgInputTokensPerCall,
+            AvgOutputTokensPerCall,
+            AvgCostPerCall,
+            CachedTokens,
+            CacheCreationTokens,
+            CacheHitRate,
+            ReasoningTokens,
+            ReasoningTokenShare,
+        ),
+        (
+            "reward",
+            RewardTokensPerSecond,
+            RewardThroughput,
+            AvgRewardInputTokensPerCall,
+            AvgRewardOutputTokensPerCall,
+            AvgRewardCostPerCall,
+            RewardCachedTokens,
+            RewardCacheCreationTokens,
+            RewardCacheHitRate,
+            RewardReasoningTokens,
+            RewardReasoningTokenShare,
+        ),
+        (
+            "optimizer",
+            OptimizerTokensPerSecond,
+            OptimizerThroughput,
+            AvgOptimizerInputTokensPerCall,
+            AvgOptimizerOutputTokensPerCall,
+            AvgOptimizerCostPerCall,
+            OptimizerCachedTokens,
+            OptimizerCacheCreationTokens,
+            OptimizerCacheHitRate,
+            OptimizerReasoningTokens,
+            OptimizerReasoningTokenShare,
+        ),
+    )
+
+    def test_all_rate_and_cache_metrics(self):
+        for (
+            phase,
+            Tps,
+            Rps,
+            AvgIn,
+            AvgOut,
+            AvgCost,
+            Cached,
+            CacheCreate,
+            HitRate,
+            Reasoning,
+            RShare,
+        ) in self.PHASES:
+            with self.subTest(phase=phase):
+                lm = _stub_lm_with_extras()
+                metrics = {
+                    "tps": _bind(Tps(), [lm]),
+                    "rps": _bind(Rps(), [lm]),
+                    "avg_in": _bind(AvgIn(), [lm]),
+                    "avg_out": _bind(AvgOut(), [lm]),
+                    "avg_cost": _bind(AvgCost(), [lm]),
+                    "cached": _bind(Cached(), [lm]),
+                    "cache_create": _bind(CacheCreate(), [lm]),
+                    "hit_rate": _bind(HitRate(), [lm]),
+                    "reasoning": _bind(Reasoning(), [lm]),
+                    "r_share": _bind(RShare(), [lm]),
+                }
+                # Zero-state: every divisor-guarded metric returns 0(.0).
+                ratio_keys = (
+                    "tps",
+                    "rps",
+                    "avg_in",
+                    "avg_out",
+                    "avg_cost",
+                    "hit_rate",
+                    "r_share",
+                )
+                for key in ratio_keys:
+                    self.assertEqual(metrics[key].result(), 0.0, msg=f"{phase}.{key}")
+                for key in ("cached", "cache_create", "reasoning"):
+                    self.assertEqual(metrics[key].result(), 0, msg=f"{phase}.{key}")
+
+                # Populate: 2 calls, 400 prompt + 100 completion, 4s, $0.004
+                # cost, 50 cached, 10 cache-creation, 40 reasoning.
+                _record(
+                    lm, prompt=200, completion=50, elapsed=2.0, cost=0.002, phase=phase
+                )
+                _record(
+                    lm, prompt=200, completion=50, elapsed=2.0, cost=0.002, phase=phase
+                )
+                _bump(lm, "cached_tokens", 50, phase=phase)
+                _bump(lm, "cache_creation_tokens", 10, phase=phase)
+                _bump(lm, "reasoning_tokens", 40, phase=phase)
+
+                self.assertEqual(metrics["tps"].result(), 500 / 4.0)
+                self.assertEqual(metrics["rps"].result(), 2 / 4.0)
+                self.assertEqual(metrics["avg_in"].result(), 200.0)
+                self.assertEqual(metrics["avg_out"].result(), 50.0)
+                self.assertAlmostEqual(metrics["avg_cost"].result(), 0.002)
+                self.assertEqual(metrics["cached"].result(), 50)
+                self.assertEqual(metrics["cache_create"].result(), 10)
+                self.assertEqual(metrics["hit_rate"].result(), 50 / 400)
+                self.assertEqual(metrics["reasoning"].result(), 40)
+                self.assertEqual(metrics["r_share"].result(), 40 / 100)

@@ -1,7 +1,10 @@
 import inspect
 
 from synalinks.src.api_export import synalinks_export
-from synalinks.src.utils.naming import to_snake_case
+from synalinks.src.metrics.accuracy_metrics import Accuracy
+from synalinks.src.metrics.accuracy_metrics import BinaryAccuracy
+from synalinks.src.metrics.accuracy_metrics import CategoricalAccuracy
+
 # Note: `accuracy_metrics` is imported below (after `metric`) to avoid a
 # circular import via `synalinks.src.ops -> modules -> module -> metrics`.
 from synalinks.src.metrics.em_metrics import AvgEmbeddingCostPerCall
@@ -40,6 +43,12 @@ from synalinks.src.metrics.em_metrics import RewardEmbeddingTokens
 from synalinks.src.metrics.em_metrics import RewardEmbeddingTokensPerSecond
 from synalinks.src.metrics.em_metrics import RewardEmbeddingVectors
 from synalinks.src.metrics.em_metrics import RewardEmbeddingVectorsPerSecond
+from synalinks.src.metrics.f_score_metrics import BinaryF1Score
+from synalinks.src.metrics.f_score_metrics import BinaryFBetaScore
+from synalinks.src.metrics.f_score_metrics import CategoricalF1Score
+from synalinks.src.metrics.f_score_metrics import CategoricalFBetaScore
+from synalinks.src.metrics.f_score_metrics import F1Score
+from synalinks.src.metrics.f_score_metrics import FBetaScore
 from synalinks.src.metrics.lm_metrics import AvgCostPerCall
 from synalinks.src.metrics.lm_metrics import AvgInputTokensPerCall
 from synalinks.src.metrics.lm_metrics import AvgOptimizerCostPerCall
@@ -86,31 +95,23 @@ from synalinks.src.metrics.lm_metrics import Throughput
 from synalinks.src.metrics.lm_metrics import TokensPerSecond
 from synalinks.src.metrics.lm_metrics import TotalTokens
 from synalinks.src.metrics.metric import Metric
-from synalinks.src.metrics.program_metrics import ProgramAvgCostPerInvocation
-from synalinks.src.metrics.program_metrics import ProgramCalls
-from synalinks.src.metrics.program_metrics import ProgramCallsPerSecond
-from synalinks.src.metrics.program_metrics import ProgramCost
-from synalinks.src.metrics.program_metrics import ProgramElapsedTime
-from synalinks.src.metrics.program_metrics import ProgramOperationalMetric
-from synalinks.src.metrics.accuracy_metrics import Accuracy
-from synalinks.src.metrics.accuracy_metrics import BinaryAccuracy
-from synalinks.src.metrics.accuracy_metrics import CategoricalAccuracy
 from synalinks.src.metrics.precision_recall_metrics import BinaryPrecision
 from synalinks.src.metrics.precision_recall_metrics import BinaryRecall
 from synalinks.src.metrics.precision_recall_metrics import CategoricalPrecision
 from synalinks.src.metrics.precision_recall_metrics import CategoricalRecall
 from synalinks.src.metrics.precision_recall_metrics import Precision
 from synalinks.src.metrics.precision_recall_metrics import Recall
-from synalinks.src.metrics.f_score_metrics import BinaryF1Score
-from synalinks.src.metrics.f_score_metrics import BinaryFBetaScore
-from synalinks.src.metrics.f_score_metrics import CategoricalF1Score
-from synalinks.src.metrics.f_score_metrics import CategoricalFBetaScore
-from synalinks.src.metrics.f_score_metrics import F1Score
-from synalinks.src.metrics.f_score_metrics import FBetaScore
+from synalinks.src.metrics.program_metrics import ProgramAvgCostPerInvocation
+from synalinks.src.metrics.program_metrics import ProgramCalls
+from synalinks.src.metrics.program_metrics import ProgramCallsPerSecond
+from synalinks.src.metrics.program_metrics import ProgramCost
+from synalinks.src.metrics.program_metrics import ProgramElapsedTime
+from synalinks.src.metrics.program_metrics import ProgramOperationalMetric
 from synalinks.src.metrics.reduction_metrics import Mean
 from synalinks.src.metrics.reduction_metrics import MeanMetricWrapper
 from synalinks.src.metrics.reduction_metrics import Sum
 from synalinks.src.saving import serialization_lib
+from synalinks.src.utils.naming import to_snake_case
 
 ALL_OBJECTS = {
     # Base

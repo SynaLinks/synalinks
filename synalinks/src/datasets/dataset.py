@@ -1,14 +1,13 @@
 # License Apache 2.0: (c) 2025-2026 Yoan Sallami (Synalinks Team)
 
-import json as _json
-
 import jinja2
 import numpy as np
+import orjson
 
 from synalinks.src.api_export import synalinks_export
 from synalinks.src.backend.common.json_data_model import JsonDataModel
-from synalinks.src.backend.pydantic.base import ChatMessage
-from synalinks.src.backend.pydantic.base import ChatMessages
+from synalinks.src.backend.pydantic.common import ChatMessage
+from synalinks.src.backend.pydantic.common import ChatMessages
 
 
 @synalinks_export(["synalinks.Dataset", "synalinks.datasets.Dataset"])
@@ -139,12 +138,12 @@ class Dataset:
 
     def _make_input(self, rendered):
         if self.input_schema is not None:
-            return JsonDataModel(schema=self.input_schema, json=_json.loads(rendered))
+            return JsonDataModel(schema=self.input_schema, json=orjson.loads(rendered))
         return self.input_data_model.model_validate_json(rendered)
 
     def _make_target(self, rendered):
         if self.output_schema is not None:
-            return JsonDataModel(schema=self.output_schema, json=_json.loads(rendered))
+            return JsonDataModel(schema=self.output_schema, json=orjson.loads(rendered))
         return self.output_data_model.model_validate_json(rendered)
 
     def _iter_rows(self):
@@ -273,7 +272,7 @@ def _coerce_schema(schema):
     if schema is None:
         return None
     if isinstance(schema, str):
-        return _json.loads(schema)
+        return orjson.loads(schema)
     if isinstance(schema, dict):
         return schema
     raise TypeError(

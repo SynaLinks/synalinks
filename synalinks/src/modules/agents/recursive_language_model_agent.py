@@ -403,7 +403,7 @@ def _summarize_inputs(
     only a head, the full value remains accessible inside the sandbox at
     ``inputs[name]``.
     """
-    import json as _json
+    import orjson
 
     fields = []
     for name, value in inputs_json.items():
@@ -423,7 +423,7 @@ def _summarize_inputs(
             size = len(value)
             head = value[:preview_items]
             truncated = size > preview_items
-            preview = _json.dumps(head)
+            preview = orjson.dumps(head).decode()
             if len(preview) > preview_chars:
                 preview = preview[:preview_chars] + "…"
                 truncated = True
@@ -431,12 +431,12 @@ def _summarize_inputs(
             size = len(value)
             head = dict(list(value.items())[:preview_items])
             truncated = size > preview_items
-            preview = _json.dumps(head)
+            preview = orjson.dumps(head).decode()
             if len(preview) > preview_chars:
                 preview = preview[:preview_chars] + "…"
                 truncated = True
         else:
-            preview = _json.dumps(value)
+            preview = orjson.dumps(value).decode()
 
         fields.append(
             {

@@ -121,8 +121,7 @@ def _build_tools(knowledge_base, output_format: str = "csv", k: int = 50):
         if table_name not in available_tables:
             return {
                 "error": (
-                    f"Table {table_name!r} not found. "
-                    f"Available: {available_tables}"
+                    f"Table {table_name!r} not found. Available: {available_tables}"
                 )
             }
         effective_limit = max(1, min(limit, k))

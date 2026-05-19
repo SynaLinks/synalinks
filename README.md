@@ -120,6 +120,7 @@ Beyond the Keras programming style, Synalinks:
 - Use [*constrained* JSON decoding](https://synalinks.github.io/synalinks/guides/Data%20Models/) to be robust in production
 - Is fully compatible with Pydantic BaseModel (via `schema=` in every [module](https://synalinks.github.io/synalinks/guides/Modules/)) to ease integration with FastAPI/FastMCP etc.
 - Have instrospection tools like `summary()` and `plot_program()` to write better documentation
+- Have a fully embeddable runtime that doesn't requires any container like Docker to run, easing scripting, research and deployment in modern cloud environment.
 
 ## Installation
 

@@ -8,6 +8,7 @@ from litellm.types.utils import PromptTokensDetailsWrapper
 from litellm.types.utils import Usage
 
 from synalinks.src import testing
+from synalinks.src.backend import EmbeddingRequest
 from synalinks.src.backend import Embeddings
 from synalinks.src.backend.common import global_state
 from synalinks.src.modules.embedding_models.embedding_model import EmbeddingModel
@@ -21,9 +22,11 @@ class EmbeddingModelTest(testing.TestCase):
         expected_value = [0.0, 0.1, 0.2, 0.3]
         mock_embedding.return_value = {"data": [{"embedding": expected_value}]}
 
-        result = await embedding_model(["What is the capital of France?"])
-        self.assertEqual(result, Embeddings(**result).get_json())
-        self.assertEqual(result, {"embeddings": [expected_value]})
+        result = await embedding_model(
+            EmbeddingRequest(texts=["What is the capital of France?"])
+        )
+        self.assertEqual(result.get_json(), Embeddings(**result.get_json()).get_json())
+        self.assertEqual(result.get_json(), {"embeddings": [expected_value]})
 
     @patch("litellm.aembedding")
     async def test_retry_succeeds_on_second_attempt(self, mock_embedding):
@@ -35,8 +38,10 @@ class EmbeddingModelTest(testing.TestCase):
             {"data": [{"embedding": expected_value}]},
         ]
 
-        result = await embedding_model(["What is the capital of France?"])
-        self.assertEqual(result, {"embeddings": [expected_value]})
+        result = await embedding_model(
+            EmbeddingRequest(texts=["What is the capital of France?"])
+        )
+        self.assertEqual(result.get_json(), {"embeddings": [expected_value]})
         self.assertEqual(mock_embedding.call_count, 2)
 
     @patch("litellm.aembedding")
@@ -45,7 +50,9 @@ class EmbeddingModelTest(testing.TestCase):
 
         mock_embedding.side_effect = Exception("Persistent failure")
 
-        result = await embedding_model(["What is the capital of France?"])
+        result = await embedding_model(
+            EmbeddingRequest(texts=["What is the capital of France?"])
+        )
         self.assertIsNone(result)
         self.assertEqual(mock_embedding.call_count, 2)
 
@@ -66,8 +73,10 @@ class EmbeddingModelTest(testing.TestCase):
             {"data": [{"embedding": expected_value}]},
         ]
 
-        result = await embedding_model(["What is the capital of France?"])
-        self.assertEqual(result, {"embeddings": [expected_value]})
+        result = await embedding_model(
+            EmbeddingRequest(texts=["What is the capital of France?"])
+        )
+        self.assertEqual(result.get_json(), {"embeddings": [expected_value]})
         self.assertEqual(mock_embedding.call_count, 3)
 
 
@@ -104,7 +113,7 @@ class EMCounterPopulationTest(testing.TestCase):
         em = EmbeddingModel(model="openai/text-embedding-3-small")
         _set_scope("inference")
         try:
-            await em(["a", "b", "c"])
+            await em(EmbeddingRequest(texts=["a", "b", "c"]))
         finally:
             _set_scope(None)
         self.assertEqual(em.cumulated_calls, 1)
@@ -134,7 +143,7 @@ class EMCounterPopulationTest(testing.TestCase):
         ):
             _set_scope(scope)
             try:
-                await em(["x", "y"])
+                await em(EmbeddingRequest(texts=["x", "y"]))
             finally:
                 _set_scope(None)
             self.assertEqual(
@@ -156,7 +165,7 @@ class EMCounterPopulationTest(testing.TestCase):
         em = EmbeddingModel(model="openai/text-embedding-3-small")
         _set_scope("inference")
         try:
-            await em(["a", "b", "c", "d"])
+            await em(EmbeddingRequest(texts=["a", "b", "c", "d"]))
         finally:
             _set_scope(None)
         self.assertEqual(em.cumulated_cached_tokens, 150)
@@ -180,7 +189,7 @@ class EMCounterPopulationTest(testing.TestCase):
         em = EmbeddingModel(model="ollama/mxbai-embed-large")
         _set_scope("inference")
         try:
-            await em(["a", "b"])
+            await em(EmbeddingRequest(texts=["a", "b"]))
         finally:
             _set_scope(None)
         self.assertEqual(em.cumulated_calls, 1)

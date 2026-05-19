@@ -127,9 +127,7 @@ class VectorRAGAgentToolsTest(testing.TestCase):
     async def test_search_unknown_table_returns_error(self):
         kb = self._make_kb()
         _, search, _ = self._tools(kb)
-        result = await search(
-            table_name="DoesNotExist", query="anything"
-        )
+        result = await search(table_name="DoesNotExist", query="anything")
 
         self.assertIn("error", result)
         self.assertIn("DoesNotExist", result["error"])

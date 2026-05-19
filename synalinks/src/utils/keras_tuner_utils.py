@@ -83,6 +83,86 @@ _TUNER_CLASS_NAMES = (
 # `keras_tuner`.
 _REAL_SUBCLASSES = {}
 
+_kt_inference_patched = False
+
+
+def _synalinks_name_direction_map():
+    """Build a ``{default_metric_name: "max"|"min"}`` map from the metrics
+    registry.
+
+    Each shipped metric class declares its ``direction`` (``"up"``/``"down"``)
+    at class scope (see ``synalinks.Metric``). The default ``name=`` kwarg in
+    each ``__init__`` signature is what shows up in ``history.history`` and
+    is what kt's ``infer_metric_direction`` is asked about.
+
+    ``"reward"`` is added as a special case: it's the conventional name for a
+    ``Mean``/``MeanMetricWrapper`` instance wrapping a synalinks reward —
+    not a class name — so no class introspection would catch it.
+    """
+    from synalinks.src import metrics as _metrics_pkg
+
+    name_to_direction = {"reward": "max"}
+    _UP_DOWN = {"up": "max", "down": "min"}
+    for cls in _metrics_pkg.ALL_OBJECTS:
+        cls_direction = getattr(cls, "direction", None)
+        kt_direction = _UP_DOWN.get(cls_direction)
+        if kt_direction is None:
+            continue
+        try:
+            sig = inspect.signature(cls.__init__)
+        except (TypeError, ValueError):
+            continue
+        name_param = sig.parameters.get("name")
+        if name_param is None:
+            continue
+        default_name = name_param.default
+        if isinstance(default_name, str):
+            name_to_direction.setdefault(default_name, kt_direction)
+    return name_to_direction
+
+
+def _patch_kt_inference():
+    """Patch kt's ``infer_metric_direction`` to know synalinks metric names.
+
+    Idempotent. Called from ``_resolve_kt_tuner`` (so string objectives like
+    ``objective="val_reward"`` resolve when a tuner is built) and from
+    ``Objective(...)`` (so omitting ``direction=`` resolves via inference).
+
+    Keras Tuner's ``infer_metric_direction`` resolves keras metric names via
+    ``keras.metrics.deserialize`` then matches the class name against a
+    hardcoded ``_MAX_METRICS`` whitelist. Synalinks metrics don't live in
+    ``keras.metrics``, and ``keras_backend.py`` ships deserialize stubs that
+    always raise — so without help, inference returns None for every
+    synalinks metric name. The replacement here consults the synalinks
+    metrics registry first (via :func:`_synalinks_name_direction_map`) and
+    falls through to kt's original for keras compat (``"loss"`` etc.).
+
+    Both kt call sites — ``metrics_tracking.register`` and
+    ``objective.create_objective`` — look up the function via attribute
+    access on the ``metrics_tracking`` module, so a single replacement on
+    that module covers both.
+    """
+    global _kt_inference_patched
+    if _kt_inference_patched:
+        return
+    from keras_tuner.src.engine import metrics_tracking
+
+    _kt_original_infer = metrics_tracking.infer_metric_direction
+    name_to_direction = _synalinks_name_direction_map()
+
+    def _synalinks_infer(metric):
+        if isinstance(metric, str):
+            name = metric
+            if name.startswith("val_"):
+                name = name[len("val_") :]
+            inferred = name_to_direction.get(name)
+            if inferred is not None:
+                return inferred
+        return _kt_original_infer(metric)
+
+    metrics_tracking.infer_metric_direction = _synalinks_infer
+    _kt_inference_patched = True
+
 
 def _resolve_kt_tuner(name):
     """Build the synalinks-aware subclass of `keras_tuner.<name>` on demand."""
@@ -109,6 +189,7 @@ def _resolve_kt_tuner(name):
             "Install it with `pip install keras-tuner`."
         ) from e
 
+    _patch_kt_inference()
     base = getattr(kt, name)
 
     class _SynalinksAwareTuner(base):
@@ -318,11 +399,18 @@ GridSearch = _make_stub(
         "synalinks.utils.tuners.Objective",
     ]
 )
-def Objective(name, direction):
+def Objective(name, direction=None):
     """Re-export of `keras_tuner.Objective` for ergonomic access.
 
-    Loads `keras_tuner` lazily on first call so importing
-    `synalinks.tuners` never pulls kt into the process by itself.
+    When ``direction`` is omitted, it's inferred from the synalinks metrics
+    registry: shipped metrics declare ``direction`` at class scope (e.g.
+    ``Accuracy.direction == "up"``, ``ProgramCost.direction == "down"``), and
+    ``"reward"`` is special-cased as ``"max"``. Unknown names fall through
+    to keras-tuner's own inference (which handles ``"loss"`` etc.). Pass
+    ``direction=`` explicitly if neither table covers your metric.
+
+    Loads ``keras_tuner`` lazily on first call so importing
+    ``synalinks.tuners`` never pulls kt into the process by itself.
     """
     try:
         import keras_tuner as kt
@@ -338,4 +426,15 @@ def Objective(name, direction):
             "`synalinks.tuners.Objective` requires `keras-tuner`. "
             "Install with `pip install keras-tuner`."
         ) from e
+    _patch_kt_inference()
+    if direction is None:
+        from keras_tuner.src.engine import metrics_tracking
+
+        direction = metrics_tracking.infer_metric_direction(name)
+        if direction is None:
+            raise ValueError(
+                f"Could not infer optimization direction for objective {name!r}. "
+                "Pass it explicitly: "
+                f"synalinks.tuners.Objective({name!r}, direction='max')."
+            )
     return kt.Objective(name=name, direction=direction)

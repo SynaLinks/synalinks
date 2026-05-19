@@ -208,7 +208,7 @@ class MeanMetricWrapper(Mean):
             or hasattr(self._fn, "__class__")
             and self._fn.__class__ in rewards.ALL_OBJECTS
         ):
-            self._direction = "up"
+            self.direction = "up"
 
     async def update_state(self, y_true, y_pred):
         y_pred = tree.map_structure(lambda x: ops.convert_to_json_data_model(x), y_pred)

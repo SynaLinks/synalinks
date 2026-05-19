@@ -60,3 +60,10 @@ class RandomFewShotTest(testing.TestCase):
 
         program_vars = program.get_variable(index=0).get_json()
         self.assertTrue(len(program_vars["examples"]) > 0)
+        # The optimizer must record at least one entry into `history`
+        # over the training run; entries should be `reward`-free
+        # snapshots of the best candidate at each epoch.
+        history = program_vars["history"]
+        self.assertTrue(len(history) > 0)
+        for entry in history:
+            self.assertNotIn("reward", entry)

@@ -10,6 +10,7 @@ import numpy as np
 
 from synalinks.src.api_export import synalinks_export
 from synalinks.src.callbacks.callback import Callback
+from synalinks.src.trainers import compile_utils
 from synalinks.src.utils import file_utils
 from synalinks.src.utils import io_utils
 
@@ -172,16 +173,18 @@ class ProgramCheckpoint(Callback):
                 stacklevel=2,
             )
             mode = "auto"
-
+        self.mode = mode
+        # `monitor_op` and the inf-initialization of `self.best` are
+        # resolved lazily in `_set_monitor_op` (called from
+        # `on_train_begin`) so that auto-mode can introspect the bound
+        # program's metrics for their `direction` attribute. An explicit
+        # `min`/`max` short-circuits the introspection.
+        self.monitor_op = None
         if mode == "min":
             self.monitor_op = np.less
             if self.best is None:
                 self.best = np.inf
         elif mode == "max":
-            self.monitor_op = np.greater
-            if self.best is None:
-                self.best = -np.inf
-        else:
             self.monitor_op = np.greater
             if self.best is None:
                 self.best = -np.inf
@@ -207,6 +210,37 @@ class ProgramCheckpoint(Callback):
                     "(Synalinks program format). Received: "
                     f"filepath={self.filepath}"
                 )
+
+    def _set_monitor_op(self):
+        """Resolve auto-mode by introspecting metric ``direction``.
+
+        Falls back to ``np.greater`` (max) so existing behavior is preserved
+        when the monitored metric carries no direction — synalinks's bias is
+        toward maximizing (rewards, accuracy, F-scores) and `monitor`
+        defaults to ``"val_reward"``.
+        """
+        if self.monitor_op is not None:
+            return
+        metric_name = self.monitor.removeprefix("val_")
+        if hasattr(self.program, "metrics"):
+            all_metrics = []
+            for m in self.program.metrics:
+                if isinstance(
+                    m,
+                    (compile_utils.CompileMetrics, compile_utils.MetricsList),
+                ):
+                    all_metrics.extend(m.metrics)
+            for m in all_metrics:
+                if m.name == metric_name and getattr(m, "direction", None):
+                    self.monitor_op = np.greater if m.direction == "up" else np.less
+                    break
+        if self.monitor_op is None:
+            self.monitor_op = np.greater
+        if self.best is None:
+            self.best = -np.inf if self.monitor_op is np.greater else np.inf
+
+    def on_train_begin(self, logs=None):
+        self._set_monitor_op()
 
     def on_train_batch_end(self, batch, logs=None):
         if self._should_save_on_batch(batch):

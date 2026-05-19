@@ -291,11 +291,7 @@ def populate_workspace(workdir: str) -> None:
     """Seed the workdir with a tiny Python project for the agent to extend."""
     os.makedirs(workdir, exist_ok=True)
     with open(os.path.join(workdir, "calculator.py"), "w") as f:
-        f.write(
-            "def add(a, b):\n"
-            "    \"\"\"Return a + b.\"\"\"\n"
-            "    return a + b\n"
-        )
+        f.write('def add(a, b):\n    """Return a + b."""\n    return a + b\n')
 
 
 async def main():

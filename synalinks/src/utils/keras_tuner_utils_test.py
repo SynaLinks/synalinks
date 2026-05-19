@@ -399,3 +399,79 @@ class TunerEndToEndTest(testing.TestCase):
         tuner.search()
         best = tuner.get_best_hyperparameters(num_trials=1)[0]
         self.assertLess(abs(best.get("x") - 0.8), 0.3)
+
+
+class ObjectiveDirectionInferenceTest(testing.TestCase):
+    """When `direction` is omitted on `synalinks.tuners.Objective` or when a
+    bare string objective like `objective="val_reward"` is passed to a tuner,
+    direction should resolve via the synalinks metrics registry (each metric
+    class carries a `direction` class attribute) and fall through to
+    keras-tuner's original inference for keras-compatible names like
+    `"loss"`. Reset the patch state per test so the patch is re-applied to
+    a freshly-imported `keras_tuner` module."""
+
+    def setUp(self):
+        super().setUp()
+        from synalinks.src.utils.keras_backend import disable_keras_backend
+
+        disable_keras_backend()
+        try:
+            import keras_tuner  # noqa: F401
+        except Exception as e:
+            self.skipTest(f"keras_tuner is not importable: {type(e).__name__}: {e}")
+        self._saved = {
+            name: sys.modules.pop(name)
+            for name in list(sys.modules)
+            if _is_managed_module(name)
+        }
+        keras_tuner_utils._kt_inference_patched = False
+
+    def tearDown(self):
+        keras_tuner_utils._kt_inference_patched = False
+        for name in list(sys.modules):
+            if _is_managed_module(name):
+                sys.modules.pop(name, None)
+        for name, m in self._saved.items():
+            sys.modules[name] = m
+        super().tearDown()
+
+    def test_reward_infers_as_max(self):
+        """`"reward"` is the conventional name for a `Mean`/wrapper around a
+        synalinks `Reward` and is not a class name in the registry — it's
+        special-cased to `"max"` in `_synalinks_name_direction_map`."""
+        obj = Objective("val_reward")
+        self.assertEqual(obj.direction, "max")
+
+    def test_accuracy_infers_as_max(self):
+        """`Accuracy.direction == "up"` (class attr) → kt `"max"`."""
+        obj = Objective("accuracy")
+        self.assertEqual(obj.direction, "max")
+
+    def test_f1_score_infers_as_max(self):
+        """Inherited via `FBetaScore.direction = "up"` on the parent."""
+        obj = Objective("val_f1_score")
+        self.assertEqual(obj.direction, "max")
+
+    def test_program_cost_infers_as_min(self):
+        """`ProgramOperationalMetric.direction == "down"` → kt `"min"`."""
+        obj = Objective("val_program_cost")
+        self.assertEqual(obj.direction, "min")
+
+    def test_loss_falls_through_to_kt_inference(self):
+        """kt's original `infer_metric_direction` handles `"loss"` as a
+        special case. The synalinks patch falls through for names not in
+        its table — verifying compatibility is preserved."""
+        obj = Objective("val_loss")
+        self.assertEqual(obj.direction, "min")
+
+    def test_unknown_name_raises_with_remediation(self):
+        with self.assertRaises(ValueError) as ctx:
+            Objective("val_totally_made_up")
+        self.assertIn("Could not infer", str(ctx.exception))
+        self.assertIn("direction=", str(ctx.exception))
+
+    def test_explicit_direction_bypasses_inference(self):
+        """A user-supplied direction overrides registry lookup — useful for
+        custom metrics with no `direction` set."""
+        obj = Objective("any_unknown_metric", direction="min")
+        self.assertEqual(obj.direction, "min")

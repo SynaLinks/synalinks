@@ -301,9 +301,7 @@ class DeepAgentToolsTest(testing.TestCase):
 
         _, _, search_files, *_ = self._tools(wd)
         # Symlink resolves outside workdir → filtered out, no match.
-        result = await search_files(
-            file_pattern="*.txt", content_pattern="secret"
-        )
+        result = await search_files(file_pattern="*.txt", content_pattern="secret")
         self.assertEqual(result["match_count"], 0)
 
     async def test_list_directory_rejects_traversal(self):

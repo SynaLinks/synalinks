@@ -3,9 +3,9 @@
 from synalinks.src.api_export import synalinks_export
 from synalinks.src.backend import DataModel
 from synalinks.src.backend import Field
+from synalinks.src.datasets.dataset import split_train_test
 from synalinks.src.datasets.huggingface_dataset import HuggingFaceDataset
 from synalinks.src.datasets.huggingface_dataset import load_split
-from synalinks.src.datasets.dataset import split_train_test
 
 
 class IFEvalQuestion(DataModel):

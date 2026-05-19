@@ -16,6 +16,7 @@ import orjson
 import pyarrow as pa
 import pyarrow.csv as pa_csv
 
+from synalinks.src.backend import EmbeddingRequest
 from synalinks.src.backend import JsonDataModel
 from synalinks.src.backend import SymbolicDataModel
 from synalinks.src.backend.config import synalinks_home
@@ -181,7 +182,9 @@ class DuckDBAdapter(DatabaseAdapter):
 
         if self.embedding_model:
             if not vector_dim:
-                embedded_text = run_maybe_nested(self.embedding_model(["text"]))
+                embedded_text = run_maybe_nested(
+                    self.embedding_model(EmbeddingRequest(texts=["text"]))
+                )
                 self.vector_dim = len(embedded_text["embeddings"][0])
             else:
                 self.vector_dim = vector_dim
@@ -358,8 +361,7 @@ class DuckDBAdapter(DatabaseAdapter):
                 installed = {
                     row[0]
                     for row in probe.execute(
-                        "SELECT extension_name FROM duckdb_extensions() "
-                        "WHERE installed"
+                        "SELECT extension_name FROM duckdb_extensions() WHERE installed"
                     ).fetchall()
                 }
             finally:
@@ -403,12 +405,10 @@ class DuckDBAdapter(DatabaseAdapter):
                     raise RuntimeError(f"Failed to drop table {table_name}: {e}")
 
     def _get_id_key(self, schema: dict) -> str:
-        """Return the first schema property name (snake-cased, sanitized) as primary key."""
+        """Return the first schema property (snake-cased, sanitized) as primary key."""
         props = schema.get("properties") if isinstance(schema, dict) else None
         if not props:
-            raise ValueError(
-                "Cannot determine primary key: schema has no `properties`."
-            )
+            raise ValueError("Cannot determine primary key: schema has no `properties`.")
         return column_identifier(next(iter(props.keys())))
 
     def _has_indexable_text_columns(self, schema: dict) -> bool:
@@ -749,9 +749,7 @@ class DuckDBAdapter(DatabaseAdapter):
 
             id_val = json_data.get(id_key)
             if id_val is None:
-                raise ValueError(
-                    f"Primary key '{id_key}' is required but not provided"
-                )
+                raise ValueError(f"Primary key '{id_key}' is required but not provided")
 
             if table not in tables_seen_set:
                 self._maybe_create_table(data_model)
@@ -777,9 +775,7 @@ class DuckDBAdapter(DatabaseAdapter):
                     update_cols = [c for c in cols if c != id_key]
 
                     if update_cols:
-                        update_sql = ", ".join(
-                            f"{c} = EXCLUDED.{c}" for c in update_cols
-                        )
+                        update_sql = ", ".join(f"{c} = EXCLUDED.{c}" for c in update_cols)
                         conflict_clause = (
                             f"ON CONFLICT ({id_key}) DO UPDATE SET {update_sql}"
                         )
@@ -976,7 +972,8 @@ class DuckDBAdapter(DatabaseAdapter):
         reader_fn: str,
         reader_kwargs: Dict[str, str],
     ) -> SymbolicDataModel:
-        """Native DuckDB bulk load shared by ``from_csv`` / ``from_parquet`` / ``from_json`` / ``from_jsonl``.
+        """Native DuckDB bulk load shared by the ``from_csv`` / ``from_parquet``
+        / ``from_json`` / ``from_jsonl`` helpers.
 
         Cycles the sandboxed connection out for a loose one because
         ``read_*`` table functions need ``enable_external_access=true``.
@@ -984,9 +981,11 @@ class DuckDBAdapter(DatabaseAdapter):
         if not os.path.exists(path):
             raise FileNotFoundError(f"File not found: {path}")
 
-        raw_name = table_name if table_name is not None else os.path.splitext(
-            os.path.basename(path)
-        )[0]
+        raw_name = (
+            table_name
+            if table_name is not None
+            else os.path.splitext(os.path.basename(path))[0]
+        )
         if not to_pascal_case(raw_name):
             raise ValueError(
                 f"Cannot derive a table name from {raw_name!r}: "
@@ -996,9 +995,7 @@ class DuckDBAdapter(DatabaseAdapter):
         table_name = table_identifier(raw_name)
 
         if reader_kwargs:
-            reader_extras = ", " + ", ".join(
-                f"{k}={v}" for k, v in reader_kwargs.items()
-            )
+            reader_extras = ", " + ", ".join(f"{k}={v}" for k, v in reader_kwargs.items())
         else:
             reader_extras = ""
         reader_sql = f"{reader_fn}(?{reader_extras})"
@@ -1013,9 +1010,7 @@ class DuckDBAdapter(DatabaseAdapter):
                     [path],
                 ).fetchall()
                 if not desc_rows:
-                    raise ValueError(
-                        f"{path}: no columns detected in source file."
-                    )
+                    raise ValueError(f"{path}: no columns detected in source file.")
 
                 # orig_col_names quote-survive header values; db_col_names
                 # are snake_cased. INSERT maps positionally between them.
@@ -1035,18 +1030,13 @@ class DuckDBAdapter(DatabaseAdapter):
                 pk_col = db_col_names[0]
 
                 loose.execute(
-                    f"CREATE TABLE IF NOT EXISTS {table_name} "
-                    f"({', '.join(col_defs)})"
+                    f"CREATE TABLE IF NOT EXISTS {table_name} ({', '.join(col_defs)})"
                 )
 
                 update_cols = [c for c in db_col_names if c != pk_col]
                 if update_cols:
-                    update_sql = ", ".join(
-                        f"{c} = EXCLUDED.{c}" for c in update_cols
-                    )
-                    conflict_clause = (
-                        f"ON CONFLICT ({pk_col}) DO UPDATE SET {update_sql}"
-                    )
+                    update_sql = ", ".join(f"{c} = EXCLUDED.{c}" for c in update_cols)
+                    conflict_clause = f"ON CONFLICT ({pk_col}) DO UPDATE SET {update_sql}"
                 else:
                     conflict_clause = f"ON CONFLICT ({pk_col}) DO NOTHING"
 
@@ -1127,8 +1117,7 @@ class DuckDBAdapter(DatabaseAdapter):
         """
         if table_name is None and table_description is None:
             raise ValueError(
-                "rename(): pass at least one of `table_name=` or "
-                "`table_description=`."
+                "rename(): pass at least one of `table_name=` or `table_description=`."
             )
 
         if isinstance(source, str):
@@ -1150,8 +1139,7 @@ class DuckDBAdapter(DatabaseAdapter):
             ).fetchone()[0]
         if not exists:
             raise ValueError(
-                f"rename(): no table named {old_name!r} found in the "
-                f"knowledge base."
+                f"rename(): no table named {old_name!r} found in the knowledge base."
             )
 
         new_name = old_name
@@ -1162,20 +1150,14 @@ class DuckDBAdapter(DatabaseAdapter):
                 # FTS/HNSW indexes are name-bound; drop then rebuild.
                 with self._connect(read_only=False) as con:
                     try:
-                        con.execute(
-                            f"PRAGMA drop_fts_index('main.{old_name}');"
-                        )
+                        con.execute(f"PRAGMA drop_fts_index('main.{old_name}');")
                     except duckdb.Error:
                         pass
 
                     old_vector_index = f"vector_main_{old_name}"
-                    con.execute(
-                        f"DROP INDEX IF EXISTS {old_vector_index};"
-                    )
+                    con.execute(f"DROP INDEX IF EXISTS {old_vector_index};")
 
-                    con.execute(
-                        f"ALTER TABLE {old_name} RENAME TO {new_name};"
-                    )
+                    con.execute(f"ALTER TABLE {old_name} RENAME TO {new_name};")
 
         schema = self._duckdb_table_to_json_schema(new_name)
         schema["title"] = new_name
@@ -1244,14 +1226,10 @@ class DuckDBAdapter(DatabaseAdapter):
         with self._connect(read_only=True) as con:
             placeholders = ", ".join(["?"] * len(ids))
             try:
-                sql = (
-                    f"SELECT * FROM {table} WHERE {id_key} IN ({placeholders})"
-                )
+                sql = f"SELECT * FROM {table} WHERE {id_key} IN ({placeholders})"
                 cursor = con.execute(sql, ids)
             except Exception as e:
-                warnings.warn(
-                    f"get(): SELECT from '{table}' failed. ({e})"
-                )
+                warnings.warn(f"get(): SELECT from '{table}' failed. ({e})")
                 return None if return_single else results
 
             rows = cursor.arrow().read_all().to_pylist()
@@ -1361,33 +1339,26 @@ class DuckDBAdapter(DatabaseAdapter):
         try:
             json_schema = self._duckdb_table_to_json_schema(table)
         except duckdb.Error:
-            warnings.warn(
-                f"delete(): no table named '{table}'; nothing to delete."
-            )
+            warnings.warn(f"delete(): no table named '{table}'; nothing to delete.")
             return 0
         id_key = self._get_id_key(json_schema)
 
         placeholders = ", ".join(["?"] * len(ids))
         sql = (
-            f"DELETE FROM {table} WHERE {id_key} IN ({placeholders}) "
-            f"RETURNING {id_key};"
+            f"DELETE FROM {table} WHERE {id_key} IN ({placeholders}) RETURNING {id_key};"
         )
 
         with self._connect(read_only=False) as con:
             try:
                 rows = con.execute(sql, ids).fetchall()
             except Exception as e:
-                raise RuntimeError(
-                    f"delete from '{table}' failed: {e}"
-                ) from e
+                raise RuntimeError(f"delete from '{table}' failed: {e}") from e
 
         deleted = len(rows)
 
         symbolic_model = self.data_models.get(table)
         if symbolic_model is None:
-            symbolic_model = SymbolicDataModel(
-                schema=json_schema, name=table
-            )
+            symbolic_model = SymbolicDataModel(schema=json_schema, name=table)
 
         try:
             self._maybe_create_fulltext_index(symbolic_model)
@@ -1511,26 +1482,19 @@ class DuckDBAdapter(DatabaseAdapter):
         if not text_or_texts:
             return _format_search_results([], output_format)
 
-        texts = (
-            [text_or_texts]
-            if not isinstance(text_or_texts, list)
-            else text_or_texts
-        )
+        texts = [text_or_texts] if not isinstance(text_or_texts, list) else text_or_texts
 
         label = table_identifier(table_name)
         schema = self._duckdb_table_to_json_schema(label)
         id_key = self._get_id_key(schema)
 
-        embeddings = await self.embedding_model(texts)
+        embeddings = await self.embedding_model(EmbeddingRequest(texts=texts))
         vectors = embeddings.get("embeddings")
 
         if len(vectors) == 1:
             vector = vectors[0]
             where_clause = (
-                (
-                    f"WHERE array_distance({self.vss_key}, "
-                    f"?::FLOAT[{self.vector_dim}]) < ?"
-                )
+                (f"WHERE array_distance({self.vss_key}, ?::FLOAT[{self.vector_dim}]) < ?")
                 if threshold
                 else ""
             )
@@ -1553,9 +1517,7 @@ class DuckDBAdapter(DatabaseAdapter):
                 try:
                     arrow_table = con.execute(sql, params).arrow().read_all()
                 except Exception as e:
-                    raise RuntimeError(
-                        f"Vector search failed for table '{label}': {e}"
-                    )
+                    raise RuntimeError(f"Vector search failed for table '{label}': {e}")
             return _format_search_results(arrow_table, output_format)
 
         # Multi-query: dedupe by id, keep best score, take top-k.
@@ -1588,9 +1550,7 @@ class DuckDBAdapter(DatabaseAdapter):
                 try:
                     rows = con.execute(sql, params).arrow().read_all().to_pylist()
                 except Exception as e:
-                    raise RuntimeError(
-                        f"Vector search failed for table '{label}': {e}"
-                    )
+                    raise RuntimeError(f"Vector search failed for table '{label}': {e}")
 
                 for row in rows:
                     uid = row[id_key]
@@ -1624,26 +1584,18 @@ class DuckDBAdapter(DatabaseAdapter):
         if not text_or_texts:
             return _format_search_results([], output_format)
 
-        texts = (
-            [text_or_texts]
-            if not isinstance(text_or_texts, list)
-            else text_or_texts
-        )
+        texts = [text_or_texts] if not isinstance(text_or_texts, list) else text_or_texts
 
         label = table_identifier(table_name)
         schema = self._duckdb_table_to_json_schema(label)
         id_key = self._get_id_key(schema)
         if not self._has_indexable_text_columns(schema):
-            warnings.warn(
-                f"Skipping FTS search for {label}: no text columns to index."
-            )
+            warnings.warn(f"Skipping FTS search for {label}: no text columns to index.")
             return _format_search_results([], output_format)
         fts_table = sanitize_identifier(f"fts_main_{label}")
 
         def _build_sql():
-            threshold_clause = (
-                "AND fts.score >= ?" if threshold is not None else ""
-            )
+            threshold_clause = "AND fts.score >= ?" if threshold is not None else ""
             return f"""
                 SELECT t.*, fts.score
                 FROM {label} t
@@ -1669,9 +1621,7 @@ class DuckDBAdapter(DatabaseAdapter):
                 try:
                     arrow_table = con.execute(sql, params).arrow().read_all()
                 except Exception as e:
-                    raise RuntimeError(
-                        f"FTS query failed for table '{label}': {e}"
-                    )
+                    raise RuntimeError(f"FTS query failed for table '{label}': {e}")
             return _format_search_results(arrow_table, output_format)
 
         # Multi-query: dedupe by id, keep best BM25, take top-k.
@@ -1686,18 +1636,14 @@ class DuckDBAdapter(DatabaseAdapter):
                 try:
                     rows = con.execute(sql, params).arrow().read_all().to_pylist()
                 except Exception as e:
-                    raise RuntimeError(
-                        f"FTS query failed for table '{label}': {e}"
-                    )
+                    raise RuntimeError(f"FTS query failed for table '{label}': {e}")
                 for row in rows:
                     uid = row[id_key]
                     prev = results.get(uid)
                     if prev is None or row["score"] > prev["score"]:
                         results[uid] = row
 
-        ranked = sorted(
-            results.values(), key=lambda r: r["score"], reverse=True
-        )[:k]
+        ranked = sorted(results.values(), key=lambda r: r["score"], reverse=True)[:k]
         return _format_search_results(ranked, output_format)
 
     async def regex_search(
@@ -1747,8 +1693,7 @@ class DuckDBAdapter(DatabaseAdapter):
             cols = string_cols
         if not cols:
             warnings.warn(
-                f"Skipping regex search for {label}: "
-                f"no matching string fields."
+                f"Skipping regex search for {label}: no matching string fields."
             )
             return _format_search_results([], output_format)
 
@@ -1764,9 +1709,7 @@ class DuckDBAdapter(DatabaseAdapter):
             try:
                 arrow_table = con.execute(sql, params).arrow().read_all()
             except Exception as e:
-                raise RuntimeError(
-                    f"Regex query failed for table '{label}': {e}"
-                )
+                raise RuntimeError(f"Regex query failed for table '{label}': {e}")
         return _format_search_results(arrow_table, output_format)
 
     async def hybrid_search(self, *args, **kwargs):
@@ -1821,9 +1764,7 @@ class DuckDBAdapter(DatabaseAdapter):
             )
 
         queries = (
-            [text_or_texts]
-            if isinstance(text_or_texts, str)
-            else list(text_or_texts)
+            [text_or_texts] if isinstance(text_or_texts, str) else list(text_or_texts)
         )
 
         label = table_identifier(table_name)
@@ -1859,12 +1800,8 @@ class DuckDBAdapter(DatabaseAdapter):
                     warnings.warn(f"No results for query='{query_text}'.")
                     continue
 
-                fts_rank = {
-                    r[id_key]: i + 1 for i, r in enumerate(fts_results)
-                }
-                vss_rank = {
-                    r[id_key]: i + 1 for i, r in enumerate(vss_results)
-                }
+                fts_rank = {r[id_key]: i + 1 for i, r in enumerate(fts_results)}
+                vss_rank = {r[id_key]: i + 1 for i, r in enumerate(vss_results)}
 
                 combined_rows: Dict[Any, Dict[str, Any]] = {}
                 for row in fts_results + vss_results:
@@ -1898,9 +1835,7 @@ class DuckDBAdapter(DatabaseAdapter):
                 continue
 
         results_sorted = sorted(
-            heapq.nlargest(
-                k, final_results.values(), key=lambda r: r["score"]
-            ),
+            heapq.nlargest(k, final_results.values(), key=lambda r: r["score"]),
             key=lambda r: (-r["score"], r.get(id_key)),
         )
         return _format_search_results(results_sorted, output_format)
@@ -1964,15 +1899,9 @@ class DuckDBAdapter(DatabaseAdapter):
                 for r in rows:
                     sig = orjson.dumps(r, default=str)
                     merged[sig] = r
-            return _format_search_results(
-                list(merged.values())[:k], output_format
-            )
+            return _format_search_results(list(merged.values())[:k], output_format)
 
-        texts = (
-            [text_or_texts]
-            if isinstance(text_or_texts, str)
-            else list(text_or_texts)
-        )
+        texts = [text_or_texts] if isinstance(text_or_texts, str) else list(text_or_texts)
         if pattern_or_patterns is None:
             patterns: List[str] = []
         elif isinstance(pattern_or_patterns, str):
@@ -2024,12 +1953,8 @@ class DuckDBAdapter(DatabaseAdapter):
                     warnings.warn(f"No results for query='{query_text}'.")
                     continue
 
-                vss_rank = {
-                    r[id_key]: i + 1 for i, r in enumerate(vss_results)
-                }
-                rx_rank = {
-                    r[id_key]: i + 1 for i, r in enumerate(rx_results)
-                }
+                vss_rank = {r[id_key]: i + 1 for i, r in enumerate(vss_results)}
+                rx_rank = {r[id_key]: i + 1 for i, r in enumerate(rx_results)}
 
                 combined_rows: Dict[Any, Dict[str, Any]] = {}
                 for row in vss_results + rx_results:
@@ -2062,9 +1987,7 @@ class DuckDBAdapter(DatabaseAdapter):
                 continue
 
         results_sorted = sorted(
-            heapq.nlargest(
-                k, final_results.values(), key=lambda r: r["score"]
-            ),
+            heapq.nlargest(k, final_results.values(), key=lambda r: r["score"]),
             key=lambda r: (-r["score"], r.get(id_key)),
         )
         return _format_search_results(results_sorted, output_format)

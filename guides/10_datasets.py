@@ -465,9 +465,7 @@ INPUT_TEMPLATE = '{"question": {{ question | tojson }}}'
 # "<reasoning>\n#### <numeric>", possibly with thousands-commas.
 # Split, strip, drop the commas, coerce to float.
 OUTPUT_TEMPLATE = (
-    "{"
-    '"answer": {{ answer.split("####")[-1].strip().replace(",", "") | float }}'
-    "}"
+    '{"answer": {{ answer.split("####")[-1].strip().replace(",", "") | float }}}'
 )
 
 
@@ -538,7 +536,9 @@ def main():
     print("=" * 60)
 
     (x_train, y_train), (x_val, y_val) = synalinks.datasets.split_train_test(
-        x, y, validation_split=0.2,
+        x,
+        y,
+        validation_split=0.2,
     )
     print(f"\n  train: x={x_train.shape}, y={y_train.shape}")
     print(f"  val:   x={x_val.shape},  y={y_val.shape}")

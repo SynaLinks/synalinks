@@ -1,10 +1,11 @@
-import json
 from typing import Any
 from typing import Dict
 from typing import List
 from typing import Literal
 from typing import Optional
 from typing import get_args
+
+import orjson
 
 from synalinks.src import ops
 from synalinks.src.api_export import synalinks_export
@@ -272,9 +273,7 @@ class RetrieveKnowledge(Module):
             name="search_query_generator_" + self.name,
         )
 
-    async def _perform_search(
-        self, search_terms, patterns, target_data_models
-    ):
+    async def _perform_search(self, search_terms, patterns, target_data_models):
         """Perform the search across one or more tables.
 
         The adapter's search methods are single-table; this layer
@@ -330,7 +329,7 @@ class RetrieveKnowledge(Module):
                         k=self.k,
                     )
                     for row in rows:
-                        sig = json.dumps(row, sort_keys=True, default=str)
+                        sig = orjson.dumps(row, option=orjson.OPT_SORT_KEYS, default=str)
                         if sig not in seen_local:
                             seen_local.add(sig)
                             rows_per_table.append(row)
@@ -363,7 +362,7 @@ class RetrieveKnowledge(Module):
             except Exception:
                 rows = []
             for row in rows:
-                sig = json.dumps(row, sort_keys=True, default=str)
+                sig = orjson.dumps(row, option=orjson.OPT_SORT_KEYS, default=str)
                 if sig in seen:
                     continue
                 seen.add(sig)
@@ -374,9 +373,7 @@ class RetrieveKnowledge(Module):
         if self.search_type == "similarity":
             aggregated.sort(key=lambda r: r.get("score", float("inf")))
         elif self.search_type in ("fulltext", "hybrid_fts", "hybrid_regex"):
-            aggregated.sort(
-                key=lambda r: r.get("score", float("-inf")), reverse=True
-            )
+            aggregated.sort(key=lambda r: r.get("score", float("-inf")), reverse=True)
         return aggregated[: self.k]
 
     async def call(self, inputs, training=False):

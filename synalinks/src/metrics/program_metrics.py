@@ -40,6 +40,7 @@ class ProgramOperationalMetric(Metric):
     """
 
     _phase = "inference"
+    direction = "down"
 
     def __init__(self, name=None):
         super().__init__(name=name)

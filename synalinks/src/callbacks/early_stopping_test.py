@@ -59,9 +59,21 @@ class EarlyStoppingModeTest(testing.TestCase):
             self.assertTrue(any("unknown" in str(x.message) for x in w))
         self.assertEqual(cb.mode, "auto")
 
-    def test_auto_reward_uses_greater(self):
+    def test_auto_resolves_direction_from_metric(self):
+        """Auto-mode reads `direction` from the bound program's metric
+        (no hardcoded `"reward"` rule)."""
+        import types
+
+        from synalinks.src.trainers import compile_utils
+
         cb = EarlyStopping(monitor="val_reward", patience=1)
-        program = _run(cb, [0.1, 0.2, 0.2, 0.2])
+        program = _FakeProgram()
+        program.metrics = [
+            compile_utils.MetricsList(
+                metrics=[types.SimpleNamespace(name="reward", direction="up")],
+            )
+        ]
+        _run(cb, [0.1, 0.2, 0.2, 0.2], program=program)
         self.assertTrue(program.stop_training)
         self.assertIs(cb.monitor_op, np.greater)
 
@@ -104,9 +116,7 @@ class EarlyStoppingBehaviorTest(testing.TestCase):
         # The first value sets `best`. Subsequent values fail to improve on
         # `best`, and since the baseline is never beaten the wait counter
         # keeps growing until patience is exceeded.
-        cb = EarlyStopping(
-            monitor="val_reward", mode="max", baseline=10.0, patience=1
-        )
+        cb = EarlyStopping(monitor="val_reward", mode="max", baseline=10.0, patience=1)
         program = _run(cb, [0.5, 0.4, 0.3])
         self.assertTrue(program.stop_training)
 

@@ -2,9 +2,11 @@
 # Original authors: François Chollet et al. (Keras Team)
 # License Apache 2.0: (c) 2025-2026 Yoan Sallami (Synalinks Team)
 
-from synalinks.src import ops
+from synalinks.src import tree
 from synalinks.src.api_export import synalinks_export
+from synalinks.src.backend import EmbeddingRequest
 from synalinks.src.backend.common import numpy as np
+from synalinks.src.modules.embedding_models import get as _get_em
 from synalinks.src.rewards.reward import Reward
 from synalinks.src.rewards.reward import squeeze_or_expand_to_same_rank
 from synalinks.src.rewards.reward_wrappers import RewardFunctionWrapper
@@ -39,10 +41,19 @@ async def cosine_similarity(y_true, y_pred, embedding_model=None, axis=-1):
     """
     reward = 0.0
     if y_pred is not None:
-        y_true = await ops.embedding(y_true, embedding_model=embedding_model)
-        y_pred = await ops.embedding(y_pred, embedding_model=embedding_model)
-        y_true = np.convert_to_tensor(y_true.get("embeddings"))
-        y_pred = np.convert_to_tensor(y_pred.get("embeddings"))
+        em = _get_em(embedding_model)
+        # Flatten each data model's fields to strings, embed, and pull
+        # the vectors out — same logic the old `ops.embedding` did.
+        y_true_texts = tree.flatten(
+            tree.map_structure(lambda f: str(f), y_true.get_json())
+        )
+        y_pred_texts = tree.flatten(
+            tree.map_structure(lambda f: str(f), y_pred.get_json())
+        )
+        y_true_result = await em(EmbeddingRequest(texts=y_true_texts))
+        y_pred_result = await em(EmbeddingRequest(texts=y_pred_texts))
+        y_true = np.convert_to_tensor(y_true_result.get("embeddings"))
+        y_pred = np.convert_to_tensor(y_pred_result.get("embeddings"))
         y_true, y_pred = squeeze_or_expand_to_same_rank(y_true, y_pred)
         y_pred = np.normalize(y_pred, axis=axis)
         y_true = np.normalize(y_true, axis=axis)

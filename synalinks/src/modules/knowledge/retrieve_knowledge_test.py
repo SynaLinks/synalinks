@@ -166,15 +166,9 @@ class RetrieveKnowledgeTest(testing.TestCase):
         )
         await knowledge_base.update(
             [
-                JsonDataModel(
-                    data_model=Document(id="d1", text="error 404 not found")
-                ),
-                JsonDataModel(
-                    data_model=Document(id="d2", text="ERROR 500 internal")
-                ),
-                JsonDataModel(
-                    data_model=Document(id="d3", text="success 200 ok")
-                ),
+                JsonDataModel(data_model=Document(id="d1", text="error 404 not found")),
+                JsonDataModel(data_model=Document(id="d2", text="ERROR 500 internal")),
+                JsonDataModel(data_model=Document(id="d3", text="success 200 ok")),
             ]
         )
 
@@ -290,12 +284,8 @@ class RetrieveKnowledgeTest(testing.TestCase):
         )
         await knowledge_base.update(
             [
-                JsonDataModel(
-                    data_model=Document(id="d1", text="error 404 not found")
-                ),
-                JsonDataModel(
-                    data_model=Document(id="d2", text="success 200 ok")
-                ),
+                JsonDataModel(data_model=Document(id="d1", text="error 404 not found")),
+                JsonDataModel(data_model=Document(id="d2", text="success 200 ok")),
             ]
         )
 

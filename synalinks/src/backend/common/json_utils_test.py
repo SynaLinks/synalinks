@@ -780,9 +780,7 @@ class PyJsonHelpersTest(testing.TestCase):
         self.assertEqual(result, {"a": 1, "a_1": 1})
 
     def test_py_concatenate_disjoint(self):
-        self.assertEqual(
-            _py_concatenate_json({"a": 1}, {"b": 2}), {"a": 1, "b": 2}
-        )
+        self.assertEqual(_py_concatenate_json({"a": 1}, {"b": 2}), {"a": 1, "b": 2})
 
     def test_py_factorize_groups_scalars(self):
         result = _py_factorize_json({"foo": "x", "foo_1": "y"})
@@ -820,9 +818,7 @@ class PyJsonHelpersTest(testing.TestCase):
         self.assertEqual(result, {"items": [{"bar": 2}, {"bar": 4}]})
 
     def test_py_in_mask_pattern_match(self):
-        result = _py_in_mask_json(
-            {"input_a": 1, "output_b": 2}, pattern="^input_"
-        )
+        result = _py_in_mask_json({"input_a": 1, "output_b": 2}, pattern="^input_")
         self.assertEqual(result, {"input_a": 1})
 
     def test_py_in_mask_non_recursive_drops_arrays(self):

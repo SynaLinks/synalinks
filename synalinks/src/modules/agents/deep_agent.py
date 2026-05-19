@@ -31,7 +31,11 @@ def _resolve_inside_workdir(workdir: Path, user_path: str) -> Path:
        check fails and we refuse the operation.
     """
     resolved_workdir = workdir.resolve()
-    candidate = (resolved_workdir / user_path) if not os.path.isabs(user_path) else Path(user_path)
+    candidate = (
+        (resolved_workdir / user_path)
+        if not os.path.isabs(user_path)
+        else Path(user_path)
+    )
     resolved = candidate.resolve()
     try:
         resolved.relative_to(resolved_workdir)
@@ -80,6 +84,17 @@ def get_default_instructions(
         extras.append("Shell execution is DISABLED.")
     constraints = ("\n".join(f"- {line}" for line in extras) + "\n") if extras else ""
 
+    write_step = (
+        "Use `edit_file` for surgical changes (preferred over `write_file`)."
+        if allow_write
+        else "Reads only — do not propose write operations."
+    )
+    bash_step = (
+        "Use `run_bash` for builds, tests, and other shell work."
+        if allow_bash
+        else "Shell is disabled — solve tasks with file tools only."
+    )
+
     return f"""
 You are a software engineering assistant with filesystem and shell access
 scoped to a single working directory.
@@ -93,8 +108,8 @@ Plan:
 3. Use `read_file` to read files. Output is line-numbered (``cat -n``
    style). Pages of lines via `offset` / `limit`; raise `offset` to read
    further into the file.
-4. {"Use `edit_file` for surgical changes (preferred over `write_file`)." if allow_write else "Reads only — do not propose write operations."}
-5. {"Use `run_bash` for builds, tests, and other shell work." if allow_bash else "Shell is disabled — solve tasks with file tools only."}
+4. {write_step}
+5. {bash_step}
 6. Once you have the answer, stop calling tools and respond.
 
 Constraints:
@@ -276,8 +291,7 @@ def _build_tools(
             files.sort()
             truncated = len(files) > max_search_results
             rel_paths = [
-                str(p.relative_to(resolved_workdir))
-                for p in files[:max_search_results]
+                str(p.relative_to(resolved_workdir)) for p in files[:max_search_results]
             ]
             return {
                 "file_pattern": file_pattern,

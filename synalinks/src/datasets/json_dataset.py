@@ -1,10 +1,11 @@
 # License Apache 2.0: (c) 2025-2026 Yoan Sallami (Synalinks Team)
 
-import json as _json
 import os
 from typing import List
 from typing import Optional
 from typing import Union
+
+import orjson
 
 from synalinks.src.api_export import synalinks_export
 from synalinks.src.datasets.dataset import Dataset
@@ -122,7 +123,7 @@ class JSONDataset(Dataset):
         columns = self.columns
         for path in self.paths:
             with open(path, "r", encoding=self.encoding) as f:
-                data = _json.load(f)
+                data = orjson.loads(f.read())
             if not isinstance(data, list):
                 raise ValueError(
                     f"{path}: expected a top-level JSON array of objects, "
@@ -238,7 +239,7 @@ class JSONLDataset(Dataset):
                         # JSONL pipelines occasionally leave trailing
                         # newlines or split-then-rejoined chunks.
                         continue
-                    row = _json.loads(line)
+                    row = orjson.loads(line)
                     if not isinstance(row, dict):
                         raise ValueError(
                             f"{path}: every line must decode to a JSON "

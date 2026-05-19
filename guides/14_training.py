@@ -11,10 +11,10 @@ while it all runs. This guide is where those four ingredients come
 together.
 
 Training, in Synalinks, means: take a set of examples where you
-already know the right answer (or not if you use an LMasJudge), 
+already know the right answer (or not if you use an LMasJudge),
 run the program on each one, score how well it did with the reward,
 and let an **optimizer** rewrite the program's trainable variables
-to do better next time. The LM's internal weights stay frozen the 
+to do better next time. The LM's internal weights stay frozen the
 whole time; what changes is the JSON state we place in front of it.
 
 We need to be precise with terminology in this guide, because words

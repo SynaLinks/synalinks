@@ -14,6 +14,7 @@ if TYPE_CHECKING:
 from synalinks.src import tree
 from synalinks.src.api_export import synalinks_export
 from synalinks.src.backend import DataModel
+from synalinks.src.backend import EmbeddingRequest
 from synalinks.src.backend import Field
 from synalinks.src.backend import Trainable
 from synalinks.src.backend import out_mask_json
@@ -166,8 +167,12 @@ async def similarity_distance(
     Returns:
         float: Cosine distance between candidates (0 = identical, 1 = orthogonal)
     """
-    embeddings1 = await embedding_model(tree.flatten(candidate1))
-    embeddings2 = await embedding_model(tree.flatten(candidate2))
+    embeddings1 = await embedding_model(
+        EmbeddingRequest(texts=[str(x) for x in tree.flatten(candidate1)])
+    )
+    embeddings2 = await embedding_model(
+        EmbeddingRequest(texts=[str(x) for x in tree.flatten(candidate2)])
+    )
     embeddings1 = embeddings1["embeddings"]
     embeddings2 = embeddings2["embeddings"]
     embeddings1 = np.convert_to_tensor(embeddings1)

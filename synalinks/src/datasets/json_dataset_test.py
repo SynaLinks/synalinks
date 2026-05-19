@@ -317,9 +317,7 @@ class JSONLDatasetTest(testing.TestCase):
             batch_size=10,
         )
         (x,) = next(iter(ds))
-        self.assertEqual(
-            [item.question for item in x], ["alpha", "beta", "gamma"]
-        )
+        self.assertEqual([item.question for item in x], ["alpha", "beta", "gamma"])
 
     def test_columns_filter_drops_unrequested_keys(self):
         # Directly inspect the projection — see the JSONDataset

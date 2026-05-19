@@ -428,8 +428,7 @@ class DatabaseAdapter:
             NotImplementedError: Subclasses must implement this method.
         """
         raise NotImplementedError(
-            f"{self.__class__.__name__} should implement the "
-            f"`hybrid_fts_search()` method"
+            f"{self.__class__.__name__} should implement the `hybrid_fts_search()` method"
         )
 
     async def regex_search(

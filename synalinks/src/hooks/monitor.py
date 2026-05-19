@@ -13,7 +13,6 @@ from synalinks.src import tree
 from synalinks.src.api_export import synalinks_export
 from synalinks.src.backend import DataModel
 from synalinks.src.backend import any_symbolic_data_models
-from synalinks.src.backend import is_data_model
 from synalinks.src.backend.config import mlflow_experiment_name
 from synalinks.src.backend.config import mlflow_tracking_uri
 from synalinks.src.hooks.hook import Hook
@@ -129,35 +128,6 @@ class Monitor(Hook):
         mlflow.set_experiment(self.experiment_name)
         self._setup_done = True
 
-    def _serialize_data(self, data):
-        """Serialize data models to JSON-compatible format.
-
-        Standard module IO carries DataModels, which are flattened and
-        unwrapped via `get_json` / `get_schema`. `LanguageModel` and
-        `EmbeddingModel` instead pass raw `list[str]` / `dict` payloads
-        — for those we skip flattening (which would drop dict keys) and
-        return the value as-is, since it's already JSON-serializable.
-        """
-        is_symbolic = any_symbolic_data_models(data)
-        flatten_data = tree.flatten(data)
-        has_data_models = any(
-            is_data_model(d) or hasattr(d, "get_schema") for d in flatten_data
-        )
-
-        if not has_data_models:
-            return [data], is_symbolic
-
-        if is_symbolic:
-            serialized = [dm.get_schema() for dm in flatten_data if dm is not None]
-        else:
-            serialized = [
-                dm.get_json() if hasattr(dm, "get_json") else dm
-                for dm in flatten_data
-                if dm is not None
-            ]
-
-        return serialized, is_symbolic
-
     def _get_span_type(self):
         """Determine the MLflow span type based on the module class."""
         if SpanType is None:
@@ -240,7 +210,17 @@ class Monitor(Hook):
         self._setup_mlflow()
         self.call_start_times[call_id] = time.time()
 
-        serialized_inputs, is_symbolic = self._serialize_data(inputs)
+        # `hasattr(d, "get_schema")` filters out `LanguageModel` streaming
+        # outputs (a `StreamingIterator` has no materialized payload to log).
+        is_symbolic = any_symbolic_data_models(inputs)
+        leaves = [
+            d for d in tree.flatten(inputs) if d is not None and hasattr(d, "get_schema")
+        ]
+        serialized_inputs = (
+            [d.get_schema() for d in leaves]
+            if is_symbolic
+            else [d.get_json() for d in leaves]
+        )
 
         # Serialize kwargs if present (for modules that use keyword arguments)
         serialized_kwargs = {}
@@ -336,7 +316,14 @@ class Monitor(Hook):
             _LOGGER.warning(f"No span found for call_id {call_id}")
             return
 
-        serialized_outputs, _ = self._serialize_data(outputs)
+        leaves = [
+            d for d in tree.flatten(outputs) if d is not None and hasattr(d, "get_schema")
+        ]
+        serialized_outputs = (
+            [d.get_schema() for d in leaves]
+            if any_symbolic_data_models(outputs)
+            else [d.get_json() for d in leaves]
+        )
 
         cost = None
         if self.module._get_call_context():

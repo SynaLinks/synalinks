@@ -31,14 +31,9 @@ from synalinks.src.backend.config import set_backend as set_backend
 from synalinks.src.backend.config import set_epsilon as set_epsilon
 from synalinks.src.backend.config import set_floatx as set_floatx
 from synalinks.src.backend.config import set_seed as set_seed
-from synalinks.src.backend.pydantic.base import ChatMessage as ChatMessage
-from synalinks.src.backend.pydantic.base import ChatMessages as ChatMessages
-from synalinks.src.backend.pydantic.base import ChatRole as ChatRole
-from synalinks.src.backend.pydantic.base import EmbeddedEntity as EmbeddedEntity
 from synalinks.src.backend.pydantic.base import Embedding as Embedding
+from synalinks.src.backend.pydantic.base import EmbeddingRequest as EmbeddingRequest
 from synalinks.src.backend.pydantic.base import Embeddings as Embeddings
-from synalinks.src.backend.pydantic.base import Entities as Entities
-from synalinks.src.backend.pydantic.base import Entity as Entity
 from synalinks.src.backend.pydantic.base import GenericInputs as GenericInputs
 from synalinks.src.backend.pydantic.base import GenericIO as GenericIO
 from synalinks.src.backend.pydantic.base import GenericOutputs as GenericOutputs
@@ -46,16 +41,8 @@ from synalinks.src.backend.pydantic.base import GenericResult as GenericResult
 from synalinks.src.backend.pydantic.base import Instructions as Instructions
 from synalinks.src.backend.pydantic.base import KnowledgeGraph as KnowledgeGraph
 from synalinks.src.backend.pydantic.base import Prediction as Prediction
-from synalinks.src.backend.pydantic.base import Relation as Relation
-from synalinks.src.backend.pydantic.base import Relations as Relations
-from synalinks.src.backend.pydantic.base import Score as Score
-from synalinks.src.backend.pydantic.base import SimilaritySearch as SimilaritySearch
 from synalinks.src.backend.pydantic.base import Stamp as Stamp
-from synalinks.src.backend.pydantic.base import ToolCall as ToolCalling
-from synalinks.src.backend.pydantic.base import ToolCall as ToollCall
 from synalinks.src.backend.pydantic.base import Trainable as Trainable
-from synalinks.src.backend.pydantic.base import is_chat_message as is_chat_message
-from synalinks.src.backend.pydantic.base import is_chat_messages as is_chat_messages
 from synalinks.src.backend.pydantic.base import is_embedded as is_embedded
 from synalinks.src.backend.pydantic.base import is_embedded_entity as is_embedded_entity
 from synalinks.src.backend.pydantic.base import is_embedding as is_embedding
@@ -65,13 +52,42 @@ from synalinks.src.backend.pydantic.base import is_entity as is_entity
 from synalinks.src.backend.pydantic.base import is_instructions as is_instructions
 from synalinks.src.backend.pydantic.base import is_knowledge_graph as is_knowledge_graph
 from synalinks.src.backend.pydantic.base import is_prediction as is_prediction
-from synalinks.src.backend.pydantic.base import is_relation as is_relation
-from synalinks.src.backend.pydantic.base import is_relations as is_relations
-from synalinks.src.backend.pydantic.base import (
-    is_similarity_search as is_similarity_search,
-)
 from synalinks.src.backend.pydantic.base import is_stamped as is_stamped
-from synalinks.src.backend.pydantic.base import is_tool_call as is_tool_call
 from synalinks.src.backend.pydantic.base import is_trainable as is_trainable
+from synalinks.src.backend.pydantic.common import ChatMessage as ChatMessage
+from synalinks.src.backend.pydantic.common import ChatMessages as ChatMessages
+from synalinks.src.backend.pydantic.common import ChatRole as ChatRole
+from synalinks.src.backend.pydantic.common import ToolCall as ToolCalling
+from synalinks.src.backend.pydantic.common import ToolCall as ToollCall
+from synalinks.src.backend.pydantic.common import is_chat_message as is_chat_message
+from synalinks.src.backend.pydantic.common import is_chat_messages as is_chat_messages
+from synalinks.src.backend.pydantic.common import (
+    is_strictly_chat_message as is_strictly_chat_message,
+)
+from synalinks.src.backend.pydantic.common import (
+    is_strictly_chat_messages as is_strictly_chat_messages,
+)
+from synalinks.src.backend.pydantic.common import is_tool_call as is_tool_call
 from synalinks.src.backend.pydantic.core import is_meta_class as is_meta_class
+from synalinks.src.backend.pydantic.knowledge import EmbeddedEntity as EmbeddedEntity
+from synalinks.src.backend.pydantic.knowledge import Entities as Entities
+from synalinks.src.backend.pydantic.knowledge import Entity as Entity
+from synalinks.src.backend.pydantic.knowledge import KnowledgeGraph as KnowledgeGraph
+from synalinks.src.backend.pydantic.knowledge import KnowledgeGraphs as KnowledgeGraphs
+from synalinks.src.backend.pydantic.knowledge import Relation as Relation
+from synalinks.src.backend.pydantic.knowledge import Relations as Relations
+from synalinks.src.backend.pydantic.knowledge import (
+    is_embedded_entity as is_embedded_entity,
+)
+from synalinks.src.backend.pydantic.knowledge import is_entities as is_entities
+from synalinks.src.backend.pydantic.knowledge import is_entity as is_entity
+from synalinks.src.backend.pydantic.knowledge import (
+    is_knowledge_graph as is_knowledge_graph,
+)
+from synalinks.src.backend.pydantic.knowledge import (
+    is_knowledge_graphs as is_knowledge_graphs,
+)
+from synalinks.src.backend.pydantic.knowledge import is_relation as is_relation
+from synalinks.src.backend.pydantic.knowledge import is_relations as is_relations
+from synalinks.src.backend.pydantic.metrics import Score as Score
 from synalinks.src.utils.naming import get_uid as get_uid

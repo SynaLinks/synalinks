@@ -115,9 +115,7 @@ class MonitorLogMetricsTest(testing.TestCase):
         cb = Monitor()
         cb._run = _FakeRun()
         with patch.object(monitor_module, "mlflow") as mlf:
-            await cb._log_metrics(
-                {"a": 1.0, "b": 2, "c": "str", "d": None}, step=4
-            )
+            await cb._log_metrics({"a": 1.0, "b": 2, "c": "str", "d": None}, step=4)
         mlf.log_metrics.assert_called_once_with({"a": 1.0, "b": 2}, step=4)
 
     async def test_log_metrics_skips_when_no_run(self):
@@ -219,9 +217,7 @@ class MonitorLifecycleTest(testing.TestCase):
         self.assertEqual(cb._step, 3)
 
     def test_batch_metrics_disabled_by_default(self):
-        cb = self._patched_monitor(
-            log_program_plot=False, log_program_model=False
-        )
+        cb = self._patched_monitor(log_program_plot=False, log_program_model=False)
         with patch.object(monitor_module, "mlflow") as mlf:
             mlf.start_run.return_value = _FakeRun()
             cb.on_train_begin()
@@ -240,9 +236,7 @@ class MonitorLifecycleTest(testing.TestCase):
         mlf.end_run.assert_called_once()
 
     def test_test_inside_training_does_not_end_run(self):
-        cb = self._patched_monitor(
-            log_program_plot=False, log_program_model=False
-        )
+        cb = self._patched_monitor(log_program_plot=False, log_program_model=False)
         with patch.object(monitor_module, "mlflow") as mlf:
             mlf.start_run.return_value = _FakeRun()
             cb.on_train_begin()
@@ -326,9 +320,7 @@ class MonitorArtifactUploadTest(testing.TestCase):
                 mock_resp = MagicMock()
                 mock_resp.status_code = 201
                 mock_put.return_value = mock_resp
-                await cb._upload_artifact_via_http(
-                    path, artifact_path=None, run_id="r1"
-                )
+                await cb._upload_artifact_via_http(path, artifact_path=None, run_id="r1")
         url = mock_put.call_args[0][0]
         self.assertIn("0/r1/artifacts/state.json", url)
         # No artifact subpath since artifact_path is None.
@@ -336,9 +328,7 @@ class MonitorArtifactUploadTest(testing.TestCase):
 
     async def test_upload_raises_on_non_success(self):
         cb = Monitor(tracking_uri="http://server")
-        fake_run = _FakeRun(
-            run_id="r1", artifact_uri="mlflow-artifacts:/0/r1/artifacts"
-        )
+        fake_run = _FakeRun(run_id="r1", artifact_uri="mlflow-artifacts:/0/r1/artifacts")
         tmp = self.get_temp_dir()
         path = f"{tmp}/x.txt"
         with open(path, "wb") as f:

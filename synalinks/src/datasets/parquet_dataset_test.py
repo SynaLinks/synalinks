@@ -404,9 +404,7 @@ class ParquetDatasetTest(testing.TestCase):
         empty = os.path.join(self.tmp, "empty.parquet")
         b = os.path.join(self.tmp, "b.parquet")
         _write_parquet(a, {"q": ["a1"]})
-        pa_parquet.write_table(
-            pa.table({"q": pa.array([], type=pa.string())}), empty
-        )
+        pa_parquet.write_table(pa.table({"q": pa.array([], type=pa.string())}), empty)
         _write_parquet(b, {"q": ["b1"]})
 
         ds = ParquetDataset(

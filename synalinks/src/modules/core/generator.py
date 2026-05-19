@@ -12,7 +12,10 @@ from synalinks.src.backend import ChatRole
 from synalinks.src.backend import Instructions
 from synalinks.src.backend import Prediction
 from synalinks.src.backend import SymbolicDataModel
+from synalinks.src.backend import is_strictly_chat_message
+from synalinks.src.backend import is_strictly_chat_messages
 from synalinks.src.modules.language_models import get as _get_lm
+from synalinks.src.modules.language_models.language_model import StreamingIterator
 from synalinks.src.modules.module import Module
 from synalinks.src.saving import serialization_lib
 
@@ -223,7 +226,7 @@ class Generator(Module):
             name="state_" + self.name,
         )
 
-    async def call(self, inputs, training=False):
+    async def call(self, inputs, tools=None, training=False):
         if not inputs:
             return None
         msgs = self.format_messages(inputs)
@@ -231,15 +234,20 @@ class Generator(Module):
             streaming = True
         else:
             streaming = False
-        result = await ops.predict(
+        value = await self.language_model(
             msgs,
             schema=self.schema,
-            language_model=self.language_model,
+            tools=tools,
             streaming=streaming,
-            name="prediction_" + self.name,
             temperature=self.temperature,
             reasoning_effort=self.reasoning_effort,
         )
+        if isinstance(value, StreamingIterator):
+            result = value
+        elif not value:
+            result = None
+        else:
+            result = value.clone(name="prediction_" + self.name)
         if streaming:
             return result
         if result:
@@ -262,7 +270,7 @@ class Generator(Module):
                 return result
         return None
 
-    async def compute_output_spec(self, inputs, training=False):
+    async def compute_output_spec(self, inputs, tools=None, training=False):
         if self.schema:
             if self.return_inputs:
                 return await ops.concat(
@@ -306,11 +314,24 @@ class Generator(Module):
             instructions=self.state.get("instructions"),
         )
         system_message = ChatMessage(role="system", content=rendered_prompt)
+        if is_strictly_chat_messages(inputs):
+            input_messages = [
+                ChatMessage(**msg) if isinstance(msg, dict) else msg
+                for msg in inputs.get("messages", [])
+            ]
+            has_system = any(m.role == ChatRole.SYSTEM for m in input_messages)
+            if has_system:
+                return ChatMessages(messages=input_messages)
+            return ChatMessages(messages=[system_message, *input_messages])
+        if is_strictly_chat_message(inputs):
+            input_message = ChatMessage(**inputs.get_json())
+            if input_message.role == ChatRole.SYSTEM:
+                return ChatMessages(messages=[input_message])
+            return ChatMessages(messages=[system_message, input_message])
         user_message = ChatMessage(
             role="user", content=f"## Input:\n{inputs.get_json()}\n##Output:\n"
         )
-        msgs = ChatMessages(messages=[system_message, user_message])
-        return msgs
+        return ChatMessages(messages=[system_message, user_message])
 
     def get_config(self):
         config = {

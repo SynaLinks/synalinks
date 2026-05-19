@@ -156,8 +156,7 @@ def _build_tools(
         if table_name not in available_tables:
             return {
                 "error": (
-                    f"Table {table_name!r} not found. "
-                    f"Available: {available_tables}"
+                    f"Table {table_name!r} not found. Available: {available_tables}"
                 )
             }
         try:
@@ -216,8 +215,7 @@ def _build_tools(
         if table_name not in available_tables:
             return {
                 "error": (
-                    f"Table {table_name!r} not found. "
-                    f"Available: {available_tables}"
+                    f"Table {table_name!r} not found. Available: {available_tables}"
                 )
             }
         try:

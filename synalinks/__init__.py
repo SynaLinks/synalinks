@@ -21,6 +21,7 @@ from synalinks.api import EmbeddingModel
 from synalinks.api import EmbeddingModelOperationalMetric
 from synalinks.api import EmbeddingModelOptimizersOperationalMetric
 from synalinks.api import EmbeddingModelRewardsOperationalMetric
+from synalinks.api import EmbeddingRequest
 from synalinks.api import Embeddings
 from synalinks.api import EmbedKnowledge
 from synalinks.api import Entities
@@ -45,6 +46,7 @@ from synalinks.api import JSONDataset
 from synalinks.api import JSONLDataset
 from synalinks.api import KnowledgeBase
 from synalinks.api import KnowledgeGraph
+from synalinks.api import KnowledgeGraphs
 from synalinks.api import LanguageModel
 from synalinks.api import LMAsJudge
 from synalinks.api import LMOperationalMetric
@@ -115,12 +117,15 @@ from synalinks.api import is_entities
 from synalinks.api import is_entity
 from synalinks.api import is_instructions
 from synalinks.api import is_knowledge_graph
+from synalinks.api import is_knowledge_graphs
 from synalinks.api import is_observability_enabled
 from synalinks.api import is_prediction
 from synalinks.api import is_relation
 from synalinks.api import is_relations
 from synalinks.api import is_similarity_search
 from synalinks.api import is_stamped
+from synalinks.api import is_strictly_chat_message
+from synalinks.api import is_strictly_chat_messages
 from synalinks.api import is_tool_call
 from synalinks.api import is_trainable
 from synalinks.api import language_models
