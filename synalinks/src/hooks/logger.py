@@ -9,6 +9,10 @@ from synalinks.src.api_export import synalinks_export
 from synalinks.src.backend import any_symbolic_data_models
 from synalinks.src.hooks.hook import Hook
 
+# `hasattr(d, "get_schema")` filters out `LanguageModel` streaming outputs
+# (a `StreamingIterator` has no materialized payload to log). Everything else
+# flowing through a module is a `JsonDataModel` / `SymbolicDataModel`.
+
 _SYMBOLIC_LOG_TEMPLATE = """
 Call ID: {call_id}
 Parent call ID: {parent_call_id}
@@ -93,12 +97,11 @@ class Logger(Hook):
         self._maybe_setup_logger()
         module_name = self.module.name
         module_description = self.module.description
-        flatten_inputs = tree.flatten(inputs)
+        leaves = [
+            d for d in tree.flatten(inputs) if d is not None and hasattr(d, "get_schema")
+        ]
         if any_symbolic_data_models(inputs):
-            data_models_schemas = [
-                dm.get_schema() for dm in flatten_inputs if dm is not None
-            ]
-            if data_models_schemas:
+            if leaves:
                 self.logger.debug(
                     _SYMBOLIC_LOG_TEMPLATE.format(
                         name="Symbolic Call Start",
@@ -108,18 +111,13 @@ class Logger(Hook):
                         module_name=module_name,
                         module_description=module_description,
                         data_model_schema=orjson.dumps(
-                            data_models_schemas,
+                            [dm.get_schema() for dm in leaves],
                             option=orjson.OPT_INDENT_2,
                         ).decode(),
                     ),
                 )
         else:
-            data_models_jsons = [
-                dm.get_json()
-                for dm in flatten_inputs
-                if dm is not None and hasattr(dm, "get_json")
-            ]
-            if data_models_jsons:
+            if leaves:
                 self.logger.info(
                     _DATA_LOG_TEMPLATE.format(
                         name="Call Start",
@@ -129,7 +127,7 @@ class Logger(Hook):
                         module_name=module_name,
                         module_description=module_description,
                         data_model_json=orjson.dumps(
-                            data_models_jsons,
+                            [dm.get_json() for dm in leaves],
                             option=orjson.OPT_INDENT_2,
                         ).decode(),
                     )
@@ -179,44 +177,38 @@ class Logger(Hook):
             )
         if not outputs:
             return
-        flatten_outputs = tree.flatten(outputs)
+        leaves = [
+            d for d in tree.flatten(outputs) if d is not None and hasattr(d, "get_schema")
+        ]
+        if not leaves:
+            return
         if any_symbolic_data_models(outputs):
-            data_models_schemas = [
-                dm.get_schema() for dm in flatten_outputs if dm is not None
-            ]
-            if data_models_schemas:
-                self.logger.debug(
-                    _SYMBOLIC_LOG_TEMPLATE.format(
-                        name="Symbolic Call End",
-                        call_id=call_id,
-                        parent_call_id=parent_call_id,
-                        module=str(self.module.__class__.__name__),
-                        module_name=module_name,
-                        module_description=module_description,
-                        data_model_schema=orjson.dumps(
-                            data_models_schemas,
-                            option=orjson.OPT_INDENT_2,
-                        ).decode(),
-                    ),
-                )
+            self.logger.debug(
+                _SYMBOLIC_LOG_TEMPLATE.format(
+                    name="Symbolic Call End",
+                    call_id=call_id,
+                    parent_call_id=parent_call_id,
+                    module=str(self.module.__class__.__name__),
+                    module_name=module_name,
+                    module_description=module_description,
+                    data_model_schema=orjson.dumps(
+                        [dm.get_schema() for dm in leaves],
+                        option=orjson.OPT_INDENT_2,
+                    ).decode(),
+                ),
+            )
         else:
-            data_models_jsons = [
-                dm.get_json()
-                for dm in flatten_outputs
-                if dm is not None and hasattr(dm, "get_json")
-            ]
-            if data_models_jsons:
-                self.logger.info(
-                    _DATA_LOG_TEMPLATE.format(
-                        name="Call End",
-                        call_id=call_id,
-                        parent_call_id=parent_call_id,
-                        module=str(self.module.__class__.__name__),
-                        module_name=module_name,
-                        module_description=module_description,
-                        data_model_json=orjson.dumps(
-                            data_models_jsons,
-                            option=orjson.OPT_INDENT_2,
-                        ).decode(),
-                    )
+            self.logger.info(
+                _DATA_LOG_TEMPLATE.format(
+                    name="Call End",
+                    call_id=call_id,
+                    parent_call_id=parent_call_id,
+                    module=str(self.module.__class__.__name__),
+                    module_name=module_name,
+                    module_description=module_description,
+                    data_model_json=orjson.dumps(
+                        [dm.get_json() for dm in leaves],
+                        option=orjson.OPT_INDENT_2,
+                    ).decode(),
                 )
+            )

@@ -71,6 +71,8 @@ class FBetaScore(Metric):
             are dropped (combined with ``out_mask`` via OR).
     """
 
+    direction = "up"
+
     def __init__(
         self,
         average=None,
@@ -150,9 +152,7 @@ class FBetaScore(Metric):
         for yt, yp in zip(y_true, y_pred):
             y_true_tokens = nlp_utils.normalize_and_tokenize(str(yt))
             y_pred_tokens = nlp_utils.normalize_and_tokenize(str(yp))
-            num_common = sum(
-                (Counter(y_true_tokens) & Counter(y_pred_tokens)).values()
-            )
+            num_common = sum((Counter(y_true_tokens) & Counter(y_pred_tokens)).values())
             true_positives.append(num_common)
             false_positives.append(len(y_pred_tokens) - num_common)
             false_negatives.append(len(y_true_tokens) - num_common)
@@ -212,9 +212,7 @@ class FBetaScore(Metric):
         precision = np.convert_to_tensor(
             np.divide(tp, np.add(tp, fp) + backend.epsilon())
         )
-        recall = np.convert_to_tensor(
-            np.divide(tp, np.add(tp, fn) + backend.epsilon())
-        )
+        recall = np.convert_to_tensor(np.divide(tp, np.add(tp, fn) + backend.epsilon()))
 
         formula = getattr(self, "_formula", "fbeta")
         if formula == "precision":
@@ -825,11 +823,7 @@ class CategoricalFBetaScore(FBetaScore):
 
     def result(self):
         res = super().result()
-        if (
-            self.labels is not None
-            and self.average is None
-            and isinstance(res, list)
-        ):
+        if self.labels is not None and self.average is None and isinstance(res, list):
             return {label: score for label, score in zip(self.labels, res)}
         return res
 

@@ -112,8 +112,6 @@ class EarlyStopping(Callback):
             self.monitor_op = np.greater
         else:
             metric_name = self.monitor.removeprefix("val_")
-            if metric_name == "reward":
-                self.monitor_op = np.greater
             if hasattr(self.program, "metrics"):
                 all_metrics = []
                 for m in self.program.metrics:
@@ -126,12 +124,11 @@ class EarlyStopping(Callback):
                     ):
                         all_metrics.extend(m.metrics)
                 for m in all_metrics:
-                    if m.name == metric_name:
-                        if hasattr(m, "_direction"):
-                            if m._direction == "up":
-                                self.monitor_op = np.greater
-                            else:
-                                self.monitor_op = np.less
+                    if m.name == metric_name and getattr(m, "direction", None):
+                        if m.direction == "up":
+                            self.monitor_op = np.greater
+                        else:
+                            self.monitor_op = np.less
         if self.monitor_op is None:
             raise ValueError(
                 f"EarlyStopping callback received monitor={self.monitor} "

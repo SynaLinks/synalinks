@@ -295,7 +295,9 @@ async def main():
     )
 
     # Ask a non-trivial question that requires a JOIN + GROUP BY.
-    result = await agent(Query(query="Who are the top 2 customers by total order amount?"))
+    result = await agent(
+        Query(query="Who are the top 2 customers by total order amount?")
+    )
     print("Answer:", result["answer"])
     print("SQL:", result["sql_query"])
 

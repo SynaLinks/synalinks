@@ -59,6 +59,8 @@ class Accuracy(Metric):
             are dropped (combined with ``out_mask`` via OR).
     """
 
+    direction = "up"
+
     def __init__(
         self,
         average=None,
@@ -569,11 +571,7 @@ class CategoricalAccuracy(Accuracy):
 
     def result(self):
         res = super().result()
-        if (
-            self.labels is not None
-            and self.average is None
-            and isinstance(res, list)
-        ):
+        if self.labels is not None and self.average is None and isinstance(res, list):
             return {label: score for label, score in zip(self.labels, res)}
         return res
 

@@ -1,7 +1,6 @@
 # License Apache 2.0: (c) 2025-2026 Yoan Sallami (Synalinks Team)
 
 import asyncio
-import uuid
 
 from synalinks.src import ops
 from synalinks.src.api_export import synalinks_export
@@ -10,10 +9,7 @@ from synalinks.src.backend import ChatMessages
 from synalinks.src.backend import ChatRole
 from synalinks.src.backend import JsonDataModel
 from synalinks.src.backend import SymbolicDataModel
-from synalinks.src.backend import ToolCall
 from synalinks.src.backend import is_chat_messages
-from synalinks.src.backend.common.dynamic_json_schema_utils import dynamic_tool_calls
-from synalinks.src.backend.common.json_utils import out_mask_json
 from synalinks.src.modules.core.generator import Generator
 from synalinks.src.modules.language_models import get as _get_lm
 from synalinks.src.modules.module import Module
@@ -435,7 +431,6 @@ class FunctionCallingAgent(Module):
                     f"Tool(...)."
                 )
             self.tools[tool.name] = tool
-        tool_calls_schema = dynamic_tool_calls(tools=tools)
 
         self.autonomous = autonomous
         self.return_inputs_with_trajectory = return_inputs_with_trajectory
@@ -445,32 +440,23 @@ class FunctionCallingAgent(Module):
             streaming = False
         self.streaming = streaming
 
-        if use_chain_of_thought:
-            self.tool_calls_generator = ChainOfThought(
-                schema=tool_calls_schema,
-                prompt_template=self.prompt_template,
-                examples=self.examples,
-                instructions=self.instructions,
-                temperature=self.temperature,
-                use_inputs_schema=self.use_inputs_schema,
-                use_outputs_schema=self.use_outputs_schema,
-                reasoning_effort=self.reasoning_effort,
-                language_model=self.language_model,
-                name="tool_calls_generator_" + self.name,
-            )
-        else:
-            self.tool_calls_generator = Generator(
-                schema=tool_calls_schema,
-                prompt_template=self.prompt_template,
-                examples=self.examples,
-                instructions=self.instructions,
-                temperature=self.temperature,
-                use_inputs_schema=self.use_inputs_schema,
-                use_outputs_schema=self.use_outputs_schema,
-                reasoning_effort=self.reasoning_effort,
-                language_model=self.language_model,
-                name="tool_calls_generator_" + self.name,
-            )
+        # Native function-calling: the LM picks tools and emits a
+        # ChatMessage with `tool_calls` populated in the synalinks flat
+        # shape ({id, name, arguments}). Tool-call IDs are the provider's
+        # own — no local uuid4 needed. Tools are passed at call time
+        # (see `call`), not at construction.
+        tool_calls_generator_cls = ChainOfThought if use_chain_of_thought else Generator
+        self.tool_calls_generator = tool_calls_generator_cls(
+            prompt_template=self.prompt_template,
+            examples=self.examples,
+            instructions=self.instructions,
+            temperature=self.temperature,
+            use_inputs_schema=self.use_inputs_schema,
+            use_outputs_schema=self.use_outputs_schema,
+            reasoning_effort=self.reasoning_effort,
+            language_model=self.language_model,
+            name="tool_calls_generator_" + self.name,
+        )
 
         self.final_generator = Generator(
             schema=self.schema,
@@ -507,7 +493,9 @@ class FunctionCallingAgent(Module):
 
         if self.autonomous:
             for i in range(self.max_iterations):
-                tool_calls = await self.tool_calls_generator(trajectory)
+                tool_calls = await self.tool_calls_generator(
+                    trajectory, tools=list(self.tools.values())
+                )
 
                 if not tool_calls:
                     assistant_message = ChatMessage(
@@ -518,32 +506,23 @@ class FunctionCallingAgent(Module):
                     agent_messages.append(assistant_message.get_json())
                     break
 
-                assistant_message = ChatMessage(
-                    role=ChatRole.ASSISTANT,
-                    content=tool_calls.get("thinking", ""),
-                )
-
-                if not tool_calls.get("tool_calls"):
+                native_tool_calls = tool_calls.get("tool_calls")
+                if not native_tool_calls:
                     break
 
                 tasks = []
                 tool_calls_ids = []
-
-                for tool_call in tool_calls.get("tool_calls"):
-                    tool_name = tool_call.get("tool_name")
-                    tools_arguments = out_mask_json(tool_call, mask=["tool_name"])
-                    tool_call_id = str(uuid.uuid4())
+                for tool_call in native_tool_calls:
+                    tool_name = tool_call.get("name")
+                    tools_arguments = tool_call.get("arguments") or {}
+                    tool_call_id = tool_call.get("id")
                     tool_calls_ids.append(tool_call_id)
-                    assistant_message.tool_calls.append(
-                        ToolCall(
-                            id=tool_call_id,
-                            name=tool_name,
-                            arguments=tools_arguments,
-                        )
-                    )
                     tasks.append(self.tools[tool_name](**tools_arguments))
 
-                agent_messages.append(assistant_message.get_json())
+                # The generator already returned an assistant ChatMessage
+                # with native `tool_calls`; append it as-is rather than
+                # rebuilding from scratch.
+                agent_messages.append(tool_calls.get_json())
 
                 tool_results = await asyncio.gather(*tasks, return_exceptions=True)
                 for j, tool_result in enumerate(tool_results):
@@ -619,7 +598,7 @@ class FunctionCallingAgent(Module):
                     tasks = []
                     tool_calls_ids = []
 
-                    tool_calls = agent_messages[-1].get("tool_calls")
+                    tool_calls = agent_messages[-1].get("tool_calls") or []
                     for tool_call in tool_calls:
                         tool_name = tool_call.get("name")
                         tools_arguments = tool_call.get("arguments")
@@ -653,7 +632,9 @@ class FunctionCallingAgent(Module):
 
             trajectory.update({"messages": agent_messages})
 
-            tool_calls = await self.tool_calls_generator(trajectory)
+            tool_calls = await self.tool_calls_generator(
+                trajectory, tools=list(self.tools.values())
+            )
 
             # If no tool calls, call final generator
             # without appending the empty tool calls message
@@ -702,25 +683,9 @@ class FunctionCallingAgent(Module):
                         name=self.name,
                     )
 
-            assistant_message = ChatMessage(
-                role=ChatRole.ASSISTANT,
-                content=tool_calls.get("thinking", ""),
-                tool_calls=[],
-            )
-
-            for tool_call in tool_calls.get("tool_calls", []):
-                tool_name = tool_call.get("tool_name")
-                tools_arguments = out_mask_json(tool_call, mask=["tool_name"])
-                tool_call_id = str(uuid.uuid4())
-
-                assistant_message.tool_calls.append(
-                    ToolCall(
-                        id=tool_call_id,
-                        name=tool_name,
-                        arguments=tools_arguments,
-                    )
-                )
-
+            # The generator returned an assistant ChatMessage with native
+            # tool_calls already in the synalinks shape; reuse it directly.
+            assistant_message = ChatMessage(**tool_calls.get_json())
             agent_messages.append(assistant_message.get_json())
             new_messages.append(assistant_message)
             trajectory.update({"messages": agent_messages})
@@ -744,7 +709,7 @@ class FunctionCallingAgent(Module):
 
     async def compute_output_spec(self, inputs, training=False):
         if self.autonomous:
-            _ = await self.tool_calls_generator(inputs)
+            _ = await self.tool_calls_generator(inputs, tools=list(self.tools.values()))
             if self.schema:
                 if self.return_inputs_with_trajectory:
                     return await ops.logical_and(
@@ -774,7 +739,7 @@ class FunctionCallingAgent(Module):
                     "needs an ChatMessages-like data model as inputs"
                 )
 
-            _ = await self.tool_calls_generator(inputs)
+            _ = await self.tool_calls_generator(inputs, tools=list(self.tools.values()))
 
             # The output can be either the final generator output (when no tool calls)
             # or ChatMessages (when there are tool calls)

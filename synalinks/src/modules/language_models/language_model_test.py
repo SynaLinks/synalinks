@@ -36,8 +36,8 @@ class LanguageModelTest(testing.TestCase):
             role=ChatRole.ASSISTANT, content="Hello, how can I help you?"
         )
         result = await language_model(messages)
-        self.assertEqual(result, ChatMessage(**result).get_json())
-        self.assertEqual(result, expected.get_json())
+        self.assertEqual(result.get_json(), ChatMessage(**result.get_json()).get_json())
+        self.assertEqual(result.get_json(), expected.get_json())
 
     @patch("litellm.acompletion")
     async def test_call_api_with_structured_output(self, mock_completion):
@@ -80,8 +80,10 @@ class LanguageModelTest(testing.TestCase):
             answer="Toulouse",
         )
         result = await language_model(messages, schema=AnswerWithRationale.get_schema())
-        self.assertEqual(result, AnswerWithRationale(**result).get_json())
-        self.assertEqual(result, expected.get_json())
+        self.assertEqual(
+            result.get_json(), AnswerWithRationale(**result.get_json()).get_json()
+        )
+        self.assertEqual(result.get_json(), expected.get_json())
 
     @patch("litellm.acompletion")
     async def test_call_api_streaming_mode(self, mock_completion):
@@ -137,7 +139,7 @@ class LanguageModelTest(testing.TestCase):
         expected = ChatMessage(
             role=ChatRole.ASSISTANT, content="Hello, how can I help you?"
         )
-        self.assertEqual(result, expected.get_json())
+        self.assertEqual(result.get_json(), expected.get_json())
         self.assertEqual(language_model.last_call_cost, 0.0)
         self.assertEqual(language_model.cumulated_cost, 0.0)
 
@@ -163,7 +165,7 @@ class LanguageModelTest(testing.TestCase):
 
         result = await language_model(messages, schema=Answer.get_schema())
 
-        self.assertEqual(result, {"answer": "4"})
+        self.assertEqual(result.get_json(), {"answer": "4"})
         response_format = mock_completion.call_args.kwargs["response_format"]
         self.assertEqual(response_format["type"], "json_schema")
         self.assertEqual(response_format["json_schema"]["name"], "structured_output")

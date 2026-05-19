@@ -116,9 +116,7 @@ class DuckDBAdapterInitTest(testing.TestCase):
                 data_models=[Doc],
                 encryption_key="passphrase-1",
             )
-            await a.update(
-                JsonDataModel(data_model=Doc(id="d1", text="hello"))
-            )
+            await a.update(JsonDataModel(data_model=Doc(id="d1", text="hello")))
             a.close()
 
             b = DuckDBAdapter(
@@ -143,9 +141,7 @@ class DuckDBAdapterInitTest(testing.TestCase):
                 id: str
                 text: str
 
-            a = DuckDBAdapter(
-                uri=db_path, data_models=[Doc], encryption_key="right-key"
-            )
+            a = DuckDBAdapter(uri=db_path, data_models=[Doc], encryption_key="right-key")
             a.close()
             with self.assertRaises(duckdb.Error):
                 DuckDBAdapter(
@@ -162,9 +158,7 @@ class DuckDBAdapterInitTest(testing.TestCase):
                 id: str
                 text: str
 
-            a = DuckDBAdapter(
-                uri=db_path, data_models=[Doc], encryption_key="k"
-            )
+            a = DuckDBAdapter(uri=db_path, data_models=[Doc], encryption_key="k")
             a.close()
             with self.assertRaises(duckdb.Error):
                 DuckDBAdapter(uri=db_path, data_models=[Doc])
@@ -201,16 +195,12 @@ class DuckDBAdapterInitTest(testing.TestCase):
             db_path = os.path.join(temp_dir, "wipe.db")
 
             first = DuckDBAdapter(uri=db_path, data_models=[Person])
-            await first.update(
-                JsonDataModel(data_model=Person(name="Alice", age=30))
-            )
+            await first.update(JsonDataModel(data_model=Person(name="Alice", age=30)))
             first.close()
 
             # Reopen with wipe_on_start; previous rows should be gone,
             # but the table can be recreated by passing data_models.
-            second = DuckDBAdapter(
-                uri=db_path, data_models=[Person], wipe_on_start=True
-            )
+            second = DuckDBAdapter(uri=db_path, data_models=[Person], wipe_on_start=True)
             try:
                 rows = await second.getall(table_name="Person")
                 self.assertEqual(rows, [])
@@ -315,17 +305,13 @@ class DuckDBAdapterInstallExtensionsTest(testing.TestCase):
         self.assertEqual(opened, [":memory:", ":memory:"])
 
     def test_skips_install_vss_when_already_installed(self):
-        executed, opened = self._run(
-            installed=["fts", "vss"], embedding_model=object()
-        )
+        executed, opened = self._run(installed=["fts", "vss"], embedding_model=object())
         self.assertEqual([s for s in executed if "INSTALL" in s], [])
         self.assertEqual([s for s in executed if "LOAD" in s], [])
         self.assertEqual(opened, [":memory:"])
 
     def test_runs_install_vss_when_not_installed(self):
-        executed, opened = self._run(
-            installed=["fts"], embedding_model=object()
-        )
+        executed, opened = self._run(installed=["fts"], embedding_model=object())
         install_calls = [s for s in executed if "INSTALL" in s]
         self.assertEqual(len(install_calls), 1)
         self.assertIn("INSTALL vss", install_calls[0])
@@ -717,9 +703,7 @@ class DuckDBAdapterCRUDTest(testing.TestCase):
             [JsonDataModel(data_model=Note(id=f"n{i}", text="x")) for i in range(3)]
         )
 
-        rows = await adapter.getall(
-            table_name="Note", limit=10, offset=100
-        )
+        rows = await adapter.getall(table_name="Note", limit=10, offset=100)
         self.assertEqual(rows, [])
 
     async def test_getall_nonexistent_table_warns_and_returns_empty(self):
@@ -740,9 +724,10 @@ class DuckDBAdapterCRUDTest(testing.TestCase):
             rows = await adapter.getall(table_name="GhostTable")
 
         self.assertEqual(rows, [])
+        messages = [str(w.message) for w in caught]
         self.assertTrue(
-            any("GhostTable" in str(w.message) for w in caught),
-            f"expected a warning mentioning GhostTable, got {[str(w.message) for w in caught]}",
+            any("GhostTable" in m for m in messages),
+            f"expected a warning mentioning GhostTable, got {messages}",
         )
 
     async def test_get_empty_list_returns_empty_list(self):
@@ -913,17 +898,13 @@ class DuckDBAdapterCRUDTest(testing.TestCase):
         )
 
         # If TableA's FTS index wasn't built this would raise.
-        results_a = await adapter.fulltext_search(
-            "quick", table_name="TableA", k=10
-        )
+        results_a = await adapter.fulltext_search("quick", table_name="TableA", k=10)
         self.assertGreater(len(results_a), 0)
         self.assertEqual(results_a[0]["id"], "a1")
 
         # TableB must work too (this worked pre-fix as it was the
         # last-loop-iteration model).
-        results_b = await adapter.fulltext_search(
-            "quick", table_name="TableB", k=10
-        )
+        results_b = await adapter.fulltext_search("quick", table_name="TableB", k=10)
         self.assertGreater(len(results_b), 0)
         self.assertEqual(results_b[0]["id"], "b1")
 
@@ -1022,9 +1003,7 @@ class DuckDBAdapterQueryTest(testing.TestCase):
         adapter = DuckDBAdapter(uri=self.db_path)
         target = os.path.join(tempfile.gettempdir(), "exfil_should_not_exist.csv")
         with self.assertRaises(duckdb.InvalidInputException):
-            await adapter.query(
-                f"COPY (SELECT 1) TO '{target}'", read_only=True
-            )
+            await adapter.query(f"COPY (SELECT 1) TO '{target}'", read_only=True)
         self.assertFalse(os.path.exists(target))
 
     async def test_read_only_rejects_ddl_and_dml(self):
@@ -1071,9 +1050,7 @@ class DuckDBAdapterQueryTest(testing.TestCase):
             f.write("a,b\n1,2\n")
         adapter = DuckDBAdapter(uri=self.db_path)
         with self.assertRaises(duckdb.Error):
-            await adapter.query(
-                f"SELECT * FROM read_csv('{bait}')", read_only=True
-            )
+            await adapter.query(f"SELECT * FROM read_csv('{bait}')", read_only=True)
 
     async def test_read_only_false_bypasses_validation(self):
         # When the caller explicitly opts out of read-only, the adapter
@@ -1313,9 +1290,7 @@ class DuckDBAdapterFulltextSearchTest(testing.TestCase):
         ]
         await adapter.update(docs)
 
-        results = await adapter.fulltext_search(
-            "quick", table_name="Document", k=10
-        )
+        results = await adapter.fulltext_search("quick", table_name="Document", k=10)
         self.assertGreater(len(results), 0)
 
     async def test_fulltext_search_returns_full_records(self):
@@ -1327,9 +1302,7 @@ class DuckDBAdapterFulltextSearchTest(testing.TestCase):
         ]
         await adapter.update(docs)
 
-        results = await adapter.fulltext_search(
-            "quick", table_name="Document", k=10
-        )
+        results = await adapter.fulltext_search("quick", table_name="Document", k=10)
 
         self.assertGreater(len(results), 0)
         # Verify that the result contains all fields, not just id and score
@@ -1345,9 +1318,7 @@ class DuckDBAdapterFulltextSearchTest(testing.TestCase):
         adapter = DuckDBAdapter(uri=self.db_path)
         # Empty query short-circuits to [] before any SQL — the
         # table doesn't need to exist for this path to work.
-        results = await adapter.fulltext_search(
-            "", table_name="Anything"
-        )
+        results = await adapter.fulltext_search("", table_name="Anything")
         self.assertEqual(results, [])
 
     async def test_fulltext_search_threshold_actually_filters(self):
@@ -1364,9 +1335,7 @@ class DuckDBAdapterFulltextSearchTest(testing.TestCase):
         ]
         await adapter.update(docs)
 
-        unfiltered = await adapter.fulltext_search(
-            "quick", table_name="Document", k=10
-        )
+        unfiltered = await adapter.fulltext_search("quick", table_name="Document", k=10)
         filtered = await adapter.fulltext_search(
             "quick",
             table_name="Document",
@@ -1399,9 +1368,7 @@ class DuckDBAdapterFulltextSearchTest(testing.TestCase):
                 JsonDataModel(data_model=Document(id="d2", text="quick rabbit")),
             ]
         )
-        results = await adapter.fulltext_search(
-            "quick", table_name="Document", k=0
-        )
+        results = await adapter.fulltext_search("quick", table_name="Document", k=0)
         self.assertEqual(results, [])
 
     async def test_fulltext_search_skips_table_with_no_fts_field(self):
@@ -1436,9 +1403,7 @@ class DuckDBAdapterFulltextSearchTest(testing.TestCase):
         adapter = DuckDBAdapter(uri=self.db_path)
         docs = [
             # Heavy on the query term — should rank highest.
-            JsonDataModel(
-                data_model=Document(id="strong", text="quick quick quick fox")
-            ),
+            JsonDataModel(data_model=Document(id="strong", text="quick quick quick fox")),
             # One occurrence of the query term — should rank lower.
             JsonDataModel(
                 data_model=Document(
@@ -1452,9 +1417,7 @@ class DuckDBAdapterFulltextSearchTest(testing.TestCase):
         ]
         await adapter.update(docs)
 
-        all_results = await adapter.fulltext_search(
-            "quick", table_name="Document", k=10
-        )
+        all_results = await adapter.fulltext_search("quick", table_name="Document", k=10)
         # Both docs should match.
         ids = [r["id"] for r in all_results]
         self.assertIn("strong", ids)
@@ -1465,11 +1428,10 @@ class DuckDBAdapterFulltextSearchTest(testing.TestCase):
         self.assertEqual(all_results[0]["id"], "strong")
 
         # With k=1 we must keep the strong row, not the weak one.
-        top_one = await adapter.fulltext_search(
-            "quick", table_name="Document", k=1
-        )
+        top_one = await adapter.fulltext_search("quick", table_name="Document", k=1)
         self.assertEqual(len(top_one), 1)
         self.assertEqual(top_one[0]["id"], "strong")
+
 
 class DuckDBAdapterRegexSearchTest(testing.TestCase):
     def setUp(self):
@@ -1494,9 +1456,7 @@ class DuckDBAdapterRegexSearchTest(testing.TestCase):
     async def test_regex_match_returns_full_rows(self):
         adapter = DuckDBAdapter(uri=self.db_path)
         await self._seed_docs(adapter)
-        results = await adapter.regex_search(
-            r"error \d+", table_name="Document"
-        )
+        results = await adapter.regex_search(r"error \d+", table_name="Document")
         ids = {r["id"] for r in results}
         self.assertEqual(ids, {"doc1"})
         self.assertEqual(results[0]["text"], "error 404 not found")
@@ -1515,9 +1475,7 @@ class DuckDBAdapterRegexSearchTest(testing.TestCase):
     async def test_regex_no_match_returns_empty(self):
         adapter = DuckDBAdapter(uri=self.db_path)
         await self._seed_docs(adapter)
-        results = await adapter.regex_search(
-            r"nope-\w+", table_name="Document"
-        )
+        results = await adapter.regex_search(r"nope-\w+", table_name="Document")
         self.assertEqual(results, [])
 
     async def test_regex_empty_pattern_returns_empty(self):
@@ -1532,9 +1490,7 @@ class DuckDBAdapterRegexSearchTest(testing.TestCase):
         # Unclosed group — DuckDB raises InvalidInputException which the
         # adapter rewraps with table context as RuntimeError.
         with self.assertRaises(RuntimeError):
-            await adapter.regex_search(
-                "(unclosed", table_name="Document"
-            )
+            await adapter.regex_search("(unclosed", table_name="Document")
 
     async def test_regex_limit_k(self):
         class Note(DataModel):
@@ -1547,9 +1503,7 @@ class DuckDBAdapterRegexSearchTest(testing.TestCase):
             for i in range(20)
         ]
         await adapter.update(notes)
-        results = await adapter.regex_search(
-            r"match", table_name="Note", k=5
-        )
+        results = await adapter.regex_search(r"match", table_name="Note", k=5)
         self.assertEqual(len(results), 5)
 
     async def test_regex_fields_filter_restricts_columns(self):
@@ -1569,9 +1523,7 @@ class DuckDBAdapterRegexSearchTest(testing.TestCase):
                     )
                 ),
                 JsonDataModel(
-                    data_model=Article(
-                        id="a2", title="error report", body="all good"
-                    )
+                    data_model=Article(id="a2", title="error report", body="all good")
                 ),
             ]
         )
@@ -1583,9 +1535,7 @@ class DuckDBAdapterRegexSearchTest(testing.TestCase):
         self.assertEqual({r["id"] for r in results}, {"a2"})
 
         # Default search (all string fields): should match both.
-        results = await adapter.regex_search(
-            r"error", table_name="Article"
-        )
+        results = await adapter.regex_search(r"error", table_name="Article")
         self.assertEqual({r["id"] for r in results}, {"a1", "a2"})
 
     async def test_regex_fields_neutralizes_injection(self):
@@ -1618,14 +1568,10 @@ class DuckDBAdapterRegexSearchTest(testing.TestCase):
             value: float
 
         adapter = DuckDBAdapter(uri=self.db_path)
-        await adapter.update(
-            JsonDataModel(data_model=Numeric(id=1, value=3.14))
-        )
+        await adapter.update(JsonDataModel(data_model=Numeric(id=1, value=3.14)))
         # `id` is sanitized but is integer-typed in schema; no string fields.
         # Skip-table semantics: empty result, no exception.
-        results = await adapter.regex_search(
-            r"3", table_name="Numeric"
-        )
+        results = await adapter.regex_search(r"3", table_name="Numeric")
         self.assertEqual(results, [])
 
 
@@ -1710,15 +1656,11 @@ class DuckDBAdapterVectorSearchTest(testing.TestCase):
                 f"{vector_str}::FLOAT[{vector_dim}])"
             )
 
-        results = await adapter.similarity_search(
-            "hi", table_name="Document", k=0
-        )
+        results = await adapter.similarity_search("hi", table_name="Document", k=0)
         self.assertEqual(results, [])
 
     @patch("litellm.aembedding")
-    async def test_update_builds_hnsw_index_when_embeddings_present(
-        self, mock_embedding
-    ):
+    async def test_update_builds_hnsw_index_when_embeddings_present(self, mock_embedding):
         # The vector index isn't built during ordinary inserts unless
         # the rows carry non-NULL embeddings. We populate the column
         # directly via SQL (the adapter's update() doesn't auto-embed)
@@ -1747,22 +1689,17 @@ class DuckDBAdapterVectorSearchTest(testing.TestCase):
         # embedding column populated should now trigger HNSW build.
         # The update() also adds an embedded row's worth of work,
         # but the load-bearing assertion is that the index exists.
-        adapter._maybe_create_vector_index(
-            Document.to_symbolic_data_model()
-        )
+        adapter._maybe_create_vector_index(Document.to_symbolic_data_model())
 
         with adapter._connect(read_only=True) as con:
             rows = con.execute(
-                "SELECT index_name FROM duckdb_indexes "
-                "WHERE table_name='Document'"
+                "SELECT index_name FROM duckdb_indexes WHERE table_name='Document'"
             ).fetchall()
         names = {r[0] for r in rows}
         self.assertIn("vector_main_Document", names)
 
     @patch("litellm.aembedding")
-    async def test_vector_index_skipped_when_all_embeddings_null(
-        self, mock_embedding
-    ):
+    async def test_vector_index_skipped_when_all_embeddings_null(self, mock_embedding):
         # Common case after a bulk load: the embedding column exists
         # but every row's value is NULL because the source file didn't
         # include the column. The auto-build step should silently
@@ -1781,18 +1718,13 @@ class DuckDBAdapterVectorSearchTest(testing.TestCase):
 
         # Row with NULL embedding (the bulk-load shape).
         with adapter._connect(read_only=False) as con:
-            con.execute(
-                "INSERT INTO Document (id, text) VALUES ('d1', 'hello')"
-            )
+            con.execute("INSERT INTO Document (id, text) VALUES ('d1', 'hello')")
 
-        adapter._maybe_create_vector_index(
-            Document.to_symbolic_data_model()
-        )
+        adapter._maybe_create_vector_index(Document.to_symbolic_data_model())
 
         with adapter._connect(read_only=True) as con:
             rows = con.execute(
-                "SELECT index_name FROM duckdb_indexes "
-                "WHERE table_name='Document'"
+                "SELECT index_name FROM duckdb_indexes WHERE table_name='Document'"
             ).fetchall()
         names = {r[0] for r in rows}
         self.assertNotIn("vector_main_Document", names)
@@ -1805,14 +1737,11 @@ class DuckDBAdapterVectorSearchTest(testing.TestCase):
         adapter._maybe_create_table(Document.to_symbolic_data_model())
 
         # Should not raise even though there's no embedding column.
-        adapter._maybe_create_vector_index(
-            Document.to_symbolic_data_model()
-        )
+        adapter._maybe_create_vector_index(Document.to_symbolic_data_model())
 
         with adapter._connect(read_only=True) as con:
             rows = con.execute(
-                "SELECT index_name FROM duckdb_indexes "
-                "WHERE table_name='Document'"
+                "SELECT index_name FROM duckdb_indexes WHERE table_name='Document'"
             ).fetchall()
         names = {r[0] for r in rows}
         self.assertNotIn("vector_main_Document", names)
@@ -1841,18 +1770,13 @@ class DuckDBAdapterVectorSearchTest(testing.TestCase):
             )
 
         # First build creates the index.
-        adapter._maybe_create_vector_index(
-            Document.to_symbolic_data_model()
-        )
+        adapter._maybe_create_vector_index(Document.to_symbolic_data_model())
         # Second build must not raise — DROP IF EXISTS + CREATE.
-        adapter._maybe_create_vector_index(
-            Document.to_symbolic_data_model()
-        )
+        adapter._maybe_create_vector_index(Document.to_symbolic_data_model())
 
         with adapter._connect(read_only=True) as con:
             rows = con.execute(
-                "SELECT index_name FROM duckdb_indexes "
-                "WHERE table_name='Document'"
+                "SELECT index_name FROM duckdb_indexes WHERE table_name='Document'"
             ).fetchall()
         self.assertIn("vector_main_Document", {r[0] for r in rows})
 
@@ -1883,14 +1807,11 @@ class DuckDBAdapterVectorSearchTest(testing.TestCase):
 
         # Now an ordinary update(): triggers the auto-build branch in
         # update() (FTS + vector rebuild after the bulk insert).
-        await adapter.update(
-            JsonDataModel(data_model=Document(id="d2", text="another"))
-        )
+        await adapter.update(JsonDataModel(data_model=Document(id="d2", text="another")))
 
         with adapter._connect(read_only=True) as con:
             rows = con.execute(
-                "SELECT index_name FROM duckdb_indexes "
-                "WHERE table_name='Document'"
+                "SELECT index_name FROM duckdb_indexes WHERE table_name='Document'"
             ).fetchall()
         self.assertIn("vector_main_Document", {r[0] for r in rows})
 
@@ -1916,9 +1837,7 @@ class DuckDBAdapterHybridSearchTest(testing.TestCase):
         await adapter.update(docs)
 
         # Without embedding model, hybrid search falls back to fulltext search
-        results = await adapter.hybrid_search(
-            "quick", table_name="Document", k=5
-        )
+        results = await adapter.hybrid_search("quick", table_name="Document", k=5)
         self.assertGreater(len(results), 0)
 
     async def test_hybrid_search_empty_query(self):
@@ -1936,12 +1855,8 @@ class DuckDBAdapterHybridSearchTest(testing.TestCase):
             JsonDataModel(data_model=Document(id="d2", text="The lazy dog sleeps")),
         ]
         await adapter.update(docs)
-        old = await adapter.hybrid_search(
-            "quick", table_name="Document", k=5
-        )
-        new = await adapter.hybrid_fts_search(
-            "quick", table_name="Document", k=5
-        )
+        old = await adapter.hybrid_search("quick", table_name="Document", k=5)
+        new = await adapter.hybrid_fts_search("quick", table_name="Document", k=5)
         self.assertEqual(old, new)
 
     async def test_hybrid_regex_search_without_embedding_model(self):
@@ -1965,8 +1880,91 @@ class DuckDBAdapterHybridSearchTest(testing.TestCase):
     async def test_hybrid_regex_search_empty_inputs(self):
         adapter = DuckDBAdapter(uri=self.db_path)
         self.assertEqual(
-            await adapter.hybrid_regex_search(
-                "", None, table_name="Anything"
-            ),
+            await adapter.hybrid_regex_search("", None, table_name="Anything"),
             [],
         )
+
+    @patch("litellm.aembedding")
+    async def test_hybrid_fts_search_rrf_merges_both_halves(self, mock_embedding):
+        """When both the FTS and vector halves return rows, hybrid_fts_search
+        must combine them via Reciprocal Rank Fusion and emit a ``score``
+        column. Exercises the otherwise-uncovered merge math."""
+        vector_dim = 8
+        # Give every embedding call the same vector so similarity_search
+        # returns deterministic ranks against whatever's stored.
+        query_vec = np.random.rand(vector_dim).tolist()
+        mock_embedding.return_value = {"data": [{"embedding": query_vec}]}
+
+        embedding_model = EmbeddingModel(model="ollama/all-minilm")
+        adapter = DuckDBAdapter(
+            uri=self.db_path,
+            embedding_model=embedding_model,
+            vector_dim=vector_dim,
+        )
+        adapter._maybe_create_table(Document.to_symbolic_data_model())
+        with adapter._connect(read_only=False) as con:
+            for doc_id, text in (
+                ("d1", "quick brown fox jumps"),
+                ("d2", "quick lazy dog"),
+                ("d3", "completely unrelated"),
+            ):
+                vec_str = str(query_vec)
+                con.execute(
+                    f"INSERT INTO Document (id, text, embedding) "
+                    f"VALUES ('{doc_id}', '{text}', "
+                    f"{vec_str}::FLOAT[{vector_dim}])"
+                )
+
+        results = await adapter.hybrid_fts_search("quick", table_name="Document", k=5)
+        self.assertGreater(len(results), 0)
+        # Every returned row must carry the RRF-fused score.
+        for row in results:
+            self.assertIn("score", row)
+            self.assertGreater(row["score"], 0.0)
+        # Sorted descending by score.
+        scores = [r["score"] for r in results]
+        self.assertEqual(scores, sorted(scores, reverse=True))
+
+    @patch("litellm.aembedding")
+    async def test_hybrid_regex_search_rrf_merges_both_halves(self, mock_embedding):
+        """Same as above for hybrid_regex_search: when both halves return
+        rows we hit the RRF score-combine path."""
+        vector_dim = 8
+        query_vec = np.random.rand(vector_dim).tolist()
+        mock_embedding.return_value = {"data": [{"embedding": query_vec}]}
+
+        embedding_model = EmbeddingModel(model="ollama/all-minilm")
+        adapter = DuckDBAdapter(
+            uri=self.db_path,
+            embedding_model=embedding_model,
+            vector_dim=vector_dim,
+        )
+        adapter._maybe_create_table(Document.to_symbolic_data_model())
+        with adapter._connect(read_only=False) as con:
+            for doc_id, text in (
+                ("d1", "error 404 not found"),
+                ("d2", "error 500 internal"),
+                ("d3", "success 200 ok"),
+            ):
+                vec_str = str(query_vec)
+                con.execute(
+                    f"INSERT INTO Document (id, text, embedding) "
+                    f"VALUES ('{doc_id}', '{text}', "
+                    f"{vec_str}::FLOAT[{vector_dim}])"
+                )
+
+        results = await adapter.hybrid_regex_search(
+            text_or_texts="error codes",
+            pattern_or_patterns=r"error \d+",
+            table_name="Document",
+            k=5,
+        )
+        self.assertGreater(len(results), 0)
+        for row in results:
+            self.assertIn("score", row)
+            self.assertGreater(row["score"], 0.0)
+        # Regex half should pull d1 and d2 (the "error \d+" matches); the
+        # vector half pulls everything; merged results should include those.
+        ids = {r["id"] for r in results}
+        self.assertIn("d1", ids)
+        self.assertIn("d2", ids)

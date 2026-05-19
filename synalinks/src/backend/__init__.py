@@ -39,10 +39,8 @@ from synalinks.src.backend.common.symbolic_scope import SymbolicScope
 if backend() == "pydantic":
     from pydantic import Field
 
-    from synalinks.src.backend.pydantic.base import ChatMessage
-    from synalinks.src.backend.pydantic.base import ChatMessages
-    from synalinks.src.backend.pydantic.base import ChatRole
     from synalinks.src.backend.pydantic.base import Embedding
+    from synalinks.src.backend.pydantic.base import EmbeddingRequest
     from synalinks.src.backend.pydantic.base import Embeddings
     from synalinks.src.backend.pydantic.base import GenericInputs
     from synalinks.src.backend.pydantic.base import GenericIO
@@ -50,26 +48,31 @@ if backend() == "pydantic":
     from synalinks.src.backend.pydantic.base import GenericResult
     from synalinks.src.backend.pydantic.base import Instructions
     from synalinks.src.backend.pydantic.base import Prediction
-    from synalinks.src.backend.pydantic.base import Score
     from synalinks.src.backend.pydantic.base import Stamp
-    from synalinks.src.backend.pydantic.base import ToolCall
     from synalinks.src.backend.pydantic.base import Trainable
-    from synalinks.src.backend.pydantic.base import is_chat_message
-    from synalinks.src.backend.pydantic.base import is_chat_messages
     from synalinks.src.backend.pydantic.base import is_embedded
     from synalinks.src.backend.pydantic.base import is_embedding
     from synalinks.src.backend.pydantic.base import is_embeddings
     from synalinks.src.backend.pydantic.base import is_instructions
     from synalinks.src.backend.pydantic.base import is_prediction
     from synalinks.src.backend.pydantic.base import is_stamped
-    from synalinks.src.backend.pydantic.base import is_tool_call
     from synalinks.src.backend.pydantic.base import is_trainable
+    from synalinks.src.backend.pydantic.common import ChatMessage
+    from synalinks.src.backend.pydantic.common import ChatMessages
+    from synalinks.src.backend.pydantic.common import ChatRole
+    from synalinks.src.backend.pydantic.common import ToolCall
+    from synalinks.src.backend.pydantic.common import is_chat_message
+    from synalinks.src.backend.pydantic.common import is_chat_messages
+    from synalinks.src.backend.pydantic.common import is_strictly_chat_message
+    from synalinks.src.backend.pydantic.common import is_strictly_chat_messages
+    from synalinks.src.backend.pydantic.common import is_tool_call
     from synalinks.src.backend.pydantic.core import IS_THREAD_SAFE
     from synalinks.src.backend.pydantic.core import DataModel as BackendDataModel
     from synalinks.src.backend.pydantic.core import any_data_model
     from synalinks.src.backend.pydantic.core import any_meta_class
     from synalinks.src.backend.pydantic.core import is_data_model
     from synalinks.src.backend.pydantic.core import is_meta_class
+    from synalinks.src.backend.pydantic.metrics import Score
     from synalinks.src.backend.pydantic.module import PydanticModule
 else:
     raise ValueError(f"Unable to import backend : {backend()}")

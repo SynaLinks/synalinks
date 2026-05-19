@@ -1,7 +1,5 @@
 from synalinks.src.backend import convert_to_json_data_model
 from synalinks.src.backend import name_scope
-from synalinks.src.ops.embedding_models import Embedding
-from synalinks.src.ops.embedding_models import embedding
 from synalinks.src.ops.json import And
 from synalinks.src.ops.json import Concat
 from synalinks.src.ops.json import Factorize
@@ -20,9 +18,3 @@ from synalinks.src.ops.json import logical_xor
 from synalinks.src.ops.json import out_mask
 from synalinks.src.ops.json import prefix
 from synalinks.src.ops.json import suffix
-from synalinks.src.ops.knowledge_bases import SimilaritySearch
-from synalinks.src.ops.knowledge_bases import UpdateKnowledge
-from synalinks.src.ops.knowledge_bases import similarity_search
-from synalinks.src.ops.knowledge_bases import update_knowledge
-from synalinks.src.ops.language_models import Predict
-from synalinks.src.ops.language_models import predict

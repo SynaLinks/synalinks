@@ -326,9 +326,7 @@ async def populate_knowledge_base(kb):
             price=129.99,
             stock=80,
         ),
-        Product(
-            id="P007", name="Desk Lamp", category="Office", price=45.99, stock=120
-        ),
+        Product(id="P007", name="Desk Lamp", category="Office", price=45.99, stock=120),
         Product(
             id="P008",
             name="Notebook Set",

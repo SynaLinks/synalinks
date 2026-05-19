@@ -14,8 +14,12 @@ from tenacity import stop_after_attempt
 from tenacity import wait_exponential
 
 from synalinks.src.api_export import synalinks_export
+from synalinks.src.backend import ChatMessage
+from synalinks.src.backend import ChatMessages
 from synalinks.src.backend import ChatRole
+from synalinks.src.backend import JsonDataModel
 from synalinks.src.backend.common import global_state
+from synalinks.src.modules.core.tool import Tool
 from synalinks.src.modules.module import Module
 from synalinks.src.saving import serialization_lib
 from synalinks.src.utils.nlp_utils import shorten_text
@@ -126,6 +130,65 @@ def _accumulate(obj, phase_prefix, increments, extras):
             setattr(obj, details_attr, details)
         for k, v in extras.items():
             details[k] = details.get(k, 0) + v
+
+
+def _message_to_wire(message):
+    """Convert a synalinks ChatMessage to an OpenAI Chat Completions
+    wire-format dict.
+
+    Adapts the assistant tool-call envelope (synalinks holds tool calls
+    flat; OpenAI wraps them as `{id, type, function: {name, arguments}}`
+    with `arguments` JSON-encoded), JSON-encodes dict content on tool
+    results, and emits `thinking` as `reasoning_content` plus any
+    `thinking_blocks` verbatim. `reasoning_content` is what DeepSeek-style
+    providers consume; `thinking_blocks` (with signature) is what LiteLLM's
+    Anthropic/Bedrock request transformer reads. Each side ignores the other,
+    so populating both is safe.
+    """
+    role = message.role.value if isinstance(message.role, ChatRole) else message.role
+    content = message.content
+    if type(content) is dict:
+        content = orjson.dumps(content).decode()
+
+    if role == "assistant":
+        out = {"role": "assistant", "content": content if content else None}
+        if message.thinking:
+            out["reasoning_content"] = message.thinking
+        if message.thinking_blocks:
+            out["thinking_blocks"] = message.thinking_blocks
+        if message.tool_calls:
+            out["tool_calls"] = [
+                {
+                    "id": tc.id,
+                    "type": "function",
+                    "function": {
+                        "name": tc.name,
+                        "arguments": orjson.dumps(tc.arguments).decode(),
+                    },
+                }
+                for tc in message.tool_calls
+            ]
+        return out
+    if role == "tool":
+        return {"role": "tool", "content": content, "tool_call_id": message.tool_call_id}
+    if role == "function":
+        return {
+            "role": "function",
+            "content": content,
+            "name": message.tool_call_id or "",
+        }
+    return {"role": role, "content": content}  # user / system / developer
+
+
+def _tool_to_wire(tool):
+    """Convert a synalinks Tool to an OpenAI Chat Completions wire-format
+    tool declaration dict."""
+    if not isinstance(tool, Tool):
+        raise TypeError(f"Expected synalinks.modules.Tool, got {type(tool).__name__}")
+    function = {"name": tool.name, "parameters": tool.get_tool_schema()}
+    if tool.description:
+        function["description"] = tool.description
+    return {"type": "function", "function": function}
 
 
 @synalinks_export(
@@ -478,7 +541,7 @@ class LanguageModel(Module):
         # skip Module's auto-build path (which would try to trace `call`).
         self.built = True
 
-    async def call(self, messages, schema=None, streaming=False, **kwargs):
+    async def call(self, messages, schema=None, tools=None, streaming=False, **kwargs):
         """
         Call method to generate a response using the language model.
 
@@ -486,6 +549,12 @@ class LanguageModel(Module):
             messages (dict): A formatted dict of chat messages.
             schema (dict): The target JSON schema for structed output (optional).
                 If None, output a ChatMessage-like answer.
+            tools: Optional iterable or `{name: Tool}` mapping of
+                `synalinks.modules.Tool` the LM may call. Mutually exclusive
+                with `schema` — schema forces structured output, tools let the
+                LM choose; they cannot both apply to the same call. In the
+                function-calling agent pattern, the tool-call generator uses
+                `tools` and the final generator uses `schema`.
             streaming (bool): Enable streaming (optional). Default to False.
                 Can be enabled only if schema is None.
             **kwargs (keyword arguments): The additional keywords arguments
@@ -493,12 +562,37 @@ class LanguageModel(Module):
         Returns:
             (dict): The generated structured response.
         """
-        formatted_messages = messages.get_json().get("messages", [])
+        if schema and tools:
+            raise ValueError(
+                "`schema` and `tools` cannot be passed to the same LM call: "
+                "schema forces structured output, while tools let the LM choose "
+                "which to call. Split into two calls — typically the tool-call "
+                "generator uses `tools` and the final generator uses `schema`."
+            )
         input_kwargs = copy.deepcopy(kwargs)
         # Merge instance-level defaults; per-call kwargs win.
         kwargs = {**self.default_kwargs, **kwargs}
         schema = copy.deepcopy(schema)
         provider = self.model.split("/")[0]
+
+        # Single pass: messages → OpenAI wire shape (nested tool_call
+        # envelopes, JSON-string arguments) and synalinks Tools → wire tool
+        # declarations. The schema branches below may override `tools` /
+        # `tool_choice` for providers that need structured-output-as-tool;
+        # cache_control is applied to the system message after this.
+        # `messages` here is typically a JsonDataModel from `ops.predict`;
+        # wrap it in `ChatMessages` so its `before`-validator converts the
+        # dict list into typed `ChatMessage` instances the converter needs.
+        _typed_messages = (
+            messages
+            if hasattr(messages, "messages")
+            else ChatMessages(messages=messages.get("messages", []))
+        )
+        formatted_messages = [_message_to_wire(m) for m in _typed_messages.messages]
+        if tools:
+            if isinstance(tools, dict):
+                tools = tools.values()
+            kwargs["tools"] = [_tool_to_wire(t) for t in tools]
 
         # Handle reasoning_effort parameter - just forward to litellm if supported
         reasoning_effort = kwargs.pop("reasoning_effort", "none")
@@ -753,6 +847,7 @@ class LanguageModel(Module):
                         "Empty response from the language model: no choices returned."
                     )
                 response_message = response["choices"][0]["message"]
+                wire_tool_calls = _safe_get(response_message, "tool_calls", None)
                 if self.model.startswith("groq") and schema:
                     # Groq uses tool_calls for structured output
                     response_str = response_message["tool_calls"][0]["function"][
@@ -762,26 +857,49 @@ class LanguageModel(Module):
                     # Anthropic and other providers use response_format,
                     # which returns content in message["content"]
                     response_str = response_message["content"]
-                    if not response_str:
+                    if not response_str and not wire_tool_calls:
                         raise ValueError(
-                            "Empty response from the language model: no content returned."
+                            "Empty response from the language model: no content "
+                            "or tool_calls returned."
                         )
-                    response_str = response_str.strip()
+                    response_str = response_str.strip() if response_str else ""
                 reasoning_content = response_message.get("reasoning_content")
+                thinking_blocks = response_message.get("thinking_blocks")
                 if schema:
                     json_instance = orjson.loads(response_str)
                     if reasoning_content and schema_had_thinking:
                         json_instance["thinking"] = reasoning_content
                 else:
+                    # Unwrap OpenAI's nested tool-call envelope into the flat
+                    # synalinks shape (`ChatMessage.tool_calls`).
+                    flat_tool_calls = None
+                    if wire_tool_calls:
+                        flat_tool_calls = []
+                        for tc in wire_tool_calls:
+                            fn = _safe_get(tc, "function")
+                            args = _safe_get(fn, "arguments", "")
+                            flat_tool_calls.append(
+                                {
+                                    "id": _safe_get(tc, "id"),
+                                    "name": _safe_get(fn, "name"),
+                                    "arguments": orjson.loads(args) if args else {},
+                                }
+                            )
                     json_instance = {
                         "role": ChatRole.ASSISTANT,
-                        "thinking": reasoning_content,
                         "content": response_str,
-                        "tool_call_id": None,
-                        "tool_calls": [],
-                        "created_at": None,
                     }
-                return json_instance
+                    if reasoning_content:
+                        json_instance["thinking"] = reasoning_content
+                    if thinking_blocks:
+                        json_instance["thinking_blocks"] = thinking_blocks
+                    if flat_tool_calls:
+                        json_instance["tool_calls"] = flat_tool_calls
+                return JsonDataModel(
+                    json=json_instance,
+                    schema=schema if schema else ChatMessage.get_schema(),
+                    name=f"{self.name}_response",
+                )
             except Exception as e:
                 warnings.warn(
                     f"Error occured while trying to call {self}: "

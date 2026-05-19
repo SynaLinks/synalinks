@@ -22,7 +22,18 @@ class Metric(SynalinksSaveable):
             are kept (combined with ``in_mask`` via OR).
         out_mask_pattern (str): (Optional) Regex pattern; fields whose names match
             are dropped (combined with ``out_mask`` via OR).
+
+    Attributes:
+        direction (str | None): Class-level optimization direction. ``"up"`` if
+            higher values are better (accuracy, F1, reward), ``"down"`` if
+            lower is better (cost, latency, loss-like metrics). ``None``
+            means unknown — consumers (EarlyStopping, Keras-Tuner inference)
+            then require an explicit `mode=` / `direction=`. Concrete metric
+            classes set this at class scope; ``Mean``/``MeanMetricWrapper``
+            can also set it at instance scope when wrapping a reward.
     """
+
+    direction = None
 
     def __init__(
         self,

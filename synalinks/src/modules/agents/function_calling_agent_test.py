@@ -17,6 +17,31 @@ from synalinks.src.programs import Program
 from synalinks.src.saving.object_registration import register_synalinks_serializable
 
 
+def _lm_response(*, content=None, reasoning_content=None, tool_calls=None):
+    """Build a litellm-shaped response for the native function-calling path.
+
+    `tool_calls` is a list of `{"name": ..., "arguments": {...}}` (flat
+    synalinks shape); this helper wraps each into the OpenAI nested
+    `{id, type, function}` envelope and JSON-encodes the arguments.
+    """
+    message = {"content": content}
+    if reasoning_content is not None:
+        message["reasoning_content"] = reasoning_content
+    if tool_calls:
+        message["tool_calls"] = [
+            {
+                "id": f"call_{i}",
+                "type": "function",
+                "function": {
+                    "name": tc["name"],
+                    "arguments": json.dumps(tc["arguments"]),
+                },
+            }
+            for i, tc in enumerate(tool_calls)
+        ]
+    return {"choices": [{"message": message}]}
+
+
 @register_synalinks_serializable()
 async def calculate(expression: str):
     """Calculate the result of a mathematical expression.
@@ -329,27 +354,19 @@ class FunctionCallingAgentTest(testing.TestCase):
             name="autonomous_no_schema_test",
         )
 
-        tool_calls = {
-            "thinking": "I need to calculate 10 + 20.",
-            "tool_calls": [
-                {
-                    "tool_name": "calculate",
-                    "expression": "10 + 20",
-                }
-            ],
-        }
-
-        tool_calls_1 = {
-            "thinking": "The calculation is complete. The result is 30.",
-            "tool_calls": [],
-        }
-
-        mock_responses = [
-            {"choices": [{"message": {"content": json.dumps(tool_calls)}}]},
-            {"choices": [{"message": {"content": json.dumps(tool_calls_1)}}]},
+        mock_completion.side_effect = [
+            # Iter 1: native tool call.
+            _lm_response(
+                content="I need to calculate 10 + 20.",
+                tool_calls=[
+                    {"name": "calculate", "arguments": {"expression": "10 + 20"}}
+                ],
+            ),
+            # Iter 2: no tool calls → loop breaks.
+            _lm_response(content="The calculation is complete. The result is 30."),
+            # final_generator turn.
+            _lm_response(content="The result is 30."),
         ]
-
-        mock_completion.side_effect = mock_responses
 
         input_messages = ChatMessages(
             messages=[
@@ -401,31 +418,16 @@ class FunctionCallingAgentTest(testing.TestCase):
             name="autonomous_no_schema_custom_input_test",
         )
 
-        tool_calls = {
-            "thinking": "I need to add 1 + 1.",
-            "tool_calls": [{"tool_name": "calculate", "expression": "1 + 1"}],
-        }
-        tool_calls_done = {
-            "thinking": "Result is 2.",
-            "tool_calls": [],
-        }
-        # final_generator returns a ChatMessage with thinking populated from
-        # reasoning_content (no schema path).
-        final_message = {
-            "choices": [
-                {
-                    "message": {
-                        "content": "The answer is 2.",
-                        "reasoning_content": "1 + 1 equals 2.",
-                    }
-                }
-            ]
-        }
-
         mock_completion.side_effect = [
-            {"choices": [{"message": {"content": json.dumps(tool_calls)}}]},
-            {"choices": [{"message": {"content": json.dumps(tool_calls_done)}}]},
-            final_message,
+            # Iter 1: native tool call.
+            _lm_response(
+                content="I need to add 1 + 1.",
+                tool_calls=[{"name": "calculate", "arguments": {"expression": "1 + 1"}}],
+            ),
+            # Iter 2: no tool calls → loop breaks.
+            _lm_response(content="Result is 2."),
+            # final_generator: thinking populated from reasoning_content.
+            _lm_response(content="The answer is 2.", reasoning_content="1 + 1 equals 2."),
         ]
 
         result = await agent(Query(query="How much is 1 + 1?"))
@@ -582,21 +584,12 @@ class FunctionCallingAgentTest(testing.TestCase):
             name="non_autonomous_test",
         )
 
-        tool_calls = {
-            "thinking": "I need to calculate 5 * 5.",
-            "tool_calls": [
-                {
-                    "tool_name": "calculate",
-                    "expression": "5 * 5",
-                }
-            ],
-        }
-
-        mock_responses = [
-            {"choices": [{"message": {"content": json.dumps(tool_calls)}}]},
+        mock_completion.side_effect = [
+            _lm_response(
+                content="I need to calculate 5 * 5.",
+                tool_calls=[{"name": "calculate", "arguments": {"expression": "5 * 5"}}],
+            ),
         ]
-
-        mock_completion.side_effect = mock_responses
 
         input_messages = ChatMessages(
             messages=[
@@ -717,21 +710,12 @@ class FunctionCallingAgentTest(testing.TestCase):
             name="non_autonomous_trajectory_test",
         )
 
-        tool_calls = {
-            "thinking": "I need to calculate 3 + 3.",
-            "tool_calls": [
-                {
-                    "tool_name": "calculate",
-                    "expression": "3 + 3",
-                }
-            ],
-        }
-
-        mock_responses = [
-            {"choices": [{"message": {"content": json.dumps(tool_calls)}}]},
+        mock_completion.side_effect = [
+            _lm_response(
+                content="I need to calculate 3 + 3.",
+                tool_calls=[{"name": "calculate", "arguments": {"expression": "3 + 3"}}],
+            ),
         ]
-
-        mock_completion.side_effect = mock_responses
 
         input_messages = ChatMessages(
             messages=[
@@ -827,48 +811,29 @@ class FunctionCallingAgentTest(testing.TestCase):
             name="interactive_multi_step_test",
         )
 
-        # First step: calculate 100 + 200
-        tool_calls_step1 = {
-            "thinking": "First, I need to calculate 100 + 200.",
-            "tool_calls": [
-                {
-                    "tool_name": "calculate",
-                    "expression": "100 + 200",
-                }
-            ],
-        }
-
-        # Second step: multiply result by 3
-        tool_calls_step2 = {
-            "thinking": "Now I need to multiply 300 by 3.",
-            "tool_calls": [
-                {
-                    "tool_name": "calculate",
-                    "expression": "300 * 3",
-                }
-            ],
-        }
-
-        # Final step: no more tool calls
-        tool_calls_step3 = {
-            "thinking": "Calculation complete. 100 + 200 = 300, then 300 * 3 = 900.",
-            "tool_calls": [],
-        }
-
-        # Final generator response (ChatMessage format since no schema)
-        final_response = {
-            "role": "assistant",
-            "content": "The calculation is complete."
-            " 100 + 200 = 300, then 300 * 3 = 900.",
-        }
-
-        mock_responses = [
-            {"choices": [{"message": {"content": json.dumps(tool_calls_step1)}}]},
-            {"choices": [{"message": {"content": json.dumps(tool_calls_step2)}}]},
-            {"choices": [{"message": {"content": json.dumps(tool_calls_step3)}}]},
-            {"choices": [{"message": {"content": json.dumps(final_response)}}]},
+        mock_completion.side_effect = [
+            # Step 1: calculate 100 + 200
+            _lm_response(
+                content="First, I need to calculate 100 + 200.",
+                tool_calls=[
+                    {"name": "calculate", "arguments": {"expression": "100 + 200"}}
+                ],
+            ),
+            # Step 2: multiply result by 3
+            _lm_response(
+                content="Now I need to multiply 300 by 3.",
+                tool_calls=[
+                    {"name": "calculate", "arguments": {"expression": "300 * 3"}}
+                ],
+            ),
+            # Step 3: no more tool calls → loop terminates → final_generator.
+            _lm_response(content="Calculation complete."),
+            _lm_response(
+                content=(
+                    "The calculation is complete. 100 + 200 = 300, then 300 * 3 = 900."
+                )
+            ),
         ]
-        mock_completion.side_effect = mock_responses
 
         input_messages = ChatMessages(
             messages=[

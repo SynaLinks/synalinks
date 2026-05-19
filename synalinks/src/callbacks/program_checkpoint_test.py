@@ -46,7 +46,12 @@ class ProgramCheckpointInitTest(testing.TestCase):
             warnings.simplefilter("always")
             cb = ProgramCheckpoint(filepath="/tmp/x.json", mode="banana")
             self.assertTrue(any("unknown" in str(x.message) for x in w))
-        # Auto mode uses np.greater with -inf baseline.
+        # Auto-mode resolves lazily in `on_train_begin` so it can introspect
+        # the bound program's metrics. With no program/metrics attached, the
+        # fallback is `np.greater` with `-inf` baseline (synalinks bias).
+        self.assertEqual(cb.mode, "auto")
+        self.assertIsNone(cb.monitor_op)
+        cb.on_train_begin()
         self.assertIs(cb.monitor_op, np.greater)
         self.assertEqual(cb.best, -np.inf)
 
@@ -214,9 +219,7 @@ class ProgramCheckpointSaveTest(testing.TestCase):
     def test_save_best_only_with_array_monitor_falls_back(self):
         tmp = self.get_temp_dir()
         filepath = os.path.join(tmp, "ckpt.json")
-        cb = ProgramCheckpoint(
-            filepath=filepath, save_best_only=True, mode="max"
-        )
+        cb = ProgramCheckpoint(filepath=filepath, save_best_only=True, mode="max")
         program = _FakeProgram()
         cb.set_program(program)
         with warnings.catch_warnings(record=True) as w:
@@ -232,9 +235,7 @@ class ProgramCheckpointPatternMatchingTest(testing.TestCase):
         tmp = self.get_temp_dir()
         cb = ProgramCheckpoint(filepath=os.path.join(tmp, "ckpt.json"))
         pattern = os.path.join(tmp, "missing-{epoch:02d}.json")
-        self.assertIsNone(
-            cb._get_most_recently_modified_file_matching_pattern(pattern)
-        )
+        self.assertIsNone(cb._get_most_recently_modified_file_matching_pattern(pattern))
 
     def test_returns_most_recent_file(self):
         tmp = self.get_temp_dir()

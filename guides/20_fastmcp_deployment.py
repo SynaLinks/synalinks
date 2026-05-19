@@ -371,9 +371,7 @@ class Query(synalinks.DataModel):
 class NumericalAnswer(synalinks.DataModel):
     """The user-facing tool output."""
 
-    answer: float = synalinks.Field(
-        description="The correct final numerical answer"
-    )
+    answer: float = synalinks.Field(description="The correct final numerical answer")
 
 
 # =============================================================================

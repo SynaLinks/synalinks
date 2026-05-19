@@ -64,7 +64,12 @@ class GetModuleIndexBoundsTest(testing.TestCase):
             self.name = name
 
     def _modules(self):
-        return [self._M("input"), self._M("hidden_1"), self._M("hidden_2"), self._M("out")]
+        return [
+            self._M("input"),
+            self._M("hidden_1"),
+            self._M("hidden_2"),
+            self._M("out"),
+        ]
 
     def test_none_range_returns_full_span(self):
         mods = self._modules()
@@ -110,9 +115,7 @@ class GetModuleIndexBoundsTest(testing.TestCase):
         mods = self._modules()
         # When the lower bound appears after the upper bound, the function
         # returns the reversed span so the caller gets a non-empty slice.
-        idx = summary_utils.get_module_index_bound_by_module_name(
-            mods, ("out", "input")
-        )
+        idx = summary_utils.get_module_index_bound_by_module_name(mods, ("out", "input"))
         self.assertEqual(idx, [0, 4])
 
 

@@ -169,7 +169,9 @@ class ExtractArchiveTest(testing.TestCase):
         self.assertTrue(os.path.exists(os.path.join(dest, "world.txt")))
 
     def test_extract_none_format_returns_false(self):
-        self.assertFalse(file_utils.extract_archive("/tmp/x", "/tmp", archive_format=None))
+        self.assertFalse(
+            file_utils.extract_archive("/tmp/x", "/tmp", archive_format=None)
+        )
 
     def test_extract_unsupported_format_raises(self):
         tmp = self.get_temp_dir()
@@ -215,9 +217,7 @@ class GetFileTest(testing.TestCase):
 
     def test_get_file_rejects_paths_in_fname(self):
         with self.assertRaisesRegex(ValueError, "no longer accepted"):
-            file_utils.get_file(
-                fname=os.path.join("sub", "x"), origin="http://example/x"
-            )
+            file_utils.get_file(fname=os.path.join("sub", "x"), origin="http://example/x")
 
     def test_get_file_requires_parseable_fname(self):
         with self.assertRaisesRegex(ValueError, "parse the file name"):
@@ -275,9 +275,7 @@ class GetFileTest(testing.TestCase):
         def fake_dl(origin, dest, *args, **kwargs):
             raise urllib.error.HTTPError(origin, 404, "Not Found", None, None)
 
-        with patch(
-            "synalinks.src.utils.file_utils.urlretrieve", side_effect=fake_dl
-        ):
+        with patch("synalinks.src.utils.file_utils.urlretrieve", side_effect=fake_dl):
             with self.assertRaisesRegex(Exception, "URL fetch failure"):
                 file_utils.get_file(
                     fname="x.bin",
@@ -292,9 +290,7 @@ class GetFileTest(testing.TestCase):
         def fake_dl(origin, dest, *args, **kwargs):
             _write(dest, b"bad")
 
-        with patch(
-            "synalinks.src.utils.file_utils.urlretrieve", side_effect=fake_dl
-        ):
+        with patch("synalinks.src.utils.file_utils.urlretrieve", side_effect=fake_dl):
             with self.assertRaisesRegex(ValueError, "Incomplete or corrupted"):
                 file_utils.get_file(
                     fname="x.bin",
@@ -356,9 +352,7 @@ class GetFileTest(testing.TestCase):
             with zipfile.ZipFile(dest, "w") as zf:
                 zf.write(inner, arcname="inner.txt")
 
-        with patch(
-            "synalinks.src.utils.file_utils.urlretrieve", side_effect=fake_dl
-        ):
+        with patch("synalinks.src.utils.file_utils.urlretrieve", side_effect=fake_dl):
             out = file_utils.get_file(
                 fname="bundle.zip",
                 origin="http://example/bundle.zip",

@@ -306,8 +306,7 @@ class CSVDatasetTest(testing.TestCase):
         # explicitly because the streaming dataset has no __len__
         # without a limit and ``list(ds)`` would call __len__.
         path = os.path.join(self.tmp, "empty.csv")
-        with open(path, "w", encoding="utf-8") as f:
-            pass  # touch
+        open(path, "w", encoding="utf-8").close()  # touch
         ds = CSVDataset(
             path=path,
             input_data_model=Question,

@@ -458,9 +458,7 @@ class KnowledgeBase(SynalinksSaveable):
         Returns:
             The number of rows actually deleted (0 if no id matched).
         """
-        return await self.adapter.delete(
-            id_or_ids, table_name=table_name
-        )
+        return await self.adapter.delete(id_or_ids, table_name=table_name)
 
     async def drop_table(self, table_name: str) -> bool:
         """Drop a table from the knowledge base.
@@ -523,7 +521,9 @@ class KnowledgeBase(SynalinksSaveable):
                 out of the LM-tool-call surface.
 
         Returns:
-            (Union[List[Dict[str, Any]], str]): A list of dicts when ``output_format="json"``, or a CSV string when ``output_format="csv"``.
+            (Union[List[Dict[str, Any]], str]): A list of dicts when
+                ``output_format="json"``, or a CSV string when
+                ``output_format="csv"``.
         """
         return await self.adapter.query(
             query, params=params, output_format=output_format, **kwargs

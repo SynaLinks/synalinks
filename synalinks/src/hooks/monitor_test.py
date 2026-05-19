@@ -9,6 +9,7 @@ from synalinks.src import testing
 from synalinks.src.backend import ChatMessage
 from synalinks.src.backend import ChatMessages
 from synalinks.src.backend import ChatRole
+from synalinks.src.backend import EmbeddingRequest
 from synalinks.src.hooks.monitor import Monitor
 from synalinks.src.modules.embedding_models import EmbeddingModel
 from synalinks.src.modules.language_models import LanguageModel
@@ -40,43 +41,6 @@ class MonitorSpanTypeTest(testing.TestCase):
             monitor = Monitor.__new__(Monitor)
             monitor.set_module(fake_module)
             self.assertEqual(monitor._get_span_type(), SpanType.CHAIN)
-
-
-class MonitorSerializeDataTest(testing.TestCase):
-    def test_serialize_raw_list_of_strings_preserves_payload(self):
-        """`EmbeddingModel` inputs are `list[str]` — flattening would
-        keep the strings but `.get_json()` would crash. The non-DataModel
-        path must pass the value through unchanged."""
-        monitor = _new_monitor(EmbeddingModel(model="ollama/all-minilm"))
-
-        serialized, is_symbolic = monitor._serialize_data((["a", "b"],))
-
-        self.assertFalse(is_symbolic)
-        self.assertEqual(serialized, [(["a", "b"],)])
-
-    def test_serialize_plain_dict_preserves_keys(self):
-        """`tree.flatten` on a dict drops keys, which destroys the LM/EM
-        output payload. Plain dicts must round-trip with structure intact."""
-        monitor = _new_monitor(EmbeddingModel(model="ollama/all-minilm"))
-
-        payload = {"embeddings": [[0.1, 0.2]]}
-        serialized, is_symbolic = monitor._serialize_data(payload)
-
-        self.assertFalse(is_symbolic)
-        self.assertEqual(serialized, [payload])
-
-    def test_serialize_data_model_uses_get_json(self):
-        """The standard module IO path: a DataModel goes through `get_json`."""
-        monitor = _new_monitor(LanguageModel(model="ollama/mistral"))
-
-        messages = ChatMessages(
-            messages=[ChatMessage(role=ChatRole.USER, content="Hello")]
-        )
-
-        serialized, is_symbolic = monitor._serialize_data(messages)
-
-        self.assertFalse(is_symbolic)
-        self.assertEqual(serialized, [messages.get_json()])
 
 
 class MonitorEndToEndTest(testing.TestCase):
@@ -113,9 +77,9 @@ class MonitorEndToEndTest(testing.TestCase):
         monitor = self._make_monitor()
         em = EmbeddingModel(model="ollama/all-minilm", hooks=[monitor])
 
-        result = await em(["hello world"])
+        result = await em(EmbeddingRequest(texts=["hello world"]))
 
-        self.assertEqual(result, {"embeddings": [[0.1, 0.2]]})
+        self.assertEqual(result.get_json(), {"embeddings": [[0.1, 0.2]]})
         # Begin + end → span created exactly once.
         self.assertEqual(mock_mlflow.start_span_no_context.call_count, 1)
         span_type = mock_mlflow.start_span_no_context.call_args.kwargs["span_type"]
@@ -144,7 +108,7 @@ class MonitorEndToEndTest(testing.TestCase):
         result = await lm(messages)
 
         self.assertEqual(
-            result,
+            result.get_json(),
             ChatMessage(role=ChatRole.ASSISTANT, content="Hi there").get_json(),
         )
         self.assertEqual(mock_mlflow.start_span_no_context.call_count, 1)

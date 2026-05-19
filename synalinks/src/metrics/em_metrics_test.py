@@ -4,15 +4,35 @@ from synalinks.src import testing
 from synalinks.src.metrics.em_metrics import AvgEmbeddingCostPerCall
 from synalinks.src.metrics.em_metrics import AvgEmbeddingTokensPerCall
 from synalinks.src.metrics.em_metrics import AvgEmbeddingVectorsPerCall
+from synalinks.src.metrics.em_metrics import AvgOptimizerEmbeddingCostPerCall
+from synalinks.src.metrics.em_metrics import AvgOptimizerEmbeddingTokensPerCall
+from synalinks.src.metrics.em_metrics import AvgOptimizerEmbeddingVectorsPerCall
+from synalinks.src.metrics.em_metrics import AvgRewardEmbeddingCostPerCall
+from synalinks.src.metrics.em_metrics import AvgRewardEmbeddingTokensPerCall
+from synalinks.src.metrics.em_metrics import AvgRewardEmbeddingVectorsPerCall
+from synalinks.src.metrics.em_metrics import EmbeddingCachedTokens
+from synalinks.src.metrics.em_metrics import EmbeddingCacheHitRate
 from synalinks.src.metrics.em_metrics import EmbeddingCost
 from synalinks.src.metrics.em_metrics import EmbeddingThroughput
 from synalinks.src.metrics.em_metrics import EmbeddingTokens
+from synalinks.src.metrics.em_metrics import EmbeddingTokensPerSecond
 from synalinks.src.metrics.em_metrics import EmbeddingVectors
+from synalinks.src.metrics.em_metrics import EmbeddingVectorsPerSecond
+from synalinks.src.metrics.em_metrics import OptimizerEmbeddingCachedTokens
+from synalinks.src.metrics.em_metrics import OptimizerEmbeddingCacheHitRate
 from synalinks.src.metrics.em_metrics import OptimizerEmbeddingCost
+from synalinks.src.metrics.em_metrics import OptimizerEmbeddingThroughput
 from synalinks.src.metrics.em_metrics import OptimizerEmbeddingTokens
+from synalinks.src.metrics.em_metrics import OptimizerEmbeddingTokensPerSecond
 from synalinks.src.metrics.em_metrics import OptimizerEmbeddingVectors
+from synalinks.src.metrics.em_metrics import OptimizerEmbeddingVectorsPerSecond
+from synalinks.src.metrics.em_metrics import RewardEmbeddingCachedTokens
+from synalinks.src.metrics.em_metrics import RewardEmbeddingCacheHitRate
 from synalinks.src.metrics.em_metrics import RewardEmbeddingCost
+from synalinks.src.metrics.em_metrics import RewardEmbeddingThroughput
 from synalinks.src.metrics.em_metrics import RewardEmbeddingTokens
+from synalinks.src.metrics.em_metrics import RewardEmbeddingTokensPerSecond
+from synalinks.src.metrics.em_metrics import RewardEmbeddingVectorsPerSecond
 from synalinks.src.metrics.em_metrics import _collect_embedding_models
 from synalinks.src.modules.embedding_models import EmbeddingModel
 
@@ -179,3 +199,120 @@ class EMPhaseRoutingTest(testing.TestCase):
         _record(em, cost=0.0009, phase="optimizer")
         _record(em, cost=0.999, phase="inference")
         self.assertAlmostEqual(m.result(), 0.0009)
+
+
+# All rate-style (X / elapsed_s) and avg-style (X / calls) metric `result()`
+# methods follow the same shape: read a numerator delta, read a denominator
+# delta, return 0.0 when the denominator is 0, else return the ratio. The
+# table below drives one parametric test that exercises each metric's
+# `result()` in the non-degenerate case plus a zero-denominator case.
+
+
+# Helper to bump `cached_tokens` (not part of `_record`'s defaults).
+def _bump_cached(em, n, phase):
+    attr = f"{phase}_cumulated_cached_tokens"
+    setattr(em, attr, getattr(em, attr, 0) + n)
+
+
+class EMRatesAndCacheTest(testing.TestCase):
+    """`result()` paths for rate, per-call, and cache-hit-rate metrics that
+    the existing tests don't hit. Three phases (inference/reward/optimizer)
+    follow the same shape — one parametric case per phase keeps coverage
+    honest without 30 copy-pasted methods."""
+
+    PHASES = (
+        (
+            "inference",
+            EmbeddingTokensPerSecond,
+            EmbeddingVectorsPerSecond,
+            EmbeddingCachedTokens,
+            EmbeddingCacheHitRate,
+        ),
+        (
+            "reward",
+            RewardEmbeddingTokensPerSecond,
+            RewardEmbeddingVectorsPerSecond,
+            RewardEmbeddingCachedTokens,
+            RewardEmbeddingCacheHitRate,
+        ),
+        (
+            "optimizer",
+            OptimizerEmbeddingTokensPerSecond,
+            OptimizerEmbeddingVectorsPerSecond,
+            OptimizerEmbeddingCachedTokens,
+            OptimizerEmbeddingCacheHitRate,
+        ),
+    )
+
+    def test_rates_and_cache_per_phase(self):
+        for phase, Tps, Vps, Cached, HitRate in self.PHASES:
+            with self.subTest(phase=phase):
+                em = _stub_em()
+                m_tps = _bind(Tps(), [em])
+                m_vps = _bind(Vps(), [em])
+                m_cached = _bind(Cached(), [em])
+                m_hit = _bind(HitRate(), [em])
+
+                # Empty-state: every rate / hit-rate must return 0.0 (the
+                # `<= 0` guard) without dividing by zero.
+                self.assertEqual(m_tps.result(), 0.0)
+                self.assertEqual(m_vps.result(), 0.0)
+                self.assertEqual(m_cached.result(), 0)
+                self.assertEqual(m_hit.result(), 0.0)
+
+                _record(em, prompt=200, vectors=8, elapsed=4.0, phase=phase)
+                _bump_cached(em, 50, phase=phase)
+
+                self.assertEqual(m_tps.result(), 50.0)  # 200 / 4.0
+                self.assertEqual(m_vps.result(), 2.0)  # 8 / 4.0
+                self.assertEqual(m_cached.result(), 50)
+                self.assertEqual(m_hit.result(), 50 / 200)  # cached / prompt
+
+    def test_throughput_per_phase(self):
+        # Inference throughput already has a dedicated test above; cover
+        # the reward + optimizer variants.
+        for phase, Throughput in (
+            ("reward", RewardEmbeddingThroughput),
+            ("optimizer", OptimizerEmbeddingThroughput),
+        ):
+            with self.subTest(phase=phase):
+                em = _stub_em()
+                m = _bind(Throughput(), [em])
+                self.assertEqual(m.result(), 0.0)
+                _record(em, prompt=10, vectors=1, elapsed=2.0, phase=phase)
+                _record(em, prompt=10, vectors=1, elapsed=2.0, phase=phase)
+                self.assertEqual(m.result(), 2 / 4.0)
+
+    def test_avg_per_call_metrics_per_phase(self):
+        # `AvgRewardEmbeddingTokensPerCall`, `AvgRewardEmbeddingVectorsPerCall`,
+        # `AvgRewardEmbeddingCostPerCall`, and the optimizer-phase mirrors —
+        # each computes `<X>_delta / calls_delta`.
+        for phase, AvgT, AvgV, AvgC in (
+            (
+                "reward",
+                AvgRewardEmbeddingTokensPerCall,
+                AvgRewardEmbeddingVectorsPerCall,
+                AvgRewardEmbeddingCostPerCall,
+            ),
+            (
+                "optimizer",
+                AvgOptimizerEmbeddingTokensPerCall,
+                AvgOptimizerEmbeddingVectorsPerCall,
+                AvgOptimizerEmbeddingCostPerCall,
+            ),
+        ):
+            with self.subTest(phase=phase):
+                em = _stub_em()
+                m_t = _bind(AvgT(), [em])
+                m_v = _bind(AvgV(), [em])
+                m_c = _bind(AvgC(), [em])
+                # Empty-state zero-division guards.
+                self.assertEqual(m_t.result(), 0.0)
+                self.assertEqual(m_v.result(), 0.0)
+                self.assertEqual(m_c.result(), 0.0)
+
+                _record(em, prompt=100, vectors=2, cost=0.001, phase=phase)
+                _record(em, prompt=300, vectors=6, cost=0.003, phase=phase)
+                self.assertEqual(m_t.result(), 200.0)
+                self.assertEqual(m_v.result(), 4.0)
+                self.assertAlmostEqual(m_c.result(), 0.002)

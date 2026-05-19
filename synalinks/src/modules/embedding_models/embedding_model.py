@@ -12,6 +12,8 @@ from tenacity import stop_after_attempt
 from tenacity import wait_exponential
 
 from synalinks.src.api_export import synalinks_export
+from synalinks.src.backend import Embeddings
+from synalinks.src.backend import JsonDataModel
 from synalinks.src.backend.common import global_state
 from synalinks.src.modules.module import Module
 from synalinks.src.saving import serialization_lib
@@ -191,8 +193,6 @@ class EmbeddingModel(Module):
             description=description,
             hooks=hooks,
         )
-        # `texts` is a list[str], not a JsonDataModel; relax the strict guard.
-        self._allow_non_json_data_model_positional_args = True
         if model is None:
             raise ValueError(
                 "You need to set the `model` argument for any EmbeddingModel"
@@ -245,17 +245,19 @@ class EmbeddingModel(Module):
         # skip Module's auto-build path (which would try to trace `call`).
         self.built = True
 
-    async def call(self, texts, **kwargs):
+    async def call(self, inputs, **kwargs):
         """
-        Call method to get dense embeddings vectors
+        Call method to get dense embeddings vectors.
 
         Args:
-            texts (list): A list of texts to embed.
+            inputs (EmbeddingRequest | JsonDataModel): An `EmbeddingRequest`
+                wrapping the text(s) to embed (single `str` or `list[str]`).
 
         Returns:
-            (list): The list of corresponding vectors.
+            (Embeddings): The corresponding embedding vectors, wrapped as
+                an `Embeddings` JsonDataModel.
         """
-
+        texts = inputs.get("texts")
         input_kwargs = copy.deepcopy(kwargs)
         # Merge instance-level defaults; per-call kwargs win.
         kwargs = {**self.default_kwargs, **kwargs}
@@ -265,7 +267,7 @@ class EmbeddingModel(Module):
             warnings.warn(f"All retries failed for {self}: {e}")
             if self.fallback:
                 return await self.fallback(
-                    texts,
+                    inputs,
                     **input_kwargs,
                 )
             else:
@@ -334,7 +336,11 @@ class EmbeddingModel(Module):
                 _accumulate(self, "", flat_increments, extras)
                 if op_scope is not None:
                     _accumulate(self, f"{op_scope}_", flat_increments, extras)
-                return {"embeddings": vectors}
+                return JsonDataModel(
+                    json={"embeddings": vectors},
+                    schema=Embeddings.get_schema(),
+                    name=f"{self.name}_response",
+                )
             except Exception as e:
                 warnings.warn(f"Error occured while trying to call {self}: {e}")
                 raise

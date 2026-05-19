@@ -187,11 +187,7 @@ def populate_workspace(workdir: str) -> None:
 
     # A starter module the agent will extend.
     with open(os.path.join(workdir, "calculator.py"), "w") as f:
-        f.write(
-            "def add(a, b):\n"
-            "    \"\"\"Return a + b.\"\"\"\n"
-            "    return a + b\n"
-        )
+        f.write('def add(a, b):\n    """Return a + b."""\n    return a + b\n')
 
     # A README the agent can read to understand context.
     with open(os.path.join(workdir, "README.md"), "w") as f:

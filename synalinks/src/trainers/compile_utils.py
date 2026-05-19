@@ -166,6 +166,16 @@ class CompileMetrics(metrics_module.Metric):
     ):
         flat_metrics = []
         if isinstance(metrics, dict):
+            # Without output names the dict-keyed form is meaningless — the
+            # keys can't be matched to outputs. Raise with the intended
+            # message instead of letting the membership check below crash
+            # on ``None``.
+            if output_names is None:
+                raise ValueError(
+                    f"Argument `{argument_name}` can only be provided as a "
+                    "dict when the program also returns a dict of outputs. "
+                    f"Received {argument_name}={metrics}"
+                )
             for name in metrics.keys():
                 if name not in output_names:
                     raise ValueError(
@@ -225,12 +235,8 @@ class CompileMetrics(metrics_module.Metric):
                         )
                     )
             elif isinstance(metrics, dict):
-                if output_names is None:
-                    raise ValueError(
-                        f"Argument `{argument_name}` can only be provided as a "
-                        "dict when the program also returns a dict of outputs. "
-                        f"Received {argument_name}={metrics}"
-                    )
+                # ``output_names is None`` is already rejected at the top
+                # of this function for dict-shaped metrics.
                 for name in metrics.keys():
                     if not isinstance(metrics[name], list):
                         metrics[name] = [metrics[name]]

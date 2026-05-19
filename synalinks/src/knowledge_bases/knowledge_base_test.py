@@ -92,12 +92,8 @@ class KnowledgeBaseTest(testing.TestCase):
         kb = KnowledgeBase(uri=self.db_path, data_models=[Document])
         await kb.update(
             [
-                JsonDataModel(
-                    data_model=Document(id="doc1", text="quick brown fox")
-                ),
-                JsonDataModel(
-                    data_model=Document(id="doc2", text="quick rabbit runs")
-                ),
+                JsonDataModel(data_model=Document(id="doc1", text="quick brown fox")),
+                JsonDataModel(data_model=Document(id="doc2", text="quick rabbit runs")),
             ]
         )
 
@@ -126,16 +122,10 @@ class KnowledgeBaseTest(testing.TestCase):
         # orjson/json themselves if they need bytes on the wire.)
         kb = KnowledgeBase(uri=self.db_path, data_models=[Document])
         await kb.update(
-            [
-                JsonDataModel(
-                    data_model=Document(id="doc1", text="quick brown fox")
-                )
-            ]
+            [JsonDataModel(data_model=Document(id="doc1", text="quick brown fox"))]
         )
 
-        default = await kb.fulltext_search(
-            "quick", table_name="Document", k=10
-        )
+        default = await kb.fulltext_search("quick", table_name="Document", k=10)
         explicit = await kb.fulltext_search(
             "quick",
             table_name="Document",
@@ -153,18 +143,12 @@ class KnowledgeBaseTest(testing.TestCase):
         kb = KnowledgeBase(uri=self.db_path, data_models=[Document])
         await kb.update(
             [
-                JsonDataModel(
-                    data_model=Document(id="d1", text="alpha")
-                ),
-                JsonDataModel(
-                    data_model=Document(id="d2", text="beta")
-                ),
+                JsonDataModel(data_model=Document(id="d1", text="alpha")),
+                JsonDataModel(data_model=Document(id="d2", text="beta")),
             ]
         )
 
-        records = await kb.query(
-            "SELECT id, text FROM Document ORDER BY id"
-        )
+        records = await kb.query("SELECT id, text FROM Document ORDER BY id")
         self.assertEqual(
             records,
             [
@@ -197,9 +181,7 @@ class KnowledgeBaseTest(testing.TestCase):
         default = await kb.fulltext_search("", table_name="Document")
         self.assertEqual(default, [])
 
-        csv_out = await kb.fulltext_search(
-            "", table_name="Document", output_format="csv"
-        )
+        csv_out = await kb.fulltext_search("", table_name="Document", output_format="csv")
         self.assertEqual(csv_out, "")
 
         json_out = await kb.fulltext_search(
@@ -414,9 +396,7 @@ class KnowledgeBaseTest(testing.TestCase):
             return CSVDataset(
                 path=csv_path,
                 input_data_model=Document,
-                input_template=(
-                    '{"id": {{ id | tojson }}, "text": {{ text | tojson }}}'
-                ),
+                input_template=('{"id": {{ id | tojson }}, "text": {{ text | tojson }}}'),
                 batch_size=2,
             )
 
@@ -467,7 +447,9 @@ class KnowledgeBaseTest(testing.TestCase):
             # loaded table — its title matches the requested name.
             self.assertEqual(model.get_schema()["title"], "Document")
 
-            rows = await kb.getall(table_name=model.get_schema()["title"], limit=100, offset=0)
+            rows = await kb.getall(
+                table_name=model.get_schema()["title"], limit=100, offset=0
+            )
             self.assertEqual(len(rows), 50)
 
             # All rows queryable through the returned model.
@@ -503,7 +485,9 @@ class KnowledgeBaseTest(testing.TestCase):
                 w.writerow(["d3", "v1"])  # new row, mixed with the overwrite
 
             model = await kb.from_csv(csv_path, table_name="Document")
-            rows = await kb.getall(table_name=model.get_schema()["title"], limit=100, offset=0)
+            rows = await kb.getall(
+                table_name=model.get_schema()["title"], limit=100, offset=0
+            )
             self.assertEqual(len(rows), 3)  # d1 (updated) + d2 (kept) + d3 (new)
 
             d1 = await kb.get("d1", table_name=model.get_schema()["title"])
@@ -532,7 +516,9 @@ class KnowledgeBaseTest(testing.TestCase):
         kb = KnowledgeBase(uri=self.db_path, data_models=[Document])
         try:
             model = await kb.from_csv(csv_path, table_name="Document")
-            results = await kb.fulltext_search("quick", table_name=model.get_schema()["title"], k=10)
+            results = await kb.fulltext_search(
+                "quick", table_name=model.get_schema()["title"], k=10
+            )
             ids = {r["id"] for r in results}
             self.assertIn("d1", ids)
             self.assertIn("d3", ids)
@@ -565,6 +551,7 @@ class KnowledgeBaseTest(testing.TestCase):
             # connection-level, so re-attaching means the new
             # connection was re-sandboxed in __init__'s path.
             import duckdb
+
             with self.assertRaises(duckdb.Error):
                 await kb.query(
                     f"SELECT * FROM read_csv('{csv_path}', AUTO_DETECT=TRUE)",
@@ -579,9 +566,7 @@ class KnowledgeBaseTest(testing.TestCase):
             import pytest
 
             with pytest.raises(FileNotFoundError):
-                await kb.from_csv(
-                    "/nonexistent/path/x.csv", table_name="Document"
-                )
+                await kb.from_csv("/nonexistent/path/x.csv", table_name="Document")
         finally:
             kb.adapter.close()
 
@@ -636,9 +621,7 @@ class KnowledgeBaseTest(testing.TestCase):
         kb = KnowledgeBase(uri=self.db_path)
         try:
             model = await kb.from_csv(csv_path, table_name="Padded")
-            self.assertEqual(
-                model.get_schema()["properties"]["id"]["type"], "string"
-            )
+            self.assertEqual(model.get_schema()["properties"]["id"]["type"], "string")
             r = await kb.get("0002", table_name=model.get_schema()["title"])
             self.assertIsNotNone(r)
             self.assertEqual(r.get_json()["label"], "row 2")
@@ -661,7 +644,9 @@ class KnowledgeBaseTest(testing.TestCase):
         kb = KnowledgeBase(uri=self.db_path, data_models=[Document])
         try:
             model = await kb.from_parquet(path, table_name="Document")
-            rows = await kb.getall(table_name=model.get_schema()["title"], limit=100, offset=0)
+            rows = await kb.getall(
+                table_name=model.get_schema()["title"], limit=100, offset=0
+            )
             self.assertEqual(len(rows), 50)
 
             first = await kb.get("p000", table_name=model.get_schema()["title"])
@@ -676,9 +661,7 @@ class KnowledgeBaseTest(testing.TestCase):
         import pyarrow.parquet as pq
 
         path1 = os.path.join(self.temp_dir, "v1.parquet")
-        pq.write_table(
-            pa.table({"id": ["d1", "d2"], "text": ["one", "two"]}), path1
-        )
+        pq.write_table(pa.table({"id": ["d1", "d2"], "text": ["one", "two"]}), path1)
         path2 = os.path.join(self.temp_dir, "v2.parquet")
         pq.write_table(
             pa.table({"id": ["d1", "d3"], "text": ["one-updated", "three"]}),
@@ -689,7 +672,9 @@ class KnowledgeBaseTest(testing.TestCase):
         try:
             await kb.from_parquet(path1, table_name="Document")
             model = await kb.from_parquet(path2, table_name="Document")
-            rows = await kb.getall(table_name=model.get_schema()["title"], limit=100, offset=0)
+            rows = await kb.getall(
+                table_name=model.get_schema()["title"], limit=100, offset=0
+            )
             self.assertEqual(len(rows), 3)
 
             d1 = await kb.get("d1", table_name=model.get_schema()["title"])
@@ -721,17 +706,16 @@ class KnowledgeBaseTest(testing.TestCase):
         path = os.path.join(self.temp_dir, "docs.json")
         with open(path, "w", encoding="utf-8") as f:
             _json.dump(
-                [
-                    {"id": f"doc{i:03d}", "text": f"row {i} content"}
-                    for i in range(50)
-                ],
+                [{"id": f"doc{i:03d}", "text": f"row {i} content"} for i in range(50)],
                 f,
             )
 
         kb = KnowledgeBase(uri=self.db_path, data_models=[Document])
         try:
             model = await kb.from_json(path, table_name="Document")
-            rows = await kb.getall(table_name=model.get_schema()["title"], limit=100, offset=0)
+            rows = await kb.getall(
+                table_name=model.get_schema()["title"], limit=100, offset=0
+            )
             self.assertEqual(len(rows), 50)
             first = await kb.get("doc000", table_name=model.get_schema()["title"])
             self.assertEqual(first.get_json()["text"], "row 0 content")
@@ -745,21 +729,19 @@ class KnowledgeBaseTest(testing.TestCase):
 
         path = os.path.join(self.temp_dir, "docs.json")
         with open(path, "w", encoding="utf-8") as f:
-            _json.dump(
-                [{"id": "d1", "text": "v1"}, {"id": "d2", "text": "v1"}], f
-            )
+            _json.dump([{"id": "d1", "text": "v1"}, {"id": "d2", "text": "v1"}], f)
 
         kb = KnowledgeBase(uri=self.db_path, data_models=[Document])
         try:
             await kb.from_json(path, table_name="Document")
 
             with open(path, "w", encoding="utf-8") as f:
-                _json.dump(
-                    [{"id": "d1", "text": "v2"}, {"id": "d3", "text": "v1"}], f
-                )
+                _json.dump([{"id": "d1", "text": "v2"}, {"id": "d3", "text": "v1"}], f)
 
             model = await kb.from_json(path, table_name="Document")
-            rows = await kb.getall(table_name=model.get_schema()["title"], limit=100, offset=0)
+            rows = await kb.getall(
+                table_name=model.get_schema()["title"], limit=100, offset=0
+            )
             self.assertEqual(len(rows), 3)
 
             d1 = await kb.get("d1", table_name=model.get_schema()["title"])
@@ -786,7 +768,9 @@ class KnowledgeBaseTest(testing.TestCase):
         kb = KnowledgeBase(uri=self.db_path, data_models=[Document])
         try:
             model = await kb.from_json(path, table_name="Document")
-            results = await kb.fulltext_search("quick", table_name=model.get_schema()["title"], k=10)
+            results = await kb.fulltext_search(
+                "quick", table_name=model.get_schema()["title"], k=10
+            )
             ids = {r["id"] for r in results}
             self.assertEqual(ids, {"d1", "d3"})
         finally:
@@ -807,6 +791,7 @@ class KnowledgeBaseTest(testing.TestCase):
         try:
             await kb.from_json(path, table_name="Document")
             import duckdb
+
             with self.assertRaises(duckdb.Error):
                 await kb.query(
                     f"SELECT * FROM read_json('{path}', format='array')",
@@ -828,10 +813,10 @@ class KnowledgeBaseTest(testing.TestCase):
         try:
             await kb.from_jsonl(path, table_name="Document")
             import duckdb
+
             with self.assertRaises(duckdb.Error):
                 await kb.query(
-                    f"SELECT * FROM read_json('{path}', "
-                    f"format='newline_delimited')",
+                    f"SELECT * FROM read_json('{path}', format='newline_delimited')",
                     read_only=False,
                 )
         finally:
@@ -854,16 +839,15 @@ class KnowledgeBaseTest(testing.TestCase):
         with open(path, "w", encoding="utf-8") as f:
             for i in range(50):
                 f.write(
-                    _json.dumps(
-                        {"id": f"doc{i:03d}", "text": f"row {i} content"}
-                    )
-                    + "\n"
+                    _json.dumps({"id": f"doc{i:03d}", "text": f"row {i} content"}) + "\n"
                 )
 
         kb = KnowledgeBase(uri=self.db_path, data_models=[Document])
         try:
             model = await kb.from_jsonl(path, table_name="Document")
-            rows = await kb.getall(table_name=model.get_schema()["title"], limit=100, offset=0)
+            rows = await kb.getall(
+                table_name=model.get_schema()["title"], limit=100, offset=0
+            )
             self.assertEqual(len(rows), 50)
             first = await kb.get("doc000", table_name=model.get_schema()["title"])
             self.assertEqual(first.get_json()["text"], "row 0 content")
@@ -889,7 +873,9 @@ class KnowledgeBaseTest(testing.TestCase):
         try:
             await kb.from_jsonl(path1, table_name="Document")
             model = await kb.from_jsonl(path2, table_name="Document")
-            rows = await kb.getall(table_name=model.get_schema()["title"], limit=100, offset=0)
+            rows = await kb.getall(
+                table_name=model.get_schema()["title"], limit=100, offset=0
+            )
             self.assertEqual(len(rows), 3)
 
             d1 = await kb.get("d1", table_name=model.get_schema()["title"])
@@ -937,9 +923,7 @@ class KnowledgeBaseTest(testing.TestCase):
 
             schema = model.get_schema()
             self.assertEqual(schema["title"], "Article")
-            self.assertEqual(
-                schema["description"], "Bulk-loaded articles for the demo."
-            )
+            self.assertEqual(schema["description"], "Bulk-loaded articles for the demo.")
             self.assertEqual(list(schema["properties"].keys()), ["id", "text"])
 
             # The returned model resolves rows correctly.
@@ -948,8 +932,7 @@ class KnowledgeBaseTest(testing.TestCase):
 
             # Newly-created tables are visible to get_symbolic_data_models.
             registered_titles = {
-                dm.get_schema().get("title")
-                for dm in kb.get_symbolic_data_models()
+                dm.get_schema().get("title") for dm in kb.get_symbolic_data_models()
             }
             self.assertIn("Article", registered_titles)
         finally:
@@ -972,14 +955,10 @@ class KnowledgeBaseTest(testing.TestCase):
 
         kb = KnowledgeBase(uri=self.db_path)
         try:
-            model = await kb.from_csv(
-                csv_path, table_name="bad name; DROP TABLE x;"
-            )
+            model = await kb.from_csv(csv_path, table_name="bad name; DROP TABLE x;")
             # The malicious tokens are gone — only the alphanumeric
             # PascalCase residue survives as the table name.
-            self.assertEqual(
-                model.get_schema()["title"], "BadNameDropTableX"
-            )
+            self.assertEqual(model.get_schema()["title"], "BadNameDropTableX")
         finally:
             kb.adapter.close()
 
@@ -1196,9 +1175,7 @@ class KnowledgeBaseTest(testing.TestCase):
         import pyarrow.parquet as pq
 
         path = os.path.join(self.temp_dir, "blog-posts.parquet")
-        pq.write_table(
-            pa.table({"id": ["a", "b"], "text": ["one", "two"]}), path
-        )
+        pq.write_table(pa.table({"id": ["a", "b"], "text": ["one", "two"]}), path)
 
         kb = KnowledgeBase(uri=self.db_path)
         try:
@@ -1277,15 +1254,11 @@ class KnowledgeBaseTest(testing.TestCase):
     async def test_delete_empty_list_is_noop(self):
         kb = KnowledgeBase(uri=self.db_path, data_models=[Document])
         try:
-            await kb.update(
-                JsonDataModel(data_model=Document(id="d1", text="one"))
-            )
+            await kb.update(JsonDataModel(data_model=Document(id="d1", text="one")))
             n = await kb.delete([], table_name="Document")
             self.assertEqual(n, 0)
             # Row still there.
-            self.assertIsNotNone(
-                await kb.get("d1", table_name="Document")
-            )
+            self.assertIsNotNone(await kb.get("d1", table_name="Document"))
         finally:
             kb.adapter.close()
 
@@ -1302,9 +1275,7 @@ class KnowledgeBaseTest(testing.TestCase):
                 ]
             )
             await kb.delete("d1", table_name="Document")
-            hits = await kb.fulltext_search(
-                "quick", table_name="Document", k=10
-            )
+            hits = await kb.fulltext_search("quick", table_name="Document", k=10)
             ids = {r["id"] for r in hits}
             self.assertNotIn("d1", ids)
             self.assertIn("d2", ids)
@@ -1321,9 +1292,7 @@ class KnowledgeBaseTest(testing.TestCase):
                 n = await kb.delete("x", table_name="NoSuchTable")
             self.assertEqual(n, 0)
             self.assertTrue(
-                any(
-                    "NoSuchTable" in str(w.message) for w in caught
-                ),
+                any("NoSuchTable" in str(w.message) for w in caught),
                 "expected a warning naming the missing table",
             )
         finally:
@@ -1332,17 +1301,14 @@ class KnowledgeBaseTest(testing.TestCase):
     async def test_drop_table_removes_table_and_returns_true(self):
         kb = KnowledgeBase(uri=self.db_path, data_models=[Document])
         try:
-            await kb.update(
-                JsonDataModel(data_model=Document(id="d1", text="x"))
-            )
+            await kb.update(JsonDataModel(data_model=Document(id="d1", text="x")))
 
             dropped = await kb.drop_table("Document")
             self.assertTrue(dropped)
 
             # Table is gone from the registered list.
             registered = {
-                m.get_schema().get("title")
-                for m in kb.get_symbolic_data_models()
+                m.get_schema().get("title") for m in kb.get_symbolic_data_models()
             }
             self.assertNotIn("Document", registered)
 
@@ -1367,9 +1333,7 @@ class KnowledgeBaseTest(testing.TestCase):
         # pass kebab-case / snake_case and it still finds the table.
         kb = KnowledgeBase(uri=self.db_path, data_models=[Document])
         try:
-            await kb.update(
-                JsonDataModel(data_model=Document(id="d1", text="x"))
-            )
+            await kb.update(JsonDataModel(data_model=Document(id="d1", text="x")))
             dropped = await kb.drop_table("document")
             self.assertTrue(dropped)
         finally:
@@ -1400,8 +1364,7 @@ class KnowledgeBaseTest(testing.TestCase):
 
             # The old name no longer resolves.
             registered_titles = {
-                dm.get_schema().get("title")
-                for dm in kb.get_symbolic_data_models()
+                dm.get_schema().get("title") for dm in kb.get_symbolic_data_models()
             }
             self.assertIn("NewName", registered_titles)
             self.assertNotIn("OldName", registered_titles)
@@ -1422,9 +1385,7 @@ class KnowledgeBaseTest(testing.TestCase):
         kb = KnowledgeBase(uri=self.db_path)
         try:
             original = await kb.from_csv(csv_path, table_name="Source")
-            renamed = await kb.rename(
-                original, table_name="my-new-table"
-            )
+            renamed = await kb.rename(original, table_name="my-new-table")
             self.assertEqual(renamed.get_schema()["title"], "MyNewTable")
         finally:
             kb.adapter.close()
@@ -1476,9 +1437,7 @@ class KnowledgeBaseTest(testing.TestCase):
                 table_description="Source description.",
             )
             renamed = await kb.rename(original, table_name="NewName")
-            self.assertEqual(
-                renamed.get_schema()["description"], "Source description."
-            )
+            self.assertEqual(renamed.get_schema()["description"], "Source description.")
         finally:
             kb.adapter.close()
 
@@ -1503,9 +1462,7 @@ class KnowledgeBaseTest(testing.TestCase):
             self.assertEqual(renamed.get_schema()["title"], "Article")
 
             # Kebab-case input is also accepted (gets normalized).
-            renamed2 = await kb.rename(
-                "article", table_name="blog-post"
-            )
+            renamed2 = await kb.rename("article", table_name="blog-post")
             self.assertEqual(renamed2.get_schema()["title"], "BlogPost")
         finally:
             kb.adapter.close()
@@ -1552,7 +1509,9 @@ class KnowledgeBaseTest(testing.TestCase):
         try:
             original = await kb.from_csv(csv_path, table_name="OldName")
             renamed = await kb.rename(original, table_name="NewName")
-            hits = await kb.fulltext_search("quick", table_name=renamed.get_schema()["title"], k=10)
+            hits = await kb.fulltext_search(
+                "quick", table_name=renamed.get_schema()["title"], k=10
+            )
             self.assertEqual({r["id"] for r in hits}, {"a"})
         finally:
             kb.adapter.close()
