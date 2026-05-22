@@ -346,7 +346,7 @@ Before you press "go," it is worth knowing four levers:
 - [synalinks.tuners](https://synalinks.github.io/synalinks/Synalinks%20API/Tuners/)
 - [disable_keras_backend](https://synalinks.github.io/synalinks/Synalinks%20API/Utils/disable_keras_backend/)
 - [Generator](https://synalinks.github.io/synalinks/Synalinks%20API/Modules%20API/Core%20Modules/Generator%20module/)
-- [ChainOfThought](https://synalinks.github.io/synalinks/Synalinks%20API/Modules%20API/TTC%20Modules/ChainOfThought%20module/)
+- [ChainOfThought](https://synalinks.github.io/synalinks/Synalinks%20API/Modules%20API/Test%20Time%20Compute%20Modules/ChainOfThought%20module/)
 - [GSM8K dataset](https://synalinks.github.io/synalinks/Synalinks%20API/Built-in%20Datasets/GSM8K/)
 - [keras-tuner](https://keras.io/keras_tuner/)
 """

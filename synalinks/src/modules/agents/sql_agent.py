@@ -4,6 +4,7 @@ from typing import List
 from typing import Optional
 
 from synalinks.src.api_export import synalinks_export
+from synalinks.src.knowledge_bases import get as _get_kb
 from synalinks.src.modules.agents.function_calling_agent import FunctionCallingAgent
 from synalinks.src.modules.core.tool import Tool
 from synalinks.src.modules.language_models import get as _get_lm
@@ -129,7 +130,7 @@ def _build_tools(knowledge_base, output_format: str = "csv", k: int = 50):
         # interpolation is safe; LIMIT / OFFSET are bound parameters.
         sql = f"SELECT * FROM {table_name} LIMIT ? OFFSET ?"
         try:
-            results = await knowledge_base.query(
+            results = await knowledge_base.sql(
                 sql,
                 params=[effective_limit, offset],
                 read_only=True,
@@ -173,7 +174,7 @@ def _build_tools(knowledge_base, output_format: str = "csv", k: int = 50):
             }
         wrapped_sql = f"SELECT * FROM ({stripped}) LIMIT {k}"
         try:
-            results = await knowledge_base.query(
+            results = await knowledge_base.sql(
                 wrapped_sql, read_only=True, output_format=output_format
             )
         except Exception as e:
@@ -353,8 +354,11 @@ class SQLAgent(Module):
         super().__init__(name=name, description=description)
 
         if knowledge_base is None:
-            raise ValueError("`knowledge_base` is required")
-        self.knowledge_base = knowledge_base
+            raise ValueError(
+                "`knowledge_base` is required for SQLAgent: pass a KnowledgeBase "
+                "(or a URI) the agent can query."
+            )
+        self.knowledge_base = _get_kb(knowledge_base)
         self.language_model = _get_lm(language_model)
 
         if not schema and data_model:
@@ -402,8 +406,6 @@ class SQLAgent(Module):
         ]
         builtin_names = {t.name for t in builtin_tools}
 
-        # Stash the user-supplied tools as-is for get_config round-trips;
-        # the merged list goes to FunctionCallingAgent below.
         self.extra_tools = list(tools) if tools else []
         merged_tools = list(builtin_tools)
         for extra in self.extra_tools:
@@ -414,7 +416,6 @@ class SQLAgent(Module):
                     f"SQL tool. Rename the additional tool."
                 )
             merged_tools.append(extra_tool)
-        # Leading-underscore check is centralized in FunctionCallingAgent.
 
         self.agent = FunctionCallingAgent(
             schema=self.schema,

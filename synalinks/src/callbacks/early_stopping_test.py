@@ -2,6 +2,7 @@
 # Original authors: François Chollet et al. (Keras Team)
 # License Apache 2.0: (c) 2025-2026 Yoan Sallami (Synalinks Team)
 
+import copy
 import warnings
 
 import numpy as np
@@ -10,18 +11,38 @@ from synalinks.src import testing
 from synalinks.src.callbacks.early_stopping import EarlyStopping
 
 
+class _FakeVariable:
+    """Mirrors the slice of the real synalinks Variable that EarlyStopping
+    uses: `get_json()` to read and `assign()` to write. Deliberately does
+    NOT expose anything else, so the test fails fast if the callback reaches
+    for an API a real Variable does not have."""
+
+    def __init__(self, value):
+        self._json = value
+
+    def get_json(self):
+        return self._json
+
+    def assign(self, value):
+        self._json = value
+        return value
+
+
 class _FakeProgram:
+    """Mirrors the real Program variable API (`trainable_variables` holding
+    objects with `get_json`/`assign`). It must NOT define `get_variables` /
+    `set_variables`: those methods do not exist on a real `Program`, and a
+    mock that provided them previously masked a crash in EarlyStopping's
+    restore path."""
+
     def __init__(self, variables=None):
         self.stop_training = False
-        self._variables = variables if variables is not None else {"v": 0}
-        self._set_calls = []
+        initial = variables if variables is not None else {"v": 0}
+        self._var = _FakeVariable(initial)
 
-    def get_variables(self):
-        return dict(self._variables)
-
-    def set_variables(self, variables):
-        self._set_calls.append(variables)
-        self._variables = dict(variables)
+    @property
+    def trainable_variables(self):
+        return [self._var]
 
 
 def _run(cb, sequence, program=None, start_logs=None):
@@ -144,16 +165,65 @@ class EarlyStoppingRestoreVariablesTest(testing.TestCase):
         cb.set_program(program)
         cb.on_train_begin()
 
-        program._variables = {"step": "epoch0"}
+        # Simulate the optimizer rewriting the trainable variable each epoch.
+        program._var.assign({"step": "epoch0"})
         cb.on_epoch_end(0, logs={"val_reward": 0.1})
-        program._variables = {"step": "epoch1_best"}
+        program._var.assign({"step": "epoch1_best"})
         cb.on_epoch_end(1, logs={"val_reward": 0.5})
-        program._variables = {"step": "epoch2"}
+        program._var.assign({"step": "epoch2"})
         cb.on_epoch_end(2, logs={"val_reward": 0.3})
-        program._variables = {"step": "epoch3"}
+        program._var.assign({"step": "epoch3"})
         cb.on_epoch_end(3, logs={"val_reward": 0.2})
 
         self.assertTrue(program.stop_training)
         cb.on_train_end()
-        self.assertEqual(program._variables, {"step": "epoch1_best"})
+        # The best epoch (1) value must be restored, not the last one.
+        self.assertEqual(program._var.get_json(), {"step": "epoch1_best"})
         self.assertEqual(cb.best_epoch, 1)
+
+    def test_snapshot_is_isolated_from_later_mutation(self):
+        """The snapshot must deep-copy the value: mutating the variable in
+        place after a snapshot must not corrupt the stored best."""
+        cb = EarlyStopping(monitor="val_reward", mode="max", patience=1)
+        program = _FakeProgram(variables={"items": [1]})
+        cb.set_program(program)
+        snapshot = cb._snapshot_variables()
+        # Mutate the live value in place; the snapshot must be unaffected.
+        program._var.get_json()["items"].append(2)
+        self.assertEqual(snapshot[0], {"items": [1]})
+
+
+class EarlyStoppingRealProgramTest(testing.TestCase):
+    async def test_snapshot_restore_roundtrip_on_real_program(self):
+        """Regression guard: EarlyStopping must drive a real `Program` through
+        `trainable_variables` + `Variable.get_json/assign`. A previous mock
+        defined phantom `get_variables`/`set_variables` methods that a real
+        Program lacks, hiding an `AttributeError` in the restore path."""
+        import synalinks
+
+        class _Q(synalinks.DataModel):
+            answer: str = synalinks.Field(description="the answer")
+
+        inputs = synalinks.Input(data_model=_Q)
+        outputs = await synalinks.Generator(
+            data_model=_Q,
+            language_model=synalinks.LanguageModel(model="ollama/mistral"),
+        )(inputs)
+        program = synalinks.Program(inputs=inputs, outputs=outputs)
+
+        cb = EarlyStopping(restore_best_variables=True)
+        cb.set_program(program)
+
+        # Snapshot the real trainable variables, mutate one, then restore.
+        snapshot = cb._snapshot_variables()
+        self.assertEqual(len(snapshot), len(program.trainable_variables))
+
+        var = program.trainable_variables[0]
+        before = copy.deepcopy(var.get_json())
+        mutated = copy.deepcopy(before)
+        mutated["__probe__"] = "changed"
+        var.assign(mutated)
+        self.assertIn("__probe__", var.get_json())
+
+        cb._restore_variables(snapshot)
+        self.assertEqual(var.get_json(), before)

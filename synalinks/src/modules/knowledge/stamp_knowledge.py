@@ -58,10 +58,12 @@ class StampKnowledge(Module):
     async def call(self, inputs):
         if not inputs:
             return None
-        return tree.map_structure(
-            lambda x: run_maybe_nested(self._stamp(x)),
-            inputs,
-        )
+        # Await each stamp on the current event loop (instead of running it on a
+        # transient `run_maybe_nested` thread-loop). flatten/pack mirrors
+        # `map_structure` since data models are tree leaves.
+        leaves = tree.flatten(inputs)
+        stamped = [await self._stamp(leaf) for leaf in leaves]
+        return tree.pack_sequence_as(inputs, stamped)
 
     async def compute_output_spec(self, inputs):
         def _stamp_spec(x):

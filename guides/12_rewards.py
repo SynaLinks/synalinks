@@ -329,12 +329,12 @@ ladder top to bottom and stop at the first match:
 
 ## API References
 
-- [synalinks.Reward](https://synalinks.github.io/synalinks/Synalinks%20API/Rewards/Reward/)
-- [synalinks.rewards.ExactMatch](https://synalinks.github.io/synalinks/Synalinks%20API/Rewards/ExactMatch/)
-- [synalinks.rewards.CosineSimilarity](https://synalinks.github.io/synalinks/Synalinks%20API/Rewards/CosineSimilarity/)
-- [synalinks.rewards.LMAsJudge](https://synalinks.github.io/synalinks/Synalinks%20API/Rewards/LMAsJudge/)
-- [synalinks.rewards.RewardFunctionWrapper](https://synalinks.github.io/synalinks/Synalinks%20API/Rewards/RewardFunctionWrapper/)
-- [synalinks.BatchReward](https://synalinks.github.io/synalinks/Synalinks%20API/Rewards/BatchReward/)
+- [synalinks.Reward](https://synalinks.github.io/synalinks/Synalinks%20API/Rewards/)
+- [synalinks.rewards.ExactMatch](https://synalinks.github.io/synalinks/Synalinks%20API/Rewards/ExactMatch%20reward/)
+- [synalinks.rewards.CosineSimilarity](https://synalinks.github.io/synalinks/Synalinks%20API/Rewards/CosineSimilarity%20reward/)
+- [synalinks.rewards.LMAsJudge](https://synalinks.github.io/synalinks/Synalinks%20API/Rewards/LMAsJudge%20reward/)
+- [synalinks.rewards.RewardFunctionWrapper](https://synalinks.github.io/synalinks/Synalinks%20API/Rewards/Reward%20wrappers/)
+- [synalinks.BatchReward](https://synalinks.github.io/synalinks/Synalinks%20API/Rewards/Batch%20reward%20wrappers/)
 """
 
 import asyncio

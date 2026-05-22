@@ -11,7 +11,7 @@ Synalinks is an *adaptation of Keras 3* focused on neuro-symbolic systems and in
 ---
 
 !!! info
-    Too busy to read the documentation? Give the [llms.txt](https://synalinks.github.io/synalinks/llms.txt) or [llms-full.txt](https://synalinks.github.io/synalinks/llms-full.txt) to you favorite LMs or AI coding tools. Or better, use [Synalinks Claude Skills](https://github.com/SynaLinks/synalinks-skills) with Claude Code to use Synalinks right away!
+    Want to use Synalinks with your own coding agent (Claude Code, Cursor, Copilot, etc.)? Add the Synalinks-specific skills from [`synalinks-skills`](https://github.com/SynaLinks/synalinks-skills) on GitHub to your agent — they teach it the framework conventions and give it the context it needs to build Synalinks programs right away.
 
 
 ## Who is Synalinks for?

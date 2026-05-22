@@ -100,14 +100,14 @@ def is_embedded_entity(x):
 class Relation(DataModel):
     """A relation model"""
 
-    obj: Entity = Field(
-        description="The object entity",
+    subj: Entity = Field(
+        description="The subject entity",
     )
     label: str = Field(
         description="The relation label",
     )
-    subj: Entity = Field(
-        description="The subject entity",
+    obj: Entity = Field(
+        description="The object entity",
     )
 
 

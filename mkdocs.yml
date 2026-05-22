@@ -5,7 +5,7 @@ repo_url: https://github.com/SynaLinks/synalinks
 repo_name: SynaLinks/synalinks
 theme:
   name: material
-  logo: assets/synalinks_logo.png
+  logo: assets/synalinks-light.svg
   favicon: assets/synalinks_favicon.png
   features:
     - content.code.copy
@@ -40,18 +40,6 @@ plugins:
   - mkdocstrings:
       default_handler: python
   - glightbox
-  - llmstxt:
-      full_output: llms-full.txt
-      markdown_description: Keras based LM framework for neuro-symbolic applications and In-Context learning
-      sections:
-        Usage documentation:
-        - Introduction.md
-        - Synalinks API/Programs API/Program training API.md
-        - Synalinks API/Programs API/The Program class.md
-        - Synalinks API/Programs API/The Sequential class.md
-        - Synalinks API/* module.md
-        - Synalinks API/Rewards/* reward.md
-        - Synalinks API/Rewards/* wrappers.md
 
 nav:
   - index.md
@@ -63,6 +51,8 @@ nav:
     - guides/Modules.md
     - guides/Agents.md
     - guides/Knowledge Base.md
+    - guides/Knowledge Graph Extraction.md
+    - guides/Free-form Knowledge Graph Extraction.md
     - guides/Input Guard.md
     - guides/Output Guard.md
     - guides/Observability.md
@@ -76,10 +66,12 @@ nav:
     - guides/Multi-Objective LM Selection.md
     - guides/Recursive Language Model Agent.md
     - guides/SQL Agent.md
+    - guides/Cypher Agent.md
     - guides/Vector RAG Agent.md
     - guides/Deep Agent.md
     - guides/FastAPI Deployment.md
     - guides/FastMCP Deployment.md
+    - guides/Python Synthesis.md
   - Code Examples:
     - Code Examples/First Steps.md
     - Code Examples/Functional API.md
@@ -103,7 +95,9 @@ nav:
     - Code Examples/Vector RAG Agent.md
     - Code Examples/MCP Agent.md
     - Code Examples/SQL Agent.md
+    - Code Examples/Cypher Agent.md
     - Code Examples/Deep Agent.md
+    - Code Examples/Python Synthesis.md
   - Modules: Synalinks API/Modules API/index.md
   - FAQ.md
   - CheatSheet.md
@@ -112,7 +106,13 @@ nav:
   - Synalinks API:
     - Synalinks API/Language Models API.md
     - Synalinks API/Embedding Models API.md
-    - Synalinks API/Knowledge Bases API.md
+    - Knowledge Base API:
+      - Synalinks API/Knowledge Base API/Knowledge Base.md
+      - Database Adapters:
+        - Synalinks API/Knowledge Base API/Database Adapters/DuckDB Adapter.md
+        - Synalinks API/Knowledge Base API/Database Adapters/LanceDB Adapter.md
+      - Graph Database Adapters:
+        - Synalinks API/Knowledge Base API/Graph Database Adapters/Ladybug Adapter.md
     - Data Models API:
       - Synalinks API/Data Models API/index.md
       - Synalinks API/Data Models API/The DataModel class.md
@@ -120,6 +120,7 @@ nav:
       - Synalinks API/Data Models API/The SymbolicDataModel class.md
       - Synalinks API/Data Models API/The Variable class.md
       - Synalinks API/Data Models API/The Base DataModels.md
+      - Synalinks API/Data Models API/Knowledge Data Models.md
     - Programs API:
       - Synalinks API/Programs API/index.md
       - Synalinks API/Programs API/The Program class.md
@@ -144,6 +145,7 @@ nav:
       - Agents Modules:
         - Synalinks API/Modules API/Agents Modules/index.md
         - Synalinks API/Modules API/Agents Modules/FunctionCallingAgent module.md
+        - Synalinks API/Modules API/Agents Modules/CypherAgent module.md
         - Synalinks API/Modules API/Agents Modules/RecursiveLanguageModelAgent module.md
         - Synalinks API/Modules API/Agents Modules/SQLAgent module.md
         - Synalinks API/Modules API/Agents Modules/VectorRAGAgent module.md
@@ -187,8 +189,6 @@ nav:
     - Ops API:
       - Synalinks API/Ops API/index.md
       - Synalinks API/Ops API/JSON Ops.md
-      - Synalinks API/Ops API/Language Models Ops.md
-      - Synalinks API/Ops API/Embedding Models Ops.md
     - Optimizers API:
       - Synalinks API/Optimizers API/index.md
       - Synalinks API/Optimizers API/Base Optimizer class.md
@@ -198,8 +198,13 @@ nav:
       - Synalinks API/Metrics/index.md
       - Synalinks API/Metrics/Base Metric class.md
       - Synalinks API/Metrics/Metric wrappers and reduction metrics.md
-      - Synalinks API/Metrics/Regression metrics.md
+      - Synalinks API/Metrics/Accuracy metrics.md
+      - Synalinks API/Metrics/Precision and Recall metrics.md
       - Synalinks API/Metrics/FScore metrics.md
+      - Synalinks API/Metrics/Regression metrics.md
+      - Synalinks API/Metrics/Language Model operational metrics.md
+      - Synalinks API/Metrics/Embedding Model operational metrics.md
+      - Synalinks API/Metrics/Program operational metrics.md
     - Rewards:
       - Synalinks API/Rewards/index.md
       - Synalinks API/Rewards/ExactMatch reward.md
@@ -207,6 +212,9 @@ nav:
       - Synalinks API/Rewards/LMAsJudge reward.md
       - Synalinks API/Rewards/Reward wrappers.md
       - Synalinks API/Rewards/Batch reward wrappers.md
+    - Datasets:
+      - Synalinks API/Datasets/Dataset.md
+      - Synalinks API/Datasets/HuggingFaceDataset.md
     - Built-in Datasets:
       - Synalinks API/Built-in Datasets/index.md
       - Synalinks API/Built-in Datasets/GSM8K.md
@@ -230,6 +238,11 @@ nav:
       - Synalinks API/Utilities/Program plotting utilities.md
       - Synalinks API/Utilities/More plotting utilities.md
       - Synalinks API/Utilities/NLP utilities.md
+    - Utils API:
+      - Synalinks API/Utils API.md
+      - Synalinks API/Utils/disable_keras_backend.md
+    - Synalinks API/Tuners.md
+    - Synalinks API/Observability API.md
     - Synalinks API/Config.md
   - Observability:
     - Observability/MLflow.md

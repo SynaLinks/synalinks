@@ -59,8 +59,8 @@ graph LR
 
 - [Module (Base Class)](https://synalinks.github.io/synalinks/Synalinks%20API/Modules%20API/Base%20Module%20class/)
 - [Generator](https://synalinks.github.io/synalinks/Synalinks%20API/Modules%20API/Core%20Modules/Generator%20module/)
-- [OMEGA](https://synalinks.github.io/synalinks/Synalinks%20API/Optimizers%20API/OMEGA%20optimizer/)
-- [Trainable](https://synalinks.github.io/synalinks/Synalinks%20API/Backend%20API/Trainable/)
+- [OMEGA](https://synalinks.github.io/synalinks/Synalinks%20API/Optimizers%20API/OMEGA/)
+- [Trainable](https://synalinks.github.io/synalinks/Synalinks%20API/Data%20Models%20API/The%20Base%20DataModels/)
 """
 
 import asyncio

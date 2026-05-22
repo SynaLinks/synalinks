@@ -75,8 +75,15 @@ def build():
         # Generates `synalinks/api` directory.
         if os.path.exists(build_api_dir):
             shutil.rmtree(build_api_dir)
-        if os.path.exists(build_init_fname):
-            os.remove(build_init_fname)
+        # Replace the build copy of `synalinks/__init__.py` with an empty
+        # file (instead of removing it). namex inserts `build_dir` at
+        # `sys.path[0]`, but Python's import machinery prefers a regular
+        # package on a later `sys.path` entry over a namespace candidate
+        # earlier on. Without an `__init__.py` here, `import synalinks`
+        # falls back to the (stale) source package and the freshly
+        # generated `synalinks.api.<subpkg>` re-exports fail to resolve.
+        with open(build_init_fname, "w") as f:
+            f.write("")
         os.makedirs(build_api_dir)
         namex.generate_api_files(
             "synalinks", code_directory="src", target_directory="api"

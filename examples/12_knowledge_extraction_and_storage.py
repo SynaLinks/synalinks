@@ -100,7 +100,7 @@ results = await synalinks.RetrieveKnowledge(
 
 ## API References
 
-- [KnowledgeBase](https://synalinks.github.io/synalinks/Synalinks%20API/Knowledge%20Bases%20API/)
+- [KnowledgeBase](https://synalinks.github.io/synalinks/Synalinks%20API/Knowledge%20Base%20API/Knowledge%20Base/)
 - [UpdateKnowledge](https://synalinks.github.io/synalinks/Synalinks%20API/Modules%20API/Knowledge%20Modules/UpdateKnowledge%20module/)
 - [RetrieveKnowledge](https://synalinks.github.io/synalinks/Synalinks%20API/Modules%20API/Knowledge%20Modules/RetrieveKnowledge%20module/)
 - [Generator](https://synalinks.github.io/synalinks/Synalinks%20API/Modules%20API/Core%20Modules/Generator%20module/)
@@ -199,7 +199,7 @@ async def main():
     )
 
     embedding_model = synalinks.EmbeddingModel(
-        model="gemini/text-embedding-004",
+        model="gemini/gemini-embedding-001",
     )
 
     # Clean up any existing database

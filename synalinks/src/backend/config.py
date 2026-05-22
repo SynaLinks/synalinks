@@ -46,6 +46,10 @@ _DEFAULT_LANGUAGE_MODEL_IDENTIFIER = None
 _DEFAULT_EMBEDDING_MODEL = None
 _DEFAULT_EMBEDDING_MODEL_IDENTIFIER = None
 
+# Default knowledge base (same shape as language model above).
+_DEFAULT_KNOWLEDGE_BASE = None
+_DEFAULT_KNOWLEDGE_BASE_IDENTIFIER = None
+
 # Available backends
 _AVAILABLE_BACKEND = ["pydantic"]
 
@@ -568,6 +572,52 @@ def set_default_embedding_model(identifier: "str | dict | object | None"):
     _persist_config()
 
 
+@synalinks_export(
+    [
+        "synalinks.config.default_knowledge_base",
+        "synalinks.default_knowledge_base",
+    ]
+)
+def default_knowledge_base():
+    """Return the default `KnowledgeBase` instance, or `None` if unset."""
+    global _DEFAULT_KNOWLEDGE_BASE
+    if _DEFAULT_KNOWLEDGE_BASE is None and _DEFAULT_KNOWLEDGE_BASE_IDENTIFIER is not None:
+        from synalinks.src.knowledge_bases import get as _get_kb
+
+        _DEFAULT_KNOWLEDGE_BASE = _get_kb(_DEFAULT_KNOWLEDGE_BASE_IDENTIFIER)
+    return _DEFAULT_KNOWLEDGE_BASE
+
+
+@synalinks_export(
+    [
+        "synalinks.config.set_default_knowledge_base",
+        "synalinks.set_default_knowledge_base",
+    ]
+)
+def set_default_knowledge_base(identifier: "str | dict | object | None"):
+    """Set the default `KnowledgeBase`.
+
+    Args:
+        identifier (str | dict | KnowledgeBase | None): A URI string
+            (e.g. `"duckdb://./my_database.db"`), a config dict, an
+            existing `KnowledgeBase` instance, or `None` to clear.
+            Strings persist into the on-disk config; instances do not.
+    """
+    global _DEFAULT_KNOWLEDGE_BASE, _DEFAULT_KNOWLEDGE_BASE_IDENTIFIER
+    if identifier is None:
+        _DEFAULT_KNOWLEDGE_BASE = None
+        _DEFAULT_KNOWLEDGE_BASE_IDENTIFIER = None
+        _persist_config()
+        return
+    from synalinks.src.knowledge_bases import get as _get_kb
+
+    _DEFAULT_KNOWLEDGE_BASE = _get_kb(identifier)
+    _DEFAULT_KNOWLEDGE_BASE_IDENTIFIER = (
+        identifier if isinstance(identifier, str) else None
+    )
+    _persist_config()
+
+
 def _persist_config():
     """Rewrite `~/.synalinks/synalinks.json` with the current config."""
     if not os.path.exists(_synalinks_DIR):
@@ -586,6 +636,8 @@ def _persist_config():
         payload["language_model"] = _DEFAULT_LANGUAGE_MODEL_IDENTIFIER
     if _DEFAULT_EMBEDDING_MODEL_IDENTIFIER is not None:
         payload["embedding_model"] = _DEFAULT_EMBEDDING_MODEL_IDENTIFIER
+    if _DEFAULT_KNOWLEDGE_BASE_IDENTIFIER is not None:
+        payload["knowledge_base"] = _DEFAULT_KNOWLEDGE_BASE_IDENTIFIER
     try:
         with open(_config_path, "wb") as f:
             f.write(orjson.dumps(payload, option=orjson.OPT_INDENT_2))
@@ -670,6 +722,10 @@ if os.path.exists(_config_path):
     if _em_identifier is not None:
         assert isinstance(_em_identifier, str)
         _DEFAULT_EMBEDDING_MODEL_IDENTIFIER = _em_identifier
+    _kb_identifier = _config.get("knowledge_base")
+    if _kb_identifier is not None:
+        assert isinstance(_kb_identifier, str)
+        _DEFAULT_KNOWLEDGE_BASE_IDENTIFIER = _kb_identifier
 
 # Save config file with current values, creating the directory if needed.
 if not os.path.exists(_config_path):

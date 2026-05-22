@@ -61,6 +61,10 @@ if __name__ == "__main__":
 ### Agents Modules
 
 - [FunctionCallingAgent module](Agents Modules/FunctionCallingAgent module.md)
+- [RecursiveLanguageModelAgent module](Agents Modules/RecursiveLanguageModelAgent module.md)
+- [SQLAgent module](Agents Modules/SQLAgent module.md)
+- [VectorRAGAgent module](Agents Modules/VectorRAGAgent module.md)
+- [DeepAgent module](Agents Modules/DeepAgent module.md)
 
 ---
 

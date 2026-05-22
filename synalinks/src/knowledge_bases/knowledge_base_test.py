@@ -45,7 +45,7 @@ class KnowledgeBaseTest(testing.TestCase):
             wipe_on_start=False,
         )
 
-        result = await knowledge_base.query("SELECT 1 as value")
+        result = await knowledge_base.sql("SELECT 1 as value")
         self.assertEqual(result, [{"value": 1}])
 
     async def test_knowledge_base_crud(self):
@@ -148,7 +148,7 @@ class KnowledgeBaseTest(testing.TestCase):
             ]
         )
 
-        records = await kb.query("SELECT id, text FROM Document ORDER BY id")
+        records = await kb.sql("SELECT id, text FROM Document ORDER BY id")
         self.assertEqual(
             records,
             [
@@ -157,7 +157,7 @@ class KnowledgeBaseTest(testing.TestCase):
             ],
         )
 
-        csv_out = await kb.query(
+        csv_out = await kb.sql(
             "SELECT id, text FROM Document ORDER BY id",
             output_format="csv",
         )
@@ -208,7 +208,7 @@ class KnowledgeBaseTest(testing.TestCase):
             self.assertNotIn("s3cret-passphrase", str(config))
             self.assertNotIn("s3cret-passphrase", repr(knowledge_base))
         finally:
-            knowledge_base.adapter.close()
+            knowledge_base.sql_adapter.close()
 
     async def test_update_from_csv_dataset_streams_batch_by_batch(self):
         # End-to-end: ingest a CSV file via CSVDataset into the KB.
@@ -233,7 +233,7 @@ class KnowledgeBaseTest(testing.TestCase):
             batch_size=3,  # 7 rows / 3 → 3 batches: [3, 3, 1]
         )
 
-        original_update = kb.adapter.update
+        original_update = kb.sql_adapter.update
         call_count = {"n": 0, "batch_sizes": []}
 
         async def counted_update(arg):
@@ -242,11 +242,11 @@ class KnowledgeBaseTest(testing.TestCase):
                 call_count["batch_sizes"].append(len(arg))
             return await original_update(arg)
 
-        kb.adapter.update = counted_update
+        kb.sql_adapter.update = counted_update
         try:
             ids = await kb.update(ds)
         finally:
-            kb.adapter.update = original_update
+            kb.sql_adapter.update = original_update
 
         # All seven rows ingested, ids returned flat in source order.
         self.assertEqual(ids, [f"doc{i}" for i in range(7)])
@@ -281,17 +281,17 @@ class KnowledgeBaseTest(testing.TestCase):
         )
 
         adapter_calls = {"n": 0}
-        original_update = kb.adapter.update
+        original_update = kb.sql_adapter.update
 
         async def counted_update(arg):
             adapter_calls["n"] += 1
             return await original_update(arg)
 
-        kb.adapter.update = counted_update
+        kb.sql_adapter.update = counted_update
         try:
             result = await kb.update(ds)
         finally:
-            kb.adapter.update = original_update
+            kb.sql_adapter.update = original_update
 
         self.assertEqual(result, [])
         self.assertEqual(adapter_calls["n"], 0)
@@ -458,7 +458,7 @@ class KnowledgeBaseTest(testing.TestCase):
             last = await kb.get("doc049", table_name=model.get_schema()["title"])
             self.assertEqual(last.get_json()["text"], "row 49 content")
         finally:
-            kb.adapter.close()
+            kb.sql_adapter.close()
 
     async def test_from_csv_does_upsert_not_duplicate(self):
         # The conflict clause matters: re-running the same load
@@ -497,7 +497,7 @@ class KnowledgeBaseTest(testing.TestCase):
             d3 = await kb.get("d3", table_name=model.get_schema()["title"])
             self.assertEqual(d3.get_json()["text"], "v1")
         finally:
-            kb.adapter.close()
+            kb.sql_adapter.close()
 
     async def test_from_csv_fts_index_rebuilt_so_search_works(self):
         # After from_csv returns, fulltext_search must find rows in
@@ -524,7 +524,7 @@ class KnowledgeBaseTest(testing.TestCase):
             self.assertIn("d3", ids)
             self.assertNotIn("d2", ids)
         finally:
-            kb.adapter.close()
+            kb.sql_adapter.close()
 
     async def test_from_csv_restores_sandbox_after_load(self):
         # The fast path tears the sandboxed connection down to let a
@@ -553,12 +553,12 @@ class KnowledgeBaseTest(testing.TestCase):
             import duckdb
 
             with self.assertRaises(duckdb.Error):
-                await kb.query(
+                await kb.sql(
                     f"SELECT * FROM read_csv('{csv_path}', AUTO_DETECT=TRUE)",
                     read_only=False,
                 )
         finally:
-            kb.adapter.close()
+            kb.sql_adapter.close()
 
     async def test_from_csv_raises_on_missing_file(self):
         kb = KnowledgeBase(uri=self.db_path, data_models=[Document])
@@ -568,7 +568,7 @@ class KnowledgeBaseTest(testing.TestCase):
             with pytest.raises(FileNotFoundError):
                 await kb.from_csv("/nonexistent/path/x.csv", table_name="Document")
         finally:
-            kb.adapter.close()
+            kb.sql_adapter.close()
 
     async def test_from_csv_infers_types_like_other_formats(self):
         # CSV bulk-load now relies on DuckDB's native type
@@ -600,7 +600,7 @@ class KnowledgeBaseTest(testing.TestCase):
             self.assertEqual(r.get_json()["label"], "row 2")
             self.assertEqual(r.get_json()["score"], 1.0)
         finally:
-            kb.adapter.close()
+            kb.sql_adapter.close()
 
     async def test_from_csv_preserves_leading_zeros(self):
         # DuckDB's CSV auto-detect is conservative about strings that
@@ -626,7 +626,7 @@ class KnowledgeBaseTest(testing.TestCase):
             self.assertIsNotNone(r)
             self.assertEqual(r.get_json()["label"], "row 2")
         finally:
-            kb.adapter.close()
+            kb.sql_adapter.close()
 
     async def test_from_parquet_round_trips_rows_into_kb(self):
         import pyarrow as pa
@@ -654,7 +654,7 @@ class KnowledgeBaseTest(testing.TestCase):
             last = await kb.get("p049", table_name=model.get_schema()["title"])
             self.assertEqual(last.get_json()["text"], "row 49 content")
         finally:
-            kb.adapter.close()
+            kb.sql_adapter.close()
 
     async def test_from_parquet_upserts_existing_rows(self):
         import pyarrow as pa
@@ -684,7 +684,7 @@ class KnowledgeBaseTest(testing.TestCase):
             d3 = await kb.get("d3", table_name=model.get_schema()["title"])
             self.assertEqual(d3.get_json()["text"], "three")
         finally:
-            kb.adapter.close()
+            kb.sql_adapter.close()
 
     async def test_from_parquet_raises_on_missing_file(self):
         kb = KnowledgeBase(uri=self.db_path, data_models=[Document])
@@ -696,7 +696,7 @@ class KnowledgeBaseTest(testing.TestCase):
                     "/nonexistent/path/x.parquet", table_name="Document"
                 )
         finally:
-            kb.adapter.close()
+            kb.sql_adapter.close()
 
     async def test_from_json_round_trips_rows(self):
         # JSON array form: the fast path drives DuckDB's
@@ -722,7 +722,7 @@ class KnowledgeBaseTest(testing.TestCase):
             last = await kb.get("doc049", table_name=model.get_schema()["title"])
             self.assertEqual(last.get_json()["text"], "row 49 content")
         finally:
-            kb.adapter.close()
+            kb.sql_adapter.close()
 
     async def test_from_json_does_upsert_not_duplicate(self):
         import json as _json
@@ -747,7 +747,7 @@ class KnowledgeBaseTest(testing.TestCase):
             d1 = await kb.get("d1", table_name=model.get_schema()["title"])
             self.assertEqual(d1.get_json()["text"], "v2")
         finally:
-            kb.adapter.close()
+            kb.sql_adapter.close()
 
     async def test_from_json_fts_index_built_so_search_works(self):
         # Same FTS-rebuild-after-load contract as CSV/Parquet — search
@@ -774,7 +774,7 @@ class KnowledgeBaseTest(testing.TestCase):
             ids = {r["id"] for r in results}
             self.assertEqual(ids, {"d1", "d3"})
         finally:
-            kb.adapter.close()
+            kb.sql_adapter.close()
 
     async def test_from_json_restores_sandbox_after_load(self):
         # Mirrors the CSV sandbox test for the from_json code path —
@@ -793,12 +793,12 @@ class KnowledgeBaseTest(testing.TestCase):
             import duckdb
 
             with self.assertRaises(duckdb.Error):
-                await kb.query(
+                await kb.sql(
                     f"SELECT * FROM read_json('{path}', format='array')",
                     read_only=False,
                 )
         finally:
-            kb.adapter.close()
+            kb.sql_adapter.close()
 
     async def test_from_jsonl_restores_sandbox_after_load(self):
         # Same shape as the JSON sandbox test, exercising the
@@ -815,12 +815,12 @@ class KnowledgeBaseTest(testing.TestCase):
             import duckdb
 
             with self.assertRaises(duckdb.Error):
-                await kb.query(
+                await kb.sql(
                     f"SELECT * FROM read_json('{path}', format='newline_delimited')",
                     read_only=False,
                 )
         finally:
-            kb.adapter.close()
+            kb.sql_adapter.close()
 
     async def test_from_json_raises_on_missing_file(self):
         kb = KnowledgeBase(uri=self.db_path, data_models=[Document])
@@ -830,7 +830,7 @@ class KnowledgeBaseTest(testing.TestCase):
             with pytest.raises(FileNotFoundError):
                 await kb.from_json("/nonexistent/x.json", table_name="Document")
         finally:
-            kb.adapter.close()
+            kb.sql_adapter.close()
 
     async def test_from_jsonl_round_trips_rows(self):
         import json as _json
@@ -854,7 +854,7 @@ class KnowledgeBaseTest(testing.TestCase):
             last = await kb.get("doc049", table_name=model.get_schema()["title"])
             self.assertEqual(last.get_json()["text"], "row 49 content")
         finally:
-            kb.adapter.close()
+            kb.sql_adapter.close()
 
     async def test_from_jsonl_upserts_existing_rows(self):
         import json as _json
@@ -885,7 +885,7 @@ class KnowledgeBaseTest(testing.TestCase):
             d3 = await kb.get("d3", table_name=model.get_schema()["title"])
             self.assertEqual(d3.get_json()["text"], "three")
         finally:
-            kb.adapter.close()
+            kb.sql_adapter.close()
 
     async def test_from_jsonl_raises_on_missing_file(self):
         kb = KnowledgeBase(uri=self.db_path, data_models=[Document])
@@ -895,7 +895,7 @@ class KnowledgeBaseTest(testing.TestCase):
             with pytest.raises(FileNotFoundError):
                 await kb.from_jsonl("/nonexistent/x.jsonl", table_name="Document")
         finally:
-            kb.adapter.close()
+            kb.sql_adapter.close()
 
     async def test_from_csv_without_preregistered_data_model(self):
         # The headline use case for the new signature: no Pydantic
@@ -936,7 +936,7 @@ class KnowledgeBaseTest(testing.TestCase):
             }
             self.assertIn("Article", registered_titles)
         finally:
-            kb.adapter.close()
+            kb.sql_adapter.close()
 
     async def test_from_csv_rejects_non_identifier_name(self):
         # ``name`` is normalized to PascalCase before being used as a
@@ -960,7 +960,7 @@ class KnowledgeBaseTest(testing.TestCase):
             # PascalCase residue survives as the table name.
             self.assertEqual(model.get_schema()["title"], "BadNameDropTableX")
         finally:
-            kb.adapter.close()
+            kb.sql_adapter.close()
 
     async def test_from_csv_name_defaults_to_filename_stem(self):
         # When `name` is omitted, the file's stem becomes the table
@@ -983,7 +983,7 @@ class KnowledgeBaseTest(testing.TestCase):
             row = await kb.get("a", table_name=model.get_schema()["title"])
             self.assertEqual(row.get_json()["text"], "alpha")
         finally:
-            kb.adapter.close()
+            kb.sql_adapter.close()
 
     async def test_from_csv_name_is_pascal_cased(self):
         # Explicit names also get coerced — callers can use whatever
@@ -1014,7 +1014,7 @@ class KnowledgeBaseTest(testing.TestCase):
             row = await kb.get("a", table_name=m2.get_schema()["title"])
             self.assertEqual(row.get_json()["text"], "alpha-updated")
         finally:
-            kb.adapter.close()
+            kb.sql_adapter.close()
 
     async def test_from_csv_normalizes_columns_to_snake_case(self):
         # File headers can be anything — mixedCase, spaced, kebab.
@@ -1049,7 +1049,7 @@ class KnowledgeBaseTest(testing.TestCase):
             self.assertEqual(row.get_json()["first_name"], "Ada")
             self.assertEqual(row.get_json()["email_address"], "ada@example.com")
         finally:
-            kb.adapter.close()
+            kb.sql_adapter.close()
 
     async def test_from_parquet_normalizes_columns_to_snake_case(self):
         # Parquet headers come from the file's footer schema, not a
@@ -1083,7 +1083,7 @@ class KnowledgeBaseTest(testing.TestCase):
             row = await kb.get("u001", table_name=model.get_schema()["title"])
             self.assertEqual(row.get_json()["first_name"], "Ada")
         finally:
-            kb.adapter.close()
+            kb.sql_adapter.close()
 
     async def test_from_json_normalizes_columns_to_snake_case(self):
         # JSON object keys can be anything — same canonicalization
@@ -1122,7 +1122,7 @@ class KnowledgeBaseTest(testing.TestCase):
             row = await kb.get("u001", table_name=model.get_schema()["title"])
             self.assertEqual(row.get_json()["first_name"], "Ada")
         finally:
-            kb.adapter.close()
+            kb.sql_adapter.close()
 
     async def test_from_jsonl_normalizes_columns_to_snake_case(self):
         # JSONL is the streaming sibling of JSON — keys can still be
@@ -1167,7 +1167,7 @@ class KnowledgeBaseTest(testing.TestCase):
             row = await kb.get("u001", table_name=model.get_schema()["title"])
             self.assertEqual(row.get_json()["first_name"], "Ada")
         finally:
-            kb.adapter.close()
+            kb.sql_adapter.close()
 
     async def test_from_parquet_name_defaults_to_filename_stem(self):
         # Filename-stem fallback applies to every fast-path format.
@@ -1182,7 +1182,7 @@ class KnowledgeBaseTest(testing.TestCase):
             model = await kb.from_parquet(path)
             self.assertEqual(model.get_schema()["title"], "BlogPosts")
         finally:
-            kb.adapter.close()
+            kb.sql_adapter.close()
 
     async def test_from_json_name_defaults_to_filename_stem(self):
         import json as _json
@@ -1196,7 +1196,7 @@ class KnowledgeBaseTest(testing.TestCase):
             model = await kb.from_json(path)
             self.assertEqual(model.get_schema()["title"], "BlogPosts")
         finally:
-            kb.adapter.close()
+            kb.sql_adapter.close()
 
     async def test_from_jsonl_name_defaults_to_filename_stem(self):
         import json as _json
@@ -1210,7 +1210,7 @@ class KnowledgeBaseTest(testing.TestCase):
             model = await kb.from_jsonl(path)
             self.assertEqual(model.get_schema()["title"], "BlogPosts")
         finally:
-            kb.adapter.close()
+            kb.sql_adapter.close()
 
     async def test_delete_single_id_returns_count(self):
         kb = KnowledgeBase(uri=self.db_path, data_models=[Document])
@@ -1231,7 +1231,7 @@ class KnowledgeBaseTest(testing.TestCase):
             self.assertIsNotNone(await kb.get("d1", table_name="Document"))
             self.assertIsNotNone(await kb.get("d3", table_name="Document"))
         finally:
-            kb.adapter.close()
+            kb.sql_adapter.close()
 
     async def test_delete_list_of_ids_returns_count_of_matches(self):
         # Mixed list (some present, one missing): only the matching
@@ -1249,7 +1249,7 @@ class KnowledgeBaseTest(testing.TestCase):
             rows = await kb.getall(table_name="Document", limit=10)
             self.assertEqual(len(rows), 0)
         finally:
-            kb.adapter.close()
+            kb.sql_adapter.close()
 
     async def test_delete_empty_list_is_noop(self):
         kb = KnowledgeBase(uri=self.db_path, data_models=[Document])
@@ -1260,7 +1260,7 @@ class KnowledgeBaseTest(testing.TestCase):
             # Row still there.
             self.assertIsNotNone(await kb.get("d1", table_name="Document"))
         finally:
-            kb.adapter.close()
+            kb.sql_adapter.close()
 
     async def test_delete_rebuilds_fts_so_search_doesnt_return_ghost(self):
         # Pre-fix would leave the FTS index pointing at the deleted
@@ -1280,7 +1280,7 @@ class KnowledgeBaseTest(testing.TestCase):
             self.assertNotIn("d1", ids)
             self.assertIn("d2", ids)
         finally:
-            kb.adapter.close()
+            kb.sql_adapter.close()
 
     async def test_delete_from_missing_table_warns_and_returns_zero(self):
         import warnings as _w
@@ -1296,7 +1296,7 @@ class KnowledgeBaseTest(testing.TestCase):
                 "expected a warning naming the missing table",
             )
         finally:
-            kb.adapter.close()
+            kb.sql_adapter.close()
 
     async def test_drop_table_removes_table_and_returns_true(self):
         kb = KnowledgeBase(uri=self.db_path, data_models=[Document])
@@ -1318,7 +1318,7 @@ class KnowledgeBaseTest(testing.TestCase):
             rows = await kb.getall(table_name="Document", limit=10)
             self.assertEqual(rows, [])
         finally:
-            kb.adapter.close()
+            kb.sql_adapter.close()
 
     async def test_drop_table_returns_false_when_table_missing(self):
         kb = KnowledgeBase(uri=self.db_path)
@@ -1326,7 +1326,7 @@ class KnowledgeBaseTest(testing.TestCase):
             dropped = await kb.drop_table("NoSuchTable")
             self.assertFalse(dropped)
         finally:
-            kb.adapter.close()
+            kb.sql_adapter.close()
 
     async def test_drop_table_normalizes_name_to_pascal_case(self):
         # Same canonicalization rule as everywhere else: the caller can
@@ -1337,7 +1337,7 @@ class KnowledgeBaseTest(testing.TestCase):
             dropped = await kb.drop_table("document")
             self.assertTrue(dropped)
         finally:
-            kb.adapter.close()
+            kb.sql_adapter.close()
 
     async def test_rename_changes_table_name_and_preserves_rows(self):
         # ALTER TABLE round-trip: the same rows are queryable under
@@ -1369,7 +1369,7 @@ class KnowledgeBaseTest(testing.TestCase):
             self.assertIn("NewName", registered_titles)
             self.assertNotIn("OldName", registered_titles)
         finally:
-            kb.adapter.close()
+            kb.sql_adapter.close()
 
     async def test_rename_normalizes_new_name_to_pascal_case(self):
         # Same input-normalization rule as from_*: whatever casing
@@ -1388,7 +1388,7 @@ class KnowledgeBaseTest(testing.TestCase):
             renamed = await kb.rename(original, table_name="my-new-table")
             self.assertEqual(renamed.get_schema()["title"], "MyNewTable")
         finally:
-            kb.adapter.close()
+            kb.sql_adapter.close()
 
     async def test_rename_updates_description_without_renaming(self):
         # Description-only update: no ALTER TABLE, just a new
@@ -1415,7 +1415,7 @@ class KnowledgeBaseTest(testing.TestCase):
                 "Now with a description.",
             )
         finally:
-            kb.adapter.close()
+            kb.sql_adapter.close()
 
     async def test_rename_preserves_existing_description_when_only_renaming(self):
         # If the caller renames without touching description, the
@@ -1439,7 +1439,7 @@ class KnowledgeBaseTest(testing.TestCase):
             renamed = await kb.rename(original, table_name="NewName")
             self.assertEqual(renamed.get_schema()["description"], "Source description.")
         finally:
-            kb.adapter.close()
+            kb.sql_adapter.close()
 
     async def test_rename_accepts_string_source(self):
         # Convenience: caller doesn't need to keep the original
@@ -1465,7 +1465,7 @@ class KnowledgeBaseTest(testing.TestCase):
             renamed2 = await kb.rename("article", table_name="blog-post")
             self.assertEqual(renamed2.get_schema()["title"], "BlogPost")
         finally:
-            kb.adapter.close()
+            kb.sql_adapter.close()
 
     async def test_rename_requires_one_of_name_or_description(self):
         import csv
@@ -1482,7 +1482,7 @@ class KnowledgeBaseTest(testing.TestCase):
             with self.assertRaises(ValueError):
                 await kb.rename(model)
         finally:
-            kb.adapter.close()
+            kb.sql_adapter.close()
 
     async def test_rename_raises_on_unknown_table(self):
         kb = KnowledgeBase(uri=self.db_path)
@@ -1490,7 +1490,7 @@ class KnowledgeBaseTest(testing.TestCase):
             with self.assertRaises(ValueError):
                 await kb.rename("NoSuchTable", table_name="NewName")
         finally:
-            kb.adapter.close()
+            kb.sql_adapter.close()
 
     async def test_rename_keeps_fts_search_working(self):
         # After rename, fulltext_search through the new SymbolicDataModel
@@ -1514,7 +1514,7 @@ class KnowledgeBaseTest(testing.TestCase):
             )
             self.assertEqual({r["id"] for r in hits}, {"a"})
         finally:
-            kb.adapter.close()
+            kb.sql_adapter.close()
 
     async def test_from_csv_rejects_unnameable_stem(self):
         # A filename whose stem has no alphanumeric content after
@@ -1534,7 +1534,55 @@ class KnowledgeBaseTest(testing.TestCase):
             with self.assertRaises(ValueError):
                 await kb.from_csv(csv_path)
         finally:
-            kb.adapter.close()
+            kb.sql_adapter.close()
+
+    def test_knowledge_base_stores_entity_and_relation_models(self):
+        """KB constructor should accept and store entity/relation model
+        lists separately from the SQL `data_models`."""
+        from synalinks.src.backend import Entity
+        from synalinks.src.backend import Relation
+
+        class Doc(Entity):
+            pass
+
+        class Knows(Relation):
+            pass
+
+        kb = KnowledgeBase(
+            uri=self.db_path,
+            entity_models=[Doc],
+            relation_models=[Knows],
+        )
+        self.assertEqual(kb.entity_models, [Doc])
+        self.assertEqual(kb.relation_models, [Knows])
+        # The SQL bucket stays empty when only the graph buckets are
+        # filled — they really are three separate buckets.
+        self.assertEqual(kb.data_models, [])
+
+    def test_knowledge_base_serialization_roundtrips_entity_relation_models(self):
+        """get_config / from_config should round-trip both new
+        buckets in addition to data_models."""
+        from synalinks.src.backend import Entity
+        from synalinks.src.backend import Relation
+
+        class Doc(Entity):
+            pass
+
+        class Knows(Relation):
+            pass
+
+        kb = KnowledgeBase(
+            uri=self.db_path,
+            data_models=[Document],
+            entity_models=[Doc],
+            relation_models=[Knows],
+        )
+
+        config = kb.get_config()
+        clone = KnowledgeBase.from_config(config)
+        self.assertEqual(clone.get_config(), kb.get_config())
+        self.assertEqual(len(clone.entity_models), 1)
+        self.assertEqual(len(clone.relation_models), 1)
 
     def test_knowledge_base_serialization(self):
         knowledge_base = KnowledgeBase(
@@ -1574,3 +1622,331 @@ class KnowledgeBaseTest(testing.TestCase):
             cloned_knowledge_base.get_config(),
             knowledge_base.get_config(),
         )
+
+
+from synalinks.src.knowledge_bases.graph_database_adapters import GraphDatabaseAdapter
+
+
+class _RecordingGraphAdapter(GraphDatabaseAdapter):
+    """Stub graph adapter that records every call. Used to verify that
+    KnowledgeBase's graph methods delegate with the right arguments
+    without standing up a real graph DB."""
+
+    def __init__(self):
+        super().__init__()
+        self.calls = []
+
+    async def update_entities(self, entity_or_entities):
+        self.calls.append(("update_entities", entity_or_entities))
+        if isinstance(entity_or_entities, list):
+            return [f"node-{i}" for i, _ in enumerate(entity_or_entities)]
+        return "node-1"
+
+    async def update_relations(self, relation_or_relations):
+        self.calls.append(("update_relations", relation_or_relations))
+        if isinstance(relation_or_relations, list):
+            return [f"edge-{i}" for i, _ in enumerate(relation_or_relations)]
+        return "edge-1"
+
+    async def update_knowledge_graph(self, kg):
+        self.calls.append(("update_knowledge_graph", kg))
+        return {"entities": ["n0"], "relations": ["e0"]}
+
+    async def get_entity(self, id_or_ids, *, label):
+        self.calls.append(("get_entity", id_or_ids, label))
+        return {"id": id_or_ids, "label": label}
+
+    async def delete_entity(self, id_or_ids, *, label):
+        self.calls.append(("delete_entity", id_or_ids, label))
+        return 1
+
+    async def delete_relation(self, *, label, source_id, target_id):
+        self.calls.append(("delete_relation", label, source_id, target_id))
+        return 1
+
+    async def cypher(self, query, params=None, output_format="json", **kwargs):
+        self.calls.append(("cypher", query, params, output_format, kwargs))
+        return [{"n": 1}]
+
+    async def entity_similarity_search(
+        self,
+        text_or_texts,
+        *,
+        label,
+        k=10,
+        threshold=None,
+        ef_search=None,
+        output_format="json",
+    ):
+        self.calls.append(
+            (
+                "entity_similarity_search",
+                text_or_texts,
+                label,
+                k,
+                threshold,
+                output_format,
+            )
+        )
+        return [{"score": 0.9}]
+
+    async def entity_fulltext_search(
+        self,
+        text_or_texts,
+        *,
+        label,
+        k=10,
+        threshold=None,
+        conjunctive=False,
+        bm25_b=None,
+        output_format="json",
+    ):
+        self.calls.append(
+            (
+                "entity_fulltext_search",
+                text_or_texts,
+                label,
+                k,
+                threshold,
+                output_format,
+            )
+        )
+        return [{"score": 0.5}]
+
+
+class KnowledgeBaseGraphDelegationTest(testing.TestCase):
+    """Verify KnowledgeBase's graph methods delegate with the right
+    arguments, and that calling them on a SQL-only adapter raises a
+    clear NotImplementedError instead of an opaque AttributeError."""
+
+    def _make_kb_with_graph_adapter(self):
+        kb = KnowledgeBase.__new__(KnowledgeBase)
+        kb.sql_adapter = None
+        kb.graph_adapter = _RecordingGraphAdapter()
+        kb.uri = None
+        kb.graph_uri = None
+        kb.data_models = []
+        kb.entity_models = []
+        kb.relation_models = []
+        kb.embedding_model = None
+        kb.metric = "cosine"
+        kb.wipe_on_start = False
+        kb.name = "kb"
+        return kb
+
+    async def test_update_entities_scalar_delegates(self):
+        kb = self._make_kb_with_graph_adapter()
+        ret = await kb.update_entities({"label": "Doc"})
+        self.assertEqual(ret, "node-1")
+        self.assertEqual(kb.graph_adapter.calls, [("update_entities", {"label": "Doc"})])
+
+    async def test_update_entities_list_delegates(self):
+        kb = self._make_kb_with_graph_adapter()
+        ret = await kb.update_entities([{"label": "A"}, {"label": "B"}])
+        self.assertEqual(ret, ["node-0", "node-1"])
+        self.assertEqual(
+            kb.graph_adapter.calls,
+            [("update_entities", [{"label": "A"}, {"label": "B"}])],
+        )
+
+    async def test_update_relations_scalar_delegates(self):
+        kb = self._make_kb_with_graph_adapter()
+        rel = {"label": "knows", "subj": {"label": "A"}, "obj": {"label": "B"}}
+        ret = await kb.update_relations(rel)
+        self.assertEqual(ret, "edge-1")
+        self.assertEqual(kb.graph_adapter.calls, [("update_relations", rel)])
+
+    async def test_update_relations_list_delegates(self):
+        kb = self._make_kb_with_graph_adapter()
+        rels = [{"label": "r1"}, {"label": "r2"}]
+        ret = await kb.update_relations(rels)
+        self.assertEqual(ret, ["edge-0", "edge-1"])
+        self.assertEqual(kb.graph_adapter.calls, [("update_relations", rels)])
+
+    async def test_update_knowledge_graph_delegates(self):
+        kb = self._make_kb_with_graph_adapter()
+        kg = {"entities": [{"label": "A"}], "relations": []}
+        ret = await kb.update_knowledge_graph(kg)
+        self.assertEqual(ret, {"entities": ["n0"], "relations": ["e0"]})
+        self.assertEqual(kb.graph_adapter.calls, [("update_knowledge_graph", kg)])
+
+    async def test_get_entity_delegates(self):
+        kb = self._make_kb_with_graph_adapter()
+        ret = await kb.get_entity("id-1", label="Doc")
+        self.assertEqual(ret, {"id": "id-1", "label": "Doc"})
+        self.assertEqual(kb.graph_adapter.calls, [("get_entity", "id-1", "Doc")])
+
+    async def test_delete_entity_delegates(self):
+        kb = self._make_kb_with_graph_adapter()
+        ret = await kb.delete_entity("id-1", label="Doc")
+        self.assertEqual(ret, 1)
+        self.assertEqual(kb.graph_adapter.calls, [("delete_entity", "id-1", "Doc")])
+
+    async def test_delete_relation_delegates(self):
+        kb = self._make_kb_with_graph_adapter()
+        ret = await kb.delete_relation(label="knows", source_id="a", target_id="b")
+        self.assertEqual(ret, 1)
+        self.assertEqual(kb.graph_adapter.calls, [("delete_relation", "knows", "a", "b")])
+
+    async def test_cypher_delegates(self):
+        kb = self._make_kb_with_graph_adapter()
+        ret = await kb.cypher(
+            "MATCH (n) RETURN n",
+            params={"x": 1},
+            output_format="csv",
+            read_only=True,
+        )
+        self.assertEqual(ret, [{"n": 1}])
+        self.assertEqual(
+            kb.graph_adapter.calls,
+            [
+                (
+                    "cypher",
+                    "MATCH (n) RETURN n",
+                    {"x": 1},
+                    "csv",
+                    {"read_only": True},
+                )
+            ],
+        )
+
+    async def test_entity_similarity_search_delegates(self):
+        kb = self._make_kb_with_graph_adapter()
+        ret = await kb.entity_similarity_search("q", label="Doc", k=5)
+        self.assertEqual(ret, [{"score": 0.9}])
+        self.assertEqual(
+            kb.graph_adapter.calls,
+            [("entity_similarity_search", "q", "Doc", 5, None, "json")],
+        )
+
+    async def test_entity_fulltext_search_delegates(self):
+        kb = self._make_kb_with_graph_adapter()
+        ret = await kb.entity_fulltext_search("q", label="Doc")
+        self.assertEqual(ret, [{"score": 0.5}])
+        self.assertEqual(
+            kb.graph_adapter.calls,
+            [("entity_fulltext_search", "q", "Doc", 10, None, "json")],
+        )
+
+    async def test_graph_methods_raise_on_sql_only_kb(self):
+        """A SQL-only KnowledgeBase (no graph_uri) must reject graph
+        methods with a clear NotImplementedError, not an AttributeError
+        from accessing the None graph adapter."""
+        with tempfile.TemporaryDirectory() as tmp:
+            kb = KnowledgeBase(
+                uri=os.path.join(tmp, "test.db"),
+                data_models=[Document],
+            )
+            self.assertIsNotNone(kb.sql_adapter)
+            self.assertIsNone(kb.graph_adapter)
+            with self.assertRaisesRegex(
+                NotImplementedError, "Graph operations require a graph"
+            ):
+                await kb.update_entities({"label": "Doc"})
+            with self.assertRaisesRegex(
+                NotImplementedError, "Graph operations require a graph"
+            ):
+                await kb.cypher("MATCH (n) RETURN n")
+
+    def test_default_kb_auto_pairs_sql_and_graph(self):
+        """Constructing KnowledgeBase without either URI auto-pairs
+        both stores under synalinks_home() — DuckDB on the SQL side
+        and Ladybug on the graph side — so callers can use either
+        surface without setup."""
+        from synalinks.src.knowledge_bases.database_adapters import DatabaseAdapter
+        from synalinks.src.knowledge_bases.graph_database_adapters import (
+            GraphDatabaseAdapter,
+        )
+
+        kb = KnowledgeBase()
+        self.assertIsInstance(kb.sql_adapter, DatabaseAdapter)
+        self.assertIsInstance(kb.graph_adapter, GraphDatabaseAdapter)
+        # KB-level URI fields preserve what the caller passed (here:
+        # nothing). The adapters resolve their own backing paths
+        # under synalinks_home().
+        self.assertIsNone(kb.uri)
+        self.assertIsNone(kb.graph_uri)
+
+    def test_graph_only_kb_skips_sql_adapter(self):
+        """When only graph_uri is given, no SQL adapter is built so
+        constructing a graph-only KB does not pull in DuckDB."""
+        # Bypass URI routing (no concrete graph adapter ships yet) but
+        # otherwise go through the real __init__ to validate the
+        # branching logic.
+        from unittest.mock import patch
+
+        from synalinks.src.knowledge_bases.graph_database_adapters import (
+            GraphDatabaseAdapter,
+        )
+
+        class StubGraphAdapter(GraphDatabaseAdapter):
+            pass
+
+        with patch(
+            "synalinks.src.knowledge_bases.knowledge_base.graph_database_adapters.get",
+            return_value=StubGraphAdapter,
+        ):
+            kb = KnowledgeBase(graph_uri="stub://test")
+
+        self.assertIsNone(kb.sql_adapter)
+        self.assertIsInstance(kb.graph_adapter, GraphDatabaseAdapter)
+        self.assertEqual(kb.graph_uri, "stub://test")
+
+    def test_dual_uri_kb_has_both_adapters(self):
+        """A KB built with both uri and graph_uri holds both adapters,
+        each receiving only the model bucket it understands."""
+        from unittest.mock import patch
+
+        from synalinks.src.knowledge_bases.graph_database_adapters import (
+            GraphDatabaseAdapter,
+        )
+
+        captured = {}
+
+        class StubGraphAdapter(GraphDatabaseAdapter):
+            def __init__(self, **kwargs):
+                captured.update(kwargs)
+                super().__init__(**kwargs)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            with patch(
+                "synalinks.src.knowledge_bases.knowledge_base."
+                "graph_database_adapters.get",
+                return_value=StubGraphAdapter,
+            ):
+                kb = KnowledgeBase(
+                    uri=os.path.join(tmp, "kb.db"),
+                    graph_uri="stub://test",
+                    data_models=[Document],
+                    entity_models=[Document],
+                    relation_models=[],
+                )
+
+            self.assertIsNotNone(kb.sql_adapter)
+            self.assertIsInstance(kb.graph_adapter, GraphDatabaseAdapter)
+            # The graph adapter should have received entity/relation
+            # buckets, not data_models.
+            self.assertEqual(captured.get("entity_models"), [Document])
+            self.assertEqual(captured.get("relation_models"), [])
+            self.assertNotIn("data_models", captured)
+
+    def test_graph_uri_round_trips_through_config(self):
+        from unittest.mock import patch
+
+        from synalinks.src.knowledge_bases.graph_database_adapters import (
+            GraphDatabaseAdapter,
+        )
+
+        class StubGraphAdapter(GraphDatabaseAdapter):
+            pass
+
+        with patch(
+            "synalinks.src.knowledge_bases.knowledge_base.graph_database_adapters.get",
+            return_value=StubGraphAdapter,
+        ):
+            kb = KnowledgeBase(graph_uri="stub://x")
+            config = kb.get_config()
+            self.assertEqual(config["graph_uri"], "stub://x")
+
+            clone = KnowledgeBase.from_config(config)
+            self.assertEqual(clone.graph_uri, "stub://x")

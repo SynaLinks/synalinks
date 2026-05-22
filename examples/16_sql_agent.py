@@ -181,7 +181,7 @@ The agent automatically:
   arbitrary queries the LM is instructed to include `LIMIT` clauses.
 
 - **Safety First**: The `run_sql_query` tool always passes
-  `read_only=True` to `kb.query(...)`. Non-`SELECT` statements are
+  `read_only=True` to `kb.sql(...)`. Non-`SELECT` statements are
   rejected at the parser; the sandbox blocks `read_csv` / httpfs.
 
 - **Transparent Outputs**: Include the generated SQL in the output schema
@@ -189,8 +189,8 @@ The agent automatically:
 
 ## API References
 
-- [SQLAgent](https://synalinks.github.io/synalinks/Synalinks%20API/Modules%20API/Agent%20Modules/SQLAgent%20module/)
-- [FunctionCallingAgent](https://synalinks.github.io/synalinks/Synalinks%20API/Modules%20API/Agent%20Modules/FunctionCallingAgent%20module/)
+- [SQLAgent](https://synalinks.github.io/synalinks/Synalinks%20API/Modules%20API/Agents%20Modules/SQLAgent%20module/)
+- [FunctionCallingAgent](https://synalinks.github.io/synalinks/Synalinks%20API/Modules%20API/Agents%20Modules/FunctionCallingAgent%20module/)
 - [KnowledgeBase](https://synalinks.github.io/synalinks/Synalinks%20API/Knowledge%20Base%20API/)
 """
 

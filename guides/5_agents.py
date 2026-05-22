@@ -142,9 +142,12 @@ by it:
 3. **`async def`, not `def`.** The agent runs tools concurrently with
    `await`; a synchronous function would block the event loop and
    freeze every other tool in the batch.
-4. **No optional parameters and no defaults.** Most LM providers
-   reject schemas where an optional parameter is missing from the
-   `required` list, so Synalinks insists every parameter be required.
+4. **Optional parameters are supported.** A parameter with a default
+   value is omitted from the schema's `required` list and its default
+   is emitted in the schema, so the LM may leave it out and your
+   function's default applies. (The "every property must be required"
+   rule some providers enforce only applies to *strict structured
+   output*, a separate path from tool calling.)
 
 ```python
 import synalinks

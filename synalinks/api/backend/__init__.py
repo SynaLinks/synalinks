@@ -39,21 +39,70 @@ from synalinks.src.backend.pydantic.base import GenericIO as GenericIO
 from synalinks.src.backend.pydantic.base import GenericOutputs as GenericOutputs
 from synalinks.src.backend.pydantic.base import GenericResult as GenericResult
 from synalinks.src.backend.pydantic.base import Instructions as Instructions
-from synalinks.src.backend.pydantic.base import KnowledgeGraph as KnowledgeGraph
 from synalinks.src.backend.pydantic.base import Prediction as Prediction
 from synalinks.src.backend.pydantic.base import Stamp as Stamp
 from synalinks.src.backend.pydantic.base import Trainable as Trainable
 from synalinks.src.backend.pydantic.base import is_embedded as is_embedded
-from synalinks.src.backend.pydantic.base import is_embedded_entity as is_embedded_entity
 from synalinks.src.backend.pydantic.base import is_embedding as is_embedding
 from synalinks.src.backend.pydantic.base import is_embeddings as is_embeddings
-from synalinks.src.backend.pydantic.base import is_entities as is_entities
-from synalinks.src.backend.pydantic.base import is_entity as is_entity
 from synalinks.src.backend.pydantic.base import is_instructions as is_instructions
-from synalinks.src.backend.pydantic.base import is_knowledge_graph as is_knowledge_graph
 from synalinks.src.backend.pydantic.base import is_prediction as is_prediction
 from synalinks.src.backend.pydantic.base import is_stamped as is_stamped
 from synalinks.src.backend.pydantic.base import is_trainable as is_trainable
+from synalinks.src.backend.pydantic.chat_completions import (
+    ChatCompletionChoice as ChatCompletionChoice,
+)
+from synalinks.src.backend.pydantic.chat_completions import (
+    ChatCompletionCompletionTokensDetails as ChatCompletionCompletionTokensDetails,
+)
+from synalinks.src.backend.pydantic.chat_completions import (
+    ChatCompletionFunctionCall as ChatCompletionFunctionCall,
+)
+from synalinks.src.backend.pydantic.chat_completions import (
+    ChatCompletionJsonSchema as ChatCompletionJsonSchema,
+)
+from synalinks.src.backend.pydantic.chat_completions import (
+    ChatCompletionMessage as ChatCompletionMessage,
+)
+from synalinks.src.backend.pydantic.chat_completions import (
+    ChatCompletionPromptTokensDetails as ChatCompletionPromptTokensDetails,
+)
+from synalinks.src.backend.pydantic.chat_completions import (
+    ChatCompletionRequest as ChatCompletionRequest,
+)
+from synalinks.src.backend.pydantic.chat_completions import (
+    ChatCompletionResponse as ChatCompletionResponse,
+)
+from synalinks.src.backend.pydantic.chat_completions import (
+    ChatCompletionResponseFormat as ChatCompletionResponseFormat,
+)
+from synalinks.src.backend.pydantic.chat_completions import (
+    ChatCompletionTool as ChatCompletionTool,
+)
+from synalinks.src.backend.pydantic.chat_completions import (
+    ChatCompletionToolCall as ChatCompletionToolCall,
+)
+from synalinks.src.backend.pydantic.chat_completions import (
+    ChatCompletionToolFunction as ChatCompletionToolFunction,
+)
+from synalinks.src.backend.pydantic.chat_completions import (
+    ChatCompletionUsage as ChatCompletionUsage,
+)
+from synalinks.src.backend.pydantic.chat_completions import (
+    from_chat_completion_message as from_chat_completion_message,
+)
+from synalinks.src.backend.pydantic.chat_completions import (
+    from_chat_completion_messages as from_chat_completion_messages,
+)
+from synalinks.src.backend.pydantic.chat_completions import (
+    to_chat_completion_message as to_chat_completion_message,
+)
+from synalinks.src.backend.pydantic.chat_completions import (
+    to_chat_completion_messages as to_chat_completion_messages,
+)
+from synalinks.src.backend.pydantic.chat_completions import (
+    to_chat_completion_request as to_chat_completion_request,
+)
 from synalinks.src.backend.pydantic.common import ChatMessage as ChatMessage
 from synalinks.src.backend.pydantic.common import ChatMessages as ChatMessages
 from synalinks.src.backend.pydantic.common import ChatRole as ChatRole

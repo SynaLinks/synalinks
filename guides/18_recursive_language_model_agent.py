@@ -25,14 +25,16 @@ Formally, A is a function:
     A : (query, inputs) -> answer
 
 In English: A takes a question and some inputs, and it returns an
-answer. The implementation is a loop. On each turn A emits a small
-piece of Python code (a "**snippet**"). The snippet runs in a
-**sandbox** — a restricted Python environment — that exposes two
-helpers, called the **recursive primitives** `llm_query` and
-`llm_query_batched`, which forward sub-problems to a second language
-model M'. Whatever the snippet prints or returns becomes an
-**observation** — a log line A can read on its next turn — and the
-loop continues.
+answer. The implementation is a loop. On each turn A calls a single
+tool, `execute_async_python(python_code=...)`, with a small piece of
+Python code (a "**snippet**"). The snippet runs in a **sandbox** — a
+restricted Python environment — that exposes two helpers, called the
+**recursive primitives** `llm_query` and `llm_query_batched`, which
+forward sub-problems to a second language model M'. These primitives
+(and `submit`) are callables *inside* the sandbox, not separate tools:
+A reaches them only from the code it passes to `execute_async_python`.
+Whatever the snippet prints or returns becomes an **observation** — a
+log line A can read on its next turn — and the loop continues.
 
 The recursion is **value-recursive**: A does not call itself on the
 same inputs. Instead, on each turn, A delegates a *piece* of the
@@ -129,7 +131,7 @@ class Doc(synalinks.DataModel):
 class Answer(synalinks.DataModel):
     answer: str
 
-primary = synalinks.LanguageModel(model="ollama/llama3.2:latest")
+primary = synalinks.LanguageModel(model="ollama/qwen3:8b")
 
 inputs = synalinks.Input(data_model=Doc)
 outputs = await synalinks.RLM(
@@ -345,8 +347,8 @@ production, because the two jobs have very different shapes:
 Pass a separate `sub_language_model` to exploit the asymmetry:
 
 ```python
-primary = synalinks.LanguageModel(model="ollama/llama3.2:latest")
-cheap   = synalinks.LanguageModel(model="ollama/llama3.2:latest")
+primary = synalinks.LanguageModel(model="ollama/qwen3:8b")
+cheap   = synalinks.LanguageModel(model="ollama/qwen3:8b")
 
 agent = synalinks.RLM(
     data_model=Answer,
@@ -473,8 +475,8 @@ async def main():
     load_dotenv()
     synalinks.clear_session()
 
-    primary = synalinks.LanguageModel(model="ollama/llama3.2:latest")
-    cheap   = synalinks.LanguageModel(model="ollama/llama3.2:latest")
+    primary = synalinks.LanguageModel(model="ollama/qwen3:8b")
+    cheap   = synalinks.LanguageModel(model="ollama/qwen3:8b")
 
     inputs = synalinks.Input(data_model=Doc)
     outputs = await synalinks.RLM(
@@ -533,7 +535,7 @@ Trajectory has 8 messages:
 
 Output is *stochastic* (varies from run to run) and depends on which
 models you picked. With a small local model
-(`ollama/llama3.2:latest`) you can see a realistic failure mode in
+(`ollama/qwen3:8b`) you can see a realistic failure mode in
 the trajectory above: the model repeatedly emits syntactically
 invalid Python, which the sandbox rejects with `MontySyntaxError`.
 Larger primary models almost always close the loop cleanly with
@@ -628,8 +630,8 @@ async def main():
 
     # A capable primary LM for orchestration; a cheap one for sub-queries.
     # Both default to the same model if you only pass `language_model=`.
-    primary = synalinks.LanguageModel(model="ollama/llama3.2:latest")
-    cheap = synalinks.LanguageModel(model="ollama/llama3.2:latest")
+    primary = synalinks.LanguageModel(model="ollama/qwen3:8b")
+    cheap = synalinks.LanguageModel(model="ollama/qwen3:8b")
 
     # synalinks.enable_observability(
     #     project_name="recursive_language_model_agent_guide",

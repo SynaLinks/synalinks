@@ -1,7 +1,7 @@
 # Quickstart
 
 !!! info
-    You can use the [`llms.txt`](/synalinks/llms.txt) or [`llms-full.txt`](/synalinks/llms-full.txt) to feed your favorite LMs with Synalinks documentation. Or better, use [Synalinks Claude Skills](https://github.com/SynaLinks/synalinks-skills) with Claude Code to use Synalinks right away!
+    Want to use Synalinks with your own coding agent (Claude Code, Cursor, Copilot, etc.)? Add the Synalinks-specific skills from [`synalinks-skills`](https://github.com/SynaLinks/synalinks-skills) on GitHub to your agent — they teach it the framework conventions and give it the context it needs to build Synalinks programs right away.
 
 ## Install
 

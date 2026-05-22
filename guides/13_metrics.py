@@ -333,11 +333,11 @@ A pragmatic default for a non-trivial training run:
 
 ## API References
 
-- [synalinks.Metric](https://synalinks.github.io/synalinks/Synalinks%20API/Metrics/Metric/)
+- [synalinks.Metric](https://synalinks.github.io/synalinks/Synalinks%20API/Metrics/Base%20Metric%20class/)
 - [Accuracy / F1 / Precision / Recall](https://synalinks.github.io/synalinks/Synalinks%20API/Metrics/)
-- [BinaryF1Score](https://synalinks.github.io/synalinks/Synalinks%20API/Metrics/BinaryF1Score/)
-- [CategoricalF1Score (alias ListF1Score)](https://synalinks.github.io/synalinks/Synalinks%20API/Metrics/CategoricalF1Score/)
-- [MeanMetricWrapper](https://synalinks.github.io/synalinks/Synalinks%20API/Metrics/MeanMetricWrapper/)
+- [BinaryF1Score](https://synalinks.github.io/synalinks/Synalinks%20API/Metrics/FScore%20metrics/)
+- [CategoricalF1Score (alias ListF1Score)](https://synalinks.github.io/synalinks/Synalinks%20API/Metrics/FScore%20metrics/)
+- [MeanMetricWrapper](https://synalinks.github.io/synalinks/Synalinks%20API/Metrics/Metric%20wrappers%20and%20reduction%20metrics/)
 - [Cost / AvgCostPerCall / TotalTokens / CacheHitRate](https://synalinks.github.io/synalinks/Synalinks%20API/Metrics/)
 - [ProgramCost / ProgramElapsedTime](https://synalinks.github.io/synalinks/Synalinks%20API/Metrics/)
 """

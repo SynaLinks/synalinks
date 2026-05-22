@@ -6,14 +6,13 @@ since your modifications would be overwritten.
 
 from synalinks.src.modules import deserialize as deserialize
 from synalinks.src.modules import serialize as serialize
+from synalinks.src.modules.agents.cypher_agent import CypherAgent as CypherAgent
 from synalinks.src.modules.agents.deep_agent import DeepAgent as DeepAgent
 from synalinks.src.modules.agents.function_calling_agent import (
     FunctionCallingAgent as FunctionCallingAgent,
 )
-from synalinks.src.modules.agents.recursive_language_model_agent import (
-    RecursiveLanguageModelAgent as RLM,
-)
-from synalinks.src.modules.agents.recursive_language_model_agent import (
+from synalinks.src.modules.agents.rlm_agent import RecursiveLanguageModelAgent as RLM
+from synalinks.src.modules.agents.rlm_agent import (
     RecursiveLanguageModelAgent as RecursiveLanguageModelAgent,
 )
 from synalinks.src.modules.agents.sql_agent import SQLAgent as SQLAgent
@@ -25,6 +24,7 @@ from synalinks.src.modules.core.generator import Generator as Generator
 from synalinks.src.modules.core.identity import Identity as Identity
 from synalinks.src.modules.core.input_module import Input as Input
 from synalinks.src.modules.core.input_module import InputModule as InputModule
+from synalinks.src.modules.core.lambda_module import Lambda as Lambda
 from synalinks.src.modules.core.multi_decision import MultiDecision as MultiDecision
 from synalinks.src.modules.core.not_module import Not as Not
 from synalinks.src.modules.core.tool import Tool as Tool
@@ -37,6 +37,8 @@ from synalinks.src.modules.knowledge.retrieve_knowledge import (
 from synalinks.src.modules.knowledge.stamp_knowledge import (
     StampKnowledge as StampKnowledge,
 )
+from synalinks.src.modules.knowledge.text2cypher import Text2Cypher as Text2Cypher
+from synalinks.src.modules.knowledge.text2sql import Text2SQL as Text2SQL
 from synalinks.src.modules.knowledge.update_knowledge import (
     UpdateKnowledge as UpdateKnowledge,
 )
@@ -48,6 +50,65 @@ from synalinks.src.modules.merging.logical_and import And as And
 from synalinks.src.modules.merging.logical_or import Or as Or
 from synalinks.src.modules.merging.logical_xor import Xor as Xor
 from synalinks.src.modules.module import Module as Module
+from synalinks.src.modules.rerankers.rrf_reranker import RRFReranker as RRFReranker
+from synalinks.src.modules.retrievers.entity_fulltext_search import (
+    EntityFullTextSearch as EntityFullTextSearch,
+)
+from synalinks.src.modules.retrievers.entity_hybrid_fts_search import (
+    EntityHybridFTSSearch as EntityHybridFTSSearch,
+)
+from synalinks.src.modules.retrievers.entity_hybrid_regex_search import (
+    EntityHybridRegexSearch as EntityHybridRegexSearch,
+)
+from synalinks.src.modules.retrievers.entity_regex_search import (
+    EntityRegexSearch as EntityRegexSearch,
+)
+from synalinks.src.modules.retrievers.entity_similarity_search import (
+    EntitySimilaritySearch as EntitySimilaritySearch,
+)
+from synalinks.src.modules.retrievers.fulltext_search import (
+    FullTextSearch as FullTextSearch,
+)
+from synalinks.src.modules.retrievers.hybrid_fts_search import (
+    HybridFTSSearch as HybridFTSSearch,
+)
+from synalinks.src.modules.retrievers.hybrid_regex_search import (
+    HybridRegexSearch as HybridRegexSearch,
+)
+from synalinks.src.modules.retrievers.path_fulltext_search import (
+    PathFullTextSearch as PathFullTextSearch,
+)
+from synalinks.src.modules.retrievers.path_hybrid_fts_search import (
+    PathHybridFTSSearch as PathHybridFTSSearch,
+)
+from synalinks.src.modules.retrievers.path_hybrid_regex_search import (
+    PathHybridRegexSearch as PathHybridRegexSearch,
+)
+from synalinks.src.modules.retrievers.path_regex_search import (
+    PathRegexSearch as PathRegexSearch,
+)
+from synalinks.src.modules.retrievers.path_similarity_search import (
+    PathSimilaritySearch as PathSimilaritySearch,
+)
+from synalinks.src.modules.retrievers.regex_search import RegexSearch as RegexSearch
+from synalinks.src.modules.retrievers.relation_fulltext_search import (
+    RelationFullTextSearch as RelationFullTextSearch,
+)
+from synalinks.src.modules.retrievers.relation_hybrid_fts_search import (
+    RelationHybridFTSSearch as RelationHybridFTSSearch,
+)
+from synalinks.src.modules.retrievers.relation_hybrid_regex_search import (
+    RelationHybridRegexSearch as RelationHybridRegexSearch,
+)
+from synalinks.src.modules.retrievers.relation_regex_search import (
+    RelationRegexSearch as RelationRegexSearch,
+)
+from synalinks.src.modules.retrievers.relation_similarity_search import (
+    RelationSimilaritySearch as RelationSimilaritySearch,
+)
+from synalinks.src.modules.retrievers.similarity_search import (
+    SimilaritySearch as SimilaritySearch,
+)
 from synalinks.src.modules.synthesis.python_synthesis import (
     PythonSynthesis as PythonSynthesis,
 )

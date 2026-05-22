@@ -618,12 +618,20 @@ class Optimizer(SynalinksSaveable):
             unassigned = [p for p in current_predictions if p["reward"] is None]
             for p, r in zip(unassigned, rewards):
                 p["reward"] = r
-                nb_visit = trainable_variable.get("nb_visit")
-                cumulative_reward = trainable_variable.get("cumulative_reward")
+            # `nb_visit` / `cumulative_reward` are the per-batch struggle signal
+            # read by `select_variable_name_to_update`: they reflect ONLY this
+            # batch's predictions for this variable (reset, not accumulated), so
+            # the next selection picks whichever module struggled in THIS batch
+            # — a different variable can win each batch. Skip the update when
+            # this pass produced no predictions for the variable (e.g. the
+            # validation assign pass, where `current_predictions` is empty) so
+            # the train-batch signal isn't wiped out.
+            scored = [p["reward"] for p in current_predictions if p["reward"] is not None]
+            if scored:
                 trainable_variable.update(
                     {
-                        "nb_visit": nb_visit + 1,
-                        "cumulative_reward": cumulative_reward + r,
+                        "nb_visit": len(scored),
+                        "cumulative_reward": float(sum(scored)),
                     }
                 )
             trainable_variable.update(

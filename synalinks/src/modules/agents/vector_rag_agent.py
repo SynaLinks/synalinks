@@ -4,6 +4,7 @@ from typing import List
 from typing import Optional
 
 from synalinks.src.api_export import synalinks_export
+from synalinks.src.knowledge_bases import get as _get_kb
 from synalinks.src.modules.agents.function_calling_agent import FunctionCallingAgent
 from synalinks.src.modules.core.tool import Tool
 from synalinks.src.modules.language_models import get as _get_lm
@@ -403,8 +404,11 @@ class VectorRAGAgent(Module):
         super().__init__(name=name, description=description)
 
         if knowledge_base is None:
-            raise ValueError("`knowledge_base` is required")
-        self.knowledge_base = knowledge_base
+            raise ValueError(
+                "`knowledge_base` is required for VectorRAGAgent: pass a "
+                "KnowledgeBase (or a URI) the agent can query."
+            )
+        self.knowledge_base = _get_kb(knowledge_base)
         self.language_model = _get_lm(language_model)
 
         if not schema and data_model:

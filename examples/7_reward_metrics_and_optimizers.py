@@ -120,7 +120,7 @@ async def main():
 
     # Initialize the embedding model for cosine similarity reward
     embedding_model = synalinks.EmbeddingModel(
-        model="gemini/text-embedding-004",
+        model="gemini/gemini-embedding-001",
     )
 
     # ==========================================================================

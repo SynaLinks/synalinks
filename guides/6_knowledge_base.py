@@ -388,7 +388,7 @@ known-models list so default-table searches stop seeing it.
 ### Raw SQL escape hatch
 
 ```python
-results = await kb.query(
+results = await kb.sql(
     "SELECT id, title FROM Document WHERE title LIKE ?",
     params=["%Learning%"],
 )
@@ -402,7 +402,7 @@ even if you never become a security engineer.
 
 #### Letting an LM write the SQL: `read_only=True`
 
-`kb.query` is also how you let a language model write SQL against
+`kb.sql` is also how you let a language model write SQL against
 the KB (an "SQL agent" — see the [SQL Agent example](../Code%20Examples/SQL%20Agent.md)).
 The model's output is, by definition, untrusted: it may be
 malformed, mutating, or trying to read files. Passing
@@ -427,10 +427,10 @@ malformed, mutating, or trying to read files. Passing
 
 ```python
 # What you give the LM:
-result = await kb.query(llm_generated_sql, read_only=True)
+result = await kb.sql(llm_generated_sql, read_only=True)
 ```
 
-The default for `kb.query` is `read_only=True`. Pass
+The default for `kb.sql` is `read_only=True`. Pass
 `read_only=False` only from call sites *you* control — those skip
 the parser check and accept any SQL on the same sandboxed
 connection.
@@ -561,7 +561,7 @@ What happens under the hood:
    CONFLICT (pk) DO UPDATE SET …` — so existing rows are overwritten
    on a primary-key match, just like the single-row `update` call.
 4. The persistent connection is reopened with the sandbox re-applied
-   (so `kb.query(read_only=True)` still refuses external readers
+   (so `kb.sql(read_only=True)` still refuses external readers
    afterwards).
 5. The post-load table is reflected back into a `SymbolicDataModel`
    (using the same column-introspection helpers `kb` uses everywhere
@@ -932,9 +932,9 @@ A short list of failure modes worth scanning for before you ship a KB:
 ## API References
 
 - [KnowledgeBase](https://synalinks.github.io/synalinks/Synalinks%20API/Knowledge%20Base%20API/)
-- [RetrieveKnowledge](https://synalinks.github.io/synalinks/Synalinks%20API/Modules%20API/Knowledge%20Base%20Modules/RetrieveKnowledge%20module/)
-- [UpdateKnowledge](https://synalinks.github.io/synalinks/Synalinks%20API/Modules%20API/Knowledge%20Base%20Modules/UpdateKnowledge%20module/)
-- [EmbedKnowledge](https://synalinks.github.io/synalinks/Synalinks%20API/Modules%20API/Knowledge%20Base%20Modules/EmbedKnowledge%20module/)
+- [RetrieveKnowledge](https://synalinks.github.io/synalinks/Synalinks%20API/Modules%20API/Knowledge%20Modules/RetrieveKnowledge%20module/)
+- [UpdateKnowledge](https://synalinks.github.io/synalinks/Synalinks%20API/Modules%20API/Knowledge%20Modules/UpdateKnowledge%20module/)
+- [EmbedKnowledge](https://synalinks.github.io/synalinks/Synalinks%20API/Modules%20API/Knowledge%20Modules/EmbedKnowledge%20module/)
 """
 
 # --8<-- [start:source]
@@ -1133,7 +1133,7 @@ async def main():
     print("Example 6: Raw SQL Query")
     print("=" * 60)
 
-    results = await kb.query(
+    results = await kb.sql(
         "SELECT id, title FROM Document WHERE title LIKE ?",
         params=["%Learning%"],
     )

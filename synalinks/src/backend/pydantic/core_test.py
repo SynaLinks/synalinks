@@ -189,8 +189,8 @@ class CoreTest(testing.TestCase):
     def test_get_nested_entity_on_data_model_instance(self):
         from typing import Literal
 
-        from synalinks.src.backend.pydantic.base import Entity
-        from synalinks.src.backend.pydantic.base import Relation
+        from synalinks.src.backend.pydantic.knowledge import Entity
+        from synalinks.src.backend.pydantic.knowledge import Relation
 
         class Chunk(Entity):
             label: Literal["Chunk"]
@@ -223,7 +223,7 @@ class CoreTest(testing.TestCase):
         from typing import List
         from typing import Literal
 
-        from synalinks.src.backend.pydantic.base import Entity
+        from synalinks.src.backend.pydantic.knowledge import Entity
 
         class Chunk(Entity):
             label: Literal["Chunk"]

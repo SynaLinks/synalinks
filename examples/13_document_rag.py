@@ -79,7 +79,7 @@ answer = await synalinks.Generator(
 
 ## API References
 
-- [KnowledgeBase](https://synalinks.github.io/synalinks/Synalinks%20API/Knowledge%20Bases%20API/)
+- [KnowledgeBase](https://synalinks.github.io/synalinks/Synalinks%20API/Knowledge%20Base%20API/Knowledge%20Base/)
 - [RetrieveKnowledge](https://synalinks.github.io/synalinks/Synalinks%20API/Modules%20API/Knowledge%20Modules/RetrieveKnowledge%20module/)
 - [Generator](https://synalinks.github.io/synalinks/Synalinks%20API/Modules%20API/Core%20Modules/Generator%20module/)
 - [EmbeddingModel](https://synalinks.github.io/synalinks/Synalinks%20API/Embedding%20Models%20API/)
@@ -150,7 +150,7 @@ async def main():
     )
 
     embedding_model = synalinks.EmbeddingModel(
-        model="gemini/text-embedding-004",
+        model="gemini/gemini-embedding-001",
     )
 
     # Clean up any existing database

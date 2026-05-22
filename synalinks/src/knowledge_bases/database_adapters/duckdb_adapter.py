@@ -1,7 +1,5 @@
 import heapq
-import io
 import os
-import re
 import warnings
 from contextlib import contextmanager
 from typing import Any
@@ -13,20 +11,22 @@ from typing import Union
 import duckdb
 import duckdb.sqltypes
 import orjson
-import pyarrow as pa
-import pyarrow.csv as pa_csv
 
 from synalinks.src.backend import EmbeddingRequest
 from synalinks.src.backend import JsonDataModel
 from synalinks.src.backend import SymbolicDataModel
-from synalinks.src.backend.config import synalinks_home
+from synalinks.src.knowledge_bases.adapters_utils import format_search_results
+from synalinks.src.knowledge_bases.adapters_utils import minmax_normalize_scores
+from synalinks.src.knowledge_bases.adapters_utils import resolve_db_path
+from synalinks.src.knowledge_bases.adapters_utils import sanitize_identifier
+from synalinks.src.knowledge_bases.adapters_utils import to_pascal_identifier
+from synalinks.src.knowledge_bases.adapters_utils import to_snake_identifier
 from synalinks.src.knowledge_bases.database_adapters.database_adapter import (
     DatabaseAdapter,
 )
 from synalinks.src.modules.embedding_models import get as _get_em
 from synalinks.src.utils.async_utils import run_maybe_nested
 from synalinks.src.utils.naming import to_pascal_case
-from synalinks.src.utils.naming import to_snake_case
 
 VSS_KEY = "embedding"
 
@@ -64,10 +64,20 @@ STEMMERS = [
 ]
 
 METRICS = [
-    "l2seq",
+    "l2sq",
     "cosine",
     "ip",
 ]
+
+# DuckDB VSS distance function for each canonical metric. All three return a
+# value where *smaller means closer*, so ``ORDER BY score ASC`` ranks correctly
+# for every metric. The HNSW index is only used when the query's distance
+# function matches the one the index was built with (see ``_hnsw_with_clause``).
+_VSS_DISTANCE_FN = {
+    "l2sq": "array_distance",
+    "cosine": "array_cosine_distance",
+    "ip": "array_negative_inner_product",
+}
 
 MAIN_TABLE = "main"
 
@@ -99,48 +109,11 @@ def _parse_json_columns(row: dict, json_columns: set) -> dict:
     return result
 
 
-def sanitize_identifier(name: str) -> str:
-    """Allow only alphanumeric, underscore, and enforce starting with a letter."""
-    if not re.match(r"^[A-Za-z_][A-Za-z0-9_]*$", name):
-        raise ValueError(f"Invalid SQL identifier: {name}")
-    return name
-
-
-def table_identifier(name: str) -> str:
-    """Normalize ``name`` to a PascalCase SQL identifier."""
-    return sanitize_identifier(to_pascal_case(name))
-
-
-def column_identifier(name: str) -> str:
-    """Normalize ``name`` to a snake_case SQL identifier."""
-    return sanitize_identifier(to_snake_case(name))
-
-
-SEARCH_OUTPUT_FORMATS = ("json", "csv")
-
-
-def _format_search_results(arrow_or_records, output_format: str):
-    """Render a search result set as ``json`` (list of dicts) or ``csv`` (text)."""
-    if output_format not in SEARCH_OUTPUT_FORMATS:
-        raise ValueError(
-            f"Unknown output_format {output_format!r}; "
-            f"expected one of {SEARCH_OUTPUT_FORMATS}."
-        )
-
-    if output_format == "json":
-        if isinstance(arrow_or_records, pa.Table):
-            return arrow_or_records.to_pylist()
-        return arrow_or_records
-
-    if isinstance(arrow_or_records, pa.Table):
-        arrow_table = arrow_or_records
-    else:
-        if not arrow_or_records:
-            return ""
-        arrow_table = pa.Table.from_pylist(arrow_or_records)
-    buf = io.BytesIO()
-    pa_csv.write_csv(arrow_table, buf)
-    return buf.getvalue().decode("utf-8")
+# SQL-flavored aliases over the shared identifier helpers in
+# ``adapters_utils``. Kept under their existing names so call sites
+# read naturally for a SQL backend.
+table_identifier = to_pascal_identifier
+column_identifier = to_snake_identifier
 
 
 def sanitize_properties(properties: dict):
@@ -158,7 +131,15 @@ class DuckDBAdapter(DatabaseAdapter):
         embedding_model=None,
         data_models=None,
         stemmer="porter",
+        stopwords=None,
+        ignore=None,
+        strip_accents=None,
+        lower=None,
         metric="cosine",
+        ef_construction=None,
+        ef_search=None,
+        M=None,
+        M0=None,
         vss_key=VSS_KEY,
         main_table=MAIN_TABLE,
         vector_dim=None,
@@ -167,13 +148,11 @@ class DuckDBAdapter(DatabaseAdapter):
         encryption_key=None,
         **kwargs,
     ):
-        uri = uri.replace("duckdb://", "") if uri else None
-        self.uri = uri
-
-        # `name` is interpolated into the default uri path; constrain to
-        # identifier-shape to block path traversal. `uri` itself is trusted.
-        if name is not None:
-            sanitize_identifier(name)
+        # Resolve URI → backing path. ``None`` defaults to
+        # ``{synalinks_home()}/{name or 'database'}.db`` so a no-args
+        # KnowledgeBase() persists across processes. The helper also
+        # enforces the path-traversal gate on ``name``.
+        self.uri = resolve_db_path(uri, scheme="duckdb", extension="db", name=name)
 
         # Bound as a `?` param to ATTACH; deliberately excluded from get_config().
         self._encryption_key: Optional[str] = encryption_key
@@ -185,7 +164,19 @@ class DuckDBAdapter(DatabaseAdapter):
                 embedded_text = run_maybe_nested(
                     self.embedding_model(EmbeddingRequest(texts=["text"]))
                 )
-                self.vector_dim = len(embedded_text["embeddings"][0])
+                embeddings = (
+                    embedded_text.get("embeddings") if embedded_text is not None else None
+                )
+                if not embeddings:
+                    raise ValueError(
+                        f"Embedding model {self.embedding_model} returned no "
+                        "embeddings while probing the vector dimension. This "
+                        "usually means the model name is wrong or unavailable for "
+                        "your provider/API key (check the warnings above for the "
+                        "underlying error). Fix the embedding model, or pass an "
+                        "explicit `vector_dim=...` to skip the probe."
+                    )
+                self.vector_dim = len(embeddings[0])
             else:
                 self.vector_dim = vector_dim
 
@@ -197,11 +188,25 @@ class DuckDBAdapter(DatabaseAdapter):
             raise ValueError(f"`metric` parameter should be one of {METRICS}")
         self.metric = metric
 
-        self.vss_key = vss_key
+        # FTS-index build params (forwarded to ``PRAGMA create_fts_index``).
+        # ``None`` defers to the DuckDB default for that arg so we don't
+        # have to track upstream defaults (``stopwords='english'``,
+        # ``strip_accents=1``, ``lower=1``, etc.) — only user-supplied
+        # values get serialized into the pragma.
+        self.stopwords = stopwords
+        self.ignore = ignore
+        self.strip_accents = strip_accents
+        self.lower = lower
 
-        self.uri = uri or os.path.join(
-            synalinks_home(), name + ".db" if name else "database.db"
-        )
+        # HNSW build params (forwarded to ``CREATE INDEX ... WITH (...)``).
+        # Same None-defers-to-engine convention as the FTS knobs and as the
+        # Ladybug adapter's ``mu`` / ``ml`` / ``pu`` / ``efc``.
+        self.ef_construction = ef_construction
+        self.ef_search = ef_search
+        self.M = M
+        self.M0 = M0
+
+        self.vss_key = vss_key
 
         # Single persistent RW connection — DuckDB holds an exclusive file
         # lock for its lifetime, so this process is the only writer.
@@ -657,6 +662,46 @@ class DuckDBAdapter(DatabaseAdapter):
             except Exception as e:
                 raise RuntimeError(f"Failed to create table '{table_name}': {e}")
 
+    @staticmethod
+    def _render_sql_literal(value: Any) -> str:
+        """Render a Python value as a SQL literal for DDL/PRAGMA options.
+
+        Used to interpolate adapter init kwargs (stemmer, stopwords,
+        HNSW ``WITH`` options, etc.) into statements where DuckDB
+        rejects ``?``-parameters at the parser layer. Bools become
+        ``0`` / ``1`` (DuckDB's accepted BOOLEAN literal forms in
+        PRAGMA / WITH clauses); ints and floats are emitted bare;
+        strings are single-quoted with embedded quotes doubled.
+        """
+        if isinstance(value, bool):
+            return "1" if value else "0"
+        if isinstance(value, (int, float)):
+            return str(value)
+        return "'" + str(value).replace("'", "''") + "'"
+
+    def _fts_index_options(self, overwrite: bool) -> str:
+        """Render the optional kwargs for ``PRAGMA create_fts_index``.
+
+        Only adapter init values that were explicitly supplied (i.e.
+        not ``None``) get serialized — DuckDB picks its own defaults
+        otherwise, so this avoids hard-coding upstream defaults
+        (``stopwords='english'``, ``strip_accents=1`` etc.) into the
+        adapter. ``overwrite`` is always emitted because callers pass
+        an explicit ``True`` / ``False`` per rebuild.
+        """
+        opts: List[str] = [f"stemmer='{self.stemmer}'"]
+        for key, value in (
+            ("stopwords", self.stopwords),
+            ("ignore", self.ignore),
+            ("strip_accents", self.strip_accents),
+            ("lower", self.lower),
+        ):
+            if value is None:
+                continue
+            opts.append(f"{key}={self._render_sql_literal(value)}")
+        opts.append(f"overwrite={1 if overwrite else 0}")
+        return ", ".join(opts)
+
     def _maybe_create_fulltext_index(
         self,
         data_model: Union[JsonDataModel, SymbolicDataModel],
@@ -677,10 +722,29 @@ class DuckDBAdapter(DatabaseAdapter):
                     'main.{table_name}',
                     '{id_key}',
                     '*',
-                    stemmer='{self.stemmer}',
-                    overwrite={1 if overwrite else 0}
+                    {self._fts_index_options(overwrite)}
                 );
             """)
+
+    def _hnsw_with_clause(self) -> str:
+        """Render the ``WITH (...)`` clause for ``CREATE INDEX ... USING HNSW``.
+
+        ``metric`` is always emitted (the adapter validates it at
+        init); the other knobs (``ef_construction``, ``ef_search``,
+        ``M``, ``M0``) follow the None-defers-to-engine convention so
+        users only pin the values they actually want to tune.
+        """
+        opts: List[str] = [f"metric = '{self.metric}'"]
+        for key, value in (
+            ("ef_construction", self.ef_construction),
+            ("ef_search", self.ef_search),
+            ("M", self.M),
+            ("M0", self.M0),
+        ):
+            if value is None:
+                continue
+            opts.append(f"{key} = {self._render_sql_literal(value)}")
+        return ", ".join(opts)
 
     def _maybe_create_vector_index(
         self,
@@ -705,19 +769,20 @@ class DuckDBAdapter(DatabaseAdapter):
                 return
 
             index_name = f"vector_main_{table_name}"
+            with_clause = self._hnsw_with_clause()
             if overwrite:
                 # HNSW indexes don't support CREATE OR REPLACE.
                 con.execute(f"DROP INDEX IF EXISTS {index_name};")
                 con.execute(
                     f"CREATE INDEX {index_name} ON {table_name}"
                     f" USING HNSW ({self.vss_key})"
-                    f" WITH (metric = '{self.metric}');"
+                    f" WITH ({with_clause});"
                 )
             else:
                 con.execute(
                     f"CREATE INDEX IF NOT EXISTS {index_name} ON {table_name}"
                     f" USING HNSW ({self.vss_key})"
-                    f" WITH (metric = '{self.metric}');"
+                    f" WITH ({with_clause});"
                 )
 
     async def update(
@@ -1416,18 +1481,19 @@ class DuckDBAdapter(DatabaseAdapter):
         self.data_models.pop(table, None)
         return True
 
-    async def query(
+    async def sql(
         self,
-        query: str,
-        params=None,
-        read_only=True,
+        sql: str,
+        *,
+        params: Optional[List[Any]] = None,
+        read_only: bool = True,
         output_format: str = "json",
         **kwargs,
     ):
         """Execute a raw SQL query against the database.
 
         Args:
-            query: The SQL query string.
+            sql: The SQL string.
             params: Optional positional parameters for the query.
             read_only: When ``True`` (default), enforces SELECT-only at
                 the parser layer to reject multi-statement injection,
@@ -1441,7 +1507,7 @@ class DuckDBAdapter(DatabaseAdapter):
         # RO flag alone would let `COPY (...) TO '/path'` through.
         if read_only:
             try:
-                statements = duckdb.extract_statements(query)
+                statements = duckdb.extract_statements(sql)
             except duckdb.Error as e:
                 raise duckdb.InvalidInputException(f"Invalid SQL: {e}") from e
             if not statements:
@@ -1453,8 +1519,28 @@ class DuckDBAdapter(DatabaseAdapter):
                         f"got {stmt.type.name}."
                     )
         with self._connect(read_only=read_only) as con:
-            arrow_table = con.execute(query, params or []).arrow().read_all()
-        return _format_search_results(arrow_table, output_format)
+            arrow_table = con.execute(sql, params or []).arrow().read_all()
+        return format_search_results(arrow_table, output_format)
+
+    @contextmanager
+    def _hnsw_ef_search_override(self, con, ef_search: Optional[int]):
+        """Apply ``SET hnsw_ef_search = <n>`` for the duration of a block.
+
+        DuckDB exposes ``hnsw_ef_search`` as a session-level override
+        of the HNSW ``ef_search`` parameter baked into the index at
+        ``CREATE INDEX`` time. ``None`` is a no-op so the default (or
+        the index-time value) wins; otherwise we ``SET`` on entry and
+        ``RESET`` on exit so we don't leak the override onto whatever
+        the next caller wants.
+        """
+        if ef_search is None:
+            yield
+            return
+        con.execute(f"SET hnsw_ef_search = {int(ef_search)};")
+        try:
+            yield
+        finally:
+            con.execute("RESET hnsw_ef_search;")
 
     async def similarity_search(
         self,
@@ -1463,6 +1549,7 @@ class DuckDBAdapter(DatabaseAdapter):
         table_name: str,
         k: int = 10,
         threshold: Optional[float] = None,
+        ef_search: Optional[int] = None,
         output_format: str = "json",
     ):
         """Vector similarity search against a single table.
@@ -1475,12 +1562,21 @@ class DuckDBAdapter(DatabaseAdapter):
             k: Maximum number of rows returned.
             threshold: Optional maximum vector distance — rows beyond
                 this distance are dropped.
+            ef_search: Optional override for HNSW's search-time
+                candidate-list depth. ``None`` keeps the index-time
+                value (or DuckDB's default of 64); higher = better
+                recall at slower query time. Mirrors Ladybug's
+                ``ef_search``.
             output_format: ``"json"`` (list of dicts, default — Python
                 data) or ``"csv"`` (CSV string, more compact for LM
                 input).
         """
         if not text_or_texts:
-            return _format_search_results([], output_format)
+            return format_search_results([], output_format)
+        if not self.embedding_model:
+            raise ValueError(
+                "similarity_search requires an embedding model on the adapter."
+            )
 
         texts = [text_or_texts] if not isinstance(text_or_texts, list) else text_or_texts
 
@@ -1490,19 +1586,20 @@ class DuckDBAdapter(DatabaseAdapter):
 
         embeddings = await self.embedding_model(EmbeddingRequest(texts=texts))
         vectors = embeddings.get("embeddings")
+        dist_fn = _VSS_DISTANCE_FN[self.metric]
+        # Canonical score, shared with LanceDBAdapter. ``array_distance`` is the
+        # (non-squared) Euclidean distance, so square it for "l2sq" to match
+        # LanceDB's squared-L2; "cosine"/"ip" use the raw function. ``threshold``
+        # is compared in the same units as the score (one ``?`` per occurrence).
+        _d = f"{dist_fn}({self.vss_key}, ?::FLOAT[{self.vector_dim}])"
+        score_expr = f"power({_d}, 2)" if self.metric == "l2sq" else _d
 
         if len(vectors) == 1:
             vector = vectors[0]
-            where_clause = (
-                (f"WHERE array_distance({self.vss_key}, ?::FLOAT[{self.vector_dim}]) < ?")
-                if threshold
-                else ""
-            )
+            where_clause = f"WHERE {score_expr} < ?" if threshold else ""
             sql = f"""
                 SELECT *,
-                    array_distance(
-                        {self.vss_key}, ?::FLOAT[{self.vector_dim}]
-                    ) AS score
+                    {score_expr} AS score
                 FROM {label}
                 {where_clause}
                 ORDER BY score ASC
@@ -1513,30 +1610,27 @@ class DuckDBAdapter(DatabaseAdapter):
                 params.extend([vector, threshold])
             params.append(k)
 
-            with self._connect(read_only=True) as con:
+            with (
+                self._connect(read_only=True) as con,
+                self._hnsw_ef_search_override(con, ef_search),
+            ):
                 try:
                     arrow_table = con.execute(sql, params).arrow().read_all()
                 except Exception as e:
                     raise RuntimeError(f"Vector search failed for table '{label}': {e}")
-            return _format_search_results(arrow_table, output_format)
+            return format_search_results(arrow_table, output_format)
 
         # Multi-query: dedupe by id, keep best score, take top-k.
         results: Dict[Any, Dict[str, Any]] = {}
-        with self._connect(read_only=True) as con:
+        with (
+            self._connect(read_only=True) as con,
+            self._hnsw_ef_search_override(con, ef_search),
+        ):
             for vector in vectors:
-                where_clause = (
-                    (
-                        f"WHERE array_distance({self.vss_key}, "
-                        f"?::FLOAT[{self.vector_dim}]) < ?"
-                    )
-                    if threshold
-                    else ""
-                )
+                where_clause = f"WHERE {score_expr} < ?" if threshold else ""
                 sql = f"""
                     SELECT *,
-                        array_distance(
-                            {self.vss_key}, ?::FLOAT[{self.vector_dim}]
-                        ) AS score
+                        {score_expr} AS score
                     FROM {label}
                     {where_clause}
                     ORDER BY score ASC
@@ -1559,7 +1653,36 @@ class DuckDBAdapter(DatabaseAdapter):
                         results[uid] = row
 
         ranked = sorted(results.values(), key=lambda r: r["score"])[:k]
-        return _format_search_results(ranked, output_format)
+        return format_search_results(ranked, output_format)
+
+    def _bm25_call(
+        self,
+        id_key: str,
+        *,
+        bm25_b: Optional[float] = None,
+        bm25_k: Optional[float] = None,
+        conjunctive: Optional[bool] = None,
+    ) -> str:
+        """Render a ``match_bm25(id, ?[, named-args])`` call fragment.
+
+        The ``?`` placeholder is reserved for the query string (bound
+        as a parameter by the caller). BM25 tuning knobs (``b``,
+        ``k``, ``conjunctive``) are inlined via DuckDB's ``key := value``
+        named-argument syntax so we don't have to specify the
+        positional args we want to leave at the engine default. Only
+        non-``None`` overrides are emitted.
+        """
+        extras: List[str] = []
+        for key, value in (
+            ("k", bm25_k),
+            ("b", bm25_b),
+            ("conjunctive", conjunctive),
+        ):
+            if value is None:
+                continue
+            extras.append(f"{key} := {self._render_sql_literal(value)}")
+        suffix = (", " + ", ".join(extras)) if extras else ""
+        return f"match_bm25({id_key}, ?{suffix})"
 
     async def fulltext_search(
         self,
@@ -1568,6 +1691,9 @@ class DuckDBAdapter(DatabaseAdapter):
         table_name: str,
         k: int = 10,
         threshold: Optional[float] = None,
+        conjunctive: bool = False,
+        bm25_b: Optional[float] = None,
+        bm25_k: Optional[float] = None,
         output_format: str = "json",
     ):
         """BM25 full-text search against a single table.
@@ -1577,12 +1703,26 @@ class DuckDBAdapter(DatabaseAdapter):
                 queries are merged (best BM25 per id kept).
             table_name: Target table.
             k: Maximum number of rows returned.
-            threshold: Optional minimum BM25 score (higher = better).
+            threshold: Optional minimum relevance on the normalized
+                ``[0, 1]`` scale. The returned result set is min-max
+                scaled (best hit ``1.0``, worst ``0.0``) so ``score`` is
+                comparable with the LanceDB adapter despite different raw
+                BM25 ranges.
+            conjunctive: AND-mode query (every term must match).
+                Default ``False`` keeps OR semantics (DuckDB's
+                ``conjunctive=0``). Mirrors Ladybug's ``conjunctive``.
+            bm25_b: Optional override for BM25's ``b`` parameter
+                (document-length normalization). ``None`` defers to
+                DuckDB's default (0.75).
+            bm25_k: Optional override for BM25's ``k1`` parameter
+                (term-frequency saturation). ``None`` defers to
+                DuckDB's default (1.2). Named ``bm25_k`` to avoid
+                collision with the result-limit ``k`` above.
             output_format: ``"json"`` (list of dicts, default) or
                 ``"csv"`` (CSV string).
         """
         if not text_or_texts:
-            return _format_search_results([], output_format)
+            return format_search_results([], output_format)
 
         texts = [text_or_texts] if not isinstance(text_or_texts, list) else text_or_texts
 
@@ -1591,50 +1731,40 @@ class DuckDBAdapter(DatabaseAdapter):
         id_key = self._get_id_key(schema)
         if not self._has_indexable_text_columns(schema):
             warnings.warn(f"Skipping FTS search for {label}: no text columns to index.")
-            return _format_search_results([], output_format)
+            return format_search_results([], output_format)
         fts_table = sanitize_identifier(f"fts_main_{label}")
+        # Build the BM25 call once; the named-arg fragments (b/k/
+        # conjunctive) are inlined as literals, leaving the ``?`` for
+        # the query string bound per iteration. ``conjunctive=False``
+        # is DuckDB's default, so only ``True`` triggers an override.
+        bm25_call = self._bm25_call(
+            id_key,
+            bm25_b=bm25_b,
+            bm25_k=bm25_k,
+            conjunctive=conjunctive or None,
+        )
 
-        def _build_sql():
-            threshold_clause = "AND fts.score >= ?" if threshold is not None else ""
-            return f"""
-                SELECT t.*, fts.score
-                FROM {label} t
-                JOIN (
-                    SELECT
-                        {id_key},
-                        {fts_table}.match_bm25({id_key}, ?) AS score
-                    FROM {label}
-                ) fts ON t.{id_key} = fts.{id_key}
-                WHERE fts.score IS NOT NULL
-                {threshold_clause}
-                ORDER BY fts.score DESC
-                LIMIT ?;
-            """
+        sql = f"""
+            SELECT t.*, fts.score
+            FROM {label} t
+            JOIN (
+                SELECT
+                    {id_key},
+                    {fts_table}.{bm25_call} AS score
+                FROM {label}
+            ) fts ON t.{id_key} = fts.{id_key}
+            WHERE fts.score IS NOT NULL
+            ORDER BY fts.score DESC
+            LIMIT ?;
+        """
 
-        if len(texts) == 1:
-            sql = _build_sql()
-            params = [texts[0]]
-            if threshold is not None:
-                params.append(threshold)
-            params.append(k)
-            with self._connect(read_only=True) as con:
-                try:
-                    arrow_table = con.execute(sql, params).arrow().read_all()
-                except Exception as e:
-                    raise RuntimeError(f"FTS query failed for table '{label}': {e}")
-            return _format_search_results(arrow_table, output_format)
-
-        # Multi-query: dedupe by id, keep best BM25, take top-k.
+        # Fetch the top-k by raw BM25 (dedupe across queries, keep best), then
+        # rescale to [0, 1] so scores are comparable with the LanceDB adapter.
         results: Dict[Any, Dict[str, Any]] = {}
         with self._connect(read_only=True) as con:
             for text in texts:
-                sql = _build_sql()
-                params = [text]
-                if threshold is not None:
-                    params.append(threshold)
-                params.append(k)
                 try:
-                    rows = con.execute(sql, params).arrow().read_all().to_pylist()
+                    rows = con.execute(sql, [text, k]).arrow().read_all().to_pylist()
                 except Exception as e:
                     raise RuntimeError(f"FTS query failed for table '{label}': {e}")
                 for row in rows:
@@ -1644,7 +1774,11 @@ class DuckDBAdapter(DatabaseAdapter):
                         results[uid] = row
 
         ranked = sorted(results.values(), key=lambda r: r["score"], reverse=True)[:k]
-        return _format_search_results(ranked, output_format)
+        # ``threshold`` filters on the same normalized [0, 1] scale as the score.
+        minmax_normalize_scores(ranked, key="score")
+        if threshold is not None:
+            ranked = [r for r in ranked if r["score"] >= threshold]
+        return format_search_results(ranked, output_format)
 
     async def regex_search(
         self,
@@ -1675,7 +1809,7 @@ class DuckDBAdapter(DatabaseAdapter):
                 ``"csv"`` (CSV string).
         """
         if not pattern:
-            return _format_search_results([], output_format)
+            return format_search_results([], output_format)
 
         label = table_identifier(table_name)
         schema = self._duckdb_table_to_json_schema(label)
@@ -1695,7 +1829,7 @@ class DuckDBAdapter(DatabaseAdapter):
             warnings.warn(
                 f"Skipping regex search for {label}: no matching string fields."
             )
-            return _format_search_results([], output_format)
+            return format_search_results([], output_format)
 
         flag = "i" if not case_sensitive else ""
         where = " OR ".join(f"regexp_matches({c}, ?, ?)" for c in cols)
@@ -1710,7 +1844,7 @@ class DuckDBAdapter(DatabaseAdapter):
                 arrow_table = con.execute(sql, params).arrow().read_all()
             except Exception as e:
                 raise RuntimeError(f"Regex query failed for table '{label}': {e}")
-        return _format_search_results(arrow_table, output_format)
+        return format_search_results(arrow_table, output_format)
 
     async def hybrid_search(self, *args, **kwargs):
         """Deprecated alias of :meth:`hybrid_fts_search`.
@@ -1725,11 +1859,16 @@ class DuckDBAdapter(DatabaseAdapter):
         self,
         text_or_texts: Union[str, List[str]],
         *,
+        keywords: Optional[Union[str, List[str]]] = None,
         table_name: str,
         k: int = 10,
         k_rank: int = 60,
         similarity_threshold: Optional[float] = None,
         fulltext_threshold: Optional[float] = None,
+        ef_search: Optional[int] = None,
+        conjunctive: bool = False,
+        bm25_b: Optional[float] = None,
+        bm25_k: Optional[float] = None,
         output_format: str = "json",
     ):
         """Reciprocal-Rank-Fusion of vector similarity + BM25 fulltext.
@@ -1740,32 +1879,77 @@ class DuckDBAdapter(DatabaseAdapter):
         ``sum(1 / (k_rank + rank))``. Falls back to pure FTS if no
         embedding model is configured.
 
+        ``text_or_texts`` feeds the vector branch; ``keywords`` (when
+        provided) feeds the BM25 branch instead — the two signals
+        look for different things (semantic vs lexical) and the
+        natural-language query that drives the vectors is usually
+        not the keyword set you'd hand to BM25. When ``keywords`` is
+        omitted, the text is reused for both branches so existing
+        call sites keep working.
+
         Args:
-            text_or_texts: Query text or list of query texts.
+            text_or_texts: Query text or list of query texts for the
+                vector branch.
             table_name: Target table.
+            keywords: Query text or list of query texts for the BM25
+                branch. Aligns by position with ``text_or_texts``;
+                when omitted, the text is reused.
             k: Maximum number of rows returned.
             k_rank: RRF smoothing constant (default 60). Lower values
                 weight top-ranked rows more strongly.
             similarity_threshold: Optional maximum vector distance.
-            fulltext_threshold: Optional minimum BM25 score.
+            fulltext_threshold: Optional minimum fulltext relevance on
+                the normalized ``[0, 1]`` scale.
+            ef_search: Forwarded to the vector branch
+                (:meth:`similarity_search`); overrides HNSW's
+                search-time candidate-list depth.
+            conjunctive: Forwarded to the BM25 branch
+                (:meth:`fulltext_search`); switches to AND-mode query.
+            bm25_b: Forwarded to the BM25 branch; document-length
+                normalization override.
+            bm25_k: Forwarded to the BM25 branch; term-frequency
+                saturation (``k1``) override.
             output_format: ``"json"`` (list of dicts, default) or
                 ``"csv"`` (CSV string).
         """
         if not text_or_texts:
-            return _format_search_results([], output_format)
+            return format_search_results([], output_format)
 
         if not self.embedding_model:
-            return await self.fulltext_search(
-                text_or_texts,
+            # Fulltext-only fallback. Prefer explicit keywords when
+            # the caller passed them — that's what the BM25 branch
+            # would have used in the full hybrid path anyway. Tag
+            # each row with ``rrf_score`` (set to the BM25 score) so
+            # the result shape matches the full-hybrid path; callers
+            # can always read ``rrf_score`` without branching.
+            fts_rows = await self.fulltext_search(
+                keywords if keywords is not None else text_or_texts,
                 table_name=table_name,
                 k=k,
                 threshold=fulltext_threshold,
-                output_format=output_format,
+                conjunctive=conjunctive,
+                bm25_b=bm25_b,
+                bm25_k=bm25_k,
+                output_format="json",
             )
+            for row in fts_rows:
+                row.setdefault("rrf_score", row.get("score", 0.0))
+                row.setdefault("fulltext_score", row.get("score", 0.0))
+            return format_search_results(fts_rows, output_format)
 
         queries = (
             [text_or_texts] if isinstance(text_or_texts, str) else list(text_or_texts)
         )
+        if keywords is None:
+            keyword_queries = list(queries)
+        else:
+            keyword_queries = [keywords] if isinstance(keywords, str) else list(keywords)
+            if len(keyword_queries) != len(queries):
+                raise ValueError(
+                    f"`keywords` must align with `text_or_texts`: got "
+                    f"{len(keyword_queries)} keyword(s) vs "
+                    f"{len(queries)} text(s)."
+                )
 
         label = table_identifier(table_name)
         schema = self._duckdb_table_to_json_schema(label)
@@ -1773,14 +1957,17 @@ class DuckDBAdapter(DatabaseAdapter):
 
         final_results: Dict[Any, Dict[str, Any]] = {}
 
-        for query_text in queries:
+        for query_text, keyword_text in zip(queries, keyword_queries):
             try:
                 try:
                     fts_results = await self.fulltext_search(
-                        query_text,
+                        keyword_text,
                         table_name=label,
                         k=k * 5,
                         threshold=fulltext_threshold,
+                        conjunctive=conjunctive,
+                        bm25_b=bm25_b,
+                        bm25_k=bm25_k,
                         output_format="json",
                     )
                 except Exception:
@@ -1791,6 +1978,7 @@ class DuckDBAdapter(DatabaseAdapter):
                         table_name=label,
                         k=k * 5,
                         threshold=similarity_threshold,
+                        ef_search=ef_search,
                         output_format="json",
                     )
                 except Exception:
@@ -1838,17 +2026,18 @@ class DuckDBAdapter(DatabaseAdapter):
             heapq.nlargest(k, final_results.values(), key=lambda r: r["score"]),
             key=lambda r: (-r["score"], r.get(id_key)),
         )
-        return _format_search_results(results_sorted, output_format)
+        return format_search_results(results_sorted, output_format)
 
     async def hybrid_regex_search(
         self,
         text_or_texts: Union[str, List[str]],
-        pattern_or_patterns: Union[str, List[str], None] = None,
         *,
+        pattern_or_patterns: Union[str, List[str], None] = None,
         table_name: str,
         k: int = 10,
         k_rank: int = 60,
         similarity_threshold: Optional[float] = None,
+        ef_search: Optional[int] = None,
         fields: Optional[List[str]] = None,
         case_sensitive: bool = True,
         output_format: str = "json",
@@ -1870,17 +2059,20 @@ class DuckDBAdapter(DatabaseAdapter):
             k: Maximum number of rows returned.
             k_rank: RRF smoothing constant.
             similarity_threshold: Optional maximum vector distance.
+            ef_search: Forwarded to the vector branch
+                (:meth:`similarity_search`); overrides HNSW's
+                search-time candidate-list depth.
             fields: Forwarded to :meth:`regex_search`.
             case_sensitive: Forwarded to :meth:`regex_search`.
             output_format: ``"json"`` (list of dicts, default) or
                 ``"csv"`` (CSV string).
         """
         if not text_or_texts and not pattern_or_patterns:
-            return _format_search_results([], output_format)
+            return format_search_results([], output_format)
 
         if not self.embedding_model:
             if not pattern_or_patterns:
-                return _format_search_results([], output_format)
+                return format_search_results([], output_format)
             patterns_list = (
                 [pattern_or_patterns]
                 if isinstance(pattern_or_patterns, str)
@@ -1899,7 +2091,7 @@ class DuckDBAdapter(DatabaseAdapter):
                 for r in rows:
                     sig = orjson.dumps(r, default=str)
                     merged[sig] = r
-            return _format_search_results(list(merged.values())[:k], output_format)
+            return format_search_results(list(merged.values())[:k], output_format)
 
         texts = [text_or_texts] if isinstance(text_or_texts, str) else list(text_or_texts)
         if pattern_or_patterns is None:
@@ -1923,6 +2115,7 @@ class DuckDBAdapter(DatabaseAdapter):
                         table_name=label,
                         k=k * 5,
                         threshold=similarity_threshold,
+                        ef_search=ef_search,
                         output_format="json",
                     )
                 except Exception:
@@ -1990,4 +2183,4 @@ class DuckDBAdapter(DatabaseAdapter):
             heapq.nlargest(k, final_results.values(), key=lambda r: r["score"]),
             key=lambda r: (-r["score"], r.get(id_key)),
         )
-        return _format_search_results(results_sorted, output_format)
+        return format_search_results(results_sorted, output_format)

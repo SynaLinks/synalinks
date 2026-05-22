@@ -10,6 +10,7 @@ from synalinks.src.backend.config import backend as backend
 from synalinks.src.backend.config import (
     default_embedding_model as default_embedding_model,
 )
+from synalinks.src.backend.config import default_knowledge_base as default_knowledge_base
 from synalinks.src.backend.config import default_language_model as default_language_model
 from synalinks.src.backend.config import enable_logging as enable_logging
 from synalinks.src.backend.config import enable_observability as enable_observability
@@ -26,6 +27,9 @@ from synalinks.src.backend.config import set_api_key as set_api_key
 from synalinks.src.backend.config import set_backend as set_backend
 from synalinks.src.backend.config import (
     set_default_embedding_model as set_default_embedding_model,
+)
+from synalinks.src.backend.config import (
+    set_default_knowledge_base as set_default_knowledge_base,
 )
 from synalinks.src.backend.config import (
     set_default_language_model as set_default_language_model,

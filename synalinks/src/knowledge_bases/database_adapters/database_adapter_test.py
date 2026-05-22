@@ -125,7 +125,7 @@ class DuckDBAdapterInitTest(testing.TestCase):
                 encryption_key="passphrase-1",
             )
             try:
-                rows = await b.query(
+                rows = await b.sql(
                     "SELECT id, text FROM Doc WHERE id = ?",
                     params=["d1"],
                 )
@@ -949,7 +949,7 @@ class DuckDBAdapterQueryTest(testing.TestCase):
 
     async def test_query_simple(self):
         adapter = DuckDBAdapter(uri=self.db_path)
-        result = await adapter.query("SELECT 1 as value")
+        result = await adapter.sql("SELECT 1 as value")
         self.assertEqual(result, [{"value": 1}])
 
     async def test_query_with_params(self):
@@ -964,7 +964,7 @@ class DuckDBAdapterQueryTest(testing.TestCase):
         ]
         await adapter.update(people)
 
-        result = await adapter.query(
+        result = await adapter.sql(
             "SELECT * FROM Person WHERE age > ?",
             params=[26],
         )
@@ -976,14 +976,14 @@ class DuckDBAdapterQueryTest(testing.TestCase):
         # the binding pass. The body uses `params or []` so the None
         # case has to round-trip cleanly.
         adapter = DuckDBAdapter(uri=self.db_path)
-        result = await adapter.query("SELECT 42 AS answer", params=None)
+        result = await adapter.sql("SELECT 42 AS answer", params=None)
         self.assertEqual(result, [{"answer": 42}])
 
     async def test_query_with_empty_params_list_succeeds(self):
         # Companion of the None case: an explicit empty list of params
         # for a query that needs no binds.
         adapter = DuckDBAdapter(uri=self.db_path)
-        result = await adapter.query("SELECT 'hi' AS msg", params=[])
+        result = await adapter.sql("SELECT 'hi' AS msg", params=[])
         self.assertEqual(result, [{"msg": "hi"}])
 
     async def test_read_only_rejects_multi_statement_injection(self):
@@ -992,7 +992,7 @@ class DuckDBAdapterQueryTest(testing.TestCase):
         # after a legitimate-looking SELECT.
         adapter = DuckDBAdapter(uri=self.db_path)
         with self.assertRaises(duckdb.InvalidInputException):
-            await adapter.query("SELECT 1; DROP TABLE x", read_only=True)
+            await adapter.sql("SELECT 1; DROP TABLE x", read_only=True)
 
     async def test_read_only_rejects_copy_to_file(self):
         # DuckDB's read-only *connection* does NOT block `COPY ... TO 'file'`
@@ -1003,7 +1003,7 @@ class DuckDBAdapterQueryTest(testing.TestCase):
         adapter = DuckDBAdapter(uri=self.db_path)
         target = os.path.join(tempfile.gettempdir(), "exfil_should_not_exist.csv")
         with self.assertRaises(duckdb.InvalidInputException):
-            await adapter.query(f"COPY (SELECT 1) TO '{target}'", read_only=True)
+            await adapter.sql(f"COPY (SELECT 1) TO '{target}'", read_only=True)
         self.assertFalse(os.path.exists(target))
 
     async def test_read_only_rejects_ddl_and_dml(self):
@@ -1017,12 +1017,12 @@ class DuckDBAdapterQueryTest(testing.TestCase):
             "ATTACH ':memory:' AS m",
         ]:
             with self.assertRaises(duckdb.InvalidInputException):
-                await adapter.query(forbidden, read_only=True)
+                await adapter.sql(forbidden, read_only=True)
 
     async def test_read_only_rejects_empty_query(self):
         adapter = DuckDBAdapter(uri=self.db_path)
         with self.assertRaises(duckdb.InvalidInputException):
-            await adapter.query("", read_only=True)
+            await adapter.sql("", read_only=True)
 
     async def test_read_only_blocks_read_csv_filesystem_escape(self):
         # `SELECT * FROM read_csv('/etc/passwd', ...)` is a valid SELECT
@@ -1032,7 +1032,7 @@ class DuckDBAdapterQueryTest(testing.TestCase):
         # connection so this exfiltration path can't reach a real file.
         adapter = DuckDBAdapter(uri=self.db_path)
         with self.assertRaises(duckdb.Error) as ctx:
-            await adapter.query(
+            await adapter.sql(
                 "SELECT * FROM read_csv('/etc/passwd', "
                 "columns={'line':'VARCHAR'}, delim='|', header=false) LIMIT 1",
                 read_only=True,
@@ -1050,7 +1050,7 @@ class DuckDBAdapterQueryTest(testing.TestCase):
             f.write("a,b\n1,2\n")
         adapter = DuckDBAdapter(uri=self.db_path)
         with self.assertRaises(duckdb.Error):
-            await adapter.query(f"SELECT * FROM read_csv('{bait}')", read_only=True)
+            await adapter.sql(f"SELECT * FROM read_csv('{bait}')", read_only=True)
 
     async def test_read_only_false_bypasses_validation(self):
         # When the caller explicitly opts out of read-only, the adapter
@@ -1063,11 +1063,11 @@ class DuckDBAdapterQueryTest(testing.TestCase):
         adapter = DuckDBAdapter(uri=self.db_path)
         adapter._maybe_create_table(Person.to_symbolic_data_model())
         # Writes through `query(read_only=False, ...)` must succeed.
-        await adapter.query(
+        await adapter.sql(
             "INSERT INTO Person (name, age) VALUES ('Eve', 40)",
             read_only=False,
         )
-        rows = await adapter.query("SELECT name FROM Person", read_only=True)
+        rows = await adapter.sql("SELECT name FROM Person", read_only=True)
         self.assertEqual(rows, [{"name": "Eve"}])
 
 
@@ -1837,12 +1837,14 @@ class DuckDBAdapterHybridSearchTest(testing.TestCase):
         await adapter.update(docs)
 
         # Without embedding model, hybrid search falls back to fulltext search
-        results = await adapter.hybrid_search("quick", table_name="Document", k=5)
+        results = await adapter.hybrid_search(
+            text_or_texts="quick", table_name="Document", k=5
+        )
         self.assertGreater(len(results), 0)
 
     async def test_hybrid_search_empty_query(self):
         adapter = DuckDBAdapter(uri=self.db_path)
-        results = await adapter.hybrid_search("", table_name="Anything")
+        results = await adapter.hybrid_search(text_or_texts="", table_name="Anything")
         self.assertEqual(results, [])
 
     async def test_hybrid_search_alias_forwards_to_hybrid_fts_search(self):
@@ -1855,8 +1857,12 @@ class DuckDBAdapterHybridSearchTest(testing.TestCase):
             JsonDataModel(data_model=Document(id="d2", text="The lazy dog sleeps")),
         ]
         await adapter.update(docs)
-        old = await adapter.hybrid_search("quick", table_name="Document", k=5)
-        new = await adapter.hybrid_fts_search("quick", table_name="Document", k=5)
+        old = await adapter.hybrid_search(
+            text_or_texts="quick", table_name="Document", k=5
+        )
+        new = await adapter.hybrid_fts_search(
+            text_or_texts="quick", table_name="Document", k=5
+        )
         self.assertEqual(old, new)
 
     async def test_hybrid_regex_search_without_embedding_model(self):
@@ -1880,7 +1886,11 @@ class DuckDBAdapterHybridSearchTest(testing.TestCase):
     async def test_hybrid_regex_search_empty_inputs(self):
         adapter = DuckDBAdapter(uri=self.db_path)
         self.assertEqual(
-            await adapter.hybrid_regex_search("", None, table_name="Anything"),
+            await adapter.hybrid_regex_search(
+                text_or_texts="",
+                pattern_or_patterns=None,
+                table_name="Anything",
+            ),
             [],
         )
 

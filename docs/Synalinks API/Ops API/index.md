@@ -15,15 +15,3 @@
 - [prefix function](JSON Ops.md)
 
 ---
-
-## Language Models Ops
-
-- [predict function](Language Models Ops.md)
-
----
-
-## Embedding Models Ops
-
-- [embedding function](Embedding Models Ops.md)
-
----

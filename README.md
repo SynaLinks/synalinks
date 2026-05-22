@@ -1,7 +1,7 @@
 <div align="center">
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="https://github.com/SynaLinks/synalinks/blob/main/img/synalinks-light.svg?raw=true">
-  <img height=200 alt="Synalinks" src="https://github.com/SynaLinks/synalinks/blob/main/img/synalinks-dark.svg?raw=true">
+  <source media="(prefers-color-scheme: dark)" srcset="img/synalinks-dark.svg">
+  <img height=200 alt="Synalinks" src="img/synalinks-light.svg">
 </picture>
 </div>
 
@@ -11,7 +11,7 @@
 
 <em>The first neuro-symbolic Language Model (LM) framework leveraging the simplicity of Keras and the rigor of Deep Learning best practices.</em>
 
-<b>Build [RAGs](https://synalinks.github.io/synalinks/guides/Knowledge%20Base/), [autonomous agents](https://synalinks.github.io/synalinks/guides/Agents/), multi-agents systems, [self-evolving systems](https://synalinks.github.io/synalinks/guides/Recursive%20Language%20Model%20Agent/) and more in just few lines</b>
+<b>Build [RAGs](https://synalinks.github.io/synalinks/guides/Knowledge%20Base/), [tool-using agents](https://synalinks.github.io/synalinks/guides/Agents/), multi-agents systems, [recursive agents](https://synalinks.github.io/synalinks/guides/Recursive%20Language%20Model%20Agent/) and more in just few lines</b>
 
 [Deutsch](https://zdoc.app/de/SynaLinks/synalinks) | 
 [English](https://zdoc.app/en/SynaLinks/synalinks) | 
@@ -50,7 +50,7 @@
 
 <div align="center">
 
-Too busy to read the documentation? Give the [llms.txt](https://synalinks.github.io/synalinks/llms.txt) or [llms-full.txt](https://synalinks.github.io/synalinks/llms-full.txt) to you favorite LMs or AI coding tools. Or better, use [Synalinks Claude Skills](https://github.com/SynaLinks/synalinks-skills) with Claude Code to use Synalinks right away!
+Want to use Synalinks with your own coding agent (Claude Code, Cursor, Copilot, etc.)? Add the Synalinks-specific skills from [`synalinks-skills`](https://github.com/SynaLinks/synalinks-skills) on GitHub to your agent — they teach it the framework conventions and give it the context it needs to build Synalinks programs right away.
 
 </div>
 
@@ -67,7 +67,7 @@ Think Keras for Language Models applications, a clean, declarative API where:
 ### Key Principles
 
 - **Progressive complexity**: [Start simple and grow advanced naturally](https://synalinks.github.io/synalinks/guides/Getting%20Started/).
-- **Neuro-symbolic learning**: Combine [logic, structure](https://synalinks.github.io/synalinks/guides/Data%20Models/), and [language models](https://synalinks.github.io/synalinks/guides/Modules/).
+- **Neuro-symbolic learning**: Combine [logic, structure](https://synalinks.github.io/synalinks/guides/Data%20Models/), and [language models](https://synalinks.github.io/synalinks/guides/Getting%20Started/).
 - **In-context optimization**: [Improve model reasoning without retraining weights](https://synalinks.github.io/synalinks/guides/Trainable%20Variables/).
 
 ## Who Is It For?
@@ -91,12 +91,12 @@ Building robust LM apps is hard. Synalinks simplifies it with:
 - **Versionable**, JSON-serializable [pipelines](https://synalinks.github.io/synalinks/guides/Programs/)
 - **[Constrained structured outputs](https://synalinks.github.io/synalinks/guides/Data%20Models/)** (JSON) for correctness
 - **Automatic [async & parallel execution](https://synalinks.github.io/synalinks/guides/Programs/)** by default
-- **[Metrics](https://synalinks.github.io/synalinks/guides/Metrics/), [rewards](https://synalinks.github.io/synalinks/guides/Rewards/) & [evaluations](https://synalinks.github.io/synalinks/guides/Datasets/)** built-in
-- **Native integrations**: Ollama, vLLM, OpenAI, Azure, Anthropic, Mistral, Groq, Gemini, xAI, Cohere, DeepSeek, Together AI, OpenRouter, AWS Bedrock, Doubleword — see [Getting Started](https://synalinks.github.io/synalinks/guides/Getting%20Started/)
+- **[Metrics](https://synalinks.github.io/synalinks/guides/Metrics/), [rewards](https://synalinks.github.io/synalinks/guides/Rewards/) & [datasets](https://synalinks.github.io/synalinks/guides/Datasets/)** built-in
+- **Native integrations** via [LiteLLM](https://docs.litellm.ai/docs/): Ollama, vLLM, OpenAI, Azure, Anthropic, Mistral, Groq, Gemini, xAI, Cohere, DeepSeek, Together AI, OpenRouter, AWS Bedrock, Doubleword
 - **[Embeddable fast knowledge base support](https://synalinks.github.io/synalinks/guides/Knowledge%20Base/)**: based on DuckDB
 - **API-ready**: Deploy with [FastAPI](https://synalinks.github.io/synalinks/guides/FastAPI%20Deployment/) or [FastMCP](https://synalinks.github.io/synalinks/guides/FastMCP%20Deployment/)
-- **[KerasTuner compatibility](https://synalinks.github.io/synalinks/guides/Hyperparameter%20Search/)** for hyperparameter search, with [multi-objective LM selection](https://synalinks.github.io/synalinks/guides/Multi-Objective%20LM%20Selection/)
-- **Built-In MLFlow [callbacks](https://synalinks.github.io/synalinks/guides/Callbacks/) and hooks** for [observability](https://synalinks.github.io/synalinks/guides/Observability/)
+- **[KerasTuner compatibility](https://synalinks.github.io/synalinks/guides/Hyperparameter%20Search/)** for hyperparameter search, with [multi-objective optimization](https://synalinks.github.io/synalinks/guides/Multi-Objective%20LM%20Selection/)
+- **Built-in [callbacks](https://synalinks.github.io/synalinks/guides/Callbacks/) and hooks** for [observability](https://synalinks.github.io/synalinks/guides/Observability/) (including an MLflow `Monitor` callback)
 
 <div align="center">
 
@@ -114,13 +114,14 @@ Building robust LM apps is hard. Synalinks simplifies it with:
 
 Beyond the Keras programming style, Synalinks:
 - Can [optimize *anything*](https://synalinks.github.io/synalinks/guides/Trainable%20Variables/), not only prompts
-- Is [fully async by default](https://synalinks.github.io/synalinks/guides/Programs/) to prevent bad programming practices
-- Detect & run [parallel branches automatically](https://synalinks.github.io/synalinks/guides/Programs/) with `asyncio` to ease async programming
+- Is [async by default](https://synalinks.github.io/synalinks/guides/Programs/)
+- Supports [parallel branches](https://synalinks.github.io/synalinks/guides/Programs/) with `asyncio` to ease async programming
 - Implement logic-based python operators to easily [manipulate data models and the app control flow](https://synalinks.github.io/synalinks/guides/Data%20Models/)
 - Use [*constrained* JSON decoding](https://synalinks.github.io/synalinks/guides/Data%20Models/) to be robust in production
-- Is fully compatible with Pydantic BaseModel (via `schema=` in every [module](https://synalinks.github.io/synalinks/guides/Modules/)) to ease integration with FastAPI/FastMCP etc.
+- Is fully compatible with Pydantic BaseModel (via `schema=` in every [module](https://synalinks.github.io/synalinks/guides/Data%20Models/)) to ease integration with FastAPI/FastMCP etc.
 - Have instrospection tools like `summary()` and `plot_program()` to write better documentation
-- Have a fully embeddable runtime that doesn't requires any container like Docker to run, easing scripting, research and deployment in modern cloud environment.
+- Have a fully embeddable & safe runtime that doesn't require any container like Docker to run, easing scripting, research and deployment in modern cloud environments.
+- Use the familiar `.predict(x=...)`, `.compile(optimizer=..., reward=..., metrics=...)`, `.evaluate(x=..,y=...)`, `.fit(x=..., y=...)` that ML people love.
 
 ## Installation
 
@@ -247,7 +248,7 @@ synalinks.utils.plot_program(
 ```
 
 <div align="center">
-<img src="https://github.com/SynaLinks/synalinks/blob/main/docs/assets/examples/math_agent.png?raw=true" alt="Math Agent Program" width="600">
+<img src="docs/assets/examples/math_agent.png" alt="Math Agent Program" width="600">
 
 <em>The math agent program visualized with plot_program: Input → FunctionCallingAgent. Trainable modules are marked in green.</em>
 </div>
@@ -372,7 +373,7 @@ monitor = synalinks.callbacks.Monitor(
 await program.fit(x=train_x, y=train_y, callbacks=[monitor])
 ```
 
-See the [Observability guide](https://synalinks.github.io/synalinks/guides/Observability/) for Docker setup and advanced configuration.
+See the [Observability guide](https://synalinks.github.io/synalinks/guides/Observability/) for advanced configuration.
 
 ### Learn more
 
@@ -420,6 +421,6 @@ Synalinks would not be possible without the great work of the following open-sou
 
 - [Keras](https://keras.io/) for the graph-based computation backbone, API and overall code, design and philosophy.
 - [DSPy](https://dspy.ai/) for the modules/optimizers inspiration.
-- [Pydantic](https://docs.pydantic.dev/latest/) for the backend data layer.
+- [Pydantic](https://docs.pydantic.dev/latest/) for the backend data layer & their [Monthy](https://pydantic.dev/articles/pydantic-monty) embedded REPL sandbox.
 - [LiteLLM](https://docs.litellm.ai/docs/) for the LMs integrations.
-- [DuckDB](https://duckdb.org/) for the fast embeddable knowledge base.
+- [DuckDB](https://duckdb.org/), [Ladybug](https://ladybugdb.com/), [LanceDB](https://www.lancedb.com/) for their amazing embedded databases.

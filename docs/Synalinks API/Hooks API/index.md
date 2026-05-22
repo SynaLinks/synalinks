@@ -1,4 +1,4 @@
-# Hook API
+# Hooks API
 
 A hook is an object that can perform various actions at the begining/end of a module's call.
 

@@ -626,7 +626,7 @@ Answer: 2
 - [Decision](https://synalinks.github.io/synalinks/Synalinks%20API/Modules%20API/Core%20Modules/Decision%20module/)
 - [Branch](https://synalinks.github.io/synalinks/Synalinks%20API/Modules%20API/Core%20Modules/Branch%20module/)
 - [ChainOfThought](https://synalinks.github.io/synalinks/Synalinks%20API/Modules%20API/Test%20Time%20Compute%20Modules/ChainOfThought%20module/)
-- [InMask/OutMask](https://synalinks.github.io/synalinks/Synalinks%20API/Modules%20API/Core%20Modules/Masking%20modules/)
+- [InMask/OutMask](https://synalinks.github.io/synalinks/Synalinks%20API/Modules%20API/Masking%20Modules/)
 - [Tool](https://synalinks.github.io/synalinks/Synalinks%20API/Modules%20API/Core%20Modules/Tool%20module/)
 """
 

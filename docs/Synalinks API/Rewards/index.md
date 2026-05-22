@@ -22,7 +22,7 @@ Synalinks ships two flavors of reward base class:
 Both flavors share the same masking, reduction, and serialization machinery, so
 you can mix them freely (including across multi-output programs).
 
-# Rewards Overview
+## Rewards Overview
 
 - [ExactMatch reward](ExactMatch reward.md)
 - [CosineSimilarity reward](CosineSimilarity reward.md)

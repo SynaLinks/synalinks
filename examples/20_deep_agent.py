@@ -1,12 +1,17 @@
 """
 # Deep Agent
 
-A **Deep Agent** is a coding-style agent with direct access to the
-filesystem and a shell, scoped to a single working directory. Where a
-`FunctionCallingAgent` typically calls a few narrow tools (search,
-calculate, fetch), a deep agent treats a workspace as its environment
-and edits it in place — read files, grep them, write or patch them,
-then run a command to validate the result.
+A **Deep Agent** is a coding-style agent that treats a working directory
+as its environment — read files, grep them, write or patch them, run a
+bit of Python to check the result. Where a `FunctionCallingAgent`
+typically calls a few narrow tools (search, calculate, fetch), a deep
+agent edits a workspace in place.
+
+In Synalinks the deep agent's tools **are** the methods of a
+`MontySandbox` mounted on the workdir. That makes it host-safe by
+construction: reads fall through to the real directory, but writes,
+edits and code execution are captured in an in-memory copy-on-write
+overlay that never modifies the disk.
 
 ## What Deep Agents Can Do
 
@@ -14,12 +19,12 @@ then run a command to validate the result.
 graph LR
     A[User Task] --> B[DeepAgent]
     B --> C{Pick Tool}
-    C -->|Discover| D[list_directory]
+    C -->|Discover| D[list_files]
     C -->|Find/grep| E[search_files]
     C -->|Read code| F[read_file]
     C -->|Patch| G[edit_file]
     C -->|Create| H[write_file]
-    C -->|Run| I[run_bash]
+    C -->|Run Python| I[run_python_code / run_python_file]
     D --> B
     E --> B
     F --> B
@@ -33,59 +38,51 @@ Typical use cases:
 
 1. **Code review / explanation**: read a repo, summarize what each
    file does.
-2. **Bug fix loop**: find the failing test, read the relevant module,
-   patch it, re-run the test, iterate.
-3. **Project bootstrapping**: scaffold a small project from scratch
-   (write files, run `python -m pytest` to confirm).
+2. **Bug fix loop**: find the failing code, read the relevant module,
+   patch it, iterate.
+3. **Project bootstrapping**: scaffold a small project in the overlay,
+   then persist the result yourself if you're happy with it.
 4. **Data wrangling**: search a directory of CSVs / logs, extract
-   what's relevant, write a report.
+   what's relevant, write a report into the overlay.
 
-## The Six Built-in Tools
+## The Seven Built-in Tools
 
 | Tool | Purpose |
 |------|---------|
-| `list_directory` | Enumerate a directory (name, type, size). |
-| `search_files` | Glob for files and/or grep their contents (regex). |
-| `read_file` | Line-paginated file read, output prefixed with line numbers (`cat -n` style). |
+| `list_files` | List files matching a glob (e.g. `**/*.py`). |
+| `search_files` | Glob for files and grep their contents (regex). |
+| `read_file` | Read a file by 1-based line range (paginated). |
 | `write_file` | Create or overwrite a file. Gated by `allow_write`. |
 | `edit_file` | Exact-string replacement; rejects 0 or 2+ occurrences. Gated by `allow_write`. |
-| `run_bash` | Execute a shell command with timeout. Gated by `allow_bash`. |
+| `run_python_code` | Run an inline Python snippet (arg: `code`). Gated by `allow_code`. |
+| `run_python_file` | Run a self-contained script you wrote into the overlay (arg: `path`). Gated by `allow_code`. |
 
-## Security Model
+## Host Safety
 
-The deep agent enforces two different containment guarantees, and
-it's important to know which is real and which is *not*.
+Every tool is backed by the sandbox's copy-on-write overlay, so the
+agent **cannot damage the real workspace**:
 
-**File tools** (`read_file` / `write_file` / `edit_file` /
-`list_directory` / `search_files`) refuse any path that resolves
-outside the workdir, including:
-
-- `..` traversal (`subdir/../../etc/passwd`)
-- Absolute paths (`/etc/passwd`)
-- Symlinks pointing outside the workdir (the symlink is resolved
-  during the path check, so the target's location is what's
-  compared)
-
-Paths are canonicalized with `Path.resolve()` (which flattens `..`
-and follows existing symlinks) and then prefix-checked against the
-resolved workdir. File opens use `O_NOFOLLOW` where the OS supports
-it as defense in depth against TOCTOU symlink-swap races. This is a
-robust boundary.
-
-**Bash is not sandboxed.** The shell runs with `cwd=workdir`, but
-that's just where its prompt starts — the LM can write `cat
-/etc/passwd` and the shell will happily read it. The Python layer
-cannot make `run_bash` safe on its own. If you're running this on
-untrusted input, run the host process inside a container or other
-OS-level isolation, or disable bash with `allow_bash=False`.
+- **Reads** fall through to the real `workdir`.
+- **Writes / edits** land in an in-memory overlay; the files on disk
+  are never modified. Inspect what changed via
+  `agent.sandbox.changes()` / `agent.sandbox.journal()`, and persist
+  any of it yourself if you want it on disk.
+- **Paths** are rooted at the workdir; `..` cannot escape it, and a
+  symlink in the base pointing outside it is refused.
+- **`run_python_code`** (inline snippet) and **`run_python_file`** (a
+  script the agent wrote into the overlay) both run inside Monty — a
+  restricted Python interpreter with a small stdlib subset, no
+  third-party imports and no network — so model-authored code can't
+  reach the host either. (A `run_python_file` script must be
+  self-contained: Monty cannot import other overlay files.)
 
 ## Building the Agent
 
 `DeepAgent` mirrors `FunctionCallingAgent` — every parameter on that
-class is accepted with identical semantics. The only additions are
-`workdir` (required), the per-tool gates (`allow_write`, `allow_bash`),
-and a few output-shaping knobs (`timeout`, `max_output_chars`,
-`max_search_results`).
+class is accepted with identical semantics. The additions are `workdir`
+(required), the capability gates `allow_write` / `allow_code`, and the
+sandbox `timeout` (the per-snippet budget for `run_python_code` /
+`run_python_file`).
 
 ```python
 import synalinks
@@ -93,9 +90,9 @@ import synalinks
 agent = synalinks.DeepAgent(
     workdir="/tmp/my_project",
     language_model=lm,
-    allow_write=True,   # default
-    allow_bash=True,    # default
-    timeout=30,         # per-bash-command timeout, seconds
+    allow_write=True,   # default — write_file / edit_file
+    allow_code=True,    # default — run_python_code (Python sandbox)
+    timeout=30,         # per-run_python_code budget, seconds
     max_iterations=10,  # coding tasks tend to need more rounds than RAG/SQL
 )
 ```
@@ -106,8 +103,8 @@ Read-only mode for code review without write privileges:
 agent = synalinks.DeepAgent(
     workdir="/path/to/repo",
     language_model=lm,
-    allow_write=False,  # only read_file/list_directory/search_files (+ run_bash if allowed)
-    allow_bash=False,   # purely static inspection
+    allow_write=False,  # only read_file / list_files / search_files (+ run_python_code)
+    allow_code=False,   # purely static inspection
 )
 ```
 
@@ -119,17 +116,16 @@ FunctionCallingAgent-derived class.
 ## Example Usage
 
 This example creates a small Python project, asks the agent to add a
-function, then verifies the addition by running a quick check.
+function, and then inspects the agent's overlay to see the edit — while
+the file on disk stays untouched.
 
 ```python
 result = await agent(ChatMessages(messages=[
     ChatMessage(
         role="user",
         content=(
-            "Open the calculator.py file, add a `multiply(a, b)` "
-            "function next to `add`, and run `python -c 'from "
-            "calculator import multiply; print(multiply(6, 7))'` "
-            "to confirm it works."
+            "Open calculator.py and add a `multiply(a, b)` function "
+            "next to `add`, then read it back to confirm."
         ),
     )
 ]))
@@ -137,26 +133,25 @@ result = await agent(ChatMessages(messages=[
 
 The agent will typically:
 
-1. `list_directory(".")` to see what's in the workdir.
-2. `read_file("calculator.py")` to read existing code.
+1. `list_files("**/*")` to see what's in the workdir.
+2. `read_file("/calculator.py")` to read existing code.
 3. `edit_file(...)` to insert the new function (or `write_file` for a
    full rewrite if the file is short).
-4. `run_bash("python -c '...'")` to validate.
-5. Stop and answer.
+4. `read_file(...)` again to confirm, then stop and answer.
 
 ## Key Takeaways
 
 - **One module, six tools**: `synalinks.DeepAgent` bundles file IO,
-  search, and shell execution into a single ready-to-use agent.
-- **Real path-traversal defense**: file tools refuse anything outside
-  the workdir, including symlink escapes.
-- **Bash is not sandboxed**: containerize if you need true isolation.
-- **Read-only mode**: set `allow_write=False` (and optionally
-  `allow_bash=False`) for inspector agents that audit code without
-  changing it.
-- **Token-aware**: `read_file` returns line-numbered output (LMs cite
-  line numbers, no re-reading needed); `search_files` caps results;
-  `run_bash` truncates stdout/stderr.
+  search, and a Python sandbox into a single ready-to-use agent.
+- **Host-safe by construction**: the tools are a copy-on-write overlay,
+  so the agent can explore and edit freely without touching the disk.
+- **Inspect & persist**: `agent.sandbox.changes()` / `.journal()` show
+  exactly what the agent did; you decide what (if anything) to write to
+  disk.
+- **Read-only / no-code modes**: set `allow_write=False` and/or
+  `allow_code=False` for inspector agents that audit code.
+- **Token-aware**: `read_file` / `list_files` / `search_files` paginate
+  with `offset` / `limit` (1-based, grep convention).
 
 ## API References
 
@@ -174,7 +169,6 @@ import tempfile
 from dotenv import load_dotenv
 
 import synalinks
-
 
 # =============================================================================
 # Workspace setup
@@ -238,20 +232,21 @@ async def main():
 
         lm = synalinks.LanguageModel(model="gemini/gemini-3.1-flash-lite-preview")
 
-        # Build the agent. autonomous=True runs the tool loop end-to-end;
-        # max_iterations=10 gives the LM enough rounds for a multi-step task.
-        inputs = synalinks.Input(data_model=synalinks.ChatMessages)
-        outputs = await synalinks.DeepAgent(
+        # Keep a reference to the DeepAgent so we can inspect its sandbox
+        # (the copy-on-write overlay) after the run.
+        deep_agent = synalinks.DeepAgent(
             workdir=workdir,
             language_model=lm,
             max_iterations=10,
-        )(inputs)
+        )
+        inputs = synalinks.Input(data_model=synalinks.ChatMessages)
+        outputs = await deep_agent(inputs)
 
         agent = synalinks.Program(
             inputs=inputs,
             outputs=outputs,
             name="deep_agent",
-            description="A coding agent with file and shell access.",
+            description="A coding agent with a sandboxed copy of a workdir.",
         )
 
         agent.summary()
@@ -278,10 +273,10 @@ async def main():
         print_messages(result)
 
         # ---------------------------------------------------------------------
-        # Task 2: extend the calculator
+        # Task 2: extend the calculator (in the overlay, host-safe)
         # ---------------------------------------------------------------------
         print("\n" + "=" * 60)
-        print("Task 2: Extend & verify")
+        print("Task 2: Extend (overlay edit)")
         print("=" * 60)
 
         task = synalinks.ChatMessages(
@@ -290,9 +285,8 @@ async def main():
                     role="user",
                     content=(
                         "Open calculator.py and add a `multiply(a, b)` function "
-                        "that returns a * b, in the same style as `add`. "
-                        "Then run `python -c 'from calculator import multiply; "
-                        "print(multiply(6, 7))'` and tell me what it printed."
+                        "that returns a * b, in the same style as `add`. Then "
+                        "read the file back to confirm the change."
                     ),
                 )
             ]
@@ -300,10 +294,18 @@ async def main():
         result = await agent(task)
         print_messages(result)
 
-        # Show the final file content so we can verify ourselves.
-        print("\n--- Final calculator.py ---")
+        # The edit lives in the sandbox overlay — show it, and show that the
+        # file on disk is untouched.
+        print("\n--- calculator.py (sandbox overlay) ---")
+        overlay = await deep_agent.sandbox.read_file("/calculator.py")
+        print(overlay.get("content", overlay))
+
+        print("\n--- calculator.py (on disk, unchanged) ---")
         with open(os.path.join(workdir, "calculator.py")) as f:
             print(f.read())
+
+        print("--- overlay changes ---")
+        print(deep_agent.sandbox.changes())
 
     finally:
         shutil.rmtree(workdir, ignore_errors=True)

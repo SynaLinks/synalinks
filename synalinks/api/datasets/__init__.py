@@ -30,4 +30,12 @@ from synalinks.src.datasets.huggingface_dataset import (
 from synalinks.src.datasets.huggingface_dataset import load_split as load_split
 from synalinks.src.datasets.json_dataset import JSONDataset as JSONDataset
 from synalinks.src.datasets.json_dataset import JSONLDataset as JSONLDataset
+from synalinks.src.datasets.markdown_dataset import MarkdownDataset as MarkdownDataset
+from synalinks.src.datasets.markdown_dataset import MarkdownDocument as MarkdownDocument
+from synalinks.src.datasets.markdown_dataset import MarkdownSection as MarkdownSection
+from synalinks.src.datasets.markdown_dataset import (
+    parse_markdown_sections as parse_markdown_sections,
+)
 from synalinks.src.datasets.parquet_dataset import ParquetDataset as ParquetDataset
+from synalinks.src.datasets.text_dataset import TextDataset as TextDataset
+from synalinks.src.datasets.text_dataset import TextDocument as TextDocument

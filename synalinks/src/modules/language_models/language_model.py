@@ -549,7 +549,7 @@ class LanguageModel(Module):
             messages (dict): A formatted dict of chat messages.
             schema (dict): The target JSON schema for structed output (optional).
                 If None, output a ChatMessage-like answer.
-            tools: Optional iterable or `{name: Tool}` mapping of
+            tools (list | dict): Optional iterable or `{name: Tool}` mapping of
                 `synalinks.modules.Tool` the LM may call. Mutually exclusive
                 with `schema` — schema forces structured output, tools let the
                 LM choose; they cannot both apply to the same call. In the

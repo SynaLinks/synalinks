@@ -12,6 +12,8 @@ from synalinks.src.backend import ChatRole
 from synalinks.src.backend import Instructions
 from synalinks.src.backend import Prediction
 from synalinks.src.backend import SymbolicDataModel
+from synalinks.src.backend import is_chat_message
+from synalinks.src.backend import is_chat_messages
 from synalinks.src.backend import is_strictly_chat_message
 from synalinks.src.backend import is_strictly_chat_messages
 from synalinks.src.modules.language_models import get as _get_lm
@@ -19,7 +21,14 @@ from synalinks.src.modules.language_models.language_model import StreamingIterat
 from synalinks.src.modules.module import Module
 from synalinks.src.saving import serialization_lib
 
-ROLES = [ChatRole.SYSTEM, ChatRole.USER, ChatRole.ASSISTANT, ChatRole.TOOL]
+ROLES = [ChatRole.SYSTEM, ChatRole.USER, ChatRole.ASSISTANT, ChatRole.TOOL, ChatRole.FUNCTION]
+
+_SYSTEM_PROMPT_ROLES = {ChatRole.SYSTEM.value, ChatRole.DEVELOPER.value}
+
+
+def _has_system_prompt(messages):
+    return any(m.get("role") in _SYSTEM_PROMPT_ROLES for m in messages)
+
 
 XML_TAGS_REGEX = re.compile(
     r"<(" + "|".join(ROLES) + r")\s*(?:[^>]*)>\s*([\s\S]*?)\s*</\1>",
@@ -303,6 +312,48 @@ class Generator(Module):
                 )
 
     def format_messages(self, inputs=None):
+        # Strict chat inputs: skip Jinja2 rendering when the caller already
+        # supplies their own system/developer prompt; otherwise inject ours.
+        if is_strictly_chat_messages(inputs):
+            msgs = inputs.get("messages")
+            if _has_system_prompt(msgs):
+                return ChatMessages(messages=msgs)
+            system_message = self._render_system_message(inputs)
+            return ChatMessages(messages=[system_message.get_json(), *msgs])
+        if is_strictly_chat_message(inputs):
+            msg = inputs.get_json()
+            if _has_system_prompt([msg]):
+                return ChatMessages(messages=[msg])
+            system_message = self._render_system_message(inputs)
+            return ChatMessages(messages=[system_message.get_json(), msg])
+
+        system_message = self._render_system_message(inputs)
+        if is_chat_messages(inputs):
+            data = inputs.get_json()
+            msgs = data.get("messages")
+            # Fields declared before `messages` are the inputs; fields after it
+            # are outputs (e.g. concatenated by an upstream generator), so only
+            # the leading fields are rendered as the input turn.
+            keys = list(data.keys())
+            inputs_fields = {k: data[k] for k in keys[: keys.index("messages")]}
+            messages = [system_message]
+            if inputs_fields:
+                messages.append(
+                    ChatMessage(
+                        role="user",
+                        content=f"## Input:\n{inputs_fields}\n## Output:\n",
+                    )
+                )
+            messages.extend(msgs)
+            return ChatMessages(messages=messages)
+        if is_chat_message(inputs):
+            return ChatMessages(messages=[system_message, inputs.get_json()])
+        user_message = ChatMessage(
+            role="user", content=f"## Input:\n{inputs.get_json()}\n## Output:\n"
+        )
+        return ChatMessages(messages=[system_message, user_message])
+
+    def _render_system_message(self, inputs):
         template = jinja2.Template(self.prompt_template)
         rendered_prompt = template.render(
             inputs_schema=inputs.get_schema() if self.use_inputs_schema else None,
@@ -313,25 +364,7 @@ class Generator(Module):
             ],
             instructions=self.state.get("instructions"),
         )
-        system_message = ChatMessage(role="system", content=rendered_prompt)
-        if is_strictly_chat_messages(inputs):
-            input_messages = [
-                ChatMessage(**msg) if isinstance(msg, dict) else msg
-                for msg in inputs.get("messages", [])
-            ]
-            has_system = any(m.role == ChatRole.SYSTEM for m in input_messages)
-            if has_system:
-                return ChatMessages(messages=input_messages)
-            return ChatMessages(messages=[system_message, *input_messages])
-        if is_strictly_chat_message(inputs):
-            input_message = ChatMessage(**inputs.get_json())
-            if input_message.role == ChatRole.SYSTEM:
-                return ChatMessages(messages=[input_message])
-            return ChatMessages(messages=[system_message, input_message])
-        user_message = ChatMessage(
-            role="user", content=f"## Input:\n{inputs.get_json()}\n##Output:\n"
-        )
-        return ChatMessages(messages=[system_message, user_message])
+        return ChatMessage(role="system", content=rendered_prompt)
 
     def get_config(self):
         config = {
@@ -345,6 +378,7 @@ class Generator(Module):
             "return_inputs": self.return_inputs,
             "temperature": self.temperature,
             "reasoning_effort": self.reasoning_effort,
+            "streaming": self.streaming,
             "name": self.name,
             "description": self.description,
             "trainable": self.trainable,

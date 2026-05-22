@@ -6,4 +6,4 @@ uv cache clean
 # Uninstall current version
 uv pip uninstall . || true
 # Install new version
-uv pip install .
+uv pip install -e .

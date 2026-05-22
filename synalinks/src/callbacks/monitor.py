@@ -493,9 +493,19 @@ class Monitor(Callback):
         pass
 
     def __del__(self):
-        """Cleanup any open MLflow run."""
-        if hasattr(self, "_run") and self._run is not None:
-            try:
+        """End our MLflow run if it was left open and is still the active one.
+
+        Guarded by a run-id check: ``mlflow.end_run()`` always ends whatever run
+        is *globally* active, so a finalizer firing at GC time must not end an
+        unrelated run (this also keeps a leaked finalizer from polluting other
+        code's — or another test's — active run).
+        """
+        run = getattr(self, "_run", None)
+        if run is None:
+            return
+        try:
+            active = mlflow.active_run()
+            if active is not None and active.info.run_id == run.info.run_id:
                 mlflow.end_run()
-            except Exception:
-                pass
+        except Exception:
+            pass

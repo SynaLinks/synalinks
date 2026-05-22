@@ -42,28 +42,19 @@ if backend() == "pydantic":
     from synalinks.src.backend.pydantic.base import Embedding
     from synalinks.src.backend.pydantic.base import EmbeddingRequest
     from synalinks.src.backend.pydantic.base import Embeddings
-    from synalinks.src.backend.pydantic.base import Entities
-    from synalinks.src.backend.pydantic.base import Entity
     from synalinks.src.backend.pydantic.base import GenericInputs
     from synalinks.src.backend.pydantic.base import GenericIO
     from synalinks.src.backend.pydantic.base import GenericOutputs
     from synalinks.src.backend.pydantic.base import GenericResult
     from synalinks.src.backend.pydantic.base import Instructions
-    from synalinks.src.backend.pydantic.base import KnowledgeGraph
     from synalinks.src.backend.pydantic.base import Prediction
     from synalinks.src.backend.pydantic.base import Stamp
     from synalinks.src.backend.pydantic.base import Trainable
     from synalinks.src.backend.pydantic.base import is_embedded
-    from synalinks.src.backend.pydantic.base import is_embedded_entity
     from synalinks.src.backend.pydantic.base import is_embedding
     from synalinks.src.backend.pydantic.base import is_embeddings
-    from synalinks.src.backend.pydantic.base import is_entities
-    from synalinks.src.backend.pydantic.base import is_entity
     from synalinks.src.backend.pydantic.base import is_instructions
-    from synalinks.src.backend.pydantic.base import is_knowledge_graph
     from synalinks.src.backend.pydantic.base import is_prediction
-    from synalinks.src.backend.pydantic.base import is_relation
-    from synalinks.src.backend.pydantic.base import is_relations
     from synalinks.src.backend.pydantic.base import is_stamped
     from synalinks.src.backend.pydantic.base import is_trainable
     from synalinks.src.backend.pydantic.common import ChatMessage
@@ -81,6 +72,20 @@ if backend() == "pydantic":
     from synalinks.src.backend.pydantic.core import any_meta_class
     from synalinks.src.backend.pydantic.core import is_data_model
     from synalinks.src.backend.pydantic.core import is_meta_class
+    from synalinks.src.backend.pydantic.knowledge import EmbeddedEntity
+    from synalinks.src.backend.pydantic.knowledge import Entities
+    from synalinks.src.backend.pydantic.knowledge import Entity
+    from synalinks.src.backend.pydantic.knowledge import KnowledgeGraph
+    from synalinks.src.backend.pydantic.knowledge import KnowledgeGraphs
+    from synalinks.src.backend.pydantic.knowledge import Relation
+    from synalinks.src.backend.pydantic.knowledge import Relations
+    from synalinks.src.backend.pydantic.knowledge import is_embedded_entity
+    from synalinks.src.backend.pydantic.knowledge import is_entities
+    from synalinks.src.backend.pydantic.knowledge import is_entity
+    from synalinks.src.backend.pydantic.knowledge import is_knowledge_graph
+    from synalinks.src.backend.pydantic.knowledge import is_knowledge_graphs
+    from synalinks.src.backend.pydantic.knowledge import is_relation
+    from synalinks.src.backend.pydantic.knowledge import is_relations
     from synalinks.src.backend.pydantic.metrics import Score
     from synalinks.src.backend.pydantic.module import PydanticModule
 else:

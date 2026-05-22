@@ -108,7 +108,7 @@ The additions are retrieval-specific:
 import synalinks
 
 embedding_model = synalinks.EmbeddingModel(
-    model="gemini/text-embedding-004",
+    model="gemini/gemini-embedding-001",
 )
 kb = synalinks.KnowledgeBase(
     uri="duckdb://docs.db",
@@ -237,7 +237,7 @@ specialized agent is the simpler call.
 - [FunctionCallingAgent](https://synalinks.github.io/synalinks/Synalinks%20API/Modules%20API/Agents%20Modules/FunctionCallingAgent%20module/)
 - [SQLAgent](https://synalinks.github.io/synalinks/Synalinks%20API/Modules%20API/Agents%20Modules/SQLAgent%20module/)
 - [DeepAgent](https://synalinks.github.io/synalinks/Synalinks%20API/Modules%20API/Agents%20Modules/DeepAgent%20module/)
-- [KnowledgeBase](https://synalinks.github.io/synalinks/Synalinks%20API/Knowledge%20Bases%20API/)
+- [KnowledgeBase](https://synalinks.github.io/synalinks/Synalinks%20API/Knowledge%20Base%20API/Knowledge%20Base/)
 - [EmbeddingModel](https://synalinks.github.io/synalinks/Synalinks%20API/Embedding%20Models%20API/)
 """
 

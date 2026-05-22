@@ -21,7 +21,6 @@ classifiers = [
 dependencies = [
   "absl-py",
   "asyncio",
-  "click",
   "datasets",
   "docstring-parser",
   "duckdb",
@@ -31,7 +30,10 @@ dependencies = [
   "inquirer",
   "jinja2",
   "jsonschema",
+  "ladybug>=0.16.1",
+  "lancedb>=0.30.2",
   "litellm>=1.83.7",
+  "markdown-it-py",
   "matplotlib",
   "mcp",
   "mlflow>=3.11.1",
@@ -84,7 +86,6 @@ ignore = [
 "examples/*" = ["I", "E"]
 "notebooks/*" = ["I", "E", "F"]
 "guides/*" = ["I", "E", "F"]
-"*/cli/*" = ["I", "E", "F"]
 
 [tool.ruff.lint.isort]
 force-single-line = true
@@ -117,7 +118,6 @@ omit = [
   "*/__init__.py",
   "*/plot_*.py",
   "*/*_visualization.py",
-  "*/cli/*",
   "*/async_utils.py",
 ]
 
@@ -125,8 +125,13 @@ omit = [
 branch = true
 omit = [
   "*/__init__.py",
-  "*/cli/*",
   "*/async_utils.py",
   "*_test.py",
   "*/testing/*",
+]
+
+[dependency-groups]
+dev = [
+    "mkdocstrings[python]>=1.0.4",
+    "zensical>=0.0.43",
 ]

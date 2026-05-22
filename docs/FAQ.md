@@ -194,7 +194,7 @@ async def main():
     program.compile(...)
     history = await program.fit(...) # Train only the second generator
 
-if __main__ == "__name__":
+if __name__ == "__main__":
     asyncio.run(main())
 ```
 

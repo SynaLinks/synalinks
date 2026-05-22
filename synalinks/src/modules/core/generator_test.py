@@ -5,6 +5,7 @@ import uuid
 from unittest.mock import patch
 
 from synalinks import modules
+from synalinks.src import ops
 from synalinks.src import testing
 from synalinks.src.backend import ChatMessage
 from synalinks.src.backend import ChatMessages
@@ -91,6 +92,224 @@ class GeneratorModuleTest(testing.TestCase):
         )
         print(msgs.prettify_json())
         self.assertTrue(len(msgs.messages) == 3)
+
+    async def test_format_messages_mixed_input_prepends_user_turn(self):
+        """A (data + message-trajectory) input renders the inputs as a leading
+        user turn before the conversation: [system, user(inputs), *trajectory].
+
+        (Without it the inputs are dropped and a multi-turn tool-call history
+        starts with an assistant tool-call, which Gemini rejects.)
+        """
+
+        class Query(DataModel):
+            query: str
+
+        language_model = LanguageModel(model="ollama/mistral")
+        generator = Generator(
+            language_model=language_model,
+            instructions="be helpful",
+        )
+
+        # Program input + a turn-1 tool-call exchange already in the trajectory.
+        trajectory = await ops.concat(
+            Query(query="sum the numbers"),
+            ChatMessages(
+                messages=[
+                    ChatMessage(
+                        role="assistant",
+                        content="",
+                        tool_calls=[{"id": "c1", "name": "run", "arguments": {"x": 1}}],
+                    ).get_json(),
+                    ChatMessage(
+                        role="tool",
+                        tool_call_id="c1",
+                        content={"stdout": "ok"},
+                    ).get_json(),
+                ]
+            ),
+        )
+
+        msgs = generator.format_messages(trajectory).get("messages")
+        roles = [
+            m["role"].value if hasattr(m["role"], "value") else m["role"] for m in msgs
+        ]
+
+        # system, user(inputs), assistant(tool_calls), tool — the assistant
+        # tool-call is never the first turn after the system instruction.
+        self.assertEqual(roles, ["system", "user", "assistant", "tool"])
+        # The inputs must actually appear in the leading user turn.
+        self.assertIn("sum the numbers", str(msgs[1]["content"]))
+
+    async def test_format_messages_mixed_input_empty_trajectory(self):
+        """With an empty trajectory, the inputs still render as a leading
+        user turn (so turn 1 of an agent shows the task to the LM)."""
+
+        class Query(DataModel):
+            query: str
+
+        language_model = LanguageModel(model="ollama/mistral")
+        generator = Generator(
+            language_model=language_model,
+            instructions="be helpful",
+        )
+
+        trajectory = await ops.concat(
+            Query(query="hello there"),
+            ChatMessages(messages=[]),
+        )
+
+        msgs = generator.format_messages(trajectory).get("messages")
+        roles = [
+            m["role"].value if hasattr(m["role"], "value") else m["role"] for m in msgs
+        ]
+        self.assertEqual(roles, ["system", "user"])
+        self.assertIn("hello there", str(msgs[1]["content"]))
+
+    async def test_format_messages_excludes_output_fields_after_messages(self):
+        """Fields ordered after `messages` are outputs (e.g. concatenated by an
+        upstream generator) and must not leak into the leading input turn."""
+
+        class Query(DataModel):
+            query: str
+
+        class Answer(DataModel):
+            answer: str
+
+        language_model = LanguageModel(model="ollama/mistral")
+        generator = Generator(
+            language_model=language_model,
+            instructions="be helpful",
+        )
+
+        # {query (input), messages, answer (output)} — the output field sits
+        # after `messages` because concat appends it.
+        trajectory = await ops.concat(
+            await ops.concat(
+                Query(query="what is 1 + 1?"),
+                ChatMessages(messages=[]),
+            ),
+            Answer(answer="leaked-output"),
+        )
+
+        msgs = generator.format_messages(trajectory).get("messages")
+        rendered = " ".join(str(m["content"]) for m in msgs)
+
+        # The input field is rendered, the trailing output field is not.
+        self.assertIn("what is 1 + 1?", rendered)
+        self.assertNotIn("leaked-output", rendered)
+
+    async def test_format_messages_multiple_input_and_output_fields(self):
+        """All fields before `messages` render as input; all fields after it
+        (the outputs) are excluded, regardless of how many there are."""
+
+        class Inputs(DataModel):
+            query: str
+            context: str
+
+        class Outputs(DataModel):
+            rationale: str
+            answer: str
+
+        language_model = LanguageModel(model="ollama/mistral")
+        generator = Generator(
+            language_model=language_model,
+            instructions="be helpful",
+        )
+
+        trajectory = await ops.concat(
+            await ops.concat(
+                Inputs(query="capital of France?", context="geography quiz"),
+                ChatMessages(messages=[]),
+            ),
+            Outputs(rationale="should-not-leak", answer="Paris-should-not-leak"),
+        )
+
+        msgs = generator.format_messages(trajectory).get("messages")
+        rendered = " ".join(str(m["content"]) for m in msgs)
+
+        self.assertIn("capital of France?", rendered)
+        self.assertIn("geography quiz", rendered)
+        self.assertNotIn("should-not-leak", rendered)
+        self.assertNotIn("Paris-should-not-leak", rendered)
+
+    async def test_format_messages_input_turn_precedes_conversation(self):
+        """The input turn is inserted right after the system message and before
+        the existing conversation, and trailing outputs never appear."""
+
+        class Query(DataModel):
+            query: str
+
+        class Answer(DataModel):
+            answer: str
+
+        language_model = LanguageModel(model="ollama/mistral")
+        generator = Generator(
+            language_model=language_model,
+            instructions="be helpful",
+        )
+
+        trajectory = await ops.concat(
+            await ops.concat(
+                Query(query="the-input-query"),
+                ChatMessages(
+                    messages=[
+                        ChatMessage(
+                            role="user", content="earlier-user-turn"
+                        ).get_json(),
+                        ChatMessage(
+                            role="assistant", content="earlier-assistant-turn"
+                        ).get_json(),
+                    ]
+                ),
+            ),
+            Answer(answer="trailing-output"),
+        )
+
+        msgs = generator.format_messages(trajectory).get("messages")
+        roles = [
+            m["role"].value if hasattr(m["role"], "value") else m["role"] for m in msgs
+        ]
+        contents = [str(m["content"]) for m in msgs]
+
+        # system, user(inputs), then the prior conversation in order.
+        self.assertEqual(roles, ["system", "user", "user", "assistant"])
+        self.assertIn("the-input-query", contents[1])
+        self.assertIn("earlier-user-turn", contents[2])
+        self.assertIn("earlier-assistant-turn", contents[3])
+        self.assertNotIn("trailing-output", " ".join(contents))
+
+    async def test_format_messages_no_input_fields_before_messages(self):
+        """When `messages` is the first field, there are no inputs to render and
+        no leading user turn is inserted (only outputs trail it)."""
+
+        class Answer(DataModel):
+            answer: str
+
+        language_model = LanguageModel(model="ollama/mistral")
+        generator = Generator(
+            language_model=language_model,
+            instructions="be helpful",
+        )
+
+        trajectory = await ops.concat(
+            ChatMessages(
+                messages=[
+                    ChatMessage(role="user", content="just-a-question").get_json(),
+                ]
+            ),
+            Answer(answer="trailing-output"),
+        )
+
+        msgs = generator.format_messages(trajectory).get("messages")
+        roles = [
+            m["role"].value if hasattr(m["role"], "value") else m["role"] for m in msgs
+        ]
+        rendered = " ".join(str(m["content"]) for m in msgs)
+
+        # No synthetic input turn — just system + the conversation.
+        self.assertEqual(roles, ["system", "user"])
+        self.assertIn("just-a-question", rendered)
+        self.assertNotIn("trailing-output", rendered)
 
     def test_format_message_with_instructions(self):
         class Query(DataModel):

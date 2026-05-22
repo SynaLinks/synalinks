@@ -255,8 +255,16 @@ worst ones (**selection**), and randomly tweaks the survivors
 below `1.0` and you suspect the bottleneck is the instruction itself,
 not the examples.
 
+`OMEGA` needs both a `language_model` (to propose the mutated
+variants) and an `embedding_model` (to measure how novel each
+candidate is, so the population stays diverse):
+
 ```python
-optimizer = synalinks.OMEGA(population_size=10, mutation_rate=0.1)
+optimizer = synalinks.OMEGA(
+    language_model=lm,
+    embedding_model=embedding_model,
+    population_size=10,
+)
 ```
 
 ## Rewards
@@ -428,9 +436,9 @@ normal.
 
 - [Program.compile](https://synalinks.github.io/synalinks/Synalinks%20API/Programs%20API/The%20Program%20class/)
 - [Program.fit](https://synalinks.github.io/synalinks/Synalinks%20API/Programs%20API/The%20Program%20class/)
-- [RandomFewShot](https://synalinks.github.io/synalinks/Synalinks%20API/Optimizers%20API/RandomFewShot%20optimizer/)
-- [ExactMatch](https://synalinks.github.io/synalinks/Synalinks%20API/Rewards%20API/ExactMatch%20reward/)
-- [Metrics](https://synalinks.github.io/synalinks/Synalinks%20API/Metrics%20API/)
+- [RandomFewShot](https://synalinks.github.io/synalinks/Synalinks%20API/Optimizers%20API/RandomFewShot/)
+- [ExactMatch](https://synalinks.github.io/synalinks/Synalinks%20API/Rewards/ExactMatch%20reward/)
+- [Metrics](https://synalinks.github.io/synalinks/Synalinks%20API/Metrics/)
 """
 
 import asyncio

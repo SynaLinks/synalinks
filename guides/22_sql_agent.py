@@ -62,7 +62,7 @@ Each tool returns just what's needed for the next step.
 
 Safety is the **knowledge base's** responsibility, not the agent's.
 The `run_sql_query` tool always passes `read_only=True` to
-`kb.query(...)`. The DuckDB adapter enforces that flag in two layers
+`kb.sql(...)`. The DuckDB adapter enforces that flag in two layers
 — both using DuckDB's own machinery, so there are no hand-rolled
 keyword blocklists (which leak false negatives through comments,
 string literals, casing, and stacked statements like `SELECT 1;
@@ -201,7 +201,7 @@ about X", reach for `VectorRAGAgent` instead.
 - [FunctionCallingAgent](https://synalinks.github.io/synalinks/Synalinks%20API/Modules%20API/Agents%20Modules/FunctionCallingAgent%20module/)
 - [VectorRAGAgent](https://synalinks.github.io/synalinks/Synalinks%20API/Modules%20API/Agents%20Modules/VectorRAGAgent%20module/)
 - [DeepAgent](https://synalinks.github.io/synalinks/Synalinks%20API/Modules%20API/Agents%20Modules/DeepAgent%20module/)
-- [KnowledgeBase](https://synalinks.github.io/synalinks/Synalinks%20API/Knowledge%20Bases%20API/)
+- [KnowledgeBase](https://synalinks.github.io/synalinks/Synalinks%20API/Knowledge%20Base%20API/Knowledge%20Base/)
 """
 
 import asyncio

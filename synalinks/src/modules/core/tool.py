@@ -133,10 +133,14 @@ class Tool(Module):
     ```
 
     Important:
-        **No Optional Parameters**: All function parameters must be required.
-        Optional parameters with default values are not supported because
-        LLM providers require all parameters to be required
-        in their structured output JSON schemas.
+        **Optional Parameters**: Parameters with default values are
+        supported. A defaulted parameter is left out of the schema's
+        `required` list and its default is emitted in the schema, so the
+        language model may omit it and the function's default applies.
+        (`Optional[T]` is treated as `T` — the `None` member is dropped.)
+        The "every property must be required" rule that some providers
+        enforce only applies to *strict structured output*, which is a
+        separate code path from tool calling.
 
         **Complete Docstring Required**: The wrapped function must have a
         complete docstring with an `Args:` section that documents every

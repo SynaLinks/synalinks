@@ -74,8 +74,8 @@ class Dataset:
             rollouts of the same prompt — the expected layout for
             GRPO-style RL where reward statistics are computed across
             rollouts of one input.
-        **kwargs: Provider-specific fields forwarded by subclasses (e.g.
-            HF dataset name, split, revision, API key, file path, ...).
+        **kwargs (Any): Provider-specific fields forwarded by subclasses
+            (e.g. HF dataset name, split, revision, API key, file path, ...).
     """
 
     def __init__(
@@ -226,8 +226,8 @@ class Dataset:
         demand.
 
         Returns:
-            ``(x,)`` if the dataset is inputs-only (no
-            ``output_template`` configured), otherwise ``(x, y)``.
+            tuple: ``(x,)`` if the dataset is inputs-only (no
+                ``output_template`` configured), otherwise ``(x, y)``.
         """
         inputs_only = self._output_tmpl is None
         x_buf, y_buf = [], []
@@ -247,13 +247,13 @@ def split_train_test(x, y, validation_split=0.2):
     labeled split (HumanEval, IFEval, BBH, TruthfulQA, BBQ, ...).
 
     Args:
-        x: Input numpy object array.
-        y: Target numpy object array.
+        x (np.ndarray): Input numpy object array.
+        y (np.ndarray): Target numpy object array.
         validation_split (float): Fraction of the data that goes to
             the test set. Defaults to ``0.2`` (Keras convention).
 
     Returns:
-        ``(x_train, y_train), (x_test, y_test)``.
+        tuple: ``(x_train, y_train), (x_test, y_test)``.
     """
     n = len(x)
     cut = int(n * (1.0 - validation_split))

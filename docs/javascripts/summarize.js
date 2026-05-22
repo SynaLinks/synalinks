@@ -80,15 +80,13 @@ document.addEventListener("DOMContentLoaded", function () {
 
     var button = document.createElement("button");
     button.className = "summarize-ai-btn";
-    button.setAttribute("aria-label", "Summarize with AI");
-    button.setAttribute("title", "Summarize with AI");
+    button.setAttribute("aria-label", "Summarize");
+    button.setAttribute("title", "Summarize");
     button.innerHTML =
+      "<span>Summarize</span>" +
       '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="22" height="22" fill="currentColor">' +
-      '<path d="M9 4a1 1 0 0 1 1 1v1.6a5.006 5.006 0 0 1 3.9 3.9H15.5a1 1 0 1 1 0 2H13.9a5.006 5.006 0 0 1-3.9 3.9V18a1 1 0 1 1-2 0v-1.6a5.006 5.006 0 0 1-3.9-3.9H2.5a1 1 0 1 1 0-2H4.1A5.006 5.006 0 0 1 8 6.6V5a1 1 0 0 1 1-1zm0 4.5A3.5 3.5 0 1 0 9 15a3.5 3.5 0 0 0 0-7z"/>' +
-      '<path d="M19 2a1 1 0 0 1 1 1v1h1a1 1 0 1 1 0 2h-1v1a1 1 0 1 1-2 0V6h-1a1 1 0 1 1 0-2h1V3a1 1 0 0 1 1-1z"/>' +
-      '<path d="M19 16a1 1 0 0 1 1 1v1h1a1 1 0 1 1 0 2h-1v1a1 1 0 1 1-2 0v-1h-1a1 1 0 1 1 0-2h1v-1a1 1 0 0 1 1-1z"/>' +
-      "</svg>" +
-      "<span>Summarize with AI</span>";
+      '<path d="M7.5 5.6 10 7 8.6 4.5 10 2 7.5 3.4 5 2l1.4 2.5L5 7zm12 9.8L17 14l1.4 2.5L17 19l2.5-1.4L22 19l-1.4-2.5L22 14zM22 2l-2.5 1.4L17 2l1.4 2.5L17 7l2.5-1.4L22 7l-1.4-2.5zm-7.63 5.29c-.39-.39-1.02-.39-1.41 0L1.29 18.96c-.39.39-.39 1.02 0 1.41l2.34 2.34c.39.39 1.02.39 1.41 0L16.7 11.05c.39-.39.39-1.02 0-1.41zm-1.03 5.49-2.12-2.12 2.44-2.44 2.12 2.12z"/>' +
+      "</svg>";
 
     var dropdown = document.createElement("div");
     dropdown.className = "summarize-ai-dropdown";
@@ -136,7 +134,17 @@ document.addEventListener("DOMContentLoaded", function () {
 
   function insertButton() {
     if (document.querySelector(".summarize-ai-container")) return;
-    document.body.appendChild(createButton());
+    var btn = createButton();
+    // Place it in the header, right after the search box.
+    var headerInner = document.querySelector(".md-header__inner");
+    var search = headerInner && headerInner.querySelector(".md-search");
+    if (search && search.parentNode) {
+      search.parentNode.insertBefore(btn, search.nextSibling);
+    } else {
+      // Fallback: float it if the header layout isn't available.
+      btn.classList.add("summarize-ai-container--floating");
+      document.body.appendChild(btn);
+    }
   }
 
   insertButton();

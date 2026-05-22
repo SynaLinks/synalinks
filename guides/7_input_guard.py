@@ -287,7 +287,7 @@ Safe: {'answer': 'Paris'}
 
 ## API References
 
-- [Module](https://synalinks.github.io/synalinks/Synalinks%20API/Modules%20API/The%20Module%20base%20class/)
+- [Module](https://synalinks.github.io/synalinks/Synalinks%20API/Modules%20API/Base%20Module%20class/)
 - [JSON Ops](https://synalinks.github.io/synalinks/Synalinks%20API/Ops%20API/JSON%20Ops/)
 """
 

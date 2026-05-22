@@ -115,3 +115,45 @@ class OptimizerHistoryTest(testing.TestCase):
         # Each variable maintains its own history — no cross-pollination.
         self.assertEqual(var_a.get("history"), [{"prompt": "alpha"}])
         self.assertEqual(var_b.get("history"), [{"prompt": "beta"}])
+
+
+class OptimizerRewardAssignmentTest(testing.TestCase):
+    async def test_counter_reflects_only_current_batch(self):
+        """`nb_visit` / `cumulative_reward` are a per-batch struggle signal:
+        `assign_reward_to_predictions` resets them to the current batch's
+        scored predictions instead of accumulating across batches, while
+        `predictions` keeps the full history. Regression test for the signal
+        drifting away from the recorded predictions."""
+        optimizer = Optimizer(population_size=5)
+        var = _trainable(
+            current_predictions=[{"reward": None}, {"reward": None}],
+        )
+
+        await optimizer.assign_reward_to_predictions([var], rewards=[1.0, 0.0])
+        self.assertEqual(var.get("nb_visit"), 2)
+        self.assertEqual(var.get("cumulative_reward"), 1.0)
+        self.assertEqual(len(var.get("predictions")), 2)
+
+        # A second batch RESETS the signal (it must be 3 / 3.0, not 5 / 4.0).
+        var.update({"current_predictions": [{"reward": None}] * 3})
+        await optimizer.assign_reward_to_predictions([var], rewards=[1.0, 1.0, 1.0])
+        self.assertEqual(var.get("nb_visit"), 3)
+        self.assertEqual(var.get("cumulative_reward"), 3.0)
+        # The per-batch mean reflects only the current batch.
+        self.assertEqual(var.get("cumulative_reward") / var.get("nb_visit"), 1.0)
+        # ...but `predictions` still records every batch.
+        self.assertEqual(len(var.get("predictions")), 5)
+
+    async def test_empty_pass_preserves_batch_signal(self):
+        """The validation assign pass has no `current_predictions`, so it must
+        leave the train-batch signal untouched (not zero it out)."""
+        optimizer = Optimizer(population_size=5)
+        var = _trainable(
+            current_predictions=[{"reward": None}, {"reward": None}],
+        )
+        await optimizer.assign_reward_to_predictions([var], rewards=[1.0, 0.0])
+        # `current_predictions` was reset to [] by the call above; mimic the
+        # validation pass that runs against the same variables.
+        await optimizer.assign_reward_to_predictions([var], rewards=[0.5])
+        self.assertEqual(var.get("nb_visit"), 2)
+        self.assertEqual(var.get("cumulative_reward"), 1.0)

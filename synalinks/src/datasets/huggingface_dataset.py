@@ -68,7 +68,7 @@ class HuggingFaceDataset(Dataset):
             consumed (across all splits). Also makes ``__len__``
             available for streaming datasets.
         repeat (int): See ``Dataset``.
-        **kwargs: Forwarded to ``datasets.load_dataset`` (e.g.
+        **kwargs (Any): Forwarded to ``datasets.load_dataset`` (e.g.
             ``data_files``, ``token``, ``trust_remote_code``, ...).
     """
 

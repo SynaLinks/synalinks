@@ -133,8 +133,8 @@ class JsonDataModelTest(testing.TestCase):
     def test_get_nested_entity(self):
         from typing import Literal
 
-        from synalinks.src.backend.pydantic.base import Entity
-        from synalinks.src.backend.pydantic.base import Relation
+        from synalinks.src.backend.pydantic.knowledge import Entity
+        from synalinks.src.backend.pydantic.knowledge import Relation
 
         class Chunk(Entity):
             label: Literal["Chunk"]
@@ -167,7 +167,7 @@ class JsonDataModelTest(testing.TestCase):
     def test_get_nested_entity_missing_key_returns_none(self):
         from typing import Literal
 
-        from synalinks.src.backend.pydantic.base import Entity
+        from synalinks.src.backend.pydantic.knowledge import Entity
 
         class Doc(Entity):
             label: Literal["Doc"]
@@ -192,7 +192,7 @@ class JsonDataModelTest(testing.TestCase):
         from typing import List
         from typing import Literal
 
-        from synalinks.src.backend.pydantic.base import Entity
+        from synalinks.src.backend.pydantic.knowledge import Entity
 
         class Chunk(Entity):
             label: Literal["Chunk"]
@@ -218,7 +218,7 @@ class JsonDataModelTest(testing.TestCase):
         from typing import List
         from typing import Literal
 
-        from synalinks.src.backend.pydantic.base import Entity
+        from synalinks.src.backend.pydantic.knowledge import Entity
 
         class Chunk(Entity):
             label: Literal["Chunk"]
@@ -229,3 +229,57 @@ class JsonDataModelTest(testing.TestCase):
 
         bag_json = Bag(entities=[]).to_json_data_model()
         self.assertEqual(bag_json.get_nested_entity_list("entities"), [])
+
+    def test_get_nested_entity_list_free_form_labels(self):
+        """Free-form: the items' ``label`` values aren't $defs keys (the
+        class is generic ``Node``, labels are open data), so resolution
+        falls back to the field's declared item schema."""
+        from typing import List
+
+        from synalinks.src.backend.pydantic.knowledge import Entity
+        from synalinks.src.backend.pydantic.knowledge import KnowledgeGraph
+
+        class Node(Entity):
+            name: str
+
+        class FreeGraph(KnowledgeGraph):
+            entities: List[Node]
+
+        graph_json = FreeGraph(
+            entities=[
+                Node(label="Person", name="Ada"),
+                Node(label="Field", name="Computing"),
+            ],
+            relations=[],
+        ).to_json_data_model()
+
+        items = graph_json.get_nested_entity_list("entities")
+        self.assertEqual(len(items), 2)
+        # Open label survives as data; the Node schema (with ``name``)
+        # is used even though "Person"/"Field" aren't $defs keys.
+        self.assertEqual(items[0].get_json(), {"label": "Person", "name": "Ada"})
+        self.assertEqual(items[1].get_json(), {"label": "Field", "name": "Computing"})
+
+    def test_get_nested_entity_free_form_label(self):
+        """Single nested entity with an open label falls back to the
+        field's declared $ref schema."""
+        from synalinks.src.backend.pydantic.knowledge import Entity
+        from synalinks.src.backend.pydantic.knowledge import Relation
+
+        class Node(Entity):
+            name: str
+
+        class Edge(Relation):
+            subj: Node
+            obj: Node
+
+        rel_json = Edge(
+            subj=Node(label="Person", name="Ada"),
+            label="PIONEER_OF",
+            obj=Node(label="Field", name="Computing"),
+        ).to_json_data_model()
+
+        subj = rel_json.get_nested_entity("subj")
+        obj = rel_json.get_nested_entity("obj")
+        self.assertEqual(subj.get_json(), {"label": "Person", "name": "Ada"})
+        self.assertEqual(obj.get_json(), {"label": "Field", "name": "Computing"})

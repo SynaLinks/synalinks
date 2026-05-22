@@ -491,8 +491,8 @@ variables persist across calls by design.
 ## API References
 
 - [Module (Base Class)](https://synalinks.github.io/synalinks/Synalinks%20API/Modules%20API/Base%20Module%20class/)
-- [Variable](https://synalinks.github.io/synalinks/Synalinks%20API/Backend%20API/Variable/)
-- [Trainable](https://synalinks.github.io/synalinks/Synalinks%20API/Backend%20API/Trainable/)
+- [Variable](https://synalinks.github.io/synalinks/Synalinks%20API/Data%20Models%20API/The%20Variable%20class/)
+- [Trainable](https://synalinks.github.io/synalinks/Synalinks%20API/Data%20Models%20API/The%20Base%20DataModels/)
 - [Optimizers](https://synalinks.github.io/synalinks/Synalinks%20API/Optimizers%20API/)
 - [Generator (canonical trainable module)](https://synalinks.github.io/synalinks/Synalinks%20API/Modules%20API/Core%20Modules/Generator%20module/)
 """

@@ -2,10 +2,15 @@ name: Docs
 on:
   push:
     branches:
-      - master 
+      - master
       - main
+  workflow_dispatch:
 permissions:
   contents: write
+# Never let two doc deploys race on the gh-pages branch.
+concurrency:
+  group: docs-deploy
+  cancel-in-progress: true
 jobs:
   deploy:
     runs-on: ubuntu-latest
@@ -18,12 +23,17 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: 3.x
-      - run: echo "cache_id=$(date --utc '+%V')" >> $GITHUB_ENV 
+      - run: echo "cache_id=$(date --utc '+%V')" >> $GITHUB_ENV
       - uses: actions/cache@v4
         with:
-          key: mkdocs-material-${{ env.cache_id }}
+          key: zensical-${{ env.cache_id }}
           path: .cache
           restore-keys: |
-            mkdocs-material-
-      - run: pip install mkdocs-material mkdocstrings[python] mkdocs-glightbox mkdocs-llmstxt
-      - run: mkdocs gh-deploy --force
+            zensical-
+      # Same toolchain shell/doc.sh builds with locally, plus ghp-import to
+      # publish the static `site/` to the gh-pages branch (Zensical has no
+      # `gh-deploy` command — it only builds; `mkdocs gh-deploy` used ghp-import
+      # under the hood, so we call it directly).
+      - run: pip install zensical mkdocs mkdocs-material mkdocstrings[python] mkdocs-glightbox ghp-import
+      - run: zensical build
+      - run: ghp-import --no-jekyll --push --force --message "Deployed ${{ github.sha }} with Zensical" site

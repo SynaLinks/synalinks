@@ -1,0 +1,513 @@
+{
+  "module": "synalinks.src.programs.functional",
+  "class_name": "Functional",
+  "config": {
+    "name": "gsm8k_baseline",
+    "trainable": true,
+    "modules": [
+      {
+        "module": "synalinks.modules",
+        "class_name": "InputModule",
+        "config": {
+          "schema": {
+            "additionalProperties": false,
+            "properties": {
+              "question": {
+                "description": "The math word problem",
+                "title": "Question",
+                "type": "string"
+              }
+            },
+            "required": [
+              "question"
+            ],
+            "title": "MathQuestion",
+            "type": "object"
+          },
+          "optional": false,
+          "name": "input_module",
+          "description": "Defines the input data model for a program."
+        },
+        "registered_name": null,
+        "name": "input_module",
+        "inbound_nodes": []
+      },
+      {
+        "module": "synalinks.modules",
+        "class_name": "Generator",
+        "config": {
+          "schema": {
+            "additionalProperties": false,
+            "properties": {
+              "thinking": {
+                "description": "Your step by step thinking",
+                "title": "Thinking",
+                "type": "string"
+              },
+              "answer": {
+                "description": "The numerical answer",
+                "title": "Answer",
+                "type": "number"
+              }
+            },
+            "required": [
+              "thinking",
+              "answer"
+            ],
+            "title": "NumericalAnswerWithThinking",
+            "type": "object"
+          },
+          "prompt_template": "# Instructions\n{{ instructions }}\n{% if inputs_schema %}\n# Input Schema\n{{ inputs_schema }}\n{% endif %}{% if outputs_schema %}\n# Output schema\n{{ outputs_schema }}\n{% endif %}{% if examples %}\n# Examples\n{% for example in examples %}\n## Input:\n{{ example[0] }}\n## Output:\n{{ example[1] }}\n{% endfor %}\n{% endif %}",
+          "examples": [],
+          "instructions": "Your task is to answer with a JSON containing the following keys: ['thinking', 'answer']",
+          "seed_instructions": [],
+          "use_inputs_schema": false,
+          "use_outputs_schema": false,
+          "return_inputs": false,
+          "temperature": 0.0,
+          "reasoning_effort": null,
+          "streaming": false,
+          "name": "generator",
+          "description": "Use a `LanguageModel` to generate a data model from an arbitrary input data model.",
+          "trainable": true,
+          "language_model": {
+            "module": "synalinks",
+            "class_name": "LanguageModel",
+            "config": {
+              "model": "ollama_chat/llama3.2:latest",
+              "api_base": "http://localhost:11434",
+              "timeout": 600,
+              "retry": 5,
+              "caching": false,
+              "name": "language_model",
+              "description": "A language model API wrapper."
+            },
+            "registered_name": null
+          }
+        },
+        "registered_name": null,
+        "name": "generator",
+        "inbound_nodes": [
+          {
+            "args": [
+              {
+                "class_name": "__symbolic_data_model__",
+                "config": {
+                  "schema": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "question": {
+                        "description": "The math word problem",
+                        "title": "Question",
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "question"
+                    ],
+                    "title": "MathQuestion",
+                    "type": "object"
+                  },
+                  "synalinks_history": [
+                    "input_module",
+                    0,
+                    0
+                  ]
+                }
+              }
+            ],
+            "kwargs": {
+              "training": false
+            }
+          }
+        ]
+      }
+    ],
+    "input_modules": [
+      [
+        "input_module",
+        0,
+        0
+      ]
+    ],
+    "output_modules": [
+      [
+        "generator",
+        0,
+        0
+      ]
+    ]
+  },
+  "registered_name": "Functional",
+  "compile_config": {
+    "optimizer": {
+      "module": "synalinks.optimizers",
+      "class_name": "RandomFewShot",
+      "config": {
+        "population_size": 10,
+        "name": "random_few_shot_1",
+        "description": "Sample among the best predictions to populate the LM's prompt.",
+        "nb_min_examples": 1,
+        "nb_max_examples": 3,
+        "sampling": "softmax",
+        "sampling_temperature": 0.3
+      },
+      "registered_name": null
+    },
+    "reward": {
+      "module": "synalinks",
+      "class_name": "ExactMatch",
+      "config": {
+        "name": "exact_match",
+        "in_mask": [
+          "answer"
+        ],
+        "out_mask": null,
+        "in_mask_pattern": null,
+        "out_mask_pattern": null
+      },
+      "registered_name": null
+    },
+    "reward_weights": null,
+    "metrics": null,
+    "run_eagerly": false,
+    "steps_per_execution": 1
+  },
+  "variables": {
+    "trainable_variables": {
+      "generator": {
+        "state_generator": {
+          "examples": [
+            {
+              "inputs": {
+                "question": "Betty is saving money for a new wallet which costs $100. Betty has only half of the money she needs. Her parents decided to give her $15 for that purpose, and her grandparents twice as much as her parents. How much more money does Betty need to buy the wallet?"
+              },
+              "outputs": {
+                "thinking": "To solve this problem, we first need to calculate how much money Betty has initially. Since she only has half of the $100 needed for the wallet, that means she has 100 / 2 = $50. Then, her parents give her $15, and her grandparents give her twice as much as her parents, which is 2 x $15 = $30. So, in total, Betty now has $50 + $15 + $30 = $95. To find out how much more money she needs to buy the wallet, we subtract this amount from the cost of the wallet: $100 - $95 = $5.",
+                "answer": 5
+              }
+            },
+            {
+              "inputs": {
+                "question": "Albert is wondering how much pizza he can eat in one day. He buys 2 large pizzas and 2 small pizzas. A large pizza has 16 slices and a small pizza has 8 slices. If he eats it all, how many pieces does he eat that day?"
+              },
+              "outputs": {
+                "thinking": "To find the total number of slices Albert can eat, we need to calculate the total number of slices from both large and small pizzas. He buys 2 large pizzas with 16 slices each, so that's 2 x 16 = 32 slices. He also buys 2 small pizzas with 8 slices each, so that's 2 x 8 = 16 slices. Now we add the total number of slices from both types of pizzas: 32 + 16 = 48 slices.",
+                "answer": 48
+              }
+            },
+            {
+              "inputs": {
+                "question": "Weng earns $12 an hour for babysitting. Yesterday, she just did 50 minutes of babysitting. How much did she earn?"
+              },
+              "outputs": {
+                "thinking": "To calculate Weng's earnings, we need to first convert the time from minutes to hours. There are 60 minutes in an hour, so 50 minutes is equal to 50/60 = 0.8333 hours. Since Weng earns $12 per hour, her total earnings can be calculated by multiplying her hourly wage by the number of hours she worked: $12 * 0.8333 = $10",
+                "answer": 10
+              }
+            }
+          ],
+          "current_predictions": [],
+          "predictions": [
+            {
+              "inputs": {
+                "question": "James writes a 3-page letter to 2 different friends twice a week.  How many pages does he write a year?"
+              },
+              "outputs": {
+                "thinking": "To find out how many pages James writes in a year, we need to calculate the total number of pages he writes per week and then multiply it by the number of weeks in a year.\n\nHe writes 3-page letters to 2 different friends twice a week, so he writes 3 x 2 = 6 pages per day. Since there are 7 days in a week, he writes 6 x 7 = 42 pages per week.\n\nThere are 52 weeks in a year, so James writes 42 x 52 = 2184 pages per year.",
+                "answer": 2184
+              },
+              "reward": 1.0
+            },
+            {
+              "inputs": {
+                "question": "Weng earns $12 an hour for babysitting. Yesterday, she just did 50 minutes of babysitting. How much did she earn?"
+              },
+              "outputs": {
+                "thinking": "To calculate Weng's earnings, we need to first convert the time from minutes to hours. There are 60 minutes in an hour, so 50 minutes is equal to 50/60 = 0.8333 hours. Since Weng earns $12 per hour, her total earnings can be calculated by multiplying her hourly wage by the number of hours she worked: $12 * 0.8333 = $10",
+                "answer": 10
+              },
+              "reward": 1.0
+            },
+            {
+              "inputs": {
+                "question": "Betty is saving money for a new wallet which costs $100. Betty has only half of the money she needs. Her parents decided to give her $15 for that purpose, and her grandparents twice as much as her parents. How much more money does Betty need to buy the wallet?"
+              },
+              "outputs": {
+                "thinking": "To solve this problem, we first need to calculate how much money Betty has initially. Since she only has half of the $100 needed for the wallet, that means she has 100 / 2 = $50. Then, her parents give her $15, and her grandparents give her twice as much as her parents, which is 2 x $15 = $30. So, in total, Betty now has $50 + $15 + $30 = $95. To find out how much more money she needs to buy the wallet, we subtract this amount from the cost of the wallet: $100 - $95 = $5.",
+                "answer": 5
+              },
+              "reward": 1.0
+            },
+            {
+              "inputs": {
+                "question": "Mark has a garden with flowers. He planted plants of three different colors in it. Ten of them are yellow, and there are 80% more of those in purple. There are only 25% as many green flowers as there are yellow and purple flowers. How many flowers does Mark have in his garden?"
+              },
+              "outputs": {
+                "thinking": "To solve this problem, we need to first calculate the number of purple flowers, then the number of green flowers, and finally add them all together with the number of yellow flowers.",
+                "answer": 130
+              },
+              "reward": 1.0
+            },
+            {
+              "inputs": {
+                "question": "Natalia sold clips to 48 of her friends in April, and then she sold half as many clips in May. How many clips did Natalia sell altogether in April and May?"
+              },
+              "outputs": {
+                "thinking": "To find the total number of clips Natalia sold, we need to calculate the number of clips she sold in April and May separately, and then add them together.",
+                "answer": 72
+              },
+              "reward": 0.0
+            },
+            {
+              "inputs": {
+                "question": "Julie is reading a 120-page book. Yesterday, she was able to read 12 pages and today, she read twice as many pages as yesterday. If she wants to read half of the remaining pages tomorrow, how many pages should she read?"
+              },
+              "outputs": {
+                "thinking": "To solve this problem, we need to first calculate the total number of pages Julie has already read. She read 12 pages yesterday and twice as many pages today, which is 2 x 12 = 24 pages. So, in total she has read 12 + 24 = 36 pages. Since the book has 120 pages, the remaining pages are 120 - 36 = 84 pages. If Julie wants to read half of the remaining pages tomorrow, we need to divide 84 by 2.",
+                "answer": 42
+              },
+              "reward": 0.0
+            },
+            {
+              "inputs": {
+                "question": "Albert is wondering how much pizza he can eat in one day. He buys 2 large pizzas and 2 small pizzas. A large pizza has 16 slices and a small pizza has 8 slices. If he eats it all, how many pieces does he eat that day?"
+              },
+              "outputs": {
+                "thinking": "To find the total number of slices Albert can eat, we need to calculate the total number of slices from both large and small pizzas. He buys 2 large pizzas with 16 slices each, so that's 2 x 16 = 32 slices. He also buys 2 small pizzas with 8 slices each, so that's 2 x 8 = 16 slices. Now we add the total number of slices from both types of pizzas: 32 + 16 = 48 slices.",
+                "answer": 48
+              },
+              "reward": 1.0
+            },
+            {
+              "inputs": {
+                "question": "Ken created a care package to send to his brother, who was away at boarding school.  Ken placed a box on a scale, and then he poured into the box enough jelly beans to bring the weight to 2 pounds.  Then, he added enough brownies to cause the weight to triple.  Next, he added another 2 pounds of jelly beans.  And finally, he added enough gummy worms to double the weight once again.  What was the final weight of the box of goodies, in pounds?"
+              },
+              "outputs": {
+                "thinking": "To solve this problem, we need to track the weight of the box after each addition. Initially, the weight is 0 pounds. Ken adds enough jelly beans to bring the weight to 2 pounds. Then, he triples the weight by adding brownies, so it becomes 6 pounds. Next, he adds another 2 pounds of jelly beans, making the total weight 8 pounds. Finally, he doubles the weight again by adding gummy worms, resulting in a final weight of 16 pounds.",
+                "answer": 16
+              },
+              "reward": 1.0
+            },
+            {
+              "inputs": {
+                "question": "Tobias is buying a new pair of shoes that costs $95. He has been saving up his money each month for the past three months. He gets a $5 allowance a month. He also mows lawns and shovels driveways. He charges $15 to mow a lawn and $7 to shovel. After buying the shoes, he has $15 in change. If he mows 4 lawns, how many driveways did he shovel?"
+              },
+              "outputs": {
+                "thinking": "To solve this problem, we need to calculate how much money Tobias had before buying the shoes and then subtract that from his total earnings after buying the shoes. We know he spent $95 on shoes and had $15 in change left. So, he must have had $95 + $15 = $110 initially.",
+                "answer": 1
+              },
+              "reward": 0.0
+            },
+            {
+              "inputs": {
+                "question": "Alexis is applying for a new job and bought a new set of business clothes to wear to the interview. She went to a department store with a budget of $200 and spent $30 on a button-up shirt, $46 on suit pants, $38 on a suit coat, $11 on socks, and $18 on a belt. She also purchased a pair of shoes, but lost the receipt for them. She has $16 left from her budget. How much did Alexis pay for the shoes?"
+              },
+              "outputs": {
+                "thinking": "To find out how much Alexis paid for the shoes, we need to subtract the total cost of all other items from her initial budget.",
+                "answer": 126
+              },
+              "reward": 1.0
+            },
+            {
+              "inputs": {
+                "question": "Tina makes $18.00 an hour.  If she works more than 8 hours per shift, she is eligible for overtime, which is paid by your hourly wage + 1/2 your hourly wage.  If she works 10 hours every day for 5 days, how much money does she make?"
+              },
+              "outputs": {
+                "thinking": "To calculate Tina's total earnings, we need to first determine her regular pay and overtime pay separately. For the first 8 hours of each shift, she earns $18/hour. For any additional hours worked beyond 8 hours, she is eligible for overtime pay, which is calculated as $18/hour + (1/2 * $18/hour). Since Tina works 10 hours every day for 5 days, we need to calculate her earnings for the regular hours and overtime hours separately. Regular hours per shift = 8 hours. Overtime hours per shift = 10 - 8 = 2 hours. Regular pay per shift = 8 * $18 = $144. Overtime pay per shift = 2 * ($18 + (1/2 * $18)) = 2 * $27 = $54. Total pay per shift = $144 + $54 = $198. Since Tina works for 5 days, her total earnings will be the sum of her total pay for each day. Total pay for 5 days = 5 * $198 = $990.",
+                "answer": 990
+              },
+              "reward": 1.0
+            },
+            {
+              "inputs": {
+                "question": "Jasper will serve charcuterie at his dinner party. He buys 2 pounds of cheddar cheese for $10, a pound of cream cheese that cost half the price of the cheddar cheese, and a pack of cold cuts that cost twice the price of the cheddar cheese. How much does he spend on the ingredients?"
+              },
+              "outputs": {
+                "thinking": "To find the total cost of the ingredients, first calculate the cost of each item individually.\n\nThe cheddar cheese costs $10 per pound and Jasper buys 2 pounds, so the total cost for the cheddar cheese is 2 * $10 = $20.\n\nThe cream cheese costs half the price of the cheddar cheese, which is $10 / 2 = $5 per pound. Since Jasper buys 1 pound, the total cost for the cream cheese is $5.\n\nThe cold cuts cost twice the price of the cheddar cheese, which is 2 * $10 = $20. Since Jasper buys 1 pack, the total cost for the cold cuts is also $20.\n\nNow, add up the costs of all the ingredients: $20 (cheddar cheese) + $5 (cream cheese) + $20 (cold cuts) = $45.\n\nSo, Jasper spends a total of $45 on the ingredients.",
+                "answer": 45
+              },
+              "reward": 0.0
+            },
+            {
+              "inputs": {
+                "question": "Randy has 60 mango trees on his farm. He also has 5 less than half as many coconut trees as mango trees. How many trees does Randy have in all on his farm?"
+              },
+              "outputs": {
+                "thinking": "To find the total number of trees, we need to calculate the number of coconut trees first. Since Randy has 5 less than half as many coconut trees as mango trees, we can set up an equation: coconut_trees = (mango_trees - 5) / 2. Given that mango_trees = 60, we can substitute this value into the equation to get coconut_trees = (60 - 5) / 2 = 55/2 = 27.5. Since we cannot have a fraction of a tree, we will round down to 27 coconut trees. Now, we add the number of mango and coconut trees together: total_trees = mango_trees + coconut_trees = 60 + 27 = 87",
+                "answer": 87
+              },
+              "reward": 0.0
+            },
+            {
+              "inputs": {
+                "question": "A deep-sea monster rises from the waters once every hundred years to feast on a ship and sate its hunger. Over three hundred years, it has consumed 847 people. Ships have been built larger over time, so each new ship has twice as many people as the last ship. How many people were on the ship the monster ate in the first hundred years?"
+              },
+              "outputs": {
+                "thinking": "To solve this problem, we need to find a pattern in the number of people consumed by the monster over time. Since each new ship has twice as many people as the last ship, we can represent the number of people on each ship as 2^n, where n is the ship number. We know that the total number of people consumed over three hundred years is 847. Let's denote the number of people on the first ship as x. Then, the second ship will have 2x people and the third ship will have 4x people (since it has twice as many people as the second ship). We can set up an equation to represent this: x + 2x + 4x = 847. Simplifying the equation, we get 7x = 847. Solving for x, we find that x = 847 / 7 = 121. Therefore, there were 121 people on the ship the monster ate in the first hundred years.",
+                "answer": 121
+              },
+              "reward": 0.0
+            },
+            {
+              "inputs": {
+                "question": "Joy can read 8 pages of a book in 20 minutes. How many hours will it take her to read 120 pages?"
+              },
+              "outputs": {
+                "thinking": "To solve this problem, we need to first find out how many minutes it takes Joy to read one page. We can do this by dividing the time it takes her to read 8 pages (20 minutes) by the number of pages (8). This gives us 20/8 = 2.5 minutes per page. Now that we know it takes 2.5 minutes to read one page, we can multiply this value by the total number of pages Joy wants to read (120) to get the total time in minutes: 2.5 * 120 = 300 minutes. Finally, we convert the total time from minutes to hours by dividing by 60: 300/60 = 5 hours.",
+                "answer": 5
+              },
+              "reward": 1.0
+            },
+            {
+              "inputs": {
+                "question": "James creates a media empire.  He creates a movie for $2000.  Each DVD cost $6 to make.  He sells it for 2.5 times that much.  He sells 500 movies a day for 5 days a week.  How much profit does he make in 20 weeks?"
+              },
+              "outputs": {
+                "thinking": "To calculate the profit, we need to first find out how much James makes from selling one DVD. The cost of making one DVD is $6 and he sells it for 2.5 times that amount.\n\nThe selling price of one DVD is $6 * 2.5 = $15.\n\nNext, we need to calculate the total revenue from selling DVDs in a day. He sells 500 movies a day.\n\nTotal revenue per day = 500 * $15 = $7500\n\nSince he works for 5 days a week, his weekly revenue is $7500 * 5 = $37,500\n\nNow we need to calculate the cost of making DVDs in a week. The cost of making one DVD is $6 and he makes 500 DVDs per day.\n\nCost of making DVDs per day = 500 * $6 = $3000\n\nWeekly cost of making DVDs = $3000 * 5 = $15,000\n\nNow we can calculate the weekly profit by subtracting the weekly cost from the weekly revenue.\n\nWeekly profit = Weekly revenue - Weekly cost = $37,500 - $15,000 = $22,500\n\nSince he works for 20 weeks, his total profit will be \n\nTotal profit = Weekly profit * Number of weeks = $22,500 * 20 = $450,000",
+                "answer": 450000
+              },
+              "reward": 0.0
+            }
+          ],
+          "seed_candidates": [
+            {
+              "examples": [],
+              "instructions": "Your task is to answer with a JSON containing the following keys: ['thinking', 'answer']"
+            }
+          ],
+          "candidates": [
+            {
+              "instructions": "Your task is to answer with a JSON containing the following keys: ['thinking', 'answer']",
+              "examples": [
+                {
+                  "inputs": {
+                    "question": "Betty is saving money for a new wallet which costs $100. Betty has only half of the money she needs. Her parents decided to give her $15 for that purpose, and her grandparents twice as much as her parents. How much more money does Betty need to buy the wallet?"
+                  },
+                  "outputs": {
+                    "thinking": "To solve this problem, we first need to calculate how much money Betty has initially. Since she only has half of the $100 needed for the wallet, that means she has 100 / 2 = $50. Then, her parents give her $15, and her grandparents give her twice as much as her parents, which is 2 x $15 = $30. So, in total, Betty now has $50 + $15 + $30 = $95. To find out how much more money she needs to buy the wallet, we subtract this amount from the cost of the wallet: $100 - $95 = $5.",
+                    "answer": 5
+                  },
+                  "reward": 1.0
+                },
+                {
+                  "inputs": {
+                    "question": "Albert is wondering how much pizza he can eat in one day. He buys 2 large pizzas and 2 small pizzas. A large pizza has 16 slices and a small pizza has 8 slices. If he eats it all, how many pieces does he eat that day?"
+                  },
+                  "outputs": {
+                    "thinking": "To find the total number of slices Albert can eat, we need to calculate the total number of slices from both large and small pizzas. He buys 2 large pizzas with 16 slices each, so that's 2 x 16 = 32 slices. He also buys 2 small pizzas with 8 slices each, so that's 2 x 8 = 16 slices. Now we add the total number of slices from both types of pizzas: 32 + 16 = 48 slices.",
+                    "answer": 48
+                  },
+                  "reward": 1.0
+                },
+                {
+                  "inputs": {
+                    "question": "Weng earns $12 an hour for babysitting. Yesterday, she just did 50 minutes of babysitting. How much did she earn?"
+                  },
+                  "outputs": {
+                    "thinking": "To calculate Weng's earnings, we need to first convert the time from minutes to hours. There are 60 minutes in an hour, so 50 minutes is equal to 50/60 = 0.8333 hours. Since Weng earns $12 per hour, her total earnings can be calculated by multiplying her hourly wage by the number of hours she worked: $12 * 0.8333 = $10",
+                    "answer": 10
+                  },
+                  "reward": 1.0
+                }
+              ],
+              "reward": 0.5
+            }
+          ],
+          "best_candidates": [
+            {
+              "instructions": "Your task is to answer with a JSON containing the following keys: ['thinking', 'answer']",
+              "examples": [
+                {
+                  "inputs": {
+                    "question": "Betty is saving money for a new wallet which costs $100. Betty has only half of the money she needs. Her parents decided to give her $15 for that purpose, and her grandparents twice as much as her parents. How much more money does Betty need to buy the wallet?"
+                  },
+                  "outputs": {
+                    "thinking": "To solve this problem, we first need to calculate how much money Betty has initially. Since she only has half of the $100 needed for the wallet, that means she has 100 / 2 = $50. Then, her parents give her $15, and her grandparents give her twice as much as her parents, which is 2 x $15 = $30. So, in total, Betty now has $50 + $15 + $30 = $95. To find out how much more money she needs to buy the wallet, we subtract this amount from the cost of the wallet: $100 - $95 = $5.",
+                    "answer": 5
+                  },
+                  "reward": 1.0
+                },
+                {
+                  "inputs": {
+                    "question": "Albert is wondering how much pizza he can eat in one day. He buys 2 large pizzas and 2 small pizzas. A large pizza has 16 slices and a small pizza has 8 slices. If he eats it all, how many pieces does he eat that day?"
+                  },
+                  "outputs": {
+                    "thinking": "To find the total number of slices Albert can eat, we need to calculate the total number of slices from both large and small pizzas. He buys 2 large pizzas with 16 slices each, so that's 2 x 16 = 32 slices. He also buys 2 small pizzas with 8 slices each, so that's 2 x 8 = 16 slices. Now we add the total number of slices from both types of pizzas: 32 + 16 = 48 slices.",
+                    "answer": 48
+                  },
+                  "reward": 1.0
+                },
+                {
+                  "inputs": {
+                    "question": "Weng earns $12 an hour for babysitting. Yesterday, she just did 50 minutes of babysitting. How much did she earn?"
+                  },
+                  "outputs": {
+                    "thinking": "To calculate Weng's earnings, we need to first convert the time from minutes to hours. There are 60 minutes in an hour, so 50 minutes is equal to 50/60 = 0.8333 hours. Since Weng earns $12 per hour, her total earnings can be calculated by multiplying her hourly wage by the number of hours she worked: $12 * 0.8333 = $10",
+                    "answer": 10
+                  },
+                  "reward": 1.0
+                }
+              ],
+              "reward": 0.5
+            }
+          ],
+          "history": [
+            {
+              "instructions": "Your task is to answer with a JSON containing the following keys: ['thinking', 'answer']",
+              "examples": [
+                {
+                  "inputs": {
+                    "question": "Betty is saving money for a new wallet which costs $100. Betty has only half of the money she needs. Her parents decided to give her $15 for that purpose, and her grandparents twice as much as her parents. How much more money does Betty need to buy the wallet?"
+                  },
+                  "outputs": {
+                    "thinking": "To solve this problem, we first need to calculate how much money Betty has initially. Since she only has half of the $100 needed for the wallet, that means she has 100 / 2 = $50. Then, her parents give her $15, and her grandparents give her twice as much as her parents, which is 2 x $15 = $30. So, in total, Betty now has $50 + $15 + $30 = $95. To find out how much more money she needs to buy the wallet, we subtract this amount from the cost of the wallet: $100 - $95 = $5.",
+                    "answer": 5
+                  }
+                },
+                {
+                  "inputs": {
+                    "question": "Albert is wondering how much pizza he can eat in one day. He buys 2 large pizzas and 2 small pizzas. A large pizza has 16 slices and a small pizza has 8 slices. If he eats it all, how many pieces does he eat that day?"
+                  },
+                  "outputs": {
+                    "thinking": "To find the total number of slices Albert can eat, we need to calculate the total number of slices from both large and small pizzas. He buys 2 large pizzas with 16 slices each, so that's 2 x 16 = 32 slices. He also buys 2 small pizzas with 8 slices each, so that's 2 x 8 = 16 slices. Now we add the total number of slices from both types of pizzas: 32 + 16 = 48 slices.",
+                    "answer": 48
+                  }
+                },
+                {
+                  "inputs": {
+                    "question": "Weng earns $12 an hour for babysitting. Yesterday, she just did 50 minutes of babysitting. How much did she earn?"
+                  },
+                  "outputs": {
+                    "thinking": "To calculate Weng's earnings, we need to first convert the time from minutes to hours. There are 60 minutes in an hour, so 50 minutes is equal to 50/60 = 0.8333 hours. Since Weng earns $12 per hour, her total earnings can be calculated by multiplying her hourly wage by the number of hours she worked: $12 * 0.8333 = $10",
+                    "answer": 10
+                  }
+                }
+              ]
+            }
+          ],
+          "nb_visit": 8,
+          "cumulative_reward": 3.0,
+          "instructions": "Your task is to answer with a JSON containing the following keys: ['thinking', 'answer']"
+        }
+      }
+    },
+    "non_trainable_variables": {},
+    "optimizer_trainable_variables": {},
+    "optimizer_non_trainable_variables": {
+      "random_few_shot_1": {
+        "iterations_random_few_shot_1": {
+          "iterations": 2,
+          "epochs": 1
+        }
+      }
+    },
+    "metrics_variables": {
+      "reward": {
+        "total_with_count": {
+          "total": 0.75,
+          "count": 1
+        }
+      }
+    }
+  }
+}

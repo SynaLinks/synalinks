@@ -8,5 +8,10 @@ Metric functions are similar to reward functions, except that the results from e
 
 - [Base Metric class](Base Metric class.md)
 - [Metric wrappers and reduction metrics](Metric wrappers and reduction metrics.md)
-- [Regression metrics](Regression metrics.md)
+- [Accuracy metrics](Accuracy metrics.md)
+- [Precision and Recall metrics](Precision and Recall metrics.md)
 - [FScore metrics](FScore metrics.md)
+- [Regression metrics](Regression metrics.md)
+- [Language Model operational metrics](Language Model operational metrics.md)
+- [Embedding Model operational metrics](Embedding Model operational metrics.md)
+- [Program operational metrics](Program operational metrics.md)

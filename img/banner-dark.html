@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  @import url("https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700;800&display=swap");
+  html, body {
+    margin: 0;
+    padding: 0;
+    background: transparent;
+    width: 1280px;
+    height: 320px;
+    font-family: "JetBrains Mono", "DejaVu Sans Mono", "Courier New", monospace;
+    color: #eee;
+  }
+  .banner {
+    width: 1280px;
+    height: 320px;
+    display: flex;
+    align-items: center;
+    padding: 0 64px;
+    box-sizing: border-box;
+    gap: 48px;
+  }
+  .logo { width: 260px; height: 208px; flex-shrink: 0; }
+  .text { display: flex; flex-direction: column; gap: 6px; }
+  .wordmark {
+    font-size: 78px;
+    font-weight: 700;
+    letter-spacing: -4px;
+    line-height: 1;
+    color: #fff;
+  }
+  .tagline {
+    font-size: 26px;
+    font-weight: 500;
+    color: #ddd;
+    line-height: 1.2;
+  }
+  .subtag {
+    font-size: 18px;
+    font-weight: 400;
+    color: #999;
+    font-style: italic;
+  }
+</style>
+</head>
+<body>
+  <div class="banner">
+    <img class="logo" src="synalinks-dark.svg" alt="Synalinks">
+    <div class="text">
+      <div class="wordmark">Synalinks</div>
+      <div class="tagline">From idea to production in just a few lines</div>
+      <div class="subtag">Neuro-symbolic LM framework &middot; Keras-style API</div>
+    </div>
+  </div>
+</body>
+</html>

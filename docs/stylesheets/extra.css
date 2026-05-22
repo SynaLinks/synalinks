@@ -1,64 +1,58 @@
-/* Light mode */
-[data-md-color-scheme="default"] {
-    --md-default-bg-color: rgb(240, 240, 240);
-    --md-default-fg-color: rgb(51, 51, 51);
-
-    --md-primary-bg-color: rgb(255, 255, 255);
-    --md-primary-fg-color: rgb(96, 96, 96);
-    --md-primary-fg-color--dark: rgb(51, 51, 51);
-    --md-primary-fg-color--light: rgb(102, 102, 102);
-
-    --md-accent-fg-color: rgb(71, 102, 102);
-
-    --md-code-fg-color: rgb(51, 51, 51);
-    --md-code-bg-color: rgb(220, 220, 220);
-
-    --md-footer-fg-color: rgb(51, 51, 51);
-    --md-footer-bg-color: rgb(234, 234, 234);
-    --md-footer-fg-color--light: rgb(102, 102, 102);
-    --md-footer-bg-color--dark: rgb(224, 224, 224);
+/* Summarize with AI button (lives in the header, right after the search) */
+.summarize-ai-container {
+    position: relative;
+    display: flex;
+    align-items: center;
+    margin-left: 0.2rem;
 }
 
-/* Summarize with AI button */
-.summarize-ai-container {
+/* Fallback floating placement when the header layout isn't available */
+.summarize-ai-container--floating {
     position: fixed;
     bottom: 1.5rem;
     right: 1.5rem;
+    margin-left: 0;
     z-index: 200;
 }
 
 .summarize-ai-btn {
     display: inline-flex;
     align-items: center;
-    gap: 0.5rem;
-    padding: 0.75rem 1.4rem;
+    gap: 0.4rem;
+    padding: 0.4rem 0.75rem;
     border: 1px solid var(--md-default-fg-color--lightest);
     border-radius: 2rem;
-    background: var(--md-code-bg-color);
+    background: transparent;
     color: var(--md-default-fg-color);
-    font-size: 0.9rem;
+    font-size: 0.72rem;
     font-weight: 500;
     font-family: inherit;
+    line-height: 1;
+    white-space: nowrap;
     cursor: pointer;
-    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.15);
-    transition: background 0.2s, border-color 0.2s, box-shadow 0.2s;
+    transition: background 0.2s, border-color 0.2s;
 }
 
-.summarize-ai-btn:hover {
-    border-color: var(--md-accent-fg-color);
-    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+.summarize-ai-btn:hover,
+.summarize-ai-btn:focus,
+.summarize-ai-btn:focus-visible {
+    background: var(--md-default-fg-color--lightest);
+    border-color: var(--md-default-fg-color);
+    outline: none;
 }
 
 .summarize-ai-btn svg {
     flex-shrink: 0;
+    width: 18px;
+    height: 18px;
 }
 
 .summarize-ai-dropdown {
     position: absolute;
-    bottom: calc(100% + 0.5rem);
+    top: calc(100% + 0.4rem);
     right: 0;
     flex-direction: column;
-    min-width: 160px;
+    min-width: 150px;
     background: var(--md-default-bg-color);
     border: 1px solid var(--md-default-fg-color--lightest);
     border-radius: 0.5rem;
@@ -86,24 +80,13 @@
     border-radius: 3px;
 }
 
-/* Dark mode */
-[data-md-color-scheme="slate"] {
-    --md-default-bg-color: rgb(26, 26, 26);
-    --md-default-fg-color: rgb(217, 217, 217);
+/* Collapse to an icon-only button when the header gets tight */
+@media screen and (max-width: 76.1875em) {
+    .summarize-ai-container:not(.summarize-ai-container--floating) .summarize-ai-btn span {
+        display: none;
+    }
 
-    --md-primary-bg-color: rgb(217, 217, 217);
-    --md-primary-fg-color: rgb(26, 26, 26);
-    --md-primary-fg-color--dark: rgb(217, 217, 217);
-    --md-primary-fg-color--light: rgb(128, 128, 128);
-
-    --md-accent-fg-color: rgb(126, 156, 160);
-    --md-accent-bg-color: rgb(64, 64, 64);
-
-    --md-code-fg-color: rgb(217, 217, 217);
-    --md-code-bg-color: rgb(32, 32, 32);
-
-    --md-footer-fg-color: rgb(217, 217, 217);
-    --md-footer-bg-color: rgb(31, 31, 31);
-    --md-footer-fg-color--light: rgb(128, 128, 128);
-    --md-footer-bg-color--dark: rgb(48, 48, 48);
+    .summarize-ai-container:not(.summarize-ai-container--floating) .summarize-ai-btn {
+        padding: 0.4rem;
+    }
 }

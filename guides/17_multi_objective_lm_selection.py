@@ -419,8 +419,8 @@ step.
 ## API References
 
 - [synalinks.tuners.GridSearch](https://synalinks.github.io/synalinks/Synalinks%20API/Tuners/)
-- [synalinks.metrics.BinaryF1Score](https://synalinks.github.io/synalinks/Synalinks%20API/Metrics/BinaryF1Score/)
-- [synalinks.rewards.ExactMatch](https://synalinks.github.io/synalinks/Synalinks%20API/Rewards/ExactMatch/)
+- [synalinks.metrics.BinaryF1Score](https://synalinks.github.io/synalinks/Synalinks%20API/Metrics/FScore%20metrics/)
+- [synalinks.rewards.ExactMatch](https://synalinks.github.io/synalinks/Synalinks%20API/Rewards/ExactMatch%20reward/)
 - [synalinks.HuggingFaceDataset](https://synalinks.github.io/synalinks/Synalinks%20API/Datasets/HuggingFaceDataset/)
 - [keras-tuner Multi-objective](https://keras.io/keras_tuner/api/keras_tuner/Objective/)
 - [dair-ai/emotion](https://huggingface.co/datasets/dair-ai/emotion)

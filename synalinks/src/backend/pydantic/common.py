@@ -33,9 +33,11 @@ class ChatRole(str, Enum):
     """The chat message roles"""
 
     SYSTEM = "system"
+    DEVELOPER = "developer"
     USER = "user"
     ASSISTANT = "assistant"
     TOOL = "tool"
+    FUNCTION = "function"
 
 
 @synalinks_export(

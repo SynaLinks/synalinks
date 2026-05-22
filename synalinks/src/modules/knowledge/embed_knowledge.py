@@ -1,17 +1,27 @@
 # License Apache 2.0: (c) 2025-2026 Yoan Sallami (Synalinks Team)
 
+import copy
 import warnings
 
-from synalinks.src import ops
 from synalinks.src import tree
 from synalinks.src.api_export import synalinks_export
 from synalinks.src.backend import Embedding as EmbeddingVector
 from synalinks.src.backend import EmbeddingRequest
 from synalinks.src.backend import JsonDataModel
+from synalinks.src.backend import SymbolicDataModel
+from synalinks.src.backend import is_entities
+from synalinks.src.backend import is_knowledge_graph
+from synalinks.src.backend import is_knowledge_graphs
+from synalinks.src.backend import is_relation
+from synalinks.src.backend import is_relations
 from synalinks.src.modules.embedding_models import get as _get_em
 from synalinks.src.modules.module import Module
 from synalinks.src.saving import serialization_lib
-from synalinks.src.utils.async_utils import run_maybe_nested
+
+# The JSON-schema fragment for the `embedding` field, taken from the
+# `Embedding` data model so the augmented output schema declares the
+# vector exactly the way the rest of the framework does.
+_EMBEDDING_FIELD_SCHEMA = EmbeddingVector.get_schema()["properties"]["embedding"]
 
 
 @synalinks_export(
@@ -23,8 +33,16 @@ from synalinks.src.utils.async_utils import run_maybe_nested
 class EmbedKnowledge(Module):
     """Extracts a field of interest and generate the corresponding embedding vector.
 
-    This module is designed to work with any data model structure. It supports to mask the
-    entity fields in order to keep **only one** field to embed per data model.
+    This module works with any data model structure and, crucially, with the
+    knowledge primitives: an `Entity`, an `Entities`/`Relations` list, a
+    `Relation`, a `KnowledgeGraph` or a `KnowledgeGraphs` batch. It gathers
+    every entity that needs an embedding (including the `subj`/`obj`
+    endpoints carried by relations), sends them to the embedding model in a
+    **single batched** request, then returns the same structure with an
+    `embedding` vector reattached in place on each entity.
+
+    The `in_mask` / `out_mask` arguments select which field(s) of each entity
+    are concatenated into the text that gets embedded.
 
     **Note**: Each data model should have the *same field* to compute the embedding
         from like a `name` or `description` field using `in_mask`.
@@ -141,72 +159,154 @@ class EmbedKnowledge(Module):
         self.in_mask = in_mask
         self.out_mask = out_mask
 
+    def _embeds_whole_object(self, data_model):
+        """Whether the object is embedded as a single unit.
+
+        True for a plain data model or a bare `Entity` (the top-level
+        object carries the vector). False for the container shapes
+        (`Entities`, `Relations`, `KnowledgeGraph(s)`) and a `Relation`,
+        whose nested entities are embedded individually instead.
+        """
+        return not (
+            is_knowledge_graphs(data_model)
+            or is_knowledge_graph(data_model)
+            or is_relations(data_model)
+            or is_entities(data_model)
+            or is_relation(data_model)
+        )
+
+    def _text_for(self, entity_json):
+        """Mask an entity dict and flatten the kept fields into one string.
+
+        Masking is field-name selection on the top-level keys — the same
+        effect as `ops.in_mask` / `ops.out_mask` with ``recursive=False``,
+        done directly on the dict so it works on any nested entity without
+        depending on a resolvable per-entity schema.
+        """
+        fields = dict(entity_json)
+        if self.out_mask:
+            fields = {k: v for k, v in fields.items() if k not in self.out_mask}
+        elif self.in_mask:
+            fields = {k: v for k, v in fields.items() if k in self.in_mask}
+        texts = tree.flatten(tree.map_structure(lambda f: str(f), fields))
+        return " ".join(t for t in texts if t)
+
+    def _gather_relation(self, rel_json):
+        """Collect the subj/obj entity dicts carried by a relation."""
+        units = []
+        for endpoint in ("subj", "obj"):
+            value = rel_json.get(endpoint)
+            if isinstance(value, dict):
+                units.append(value)
+        return units
+
+    def _gather_kg(self, kg_json):
+        """Collect a knowledge graph's entity dicts + relation endpoints."""
+        units = list(kg_json.get("entities", []) or [])
+        for rel_json in kg_json.get("relations", []) or []:
+            units += self._gather_relation(rel_json)
+        return units
+
+    def _gather(self, json, data_model):
+        """Return the mutable entity dicts to embed, in batch order.
+
+        Each returned dict is a sub-dict of ``json`` — writing
+        ``["embedding"]`` onto it lands in the output. Dispatch order
+        mirrors `UpdateKnowledge._update` (graphs before lists, relation
+        before entity). `KnowledgeGraph(s)` are walked structurally: a
+        graph carries no ``label`` discriminator for
+        `get_nested_entity_list`, so only the label-bearing leaf entities
+        (and relation endpoints) are embedded.
+        """
+        if is_knowledge_graphs(data_model):
+            units = []
+            for kg_json in json.get("knowledge_graphs", []) or []:
+                units += self._gather_kg(kg_json)
+            return units
+        if is_knowledge_graph(data_model):
+            return self._gather_kg(json)
+        if is_relations(data_model):
+            units = []
+            for rel_json in json.get("relations", []) or []:
+                units += self._gather_relation(rel_json)
+            return units
+        if is_entities(data_model):
+            return list(json.get("entities", []) or [])
+        if is_relation(data_model):
+            return self._gather_relation(json)
+        # Bare entity or plain data model: embed the whole object.
+        return [json]
+
+    def _augment_schema(self, data_model):
+        """Add the `embedding` field to the schema's entity definitions."""
+        schema = copy.deepcopy(data_model.get_schema())
+        if self._embeds_whole_object(data_model):
+            schema.setdefault("properties", {})["embedding"] = _EMBEDDING_FIELD_SCHEMA
+        for definition in (schema.get("$defs") or {}).values():
+            props = definition.get("properties")
+            # Entities carry a `label`; relations (label + subj + obj) are
+            # not embedded themselves, only their endpoints.
+            if props and "label" in props and not ("subj" in props and "obj" in props):
+                props["embedding"] = _EMBEDDING_FIELD_SCHEMA
+        return schema
+
     async def _embed(self, data_model):
-        embeddings = data_model.get("embeddings")
-        if embeddings:
+        if self._embeds_whole_object(data_model) and data_model.get("embedding"):
             warnings.warn(
-                "Embeddings already generated for this data model. "
+                "Embedding already generated for this data model. "
                 "Returning original data model."
             )
-            return JsonDataModel(
-                json=data_model.get_json(),
-                schema=data_model.get_schema(),
-                name="embedded_" + data_model.name,
-            )
-        masked_data_model = data_model
-        if self.out_mask:
-            masked_data_model = await ops.out_mask(
-                data_model,
-                mask=self.out_mask,
-                recursive=False,
-                name="out_mask_" + data_model.name,
-            )
-        elif self.in_mask:
-            masked_data_model = await ops.in_mask(
-                data_model,
-                mask=self.in_mask,
-                recursive=False,
-                name="in_mask_" + data_model.name,
-            )
-        # Flatten the masked data model's fields to strings and embed
-        # them in one batch — same logic that lived in `ops.embedding`,
-        # inlined here since this is its only remaining caller.
-        texts = tree.flatten(
-            tree.map_structure(lambda f: str(f), masked_data_model.get_json())
-        )
+            return data_model.clone(name="embedded_" + data_model.name)
+
+        json = copy.deepcopy(data_model.get_json())
+        units = self._gather(json, data_model)
+        if not units:
+            return data_model.clone(name="embedded_" + data_model.name)
+
+        texts = [self._text_for(unit) for unit in units]
         embeddings = await self.embedding_model(EmbeddingRequest(texts=texts))
-        if not embeddings or not embeddings.get("embeddings"):
+        vectors = embeddings.get("embeddings") if embeddings else None
+        if not vectors:
             warnings.warn(
                 f"No embeddings generated for data model {data_model.name}. "
                 "Please check that your schema is correct."
             )
             return None
-        embedding_list = embeddings.get("embeddings")
-        if len(embedding_list) != 1:
+        if len(vectors) != len(units):
             warnings.warn(
-                "Data models can only have one embedding vector per data model, "
-                "adjust `EmbedKnowledge` module's `in_mask` or `out_mask` "
-                "to keep only one field. Skipping embedding."
+                f"Expected {len(units)} embedding vectors but got {len(vectors)} "
+                f"for data model {data_model.name}. Skipping embedding."
             )
             return None
-        vector = embedding_list[0]
-        return await ops.concat(
-            data_model,
-            EmbeddingVector(embedding=vector),
+
+        for unit, vector in zip(units, vectors):
+            unit["embedding"] = vector
+
+        return JsonDataModel(
+            json=json,
+            schema=self._augment_schema(data_model),
             name="embedded_" + data_model.name,
         )
 
     async def call(self, inputs):
         if not inputs:
             return None
-        return tree.map_structure(
-            lambda x: run_maybe_nested(self._embed(x)),
-            inputs,
-        )
+        # Await each embedding on the *current* event loop. Using
+        # `run_maybe_nested` here ran every embedding on a transient thread-loop,
+        # binding litellm's process-global httpx client to a loop closed moments
+        # later ("Event loop is closed" at teardown). Sequential to preserve the
+        # original one-at-a-time ordering. flatten/pack mirrors `map_structure`
+        # (data models are tree leaves), so the output structure is unchanged.
+        leaves = tree.flatten(inputs)
+        embedded = [await self._embed(leaf) for leaf in leaves]
+        return tree.pack_sequence_as(inputs, embedded)
 
     async def compute_output_spec(self, inputs):
         return tree.map_structure(
-            lambda x: x.clone(name="embedded_" + x.name),
+            lambda x: SymbolicDataModel(
+                schema=self._augment_schema(x),
+                name="embedded_" + x.name,
+            ),
             inputs,
         )
 

@@ -323,17 +323,23 @@ class DatabaseAdapter:
             f"{self.__class__.__name__} should implement the `drop_table()` method"
         )
 
-    async def query(
+    async def sql(
         self,
-        query: str,
+        sql: str,
+        *,
         params: Optional[Dict[str, Any]] = None,
         output_format: str = "json",
         **kwargs,
     ):
-        """Execute a raw query against the database.
+        """Execute a raw SQL query against the database.
+
+        Counterpart of :meth:`GraphDatabaseAdapter.cypher` — the
+        method is named after the query language so a KnowledgeBase
+        that carries both a SQL store and a graph store has a clear
+        per-language entry point (``kb.sql(...)`` vs ``kb.cypher(...)``).
 
         Args:
-            query: The query string (SQL or other query language).
+            sql: The SQL string.
             params: Optional parameters for parameterized queries.
             output_format: ``"json"`` (list of dicts, default) or
                 ``"csv"`` (CSV string).
@@ -343,7 +349,7 @@ class DatabaseAdapter:
             NotImplementedError: Subclasses must implement this method.
         """
         raise NotImplementedError(
-            f"{self.__class__.__name__} should implement the `query()` method"
+            f"{self.__class__.__name__} should implement the `sql()` method"
         )
 
     async def similarity_search(
@@ -389,7 +395,11 @@ class DatabaseAdapter:
             text_or_texts: Query text or list of query texts.
             table_name: Target table.
             k: Maximum number of results.
-            threshold: Optional minimum BM25 score.
+            threshold: Optional minimum relevance on the normalized
+                ``[0, 1]`` scale (the result set is min-max scaled so
+                the best hit is ``1.0`` and the worst ``0.0``). Reported
+                ``score`` is on the same scale, so it stays comparable
+                across adapters with different raw BM25 ranges.
             output_format: ``"json"`` (list of dicts, default) / ``"csv"`` (text).
 
         Raises:
@@ -401,8 +411,9 @@ class DatabaseAdapter:
 
     async def hybrid_fts_search(
         self,
-        text_or_texts: Union[str, List[str]],
         *,
+        text_or_texts: Union[str, List[str]],
+        keywords: Optional[Union[str, List[str]]] = None,
         table_name: str,
         k: int = 10,
         similarity_threshold: Optional[float] = None,
@@ -417,11 +428,16 @@ class DatabaseAdapter:
         "exact textual shape" signals.
 
         Args:
-            text_or_texts: Query text or list of query texts.
+            text_or_texts: Query text or list of query texts for the
+                vector branch.
             table_name: Target table.
+            keywords: Query text or list of query texts for the BM25
+                branch. Aligns by position with ``text_or_texts``;
+                when omitted, the text is reused for both branches.
             k: Maximum number of results.
             similarity_threshold: Optional vector-distance threshold.
-            fulltext_threshold: Optional BM25 threshold.
+            fulltext_threshold: Optional minimum fulltext relevance on
+                the normalized ``[0, 1]`` scale.
             output_format: ``"json"`` (list of dicts, default) / ``"csv"`` (text).
 
         Raises:
@@ -461,9 +477,9 @@ class DatabaseAdapter:
 
     async def hybrid_regex_search(
         self,
+        *,
         text_or_texts: Union[str, List[str]],
         pattern_or_patterns: Union[str, List[str], None] = None,
-        *,
         table_name: str,
         k: int = 10,
         similarity_threshold: Optional[float] = None,

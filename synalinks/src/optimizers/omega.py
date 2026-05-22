@@ -186,7 +186,12 @@ async def similarity_distance(
     return 1 - similarity
 
 
-@synalinks_export("synalinks.optimizers.OMEGA")
+@synalinks_export(
+    [
+        "synalinks.OMEGA",
+        "synalinks.optimizers.OMEGA",
+    ]
+)
 class OMEGA(EvolutionaryOptimizer):
     """OMEGA: OptiMizEr as Genetic Algorithm.
 

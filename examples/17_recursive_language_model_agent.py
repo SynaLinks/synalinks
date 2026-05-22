@@ -74,10 +74,13 @@ outputs = await synalinks.RLM(
 agent = synalinks.Program(inputs=inputs, outputs=outputs, name="rlm_needle")
 ```
 
-When the agent runs, the primary LM emits one Python snippet per turn.
-State persists across turns inside a Monty REPL sandbox — variables,
-imports, and function definitions accumulate. Two extra async helpers
-are exposed in the sandbox alongside any tools you bind:
+When the agent runs, the primary LM is given a **single** tool —
+`execute_async_python(python_code=...)` — and calls it with one Python
+snippet per turn. The snippet runs in a Monty REPL sandbox and the call
+returns `{"stdout": ..., "stderr": ..., "error": ...}`. State persists
+across turns — variables, imports, and function definitions accumulate.
+`submit` and two extra async helpers live **inside** the sandbox (not as
+tools the LM can call) alongside any tools you bind:
 
 - `llm_query(prompt)` — single sub-LM call, returns `{"result": <text>}`.
 - `llm_query_batched(prompts)` — concurrent sub-LM calls, returns
@@ -89,12 +92,12 @@ A shared counter caps the two helpers at `max_llm_calls` per
 counter resets on every invocation, so concurrent calls get independent
 budgets.
 
-Termination is via the always-present `submit` tool: `submit(result={...})`
-captures the final payload, validates it against the configured output
-schema, and ends the run. Empty `python_code` strings are no-ops — the
-loop reminds the LM to call `submit`. If `max_iterations` is reached
-without a successful `submit`, a final LM inference step formats the
-accumulated trajectory into the target schema.
+Termination: the snippet calls the in-sandbox `submit(result={...})`,
+which captures the final payload, validates it against the configured
+output schema, and ends the run. Empty snippets are no-ops — the loop
+reminds the LM to call `submit`. If `max_iterations` is reached without a
+successful `submit`, a final LM inference step formats the accumulated
+trajectory into the target schema.
 
 ### Key Takeaways
 

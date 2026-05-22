@@ -109,7 +109,7 @@ outputs = await synalinks.VectorRAGAgent(
 ## API References
 
 - [VectorRAGAgent](https://synalinks.github.io/synalinks/Synalinks%20API/Modules%20API/Agents%20Modules/VectorRAGAgent%20module/)
-- [KnowledgeBase](https://synalinks.github.io/synalinks/Synalinks%20API/Knowledge%20Bases%20API/)
+- [KnowledgeBase](https://synalinks.github.io/synalinks/Synalinks%20API/Knowledge%20Base%20API/Knowledge%20Base/)
 - [ChatMessages (Base DataModels)](https://synalinks.github.io/synalinks/Synalinks%20API/Data%20Models%20API/The%20Base%20DataModels/)
 - [EmbeddingModel](https://synalinks.github.io/synalinks/Synalinks%20API/Embedding%20Models%20API/)
 - [Program](https://synalinks.github.io/synalinks/Synalinks%20API/Programs%20API/The%20Program%20class/)
@@ -309,7 +309,7 @@ async def main():
     )
 
     embedding_model = synalinks.EmbeddingModel(
-        model="gemini/text-embedding-004",
+        model="gemini/gemini-embedding-001",
     )
 
     db_path = "./examples/rag_agent.db"
