@@ -5,12 +5,18 @@ on:
       - master
       - main
   workflow_dispatch:
+
+# Publish the built `site/` to the gh-pages branch (same target as the old
+# `mkdocs gh-deploy`), so GitHub Pages keeps serving from that branch — no
+# Pages "Source" setting change required.
 permissions:
   contents: write
+
 # Never let two doc deploys race on the gh-pages branch.
 concurrency:
   group: docs-deploy
   cancel-in-progress: true
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
@@ -20,20 +26,21 @@ jobs:
         run: |
           git config user.name github-actions[bot]
           git config user.email 41898282+github-actions[bot]@users.noreply.github.com
-      - uses: actions/setup-python@v5
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
         with:
-          python-version: 3.x
-      - run: echo "cache_id=$(date --utc '+%V')" >> $GITHUB_ENV
-      - uses: actions/cache@v4
-        with:
-          key: zensical-${{ env.cache_id }}
-          path: .cache
-          restore-keys: |
-            zensical-
-      # Same toolchain shell/doc.sh builds with locally, plus ghp-import to
-      # publish the static `site/` to the gh-pages branch (Zensical has no
-      # `gh-deploy` command — it only builds; `mkdocs gh-deploy` used ghp-import
-      # under the hood, so we call it directly).
-      - run: pip install zensical mkdocs mkdocs-material mkdocstrings[python] mkdocs-glightbox ghp-import
-      - run: zensical build
-      - run: ghp-import --no-jekyll --push --force --message "Deployed ${{ github.sha }} with Zensical" site
+          python-version: "3.12"
+          enable-cache: true
+      # mkdocstrings imports the `synalinks` and guide modules to render the
+      # `:::` reference pages, so the package + its deps must be installed —
+      # the same toolchain shell/doc.sh builds with locally. `ghp-import`
+      # publishes the static `site/` to gh-pages (Zensical only builds; this is
+      # what `mkdocs gh-deploy` used under the hood).
+      - name: Install Synalinks + docs toolchain
+        run: |
+          ./shell/install.sh
+          uv pip install zensical mkdocs mkdocs-material mkdocstrings[python] mkdocs-glightbox ghp-import
+      - name: Build the site
+        run: uv run zensical build --clean
+      - name: Publish to gh-pages
+        run: uv run ghp-import --no-jekyll --push --force --message "Deployed ${{ github.sha }} with Zensical" site
