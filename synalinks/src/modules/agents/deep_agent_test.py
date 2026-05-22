@@ -1,12 +1,15 @@
 # License Apache 2.0: (c) 2025-2026 Yoan Sallami (Synalinks Team)
 
+import json
 import os
 import shutil
 import tempfile
 from pathlib import Path
 
+from synalinks.src import ops
 from synalinks.src import testing
 from synalinks.src.backend import ChatMessages
+from synalinks.src.backend import DataModel
 from synalinks.src.modules.agents.deep_agent import DeepAgent
 from synalinks.src.modules.core.input_module import Input
 from synalinks.src.modules.core.tool import Tool
@@ -181,3 +184,73 @@ class DeepAgentInstantiationTest(testing.TestCase):
             DeepAgent(workdir=wd, language_model=lm, timeout=0)
         with self.assertRaises(ValueError):
             DeepAgent(workdir=wd, language_model=lm, timeout=-1)
+
+
+class DeepAgentInputsSummaryTest(testing.TestCase):
+    """Data inputs are summarized for the LM; full values land in the overlay."""
+
+    def _agent(self, workdir=None):
+        return DeepAgent(
+            workdir=workdir,
+            language_model=LanguageModel(model="ollama/mistral"),
+            name="d",
+        )
+
+    async def test_data_input_summarized_and_written_to_overlay(self):
+        agent = self._agent()
+
+        class Doc(DataModel):
+            title: str
+            body: str
+
+        long_body = "x" * 500
+        summary = await agent._materialize_inputs(Doc(title="t", body=long_body))
+
+        # Full, untruncated inputs land in inputs.json in the overlay.
+        written = await agent.sandbox.read_file("inputs.json")
+        self.assertEqual(
+            json.loads(written["content"]), {"title": "t", "body": long_body}
+        )
+
+        # The LM is handed only an InputsSummary naming that file, with the long
+        # field previewed/truncated rather than dumped in full.
+        sj = summary.get_json()
+        self.assertEqual(sj["inputs_file"], "inputs.json")
+        body_field = next(f for f in sj["fields"] if f["name"] == "body")
+        self.assertTrue(body_field["truncated"])
+        self.assertLess(len(body_field["preview"]), len(long_body))
+
+    async def test_pure_chatmessages_passes_through_untouched(self):
+        agent = self._agent()
+        cm = ChatMessages(messages=[])
+        out = await agent._materialize_inputs(cm)
+        self.assertIs(out, cm)
+        # No inputs file written for a pure conversation.
+        self.assertEqual(agent.sandbox.changes()["written"], [])
+
+    async def test_messages_plus_data_is_summarized_not_passed_through(self):
+        # A model carrying `messages` AND a data field is NOT a pure
+        # conversation (is_strictly_chat_messages is False), so it's summarized.
+        agent = self._agent()
+
+        class Query(DataModel):
+            query: str
+
+        mixed = await ops.concat(ChatMessages(messages=[]), Query(query="hi"))
+        out = await agent._materialize_inputs(mixed)
+        self.assertNotEqual(out, mixed)
+        self.assertEqual(out.get_json()["inputs_file"], "inputs.json")
+
+    async def test_inputs_path_avoids_workdir_collision(self):
+        wd = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, wd, ignore_errors=True)
+        (Path(wd) / "inputs.json").write_text('{"keep": "me"}')
+        agent = self._agent(workdir=wd)
+
+        class Doc(DataModel):
+            q: str
+
+        summary = await agent._materialize_inputs(Doc(q="hi"))
+        # Picked a non-colliding name; the mounted workdir file is untouched.
+        self.assertEqual(summary.get_json()["inputs_file"], "inputs_1.json")
+        self.assertEqual((Path(wd) / "inputs.json").read_text(), '{"keep": "me"}')

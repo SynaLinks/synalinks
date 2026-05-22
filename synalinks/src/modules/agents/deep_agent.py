@@ -1,10 +1,16 @@
 # License Apache 2.0: (c) 2025-2026 Yoan Sallami (Synalinks Team)
 
+import json
 from pathlib import Path
 from typing import List
 from typing import Optional
 
 from synalinks.src.api_export import synalinks_export
+from synalinks.src.backend import SymbolicDataModel
+from synalinks.src.backend import is_strictly_chat_messages
+from synalinks.src.modules.agents.agent_utils import InputsSummary
+from synalinks.src.modules.agents.agent_utils import summarize_inputs
+from synalinks.src.modules.agents.agent_utils import unique_inputs_path
 from synalinks.src.modules.agents.function_calling_agent import FunctionCallingAgent
 from synalinks.src.modules.core.tool import Tool
 from synalinks.src.modules.language_models import get as _get_lm
@@ -55,7 +61,12 @@ Plan:
 Notes:
 - The filesystem is copy-on-write: edits and new files land in an
   in-memory overlay and never modify the real workspace on disk.
-- Paths are rooted at the workdir; `..` cannot escape it.""".strip()
+- Paths are rooted at the workdir; `..` cannot escape it.
+- If the conversation includes an `InputsSummary`, you only see field
+  previews and sizes — the full, untruncated input values are saved as
+  the JSON file named in its `inputs_file` field. Read that file
+  (`read_file`, or `json.load(open(...))` in a snippet) instead of
+  retyping values from the preview.""".strip()
 
 
 @synalinks_export(
@@ -235,6 +246,9 @@ class DeepAgent(Module):
         # through to the workdir, writes/edits/code stay host-safe in the
         # overlay. Inspect via `self.sandbox.changes()` / `.journal()`.
         self.sandbox = MontySandbox(workdir=self.workdir, timeout=self.timeout)
+        # Overlay path the full (data) inputs are written to, resolved once on
+        # first use so it can't shadow a workdir file (see `_materialize_inputs`).
+        self._inputs_path: Optional[str] = None
         builtin_fns = [
             self.sandbox.read_file,
             self.sandbox.list_files,
@@ -279,10 +293,41 @@ class DeepAgent(Module):
             name="agent_" + self.name,
         )
 
+    async def _materialize_inputs(self, inputs):
+        """Replace data inputs with a metadata summary, full values on disk.
+
+        A *pure* ``ChatMessages`` conversation passes through untouched. Any
+        other input — including a data model that merely carries a ``messages``
+        field alongside data — is treated as data: the full JSON is written to a
+        collision-free file in the overlay and the LM is handed only an
+        :class:`InputsSummary` naming that file, keeping large inputs out of the
+        prompt while leaving the complete values reachable via the file tools.
+        """
+        if not inputs or is_strictly_chat_messages(inputs):
+            return inputs
+        inputs_json = inputs.get_json()
+        if self._inputs_path is None:
+            # Resolved while the overlay is still empty, so it reflects only the
+            # workdir and never shadows a file the caller mounted.
+            self._inputs_path = await unique_inputs_path(self.sandbox)
+        await self.sandbox.write_file(
+            self._inputs_path,
+            json.dumps(inputs_json, indent=2, ensure_ascii=False),
+        )
+        return summarize_inputs(inputs_json, inputs_file=self._inputs_path)
+
     async def call(self, inputs, training=False):
+        inputs = await self._materialize_inputs(inputs)
         return await self.agent(inputs, training=training)
 
     async def compute_output_spec(self, inputs, training=False):
+        # Mirror the runtime shape: data inputs become an InputsSummary; only a
+        # pure ChatMessages conversation is passed through.
+        if inputs and not is_strictly_chat_messages(inputs):
+            inputs = SymbolicDataModel(
+                schema=InputsSummary.get_schema(),
+                name="inputs_summary_" + self.name,
+            )
         return await self.agent.compute_output_spec(inputs, training=training)
 
     def get_config(self):

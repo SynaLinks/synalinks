@@ -17,6 +17,8 @@ from synalinks.src.backend import Field
 from synalinks.src.backend import JsonDataModel
 from synalinks.src.backend import SymbolicDataModel
 from synalinks.src.backend import is_chat_messages
+from synalinks.src.modules.agents.agent_utils import InputsSummary
+from synalinks.src.modules.agents.agent_utils import summarize_inputs
 from synalinks.src.modules.core.generator import Generator
 from synalinks.src.modules.core.tool import Tool
 from synalinks.src.modules.language_models import get as _get_lm
@@ -178,26 +180,6 @@ class ToolsCatalog(DataModel):
             "-> int` yields `{'result': <value>}`; a tool already returning "
             "a dict yields that dict directly. Call with `await` inside "
             "`async def main(): ...` and drive with `asyncio.run(main())`."
-        ),
-    )
-
-
-class InputsSummary(DataModel):
-    """Metadata-only view of the user input bound as ``inputs`` in the sandbox.
-
-    Only per-field previews and sizes are surfaced here to keep the prompt
-    small when the input contains long documents or large collections. Read
-    the **full** values through ``inputs[field_name]`` inside your code —
-    the sandbox namespace holds the untruncated data.
-    """
-
-    fields: list[dict] = Field(
-        default=[],
-        description=(
-            "One entry per top-level input field, each with `name`, `type`, "
-            "`size` (len of string/list/dict, else null), `preview`, and "
-            "`truncated` (true when preview omits part of the value). Read "
-            "the complete value from the sandbox via `inputs[name]`."
         ),
     )
 
@@ -368,65 +350,6 @@ def _build_llm_query_batched_tool(sub_language_model, max_llm_calls, counter, lo
         return {"result": results}
 
     return Tool(llm_query_batched, name="llm_query_batched")
-
-
-def _summarize_inputs(
-    inputs_json,
-    preview_chars: int = 200,
-    preview_items: int = 5,
-) -> InputsSummary:
-    """Build a compact ``InputsSummary`` from a raw input JSON dict.
-
-    Small values are previewed in full. Long strings, lists and dicts show
-    only a head, the full value remains accessible inside the sandbox at
-    ``inputs[name]``.
-    """
-    import orjson
-
-    fields = []
-    for name, value in inputs_json.items():
-        type_name = type(value).__name__
-        size = None
-        preview = None
-        truncated = False
-
-        if isinstance(value, str):
-            size = len(value)
-            if size > preview_chars:
-                preview = value[:preview_chars]
-                truncated = True
-            else:
-                preview = value
-        elif isinstance(value, list):
-            size = len(value)
-            head = value[:preview_items]
-            truncated = size > preview_items
-            preview = orjson.dumps(head).decode()
-            if len(preview) > preview_chars:
-                preview = preview[:preview_chars] + "…"
-                truncated = True
-        elif isinstance(value, dict):
-            size = len(value)
-            head = dict(list(value.items())[:preview_items])
-            truncated = size > preview_items
-            preview = orjson.dumps(head).decode()
-            if len(preview) > preview_chars:
-                preview = preview[:preview_chars] + "…"
-                truncated = True
-        else:
-            preview = orjson.dumps(value).decode()
-
-        fields.append(
-            {
-                "name": name,
-                "type": type_name,
-                "size": size,
-                "preview": preview,
-                "truncated": truncated,
-            }
-        )
-
-    return InputsSummary(fields=fields)
 
 
 def _adapt_tool_for_sandbox(tool):
@@ -893,7 +816,7 @@ class RecursiveLanguageModelAgent(Module):
             # previews and sizes, never the full value. The sandbox gets the
             # complete `inputs_json` rebound on every `run_python_code`
             # call, so `inputs[field]` is always reachable.
-            base = _summarize_inputs(inputs_json)
+            base = summarize_inputs(inputs_json)
             if call_tools_catalog is not None:
                 base = await ops.concat(
                     base,
