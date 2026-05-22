@@ -74,7 +74,6 @@ from synalinks.src.knowledge_bases.graph_database_adapters.graph_database_adapte
     GraphDatabaseAdapter,
 )
 from synalinks.src.modules.embedding_models import get as _get_em
-from synalinks.src.utils.async_utils import run_maybe_nested
 
 METRICS = ("cosine", "l2sq", "l2", "dotproduct")
 
@@ -455,22 +454,21 @@ class LadybugAdapter(GraphDatabaseAdapter):
         self.stopwords = stopwords
         self.tokenizer = tokenizer
 
-        if self.embedding_model and not vector_dim:
-            probe = run_maybe_nested(
-                self.embedding_model(EmbeddingRequest(texts=["text"]))
-            )
-            embeddings = probe.get("embeddings") if probe is not None else None
-            if not embeddings:
-                raise ValueError(
-                    f"Embedding model {self.embedding_model} returned no embeddings "
-                    "while probing the vector dimension for the graph store. This "
-                    "usually means the model name is wrong or unavailable for your "
-                    "provider/API key (check the warnings above for the underlying "
-                    "error). Fix the embedding model, or pass an explicit "
-                    "`vector_dim=...` to skip the probe."
-                )
-            vector_dim = len(embeddings[0])
+        # Vector dimension: resolved lazily on the main loop at first write
+        # (see `_ensure_vector_dim`) when an embedding model is configured
+        # without an explicit `vector_dim`. The old code probed the dimension
+        # here via `run_maybe_nested(self.embedding_model(...))`, which ran the
+        # embedding on a transient thread-loop and bound litellm's process-global
+        # httpx client to a loop closed moments later — poisoning that client for
+        # every subsequent main-loop embedding ("Event loop is closed" noise).
         self.vector_dim = vector_dim or 0
+        # The `FLOAT[dim]` embedding column needs the dimension up front, so when
+        # we don't yet know it, defer creating the declared tables until the
+        # first write (where `_ensure_vector_dim` learns the dim on the main loop
+        # and `_ensure_node_table` / `_ensure_rel_table` build them on demand).
+        # Only this exact case is deferred; with no embedding model or an
+        # explicit `vector_dim`, tables are still created eagerly below.
+        self._defer_table_creation = bool(self.embedding_model and not vector_dim)
 
         self._db = lb.Database(self.uri)
         self._con = lb.Connection(self._db)
@@ -524,22 +522,23 @@ class LadybugAdapter(GraphDatabaseAdapter):
         # their properties instead of collapsing to the bare ``Entity``.
         self._synth_models: Dict[str, Any] = {}
 
-        for model in self.entity_models:
-            schema = model.get_schema()
-            label = sanitize_label(schema["title"])
-            self._pk_keys[label] = self._get_id_key(schema)
-            if label not in existing_node:
-                self._create_node_table(label, schema)
-            string_cols = self._string_columns_from_schema(schema)
-            if string_cols:
-                self._fts_columns[label] = string_cols
-                self._create_fts_index(label, string_cols)
+        if not self._defer_table_creation:
+            for model in self.entity_models:
+                schema = model.get_schema()
+                label = sanitize_label(schema["title"])
+                self._pk_keys[label] = self._get_id_key(schema)
+                if label not in existing_node:
+                    self._create_node_table(label, schema)
+                string_cols = self._string_columns_from_schema(schema)
+                if string_cols:
+                    self._fts_columns[label] = string_cols
+                    self._create_fts_index(label, string_cols)
 
-        for model in self.relation_models:
-            schema = model.get_schema()
-            label = sanitize_label(schema["title"])
-            if label not in existing_rel:
-                self._create_rel_table(label, schema)
+            for model in self.relation_models:
+                schema = model.get_schema()
+                label = sanitize_label(schema["title"])
+                if label not in existing_rel:
+                    self._create_rel_table(label, schema)
 
     def _get_id_key(self, schema: Dict[str, Any]) -> str:
         """Return the schema's first non-``label`` property as PK.
@@ -812,6 +811,34 @@ class LadybugAdapter(GraphDatabaseAdapter):
         if extra_cols:
             clause += ", " + ", ".join(extra_cols)
         self._con.execute(f"CREATE REL TABLE {label}({clause})")
+
+    async def _ensure_vector_dim(self, sample_vector=None):
+        """Resolve the embedding dimension lazily, on the current event loop.
+
+        Prefers the length of an embedding vector already in hand — entities
+        arrive pre-embedded from ``EmbedKnowledge`` — and only falls back to a
+        probe, awaited on *this* loop, when a table must be created before any
+        embedded entity is available. Never uses ``run_maybe_nested``: that runs
+        the embedding on a transient loop and poisons litellm's global client.
+        ``0`` is the "not yet resolved" sentinel. No-op once resolved or when no
+        embedding model is configured.
+        """
+        if self.vector_dim or not self.embedding_model:
+            return
+        if sample_vector:
+            self.vector_dim = len(sample_vector)
+            return
+        probe = await self.embedding_model(EmbeddingRequest(texts=["text"]))
+        embeddings = probe.get("embeddings") if probe is not None else None
+        if not embeddings:
+            raise ValueError(
+                f"Embedding model {self.embedding_model} returned no embeddings "
+                "while resolving the vector dimension for the graph store. This "
+                "usually means the model name is wrong or unavailable for your "
+                "provider/API key. Fix the embedding model, or pass an explicit "
+                "`vector_dim=...`."
+            )
+        self.vector_dim = len(embeddings[0])
 
     def _ensure_node_table(self, label: str, entity: Any) -> None:
         """Create the NODE table for ``label`` on demand if it's unknown.
@@ -1194,8 +1221,12 @@ class LadybugAdapter(GraphDatabaseAdapter):
                 "(must satisfy is_entity, i.e. carry a `label` field)."
             )
         label = sanitize_label(entity.get("label"))
-        # Create the node table on first sight of a label (free-form
-        # graphs carry labels not declared in entity_models).
+        # Learn the vector dimension from this entity's embedding (or an on-loop
+        # probe) before the node table — and its FLOAT[dim] embedding column —
+        # is created on first sight of the label.
+        await self._ensure_vector_dim(
+            entity.get("embedding") if hasattr(entity, "get") else None
+        )
         self._ensure_node_table(label, entity)
         pk_key = self._pk_keys.get(label)
         if pk_key is None:
@@ -1347,6 +1378,12 @@ class LadybugAdapter(GraphDatabaseAdapter):
 
         subj_label = sanitize_label(subj.get("label"))
         obj_label = sanitize_label(obj.get("label"))
+        # Resolve the vector dimension from an endpoint's embedding (or an
+        # on-loop probe) before any endpoint/rel table is created.
+        await self._ensure_vector_dim(
+            (subj.get("embedding") if hasattr(subj, "get") else None)
+            or (obj.get("embedding") if hasattr(obj, "get") else None)
+        )
         # Create endpoint NODE tables (if unseen) and then the REL table
         # on demand, so free-form labels store without being predeclared.
         self._ensure_node_table(subj_label, subj)

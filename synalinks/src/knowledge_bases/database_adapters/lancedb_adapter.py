@@ -46,7 +46,6 @@ from synalinks.src.knowledge_bases.database_adapters.database_adapter import (
     DatabaseAdapter,
 )
 from synalinks.src.modules.embedding_models import get as _get_em
-from synalinks.src.utils.async_utils import run_maybe_nested
 
 VSS_KEY = "embedding"
 # Canonical metric vocabulary, shared with ``DuckDBAdapter`` so the two adapters
@@ -103,25 +102,18 @@ class LanceDBAdapter(DatabaseAdapter):
         self.uri = resolve_db_path(uri, scheme="lancedb", extension="lance", name=name)
 
         self.embedding_model = _get_em(embedding_model)
-        self.vector_dim = None
-        if self.embedding_model:
-            if not vector_dim:
-                probe = run_maybe_nested(
-                    self.embedding_model(EmbeddingRequest(texts=["text"]))
-                )
-                embeddings = probe.get("embeddings") if probe is not None else None
-                if not embeddings:
-                    raise ValueError(
-                        f"Embedding model {self.embedding_model} returned no "
-                        "embeddings while probing the vector dimension. This "
-                        "usually means the model name is wrong or unavailable for "
-                        "your provider/API key (check the warnings above for the "
-                        "underlying error). Fix the embedding model, or pass an "
-                        "explicit `vector_dim=...` to skip the probe."
-                    )
-                self.vector_dim = len(embeddings[0])
-            else:
-                self.vector_dim = vector_dim
+        # Vector dimension resolved lazily on the main loop at first write (see
+        # `_ensure_vector_dim`), never via a probe here. The old probe used
+        # `run_maybe_nested`, running the embedding on a transient thread-loop
+        # and binding litellm's process-global httpx client to a loop closed
+        # moments later — poisoning it for every later main-loop embedding
+        # ("Event loop is closed"). `vector_dim=` short-circuits.
+        self.vector_dim = vector_dim
+        # The fixed-size vector column needs the dimension up front, so when an
+        # embedding model is set without an explicit `vector_dim`, defer creating
+        # the declared tables until the first `update` (where the dim is learned
+        # on the main loop). Only this case is deferred.
+        self._defer_table_creation = bool(self.embedding_model and not vector_dim)
 
         if metric not in METRICS:
             raise ValueError(f"`metric` parameter should be one of {METRICS}")
@@ -144,7 +136,8 @@ class LanceDBAdapter(DatabaseAdapter):
                         "got a schema with no title."
                     )
                 self.data_models[table_identifier(title)] = dm
-                self._maybe_create_table(dm)
+                if not self._defer_table_creation:
+                    self._maybe_create_table(dm)
         else:
             for dm in self.get_symbolic_data_models():
                 self.data_models[dm.get_schema().get("title")] = dm
@@ -343,6 +336,31 @@ class LanceDBAdapter(DatabaseAdapter):
 
     # -- writes ----------------------------------------------------------------
 
+    async def _ensure_vector_dim(self, sample_vector=None):
+        """Resolve the embedding dimension lazily, on the current event loop.
+
+        Prefers the length of an embedding vector already in hand (records
+        arrive pre-embedded from ``EmbedKnowledge``), falling back to a probe
+        awaited on *this* loop only when the fixed-size vector column must be
+        built before any embedded record is available. Never uses
+        ``run_maybe_nested`` (a transient-loop call poisons litellm's client).
+        """
+        if self.vector_dim is not None or not self.embedding_model:
+            return
+        if sample_vector:
+            self.vector_dim = len(sample_vector)
+            return
+        probe = await self.embedding_model(EmbeddingRequest(texts=["text"]))
+        embeddings = probe.get("embeddings") if probe is not None else None
+        if not embeddings:
+            raise ValueError(
+                f"Embedding model {self.embedding_model} returned no embeddings "
+                "while resolving the vector dimension. This usually means the "
+                "model name is wrong or unavailable for your provider/API key. "
+                "Fix the embedding model, or pass an explicit `vector_dim=...`."
+            )
+        self.vector_dim = len(embeddings[0])
+
     async def update(
         self,
         data_model_or_data_models: Union[List[JsonDataModel], JsonDataModel],
@@ -369,6 +387,9 @@ class LanceDBAdapter(DatabaseAdapter):
                 raise ValueError(f"Primary key '{id_key}' is required but not provided")
 
             if table not in buckets:
+                # Learn the dimension from this record's embedding (or an
+                # on-loop probe) before the fixed-size vector column is built.
+                await self._ensure_vector_dim(json_data.get(self.vss_key))
                 self._maybe_create_table(data_model)
                 arrow_schema, json_cols = self._json_schema_to_arrow(schema)
                 buckets[table] = {

@@ -25,7 +25,6 @@ from synalinks.src.knowledge_bases.database_adapters.database_adapter import (
     DatabaseAdapter,
 )
 from synalinks.src.modules.embedding_models import get as _get_em
-from synalinks.src.utils.async_utils import run_maybe_nested
 from synalinks.src.utils.naming import to_pascal_case
 
 VSS_KEY = "embedding"
@@ -159,26 +158,19 @@ class DuckDBAdapter(DatabaseAdapter):
 
         self.embedding_model = _get_em(embedding_model)
 
-        if self.embedding_model:
-            if not vector_dim:
-                embedded_text = run_maybe_nested(
-                    self.embedding_model(EmbeddingRequest(texts=["text"]))
-                )
-                embeddings = (
-                    embedded_text.get("embeddings") if embedded_text is not None else None
-                )
-                if not embeddings:
-                    raise ValueError(
-                        f"Embedding model {self.embedding_model} returned no "
-                        "embeddings while probing the vector dimension. This "
-                        "usually means the model name is wrong or unavailable for "
-                        "your provider/API key (check the warnings above for the "
-                        "underlying error). Fix the embedding model, or pass an "
-                        "explicit `vector_dim=...` to skip the probe."
-                    )
-                self.vector_dim = len(embeddings[0])
-            else:
-                self.vector_dim = vector_dim
+        # Vector dimension resolved lazily on the main loop the first time a
+        # table is created (see `_ensure_vector_dim`), never via a probe here.
+        # The old probe used `run_maybe_nested`, running the embedding on a
+        # transient thread-loop and binding litellm's process-global httpx
+        # client to a loop closed moments later — poisoning it for every later
+        # main-loop embedding ("Event loop is closed"). `vector_dim=` short-
+        # circuits.
+        self.vector_dim = vector_dim
+        # The `FLOAT[dim]` embedding column needs the dimension up front, so when
+        # an embedding model is set without an explicit `vector_dim`, defer
+        # creating the declared tables until the first `update` (where the dim is
+        # learned on the main loop). Only this case is deferred.
+        self._defer_table_creation = bool(self.embedding_model and not vector_dim)
 
         if stemmer not in STEMMERS:
             raise ValueError(f"`stemmer` parameter should be one of {STEMMERS}")
@@ -239,7 +231,8 @@ class DuckDBAdapter(DatabaseAdapter):
                         "schema `title`; got a schema with no title."
                     )
                 self.data_models[table_identifier(title)] = dm
-                self._maybe_create_table(dm)
+                if not self._defer_table_creation:
+                    self._maybe_create_table(dm)
         else:
             for dm in self.get_symbolic_data_models():
                 self.data_models[dm.get_schema().get("title")] = dm
@@ -637,6 +630,31 @@ class DuckDBAdapter(DatabaseAdapter):
                 symbolic_data_models.append(model)
             return symbolic_data_models
 
+    async def _ensure_vector_dim(self, sample_vector=None):
+        """Resolve the embedding dimension lazily, on the current event loop.
+
+        Prefers the length of an embedding vector already in hand (records
+        arrive pre-embedded from ``EmbedKnowledge``), falling back to a probe
+        awaited on *this* loop only when the vector column must be created
+        before any embedded record is available. Never uses ``run_maybe_nested``
+        (a transient-loop network call poisons litellm's global client).
+        """
+        if self.vector_dim is not None or not self.embedding_model:
+            return
+        if sample_vector:
+            self.vector_dim = len(sample_vector)
+            return
+        probe = await self.embedding_model(EmbeddingRequest(texts=["text"]))
+        embeddings = probe.get("embeddings") if probe is not None else None
+        if not embeddings:
+            raise ValueError(
+                f"Embedding model {self.embedding_model} returned no embeddings "
+                "while resolving the vector dimension. This usually means the "
+                "model name is wrong or unavailable for your provider/API key. "
+                "Fix the embedding model, or pass an explicit `vector_dim=...`."
+            )
+        self.vector_dim = len(embeddings[0])
+
     def _maybe_create_table(
         self,
         data_model: Union[JsonDataModel, SymbolicDataModel],
@@ -817,6 +835,9 @@ class DuckDBAdapter(DatabaseAdapter):
                 raise ValueError(f"Primary key '{id_key}' is required but not provided")
 
             if table not in tables_seen_set:
+                # Learn the dimension from this record's embedding (or an
+                # on-loop probe) before the FLOAT[dim] column is created.
+                await self._ensure_vector_dim(json_data.get(self.vss_key))
                 self._maybe_create_table(data_model)
                 tables_seen.append(data_model)
                 tables_seen_set.add(table)
@@ -1586,6 +1607,8 @@ class DuckDBAdapter(DatabaseAdapter):
 
         embeddings = await self.embedding_model(EmbeddingRequest(texts=texts))
         vectors = embeddings.get("embeddings")
+        if vectors:
+            await self._ensure_vector_dim(vectors[0])
         dist_fn = _VSS_DISTANCE_FN[self.metric]
         # Canonical score, shared with LanceDBAdapter. ``array_distance`` is the
         # (non-squared) Euclidean distance, so square it for "l2sq" to match
