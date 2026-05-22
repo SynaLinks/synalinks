@@ -45,11 +45,6 @@ untruncated value. In the prompt you only see an `InputsSummary` with previews
 and sizes; always read the real values through `inputs[field]` inside your
 code, never re-type them from the preview.
 
-Each turn carries an `IterationInfo.iteration` field like `3/5`, that's your
-progress out of the hard iteration cap. Budget accordingly: early turns can
-explore, later ones should converge. If few turns remain, batch work into a
-single snippet instead of spreading it out.
-
 Use `print(...)` to log intermediate observations. `submit` and any tools
 bound to the agent are async callables *inside* the sandbox (see the tools
 catalog), not separate tool calls — call them inside `async def main():` and
@@ -112,11 +107,6 @@ exhausted, both helpers short-circuit with
 check `error` before trusting `result`. Plan recursion accordingly:
 prefer code-side aggregation (regex, set ops, sorting,
 dict-comprehension counting) over re-querying.
-
-Each turn carries an `IterationInfo.iteration` field like `3/5` —
-your progress against the iteration cap. Early turns can explore;
-later ones should converge. When few turns remain, batch work into
-fewer snippets.
 
 Use `print(...)` to log intermediate observations. All sandbox tools
 are async, call them inside `async def main():` and drive with
@@ -212,18 +202,6 @@ class InputsSummary(DataModel):
     )
 
 
-class IterationInfo(DataModel):
-    """Budget info visible to the code generator on each turn."""
-
-    iteration: str = Field(
-        description=(
-            "Current turn position as `<current>/<max>`. Budget your "
-            "remaining turns accordingly, batch work into fewer snippets "
-            "when turns are running out."
-        ),
-    )
-
-
 def _build_tools_catalog(tools: dict):
     """Build a ``ToolsCatalog`` from a ``{name: Tool}`` mapping.
 
@@ -268,9 +246,11 @@ def _build_submit_tool(schema, holder: dict, tool_name: str = "submit"):
         """Submit the final answer and end the run.
 
         Args:
-            result (dict): The final payload. When a target schema is
-                configured, ``result`` must match it, validation errors
-                come back as an observation on the next turn.
+            result (dict): The final payload. With a target schema, ``result``
+                must match it (validation errors come back as an observation on
+                the next turn). Schemaless, pass ``{"answer": "..."}`` — the
+                ``answer`` string becomes the content of the final assistant
+                message.
         """
         holder["value"] = dict(result)
         return {"submitted": dict(result)}
@@ -289,10 +269,17 @@ def _build_submit_tool(schema, holder: dict, tool_name: str = "submit"):
         tool._params_schema["result"] = {
             "type": "object",
             "title": "Result",
+            "properties": {
+                "answer": {
+                    "type": "string",
+                    "description": "The final answer message.",
+                }
+            },
+            "required": ["answer"],
             "description": (
-                "The final answer as a free-form dict. No schema is "
-                "configured, contents are appended to the trajectory "
-                "as an assistant ChatMessage."
+                'The final answer, as `{"answer": "..."}`. The `answer` string '
+                "becomes the content of the final assistant message appended "
+                "to the trajectory."
             ),
         }
     return tool
@@ -949,19 +936,8 @@ class RecursiveLanguageModelAgent(Module):
         iterations = self.max_iterations if self.autonomous else 1
         submitted_final = None
 
-        for n in range(iterations):
-            # The iteration counter is concat'd in per turn so the code
-            # generator can pace itself ("2/5" => half the budget left,
-            # plan accordingly).
-            iteration_info = IterationInfo(
-                iteration=f"{n + 1}/{iterations}",
-            )
-            turn_input = await ops.concat(
-                trajectory,
-                iteration_info,
-                name=f"turn_{n}_{self.name}",
-            )
-            tool_calls = await self.code_generator(turn_input, tools=[run_tool])
+        for _ in range(iterations):
+            tool_calls = await self.code_generator(trajectory, tools=[run_tool])
             if not tool_calls:
                 break
             # The generator returns an assistant ChatMessage with native
@@ -1063,10 +1039,13 @@ class RecursiveLanguageModelAgent(Module):
                     name="final_generator_" + self.name,
                 )
             else:
+                # Schemaless: the answer is submitted as {"answer": "..."}; use
+                # that string as the final assistant message content (falling
+                # back to the whole payload if `answer` is absent).
                 agent_messages.append(
                     ChatMessage(
                         role=ChatRole.ASSISTANT,
-                        content=submitted_final,
+                        content=submitted_final.get("answer", submitted_final),
                     ).get_json()
                 )
                 validated_messages = ChatMessages(
@@ -1115,8 +1094,7 @@ class RecursiveLanguageModelAgent(Module):
                 "ChatMessages-like data model as inputs"
             )
         # Mirror the runtime: the code generator sees a summary of the
-        # input plus the tool catalog plus an IterationInfo, not the raw
-        # input DataModel.
+        # input plus the tool catalog, not the raw input DataModel.
         if is_chat_messages(inputs):
             generator_inputs = inputs
         else:
@@ -1130,14 +1108,6 @@ class RecursiveLanguageModelAgent(Module):
                     self.tools_catalog,
                     name="inputs_with_tools_" + self.name,
                 )
-        generator_inputs = await ops.concat(
-            generator_inputs,
-            SymbolicDataModel(
-                schema=IterationInfo.get_schema(),
-                name="iteration_info_" + self.name,
-            ),
-            name="turn_input_" + self.name,
-        )
         # The closure placeholders are never executed during spec tracing;
         # only the tool's signature/docstring shape the prompt.
         spec_tool = self._build_run_python_code_tool(None)

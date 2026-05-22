@@ -5,9 +5,7 @@ from unittest.mock import patch
 
 from synalinks.src import testing
 from synalinks.src.backend import DataModel
-from synalinks.src.modules.agents.rlm_agent import (
-    RecursiveLanguageModelAgent,
-)
+from synalinks.src.modules.agents.rlm_agent import RecursiveLanguageModelAgent
 from synalinks.src.modules.core.input_module import Input
 from synalinks.src.modules.core.tool import Tool
 from synalinks.src.modules.language_models import LanguageModel
@@ -386,7 +384,7 @@ class RecursiveLanguageModelAgentTest(testing.TestCase):
                 "import asyncio\n"
                 "async def main():\n"
                 "    out = await llm_query(prompt='gist?')\n"
-                "    await submit(result={'note': out['result']})\n"
+                "    await submit(result={'answer': out['result']})\n"
                 "asyncio.run(main())"
             )
         }
@@ -400,16 +398,14 @@ class RecursiveLanguageModelAgentTest(testing.TestCase):
         result_json = result.get_json()
         self.assertIn("messages", result_json)
         self.assertNotIn("answer", result_json)
+        # Schemaless submit takes {"answer": "..."}; the answer string lands as
+        # the content of the final assistant message.
         assistant_msgs = [
             m for m in result.get("messages") if m.get("role") == "assistant"
         ]
         self.assertTrue(
-            any(
-                isinstance(m.get("content"), dict)
-                and m["content"].get("note") == "the gist"
-                for m in assistant_msgs
-            ),
-            f"submitted payload not appended; got: {assistant_msgs}",
+            any(m.get("content") == "the gist" for m in assistant_msgs),
+            f"submitted answer not appended as message content; got: {assistant_msgs}",
         )
 
     async def test_config_round_trip(self):
