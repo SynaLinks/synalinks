@@ -226,7 +226,7 @@ class Dataset:
         demand.
 
         Returns:
-            tuple: ``(x,)`` if the dataset is inputs-only (no
+            (tuple): ``(x,)`` if the dataset is inputs-only (no
                 ``output_template`` configured), otherwise ``(x, y)``.
         """
         inputs_only = self._output_tmpl is None
@@ -253,7 +253,7 @@ def split_train_test(x, y, validation_split=0.2):
             the test set. Defaults to ``0.2`` (Keras convention).
 
     Returns:
-        tuple: ``(x_train, y_train), (x_test, y_test)``.
+        (tuple): ``(x_train, y_train), (x_test, y_test)``.
     """
     n = len(x)
     cut = int(n * (1.0 - validation_split))

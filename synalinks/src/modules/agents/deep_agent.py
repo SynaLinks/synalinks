@@ -64,9 +64,12 @@ Notes:
 - Paths are rooted at the workdir; `..` cannot escape it.
 - If the conversation includes an `InputsSummary`, you only see field
   previews and sizes — the full, untruncated input values are saved as
-  the JSON file named in its `inputs_file` field. Read that file
-  (`read_file`, or `json.load(open(...))` in a snippet) instead of
-  retyping values from the preview.""".strip()
+  the JSON file named in its `inputs_file` field. Read that file instead
+  of retyping values from the preview: either call the `read_file` tool,
+  or inside a `run_python_code` snippet parse it with
+  `json.loads(pathlib.Path(inputs_file).read_text())`. The sandbox has no
+  `open()`, and `json` provides only `loads` / `dumps` (no `json.load`),
+  so `json.load(open(...))` will not work.""".strip()
 
 
 @synalinks_export(

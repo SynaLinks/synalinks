@@ -222,7 +222,7 @@ class DuckDBAdapterInitTest(testing.TestCase):
             self.assertIsNone(adapter._con)
 
     @patch("litellm.aembedding")
-    def test_init_with_embedding_model(self, mock_embedding):
+    async def test_init_with_embedding_model(self, mock_embedding):
         expected_value = np.random.rand(384).tolist()
         mock_embedding.return_value = {"data": [{"embedding": expected_value}]}
 
@@ -233,8 +233,14 @@ class DuckDBAdapterInitTest(testing.TestCase):
                 uri=db_path,
                 embedding_model=embedding_model,
             )
-            self.assertEqual(adapter.vector_dim, 384)
+            # The dimension is resolved lazily (no network probe in __init__),
+            # so it's unknown at construction and table creation is deferred.
+            self.assertIsNone(adapter.vector_dim)
+            self.assertTrue(adapter._defer_table_creation)
             self.assertEqual(adapter.embedding_model, embedding_model)
+            # Resolving on the caller's loop probes the model and learns 384.
+            await adapter._ensure_vector_dim()
+            self.assertEqual(adapter.vector_dim, 384)
 
 
 class _FakeCursor:

@@ -38,8 +38,10 @@ class InputsSummary(DataModel):
         default=None,
         description=(
             "When set, the full untruncated inputs are stored as this JSON file "
-            "in the sandbox filesystem — read it (e.g. with `read_file`, or "
-            "`json.load(open(...))` in a snippet) instead of retyping previews. "
+            "in the sandbox filesystem — read it instead of retyping previews: "
+            "the `read_file` tool, or in a `run_python_code` snippet "
+            "`json.loads(pathlib.Path(inputs_file).read_text())` (the sandbox "
+            "has no `open()`, and `json` provides only `loads` / `dumps`). "
             "When null, the full inputs are bound as the `inputs` variable."
         ),
     )
