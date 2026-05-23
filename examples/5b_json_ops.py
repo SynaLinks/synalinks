@@ -106,8 +106,8 @@ asyncio.run(main())
 
 ## Program Visualizations
 
-![in_mask_example](https://synalinks.github.io/synalinks/assets/examples/in_mask_example.png)
-![factorize_example](https://synalinks.github.io/synalinks/assets/examples/factorize_example.png)
+![in_mask_example](../assets/examples/in_mask_example.png)
+![factorize_example](../assets/examples/factorize_example.png)
 
 ## API References
 

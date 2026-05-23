@@ -191,7 +191,7 @@ class FunctionCallingAgentTest(testing.TestCase):
 
     @patch("litellm.acompletion")
     async def test_autonomous_mode_simple_calculation(self, mock_completion):
-        """Test autonomous mode with a simple calculation."""
+        """Autonomous mode issues a native tool call, runs it, then finalizes."""
         language_model = LanguageModel(model="ollama/mistral")
         tools = [
             Tool(calculate),
@@ -210,35 +210,19 @@ class FunctionCallingAgentTest(testing.TestCase):
             name="autonomous_calculation_test",
         )
 
-        tool_calls = {
-            "thinking": (
-                "Perform simple arithmetic operation by adding the numbers "
-                "given in the input."
+        mock_completion.side_effect = [
+            # Iter 1: native tool call to `calculate`.
+            _lm_response(
+                content="Adding the two numbers.",
+                tool_calls=[
+                    {"name": "calculate", "arguments": {"expression": "152648 + 485"}}
+                ],
             ),
-            "tool_calls": [
-                {
-                    "tool_name": "calculate",
-                    "expression": "152648 + 485",
-                }
-            ],
-        }
-
-        tool_calls_1 = {
-            "thinking": (
-                "The user has asked for a simple arithmetic operation, "
-                "specifically adding 152648 and 485. I have already performed "
-                "the calculation using the 'calculate' tool and obtained the "
-                "result as 153133."
-            ),
-            "tool_calls": [],
-        }
-
-        mock_responses = [
-            {"choices": [{"message": {"content": json.dumps(tool_calls)}}]},
-            {"choices": [{"message": {"content": json.dumps(tool_calls_1)}}]},
+            # Iter 2: no tool calls -> loop breaks.
+            _lm_response(content="The calculation is done; the result is 153133."),
+            # final_generator turn.
+            _lm_response(content="152648 + 485 = 153133."),
         ]
-
-        mock_completion.side_effect = mock_responses
 
         input_messages = ChatMessages(
             messages=[
@@ -250,18 +234,23 @@ class FunctionCallingAgentTest(testing.TestCase):
         )
         result = await agent(input_messages)
 
-        print("Result:")
-        print(result.prettify_json())
-
-        # Verify result structure
         self.assertIsNotNone(result)
-        messages = result.get("messages", [])
-        self.assertGreater(len(messages), 0)
         self.assertTrue(is_chat_messages(result))
+        messages = result.get("messages", [])
+        roles = [m.get("role") for m in messages]
+        # The tool actually executed: an assistant tool-call followed by a
+        # tool-result message carrying `calculate`'s output (153133).
+        self.assertIn("assistant", roles)
+        self.assertIn("tool", roles)
+        tool_msgs = [m for m in messages if m.get("role") == "tool"]
+        self.assertTrue(
+            any("153133" in json.dumps(m.get("content")) for m in tool_msgs),
+            f"calculate result not found in tool messages: {tool_msgs}",
+        )
 
     @patch("litellm.acompletion")
     async def test_autonomous_mode_complex_calculation(self, mock_completion):
-        """Test autonomous mode with a more complex calculation."""
+        """Autonomous mode runs a multi-step expression through `calculate`."""
         language_model = LanguageModel(model="ollama/mistral")
         tools = [
             Tool(calculate),
@@ -280,43 +269,20 @@ class FunctionCallingAgentTest(testing.TestCase):
             name="complex_calculation_test",
         )
 
-        tool_calls = {
-            "thinking": (
-                "First, I will perform the arithmetic operation as instructed. "
-                "Let's calculate (150 + 250) * 2 / 4. The order of operations "
-                "is follow BIDMAS/BODMAS which means Brackets, Orders or "
-                "Powers, Division and Multiplication, Addition and "
-                "Subtraction. So, first I will add 150 and 250, then multiply "
-                "the result by 2, divide it by 4 and finally add 100."
+        # (150 + 250) * 2 / 4 + 100 == 300
+        mock_completion.side_effect = [
+            _lm_response(
+                content="Evaluating the full expression in one shot.",
+                tool_calls=[
+                    {
+                        "name": "calculate",
+                        "arguments": {"expression": "(150 + 250) * 2 / 4 + 100"},
+                    }
+                ],
             ),
-            "tool_calls": [
-                {
-                    "tool_name": "calculate",
-                    "expression": "(150 + 250) * 2 / 4 + 100",
-                }
-            ],
-        }
-
-        tool_calls_1 = {
-            "thinking": (
-                "The user provided a mathematical expression to calculate. I "
-                "performed the operation (150 + 250) * 2 / 4 and then added "
-                "100 to the result. Now, the result is 300."
-            ),
-            "tool_calls": [
-                {
-                    "tool_name": "calculate",
-                    "expression": "(150 + 250) * 2 / 4 + 100",
-                }
-            ],
-        }
-
-        mock_responses = [
-            {"choices": [{"message": {"content": json.dumps(tool_calls)}}]},
-            {"choices": [{"message": {"content": json.dumps(tool_calls_1)}}]},
+            _lm_response(content="The expression evaluates to 300."),
+            _lm_response(content="The result is 300."),
         ]
-
-        mock_completion.side_effect = mock_responses
 
         input_messages = ChatMessages(
             messages=[
@@ -329,8 +295,16 @@ class FunctionCallingAgentTest(testing.TestCase):
             ]
         )
         result = await agent(input_messages)
-        print("Result:")
-        print(result.prettify_json())
+
+        self.assertIsNotNone(result)
+        self.assertTrue(is_chat_messages(result))
+        messages = result.get("messages", [])
+        self.assertIn("tool", [m.get("role") for m in messages])
+        tool_msgs = [m for m in messages if m.get("role") == "tool"]
+        self.assertTrue(
+            any("300" in json.dumps(m.get("content")) for m in tool_msgs),
+            f"calculate result not found in tool messages: {tool_msgs}",
+        )
 
     @patch("litellm.acompletion")
     async def test_autonomous_mode_returns_chat_messages_without_schema(

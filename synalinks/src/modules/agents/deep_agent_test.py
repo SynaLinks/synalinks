@@ -5,6 +5,7 @@ import os
 import shutil
 import tempfile
 from pathlib import Path
+from unittest.mock import patch
 
 from synalinks.src import ops
 from synalinks.src import testing
@@ -24,6 +25,29 @@ async def stamp_now(label: str):
         label (str): Arbitrary text to echo back.
     """
     return {"label": label}
+
+
+def _lm_response(*, content=None, tool_calls=None):
+    """Build a litellm-shaped response for the native function-calling path.
+
+    ``tool_calls`` is a list of ``{"name": ..., "arguments": {...}}``; each is
+    wrapped into the OpenAI nested ``{id, type, function}`` envelope with the
+    arguments JSON-encoded, matching what the LM layer parses at runtime.
+    """
+    message = {"content": content}
+    if tool_calls:
+        message["tool_calls"] = [
+            {
+                "id": f"call_{i}",
+                "type": "function",
+                "function": {
+                    "name": tc["name"],
+                    "arguments": json.dumps(tc["arguments"]),
+                },
+            }
+            for i, tc in enumerate(tool_calls)
+        ]
+    return {"choices": [{"message": message}]}
 
 
 class DeepAgentSandboxTest(testing.TestCase):
@@ -254,3 +278,176 @@ class DeepAgentInputsSummaryTest(testing.TestCase):
         # Picked a non-colliding name; the mounted workdir file is untouched.
         self.assertEqual(summary.get_json()["inputs_file"], "inputs_1.json")
         self.assertEqual((Path(wd) / "inputs.json").read_text(), '{"keep": "me"}')
+
+
+class DeepAgentSubagentTest(testing.TestCase):
+    """Subagent delegation: parallel forks, parent-reviewed merges."""
+
+    def _lm(self):
+        return LanguageModel(model="ollama/mistral")
+
+    def _tool_names(self, agent):
+        return set(agent.agent.tools.keys())
+
+    async def test_subagents_off_by_default(self):
+        agent = DeepAgent(language_model=self._lm(), name="off")
+        self.assertFalse(agent._subagents_enabled)
+        names = self._tool_names(agent)
+        self.assertNotIn("spawn_subagents", names)
+        self.assertNotIn("merge_subagent", names)
+        self.assertNotIn("discard_subagent", names)
+
+    async def test_subagents_enabled_exposes_tools_and_guidance(self):
+        agent = DeepAgent(language_model=self._lm(), max_subagent_depth=1, name="on")
+        self.assertTrue(agent._subagents_enabled)
+        names = self._tool_names(agent)
+        self.assertIn("spawn_subagents", names)
+        self.assertIn("merge_subagent", names)
+        self.assertIn("discard_subagent", names)
+        self.assertIn("spawn_subagents", agent.instructions)
+
+    async def test_subagent_at_max_depth_cannot_spawn(self):
+        # A subagent (depth 1) under max depth 1 does not get the spawn tools.
+        sub = DeepAgent(
+            language_model=self._lm(),
+            max_subagent_depth=1,
+            _subagent_depth=1,
+            name="leaf",
+        )
+        self.assertFalse(sub._subagents_enabled)
+        self.assertNotIn("spawn_subagents", self._tool_names(sub))
+
+    async def test_negative_depth_rejected(self):
+        with self.assertRaises(ValueError):
+            DeepAgent(language_model=self._lm(), max_subagent_depth=-1)
+
+    async def test_sandbox_param_is_used_as_is(self):
+        from synalinks.src.sandboxes.monty_sandbox import MontySandbox
+
+        sb = MontySandbox()
+        await sb.write_file("/seed.txt", "seed")
+        agent = DeepAgent(language_model=self._lm(), sandbox=sb, name="reuse")
+        self.assertIs(agent.sandbox, sb)
+        self.assertEqual((await agent.sandbox.read_file("/seed.txt"))["content"], "seed")
+
+    async def test_get_config_round_trips_max_subagent_depth(self):
+        agent = DeepAgent(language_model=self._lm(), max_subagent_depth=2, name="cfg")
+        config = agent.get_config()
+        self.assertEqual(config["max_subagent_depth"], 2)
+        restored = DeepAgent.from_config(config)
+        self.assertEqual(restored.max_subagent_depth, 2)
+        self.assertTrue(restored._subagents_enabled)
+
+    async def test_merge_subagent_applies_fork_changes(self):
+        agent = DeepAgent(language_model=self._lm(), max_subagent_depth=1, name="m")
+        await agent.sandbox.write_file("/keep.txt", "base")
+        # Stand in for a finished subagent: a fork that changed some files.
+        fork = agent.sandbox.fork()
+        await fork.write_file("/new.txt", "child")
+        await fork.write_file("/keep.txt", "edited by child")
+        agent._subagents["subagent_0"] = fork
+
+        report = await agent.merge_subagent("subagent_0")
+        self.assertCountEqual(report["written"], ["/keep.txt", "/new.txt"])
+        self.assertEqual(report["conflicts"], [])
+        self.assertEqual((await agent.sandbox.read_file("/new.txt"))["content"], "child")
+        self.assertEqual(
+            (await agent.sandbox.read_file("/keep.txt"))["content"], "edited by child"
+        )
+
+    async def test_merge_subagent_paths_subset(self):
+        agent = DeepAgent(language_model=self._lm(), max_subagent_depth=1, name="ms")
+        fork = agent.sandbox.fork()
+        await fork.write_file("/wanted.txt", "yes")
+        await fork.write_file("/skipped.txt", "no")
+        agent._subagents["subagent_0"] = fork
+
+        report = await agent.merge_subagent("subagent_0", paths=["/wanted.txt"])
+        self.assertEqual(report["written"], ["/wanted.txt"])
+        self.assertIn("error", await agent.sandbox.read_file("/skipped.txt"))
+
+    async def test_merge_and_discard_unknown_handle(self):
+        agent = DeepAgent(language_model=self._lm(), max_subagent_depth=1, name="u")
+        self.assertIn("error", await agent.merge_subagent("nope"))
+        self.assertIn("error", await agent.discard_subagent("nope"))
+
+    async def test_discard_subagent_drops_branch(self):
+        agent = DeepAgent(language_model=self._lm(), max_subagent_depth=1, name="d")
+        agent._subagents["subagent_0"] = agent.sandbox.fork()
+        self.assertEqual(
+            await agent.discard_subagent("subagent_0"), {"discarded": "subagent_0"}
+        )
+        self.assertNotIn("subagent_0", agent._subagents)
+
+    async def test_spawn_subagents_empty(self):
+        agent = DeepAgent(language_model=self._lm(), max_subagent_depth=1, name="e")
+        self.assertIn("error", await agent.spawn_subagents([]))
+
+    @patch("litellm.acompletion")
+    async def test_spawn_runs_parallel_isolated_subagents(self, mock_completion):
+        # Every LM call returns a plain answer (no tool calls), so each subagent
+        # finalizes immediately — deterministic regardless of parallel ordering.
+        def no_tools(*args, **kwargs):
+            return _lm_response(content="nothing to do")
+
+        mock_completion.side_effect = no_tools
+
+        agent = DeepAgent(language_model=self._lm(), max_subagent_depth=1, name="par")
+        await agent.sandbox.write_file("/parent.txt", "owned by parent")
+
+        result = await agent.spawn_subagents(["explore A", "explore B"])
+        subs = result["subagents"]
+        self.assertEqual(len(subs), 2)
+        self.assertEqual({s["handle"] for s in subs}, {"subagent_0", "subagent_1"})
+        for s in subs:
+            self.assertEqual(s["diff"], {"written": [], "deleted": []})
+            self.assertIsInstance(s["result"], str)
+        # Forks are registered for later merge; parent filesystem is untouched.
+        self.assertEqual(set(agent._subagents), {"subagent_0", "subagent_1"})
+        self.assertEqual(agent.sandbox.changes()["written"], ["/parent.txt"])
+
+    @patch("litellm.acompletion")
+    async def test_subagent_handles_reset_each_call(self, mock_completion):
+        # Handles from one turn must not leak into the next.
+        mock_completion.side_effect = lambda *a, **k: _lm_response(content="ok")
+        agent = DeepAgent(language_model=self._lm(), max_subagent_depth=1, name="reset")
+        await agent.spawn_subagents(["a"])
+        self.assertEqual(set(agent._subagents), {"subagent_0"})
+        # A new turn clears the registry and restarts handle numbering.
+        await agent.call(ChatMessages(messages=[]))
+        self.assertEqual(agent._subagents, {})
+
+    @patch("litellm.acompletion")
+    async def test_spawn_then_merge_a_writing_subagent(self, mock_completion):
+        # The subagent issues a native write_file tool call until a tool result
+        # is in its trajectory, then finalizes. Content-aware (not a fixed-length
+        # list) so it is robust to however many LM turns the loop takes.
+        def fake(*args, **kwargs):
+            text = json.dumps(kwargs.get("messages", []))
+            if "tool_call_id" in text:  # the write already executed
+                return _lm_response(content="wrote /sub.txt")
+            return _lm_response(
+                content="creating the file",
+                tool_calls=[
+                    {
+                        "name": "write_file",
+                        "arguments": {"path": "/sub.txt", "content": "from sub"},
+                    }
+                ],
+            )
+
+        mock_completion.side_effect = fake
+
+        agent = DeepAgent(language_model=self._lm(), max_subagent_depth=1, name="w")
+        result = await agent.spawn_subagents(["create /sub.txt"])
+        sub = result["subagents"][0]
+        # The subagent's pending change shows up in its diff...
+        self.assertIn("/sub.txt", [w["path"] for w in sub["diff"]["written"]])
+        # ...but NOT in the parent until merged.
+        self.assertIn("error", await agent.sandbox.read_file("/sub.txt"))
+
+        report = await agent.merge_subagent(sub["handle"])
+        self.assertIn("/sub.txt", report["written"])
+        self.assertEqual(
+            (await agent.sandbox.read_file("/sub.txt"))["content"], "from sub"
+        )

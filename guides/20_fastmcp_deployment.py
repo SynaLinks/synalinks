@@ -97,12 +97,11 @@ So we keep the same two-step shape:
    ```
 
    ```python
-   # Or, equivalently, from a notebook / REPL:
-   import asyncio
-   from guides.fastmcp_deployment_20 import (
-       build_and_save_program, PROGRAM_PATH,
-   )
-   asyncio.run(build_and_save_program(PROGRAM_PATH))
+   # Or, equivalently, from a notebook / REPL. (The module name starts
+   # with a digit, so import it via importlib rather than `import`.)
+   import asyncio, importlib
+   mod = importlib.import_module("guides.20_fastmcp_deployment")
+   asyncio.run(mod.build_and_save_program(mod.PROGRAM_PATH))
    ```
 
 2. **Serve.** The server's only startup job is to *load*
@@ -265,11 +264,15 @@ If you already have the FastAPI server from the previous guide,
 FastMCP can lift its endpoints into MCP tools for you in one line:
 
 ```python
+import importlib
 from fastmcp import FastMCP
-from guides import fastapi_deployment_19  # your FastAPI module
+
+# Your FastAPI module from the previous guide (its name starts with a
+# digit, so import it via importlib rather than `import`).
+fastapi_app = importlib.import_module("guides.19_fastapi_deployment")
 
 mcp = FastMCP.from_fastapi(
-    fastapi_deployment_19.app,
+    fastapi_app.app,
     name="math-agent",
 )
 

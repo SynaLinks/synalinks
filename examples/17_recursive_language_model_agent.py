@@ -75,7 +75,7 @@ agent = synalinks.Program(inputs=inputs, outputs=outputs, name="rlm_needle")
 ```
 
 When the agent runs, the primary LM is given a **single** tool —
-`execute_async_python(python_code=...)` — and calls it with one Python
+`run_python_code(code=...)` — and calls it with one Python
 snippet per turn. The snippet runs in a Monty REPL sandbox and the call
 returns `{"stdout": ..., "stderr": ..., "error": ...}`. State persists
 across turns — variables, imports, and function definitions accumulate.
@@ -114,7 +114,7 @@ trajectory into the target schema.
 
 ## Program Visualization
 
-![rlm_needle](https://synalinks.github.io/synalinks/assets/examples/rlm_needle.png)
+![rlm_needle](../assets/examples/rlm_needle.png)
 
 ## API References
 

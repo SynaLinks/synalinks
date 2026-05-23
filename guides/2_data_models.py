@@ -237,8 +237,8 @@ will validate fine — only *unknown* strings get rejected.
 
 A very common need is to ask the model for a confidence or quality score
 between 0 and 1. `synalinks.Score` is a ready-made enum over the eleven
-values `{0.0, 0.1, 0.2, ..., 1.0}`, with named members from `NONE` (0.0)
-through `PERFECT` (1.0). The fancy word for taking a continuous range
+values `{0.0, 0.1, 0.2, ..., 1.0}`, with named members from `VERY_BAD`
+(0.0) through `VERY_GOOD` (1.0). The fancy word for taking a continuous range
 and splitting it into a fixed list of buckets is **discretization** —
 that is all we have done here.
 

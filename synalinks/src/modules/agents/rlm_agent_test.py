@@ -10,6 +10,7 @@ from synalinks.src.modules.core.input_module import Input
 from synalinks.src.modules.core.tool import Tool
 from synalinks.src.modules.language_models import LanguageModel
 from synalinks.src.programs import Program
+from synalinks.src.sandboxes.monty_sandbox import MontySandbox
 from synalinks.src.saving.object_registration import register_synalinks_serializable
 
 
@@ -423,3 +424,169 @@ class RecursiveLanguageModelAgentTest(testing.TestCase):
         restored = RecursiveLanguageModelAgent.from_config(config)
         self.assertEqual(restored.max_llm_calls, 7)
         self.assertEqual(restored.sub_language_model.model, "ollama_chat/llama3")
+
+
+class RLMSubagentTest(testing.TestCase):
+    """REPL-aware subagents: fork (REPL+files), parallel, parent-reviewed merge."""
+
+    def _lm(self):
+        return LanguageModel(model="ollama/mistral")
+
+    def _agent(self, **kw):
+        return RecursiveLanguageModelAgent(language_model=self._lm(), name="r", **kw)
+
+    # -- wiring (no LM) ------------------------------------------------------
+
+    async def test_subagents_off_by_default(self):
+        self.assertFalse(self._agent()._subagents_enabled)
+
+    async def test_subagents_enabled_flag_and_guidance(self):
+        agent = self._agent(max_subagent_depth=1)
+        self.assertTrue(agent._subagents_enabled)
+        self.assertIn("delegate to parallel subagents", agent.instructions)
+
+    async def test_subagent_at_max_depth_disabled(self):
+        sub = self._agent(max_subagent_depth=1, _subagent_depth=1)
+        self.assertFalse(sub._subagents_enabled)
+
+    async def test_negative_depth_rejected(self):
+        with self.assertRaises(ValueError):
+            self._agent(max_subagent_depth=-1)
+
+    async def test_subagent_tool_names_reserved(self):
+        with self.assertRaises(ValueError):
+            self._agent(tools=[Tool(square, name="spawn_subagents")])
+
+    async def test_get_config_round_trips_max_subagent_depth(self):
+        agent = self._agent(max_subagent_depth=2)
+        config = agent.get_config()
+        self.assertEqual(config["max_subagent_depth"], 2)
+        restored = RecursiveLanguageModelAgent.from_config(config)
+        self.assertEqual(restored.max_subagent_depth, 2)
+        self.assertTrue(restored._subagents_enabled)
+        # Guidance is appended idempotently — not doubled on round-trip.
+        self.assertEqual(restored.instructions.count("delegate to parallel subagents"), 1)
+
+    # -- merge / discard handlers (no LM, manual fork) -----------------------
+
+    async def test_merge_subagent_files_and_repl(self):
+        agent = self._agent(max_subagent_depth=1)
+        sandbox = MontySandbox()
+        await sandbox.run("x = 1")
+        await sandbox.write_file("/base.txt", "base")
+        registry = {}
+        tools = agent._build_subagent_tools(sandbox, registry, [0], {"adopted": False})
+
+        # Stand in for a finished subagent: a fork that changed REPL + files.
+        fork = sandbox.fork(copy_repl=True)
+        await fork.run("y = 99")
+        await fork.write_file("/new.txt", "child")
+        registry["subagent_0"] = fork
+
+        out = (
+            await tools["merge_subagent"](handle="subagent_0", adopt_repl=True)
+        ).get_json()
+        self.assertTrue(out["repl_adopted"])
+        self.assertIn("/new.txt", out["written"])
+        # Files merged...
+        self.assertEqual((await sandbox.read_file("/new.txt"))["content"], "child")
+        # ...and the subagent's REPL var, alongside the parent's own.
+        self.assertIn("99", (await sandbox.run("print(y)")).stdout)
+        self.assertIn("1", (await sandbox.run("print(x)")).stdout)
+
+    async def test_merge_subagent_files_only_leaves_repl(self):
+        agent = self._agent(max_subagent_depth=1)
+        sandbox = MontySandbox()
+        await sandbox.run("x = 1")
+        registry = {}
+        tools = agent._build_subagent_tools(sandbox, registry, [0], {"adopted": False})
+        fork = sandbox.fork(copy_repl=True)
+        await fork.run("x = 999")
+        await fork.write_file("/f.txt", "child")
+        registry["subagent_0"] = fork
+
+        out = (await tools["merge_subagent"](handle="subagent_0")).get_json()
+        self.assertFalse(out["repl_adopted"])
+        self.assertIn("/f.txt", out["written"])
+        # REPL untouched (no adoption).
+        self.assertIn("1", (await sandbox.run("print(x)")).stdout)
+
+    async def test_only_one_repl_adoption_per_turn(self):
+        agent = self._agent(max_subagent_depth=1)
+        sandbox = MontySandbox()
+        registry = {}
+        repl_state = {"adopted": False}
+        tools = agent._build_subagent_tools(sandbox, registry, [0], repl_state)
+        fa = sandbox.fork(copy_repl=True)
+        await fa.run("a = 1")
+        registry["subagent_0"] = fa
+        fb = sandbox.fork(copy_repl=True)
+        await fb.run("b = 2")
+        registry["subagent_1"] = fb
+
+        r1 = (
+            await tools["merge_subagent"](handle="subagent_0", adopt_repl=True)
+        ).get_json()
+        self.assertTrue(r1["repl_adopted"])
+        r2 = (
+            await tools["merge_subagent"](handle="subagent_1", adopt_repl=True)
+        ).get_json()
+        self.assertFalse(r2["repl_adopted"])
+        self.assertIn("repl_warning", r2)
+        # First adoption's var is present; the second's is not (REPL-wise).
+        self.assertIn("1", (await sandbox.run("print(a)")).stdout)
+        self.assertFalse((await sandbox.run("print(b)")).ok)
+
+    async def test_merge_and_discard_unknown_handle(self):
+        agent = self._agent(max_subagent_depth=1)
+        sandbox = MontySandbox()
+        tools = agent._build_subagent_tools(sandbox, {}, [0], {"adopted": False})
+        self.assertIn("error", (await tools["merge_subagent"](handle="nope")).get_json())
+        self.assertIn(
+            "error", (await tools["discard_subagent"](handle="nope")).get_json()
+        )
+
+    async def test_discard_subagent_drops_fork(self):
+        agent = self._agent(max_subagent_depth=1)
+        sandbox = MontySandbox()
+        registry = {"subagent_0": sandbox.fork(copy_repl=True)}
+        tools = agent._build_subagent_tools(sandbox, registry, [0], {"adopted": False})
+        out = (await tools["discard_subagent"](handle="subagent_0")).get_json()
+        self.assertEqual(out, {"discarded": "subagent_0"})
+        self.assertNotIn("subagent_0", registry)
+
+    # -- spawn end-to-end (mocked LM) ----------------------------------------
+
+    @patch("litellm.acompletion")
+    async def test_spawn_runs_subagent_on_isolated_fork(self, mock_completion):
+        # The subagent's single snippet sets a REPL var, writes a file, submits.
+        snippet = (
+            "import asyncio\n"
+            "import pathlib\n"
+            "subvar = 7\n"
+            "pathlib.Path('/sub.txt').write_text('hi from sub')\n"
+            "async def main():\n"
+            "    await submit(result={'answer': 'computed subvar'})\n"
+            "asyncio.run(main())\n"
+        )
+        mock_completion.side_effect = lambda *a, **k: _exec_tool_call(snippet)
+
+        agent = self._agent(max_subagent_depth=1)
+        sandbox = MontySandbox()
+        await sandbox.run("parentvar = 1")
+        registry = {}
+        tools = agent._build_subagent_tools(sandbox, registry, [0], {"adopted": False})
+
+        out = (await tools["spawn_subagents"](tasks=["do the thing"])).get_json()
+        subs = out["subagents"]
+        self.assertEqual(len(subs), 1)
+        sub = subs[0]
+        self.assertEqual(sub["handle"], "subagent_0")
+        self.assertEqual(sub["result"], "computed subvar")
+        self.assertIn("/sub.txt", [w["path"] for w in sub["diff"]["written"]])
+        # Parent sandbox is untouched until merge.
+        self.assertIn("error", await sandbox.read_file("/sub.txt"))
+        self.assertFalse((await sandbox.run("print(subvar)")).ok)
+        # The fork carries the subagent's REPL var and files.
+        fork = registry["subagent_0"]
+        self.assertIn("7", (await fork.run("print(subvar)")).stdout)

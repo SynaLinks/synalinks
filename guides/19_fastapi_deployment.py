@@ -110,12 +110,11 @@ The right pattern is **two steps**:
    ```
 
    ```python
-   # Or, equivalently, from a notebook / REPL:
-   import asyncio
-   from guides.fastapi_deployment_19 import (
-       build_and_save_program, PROGRAM_PATH,
-   )
-   asyncio.run(build_and_save_program(PROGRAM_PATH))
+   # Or, equivalently, from a notebook / REPL. (The module name starts
+   # with a digit, so import it via importlib rather than `import`.)
+   import asyncio, importlib
+   mod = importlib.import_module("guides.19_fastapi_deployment")
+   asyncio.run(mod.build_and_save_program(mod.PROGRAM_PATH))
    ```
 
    That writes `math_agent.json` to disk.

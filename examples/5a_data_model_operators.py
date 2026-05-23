@@ -152,9 +152,9 @@ asyncio.run(main())
 
 ## Program Visualizations
 
-![concatenation](https://synalinks.github.io/synalinks/assets/examples/concatenation.png)
-![logical_or](https://synalinks.github.io/synalinks/assets/examples/logical_or.png)
-![logical_and](https://synalinks.github.io/synalinks/assets/examples/logical_and.png)
+![concatenation](../assets/examples/concatenation.png)
+![logical_or](../assets/examples/logical_or.png)
+![logical_and](../assets/examples/logical_and.png)
 
 ## API References
 

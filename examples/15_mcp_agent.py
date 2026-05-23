@@ -87,7 +87,7 @@ outputs = await synalinks.FunctionCallingAgent(
 
 ## Program Visualization
 
-![mcp_agent](https://synalinks.github.io/synalinks/assets/examples/mcp_agent.png)
+![mcp_agent](../assets/examples/mcp_agent.png)
 
 ## API References
 

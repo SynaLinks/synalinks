@@ -69,7 +69,7 @@ the **last** `Generator` of your pipeline.
 
 ## Program Visualization
 
-![simple_chatbot](https://synalinks.github.io/synalinks/assets/examples/simple_chatbot.png)
+![simple_chatbot](../assets/examples/simple_chatbot.png)
 
 ## API References
 

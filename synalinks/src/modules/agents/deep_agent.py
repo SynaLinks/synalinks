@@ -1,11 +1,16 @@
 # License Apache 2.0: (c) 2025-2026 Yoan Sallami (Synalinks Team)
 
+import asyncio
 import json
 from pathlib import Path
+from typing import Dict
 from typing import List
 from typing import Optional
 
 from synalinks.src.api_export import synalinks_export
+from synalinks.src.backend import ChatMessage
+from synalinks.src.backend import ChatMessages
+from synalinks.src.backend import ChatRole
 from synalinks.src.backend import SymbolicDataModel
 from synalinks.src.backend import is_strictly_chat_messages
 from synalinks.src.modules.agents.agent_utils import InputsSummary
@@ -70,6 +75,72 @@ Notes:
   `json.loads(pathlib.Path(inputs_file).read_text())`. The sandbox has no
   `open()`, and `json` provides only `loads` / `dumps` (no `json.load`),
   so `json.load(open(...))` will not work.""".strip()
+
+
+def get_subagent_tools_guidance() -> str:
+    """Guidance appended to the instructions when subagents are enabled."""
+    return """
+You can delegate work to parallel subagents, each on its own isolated
+branch (a copy-on-write fork) of the filesystem:
+- `spawn_subagents(tasks)`: launch one subagent per task string. Each
+  subagent sees the files you see *now* and may freely read/write/edit/
+  delete them, but its changes stay on its own branch — they never touch
+  your filesystem. Subagents run concurrently, so use this to parallelize
+  independent exploration or edits. Returns a `handle` and a `diff`
+  (its pending changes) per subagent.
+- `merge_subagent(handle, paths=None, force=False)`: after reviewing a
+  subagent's `diff`, fold its changes into your filesystem (pass `paths` to
+  take only a subset). A path you also changed since spawning is a conflict
+  and is refused (reported in `conflicts` / `skipped`); pass `force=True`
+  to apply it anyway (the subagent's version wins).
+- `discard_subagent(handle)`: drop a subagent's branch unmerged.
+Nothing a subagent does affects your files until you `merge_subagent` it.
+""".strip()
+
+
+def get_subagent_instructions() -> str:
+    """System instructions for a spawned subagent (depth >= 1)."""
+    return """
+You are a subagent working on a private, isolated branch of a sandboxed,
+copy-on-write filesystem. The files you see were inherited from the parent
+agent at the moment you were spawned; your edits stay on your branch and
+affect no one else. Available tools: read_file, list_files, search_files,
+write_file, edit_file, run_python_code, run_python_file.
+
+Plan:
+1. Explore with `list_files` / `search_files` / `read_file`.
+2. Make the changes your task requires with `edit_file` / `write_file`,
+   or run code with `run_python_code` / `run_python_file`.
+3. Stop and report concisely what you did and what you changed — the parent
+   agent reviews your branch and decides whether to keep it.
+
+Notes:
+- The filesystem is copy-on-write: edits land in an in-memory overlay.
+- Paths are rooted at the workspace; `..` cannot escape it.
+""".strip()
+
+
+def _final_answer_text(output) -> str:
+    """Extract a subagent's final answer text from its (no-schema) output.
+
+    A no-schema agent returns a ``ChatMessages`` data model; its last
+    message's ``content`` is the final answer. Falls back to a JSON dump
+    for any other shape so the parent always gets a string.
+    """
+    if output is None:
+        return ""
+    data = output.get_json() if hasattr(output, "get_json") else output
+    if isinstance(data, dict):
+        messages = data.get("messages")
+        if messages:
+            content = (
+                messages[-1].get("content") if isinstance(messages[-1], dict) else None
+            )
+            if isinstance(content, str):
+                return content
+            return "" if content is None else json.dumps(content, ensure_ascii=False)
+        return json.dumps(data, ensure_ascii=False)
+    return str(data)
 
 
 @synalinks_export(
@@ -146,6 +217,29 @@ class DeepAgent(Module):
         tools (list): Additional :class:`Tool` instances (or plain async
             functions) to expose alongside the built-in tools. Names must
             not start with ``_`` or collide with built-ins.
+        sandbox (Sandbox): Optional ready-made sandbox to operate on instead
+            of building one from ``workdir`` — e.g. a :meth:`Sandbox.fork`
+            of another agent's filesystem. When given, ``workdir`` is used
+            only for the default instructions text.
+        max_subagent_depth (int): When ``> 0``, the agent gains
+            ``spawn_subagents`` / ``merge_subagent`` / ``discard_subagent``
+            tools, letting the LM run subagents in parallel — each on an
+            isolated :meth:`Sandbox.fork` of the filesystem whose changes
+            only land on an explicit ``merge_subagent``. The value caps
+            nesting: ``1`` (the recommended setting) lets this agent spawn
+            subagents that cannot themselves spawn; ``2`` allows one more
+            level, and so on. Defaults to ``0`` (subagents disabled —
+            backward-compatible). Requires a fork-capable sandbox
+            (``MontySandbox`` is).
+
+            Subagent forks here are **filesystem branches** (each gets a
+            fresh interpreter), so across parallel subagents you can fold
+            back **all** their file changes. Folding back Python REPL state
+            (variables/functions/imports) across subagents is a
+            :class:`RecursiveLanguageModelAgent` feature — and limited to one
+            subagent there, because Monty serializes the REPL namespace only
+            as a whole (it can't union parallel namespaces). That is a
+            backend constraint, not a design shortcut.
         schema (dict): JSON schema for the final answer.
         data_model (DataModel): DataModel for the final answer.
             Mutually exclusive with ``schema``.
@@ -185,6 +279,9 @@ class DeepAgent(Module):
         workdir: Optional[str] = None,
         timeout: float = 30.0,
         tools: Optional[List] = None,
+        sandbox=None,
+        max_subagent_depth: int = 0,
+        _subagent_depth: int = 0,
         schema=None,
         data_model=None,
         language_model=None,
@@ -222,6 +319,17 @@ class DeepAgent(Module):
             raise ValueError(f"`timeout` must be a positive number, got {timeout!r}")
         self.timeout = float(timeout)
 
+        if not isinstance(max_subagent_depth, int) or max_subagent_depth < 0:
+            raise ValueError(
+                "`max_subagent_depth` must be a non-negative int, got "
+                f"{max_subagent_depth!r}"
+            )
+        self.max_subagent_depth = max_subagent_depth
+        self._subagent_depth = _subagent_depth
+        # Subagent delegation is offered only while we may still go one level
+        # deeper, so the deepest subagents can't fan out endlessly.
+        self._subagents_enabled = self._subagent_depth < self.max_subagent_depth
+
         self.language_model = _get_lm(language_model)
 
         if not schema and data_model:
@@ -230,6 +338,8 @@ class DeepAgent(Module):
 
         if instructions is None:
             instructions = get_default_instructions(self.workdir)
+        if self._subagents_enabled:
+            instructions = instructions + "\n\n" + get_subagent_tools_guidance()
         self.instructions = instructions
         self.final_instructions = final_instructions
 
@@ -247,8 +357,18 @@ class DeepAgent(Module):
 
         # The sandbox IS the filesystem the tools operate on: reads fall
         # through to the workdir, writes/edits/code stay host-safe in the
-        # overlay. Inspect via `self.sandbox.changes()` / `.journal()`.
-        self.sandbox = MontySandbox(workdir=self.workdir, timeout=self.timeout)
+        # overlay. Inspect via `self.sandbox.changes()` / `.journal()`. A
+        # caller (or this agent, when spawning a subagent) may supply a
+        # ready-made sandbox — e.g. a `fork()` of a parent's filesystem.
+        self.sandbox = (
+            sandbox
+            if sandbox is not None
+            else MontySandbox(workdir=self.workdir, timeout=self.timeout)
+        )
+        # Subagent branches (forks) awaiting the parent's review, keyed by
+        # handle; reset per `call()`, populated by `spawn_subagents`.
+        self._subagents: Dict[str, object] = {}
+        self._subagent_counter = 0
         # Overlay path the full (data) inputs are written to, resolved once on
         # first use so it can't shadow a workdir file (see `_materialize_inputs`).
         self._inputs_path: Optional[str] = None
@@ -261,6 +381,12 @@ class DeepAgent(Module):
             self.sandbox.run_python_code,
             self.sandbox.run_python_file,
         ]
+        if self._subagents_enabled:
+            builtin_fns += [
+                self.spawn_subagents,
+                self.merge_subagent,
+                self.discard_subagent,
+            ]
         builtin_tools = [Tool(fn) for fn in builtin_fns]
         builtin_names = {t.name for t in builtin_tools}
 
@@ -320,8 +446,161 @@ class DeepAgent(Module):
         return summarize_inputs(inputs_json, inputs_file=self._inputs_path)
 
     async def call(self, inputs, training=False):
+        # Subagent branches are scoped to a single turn: a handle from a
+        # previous call must not survive into the next one.
+        self._subagents = {}
+        self._subagent_counter = 0
         inputs = await self._materialize_inputs(inputs)
         return await self.agent(inputs, training=training)
+
+    @staticmethod
+    def _coerce_task(task) -> str:
+        """Normalize one ``spawn_subagents`` task entry to an instruction string."""
+        if isinstance(task, dict):
+            return (
+                task.get("task")
+                or task.get("instructions")
+                or task.get("prompt")
+                or json.dumps(task, ensure_ascii=False)
+            )
+        return str(task)
+
+    async def spawn_subagents(self, tasks: List[str]) -> dict:
+        """Run subagents in parallel, each on an isolated branch of the filesystem.
+
+        Each task is handed to a fresh subagent working on its own
+        copy-on-write fork of the *current* filesystem: it can read every
+        file you see now and freely write, edit or delete, but its changes
+        are isolated and do NOT affect your filesystem. Subagents run
+        concurrently. Nothing is applied automatically — review each
+        returned ``diff`` and then call ``merge_subagent(handle)`` to fold
+        the changes you want into your filesystem (or
+        ``discard_subagent(handle)`` to drop a branch).
+
+        Args:
+            tasks (list): One instruction string per subagent describing
+                what that subagent should accomplish.
+
+        Returns:
+            dict: ``subagents`` — a list of ``{handle, task, result, diff}``
+            (``diff`` is the subagent's pending ``{written, deleted}``
+            changes), or ``{handle, task, error}`` for a subagent that
+            failed; plus a top-level ``error`` when ``tasks`` is empty.
+        """
+        prompts = [self._coerce_task(t) for t in (tasks or [])]
+        if not prompts:
+            return {"error": "no tasks provided"}
+
+        # Local imports: agent modules avoid importing `Program` at module
+        # scope to sidestep package-init import cycles.
+        from synalinks.src.modules.core.input_module import Input
+        from synalinks.src.programs.program import Program
+
+        async def run_one(index: int, prompt: str):
+            fork = self.sandbox.fork(name=f"{self.name}_sub{index}")
+            subagent = DeepAgent(
+                sandbox=fork,
+                language_model=self.language_model,
+                tools=self.extra_tools,
+                instructions=get_subagent_instructions(),
+                temperature=self.temperature,
+                reasoning_effort=self.reasoning_effort,
+                use_chain_of_thought=self.use_chain_of_thought,
+                max_iterations=self.max_iterations,
+                max_subagent_depth=self.max_subagent_depth,
+                _subagent_depth=self._subagent_depth + 1,
+                return_inputs_with_trajectory=False,
+                autonomous=True,
+                name=f"{self.name}_sub{index}",
+            )
+            # Run the subagent through a Program — the canonical execution
+            # path. A direct eager call would re-run the agent's
+            # `compute_output_spec` on concrete inputs (extra throwaway LM
+            # calls); building once with a symbolic Input keeps that step
+            # LM-free, so the subagent costs the same as a normal DeepAgent.
+            inputs = Input(data_model=ChatMessages)
+            outputs = await subagent(inputs)
+            program = Program(
+                inputs=inputs,
+                outputs=outputs,
+                name=f"{self.name}_sub{index}_program",
+            )
+            messages = ChatMessages(
+                messages=[ChatMessage(role=ChatRole.USER, content=prompt)]
+            )
+            output = await program(messages)
+            return fork, _final_answer_text(output)
+
+        results = await asyncio.gather(
+            *(run_one(i, p) for i, p in enumerate(prompts)),
+            return_exceptions=True,
+        )
+
+        report = []
+        for prompt, result in zip(prompts, results):
+            handle = f"subagent_{self._subagent_counter}"
+            self._subagent_counter += 1
+            if isinstance(result, Exception):
+                report.append(
+                    {
+                        "handle": handle,
+                        "task": prompt,
+                        "error": f"{type(result).__name__}: {result}",
+                    }
+                )
+                continue
+            fork, answer = result
+            self._subagents[handle] = fork
+            report.append(
+                {
+                    "handle": handle,
+                    "task": prompt,
+                    "result": answer,
+                    "diff": fork.diff(),
+                }
+            )
+        return {"subagents": report}
+
+    async def merge_subagent(
+        self, handle: str, paths: Optional[List[str]] = None, force: bool = False
+    ) -> dict:
+        """Apply a subagent's filesystem changes onto your own filesystem.
+
+        Folds the writes and deletions a subagent made on its branch into
+        your filesystem. The handle stays valid afterwards, so you can merge
+        a different subset later. A path you also changed since spawning is a
+        conflict: it is **refused** (reported under ``conflicts`` /
+        ``skipped`` and left as-is) unless you pass ``force=True``, which
+        applies the subagent's version (last writer wins).
+
+        Args:
+            handle (str): A handle returned by ``spawn_subagents``.
+            paths (list): Optional subset of virtual paths to merge; omit to
+                merge all of the subagent's changes.
+            force (bool): Apply conflicting paths instead of refusing them.
+                Defaults to false.
+
+        Returns:
+            dict: ``{written, deleted, conflicts, skipped}`` virtual paths, or
+            ``error`` for an unknown handle.
+        """
+        fork = self._subagents.get(handle)
+        if fork is None:
+            return {"error": f"unknown subagent handle: {handle!r}"}
+        return self.sandbox.merge(fork, paths=paths, force=force)
+
+    async def discard_subagent(self, handle: str) -> dict:
+        """Drop a subagent's branch without applying any of its changes.
+
+        Args:
+            handle (str): A handle returned by ``spawn_subagents``.
+
+        Returns:
+            dict: ``{discarded: handle}``, or ``error`` for an unknown handle.
+        """
+        if self._subagents.pop(handle, None) is None:
+            return {"error": f"unknown subagent handle: {handle!r}"}
+        return {"discarded": handle}
 
     async def compute_output_spec(self, inputs, training=False):
         # Mirror the runtime shape: data inputs become an InputsSummary; only a
@@ -337,6 +616,7 @@ class DeepAgent(Module):
         config = {
             "workdir": self.workdir,
             "timeout": self.timeout,
+            "max_subagent_depth": self.max_subagent_depth,
             "schema": self.schema,
             "prompt_template": self.prompt_template,
             "examples": self.examples,

@@ -382,7 +382,7 @@ def plot_program(
 
     Example:
 
-    ![chain_of_thought.png](https://synalinks.github.io/synalinks/assets/chain_of_thought.png)
+    ![chain_of_thought.png](../../assets/chain_of_thought.png)
 
     Args:
         program (Program): A Synalinks program instance

@@ -269,11 +269,8 @@ the best hyperparameters and evaluate it on a third split** that
 was held out from the entire search:
 
 ```python
-async def _final_eval():
-    program = await build_program(best_hp)
-    return await program.evaluate(x=x_test, y=y_test, batch_size=4, verbose=0)
-
-metrics = run_maybe_nested(_final_eval())
+program = await build_program(best_hp)
+metrics = await program.evaluate(x=x_test, y=y_test, batch_size=4, verbose=0)
 print(f"Test reward: {metrics.get('reward'):.3f}")
 ```
 

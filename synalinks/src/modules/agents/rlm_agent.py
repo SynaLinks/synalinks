@@ -3,6 +3,9 @@
 # License Apache 2.0: (c) 2025-2026 Yoan Sallami (Synalinks Team)
 
 import asyncio
+import json
+from typing import List
+from typing import Optional
 
 import jsonschema
 from jsonschema import ValidationError
@@ -368,6 +371,56 @@ def _adapt_tool_for_sandbox(tool):
     return adapter
 
 
+def get_subagent_tools_guidance() -> str:
+    """Guidance appended to the instructions when subagents are enabled."""
+    return """
+Besides `run_python_code`, you can delegate to parallel subagents, each on an
+isolated *fork* of the sandbox that inherits your current REPL state
+(variables, functions, imports) AND files:
+- `spawn_subagents(tasks)`: launch one subagent per task string. Each runs
+  concurrently on its own fork; its REPL/file changes stay on that fork and do
+  NOT affect you. Returns a `handle`, the subagent's `result`, and a file
+  `diff` per subagent. Call it as a top-level tool (not from inside a snippet).
+- `merge_subagent(handle, paths=None, force=False, adopt_repl=False)`: fold a
+  subagent's file changes into your sandbox (paths/force as for files).
+  `adopt_repl=True` ALSO adopts that subagent's whole Python namespace
+  (variables/functions/imports) — all-or-nothing, and only one subagent's REPL
+  can be adopted per batch (a second would overwrite the first).
+- `discard_subagent(handle)`: drop a subagent's fork unmerged.
+Nothing a subagent does affects your sandbox until you `merge_subagent` it.
+""".strip()
+
+
+def get_subagent_instructions() -> str:
+    """Instructions for a spawned RLM subagent (depth >= 1)."""
+    return """
+You are a subagent working on a private fork of a persistent Python sandbox
+that inherited the parent's variables, functions, imports and files. Solve your
+task by calling `run_python_code(code=...)` iteratively, reading `inputs` and
+using the inherited state as needed, and call `submit(result={"answer": "..."})`
+from inside a snippet to finish. Your REPL and file changes stay on your fork;
+the parent reviews and decides whether to keep them, so do the work your task
+requires and report concisely what you computed and changed.
+""".strip()
+
+
+def _subagent_answer(output) -> str:
+    """Extract a subagent's final answer text from its (schemaless) output."""
+    if output is None:
+        return ""
+    data = output.get_json() if hasattr(output, "get_json") else output
+    if isinstance(data, dict):
+        messages = data.get("messages")
+        if messages:
+            last = messages[-1]
+            content = last.get("content") if isinstance(last, dict) else None
+            if isinstance(content, str):
+                return content
+            return "" if content is None else json.dumps(content, ensure_ascii=False)
+        return json.dumps(data, ensure_ascii=False)
+    return str(data)
+
+
 @synalinks_export(
     [
         "synalinks.modules.RecursiveLanguageModelAgent",
@@ -558,6 +611,22 @@ class RecursiveLanguageModelAgent(Module):
             ``(timeout=..., name=...)`` works; register custom
             subclasses with ``@register_synalinks_serializable`` so
             they round-trip through ``get_config`` / ``from_config``.
+        max_subagent_depth (int): When ``> 0``, the agent gains
+            ``spawn_subagents`` / ``merge_subagent`` / ``discard_subagent``
+            tools (called between snippets, with the REPL idle, so they can
+            fork it). Each subagent runs in parallel on a
+            :meth:`MontySandbox.fork` that inherits this agent's current REPL
+            state (variables, functions, imports) *and* files; its work only
+            lands on an explicit ``merge_subagent``. ``1`` (recommended) lets
+            this agent spawn subagents that cannot themselves spawn; higher
+            values allow nesting. Defaults to ``0`` (disabled).
+
+            Across parallel subagents you can fold back **all** their file
+            changes, but only **one** subagent's REPL namespace per
+            ``spawn_subagents`` batch (via ``merge_subagent(..., adopt_repl=
+            True)``): Monty serializes the REPL only as a whole, so parallel
+            namespaces can't be unioned. That is a backend constraint, not a
+            design shortcut.
         name (str): Optional. The name of the module.
         description (str): Optional. The description of the module.
     """
@@ -588,10 +657,23 @@ class RecursiveLanguageModelAgent(Module):
         return_inputs_with_trajectory=True,
         sandbox=None,
         sandbox_type=None,
+        max_subagent_depth=0,
+        _subagent_depth=0,
         name=None,
         description=None,
     ):
         super().__init__(name=name, description=description)
+
+        if not isinstance(max_subagent_depth, int) or max_subagent_depth < 0:
+            raise ValueError(
+                "`max_subagent_depth` must be a non-negative int, got "
+                f"{max_subagent_depth!r}"
+            )
+        self.max_subagent_depth = max_subagent_depth
+        self._subagent_depth = _subagent_depth
+        # Subagent delegation is offered only while we may still go one level
+        # deeper, so the deepest subagents can't fan out endlessly.
+        self._subagents_enabled = self._subagent_depth < self.max_subagent_depth
 
         if not schema and data_model:
             schema = data_model.get_schema()
@@ -620,6 +702,12 @@ class RecursiveLanguageModelAgent(Module):
                 )
             else:
                 instructions = get_default_instructions()
+        if self._subagents_enabled:
+            # Idempotent: a serialized agent round-trips its post-append
+            # instructions back through __init__, so don't append twice.
+            guidance = get_subagent_tools_guidance()
+            if guidance not in instructions:
+                instructions = instructions + "\n\n" + guidance
         self.instructions = instructions
         self.final_instructions = final_instructions or instructions
 
@@ -704,9 +792,20 @@ class RecursiveLanguageModelAgent(Module):
         reserved, even when ``recursive=False``, so that tool naming
         stays stable across the two modes and a user tool can't quietly
         shadow a helper name that would reappear if ``recursive`` is
-        flipped back on.
+        flipped back on. The subagent helpers are reserved too, for the
+        same stability across ``max_subagent_depth`` settings.
         """
-        return frozenset({"submit", "llm_query", "llm_query_batched"})
+        return frozenset(
+            {
+                "submit",
+                "llm_query",
+                "llm_query_batched",
+                "run_python_code",
+                "spawn_subagents",
+                "merge_subagent",
+                "discard_subagent",
+            }
+        )
 
     def _build_extra_call_tools(self) -> dict:
         """Build the per-call recursive helpers when ``recursive=True``.
@@ -786,6 +885,169 @@ class RecursiveLanguageModelAgent(Module):
 
         return Tool(run_python_code, name="run_python_code")
 
+    def _build_subagent_tools(self, sandbox, registry, counter, repl_state):
+        """Build the per-call subagent tools (spawn / merge / discard).
+
+        These are *native* tools the LM calls directly — never from inside a
+        ``run_python_code`` snippet — so the sandbox REPL is idle when they
+        fork or merge it (a busy REPL can't be dumped). The closures capture
+        the resolved ``sandbox``, a per-call ``registry`` (handle -> fork),
+        a handle ``counter``, and ``repl_state`` tracking the single REPL
+        adoption allowed per turn.
+        """
+        from synalinks.src.modules.core.input_module import Input
+        from synalinks.src.programs.program import Program
+
+        async def spawn_subagents(tasks: List[str]) -> dict:
+            """Run subagents in parallel, each on an isolated fork of the sandbox.
+
+            Each task is handed to a fresh subagent on its own fork that
+            inherits your current REPL state (variables, functions, imports)
+            and files. Subagents run concurrently; their changes are isolated.
+            Review each returned ``diff`` then ``merge_subagent(handle)`` to
+            fold a subagent's work into your sandbox.
+
+            Args:
+                tasks (list): One instruction string per subagent describing
+                    what that subagent should accomplish.
+
+            Returns:
+                dict: ``subagents`` — a list of ``{handle, task, result,
+                diff}`` (or ``{handle, task, error}`` for a failed subagent),
+                or a top-level ``error`` when ``tasks`` is empty.
+            """
+            prompts = [str(t) for t in (tasks or [])]
+            if not prompts:
+                return {"error": "no tasks provided"}
+
+            async def run_one(index, prompt):
+                fork = sandbox.fork(copy_repl=True, name=f"{self.name}_sub{index}")
+                subagent = RecursiveLanguageModelAgent(
+                    language_model=self.language_model,
+                    sub_language_model=self.sub_language_model,
+                    sandbox=fork,
+                    recursive=self.recursive,
+                    instructions=get_subagent_instructions(),
+                    temperature=self.temperature,
+                    reasoning_effort=self.reasoning_effort,
+                    use_chain_of_thought=self.use_chain_of_thought,
+                    max_iterations=self.max_iterations,
+                    max_llm_calls=self.max_llm_calls,
+                    max_output_chars=self.max_output_chars,
+                    max_subagent_depth=self.max_subagent_depth,
+                    _subagent_depth=self._subagent_depth + 1,
+                    return_inputs_with_trajectory=False,
+                    autonomous=True,
+                    name=f"{self.name}_sub{index}",
+                )
+                # Run through a Program (the canonical path) so the subagent's
+                # build is LM-free and it isn't double-invoked.
+                inp = Input(data_model=ChatMessages)
+                out = await subagent(inp)
+                program = Program(
+                    inputs=inp, outputs=out, name=f"{self.name}_sub{index}_prog"
+                )
+                messages = ChatMessages(
+                    messages=[ChatMessage(role=ChatRole.USER, content=prompt)]
+                )
+                result = await program(messages)
+                return fork, _subagent_answer(result)
+
+            results = await asyncio.gather(
+                *(run_one(i, p) for i, p in enumerate(prompts)),
+                return_exceptions=True,
+            )
+            report = []
+            for prompt, res in zip(prompts, results):
+                handle = f"subagent_{counter[0]}"
+                counter[0] += 1
+                if isinstance(res, Exception):
+                    report.append(
+                        {
+                            "handle": handle,
+                            "task": prompt,
+                            "error": f"{type(res).__name__}: {res}",
+                        }
+                    )
+                    continue
+                fork, answer = res
+                registry[handle] = fork
+                report.append(
+                    {
+                        "handle": handle,
+                        "task": prompt,
+                        "result": answer,
+                        "diff": fork.diff(),
+                    }
+                )
+            return {"subagents": report}
+
+        async def merge_subagent(
+            handle: str,
+            paths: Optional[List[str]] = None,
+            force: bool = False,
+            adopt_repl: bool = False,
+        ) -> dict:
+            """Fold a subagent's changes into your sandbox.
+
+            Merges the subagent's file changes (``paths`` / ``force`` as for
+            files). With ``adopt_repl=True``, also adopts the subagent's whole
+            Python namespace (variables/functions/imports) — only ONE
+            subagent's REPL can be adopted per ``spawn_subagents`` batch (a
+            second would overwrite the first).
+
+            Args:
+                handle (str): A handle returned by ``spawn_subagents``.
+                paths (list): Optional subset of virtual paths to merge.
+                force (bool): Apply conflicting file paths instead of
+                    refusing them.
+                adopt_repl (bool): Also adopt the subagent's whole REPL
+                    namespace.
+
+            Returns:
+                dict: ``{written, deleted, conflicts, skipped, repl_adopted}``,
+                or ``error`` for an unknown handle.
+            """
+            fork = registry.get(handle)
+            if fork is None:
+                return {"error": f"unknown subagent handle: {handle!r}"}
+            do_repl = bool(adopt_repl)
+            note = None
+            if do_repl and repl_state["adopted"]:
+                do_repl = False
+                note = (
+                    "REPL already adopted from another subagent this turn; "
+                    "merged files only (a second adoption would overwrite the "
+                    "first)."
+                )
+            report = sandbox.merge(fork, paths=paths, force=force, repl=do_repl)
+            if do_repl:
+                repl_state["adopted"] = True
+            if note:
+                report = dict(report)
+                report["repl_warning"] = note
+            return report
+
+        async def discard_subagent(handle: str) -> dict:
+            """Drop a subagent's fork without applying any of its changes.
+
+            Args:
+                handle (str): A handle returned by ``spawn_subagents``.
+
+            Returns:
+                dict: ``{discarded: handle}``, or ``error`` for an unknown
+                handle.
+            """
+            if registry.pop(handle, None) is None:
+                return {"error": f"unknown subagent handle: {handle!r}"}
+            return {"discarded": handle}
+
+        return {
+            "spawn_subagents": Tool(spawn_subagents, name="spawn_subagents"),
+            "merge_subagent": Tool(merge_subagent, name="merge_subagent"),
+            "discard_subagent": Tool(discard_subagent, name="discard_subagent"),
+        }
+
     async def call(self, inputs, training=False, sandbox=None):
         if not inputs:
             return None
@@ -856,11 +1118,23 @@ class RecursiveLanguageModelAgent(Module):
         await sandbox.run("inputs = _rlm_inputs", inputs={"_rlm_inputs": inputs_json})
         run_tool = self._build_run_python_code_tool(sandbox)
 
+        # Subagent tools (spawn / merge / discard) are *native* tools the LM
+        # calls directly alongside run_python_code — never from inside a
+        # snippet — so the REPL is idle when they fork/merge it. Built fresh
+        # per call with a private fork registry and a single-REPL-adoption guard.
+        subagent_registry = {}
+        extra_native_tools = {}
+        if self._subagents_enabled:
+            extra_native_tools = self._build_subagent_tools(
+                sandbox, subagent_registry, [0], {"adopted": False}
+            )
+        native_tools = [run_tool, *extra_native_tools.values()]
+
         iterations = self.max_iterations if self.autonomous else 1
         submitted_final = None
 
         for _ in range(iterations):
-            tool_calls = await self.code_generator(trajectory, tools=[run_tool])
+            tool_calls = await self.code_generator(trajectory, tools=native_tools)
             if not tool_calls:
                 break
             # The generator returns an assistant ChatMessage with native
@@ -887,12 +1161,25 @@ class RecursiveLanguageModelAgent(Module):
                 tool_name = tool_call.get("name")
                 tool_args = tool_call.get("arguments") or {}
                 tool_call_id = tool_call.get("id")
-                if tool_name != "run_python_code":
+                if tool_name in extra_native_tools:
+                    # spawn_subagents / merge_subagent / discard_subagent —
+                    # native tools, invoked with the REPL idle.
+                    try:
+                        result = await extra_native_tools[tool_name](**tool_args)
+                        content = (
+                            result.get_json() if hasattr(result, "get_json") else result
+                        )
+                    except Exception as e:
+                        content = {"error": f"{type(e).__name__}: {e}"}
+                elif tool_name != "run_python_code":
+                    callable_tools = ", ".join(
+                        ["'run_python_code'", *(f"'{n}'" for n in extra_native_tools)]
+                    )
                     content = {
                         "error": (
-                            f"Unknown tool '{tool_name}'. The only callable "
-                            "tool is 'run_python_code'; everything else is a "
-                            "sandbox function reachable from your snippet."
+                            f"Unknown tool '{tool_name}'. Callable tools are "
+                            f"{callable_tools}; everything else is a sandbox "
+                            "function reachable from your snippet."
                         )
                     }
                 else:
@@ -1085,6 +1372,7 @@ class RecursiveLanguageModelAgent(Module):
             "max_output_chars": self.max_output_chars,
             "return_inputs_with_trajectory": self.return_inputs_with_trajectory,
             "sandbox_type": get_registered_name(self.sandbox_type),
+            "max_subagent_depth": self.max_subagent_depth,
             "name": self.name,
             "description": self.description,
         }

@@ -154,7 +154,7 @@ Two extras worth knowing:
 - **`save_variables_only=True`** writes only the trainable JSON
   variables (`*.variables.json`) instead of the full program.
   Faster, smaller; reload with `program.load_variables(...)`
-  instead of `synalinks.programs.load_program(...)`.
+  instead of `synalinks.Program.load(...)`.
 - **`filepath` accepts Python format strings.** If you write
   `filepath="epoch_{epoch:02d}_{val_reward:.3f}.json"`, the
   values from `logs` are substituted at save time. This gives
@@ -299,7 +299,7 @@ class InstructionLogger(synalinks.callbacks.Callback):
     def on_epoch_end(self, epoch, logs=None):
         mod = self.program.get_module(self.module_name)
         # The current instruction text the LM is seeing:
-        instruction = mod.instruction.get()
+        instruction = mod.state.get("instructions")
         with open(self.out_path, "a") as f:
             f.write(f"epoch={epoch}\\n{instruction}\\n\\n")
 ```
@@ -309,9 +309,10 @@ Two rules of thumb when writing callbacks:
 1. **Read, do not write, mid-batch.** The `on_train_batch_*`
    hooks fire dozens of times per epoch. Anything heavier than a
    `print` belongs in `on_epoch_end` instead.
-2. **Mutate the program with care.** A callback *can* call
-   `self.program.set_variables(...)` and the change will take
-   effect; but every other callback in the list runs against the
+2. **Mutate the program with care.** A callback *can* mutate the
+   program's variables in place — e.g. call `variable.assign(...)` on
+   entries of `self.program.trainable_variables` — and the change will
+   take effect; but every other callback in the list runs against the
    mutated state too. Reserve direct mutation for callbacks
    designed to do so, like `EarlyStopping(restore_best_variables=True)`.
 

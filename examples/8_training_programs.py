@@ -81,7 +81,7 @@ program.load("checkpoint.program.json")
 
 ## Program Visualization
 
-![gsm8k_baseline](https://synalinks.github.io/synalinks/assets/examples/gsm8k_baseline.png)
+![gsm8k_baseline](../assets/examples/gsm8k_baseline.png)
 
 ## API References
 

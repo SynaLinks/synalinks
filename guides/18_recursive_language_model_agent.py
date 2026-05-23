@@ -26,13 +26,13 @@ Formally, A is a function:
 
 In English: A takes a question and some inputs, and it returns an
 answer. The implementation is a loop. On each turn A calls a single
-tool, `execute_async_python(python_code=...)`, with a small piece of
+tool, `run_python_code(code=...)`, with a small piece of
 Python code (a "**snippet**"). The snippet runs in a **sandbox** — a
 restricted Python environment — that exposes two helpers, called the
 **recursive primitives** `llm_query` and `llm_query_batched`, which
 forward sub-problems to a second language model M'. These primitives
 (and `submit`) are callables *inside* the sandbox, not separate tools:
-A reaches them only from the code it passes to `execute_async_python`.
+A reaches them only from the code it passes to `run_python_code`.
 Whatever the snippet prints or returns becomes an **observation** — a
 log line A can read on its next turn — and the loop continues.
 

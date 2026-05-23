@@ -427,9 +427,7 @@ model.
 
 ```python
 outputs = await synalinks.SelfCritique(
-    data_model=Answer,
     language_model=language_model,
-    reward=synalinks.LMAsJudge(language_model=language_model),
 )(inputs)
 ```
 

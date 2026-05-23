@@ -114,7 +114,7 @@ asyncio.run(main())
 
 ## Program Visualization
 
-![conditional_branches](https://synalinks.github.io/synalinks/assets/examples/conditional_branches.png)
+![conditional_branches](../assets/examples/conditional_branches.png)
 
 ## API References
 

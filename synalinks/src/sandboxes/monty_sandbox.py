@@ -775,6 +775,210 @@ class MontySandbox(Sandbox, pydantic_monty.AbstractOS):
             k: base64.b64decode(v) for k, v in (state.get("base") or {}).items()
         }
 
+    # -- branching (fork / diff / merge) --------------------------------
+
+    def _base_content(self, key: str) -> Optional[bytes]:
+        """Base (pre-overlay) bytes for ``key``, ignoring overlay/tombstones.
+
+        This is the "fork point" content for a forked child: what the file
+        held when the branch was taken. Used by :meth:`merge` for three-way
+        conflict detection.
+        """
+        if key in self._base_files:
+            return self._base_files[key]
+        host = self._host_path(key)
+        if host is not None and host.is_file():
+            try:
+                return host.read_bytes()
+            except OSError:
+                return None
+        return None
+
+    def _in_base(self, key: str) -> bool:
+        """Whether ``key`` existed in the base (pre-overlay) view."""
+        return self._base_content(key) is not None
+
+    def _effective_files(self) -> Dict[str, bytes]:
+        """Flatten the current view (base + overlay − tombstones) to bytes.
+
+        Materializes everything readable right now into a single
+        ``key -> bytes`` map, with overlay writes shadowing the base and
+        tombstoned paths removed — the snapshot a :meth:`fork` promotes
+        into its child's base.
+        """
+        files = self._base_snapshot()  # fresh dict: in-memory base + workdir reads
+        files.update(self._overlay)
+        for key in self._tombstones:
+            files.pop(key, None)
+        return files
+
+    def fork(
+        self, *, name: Optional[str] = None, copy_repl: bool = False
+    ) -> "MontySandbox":
+        """Return an isolated child branched off this sandbox's current state.
+
+        The parent's *effective* filesystem (base + overlay − deletions) is
+        flattened into the child's read-through **base**, and the child's
+        overlay starts empty. So the child sees exactly the files the
+        parent sees now, but every write/edit/delete the child makes lands
+        only in the child's overlay — the parent is never touched. Because
+        the overlay starts empty, :meth:`diff` on the child reports
+        precisely what the child changed (a clean merge boundary).
+
+        The child is self-contained (no host ``workdir`` coupling: its base
+        is in memory), so multiple forks of one parent can run concurrently
+        without racing on the disk.
+
+        Args:
+            name (str): Optional name for the child sandbox.
+            copy_repl (bool): When True, also copy the Python REPL namespace
+                (variables, imports, definitions) into the child. Defaults
+                to False — a forked subagent normally reasons from a clean
+                interpreter and only inherits the *files*.
+
+        Returns:
+            MontySandbox: an isolated branch of this sandbox.
+        """
+        child = MontySandbox(
+            timeout=self.timeout,
+            name=(
+                name if name is not None else (f"{self.name}_fork" if self.name else None)
+            ),
+            environ=self.environ,
+            external_functions=self.bound_functions,
+        )
+        child._base_files = self._effective_files()
+        child._dirs = {k for k in self._dirs if k not in self._tombstones}
+        if copy_repl:
+            child._repl = pydantic_monty.MontyRepl.load(self.dump())
+        return child
+
+    def diff(self) -> dict:
+        """Filesystem changes this sandbox made relative to its base.
+
+        For a sandbox produced by :meth:`fork`, this is exactly the patch
+        the child introduced since the fork point. Returns
+        ``{"written": [{"path", "kind", "size"}, ...], "deleted": [...]}``
+        where ``kind`` is ``"create"`` (new file) or ``"modify"`` (the path
+        existed in the base). Deletions of paths that never existed in the
+        base are omitted (they are no-ops). For the raw, transferable state
+        use :meth:`get_state`; this is the review-friendly summary.
+        """
+        written = [
+            {
+                "path": "/" + key,
+                "kind": "modify" if self._in_base(key) else "create",
+                "size": len(self._overlay[key]),
+            }
+            for key in sorted(self._overlay)
+        ]
+        deleted = sorted("/" + k for k in self._tombstones if self._in_base(k))
+        return {"written": written, "deleted": deleted}
+
+    def merge(
+        self,
+        other: "MontySandbox",
+        *,
+        paths: Optional[List[str]] = None,
+        force: bool = False,
+        repl: bool = False,
+    ) -> dict:
+        """Fold another (typically forked) sandbox's changes into this one.
+
+        Replays ``other``'s overlay writes and tombstone deletions onto this
+        sandbox through the normal mutators, so they land in this sandbox's
+        overlay and journal as if performed here.
+
+        A path that *this* sandbox also changed since the fork (one whose
+        content now differs from the fork point) is a **conflict**. By
+        default a conflicting path is **refused** — left untouched and
+        listed in both ``conflicts`` and ``skipped`` — while non-conflicting
+        changes still apply. Pass ``force=True`` to apply conflicting paths
+        too (last writer, ``other``, wins); they are still reported in
+        ``conflicts``. Pre-fork writes are the child's baseline and never
+        count as conflicts.
+
+        With ``repl=True`` this *also* adopts ``other``'s entire Python REPL
+        namespace (variables, functions, imports), replacing this sandbox's
+        namespace wholesale. Monty serializes the namespace only as a whole,
+        so this is all-or-nothing and last-writer-wins: any REPL changes made
+        *here* since the fork are overwritten, and adopting a second sandbox's
+        REPL would overwrite the first. Use it to fold back the namespace of a
+        single chosen branch.
+
+        Args:
+            other (MontySandbox): a sandbox, normally produced by
+                ``self.fork()``.
+            paths (list): Optional subset of virtual paths to merge. When
+                omitted, all of ``other``'s changes are merged.
+            force (bool): Apply conflicting paths instead of refusing them.
+                Defaults to False.
+            repl (bool): Also adopt ``other``'s whole REPL namespace
+                (variables, functions, imports). Defaults to False.
+
+        Returns:
+            dict: ``{"written", "deleted", "conflicts", "skipped",
+            "repl_adopted"}`` — the applied/deleted/conflicting/refused
+            virtual paths, and whether the REPL namespace was adopted.
+        """
+        selected = None if paths is None else {self._key(p) for p in paths}
+        written: List[str] = []
+        deleted: List[str] = []
+        conflicts: set = set()
+        skipped: set = set()
+
+        for key in sorted(other._overlay):
+            if selected is not None and key not in selected:
+                continue
+            content = other._overlay[key]
+            # Conflict iff this sandbox has diverged from the fork point
+            # (``other``'s base) for this path — i.e. someone changed it here
+            # since the branch was taken. Pre-fork writes are the child's
+            # baseline and are *not* conflicts.
+            if self._content(key) != other._base_content(key):
+                conflicts.add("/" + key)
+                if not force:
+                    skipped.add("/" + key)
+                    continue
+            kind = "modify" if self._is_file(key) else "create"
+            self._write(key, content)
+            self._log("write", key, kind=kind, size=len(content))
+            written.append("/" + key)
+
+        for key in sorted(other._tombstones):
+            if selected is not None and key not in selected:
+                continue
+            if self._content(key) is None:
+                continue  # nothing here to delete
+            if self._content(key) != other._base_content(key):
+                conflicts.add("/" + key)
+                if not force:
+                    skipped.add("/" + key)
+                    continue
+            self._overlay.pop(key, None)
+            self._tombstones.add(key)
+            self._log("delete", key)
+            deleted.append("/" + key)
+
+        for key in sorted(other._dirs):
+            if selected is not None and key not in selected:
+                continue
+            self._dirs.add(key)
+            self._tombstones.discard(key)
+
+        if repl:
+            # Whole-namespace adoption: Monty has no per-name access, so the
+            # only faithful transfer is loading `other`'s full REPL dump.
+            self._repl = pydantic_monty.MontyRepl.load(other.dump())
+
+        return {
+            "written": written,
+            "deleted": deleted,
+            "conflicts": sorted(conflicts),
+            "skipped": sorted(skipped),
+            "repl_adopted": bool(repl),
+        }
+
     # -- tool methods ---------------------------------------------------
     #
     # Overlay-backed implementations of the base ``Sandbox`` file tools,

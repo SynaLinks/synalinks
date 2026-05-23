@@ -614,20 +614,24 @@ class MontySandboxWorkdirStressTest(testing.TestCase):
         sb = MontySandbox(workdir=workdir, timeout=20)
 
         # 1. read base files through the overlay, then patch one in place.
-        r = await sb.run("""
+        r = await sb.run(
+            """
 from pathlib import Path
 assert Path('/README.md').read_text() == 'project readme'
 assert Path('/src/main.py').read_text().startswith('print')
 Path('/src/main.py').write_text('PATCHED')
-""")
+"""
+        )
         self.assertTrue(r.ok, r.error)
         # 2. create new files, including a freshly mkdir'd nested package.
-        r = await sb.run("""
+        r = await sb.run(
+            """
 from pathlib import Path
 Path('/src/new_module.py').write_text('Y=2')
 Path('/pkg/sub').mkdir(parents=True)
 Path('/pkg/sub/deep.py').write_text('Z=3')
-""")
+"""
+        )
         self.assertTrue(r.ok, r.error)
         # 3. delete a base file, 4. rename another.
         r = await sb.run("from pathlib import Path\nPath('/config.json').unlink()")
@@ -639,7 +643,8 @@ Path('/pkg/sub/deep.py').write_text('Z=3')
         self.assertTrue(r.ok, r.error)
 
         # The sandbox's own merged view is internally consistent.
-        r = await sb.run("""
+        r = await sb.run(
+            """
 from pathlib import Path
 checks = [
     Path('/src/main.py').read_text() == 'PATCHED',
@@ -652,7 +657,8 @@ checks = [
 ]
 print(all(checks))
 print(checks)
-""")
+"""
+        )
         self.assertTrue(r.ok, r.error)
         self.assertEqual(r.stdout.strip().split("\n")[0], "True", r.stdout)
 
@@ -679,14 +685,16 @@ print(checks)
 
     async def test_journal_captures_the_session_in_order(self):
         sb = MontySandbox(workdir=self._make_workdir(), timeout=20)
-        await sb.run("""
+        await sb.run(
+            """
 from pathlib import Path
 Path('/notes.txt').write_text('a')
 Path('/notes.txt').write_text('ab')
 Path('/d').mkdir()
 Path('/notes.txt').rename('/d/notes.txt')
 Path('/d/notes.txt').unlink()
-""")
+"""
+        )
         journal = sb.journal()
         self.assertEqual(
             [(e["action"], e["path"]) for e in journal],
@@ -705,7 +713,8 @@ Path('/d/notes.txt').unlink()
     async def test_bulk_generate_and_readback(self):
         workdir = self._make_workdir()
         sb = MontySandbox(workdir=workdir, timeout=20)
-        r = await sb.run("""
+        r = await sb.run(
+            """
 from pathlib import Path
 Path('/out').mkdir()
 for i in range(100):
@@ -713,7 +722,8 @@ for i in range(100):
 total = sum(int(Path(f'/out/f{i}.txt').read_text()) for i in range(100))
 print(total)
 print(len(list(Path('/out').iterdir())))
-""")
+"""
+        )
         self.assertTrue(r.ok, r.error)
         lines = r.stdout.strip().split("\n")
         self.assertEqual(lines[0], str(sum(range(100))))  # 4950, read back intact
@@ -727,19 +737,23 @@ print(len(list(Path('/out').iterdir())))
         workdir = self._make_workdir()
         before = self._snapshot(workdir)
         sb = MontySandbox(workdir=workdir, timeout=20)
-        await sb.run("""
+        await sb.run(
+            """
 from pathlib import Path
 Path('/PLAN.md').write_text('phase 1')
 Path('/config.json').unlink()
-""")
+"""
+        )
         # Serialize mid-session and resume on a fresh instance.
         restored = MontySandbox.from_config(sb.get_config())
-        r = await restored.run("""
+        r = await restored.run(
+            """
 from pathlib import Path
 print(Path('/PLAN.md').read_text())
 print(Path('/config.json').exists())
 print(Path('/README.md').read_text())
-""")
+"""
+        )
         self.assertTrue(r.ok, r.error)
         lines = r.stdout.strip().split("\n")
         self.assertEqual(lines[0], "phase 1")  # overlay write survived
@@ -759,10 +773,12 @@ print(Path('/README.md').read_text())
         await sb.run("from pathlib import Path\nPath('/config.json').unlink()")
         r = await sb.run("from pathlib import Path\nprint(Path('/config.json').exists())")
         self.assertEqual(r.stdout.strip(), "False")
-        await sb.run("""
+        await sb.run(
+            """
 from pathlib import Path
 Path('/config.json').write_text('{"version": 2}')
-""")
+"""
+        )
         r = await sb.run(
             "from pathlib import Path\nprint(Path('/config.json').read_text())"
         )
@@ -777,14 +793,16 @@ Path('/config.json').write_text('{"version": 2}')
         # globals over the merged overlay view (base + writes - deletes).
         workdir = self._make_workdir()
         sb = MontySandbox(workdir=workdir, timeout=20)
-        r = await sb.run("""
+        r = await sb.run(
+            """
 import asyncio
 from pathlib import Path
 Path('/src/extra.py').write_text('E=1')
 async def main():
     return await rglob('*.py')
 print(sorted(asyncio.run(main())))
-""")
+"""
+        )
         self.assertTrue(r.ok, r.error)
         # base src/main.py + src/util.py, plus the just-written extra.py
         self.assertEqual(
@@ -792,12 +810,14 @@ print(sorted(asyncio.run(main())))
             "['/src/extra.py', '/src/main.py', '/src/util.py']",
         )
         # Non-recursive glob scoped to a subdirectory via root=.
-        r = await sb.run("""
+        r = await sb.run(
+            """
 import asyncio
 async def main():
     return await glob('*.md', root='/docs')
 print(asyncio.run(main()))
-""")
+"""
+        )
         self.assertTrue(r.ok, r.error)
         self.assertEqual(r.stdout.strip(), "['/docs/intro.md']")
 
@@ -1067,3 +1087,204 @@ class MontySandboxToolMethodsTest(testing.TestCase):
             sb.run_python_file,
         ):
             self.assertFalse(Tool(method).name.startswith("_"))
+
+
+class MontySandboxBranchingTest(testing.TestCase):
+    def _workdir(self):
+        tmp = str(Path(tempfile.mkdtemp()).resolve())
+        (Path(tmp) / "config.json").write_text('{"debug": false}')
+        return tmp
+
+    async def test_fork_sees_parent_files_in_memory(self):
+        # A fork sees the parent's effective tree (workdir + overlay) but
+        # carries no host workdir coupling of its own.
+        workdir = self._workdir()  # contains config.json
+        parent = MontySandbox(workdir=workdir)
+        await parent.write_file("/notes.txt", "hello")
+
+        child = parent.fork()
+        self.assertIsNone(child.workdir)  # self-contained in-memory base
+        self.assertEqual(
+            (await child.read_file("/config.json"))["content"], '{"debug": false}'
+        )
+        self.assertEqual((await child.read_file("/notes.txt"))["content"], "hello")
+
+    async def test_fork_writes_are_isolated_from_parent(self):
+        parent = MontySandbox()
+        await parent.write_file("/shared.txt", "v1")
+
+        child = parent.fork()
+        await child.write_file("/shared.txt", "v2")
+        await child.write_file("/only_child.txt", "new")
+
+        # Parent is untouched by the child's writes.
+        self.assertEqual((await parent.read_file("/shared.txt"))["content"], "v1")
+        self.assertIn("error", await parent.read_file("/only_child.txt"))
+        # Child sees its own writes.
+        self.assertEqual((await child.read_file("/shared.txt"))["content"], "v2")
+
+    async def test_parent_writes_after_fork_do_not_leak_into_child(self):
+        parent = MontySandbox()
+        await parent.write_file("/a.txt", "a1")
+        child = parent.fork()
+        await parent.write_file("/a.txt", "a2")  # parent edits after the fork
+        await parent.write_file("/b.txt", "b")
+        # The child was branched at the fork point and does not see later edits.
+        self.assertEqual((await child.read_file("/a.txt"))["content"], "a1")
+        self.assertIn("error", await child.read_file("/b.txt"))
+
+    async def test_diff_reports_only_child_changes(self):
+        workdir = self._workdir()  # config.json in base
+        parent = MontySandbox(workdir=workdir)
+        await parent.write_file("/existing.txt", "base")
+
+        child = parent.fork()
+        await child.write_file("/existing.txt", "edited")  # modify (in base)
+        await child.write_file("/fresh.txt", "brand new")  # create
+        await child.run("import pathlib; pathlib.Path('/config.json').unlink()")  # delete
+
+        diff = child.diff()
+        kinds = {w["path"]: w["kind"] for w in diff["written"]}
+        self.assertEqual(kinds["/existing.txt"], "modify")
+        self.assertEqual(kinds["/fresh.txt"], "create")
+        self.assertEqual(diff["deleted"], ["/config.json"])
+        # A fresh fork has an empty diff.
+        self.assertEqual(parent.fork().diff(), {"written": [], "deleted": []})
+
+    async def test_merge_applies_child_changes_to_parent(self):
+        parent = MontySandbox()
+        await parent.write_file("/keep.txt", "keep")
+
+        child = parent.fork()
+        await child.write_file("/new.txt", "from child")
+        await child.write_file("/keep.txt", "edited by child")
+
+        report = parent.merge(child)
+        self.assertEqual(report["conflicts"], [])
+        self.assertCountEqual(report["written"], ["/keep.txt", "/new.txt"])
+        self.assertEqual((await parent.read_file("/new.txt"))["content"], "from child")
+        self.assertEqual(
+            (await parent.read_file("/keep.txt"))["content"], "edited by child"
+        )
+
+    async def test_merge_propagates_deletions(self):
+        parent = MontySandbox()
+        await parent.write_file("/doomed.txt", "bye")
+        child = parent.fork()
+        await child.run("import pathlib; pathlib.Path('/doomed.txt').unlink()")
+
+        report = parent.merge(child)
+        self.assertEqual(report["deleted"], ["/doomed.txt"])
+        self.assertIn("error", await parent.read_file("/doomed.txt"))
+
+    async def test_merge_refuses_conflicts_unless_forced(self):
+        # Two siblings forked from the same point both edit the same file.
+        parent = MontySandbox()
+        await parent.write_file("/f.txt", "base")
+        a = parent.fork()
+        b = parent.fork()
+        await a.write_file("/f.txt", "from A")
+        await b.write_file("/f.txt", "from B")
+
+        first = parent.merge(a)
+        self.assertEqual(first["conflicts"], [])  # parent unchanged when A merges
+        self.assertEqual(first["skipped"], [])
+
+        # B now conflicts (parent moved to "from A"): refused by default.
+        second = parent.merge(b)
+        self.assertEqual(second["conflicts"], ["/f.txt"])
+        self.assertEqual(second["skipped"], ["/f.txt"])
+        self.assertEqual(second["written"], [])
+        self.assertEqual((await parent.read_file("/f.txt"))["content"], "from A")
+
+        # force=True applies the conflicting change (last writer wins).
+        forced = parent.merge(b, force=True)
+        self.assertEqual(forced["conflicts"], ["/f.txt"])
+        self.assertEqual(forced["skipped"], [])
+        self.assertEqual(forced["written"], ["/f.txt"])
+        self.assertEqual((await parent.read_file("/f.txt"))["content"], "from B")
+
+    async def test_merge_applies_non_conflicting_changes_when_one_conflicts(self):
+        # A conflict on one path must not block the rest of the merge.
+        parent = MontySandbox()
+        await parent.write_file("/shared.txt", "base")
+        child = parent.fork()
+        await child.write_file("/shared.txt", "child edit")
+        await child.write_file("/fresh.txt", "new")
+        await parent.write_file("/shared.txt", "parent edit")  # diverge
+
+        report = parent.merge(child)
+        self.assertEqual(report["skipped"], ["/shared.txt"])
+        self.assertEqual(report["written"], ["/fresh.txt"])
+        self.assertEqual(
+            (await parent.read_file("/shared.txt"))["content"], "parent edit"
+        )
+        self.assertEqual((await parent.read_file("/fresh.txt"))["content"], "new")
+
+    async def test_merge_paths_restricts_to_subset(self):
+        parent = MontySandbox()
+        child = parent.fork()
+        await child.write_file("/wanted.txt", "yes")
+        await child.write_file("/skipped.txt", "no")
+
+        report = parent.merge(child, paths=["/wanted.txt"])
+        self.assertEqual(report["written"], ["/wanted.txt"])
+        self.assertEqual((await parent.read_file("/wanted.txt"))["content"], "yes")
+        self.assertIn("error", await parent.read_file("/skipped.txt"))
+
+    async def test_parallel_forks_run_independently(self):
+        import asyncio
+
+        parent = MontySandbox()
+        await parent.write_file("/seed.txt", "seed")
+
+        async def work(branch, value):
+            await branch.write_file("/out.txt", value)
+            return (await branch.read_file("/out.txt"))["content"]
+
+        forks = [parent.fork(name=f"f{i}") for i in range(5)]
+        results = await asyncio.gather(
+            *(work(fk, f"value-{i}") for i, fk in enumerate(forks))
+        )
+        # Each fork kept its own value; none clobbered another or the parent.
+        self.assertEqual(results, [f"value-{i}" for i in range(5)])
+        self.assertIn("error", await parent.read_file("/out.txt"))
+
+    async def test_fork_copy_repl_inherits_namespace(self):
+        parent = MontySandbox()
+        await parent.run("shared = 41")
+        child = parent.fork(copy_repl=True)
+        result = await child.run("print(shared + 1)")
+        self.assertIn("42", result.stdout)
+        # Without copy_repl (the default), the namespace is clean.
+        fresh = parent.fork()
+        self.assertFalse((await fresh.run("print(shared)")).ok)
+
+    async def test_merge_repl_adopts_namespace(self):
+        # merge(repl=True) folds the child's whole namespace (vars, functions,
+        # imports) back into the parent, alongside the parent's own bindings.
+        parent = MontySandbox()
+        await parent.run("import math")
+        await parent.run("x = 41")
+        child = parent.fork(copy_repl=True)
+        await child.run("import json")
+        await child.run("def g(n):\n    return n * n")
+        await child.run("z = json.dumps({'k': x})")
+        await child.write_file("/out.txt", "child file")
+
+        report = parent.merge(child, repl=True)
+        self.assertTrue(report["repl_adopted"])
+        self.assertIn("/out.txt", report["written"])  # filesystem merged too
+        # Parent now has the child's import, function and variable, plus its own.
+        result = await parent.run("print(g(x), z, int(math.sqrt(16)))")
+        self.assertTrue(result.ok, result.error)
+        self.assertEqual(result.stdout.strip(), '1681 {"k": 41} 4')
+
+    async def test_merge_without_repl_leaves_namespace_untouched(self):
+        parent = MontySandbox()
+        await parent.run("x = 1")
+        child = parent.fork(copy_repl=True)
+        await child.run("x = 999")
+        report = parent.merge(child)  # repl defaults to False
+        self.assertFalse(report["repl_adopted"])
+        self.assertEqual((await parent.run("print(x)")).stdout.strip(), "1")

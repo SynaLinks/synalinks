@@ -204,6 +204,58 @@ class Sandbox(SynalinksSaveable):
         """Rebuild a sandbox from a :meth:`get_config` dict."""
         raise NotImplementedError("Sandbox subclasses must implement `from_config`.")
 
+    # -- branching (filesystem backends) --------------------------------
+    #
+    # A git-like contract for isolating filesystem mutations: ``fork`` a
+    # sandbox to get an isolated child that sees the parent's files but
+    # whose writes never touch the parent, ``diff`` to review what a
+    # (forked) sandbox changed, and ``merge`` to fold a child's changes
+    # back into a parent. Backends without a filesystem need not implement
+    # these; ``MontySandbox`` does, on top of its copy-on-write overlay.
+
+    def fork(self, *, name: Optional[str] = None) -> "Sandbox":
+        """Return an isolated copy that shares this sandbox's current state.
+
+        The child starts seeing exactly the files this sandbox sees now,
+        but its mutations are isolated: writing, editing or deleting in the
+        child never affects the parent (and vice versa). Use this to hand a
+        subagent its own branch of the filesystem; review its work with
+        :meth:`diff` and optionally fold it back with :meth:`merge`.
+        """
+        raise NotImplementedError("This sandbox does not support `fork`.")
+
+    def diff(self) -> dict:
+        """Summarize the filesystem changes this sandbox made since its base.
+
+        For a sandbox produced by :meth:`fork`, this is exactly what the
+        child changed relative to the fork point — the patch :meth:`merge`
+        would apply. Returns a JSON-safe summary (written paths with a
+        ``kind`` / ``size``, and deleted paths).
+        """
+        raise NotImplementedError("This sandbox does not support `diff`.")
+
+    def merge(
+        self,
+        other: "Sandbox",
+        *,
+        paths: Optional[List[str]] = None,
+        force: bool = False,
+        repl: bool = False,
+    ) -> dict:
+        """Apply another (typically forked) sandbox's changes onto this one.
+
+        Replays ``other``'s writes and deletions into this sandbox as if
+        they were performed here. A *conflicting* path — one this sandbox
+        also changed since the fork — is **refused** (left untouched and
+        reported) unless ``force`` is set, in which case ``other``'s version
+        is applied (last writer wins). ``paths`` optionally restricts the
+        merge to a chosen subset of virtual paths. With ``repl=True`` the
+        backend also adopts ``other``'s whole execution-state namespace
+        (where it has one). Returns a JSON-safe report of what was applied,
+        what conflicted, and what was skipped.
+        """
+        raise NotImplementedError("This sandbox does not support `merge`.")
+
     # -- run history (provided) -----------------------------------------
 
     def history(self) -> List[Dict[str, Any]]:

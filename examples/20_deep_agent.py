@@ -52,10 +52,10 @@ Typical use cases:
 | `list_files` | List files matching a glob (e.g. `**/*.py`). |
 | `search_files` | Glob for files and grep their contents (regex). |
 | `read_file` | Read a file by 1-based line range (paginated). |
-| `write_file` | Create or overwrite a file. Gated by `allow_write`. |
-| `edit_file` | Exact-string replacement; rejects 0 or 2+ occurrences. Gated by `allow_write`. |
-| `run_python_code` | Run an inline Python snippet (arg: `code`). Gated by `allow_code`. |
-| `run_python_file` | Run a self-contained script you wrote into the overlay (arg: `path`). Gated by `allow_code`. |
+| `write_file` | Create or overwrite a file (in the overlay). |
+| `edit_file` | Exact-string replacement; rejects 0 or 2+ occurrences (pass `replace_all=True` to override). |
+| `run_python_code` | Run an inline Python snippet (arg: `code`). |
+| `run_python_file` | Run a self-contained script you wrote into the overlay (arg: `path`). |
 
 ## Host Safety
 
@@ -79,10 +79,9 @@ agent **cannot damage the real workspace**:
 ## Building the Agent
 
 `DeepAgent` mirrors `FunctionCallingAgent` — every parameter on that
-class is accepted with identical semantics. The additions are `workdir`
-(required), the capability gates `allow_write` / `allow_code`, and the
-sandbox `timeout` (the per-snippet budget for `run_python_code` /
-`run_python_file`).
+class is accepted with identical semantics. The only additions are
+`workdir` (required) and the sandbox `timeout` (the per-snippet budget
+for `run_python_code` / `run_python_file`).
 
 ```python
 import synalinks
@@ -90,23 +89,15 @@ import synalinks
 agent = synalinks.DeepAgent(
     workdir="/tmp/my_project",
     language_model=lm,
-    allow_write=True,   # default — write_file / edit_file
-    allow_code=True,    # default — run_python_code (Python sandbox)
     timeout=30,         # per-run_python_code budget, seconds
     max_iterations=10,  # coding tasks tend to need more rounds than RAG/SQL
 )
 ```
 
-Read-only mode for code review without write privileges:
-
-```python
-agent = synalinks.DeepAgent(
-    workdir="/path/to/repo",
-    language_model=lm,
-    allow_write=False,  # only read_file / list_files / search_files (+ run_python_code)
-    allow_code=False,   # purely static inspection
-)
-```
+There is no "read-only" switch to set: the copy-on-write overlay
+already guarantees the real workdir is never modified, so even an agent
+that writes, edits, and runs code leaves your files on disk untouched.
+Review what it *would* have changed with `agent.sandbox.changes()`.
 
 User-supplied extra tools (e.g. a date helper, a web search) are
 passed via `tools=` and merged with the built-ins. The same name-
@@ -141,15 +132,15 @@ The agent will typically:
 
 ## Key Takeaways
 
-- **One module, six tools**: `synalinks.DeepAgent` bundles file IO,
+- **One module, seven tools**: `synalinks.DeepAgent` bundles file IO,
   search, and a Python sandbox into a single ready-to-use agent.
 - **Host-safe by construction**: the tools are a copy-on-write overlay,
-  so the agent can explore and edit freely without touching the disk.
-- **Inspect & persist**: `agent.sandbox.changes()` / `.journal()` show
-  exactly what the agent did; you decide what (if anything) to write to
-  disk.
-- **Read-only / no-code modes**: set `allow_write=False` and/or
-  `allow_code=False` for inspector agents that audit code.
+  so the agent can explore and edit freely without touching the disk —
+  there are no capability gates to set, because nothing it does is ever
+  written back.
+- **Inspect & persist**: `agent.sandbox.changes()` / `.journal()` /
+  `.read_overlay(path)` show exactly what the agent did; you decide what
+  (if anything) to write to disk.
 - **Token-aware**: `read_file` / `list_files` / `search_files` paginate
   with `offset` / `limit` (1-based, grep convention).
 
