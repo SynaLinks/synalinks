@@ -19,7 +19,7 @@ from synalinks.src.saving import serialization_lib
 
 
 class EntityHybridFTSSearchInput(DataModel):
-    """Input shape for :class:`EntityHybridFTSSearch`.
+    """Input shape for `EntityHybridFTSSearch`.
 
     The ``keywords`` list is optional — when omitted, the adapter
     re-uses the vector side's text for BM25 scoring as well.
@@ -43,15 +43,15 @@ class EntityHybridFTSSearchInput(DataModel):
 class EntityHybridFTSSearch(Module):
     """RRF fusion of vector similarity + BM25 fulltext over entities.
 
-    Graph-side counterpart of :class:`HybridFTSSearch`. Thin
+    Graph-side counterpart of `HybridFTSSearch`. Thin
     deterministic wrapper around
-    :meth:`KnowledgeBase.entity_hybrid_fts_search`. The vector side's
+    `KnowledgeBase.entity_hybrid_fts_search`. The vector side's
     text comes from the input's ``similarity_search`` field; the BM25
     side's text comes from ``keywords`` if present, otherwise the
     adapter falls back to ``similarity_search``.
 
     Single-label only: to retrieve entities of multiple labels,
-    compose several :class:`EntityHybridFTSSearch` modules in the
+    compose several `EntityHybridFTSSearch` modules in the
     program DAG and merge their outputs explicitly.
 
     Args:

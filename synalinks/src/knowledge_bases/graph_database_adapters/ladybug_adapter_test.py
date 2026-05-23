@@ -1,5 +1,5 @@
 # License Apache 2.0: (c) 2025-2026 Yoan Sallami (Synalinks Team)
-"""Tests for :class:`LadybugAdapter`.
+"""Tests for `LadybugAdapter`.
 
 Each test stands up an in-memory ``ladybug://:memory:`` database so
 state is fully isolated per test. The embedding model is replaced

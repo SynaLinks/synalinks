@@ -49,6 +49,7 @@ nav:
     - guides/Data Models.md
     - guides/Programs.md
     - guides/Modules.md
+    - guides/Control Flow.md
     - guides/Agents.md
     - guides/Knowledge Base.md
     - guides/Knowledge Graph Extraction.md
@@ -173,6 +174,31 @@ nav:
         - Synalinks API/Modules API/Synthesis Modules/index.md
         - Synalinks API/Modules API/Synthesis Modules/PythonSynthesis module.md
         - Synalinks API/Modules API/Synthesis Modules/SequentialPlanSynthesis module.md
+      - Retrievers Modules:
+        - Synalinks API/Modules API/Retrievers Modules/index.md
+        - Synalinks API/Modules API/Retrievers Modules/SimilaritySearch module.md
+        - Synalinks API/Modules API/Retrievers Modules/FullTextSearch module.md
+        - Synalinks API/Modules API/Retrievers Modules/RegexSearch module.md
+        - Synalinks API/Modules API/Retrievers Modules/HybridFTSSearch module.md
+        - Synalinks API/Modules API/Retrievers Modules/HybridRegexSearch module.md
+        - Synalinks API/Modules API/Retrievers Modules/EntitySimilaritySearch module.md
+        - Synalinks API/Modules API/Retrievers Modules/EntityFullTextSearch module.md
+        - Synalinks API/Modules API/Retrievers Modules/EntityRegexSearch module.md
+        - Synalinks API/Modules API/Retrievers Modules/EntityHybridFTSSearch module.md
+        - Synalinks API/Modules API/Retrievers Modules/EntityHybridRegexSearch module.md
+        - Synalinks API/Modules API/Retrievers Modules/RelationSimilaritySearch module.md
+        - Synalinks API/Modules API/Retrievers Modules/RelationFullTextSearch module.md
+        - Synalinks API/Modules API/Retrievers Modules/RelationRegexSearch module.md
+        - Synalinks API/Modules API/Retrievers Modules/RelationHybridFTSSearch module.md
+        - Synalinks API/Modules API/Retrievers Modules/RelationHybridRegexSearch module.md
+        - Synalinks API/Modules API/Retrievers Modules/PathSimilaritySearch module.md
+        - Synalinks API/Modules API/Retrievers Modules/PathFullTextSearch module.md
+        - Synalinks API/Modules API/Retrievers Modules/PathRegexSearch module.md
+        - Synalinks API/Modules API/Retrievers Modules/PathHybridFTSSearch module.md
+        - Synalinks API/Modules API/Retrievers Modules/PathHybridRegexSearch module.md
+      - Rerankers Modules:
+        - Synalinks API/Modules API/Rerankers Modules/index.md
+        - Synalinks API/Modules API/Rerankers Modules/RRFReranker module.md
     - Callbacks API:
       - Synalinks API/Callbacks API/index.md
       - Synalinks API/Callbacks API/Base Callback class.md

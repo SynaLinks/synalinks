@@ -25,7 +25,7 @@ class ParquetDataset(Dataset):
     ``input_template`` / ``output_template`` to JSON, validated against
     the corresponding ``DataModel`` (or ``synalinks.ChatMessages`` when
     ``None``), and accumulated into batches of size ``batch_size`` —
-    the same contract as :class:`HuggingFaceDataset`.
+    the same contract as `HuggingFaceDataset`.
 
     Templates receive each Parquet row as a dict keyed by column name.
     The dataset reports an exact ``__len__`` derived from the files'

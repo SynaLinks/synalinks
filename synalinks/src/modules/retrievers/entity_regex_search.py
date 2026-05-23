@@ -19,7 +19,7 @@ from synalinks.src.saving import serialization_lib
 
 
 class EntityRegexSearchInput(DataModel):
-    """Input shape for :class:`EntityRegexSearch`."""
+    """Input shape for `EntityRegexSearch`."""
 
     regex_search: str = Field(
         description=(
@@ -37,14 +37,14 @@ class EntityRegexSearchInput(DataModel):
 class EntityRegexSearch(Module):
     """Regex matching over entities of a single label.
 
-    Graph-side counterpart of :class:`RegexSearch`. Thin
+    Graph-side counterpart of `RegexSearch`. Thin
     deterministic wrapper around
-    :meth:`KnowledgeBase.entity_regex_search`. Regex uses RE2
+    `KnowledgeBase.entity_regex_search`. Regex uses RE2
     (DuckDB's engine), so patterns are linear-time and not vulnerable
     to catastrophic backtracking.
 
     Single-label only: to retrieve entities of multiple labels,
-    compose several :class:`EntityRegexSearch` modules in the program
+    compose several `EntityRegexSearch` modules in the program
     DAG and merge their outputs explicitly.
 
     Args:

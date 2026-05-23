@@ -1,5 +1,7 @@
 # License Apache 2.0: (c) 2025-2026 Yoan Sallami (Synalinks Team)
 
+import tempfile
+
 import numpy as np
 
 from synalinks.src import testing
@@ -49,14 +51,16 @@ class PlotMetricsTest(testing.TestCase):
         """Test basic plot_metrics function."""
         metrics = ["reward", "reward_val", "f1_score", "accuracy"]
         metrics = self.generate_random_metrics(metrics=metrics)
-        plot_metrics(metrics, to_folder="/tmp/")
+        plot_metrics(metrics, to_folder=tempfile.gettempdir())
 
     def test_plot_metrics_with_mean_and_std(self):
         """Test plot_metrics_with_mean_and_std function."""
         metrics = ["reward", "reward_val", "f1_score", "accuracy"]
         metrics = self.generate_random_metrics(metrics=metrics)
         metrics1 = self.generate_random_metrics(metrics=metrics)
-        plot_metrics_with_mean_and_std([metrics, metrics1], to_folder="/tmp/")
+        plot_metrics_with_mean_and_std(
+            [metrics, metrics1], to_folder=tempfile.gettempdir()
+        )
 
     def test_plot_metrics_comparison(self):
         """Test plot_metrics_comparison function."""
@@ -65,7 +69,7 @@ class PlotMetricsTest(testing.TestCase):
         comparison_metrics = self.generate_comparison_metrics(
             conditions=conditions, metrics=metrics
         )
-        plot_metrics_comparison(comparison_metrics, to_folder="/tmp/")
+        plot_metrics_comparison(comparison_metrics, to_folder=tempfile.gettempdir())
 
     def test_plot_metrics_comparison_with_mean_and_std(self):
         """Test plot_metrics_comparison_with_mean_and_std function."""
@@ -74,7 +78,9 @@ class PlotMetricsTest(testing.TestCase):
         comparison_metrics = self.generate_comparison_metrics_with_runs(
             conditions=conditions, metrics=metrics, num_runs=5
         )
-        plot_metrics_comparison_with_mean_and_std(comparison_metrics, to_folder="/tmp/")
+        plot_metrics_comparison_with_mean_and_std(
+            comparison_metrics, to_folder=tempfile.gettempdir()
+        )
 
     def test_plot_metrics_with_filter(self):
         """Test plot_metrics with metrics filter."""
@@ -88,7 +94,9 @@ class PlotMetricsTest(testing.TestCase):
         ]
         metrics_dict = self.generate_random_metrics(metrics=metrics)
         metrics_filter = ["reward", "f1_score", "accuracy"]
-        plot_metrics(metrics_dict, metrics_filter=metrics_filter, to_folder="/tmp/")
+        plot_metrics(
+            metrics_dict, metrics_filter=metrics_filter, to_folder=tempfile.gettempdir()
+        )
 
     def test_plot_metrics_comparison_with_filter(self):
         """Test plot_metrics_comparison with metrics filter."""
@@ -106,7 +114,9 @@ class PlotMetricsTest(testing.TestCase):
         )
         metrics_filter = ["reward", "f1_score", "accuracy"]
         plot_metrics_comparison(
-            comparison_metrics, metrics_filter=metrics_filter, to_folder="/tmp/"
+            comparison_metrics,
+            metrics_filter=metrics_filter,
+            to_folder=tempfile.gettempdir(),
         )
 
     def test_plot_metrics_with_high_values(self):
@@ -117,7 +127,9 @@ class PlotMetricsTest(testing.TestCase):
             "f1_score": 0.92,
             "accuracy": 1.15,  # Value exceeding 1.0
         }
-        plot_metrics(metrics, to_folder="/tmp/", to_file="test_high_values.png")
+        plot_metrics(
+            metrics, to_folder=tempfile.gettempdir(), to_file="test_high_values.png"
+        )
 
     def test_plot_metrics_comparison_with_high_values(self):
         """Test comparison plot with values exceeding 1.0."""
@@ -127,7 +139,7 @@ class PlotMetricsTest(testing.TestCase):
         }
         plot_metrics_comparison(
             comparison_metrics,
-            to_folder="/tmp/",
+            to_folder=tempfile.gettempdir(),
             to_file="test_comparison_high_values.png",
         )
 
@@ -135,7 +147,9 @@ class PlotMetricsTest(testing.TestCase):
         """Test plot_metrics with many metrics to verify x-axis rotation."""
         metrics = ["metric_" + str(i) for i in range(8)]  # 8 metrics to trigger rotation
         metrics_dict = self.generate_random_metrics(metrics=metrics)
-        plot_metrics(metrics_dict, to_folder="/tmp/", to_file="test_many_metrics.png")
+        plot_metrics(
+            metrics_dict, to_folder=tempfile.gettempdir(), to_file="test_many_metrics.png"
+        )
 
     def test_plot_metrics_comparison_with_show_values(self):
         """Test comparison plot with mean and std showing values on bars."""
@@ -147,6 +161,6 @@ class PlotMetricsTest(testing.TestCase):
         plot_metrics_comparison_with_mean_and_std(
             comparison_metrics,
             show_values=True,
-            to_folder="/tmp/",
+            to_folder=tempfile.gettempdir(),
             to_file="test_comparison_with_values.png",
         )

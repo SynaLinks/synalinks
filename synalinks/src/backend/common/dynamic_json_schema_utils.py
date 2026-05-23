@@ -47,7 +47,7 @@ def dynamic_enum(schema, prop_to_update, labels, description=None, inline=True):
 def dynamic_enum_array(schema, prop_to_update, labels, description=None, inline=True):
     """Update a schema with a dynamic Enum string applied to array items.
 
-    Mirrors :func:`dynamic_enum` but targets list-valued properties whose
+    Mirrors `dynamic_enum` but targets list-valued properties whose
     items should be constrained to a string enum (i.e. ``list[str]`` /
     ``list[Literal[...]]`` in pydantic).
 
@@ -63,7 +63,7 @@ def dynamic_enum_array(schema, prop_to_update, labels, description=None, inline=
             property.
         inline (bool): When True the enum is placed directly in the
             array items (no ``$defs`` / ``$ref`` indirection). Defaults
-            to True for parity with :func:`dynamic_enum`.
+            to True for parity with `dynamic_enum`.
 
     Returns:
         dict: The updated schema with the items-enum applied to the

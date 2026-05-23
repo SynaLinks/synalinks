@@ -6,6 +6,7 @@ import logging
 import os
 import random
 import re
+import tempfile
 
 import numpy as np
 import orjson
@@ -463,13 +464,13 @@ def set_api_key(key):
 
 
 # Set synalinks base dir path given synalinks_HOME env variable, if applicable.
-# Otherwise either ~/.synalinks or /tmp.
+# Otherwise either ~/.synalinks or, when home isn't writable, the system temp dir.
 if "SYNALINKS_HOME" in os.environ:
     _synalinks_DIR = os.environ.get("SYNALINKS_HOME")
 else:
     _synalinks_base_dir = os.path.expanduser("~")
     if not os.access(_synalinks_base_dir, os.W_OK):
-        _synalinks_base_dir = "/tmp"
+        _synalinks_base_dir = tempfile.gettempdir()
     _synalinks_DIR = os.path.join(_synalinks_base_dir, ".synalinks")
 
 

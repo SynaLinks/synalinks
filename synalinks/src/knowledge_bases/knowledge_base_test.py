@@ -11,6 +11,7 @@ from synalinks.src.backend import DataModel
 from synalinks.src.backend import Field
 from synalinks.src.backend import JsonDataModel
 from synalinks.src.knowledge_bases import KnowledgeBase
+from synalinks.src.knowledge_bases.graph_database_adapters import GraphDatabaseAdapter
 from synalinks.src.modules.embedding_models import EmbeddingModel
 
 
@@ -1622,9 +1623,6 @@ class KnowledgeBaseTest(testing.TestCase):
             cloned_knowledge_base.get_config(),
             knowledge_base.get_config(),
         )
-
-
-from synalinks.src.knowledge_bases.graph_database_adapters import GraphDatabaseAdapter
 
 
 class _RecordingGraphAdapter(GraphDatabaseAdapter):

@@ -333,7 +333,7 @@ class DatabaseAdapter:
     ):
         """Execute a raw SQL query against the database.
 
-        Counterpart of :meth:`GraphDatabaseAdapter.cypher` — the
+        Counterpart of `GraphDatabaseAdapter.cypher` — the
         method is named after the query language so a KnowledgeBase
         that carries both a SQL store and a graph store has a clear
         per-language entry point (``kb.sql(...)`` vs ``kb.cypher(...)``).
@@ -489,7 +489,7 @@ class DatabaseAdapter:
     ):
         """Hybrid retrieval combining vector similarity and regex match.
 
-        Sibling of :meth:`hybrid_fts_search`. Uses Reciprocal Rank
+        Sibling of `hybrid_fts_search`. Uses Reciprocal Rank
         Fusion (RRF) to merge the two rankings. The vector half
         captures semantics; the regex half captures exact textual
         shape (identifiers, codes, patterns).
@@ -502,8 +502,8 @@ class DatabaseAdapter:
             table_name: Target table.
             k: Maximum number of results.
             similarity_threshold: Optional vector-distance threshold.
-            fields: Forwarded to :meth:`regex_search`.
-            case_sensitive: Forwarded to :meth:`regex_search`.
+            fields: Forwarded to `regex_search`.
+            case_sensitive: Forwarded to `regex_search`.
             output_format: ``"json"`` (list of dicts, default) / ``"csv"`` (text).
 
         Raises:
@@ -515,7 +515,7 @@ class DatabaseAdapter:
         )
 
     async def hybrid_search(self, *args, **kwargs):
-        """Deprecated alias of :meth:`hybrid_fts_search`.
+        """Deprecated alias of `hybrid_fts_search`.
 
         Kept so existing call sites keep working after the rename to
         ``hybrid_fts_search`` (which is symmetric with the newer

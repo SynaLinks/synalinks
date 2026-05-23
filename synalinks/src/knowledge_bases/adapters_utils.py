@@ -41,7 +41,7 @@ def sanitize_identifier(name: str) -> str:
 
     Raises:
         ValueError: when ``name`` isn't a string or doesn't match
-            :data:`IDENTIFIER_RE`.
+            `IDENTIFIER_RE`.
     """
     if not isinstance(name, str) or not IDENTIFIER_RE.match(name):
         raise ValueError(f"Invalid identifier: {name!r}")
@@ -60,7 +60,7 @@ def to_pascal_identifier(name: str) -> str:
 
     Raises:
         ValueError: when the normalized result doesn't match
-            :data:`IDENTIFIER_RE` (empty / leading digit / etc.).
+            `IDENTIFIER_RE` (empty / leading digit / etc.).
     """
     return sanitize_identifier(to_pascal_case(name))
 

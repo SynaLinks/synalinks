@@ -40,6 +40,12 @@ class ArrayDataAdapter(DataAdapter):
         self._shuffle = shuffle
 
     def get_numpy_iterator(self):
+        """Get a Python iterable that yields Numpy object arrays.
+
+        Returns:
+            A Python iterator yielding ``(x, y)`` batches sliced from the
+            array inputs (or ``(x,)`` when no targets were provided).
+        """
         inputs = np.array(self._inputs, dtype="object")
 
         def slice_and_convert_to_numpy(sliceable, indices=None):
@@ -76,18 +82,41 @@ class ArrayDataAdapter(DataAdapter):
 
     @property
     def num_batches(self):
+        """Return the number of batches in the dataset.
+
+        Returns:
+            int, the number of batches, computed as
+            ``ceil(num_samples / batch_size)``.
+        """
         return self._size
 
     @property
     def batch_size(self):
+        """Return the batch size of the dataset.
+
+        Returns:
+            int, the batch size used to slice the array inputs.
+        """
         return self._batch_size
 
     @property
     def has_partial_batch(self):
+        """Whether the dataset has a partial batch at the end.
+
+        Returns:
+            bool, ``True`` if the final batch is smaller than
+            ``batch_size``.
+        """
         return self._partial_batch_size > 0
 
     @property
     def partial_batch_size(self):
+        """The size of the final partial batch for the dataset.
+
+        Returns:
+            int, the size of the final partial batch, or ``None`` if the
+            dataset divides evenly into full batches.
+        """
         return self._partial_batch_size or None
 
 

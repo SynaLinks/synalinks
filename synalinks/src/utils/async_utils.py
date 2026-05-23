@@ -77,7 +77,7 @@ class AsyncManager:
         :param access: Access that were done.
         :type access: ConcurrentAccessBase
 
-        This allows :func:`concurrently` to check that concurrent tasks did not
+        This allows `concurrently` to check that concurrent tasks did not
         step on each other's toes.
         """
         try:
@@ -169,7 +169,7 @@ class AsyncManager:
 
     async def map_concurrently(self, f, keys):
         """
-        Similar to :meth:`concurrently`,
+        Similar to `concurrently`,
         but maps the given function ``f`` on the given ``keys``.
 
         :return: A dictionary with ``keys`` as keys, and function result as
@@ -238,12 +238,12 @@ class memoized_method:
 
         * async methods (coroutine functions)
         * non-async methods
-        * method already decorated with :func:`devlib.asyn.asyncf`.
+        * method already decorated with `devlib.asyn.asyncf`.
 
     .. note:: This decorator does not rely on hacks to hash unhashable data. If
         such input is required, it will either have to be coerced to a hashable
         first (e.g. converting a list to a tuple), or the code of
-        :func:`devlib.asyn.memoized_method` will have to be updated to do so.
+        `devlib.asyn.memoized_method` will have to be updated to do so.
     """
 
     def __init__(self, f):
@@ -314,7 +314,7 @@ class memoized_method:
 
 class _Genlet(greenlet):
     """
-    Generator-like object based on ``greenlets``. It allows nested :class:`_Genlet`
+    Generator-like object based on ``greenlets``. It allows nested `_Genlet`
     to make their parent yield on their behalf, as if callees could decide to
     be annotated ``yield from`` without modifying the caller.
     """
@@ -330,7 +330,7 @@ class _Genlet(greenlet):
     @classmethod
     def from_coro(cls, coro):
         """
-        Create a :class:`_Genlet` from a given coroutine, treating it as a
+        Create a `_Genlet` from a given coroutine, treating it as a
         generator.
         """
         f = lambda value: self.consume_coro(coro, value)
@@ -340,7 +340,7 @@ class _Genlet(greenlet):
     def consume_coro(self, coro, value):
         """
         Send ``value`` to ``coro`` then consume the coroutine, passing all its
-        yielded actions to the enclosing :class:`_Genlet`. This allows crossing
+        yielded actions to the enclosing `_Genlet`. This allows crossing
         blocking calls layers as if they were async calls with `await`.
         """
         excep = None
@@ -368,7 +368,7 @@ class _Genlet(greenlet):
     @classmethod
     def get_enclosing(cls):
         """
-        Get the immediately enclosing :class:`_Genlet` in the callstack or
+        Get the immediately enclosing `_Genlet` in the callstack or
         ``None``.
         """
         g = greenlet.getcurrent()
@@ -405,7 +405,7 @@ class _Genlet(greenlet):
 
 class _AwaitableGenlet:
     """
-    Wrap a coroutine with a :class:`_Genlet` and wrap that to be awaitable.
+    Wrap a coroutine with a `_Genlet` and wrap that to be awaitable.
     """
 
     @classmethod
@@ -485,7 +485,7 @@ def _allow_nested_run(coro):
 
 def allow_nested_run(coro):
     """
-    Wrap the coroutine ``coro`` such that nested calls to :func:`run` will be
+    Wrap the coroutine ``coro`` such that nested calls to `run` will be
     allowed.
 
     .. warning:: The coroutine needs to be consumed in the same OS thread it
@@ -522,8 +522,8 @@ _PATCHED_LOOP = WeakSet()
 def _install_task_factory(loop):
     """
     Install a task factory on the given event ``loop`` so that top-level
-    coroutines are wrapped using :func:`allow_nested_run`. This ensures that
-    the nested :func:`run` infrastructure will be available.
+    coroutines are wrapped using `allow_nested_run`. This ensures that
+    the nested `run` infrastructure will be available.
     """
 
     def install(loop):
@@ -595,7 +595,7 @@ class _CoroRunner(abc.ABC):
 class _ThreadCoroRunner(_CoroRunner):
     """
     Run the coroutines on a thread picked from a
-    :class:`concurrent.futures.ThreadPoolExecutor`.
+    `concurrent.futures.ThreadPoolExecutor`.
 
     Critically, this allows running multiple coroutines out of the same thread,
     which will be reserved until the runner ``__exit__`` method is called.
@@ -724,7 +724,7 @@ class _LoopCoroRunner(_CoroRunner):
 class _GenletCoroRunner(_CoroRunner):
     """
     Run a coroutine assuming one of the parent coroutines was wrapped with
-    :func:`allow_nested_run`.
+    `allow_nested_run`.
     """
 
     def __init__(self, g):
@@ -768,12 +768,12 @@ def _get_runner():
 
 def run(coro):
     """
-    Similar to :func:`asyncio.run` but can be called while an event loop is
+    Similar to `asyncio.run` but can be called while an event loop is
     running if a coroutine higher in the callstack has been wrapped using
-    :func:`allow_nested_run`.
+    `allow_nested_run`.
 
-    Note that context variables from :mod:`contextvars` will be available in
-    the coroutine, and unlike with :func:`asyncio.run`, any update to them will
+    Note that context variables from `contextvars` will be available in
+    the coroutine, and unlike with `asyncio.run`, any update to them will
     be reflected in the context of the caller. This allows context variable
     updates to cross an arbitrary number of run layers, as if all those layers
     were just part of the same coroutine.
@@ -939,7 +939,7 @@ class _AsyncPolymorphicCM:
 
 def asynccontextmanager(f):
     """
-    Same as :func:`contextlib.asynccontextmanager` except that it can also be
+    Same as `contextlib.asynccontextmanager` except that it can also be
     used with a regular ``with`` statement for backward compatibility.
     """
     f = contextlib.asynccontextmanager(f)
@@ -954,7 +954,7 @@ def asynccontextmanager(f):
 
 class ConcurrentAccessBase(abc.ABC):
     """
-    Abstract Base Class for resources tracked by :func:`concurrently`.
+    Abstract Base Class for resources tracked by `concurrently`.
     """
 
     @abc.abstractmethod

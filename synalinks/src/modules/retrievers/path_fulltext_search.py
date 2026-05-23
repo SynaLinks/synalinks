@@ -21,7 +21,7 @@ from synalinks.src.saving import serialization_lib
 
 
 class PathFullTextSearchInput(DataModel):
-    """Input shape for :class:`PathFullTextSearch`."""
+    """Input shape for `PathFullTextSearch`."""
 
     subj_fulltext_search: List[str] = Field(
         description="Keyword queries for the subject endpoint (BM25)",
@@ -41,7 +41,7 @@ class PathFullTextSearch(Module):
     """BM25 variable-length path search where BOTH endpoints match.
 
     LM-driven wrapper around
-    :meth:`KnowledgeBase.path_fulltext_search`. Returns paths of
+    `KnowledgeBase.path_fulltext_search`. Returns paths of
     ``min_hops..max_hops`` edges whose subject endpoint BM25-matches
     ``subj_fulltext_search`` AND whose object endpoint BM25-matches
     ``obj_fulltext_search``.

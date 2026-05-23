@@ -19,7 +19,7 @@ from synalinks.src.saving import serialization_lib
 
 
 class RelationHybridFTSSearchInput(DataModel):
-    """Input shape for :class:`RelationHybridFTSSearch`.
+    """Input shape for `RelationHybridFTSSearch`.
 
     The ``keywords`` list is optional — when omitted, the adapter
     re-uses the vector side's text for BM25 scoring as well.
@@ -43,16 +43,16 @@ class RelationHybridFTSSearchInput(DataModel):
 class RelationHybridFTSSearch(Module):
     """RRF of vector similarity + BM25 fulltext over relations.
 
-    Graph-side counterpart of :class:`HybridFTSSearch`, but for
+    Graph-side counterpart of `HybridFTSSearch`, but for
     edges. LM-driven wrapper around
-    :meth:`KnowledgeBase.relation_hybrid_fts_search`. Either-endpoint
+    `KnowledgeBase.relation_hybrid_fts_search`. Either-endpoint
     union: per matched edge, the final ``rrf_score`` is the sum of
     the subject-side and object-side hybrid scores — equivalent to a
     4-source RRF. Falls back to fulltext-only when no embedding model
     is configured.
 
     Single-label only: to retrieve relations of multiple labels,
-    compose several :class:`RelationHybridFTSSearch` modules in the
+    compose several `RelationHybridFTSSearch` modules in the
     program DAG and merge their outputs explicitly.
 
     Args:

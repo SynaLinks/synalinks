@@ -43,7 +43,7 @@ class MultiDecision(Module):
     This ensures that the LM answer **always** contains only values
     from the provided labels — no hallucinated entries.
 
-    Mirrors :class:`Decision` but allows **multiple** choices instead
+    Mirrors `Decision` but allows **multiple** choices instead
     of exactly one.
 
     Example:

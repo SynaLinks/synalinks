@@ -152,8 +152,8 @@ def _final_answer_text(output) -> str:
 class DeepAgent(Module):
     """A coding agent whose tools are a sandboxed copy of a workdir.
 
-    DeepAgent is a thin specialization of :class:`FunctionCallingAgent`
-    that mounts the workdir in a :class:`MontySandbox` and exposes the
+    DeepAgent is a thin specialization of `FunctionCallingAgent`
+    that mounts the workdir in a `MontySandbox` and exposes the
     sandbox's tool methods to the LM:
 
     - ``read_file``: read a file by 1-based line range (paginated).
@@ -173,7 +173,7 @@ class DeepAgent(Module):
     did through ``agent.sandbox`` — ``changes()``, ``journal()``,
     ``read_overlay()`` — and persist any of it yourself if desired.
 
-    The constructor mirrors :class:`FunctionCallingAgent` — every
+    The constructor mirrors `FunctionCallingAgent` — every
     parameter on that class is accepted here with identical semantics.
     The additions are ``workdir`` (required) and the sandbox ``timeout``.
     User-supplied ``tools`` are appended to the built-in ones.
@@ -214,17 +214,17 @@ class DeepAgent(Module):
             in-memory filesystem.
         timeout (float): Per-snippet execution budget in seconds for
             ``run_python_code`` / ``run_python_file``. Defaults to 30.
-        tools (list): Additional :class:`Tool` instances (or plain async
+        tools (list): Additional `Tool` instances (or plain async
             functions) to expose alongside the built-in tools. Names must
             not start with ``_`` or collide with built-ins.
         sandbox (Sandbox): Optional ready-made sandbox to operate on instead
-            of building one from ``workdir`` — e.g. a :meth:`Sandbox.fork`
+            of building one from ``workdir`` — e.g. a `Sandbox.fork`
             of another agent's filesystem. When given, ``workdir`` is used
             only for the default instructions text.
         max_subagent_depth (int): When ``> 0``, the agent gains
             ``spawn_subagents`` / ``merge_subagent`` / ``discard_subagent``
             tools, letting the LM run subagents in parallel — each on an
-            isolated :meth:`Sandbox.fork` of the filesystem whose changes
+            isolated `Sandbox.fork` of the filesystem whose changes
             only land on an explicit ``merge_subagent``. The value caps
             nesting: ``1`` (the recommended setting) lets this agent spawn
             subagents that cannot themselves spawn; ``2`` allows one more
@@ -236,7 +236,7 @@ class DeepAgent(Module):
             fresh interpreter), so across parallel subagents you can fold
             back **all** their file changes. Folding back Python REPL state
             (variables/functions/imports) across subagents is a
-            :class:`RecursiveLanguageModelAgent` feature — and limited to one
+            `RecursiveLanguageModelAgent` feature — and limited to one
             subagent there, because Monty serializes the REPL namespace only
             as a whole (it can't union parallel namespaces). That is a
             backend constraint, not a design shortcut.
@@ -429,7 +429,7 @@ class DeepAgent(Module):
         other input — including a data model that merely carries a ``messages``
         field alongside data — is treated as data: the full JSON is written to a
         collision-free file in the overlay and the LM is handed only an
-        :class:`InputsSummary` naming that file, keeping large inputs out of the
+        `InputsSummary` naming that file, keeping large inputs out of the
         prompt while leaving the complete values reachable via the file tools.
         """
         if not inputs or is_strictly_chat_messages(inputs):

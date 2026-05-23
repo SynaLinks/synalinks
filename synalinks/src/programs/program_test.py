@@ -1,5 +1,7 @@
 # License Apache 2.0: (c) 2025-2026 Yoan Sallami (Synalinks Team)
 
+import os
+import tempfile
 from unittest.mock import patch
 
 from synalinks.src import optimizers
@@ -329,8 +331,8 @@ class ProgramTest(testing.TestCase):
             batch_size=32,
         )
 
-        filepath = "/tmp/program.json"
-        program.save("/tmp/program.json")
+        filepath = os.path.join(tempfile.gettempdir(), "program.json")
+        program.save(filepath)
         cloned_program = Program.load(filepath)
 
         for var1 in program.variables:

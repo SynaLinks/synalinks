@@ -18,7 +18,7 @@ from synalinks.src.saving import serialization_lib
 
 
 class SimilaritySearchInput(DataModel):
-    """Input shape for :class:`SimilaritySearch`."""
+    """Input shape for `SimilaritySearch`."""
 
     similarity_search: List[str] = Field(
         description="Natural-language queries for vector similarity",
@@ -34,16 +34,16 @@ class SimilaritySearchInput(DataModel):
 class SimilaritySearch(Module):
     """Vector similarity search against a single KB table.
 
-    LM-driven wrapper around :meth:`KnowledgeBase.similarity_search`.
-    An embedded :class:`Generator` turns the module's inputs into a
-    :class:`SimilaritySearchInput` query (the ``similarity_search``
+    LM-driven wrapper around `KnowledgeBase.similarity_search`.
+    An embedded `Generator` turns the module's inputs into a
+    `SimilaritySearchInput` query (the ``similarity_search``
     field), which is then run against the table. This lets the module
     be dropped into a Program after arbitrary upstream inputs without
     requiring those inputs to already carry a ``similarity_search``
     field.
 
     Single-table only: to retrieve from multiple tables, compose
-    several :class:`SimilaritySearch` modules in the program DAG and
+    several `SimilaritySearch` modules in the program DAG and
     merge their outputs explicitly.
 
     Example:

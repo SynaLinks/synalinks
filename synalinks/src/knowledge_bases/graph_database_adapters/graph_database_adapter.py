@@ -22,8 +22,8 @@ class GraphDatabaseAdapter:
     knowledge graphs — with optional embedding-based similarity search
     and full-text search on entity properties.
 
-    Orthogonal to :class:`DatabaseAdapter` (the row/SQL surface): both
-    can back a :class:`KnowledgeBase` instance, but the user-facing API
+    Orthogonal to `DatabaseAdapter` (the row/SQL surface): both
+    can back a `KnowledgeBase` instance, but the user-facing API
     routes SQL methods (``update``/``get``/``query``/...) to the SQL
     adapter and graph methods (``add_entity``/``add_relation``/
     ``cypher``/...) to a graph adapter.
@@ -45,7 +45,7 @@ class GraphDatabaseAdapter:
     ):
         """Initialize the graph database adapter.
 
-        Unlike :class:`DatabaseAdapter`, schemas are split by graph
+        Unlike `DatabaseAdapter`, schemas are split by graph
         role: entity schemas declare what node labels exist, relation
         schemas declare what edge labels exist. The split matches how
         a property-graph DB models the world and removes the
@@ -91,7 +91,7 @@ class GraphDatabaseAdapter:
         """Retrieve a ``SymbolicDataModel`` per node label in the graph.
 
         Graph-side counterpart of
-        :meth:`DatabaseAdapter.get_symbolic_data_models`, split by
+        `DatabaseAdapter.get_symbolic_data_models`, split by
         graph role: this method returns only entity (node) schemas.
         Useful for introspection and for passing as ``data_models``
         when wiring search APIs.
@@ -116,10 +116,10 @@ class GraphDatabaseAdapter:
         max_iterations: Optional[int] = None,
     ) -> Any:
         """Run a community-detection algorithm and return the result
-        as a :class:`KnowledgeGraphs` — one :class:`KnowledgeGraph`
+        as a `KnowledgeGraphs` — one `KnowledgeGraph`
         per detected community.
 
-        Each community's :class:`KnowledgeGraph` carries the nodes
+        Each community's `KnowledgeGraph` carries the nodes
         whose computed community-id matches, plus every relation
         whose two endpoints fall in the same community.
         Cross-community edges are dropped — they don't belong to
@@ -145,7 +145,7 @@ class GraphDatabaseAdapter:
 
         Returns:
             (KnowledgeGraphs): A list-wrapper around one
-            :class:`KnowledgeGraph` per detected community.
+            `KnowledgeGraph` per detected community.
 
         Raises:
             NotImplementedError: Subclasses must implement this method.
@@ -172,7 +172,7 @@ class GraphDatabaseAdapter:
         Each row carries the entity's PK column, its label, the raw
         node struct (so callers can extract any property), and the
         computed rank — sorted by rank descending. Mirrors the row
-        shape of :meth:`entity_similarity_search` (PK column + node
+        shape of `entity_similarity_search` (PK column + node
         + scalar metric) so the two surfaces feel symmetric.
 
         Args:
@@ -227,8 +227,8 @@ class GraphDatabaseAdapter:
     ) -> Union[Any, List[Any]]:
         """Insert or update one or more entities (nodes) in the graph.
 
-        Named to mirror the SQL :meth:`DatabaseAdapter.update` verb and
-        the :class:`Entities` data model. Accepts a scalar ``Entity``
+        Named to mirror the SQL `DatabaseAdapter.update` verb and
+        the `Entities` data model. Accepts a scalar ``Entity``
         or a list of them; the return shape matches the input.
 
         Args:
@@ -278,8 +278,8 @@ class GraphDatabaseAdapter:
     ) -> Any:
         """Bulk-insert an entire knowledge graph (entities + relations).
 
-        Equivalent to :meth:`update_entities` followed by
-        :meth:`update_relations`, but concrete adapters may optimize
+        Equivalent to `update_entities` followed by
+        `update_relations`, but concrete adapters may optimize
         the combined path (single transaction, batched writes, etc.).
 
         Args:
@@ -308,9 +308,9 @@ class GraphDatabaseAdapter:
     ) -> SymbolicDataModel:
         """Rename a node/relation label and/or update its description.
 
-        Graph counterpart of :meth:`DatabaseAdapter.rename`. The
+        Graph counterpart of `DatabaseAdapter.rename`. The
         ``table_name`` kwarg keeps the SQL-side spelling so the
-        :class:`KnowledgeBase` can route ``rename`` through either
+        `KnowledgeBase` can route ``rename`` through either
         adapter with the same signature; for the graph adapter it
         names the new node/relation **label**.
 
@@ -515,7 +515,7 @@ class GraphDatabaseAdapter:
         """Find entities whose string properties match a regular expression.
 
         Graph-side counterpart of
-        :meth:`DatabaseAdapter.regex_search`. The pattern is applied
+        `DatabaseAdapter.regex_search`. The pattern is applied
         to every string field on the schema (or to a caller-supplied
         subset via ``fields``) and the union of matches is returned
         up to ``k`` rows.
@@ -554,7 +554,7 @@ class GraphDatabaseAdapter:
     ):
         """RRF fusion of vector similarity + regex match over entities.
 
-        Sibling of :meth:`entity_hybrid_fts_search` — the regex side
+        Sibling of `entity_hybrid_fts_search` — the regex side
         carries the orthogonal "exact textual shape" signal that
         BM25 doesn't capture. Degenerates to plain similarity search
         when no patterns are supplied, or to plain regex search when
@@ -566,8 +566,8 @@ class GraphDatabaseAdapter:
             pattern_or_patterns: Regex pattern (or list) for the
                 regex branch. ``None`` skips the regex side.
             label: The entity label to search within.
-            fields: Forwarded to :meth:`entity_regex_search`.
-            case_sensitive: Forwarded to :meth:`entity_regex_search`.
+            fields: Forwarded to `entity_regex_search`.
+            case_sensitive: Forwarded to `entity_regex_search`.
             k: Maximum number of results.
             k_rank: RRF smoothing constant (default: 60).
             similarity_threshold: Optional vector-distance threshold.
@@ -598,7 +598,7 @@ class GraphDatabaseAdapter:
     ):
         """Reciprocal-Rank-Fusion of vector similarity + BM25 fulltext.
 
-        Graph-side counterpart of :meth:`DatabaseAdapter.hybrid_fts_search`.
+        Graph-side counterpart of `DatabaseAdapter.hybrid_fts_search`.
         Falls back to fulltext-only when no embedding model is
         configured.
 
@@ -689,7 +689,7 @@ class GraphDatabaseAdapter:
         reports which side(s) actually fired.
 
         Falls back to fulltext-only when no embedding model is
-        configured (same shape as :meth:`entity_hybrid_fts_search`).
+        configured (same shape as `entity_hybrid_fts_search`).
 
         Args:
             text_or_texts: Query text or list of query texts for the
@@ -857,7 +857,7 @@ class GraphDatabaseAdapter:
 
         Finds the ``k`` entities of ``label`` closest to the query,
         then expands their ``max_hops`` neighbourhood (undirected) and
-        returns the deduped union as a :class:`KnowledgeGraph` — the
+        returns the deduped union as a `KnowledgeGraph` — the
         local context subgraph a generator answers from. Entity-centric:
         "what does the graph say around *these* entities".
 
@@ -895,12 +895,12 @@ class GraphDatabaseAdapter:
 
         The index-time half of GraphRAG-global: cluster the graph once
         and persist each node's community id (and importance rank) so
-        that :meth:`global_graph_search` is a single aggregation read
+        that `global_graph_search` is a single aggregation read
         rather than a clustering pass per query. Idempotent.
 
         Args:
             algorithm: Community-detection algorithm; see
-                :meth:`detect_communities`.
+                `detect_communities`.
             node_labels: Optional NODE-table whitelist (``None`` = all).
             rel_labels: Optional REL-table whitelist (``None`` = all).
             max_iterations: Optional clustering iteration cap.
@@ -928,7 +928,7 @@ class GraphDatabaseAdapter:
         """GraphRAG-style *global* search: per-community aggregates.
 
         The query-time half of GraphRAG-global. Reads the community /
-        rank properties :meth:`build_communities` stamped and rolls
+        rank properties `build_communities` stamped and rolls
         them up into one row per community (size, aggregate rank,
         representative members), ordered by importance. Theme-centric:
         "what are the overall patterns across the *whole* graph". The

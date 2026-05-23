@@ -424,6 +424,10 @@ class ObjectiveDirectionInferenceTest(testing.TestCase):
             for name in list(sys.modules)
             if _is_managed_module(name)
         }
+        # Popping cleared the stubbed `keras` from `sys.modules`; re-install it
+        # so the test body's fresh `import keras_tuner` binds to the stub rather
+        # than pulling real Keras (which needs a backend like TensorFlow).
+        disable_keras_backend()
         keras_tuner_utils._kt_inference_patched = False
 
     def tearDown(self):

@@ -21,7 +21,13 @@ from synalinks.src.modules.language_models.language_model import StreamingIterat
 from synalinks.src.modules.module import Module
 from synalinks.src.saving import serialization_lib
 
-ROLES = [ChatRole.SYSTEM, ChatRole.USER, ChatRole.ASSISTANT, ChatRole.TOOL, ChatRole.FUNCTION]
+ROLES = [
+    ChatRole.SYSTEM,
+    ChatRole.USER,
+    ChatRole.ASSISTANT,
+    ChatRole.TOOL,
+    ChatRole.FUNCTION,
+]
 
 _SYSTEM_PROMPT_ROLES = {ChatRole.SYSTEM.value, ChatRole.DEVELOPER.value}
 

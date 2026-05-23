@@ -3,10 +3,10 @@
 <!-- colab-badge:end -->
 
 
-::: guides.20_fastmcp_deployment
+::: guides.21_fastmcp_deployment
 
 ## Source
 
 ```python
---8<-- "guides/20_fastmcp_deployment.py:source"
+--8<-- "guides/21_fastmcp_deployment.py:source"
 ```

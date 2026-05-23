@@ -38,14 +38,14 @@ class JSONDataset(Dataset):
     Each file must contain a JSON array of objects at its top level
     (``[{"id": ..., "text": ...}, ...]``). The whole array is parsed
     into memory at iteration time per file — JSON arrays aren't
-    natively line-streamable, so use :class:`JSONLDataset` for huge
+    natively line-streamable, so use `JSONLDataset` for huge
     sources you can't fit in RAM.
 
     Each row is rendered through the Jinja2 ``input_template`` /
     ``output_template`` to JSON, validated against the corresponding
     ``DataModel`` (or ``synalinks.ChatMessages`` when ``None``), and
     accumulated into batches of size ``batch_size`` — the same
-    contract as :class:`HuggingFaceDataset` and the other loaders.
+    contract as `HuggingFaceDataset` and the other loaders.
 
     Example:
 
@@ -161,7 +161,7 @@ class JSONLDataset(Dataset):
     Each line in each file is a standalone JSON object. The reader
     streams line-by-line — memory usage stays bounded for arbitrarily
     large files, which is the main reason JSONL exists in the first
-    place and the main reason to prefer it over :class:`JSONDataset`
+    place and the main reason to prefer it over `JSONDataset`
     for sources you can't fit in RAM.
 
     Blank lines are skipped silently (matches CSV's blank-line

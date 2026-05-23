@@ -19,7 +19,7 @@ from synalinks.src.saving import serialization_lib
 
 
 class HybridRegexSearchInput(DataModel):
-    """Input shape for :class:`HybridRegexSearch`.
+    """Input shape for `HybridRegexSearch`.
 
     The ``regex_patterns`` list is optional — when omitted, the
     adapter falls back to plain vector similarity over
@@ -45,7 +45,7 @@ class HybridRegexSearch(Module):
     """Reciprocal-Rank-Fusion of vector similarity + regex matching.
 
     LM-driven wrapper around
-    :meth:`KnowledgeBase.hybrid_regex_search`. The vector side's text
+    `KnowledgeBase.hybrid_regex_search`. The vector side's text
     comes from the input's ``similarity_search`` field; the regex
     side's patterns come from ``regex_patterns``. When
     ``regex_patterns`` is empty the adapter falls back to plain
@@ -58,7 +58,7 @@ class HybridRegexSearch(Module):
     linear-time and not vulnerable to catastrophic backtracking.
 
     Single-table only: to retrieve from multiple tables, compose
-    several :class:`HybridRegexSearch` modules in the program DAG and
+    several `HybridRegexSearch` modules in the program DAG and
     merge their outputs explicitly.
 
     Example:

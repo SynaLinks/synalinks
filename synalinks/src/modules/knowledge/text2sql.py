@@ -105,7 +105,7 @@ class Text2SQL(Module):
     The module concatenates the knowledge base's schema (table names,
     columns, types, descriptions) onto the input data model so the LM
     has the full schema in context, generates a single ``SELECT``
-    query, and runs it through :meth:`KnowledgeBase.sql` with
+    query, and runs it through `KnowledgeBase.sql` with
     ``read_only=True``.
 
     Safety is enforced by the knowledge base, not by string filtering.
@@ -169,7 +169,7 @@ class Text2SQL(Module):
             ``"json"`` (default) returns a list of dicts; ``"csv"``
             returns a CSV string.
         prompt_template (str): Forwarded to the underlying
-            :class:`Generator`.
+            `Generator`.
         examples (list): Few-shot examples for the generator.
         instructions (str): Override the default system instructions.
             When omitted, the default is built from the knowledge

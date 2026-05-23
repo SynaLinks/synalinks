@@ -3,10 +3,10 @@
 <!-- colab-badge:end -->
 
 
-::: guides.19_fastapi_deployment
+::: guides.20_fastapi_deployment
 
 ## Source
 
 ```python
---8<-- "guides/19_fastapi_deployment.py:source"
+--8<-- "guides/20_fastapi_deployment.py:source"
 ```

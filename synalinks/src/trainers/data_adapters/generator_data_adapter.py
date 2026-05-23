@@ -26,14 +26,32 @@ class GeneratorDataAdapter(DataAdapter):
             )
 
     def get_numpy_iterator(self):
+        """Get a Python iterable that yields Numpy object arrays.
+
+        Returns:
+            A Python iterator yielding batches from the wrapped generator,
+            with each element converted to Numpy object arrays.
+        """
         return data_adapter_utils.get_numpy_iterator(self.generator())
 
     @property
     def num_batches(self):
+        """Return the number of batches in the dataset.
+
+        Returns:
+            int, the number of batches if it was supplied at construction,
+            or ``None`` when unknown (a generator may have no end state).
+        """
         return self._num_batches
 
     @property
     def batch_size(self):
+        """Return the batch size of the dataset.
+
+        Returns:
+            ``None``, since the batch size of a generator is not known
+            without consuming it.
+        """
         return None
 
 

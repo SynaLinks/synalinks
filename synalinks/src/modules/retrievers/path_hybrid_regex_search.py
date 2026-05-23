@@ -21,10 +21,10 @@ from synalinks.src.saving import serialization_lib
 
 
 class PathHybridRegexSearchInput(DataModel):
-    """Input shape for :class:`PathHybridRegexSearch`.
+    """Input shape for `PathHybridRegexSearch`.
 
     The ``*_regex_patterns`` lists are optional — when both are
-    omitted, the module degenerates to plain :class:`PathSimilaritySearch`.
+    omitted, the module degenerates to plain `PathSimilaritySearch`.
     """
 
     subj_similarity_search: List[str] = Field(
@@ -53,11 +53,11 @@ class PathHybridRegexSearch(Module):
     """RRF of vector + regex variable-length path search, AND semantics.
 
     LM-driven wrapper around
-    :meth:`KnowledgeBase.path_hybrid_regex_search`. Each side is
+    `KnowledgeBase.path_hybrid_regex_search`. Each side is
     hybrid-searched (vec + regex) independently; the path's combined
     ``rrf_score`` is the sum of the two endpoint hybrid scores —
     the 4-source RRF identity. Falls through to plain
-    :class:`PathSimilaritySearch` when no patterns are supplied.
+    `PathSimilaritySearch` when no patterns are supplied.
 
     Args:
         knowledge_base (KnowledgeBase): The knowledge base to search.

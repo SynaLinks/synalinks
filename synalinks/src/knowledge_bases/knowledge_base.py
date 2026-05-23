@@ -350,7 +350,7 @@ class KnowledgeBase(SynalinksSaveable):
 
         The target table's schema is inferred directly from the
         file's columns, with the first column promoted to PRIMARY
-        KEY. The returned :class:`SymbolicDataModel` is the handle
+        KEY. The returned `SymbolicDataModel` is the handle
         you pass to subsequent search / get calls — you don't need
         to pre-declare a ``DataModel`` for this table.
 
@@ -371,7 +371,7 @@ class KnowledgeBase(SynalinksSaveable):
                 ``True``.
 
         Returns:
-            The :class:`SymbolicDataModel` for the loaded table.
+            The `SymbolicDataModel` for the loaded table.
         """
         return await self.sql_adapter.from_csv(
             path,
@@ -391,7 +391,7 @@ class KnowledgeBase(SynalinksSaveable):
     ) -> Any:
         """Bulk-load a Parquet file directly into the knowledge base.
 
-        Same trade-offs as :meth:`from_csv` — bypasses the Python row
+        Same trade-offs as `from_csv` — bypasses the Python row
         pipeline for native database ingestion. Parquet's schema is
         explicit in the file footer so there is no type-inference
         guesswork to worry about.
@@ -403,7 +403,7 @@ class KnowledgeBase(SynalinksSaveable):
             table_description: Optional schema description.
 
         Returns:
-            The :class:`SymbolicDataModel` for the loaded table.
+            The `SymbolicDataModel` for the loaded table.
         """
         return await self.sql_adapter.from_parquet(
             path, table_name=table_name, table_description=table_description
@@ -418,9 +418,9 @@ class KnowledgeBase(SynalinksSaveable):
     ) -> Any:
         """Bulk-load a JSON file (top-level array of objects).
 
-        Same trade-offs as :meth:`from_csv` / :meth:`from_parquet` —
+        Same trade-offs as `from_csv` / `from_parquet` —
         bypasses the Python row pipeline. The file must contain a
-        top-level JSON array. Use :meth:`from_jsonl` for the
+        top-level JSON array. Use `from_jsonl` for the
         one-object-per-line NDJSON format.
 
         Args:
@@ -430,7 +430,7 @@ class KnowledgeBase(SynalinksSaveable):
             table_description: Optional schema description.
 
         Returns:
-            The :class:`SymbolicDataModel` for the loaded table.
+            The `SymbolicDataModel` for the loaded table.
         """
         return await self.sql_adapter.from_json(
             path, table_name=table_name, table_description=table_description
@@ -445,7 +445,7 @@ class KnowledgeBase(SynalinksSaveable):
     ) -> Any:
         """Bulk-load a JSON Lines (NDJSON) file.
 
-        Same trade-offs as :meth:`from_csv` / :meth:`from_parquet`,
+        Same trade-offs as `from_csv` / `from_parquet`,
         and the right call for very large JSON sources that aren't
         a single array.
 
@@ -456,7 +456,7 @@ class KnowledgeBase(SynalinksSaveable):
             table_description: Optional schema description.
 
         Returns:
-            The :class:`SymbolicDataModel` for the loaded table.
+            The `SymbolicDataModel` for the loaded table.
         """
         return await self.sql_adapter.from_jsonl(
             path, table_name=table_name, table_description=table_description
@@ -482,7 +482,7 @@ class KnowledgeBase(SynalinksSaveable):
             source: ``SymbolicDataModel`` or table-name string for
                 the table to rename. The string form is itself
                 PascalCase-normalized, so callers can pass the
-                same input they used in :meth:`from_csv` (e.g.
+                same input they used in `from_csv` (e.g.
                 ``"my-docs"``).
             table_name: New table name. Always normalized to
                 PascalCase.
@@ -490,7 +490,7 @@ class KnowledgeBase(SynalinksSaveable):
                 attached to the resulting schema.
 
         Returns:
-            A fresh :class:`SymbolicDataModel` for the (possibly
+            A fresh `SymbolicDataModel` for the (possibly
             renamed) table.
         """
         return await self.sql_adapter.rename(
@@ -586,7 +586,7 @@ class KnowledgeBase(SynalinksSaveable):
     ) -> Union[List[Dict[str, Any]], str]:
         """Execute a raw SQL query against the knowledge base.
 
-        Counterpart of :meth:`cypher` — the method is named after the
+        Counterpart of `cypher` — the method is named after the
         query language so a dual-adapter KnowledgeBase has a clear
         per-language entry point.
 
@@ -760,7 +760,7 @@ class KnowledgeBase(SynalinksSaveable):
 
         Falls back to full-text-only when no embedding model is
         configured. The regex-side sibling is
-        :meth:`hybrid_regex_search`.
+        `hybrid_regex_search`.
 
         Args:
             text_or_texts: Query text or list of query texts.
@@ -795,10 +795,10 @@ class KnowledgeBase(SynalinksSaveable):
         )
 
     async def hybrid_search(self, *args, **kwargs):
-        """Deprecated alias of :meth:`hybrid_fts_search`.
+        """Deprecated alias of `hybrid_fts_search`.
 
         Kept for backwards compatibility. The new name is symmetric
-        with :meth:`hybrid_regex_search`; prefer it in new code.
+        with `hybrid_regex_search`; prefer it in new code.
         """
         return await self.hybrid_fts_search(*args, **kwargs)
 
@@ -818,7 +818,7 @@ class KnowledgeBase(SynalinksSaveable):
     ):
         """Reciprocal-Rank-Fusion of vector similarity + regex.
 
-        The regex-side counterpart to :meth:`hybrid_fts_search` (which
+        The regex-side counterpart to `hybrid_fts_search` (which
         pairs vector with BM25 fulltext). The two signals are
         orthogonal: vectors capture semantic similarity, regex
         captures exact textual shape. Ranks are fused with the same
@@ -882,8 +882,8 @@ class KnowledgeBase(SynalinksSaveable):
     ) -> Union[Any, List[Any]]:
         """Insert or update one or more entities (nodes) in the graph.
 
-        Graph-side counterpart of the SQL :meth:`update`. The name
-        mirrors the :class:`Entities` data model; pass either a single
+        Graph-side counterpart of the SQL `update`. The name
+        mirrors the `Entities` data model; pass either a single
         ``Entity`` or a list — the return shape matches the input.
 
         Args:
@@ -903,7 +903,7 @@ class KnowledgeBase(SynalinksSaveable):
     ) -> Union[Any, List[Any]]:
         """Insert or update one or more relations (edges) in the graph.
 
-        Mirrors the :class:`Relations` data model. Each relation's
+        Mirrors the `Relations` data model. Each relation's
         ``subj`` and ``obj`` are upserted as needed so every edge has
         both endpoints.
 
@@ -921,8 +921,8 @@ class KnowledgeBase(SynalinksSaveable):
     async def update_knowledge_graph(self, knowledge_graph: Any) -> Any:
         """Bulk-insert a full knowledge graph (entities + relations).
 
-        Equivalent to calling :meth:`update_entities` then
-        :meth:`update_relations`, but concrete adapters may optimize
+        Equivalent to calling `update_entities` then
+        `update_relations`, but concrete adapters may optimize
         the combined path.
 
         Args:
@@ -1007,7 +1007,7 @@ class KnowledgeBase(SynalinksSaveable):
     ) -> Union[List[Dict[str, Any]], str]:
         """Execute a raw Cypher query against the graph.
 
-        The graph-store counterpart to :meth:`query` (which executes
+        The graph-store counterpart to `query` (which executes
         SQL). Kept under a distinct name to avoid ambiguity when the
         KnowledgeBase grows both surfaces.
 
@@ -1102,7 +1102,7 @@ class KnowledgeBase(SynalinksSaveable):
     ):
         """Regex search over entities of a label.
 
-        Graph-side counterpart of :meth:`regex_search`. Applies the
+        Graph-side counterpart of `regex_search`. Applies the
         pattern to every indexed string field on the entity (or to
         the caller-supplied subset via ``fields``) and returns rows
         whose any matching field hits.
@@ -1140,9 +1140,9 @@ class KnowledgeBase(SynalinksSaveable):
     ):
         """RRF fusion of vector similarity + regex match over entities.
 
-        Sibling of :meth:`entity_hybrid_fts_search`. Falls through
-        to :meth:`entity_similarity_search` when no patterns are
-        supplied; falls through to :meth:`entity_regex_search` when
+        Sibling of `entity_hybrid_fts_search`. Falls through
+        to `entity_similarity_search` when no patterns are
+        supplied; falls through to `entity_regex_search` when
         no embedding model is configured.
 
         Args:
@@ -1151,8 +1151,8 @@ class KnowledgeBase(SynalinksSaveable):
             pattern_or_patterns: Regex pattern (or list) for the
                 regex branch. ``None`` skips the regex side.
             label: The entity label.
-            fields: Forwarded to :meth:`entity_regex_search`.
-            case_sensitive: Forwarded to :meth:`entity_regex_search`.
+            fields: Forwarded to `entity_regex_search`.
+            case_sensitive: Forwarded to `entity_regex_search`.
             k: Maximum number of results.
             k_rank: RRF smoothing constant.
             similarity_threshold: Optional vector-distance threshold.
@@ -1188,7 +1188,7 @@ class KnowledgeBase(SynalinksSaveable):
     ):
         """RRF of vector similarity + BM25 fulltext over entities of a label.
 
-        Graph-side counterpart of :meth:`hybrid_fts_search`.
+        Graph-side counterpart of `hybrid_fts_search`.
 
         Args:
             text_or_texts: Query text or list of query texts.
@@ -1302,7 +1302,7 @@ class KnowledgeBase(SynalinksSaveable):
     ):
         """Regex search over relations of a given label.
 
-        Composed via :meth:`entity_regex_search` on each endpoint.
+        Composed via `entity_regex_search` on each endpoint.
         Regex hits are binary; the row's ``score`` is 2.0 when both
         endpoints matched and 1.0 when only one did, with
         ``matched_on`` indicating the side(s).
@@ -1342,16 +1342,16 @@ class KnowledgeBase(SynalinksSaveable):
 
         Per matched edge, the final ``rrf_score`` is the sum of the
         subject's and the object's hybrid scores — same 4-source-RRF
-        reduction as :meth:`relation_hybrid_fts_search`. Falls through
-        to :meth:`relation_similarity_search` when no patterns are
+        reduction as `relation_hybrid_fts_search`. Falls through
+        to `relation_similarity_search` when no patterns are
         supplied.
 
         Args:
             text_or_texts: Query text or list of query texts for the vector branch.
             pattern_or_patterns: Regex pattern (or list) for the regex branch.
             label: The relation label.
-            fields: Forwarded to :meth:`entity_regex_search`.
-            case_sensitive: Forwarded to :meth:`entity_regex_search`.
+            fields: Forwarded to `entity_regex_search`.
+            case_sensitive: Forwarded to `entity_regex_search`.
             k: Maximum number of results.
             k_rank: RRF smoothing constant.
             similarity_threshold: Optional vector-distance threshold.
@@ -1563,7 +1563,7 @@ class KnowledgeBase(SynalinksSaveable):
     ):
         """BM25 variable-length path search, AND semantics.
 
-        Same shape as :meth:`path_similarity_search` but driven by BM25
+        Same shape as `path_similarity_search` but driven by BM25
         fulltext on each endpoint. Per matched path, ``score`` is the
         sum of the subject-side and object-side BM25 scores.
 
@@ -1668,7 +1668,7 @@ class KnowledgeBase(SynalinksSaveable):
 
         Each side is hybrid-searched (vec + regex) independently; the
         path's ``rrf_score`` is the sum of the two endpoint hybrid
-        scores. Falls through to :meth:`path_similarity_search` when
+        scores. Falls through to `path_similarity_search` when
         no patterns are supplied.
 
         Args:
@@ -1731,7 +1731,7 @@ class KnowledgeBase(SynalinksSaveable):
     def get_symbolic_entities(self) -> List[Any]:
         """Retrieve a ``SymbolicDataModel`` per node label in the graph.
 
-        Graph-side counterpart of :meth:`get_symbolic_data_models`,
+        Graph-side counterpart of `get_symbolic_data_models`,
         split by graph role: returns only entity (node) schemas.
         Each schema carries a ``label`` ``const`` discriminator and
         one property per stored column.
@@ -1748,7 +1748,7 @@ class KnowledgeBase(SynalinksSaveable):
         Each returned schema includes its endpoint node schemas under
         ``$defs`` and references them as ``subj`` / ``obj`` via
         ``$ref`` — same shape Pydantic v2 emits for a hand-written
-        :class:`synalinks.Relation` subclass.
+        `synalinks.Relation` subclass.
 
         Returns:
             list[SymbolicDataModel]: one per existing relation label.
@@ -1766,8 +1766,8 @@ class KnowledgeBase(SynalinksSaveable):
     ) -> Any:
         """Run a community-detection algorithm on the graph store.
 
-        Returns a :class:`KnowledgeGraphs` — one
-        :class:`KnowledgeGraph` per detected community. Edges that
+        Returns a `KnowledgeGraphs` — one
+        `KnowledgeGraph` per detected community. Edges that
         straddle communities are dropped. See the adapter's
         documentation for algorithm-specific constraints (Louvain
         requires a single node label; WCC / SCC accept any number).
@@ -1810,7 +1810,7 @@ class KnowledgeBase(SynalinksSaveable):
         ``{<pk_column>: <pk_value>, "label": <label>, "node": <full node>,
         "rank": <float>}`` sorted by ``rank`` descending. The per-label
         PK column name is preserved verbatim, mirroring
-        :meth:`entity_similarity_search`.
+        `entity_similarity_search`.
 
         Args:
             node_labels: Optional whitelist of NODE tables. ``None``
@@ -1857,10 +1857,10 @@ class KnowledgeBase(SynalinksSaveable):
 
         Vector-matches ``k`` seed entities of ``label``, expands their
         ``max_hops`` undirected neighbourhood, and returns the deduped
-        union as a :class:`KnowledgeGraph` — the local context subgraph
+        union as a `KnowledgeGraph` — the local context subgraph
         for entity-centric questions ("what does the graph say around
         *these* entities"). See
-        :meth:`GraphDatabaseAdapter.local_graph_search`.
+        `GraphDatabaseAdapter.local_graph_search`.
 
         Args:
             text_or_texts: Query text (or list); neighbourhoods merge.
@@ -1895,14 +1895,14 @@ class KnowledgeBase(SynalinksSaveable):
         """Materialize community membership (and PageRank) onto nodes.
 
         The index-time half of GraphRAG-global: run once after loading
-        the graph so :meth:`global_graph_search` can read precomputed
+        the graph so `global_graph_search` can read precomputed
         ``community`` / ``rank`` properties instead of re-clustering on
         every query. Idempotent. See
-        :meth:`GraphDatabaseAdapter.build_communities`.
+        `GraphDatabaseAdapter.build_communities`.
 
         Args:
             algorithm: Community-detection algorithm; see
-                :meth:`detect_communities`.
+                `detect_communities`.
             node_labels: Optional NODE-table whitelist (``None`` = all).
             rel_labels: Optional REL-table whitelist (``None`` = all).
             max_iterations: Optional clustering iteration cap.
@@ -1933,13 +1933,13 @@ class KnowledgeBase(SynalinksSaveable):
         """GraphRAG-style *global* search on the graph store.
 
         Rolls up the community / rank properties
-        :meth:`build_communities` stamped into one aggregate row per
+        `build_communities` stamped into one aggregate row per
         community (size, total rank, representative members), ordered
         by importance — the theme-centric counterpart to
-        :meth:`local_graph_search` ("what are the overall patterns
-        across the *whole* graph"). Requires :meth:`build_communities`
+        `local_graph_search` ("what are the overall patterns
+        across the *whole* graph"). Requires `build_communities`
         to have run first. See
-        :meth:`GraphDatabaseAdapter.global_graph_search`.
+        `GraphDatabaseAdapter.global_graph_search`.
 
         Args:
             node_labels: Optional NODE-table whitelist (``None`` = every

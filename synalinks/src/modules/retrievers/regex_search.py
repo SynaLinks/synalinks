@@ -19,7 +19,7 @@ from synalinks.src.saving import serialization_lib
 
 
 class RegexSearchInput(DataModel):
-    """Input shape for :class:`RegexSearch`."""
+    """Input shape for `RegexSearch`."""
 
     regex_search: str = Field(
         description=(
@@ -37,9 +37,9 @@ class RegexSearchInput(DataModel):
 class RegexSearch(Module):
     """Regex matching against a single KB table.
 
-    LM-driven wrapper around :meth:`KnowledgeBase.regex_search`. An
-    embedded :class:`Generator` turns the module's inputs into a
-    :class:`RegexSearchInput` query (the ``regex_search`` field),
+    LM-driven wrapper around `KnowledgeBase.regex_search`. An
+    embedded `Generator` turns the module's inputs into a
+    `RegexSearchInput` query (the ``regex_search`` field),
     which is then matched against the table. Use this when you want
     exact-shape textual matching without the vector branch (e.g.
     matching log lines, SKU codes, or any other structured text).
@@ -49,7 +49,7 @@ class RegexSearch(Module):
     pattern comes from an untrusted source.
 
     Single-table only: to retrieve from multiple tables, compose
-    several :class:`RegexSearch` modules in the program DAG and merge
+    several `RegexSearch` modules in the program DAG and merge
     their outputs explicitly.
 
     Example:

@@ -249,8 +249,8 @@ class VectorRAGAgent(Module):
     """A ready-to-use retrieval-augmented agent backed by a knowledge base.
 
     VectorRAGAgent is a thin specialization of
-    :class:`FunctionCallingAgent` that pre-wires three retrieval tools
-    bound to a :class:`KnowledgeBase`:
+    `FunctionCallingAgent` that pre-wires three retrieval tools
+    bound to a `KnowledgeBase`:
 
     - ``get_knowledge_base_schema``: lists available tables and columns.
     - ``search_knowledge_base``: dispatches to similarity / fulltext /
@@ -258,7 +258,7 @@ class VectorRAGAgent(Module):
     - ``get_record_by_id``: full-record lookup after a search returns
       an id.
 
-    The constructor mirrors :class:`FunctionCallingAgent` — every
+    The constructor mirrors `FunctionCallingAgent` — every
     parameter on that class is accepted here with identical semantics.
     The only additions are ``knowledge_base`` (required), the
     retrieval knobs (``search_type``, ``k``, ``similarity_threshold``,
@@ -331,7 +331,7 @@ class VectorRAGAgent(Module):
         output_format (str): How search results are rendered to the
             LM. ``"csv"`` (default) is compact; ``"json"`` returns a
             list of dicts.
-        tools (list): Additional :class:`Tool` instances (or plain
+        tools (list): Additional `Tool` instances (or plain
             async functions) to expose alongside the three built-in
             retrieval tools. Tool names must not collide with the
             built-ins (``get_knowledge_base_schema``,

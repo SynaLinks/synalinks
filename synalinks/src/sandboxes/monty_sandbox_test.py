@@ -614,24 +614,20 @@ class MontySandboxWorkdirStressTest(testing.TestCase):
         sb = MontySandbox(workdir=workdir, timeout=20)
 
         # 1. read base files through the overlay, then patch one in place.
-        r = await sb.run(
-            """
+        r = await sb.run("""
 from pathlib import Path
 assert Path('/README.md').read_text() == 'project readme'
 assert Path('/src/main.py').read_text().startswith('print')
 Path('/src/main.py').write_text('PATCHED')
-"""
-        )
+""")
         self.assertTrue(r.ok, r.error)
         # 2. create new files, including a freshly mkdir'd nested package.
-        r = await sb.run(
-            """
+        r = await sb.run("""
 from pathlib import Path
 Path('/src/new_module.py').write_text('Y=2')
 Path('/pkg/sub').mkdir(parents=True)
 Path('/pkg/sub/deep.py').write_text('Z=3')
-"""
-        )
+""")
         self.assertTrue(r.ok, r.error)
         # 3. delete a base file, 4. rename another.
         r = await sb.run("from pathlib import Path\nPath('/config.json').unlink()")
@@ -643,8 +639,7 @@ Path('/pkg/sub/deep.py').write_text('Z=3')
         self.assertTrue(r.ok, r.error)
 
         # The sandbox's own merged view is internally consistent.
-        r = await sb.run(
-            """
+        r = await sb.run("""
 from pathlib import Path
 checks = [
     Path('/src/main.py').read_text() == 'PATCHED',
@@ -657,8 +652,7 @@ checks = [
 ]
 print(all(checks))
 print(checks)
-"""
-        )
+""")
         self.assertTrue(r.ok, r.error)
         self.assertEqual(r.stdout.strip().split("\n")[0], "True", r.stdout)
 
@@ -685,16 +679,14 @@ print(checks)
 
     async def test_journal_captures_the_session_in_order(self):
         sb = MontySandbox(workdir=self._make_workdir(), timeout=20)
-        await sb.run(
-            """
+        await sb.run("""
 from pathlib import Path
 Path('/notes.txt').write_text('a')
 Path('/notes.txt').write_text('ab')
 Path('/d').mkdir()
 Path('/notes.txt').rename('/d/notes.txt')
 Path('/d/notes.txt').unlink()
-"""
-        )
+""")
         journal = sb.journal()
         self.assertEqual(
             [(e["action"], e["path"]) for e in journal],
@@ -713,8 +705,7 @@ Path('/d/notes.txt').unlink()
     async def test_bulk_generate_and_readback(self):
         workdir = self._make_workdir()
         sb = MontySandbox(workdir=workdir, timeout=20)
-        r = await sb.run(
-            """
+        r = await sb.run("""
 from pathlib import Path
 Path('/out').mkdir()
 for i in range(100):
@@ -722,8 +713,7 @@ for i in range(100):
 total = sum(int(Path(f'/out/f{i}.txt').read_text()) for i in range(100))
 print(total)
 print(len(list(Path('/out').iterdir())))
-"""
-        )
+""")
         self.assertTrue(r.ok, r.error)
         lines = r.stdout.strip().split("\n")
         self.assertEqual(lines[0], str(sum(range(100))))  # 4950, read back intact
@@ -737,23 +727,19 @@ print(len(list(Path('/out').iterdir())))
         workdir = self._make_workdir()
         before = self._snapshot(workdir)
         sb = MontySandbox(workdir=workdir, timeout=20)
-        await sb.run(
-            """
+        await sb.run("""
 from pathlib import Path
 Path('/PLAN.md').write_text('phase 1')
 Path('/config.json').unlink()
-"""
-        )
+""")
         # Serialize mid-session and resume on a fresh instance.
         restored = MontySandbox.from_config(sb.get_config())
-        r = await restored.run(
-            """
+        r = await restored.run("""
 from pathlib import Path
 print(Path('/PLAN.md').read_text())
 print(Path('/config.json').exists())
 print(Path('/README.md').read_text())
-"""
-        )
+""")
         self.assertTrue(r.ok, r.error)
         lines = r.stdout.strip().split("\n")
         self.assertEqual(lines[0], "phase 1")  # overlay write survived
@@ -773,12 +759,10 @@ print(Path('/README.md').read_text())
         await sb.run("from pathlib import Path\nPath('/config.json').unlink()")
         r = await sb.run("from pathlib import Path\nprint(Path('/config.json').exists())")
         self.assertEqual(r.stdout.strip(), "False")
-        await sb.run(
-            """
+        await sb.run("""
 from pathlib import Path
 Path('/config.json').write_text('{"version": 2}')
-"""
-        )
+""")
         r = await sb.run(
             "from pathlib import Path\nprint(Path('/config.json').read_text())"
         )
@@ -793,16 +777,14 @@ Path('/config.json').write_text('{"version": 2}')
         # globals over the merged overlay view (base + writes - deletes).
         workdir = self._make_workdir()
         sb = MontySandbox(workdir=workdir, timeout=20)
-        r = await sb.run(
-            """
+        r = await sb.run("""
 import asyncio
 from pathlib import Path
 Path('/src/extra.py').write_text('E=1')
 async def main():
     return await rglob('*.py')
 print(sorted(asyncio.run(main())))
-"""
-        )
+""")
         self.assertTrue(r.ok, r.error)
         # base src/main.py + src/util.py, plus the just-written extra.py
         self.assertEqual(
@@ -810,14 +792,12 @@ print(sorted(asyncio.run(main())))
             "['/src/extra.py', '/src/main.py', '/src/util.py']",
         )
         # Non-recursive glob scoped to a subdirectory via root=.
-        r = await sb.run(
-            """
+        r = await sb.run("""
 import asyncio
 async def main():
     return await glob('*.md', root='/docs')
 print(asyncio.run(main()))
-"""
-        )
+""")
         self.assertTrue(r.ok, r.error)
         self.assertEqual(r.stdout.strip(), "['/docs/intro.md']")
 

@@ -134,7 +134,7 @@ def _patch_kt_inference():
     ``keras.metrics``, and ``keras_backend.py`` ships deserialize stubs that
     always raise — so without help, inference returns None for every
     synalinks metric name. The replacement here consults the synalinks
-    metrics registry first (via :func:`_synalinks_name_direction_map`) and
+    metrics registry first (via `_synalinks_name_direction_map`) and
     falls through to kt's original for keras compat (``"loss"`` etc.).
 
     Both kt call sites — ``metrics_tracking.register`` and

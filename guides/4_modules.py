@@ -21,7 +21,7 @@ pins down which fields exist and what type each one is.
 Some modules carry **trainable state** — JSON objects that the
 optimizer is allowed to rewrite during training. Each trainable
 variable obeys a fixed schema (a subclass of `synalinks.Trainable`
-— [Guide 11](https://synalinks.github.io/synalinks/guides/Trainable%20Variables/) shows you how to write your own). The two most common
+— [Guide 12](https://synalinks.github.io/synalinks/guides/Trainable%20Variables/) shows you how to write your own). The two most common
 shapes for that JSON object are:
 
 - `instructions` — a variable whose primary field is the system
@@ -182,7 +182,9 @@ Two rules to remember; these come from the LM providers
 
 These modules give your program the LM equivalent of `if`, `elif`, and
 `switch`. Use them when the *next step* of the flowchart needs to
-depend on what the data actually looks like.
+depend on what the data actually looks like. This guide covers them
+one brick at a time; [Guide 5](https://synalinks.github.io/synalinks/guides/Control%20Flow/) shows how to compose them with the
+merging operators into routing, fan-out, and fallback patterns.
 
 ### Decision: pick one label from a fixed list
 

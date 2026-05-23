@@ -161,11 +161,11 @@ class Text2Cypher(Module):
     labels, relation labels, endpoint pairings, properties) onto the
     input data model so the LM has the full schema in context,
     generates a single read-only Cypher query, and runs it through
-    :meth:`KnowledgeBase.cypher` with ``read_only=True``.
+    `KnowledgeBase.cypher` with ``read_only=True``.
 
     The schema is fetched on every call from
-    :meth:`KnowledgeBase.get_symbolic_entities` and
-    :meth:`KnowledgeBase.get_symbolic_relations`, so DDL changes
+    `KnowledgeBase.get_symbolic_entities` and
+    `KnowledgeBase.get_symbolic_relations`, so DDL changes
     (new labels, dropped labels, renamed properties) are picked up
     without rebuilding the module.
 
@@ -233,7 +233,7 @@ class Text2Cypher(Module):
             ``"json"`` (default) returns a list of dicts; ``"csv"``
             returns a CSV string.
         prompt_template (str): Forwarded to the underlying
-            :class:`Generator`.
+            `Generator`.
         examples (list): Few-shot examples for the generator.
         instructions (str): Override the default system instructions.
         seed_instructions (list): Optional seed instructions for

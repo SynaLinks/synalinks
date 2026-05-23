@@ -3,10 +3,10 @@
 <!-- colab-badge:end -->
 
 
-::: guides.10_datasets
+::: guides.11_datasets
 
 ## Source
 
 ````python
---8<-- "guides/10_datasets.py:435"
+--8<-- "guides/11_datasets.py:435"
 ````

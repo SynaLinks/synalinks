@@ -150,9 +150,7 @@ class MarkdownDatasetTest(testing.TestCase):
         _write(os.path.join(self.tmp, "skip.txt"), "nope")
         ds = MarkdownDataset(root=self.tmp, batch_size=10)
         (x,) = next(iter(ds))
-        self.assertEqual(
-            sorted(doc.filepath for doc in x), ["keep.md", "upper.MD"]
-        )
+        self.assertEqual(sorted(doc.filepath for doc in x), ["keep.md", "upper.MD"])
 
     def test_non_recursive(self):
         _write(os.path.join(self.tmp, "top.md"), "# T\n")

@@ -9,7 +9,7 @@ read-only enforcement layer, and ``entity_similarity_search`` over the
 vector index. The remaining ``GraphDatabaseAdapter`` methods (get /
 delete / fulltext) fall through to the base's ``NotImplementedError``.
 
-Security model mirrors :class:`DuckDBAdapter`:
+Security model mirrors `DuckDBAdapter`:
 
   * ``cypher(query, ..., read_only=True)`` (default) rejects any query
     whose tokens include a Cypher write/admin keyword
@@ -21,7 +21,7 @@ Security model mirrors :class:`DuckDBAdapter`:
     otherwise-legitimate read query.
 
   * Labels and property names are passed through
-    :func:`sanitize_label` / :func:`sanitize_properties` before being
+    `sanitize_label` / `sanitize_properties` before being
     interpolated into Cypher (Cypher doesn't support binding identifiers
     as parameters). Values always go through ``$``-parameter binding,
     never string interpolation.
@@ -120,7 +120,7 @@ sanitize_label = to_pascal_identifier
 
 
 def sanitize_property_name(name: str) -> Optional[str]:
-    """Warn-and-drop variant of :func:`to_snake_identifier` for property names.
+    """Warn-and-drop variant of `to_snake_identifier` for property names.
 
     Property names arrive from external entity/relation payloads with
     arbitrary keys, so the graph adapter needs a non-raising path: an
@@ -135,7 +135,7 @@ def sanitize_properties(props: Dict[str, Any]) -> Dict[str, Any]:
 
     Property *values* are bound via ``$``-parameters and don't need
     sanitization, but property *names* are interpolated into Cypher
-    so they go through :func:`sanitize_property_name`
+    so they go through `sanitize_property_name`
     (``snake_case`` normalization + identifier validation). The
     ``label`` / ``subj`` / ``obj`` reserved fields are dropped —
     ``label`` is already captured by the table name; ``subj`` / ``obj``
@@ -303,7 +303,7 @@ _FLOAT_TYPES = {"FLOAT", "DOUBLE"}
 
 
 def _cypher_type_to_json_property(cypher_type: str, name: str) -> Dict[str, Any]:
-    """Reverse of :func:`_map_prop_to_cypher`.
+    """Reverse of `_map_prop_to_cypher`.
 
     Mirror of DuckDB's ``_duckdb_table_to_json_schema`` per-column
     branch: maps a Ladybug type string back to a JSON-schema property
@@ -543,12 +543,12 @@ class LadybugAdapter(GraphDatabaseAdapter):
     def _get_id_key(self, schema: Dict[str, Any]) -> str:
         """Return the schema's first non-``label`` property as PK.
 
-        Mirror of :meth:`DuckDBAdapter._get_id_key` with one extra
+        Mirror of `DuckDBAdapter._get_id_key` with one extra
         rule: the ``label`` field is metadata used to choose the
         node/rel table name and is never stored as a column, so it
         doesn't count when picking the PK. The next property in
         declaration order wins, after running through
-        :func:`sanitize_property_name` so the returned name matches
+        `sanitize_property_name` so the returned name matches
         the actual table column. Inputs that normalize away (empty
         / leading digit / nothing but separators) are skipped — they
         wouldn't make a valid identifier either.
@@ -638,8 +638,8 @@ class LadybugAdapter(GraphDatabaseAdapter):
 
         Ladybug's FTS index is a snapshot of the table at creation
         time — inserts after this point don't show up until the
-        index is rebuilt. :meth:`update_entities` triggers that
-        rebuild via :meth:`_rebuild_fts_index` at write time, so
+        index is rebuilt. `update_entities` triggers that
+        rebuild via `_rebuild_fts_index` at write time, so
         search paths assume the index is current.
 
         Optional build params (``stemmer`` / ``stopwords`` /
@@ -681,7 +681,7 @@ class LadybugAdapter(GraphDatabaseAdapter):
     def _rebuild_fts_index(self, label: str) -> None:
         """Drop and recreate the FTS index for a label.
 
-        Called from the write paths (:meth:`update_entities`) after the
+        Called from the write paths (`update_entities`) after the
         underlying inserts have committed. Search paths assume the
         index is current — they never rebuild at query time.
         """
@@ -710,7 +710,7 @@ class LadybugAdapter(GraphDatabaseAdapter):
         Mirror of DuckDB's ``_json_schema_to_duckdb_columns``: walks
         the property map, resolves ``$ref`` references against the
         schema's ``$defs``, picks the non-null half of an ``anyOf``
-        union, and maps each resolved type via :func:`_map_prop_to_cypher`.
+        union, and maps each resolved type via `_map_prop_to_cypher`.
         The reserved fields in ``skip`` are left to the caller —
         ``label`` is implicit (table name), ``embedding`` is added
         back later as ``FLOAT[<dim>]``, and rel tables additionally
@@ -750,7 +750,7 @@ class LadybugAdapter(GraphDatabaseAdapter):
         the table name. When an embedding model is configured an
         ``embedding FLOAT[<dim>]`` column is added and a vector index
         is built over it. Every other schema field flows through
-        :meth:`_json_schema_to_cypher_columns`.
+        `_json_schema_to_cypher_columns`.
         """
         pk_col = self._pk_keys[label]
         cols: List[str] = list(self._json_schema_to_cypher_columns(schema))
@@ -762,7 +762,7 @@ class LadybugAdapter(GraphDatabaseAdapter):
         if self.embedding_model and self.vector_dim:
             # ``metric`` is fixed at construction time because it also
             # drives downstream conversion helpers (e.g.
-            # :meth:`_max_distance_for_threshold`). HNSW build params
+            # `_max_distance_for_threshold`). HNSW build params
             # (``mu`` / ``ml`` / ``pu`` / ``efc``) come from their
             # matching ``self.<name>`` attributes and only get
             # forwarded when set — ``None`` falls back to Ladybug's
@@ -952,7 +952,7 @@ class LadybugAdapter(GraphDatabaseAdapter):
         Mirror of DuckDB's ``_duckdb_table_to_json_schema`` for the
         graph side. Walks ``CALL TABLE_INFO(<label>)`` row-by-row,
         maps each Ladybug type through
-        :func:`_cypher_type_to_json_property`, and adds a ``label``
+        `_cypher_type_to_json_property`, and adds a ``label``
         property pinned by ``const`` so the resulting schema acts as
         a discriminated-union member (same shape the user-written
         ``Entity`` subclasses emit via Pydantic v2).
@@ -1060,7 +1060,7 @@ class LadybugAdapter(GraphDatabaseAdapter):
         """Return a ``SymbolicDataModel`` per existing NODE table.
 
         Graph-side counterpart of
-        :meth:`DatabaseAdapter.get_symbolic_data_models`, split by
+        `DatabaseAdapter.get_symbolic_data_models`, split by
         graph role. Useful for introspection (``for m in
         kb.get_symbolic_entities(): print(m.get_schema())``) and for
         passing as ``data_models`` to search wrappers that take a
@@ -1145,7 +1145,7 @@ class LadybugAdapter(GraphDatabaseAdapter):
         Processes the batch sequentially — each entity gets its own
         ``CALL QUERY_VECTOR_INDEX`` round-trip that combines lookup +
         conditional CREATE into a single statement (see
-        :meth:`_upsert_entity`). Sequential rather than bulk because
+        `_upsert_entity`). Sequential rather than bulk because
         Ladybug doesn't support the in-query primitives needed to
         share state across UNWIND rows: ``CALL QUERY_VECTOR_INDEX``
         only accepts a literal / parameter vector (not a struct-field
@@ -1325,14 +1325,14 @@ class LadybugAdapter(GraphDatabaseAdapter):
         """Insert relations with endpoint dedup + edge MERGE, sequentially.
 
         For each relation in turn:
-          1. Upsert ``subj`` via :meth:`_upsert_entity` (one query —
+          1. Upsert ``subj`` via `_upsert_entity` (one query —
              dedup against existing nodes with HNSW vector lookup).
-          2. Upsert ``obj`` via :meth:`_upsert_entity` (one query).
+          2. Upsert ``obj`` via `_upsert_entity` (one query).
           3. ``MERGE`` the edge between the two resolved ids so the
              same ``(s, label, o)`` triple is never inserted twice.
 
         Sequential rather than bulk for the same reason
-        :meth:`update_entities` is — within-batch dedup needs each
+        `update_entities` is — within-batch dedup needs each
         write to be visible to the next read, which Ladybug's
         in-query primitives don't support.
         """
@@ -1353,9 +1353,9 @@ class LadybugAdapter(GraphDatabaseAdapter):
         existing node within ``dedup_threshold`` cause the WHERE
         to drop the row, so the MERGE silently no-ops; the caller
         is expected to have upserted the endpoint nodes first (which
-        :meth:`update_knowledge_graph` does automatically by
-        running :meth:`update_entities` before
-        :meth:`update_relations`).
+        `update_knowledge_graph` does automatically by
+        running `update_entities` before
+        `update_relations`).
 
         Falls back to ``MATCH``-by-id + MERGE (3 queries total) when
         either endpoint lacks an embedding or the adapter has no
@@ -1517,7 +1517,7 @@ class LadybugAdapter(GraphDatabaseAdapter):
     ) -> Union[Optional[Any], List[Optional[Any]]]:
         """Retrieve entities by primary key. Scalar in / scalar out.
 
-        Mirrors :meth:`DuckDBAdapter.get` on the SQL side: a single id
+        Mirrors `DuckDBAdapter.get` on the SQL side: a single id
         returns the matched ``JsonDataModel`` (or ``None`` for a
         miss); a list returns a list in the same order with ``None``
         in the unmatched slots.
@@ -1578,7 +1578,7 @@ class LadybugAdapter(GraphDatabaseAdapter):
         graph; no dangling edges). Returns the number of nodes
         actually deleted. The FTS index is rebuilt after the write
         so subsequent search calls don't return ghost rows — same
-        write-time rebuild shape :meth:`update_entities` uses.
+        write-time rebuild shape `update_entities` uses.
         """
         ids = [id_or_ids] if not isinstance(id_or_ids, list) else list(id_or_ids)
         if not ids:
@@ -1622,7 +1622,7 @@ class LadybugAdapter(GraphDatabaseAdapter):
 
         Returns the number of edges actually removed (zero if no
         matching edge exists). Endpoints are matched by their declared
-        PKs — same convention as :meth:`get_entity` / :meth:`update_entities`.
+        PKs — same convention as `get_entity` / `update_entities`.
         """
         label = sanitize_label(label)
         subj_label, obj_label = self._resolve_endpoint_labels(label)
@@ -1669,11 +1669,11 @@ class LadybugAdapter(GraphDatabaseAdapter):
     def _entity_model_for_label(self, label: str) -> Optional[Any]:
         """Look up a registered entity model class by its label.
 
-        Used by :meth:`detect_communities` to reconstruct typed
+        Used by `detect_communities` to reconstruct typed
         Pydantic instances from raw node structs — the user passed
         ``Person`` / ``City`` etc. at construction time and we want
         the returned KnowledgeGraphs to round-trip through those
-        types instead of collapsing to the base :class:`Entity`.
+        types instead of collapsing to the base `Entity`.
         """
         for model in self.entity_models:
             try:
@@ -1710,7 +1710,7 @@ class LadybugAdapter(GraphDatabaseAdapter):
         """Synthesize a generic ``Entity`` subclass for an unregistered label.
 
         Free-form graphs carry labels with no matching ``entity_models``
-        class, so reconstructing them as the bare :class:`Entity` would
+        class, so reconstructing them as the bare `Entity` would
         drop every property but ``label``. Instead, build a Pydantic
         model from the table's introspected columns (cached per label)
         so ``name`` and any other stored field survive read-back. Fields
@@ -1740,7 +1740,7 @@ class LadybugAdapter(GraphDatabaseAdapter):
         keeps its ``name`` / ``embedding`` fields); for a free-form
         label with no registered class, synthesizes a generic subclass
         from the table schema so its properties survive too. Falls back
-        to the bare :class:`Entity` (label only) only when neither
+        to the bare `Entity` (label only) only when neither
         resolves or validation fails.
         """
         clean = self._node_to_json(node, label)
@@ -1859,7 +1859,7 @@ class LadybugAdapter(GraphDatabaseAdapter):
     ) -> Dict[str, Any]:
         """Translate the Python-side ``ef_search`` arg into the
         camelCase ``efs`` key Ladybug's ``QUERY_VECTOR_INDEX``
-        accepts. Mirrors :meth:`_collect_fts_query_kwargs` so the
+        accepts. Mirrors `_collect_fts_query_kwargs` so the
         per-call wiring stays uniform across the search methods.
         """
         if ef_search is None:
@@ -1949,7 +1949,7 @@ class LadybugAdapter(GraphDatabaseAdapter):
         max_iterations: Optional[int] = None,
     ) -> KnowledgeGraphs:
         """Run a community-detection algorithm via Ladybug's ``algo``
-        extension and return one :class:`KnowledgeGraph` per
+        extension and return one `KnowledgeGraph` per
         community.
 
         Algorithms:
@@ -1959,7 +1959,7 @@ class LadybugAdapter(GraphDatabaseAdapter):
             time; if ``node_labels`` resolves to more than one this
             method raises. Nodes with degree 0 are assigned community
             ``-1`` by Louvain; each such isolated node lands in its
-            own singleton :class:`KnowledgeGraph` so the output
+            own singleton `KnowledgeGraph` so the output
             stays unambiguous.
           * ``"weakly_connected_components"`` — disconnected-piece
             clustering across any number of node labels, ignoring
@@ -1970,7 +1970,7 @@ class LadybugAdapter(GraphDatabaseAdapter):
             that are only traversable one way don't merge their
             endpoints into the same component.
 
-        Cross-community edges are dropped: a :class:`KnowledgeGraph`
+        Cross-community edges are dropped: a `KnowledgeGraph`
         for community ``c`` contains an edge only when both endpoints
         belong to ``c``. Edges that straddle communities don't belong
         to any single subgraph by definition.
@@ -1989,8 +1989,8 @@ class LadybugAdapter(GraphDatabaseAdapter):
                 engine default.
 
         Returns:
-            :class:`KnowledgeGraphs` — one
-            :class:`KnowledgeGraph` per detected community, sorted
+            `KnowledgeGraphs` — one
+            `KnowledgeGraph` per detected community, sorted
             by community id for deterministic ordering.
         """
         if algorithm not in self._COMMUNITY_ALGORITHMS:
@@ -2156,7 +2156,7 @@ class LadybugAdapter(GraphDatabaseAdapter):
         "rank": <float>}`` sorted by ``rank`` descending. The per-label
         PK column name is kept verbatim (e.g. ``name`` for ``Person``,
         ``isbn`` for ``Book``) instead of being aliased to ``id`` — same
-        convention as :meth:`entity_similarity_search` — so callers
+        convention as `entity_similarity_search` — so callers
         carrying multiple labels in one result set can still tell them
         apart.
 
@@ -2272,7 +2272,7 @@ class LadybugAdapter(GraphDatabaseAdapter):
              both in- and out-neighbours land in the context.
              ``OPTIONAL`` keeps edge-less seeds in the result.
 
-        The returned :class:`KnowledgeGraph` is the deduped union of
+        The returned `KnowledgeGraph` is the deduped union of
         every seed's neighbourhood — the local context subgraph you'd
         hand a generator alongside the question. Relations are rebuilt
         from each path edge's stored ``_SRC`` / ``_DST`` (not the
@@ -2292,7 +2292,7 @@ class LadybugAdapter(GraphDatabaseAdapter):
             ef_search: Optional HNSW ``efs`` for the seed lookup.
 
         Returns:
-            A :class:`KnowledgeGraph` of the deduped neighbourhood
+            A `KnowledgeGraph` of the deduped neighbourhood
             entities and relations. Empty when no seed matches.
         """
         if not self.embedding_model:
@@ -2418,18 +2418,18 @@ class LadybugAdapter(GraphDatabaseAdapter):
         The index-time half of GraphRAG-global: clustering and ranking
         are precomputed once and persisted as the ``community`` /
         ``rank`` properties on each node, so query-time
-        :meth:`global_graph_search` is a single aggregation read rather
+        `global_graph_search` is a single aggregation read rather
         than a project→cluster→drop sequence on every call.
 
-        Runs :meth:`detect_communities` to partition the graph, then
-        (when ``with_pagerank``) :meth:`pagerank` to score importance,
+        Runs `detect_communities` to partition the graph, then
+        (when ``with_pagerank``) `pagerank` to score importance,
         lazily ``ALTER``-adds the two reserved columns to each touched
         node table, and writes the values back keyed by primary key.
         Idempotent — re-running overwrites the previous stamping.
 
         Args:
             algorithm: Community-detection algorithm; see
-                :meth:`detect_communities`.
+                `detect_communities`.
             node_labels: Optional NODE-table whitelist. ``None`` =
                 every existing one.
             rel_labels: Optional REL-table whitelist. ``None`` =
@@ -2540,7 +2540,7 @@ class LadybugAdapter(GraphDatabaseAdapter):
         """GraphRAG-style *global* search: per-community aggregates.
 
         The query-time half of GraphRAG-global. Reads the ``community``
-        / ``rank`` properties :meth:`build_communities` stamped and
+        / ``rank`` properties `build_communities` stamped and
         rolls them up in a single multi-label aggregation query — no
         clustering at query time. Each returned row describes one
         community::
@@ -2555,7 +2555,7 @@ class LadybugAdapter(GraphDatabaseAdapter):
         map-reduce stays above the adapter; Cypher only does the
         retrieval.
 
-        Only node tables that :meth:`build_communities` has stamped
+        Only node tables that `build_communities` has stamped
         participate; unstamped tables are skipped so the query never
         references a missing column. Returns an empty result when no
         table has been built.
@@ -2696,7 +2696,7 @@ class LadybugAdapter(GraphDatabaseAdapter):
 
         Uses Ladybug's FTS extension. The underlying index is a
         snapshot built from the table contents; rebuild happens at
-        write time in :meth:`update_entities`, so search assumes the
+        write time in `update_entities`, so search assumes the
         index is current.
 
         Args:
@@ -2764,7 +2764,7 @@ class LadybugAdapter(GraphDatabaseAdapter):
         """Cypher-side regex match. Counterpart of DuckDB ``regex_search``.
 
         Uses Cypher's ``=~`` operator on each candidate string column;
-        the column list comes from :attr:`_fts_columns` (the same
+        the column list comes from `_fts_columns` (the same
         derived list of string-typed properties FTS indexes) so the
         scoping rules stay consistent across both search families.
         Case-insensitive matching is handled inline via the ``(?i)``
@@ -2830,15 +2830,15 @@ class LadybugAdapter(GraphDatabaseAdapter):
     ):
         """RRF fusion of vector similarity + regex match.
 
-        Sibling of :meth:`entity_hybrid_fts_search`. The regex side
+        Sibling of `entity_hybrid_fts_search`. The regex side
         captures "exact textual shape" — useful when the user knows
         a substring / pattern that should appear, but the embedding
         alone doesn't surface it. Composition is RRF over per-source
         ranks, identical math to the FTS hybrid.
 
-        Degenerates to plain :meth:`entity_regex_search` when no
+        Degenerates to plain `entity_regex_search` when no
         embedding model is configured (the vector half can't run),
-        and to plain :meth:`entity_similarity_search` when no patterns
+        and to plain `entity_similarity_search` when no patterns
         are passed in.
         """
         label = sanitize_label(label)
@@ -3159,7 +3159,7 @@ class LadybugAdapter(GraphDatabaseAdapter):
         """Look up ``(subj_label, obj_label)`` for a REL table.
 
         Uses ``CALL SHOW_CONNECTION`` — same introspection path
-        :meth:`_rel_table_to_json_schema` uses. Ladybug raises a
+        `_rel_table_to_json_schema` uses. Ladybug raises a
         binder-level error when the table doesn't exist or isn't a
         rel; this wrapper catches that and re-raises as a clear
         ``ValueError`` so call sites get an actionable message
@@ -3341,7 +3341,7 @@ class LadybugAdapter(GraphDatabaseAdapter):
     ):
         """BM25 fulltext search over relations of a given label.
 
-        Composed via :meth:`entity_fulltext_search` on each endpoint
+        Composed via `entity_fulltext_search` on each endpoint
         side. Per matched edge, the final ``score`` is the sum of the
         subject-side and object-side BM25 scores. Either-endpoint
         union: an edge surfaces if either endpoint matched.
@@ -3438,7 +3438,7 @@ class LadybugAdapter(GraphDatabaseAdapter):
     ):
         """Regex search over relations of a given label.
 
-        Composed via :meth:`entity_regex_search` on each endpoint side.
+        Composed via `entity_regex_search` on each endpoint side.
         Regex hits have no continuous score; ranking is binary
         (matched or not) with a slight bias toward edges that hit on
         both endpoints over edges that hit on only one — exposed via
@@ -3528,12 +3528,12 @@ class LadybugAdapter(GraphDatabaseAdapter):
     ):
         """RRF of vector similarity + regex match over relations.
 
-        Composed via :meth:`entity_hybrid_regex_search` on each
+        Composed via `entity_hybrid_regex_search` on each
         endpoint side. Per matched edge, the final ``rrf_score`` is
         the sum of the subject's and the object's hybrid scores —
-        same 4-source-RRF reduction as :meth:`relation_hybrid_fts_search`.
+        same 4-source-RRF reduction as `relation_hybrid_fts_search`.
 
-        Falls through to :meth:`relation_similarity_search` when no
+        Falls through to `relation_similarity_search` when no
         patterns are supplied.
 
         Args:
@@ -3542,8 +3542,8 @@ class LadybugAdapter(GraphDatabaseAdapter):
             pattern_or_patterns: Regex pattern (or list) for the
                 regex branch. ``None`` skips the regex side.
             label: The relation label (edge type).
-            fields: Forwarded to :meth:`entity_regex_search`.
-            case_sensitive: Forwarded to :meth:`entity_regex_search`.
+            fields: Forwarded to `entity_regex_search`.
+            case_sensitive: Forwarded to `entity_regex_search`.
             k: Maximum number of results.
             k_rank: RRF smoothing constant.
             similarity_threshold: Optional vector-distance threshold.
@@ -3662,7 +3662,7 @@ class LadybugAdapter(GraphDatabaseAdapter):
           6. Return ``nodes(p)`` / ``rels(p)`` / ``length(p)`` along
              with the two distances.
 
-        Same chained-CALL shape :meth:`_merge_relation_by_vector`
+        Same chained-CALL shape `_merge_relation_by_vector`
         uses for upserts — Ladybug parses chained CALLs as long as
         each one is separated by a ``WITH``. The variable-length
         pattern is Cypher's standard ``*<min>..<max>`` form,
@@ -3830,7 +3830,7 @@ class LadybugAdapter(GraphDatabaseAdapter):
     def _hybrid_hit_score(hit: Dict[str, Any]) -> float:
         """Extract the per-entity hybrid score from a hit row.
 
-        :meth:`entity_hybrid_fts_search` returns ``"rrf_score"`` when
+        `entity_hybrid_fts_search` returns ``"rrf_score"`` when
         an embedding model is configured; on the FTS-only fallback
         path it returns ``"score"`` (the raw BM25). This helper
         picks whichever is present so call sites stay shape-agnostic
@@ -3857,7 +3857,7 @@ class LadybugAdapter(GraphDatabaseAdapter):
     ):
         """RRF of vector + BM25 fulltext over relations.
 
-        Composed via :meth:`entity_hybrid_fts_search` on each
+        Composed via `entity_hybrid_fts_search` on each
         endpoint side. Per matched edge, the final ``rrf_score`` is
         the sum of the subject's and the object's hybrid scores —
         equivalent to a single 4-source RRF over the four underlying
@@ -3868,9 +3868,9 @@ class LadybugAdapter(GraphDatabaseAdapter):
         (when provided) drives the BM25 branch on both endpoints.
         When ``keywords`` is omitted, the text is reused for both.
 
-        Endpoint resolution uses :meth:`_resolve_endpoint_labels` so
+        Endpoint resolution uses `_resolve_endpoint_labels` so
         a single ``label`` argument suffices, mirroring
-        :meth:`relation_similarity_search`. Falls back to fulltext-
+        `relation_similarity_search`. Falls back to fulltext-
         only when no embedding model is configured.
         """
         label = sanitize_label(label)
@@ -3927,7 +3927,7 @@ class LadybugAdapter(GraphDatabaseAdapter):
         # is among the hits — single Cypher round-trip, with the
         # full subj/obj/edge structs so the result row matches the
         # similarity-version's shape. ``OR`` is the union semantics
-        # (matches :meth:`relation_similarity_search`).
+        # (matches `relation_similarity_search`).
         rows = self._con.execute(
             f"MATCH (s:{subj_label})-[r:{label}]->(o:{obj_label}) "
             f"WHERE s.{subj_pk} IN $subj_pks OR o.{obj_pk} IN $obj_pks "
@@ -4068,7 +4068,7 @@ class LadybugAdapter(GraphDatabaseAdapter):
 
         # Dedup key includes length: same endpoints connected by
         # different-length paths surface as distinct rows, same as
-        # :meth:`path_similarity_search`.
+        # `path_similarity_search`.
         best: Dict[tuple, Dict[str, Any]] = {}
         for row in rows:
             s_node, o_node, ns, rs, length, spk_val, opk_val = row
@@ -4132,7 +4132,7 @@ class LadybugAdapter(GraphDatabaseAdapter):
     ):
         """BM25 variable-length path search, AND semantics.
 
-        Same shape as :meth:`path_similarity_search` but driven by
+        Same shape as `path_similarity_search` but driven by
         BM25 fulltext on each endpoint instead of vector similarity.
         Per matched path the ``score`` is the sum of the
         subject-side and object-side BM25 scores.
@@ -4390,7 +4390,7 @@ class LadybugAdapter(GraphDatabaseAdapter):
         Each side is hybrid-searched (vec + regex) independently;
         the path's combined ``rrf_score`` is the sum of the two
         endpoint hybrid scores — the 4-source RRF identity. Falls
-        through to :meth:`path_similarity_search` when no patterns
+        through to `path_similarity_search` when no patterns
         are supplied.
 
         Args:

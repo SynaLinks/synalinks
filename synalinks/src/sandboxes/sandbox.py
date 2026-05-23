@@ -70,26 +70,26 @@ class Sandbox(SynalinksSaveable):
     A backend (Monty REPL, Pyodide, Docker, subprocess) is defined by
     overriding these primitives:
 
-    - :meth:`run` — execute a snippet, return an :class:`ExecutionResult`.
-    - :meth:`reset` — wipe execution state back to empty.
-    - :meth:`dump` / :meth:`load` — serialize / restore the namespace as
+    - `run` — execute a snippet, return an `ExecutionResult`.
+    - `reset` — wipe execution state back to empty.
+    - `dump` / `load` — serialize / restore the namespace as
       an opaque byte string.
-    - :meth:`get_config` / :meth:`from_config` / :meth:`_obj_type` — the
+    - `get_config` / `from_config` / `_obj_type` — the
       JSON-safe round-trip for Synalinks' saving pipeline.
 
     Everything else here is **provided** machinery that every backend
     shares, so subclasses neither reimplement nor diverge on it:
 
-    - **Run history** (:meth:`history`) — an ordered, JSON-safe log of the
-      code each :meth:`run` executed and its outcome. Implementations
-      record an entry by routing their result through :meth:`_record_run`,
-      and drop it on :meth:`reset` via :meth:`clear_history`.
-    - **Bound functions** (:meth:`bind_functions`, :attr:`bound_functions`)
+    - **Run history** (`history`) — an ordered, JSON-safe log of the
+      code each `run` executed and its outcome. Implementations
+      record an entry by routing their result through `_record_run`,
+      and drop it on `reset` via `clear_history`.
+    - **Bound functions** (`bind_functions`, `bound_functions`)
       — host callables exposed inside the sandbox, set once and reused on
-      every run. Implementations read :attr:`_functions` when dispatching.
-    - **Tool methods** (:meth:`run_python_code`, :meth:`run_python_file`,
-      :meth:`list_files`, :meth:`read_file`, :meth:`write_file`,
-      :meth:`edit_file`, :meth:`search_files`) — async, dict-returning
+      every run. Implementations read `_functions` when dispatching.
+    - **Tool methods** (`run_python_code`, `run_python_file`,
+      `list_files`, `read_file`, `write_file`,
+      `edit_file`, `search_files`) — async, dict-returning
       methods with public names a caller can wrap with ``synalinks.Tool``
       to give an agent. ``run_python_code`` works on any backend; the
       filesystem methods (including ``run_python_file``, which runs a script
@@ -114,7 +114,7 @@ class Sandbox(SynalinksSaveable):
         name (str): Optional. Human-readable name for the sandbox.
         external_functions (dict): Optional. ``name -> callable`` mapping
             bound persistently and exposed inside the sandbox on every
-            run (see :meth:`bind_functions`). How a backend surfaces them
+            run (see `bind_functions`). How a backend surfaces them
             is backend-specific; the binding itself is shared here.
     """
 
@@ -151,8 +151,8 @@ class Sandbox(SynalinksSaveable):
         """Execute ``code`` and return a structured result.
 
         Implementations should route their result through
-        :meth:`_record_run` so the snippet lands in :meth:`history`, and
-        expose :attr:`_functions` (merged with any per-call
+        `_record_run` so the snippet lands in `history`, and
+        expose `_functions` (merged with any per-call
         ``external_functions``) as callables inside the sandbox.
 
         Args:
@@ -174,7 +174,7 @@ class Sandbox(SynalinksSaveable):
         """Wipe execution state and start over with an empty sandbox.
 
         Implementations should also drop the run history (call
-        :meth:`clear_history`); bound functions are configuration and
+        `clear_history`); bound functions are configuration and
         persist across a reset.
         """
         raise NotImplementedError("Sandbox subclasses must implement `reset`.")
@@ -201,7 +201,7 @@ class Sandbox(SynalinksSaveable):
 
     @classmethod
     def from_config(cls, config: dict) -> "Sandbox":
-        """Rebuild a sandbox from a :meth:`get_config` dict."""
+        """Rebuild a sandbox from a `get_config` dict."""
         raise NotImplementedError("Sandbox subclasses must implement `from_config`.")
 
     # -- branching (filesystem backends) --------------------------------
@@ -220,15 +220,15 @@ class Sandbox(SynalinksSaveable):
         but its mutations are isolated: writing, editing or deleting in the
         child never affects the parent (and vice versa). Use this to hand a
         subagent its own branch of the filesystem; review its work with
-        :meth:`diff` and optionally fold it back with :meth:`merge`.
+        `diff` and optionally fold it back with `merge`.
         """
         raise NotImplementedError("This sandbox does not support `fork`.")
 
     def diff(self) -> dict:
         """Summarize the filesystem changes this sandbox made since its base.
 
-        For a sandbox produced by :meth:`fork`, this is exactly what the
-        child changed relative to the fork point — the patch :meth:`merge`
+        For a sandbox produced by `fork`, this is exactly what the
+        child changed relative to the fork point — the patch `merge`
         would apply. Returns a JSON-safe summary (written paths with a
         ``kind`` / ``size``, and deleted paths).
         """
@@ -259,12 +259,12 @@ class Sandbox(SynalinksSaveable):
     # -- run history (provided) -----------------------------------------
 
     def history(self) -> List[Dict[str, Any]]:
-        """Ordered, JSON-safe log of snippets executed via :meth:`run`.
+        """Ordered, JSON-safe log of snippets executed via `run`.
 
         Each entry records the ``code`` that ran and its outcome
         (``ok``, ``stdout``, ``stderr``, ``error``), in execution order,
         for inspection or replay. Returns a defensive copy; cleared by
-        :meth:`clear_history` / :meth:`reset`.
+        `clear_history` / `reset`.
         """
         return [dict(entry) for entry in self._history]
 
@@ -277,7 +277,7 @@ class Sandbox(SynalinksSaveable):
 
         The raw last-expression ``result.result`` is intentionally not
         stored — it may not be JSON-safe and would break ``get_config``.
-        Subclasses call this from :meth:`run` and return its value.
+        Subclasses call this from `run` and return its value.
         """
         self._history.append(
             {
@@ -301,10 +301,10 @@ class Sandbox(SynalinksSaveable):
         """Persistently expose ``functions`` inside the sandbox.
 
         Each ``name -> callable`` is merged into the bound set and made
-        available on every subsequent :meth:`run`, so a recurring toolset
+        available on every subsequent `run`, so a recurring toolset
         need not be re-passed via ``external_functions`` each call.
         Re-binding a name replaces it. Bound functions survive
-        :meth:`reset` but are not serialized (callables are not JSON-safe).
+        `reset` but are not serialized (callables are not JSON-safe).
         """
         self._functions.update(functions)
 
@@ -341,7 +341,7 @@ class Sandbox(SynalinksSaveable):
     async def run_python_file(self, path: str) -> dict:
         """Run a Python script file from the sandbox filesystem.
 
-        Reads ``path`` (a script written with :meth:`write_file`) and
+        Reads ``path`` (a script written with `write_file`) and
         executes its contents in the sandbox. Use this to run a
         self-contained script you built — the sandbox cannot ``import``
         other files from the filesystem, so the script must stand alone.

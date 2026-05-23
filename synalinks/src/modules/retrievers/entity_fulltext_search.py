@@ -33,14 +33,14 @@ class EntityFullTextSearchInput(DataModel):
 class EntityFullTextSearch(Module):
     """BM25 full-text search over entities of a single label.
 
-    Graph-side counterpart of :class:`FullTextSearch`. Thin
+    Graph-side counterpart of `FullTextSearch`. Thin
     deterministic wrapper around
-    :meth:`KnowledgeBase.entity_fulltext_search`. The query text
+    `KnowledgeBase.entity_fulltext_search`. The query text
     comes straight from the input data model's ``fulltext_search``
     field — an embedded Generator builds the query from the inputs.
 
     Single-label only: to retrieve entities of multiple labels,
-    compose several :class:`EntityFullTextSearch` modules in the
+    compose several `EntityFullTextSearch` modules in the
     program DAG and merge their outputs explicitly.
 
     Args:

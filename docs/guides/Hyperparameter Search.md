@@ -3,10 +3,10 @@
 <!-- colab-badge:end -->
 
 
-::: guides.16_hyperparameter_search
+::: guides.17_hyperparameter_search
 
 ## Source
 
 ````python
---8<-- "guides/16_hyperparameter_search.py:354"
+--8<-- "guides/17_hyperparameter_search.py:351"
 ````

@@ -115,8 +115,8 @@ Building robust LM apps is hard. Synalinks simplifies it with:
 Beyond the Keras programming style, Synalinks:
 - Can [optimize *anything*](https://synalinks.github.io/synalinks/guides/Trainable%20Variables/), not only prompts
 - Is [async by default](https://synalinks.github.io/synalinks/guides/Programs/)
-- Supports [parallel branches](https://synalinks.github.io/synalinks/guides/Programs/) with `asyncio` to ease async programming
-- Implement logic-based python operators to easily [manipulate data models and the app control flow](https://synalinks.github.io/synalinks/guides/Data%20Models/)
+- Supports [parallel branches](https://synalinks.github.io/synalinks/guides/Control%20Flow/) with `asyncio` to ease async programming
+- Implement logic-based python operators to easily [manipulate data models and the app control flow](https://synalinks.github.io/synalinks/guides/Control%20Flow/)
 - Use [*constrained* JSON decoding](https://synalinks.github.io/synalinks/guides/Data%20Models/) to be robust in production
 - Is fully compatible with Pydantic BaseModel (via `schema=` in every [module](https://synalinks.github.io/synalinks/guides/Data%20Models/)) to ease integration with FastAPI/FastMCP etc.
 - Have instrospection tools like `summary()` and `plot_program()` to write better documentation
@@ -198,7 +198,7 @@ async def main():
 
 ## Data Model Operators
 
-Synalinks provides Python operators for combining and manipulating data models, enabling sophisticated control flow:
+Synalinks provides Python operators for combining and manipulating data models, enabling sophisticated control flow. See the [Control Flow guide](https://synalinks.github.io/synalinks/guides/Control%20Flow/) for the routing, fan-out, and merge patterns these operators enable:
 
 <div align="center">
 

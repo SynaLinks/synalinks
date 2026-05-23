@@ -19,7 +19,7 @@ from synalinks.src.saving import serialization_lib
 
 
 class RelationRegexSearchInput(DataModel):
-    """Input shape for :class:`RelationRegexSearch`."""
+    """Input shape for `RelationRegexSearch`."""
 
     regex_search: str = Field(
         description=(
@@ -37,9 +37,9 @@ class RelationRegexSearchInput(DataModel):
 class RelationRegexSearch(Module):
     """Regex matching over relations of a single label.
 
-    Graph-side counterpart of :class:`RegexSearch`, but for edges.
+    Graph-side counterpart of `RegexSearch`, but for edges.
     LM-driven wrapper around
-    :meth:`KnowledgeBase.relation_regex_search`. The pattern is
+    `KnowledgeBase.relation_regex_search`. The pattern is
     matched against the string fields of both endpoints; an edge
     surfaces if either endpoint matched. The row's ``score`` is 2.0
     when both endpoints matched and 1.0 when only one did, with
@@ -49,7 +49,7 @@ class RelationRegexSearch(Module):
     catastrophic backtracking.
 
     Single-label only: to retrieve relations of multiple labels,
-    compose several :class:`RelationRegexSearch` modules in the
+    compose several `RelationRegexSearch` modules in the
     program DAG and merge their outputs explicitly.
 
     Args:

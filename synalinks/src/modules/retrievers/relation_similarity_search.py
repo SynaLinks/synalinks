@@ -19,7 +19,7 @@ from synalinks.src.saving import serialization_lib
 
 
 class RelationSimilaritySearchInput(DataModel):
-    """Input shape for :class:`RelationSimilaritySearch`."""
+    """Input shape for `RelationSimilaritySearch`."""
 
     similarity_search: List[str] = Field(
         description="Natural-language queries for vector similarity",
@@ -35,15 +35,15 @@ class RelationSimilaritySearchInput(DataModel):
 class RelationSimilaritySearch(Module):
     """Vector similarity search over relations of a single label.
 
-    Graph-side counterpart of :class:`SimilaritySearch`, but for
+    Graph-side counterpart of `SimilaritySearch`, but for
     edges. LM-driven wrapper around
-    :meth:`KnowledgeBase.relation_similarity_search`. The query text
+    `KnowledgeBase.relation_similarity_search`. The query text
     matches against BOTH endpoints (subject and object); the adapter
     returns one row per matched edge with its best (lowest) distance
     and a ``matched_on`` tag (``"subj"``, ``"obj"``, or ``"both"``).
 
     Single-label only: to retrieve relations of multiple labels,
-    compose several :class:`RelationSimilaritySearch` modules in the
+    compose several `RelationSimilaritySearch` modules in the
     program DAG and merge their outputs explicitly.
 
     Args:

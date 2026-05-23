@@ -42,9 +42,7 @@ class Query(DataModel):
 def _cypher_response(cypher_query):
     """Shape litellm.acompletion returns for a generated CypherQuery."""
     return {
-        "choices": [
-            {"message": {"content": json.dumps({"cypher_query": cypher_query})}}
-        ]
+        "choices": [{"message": {"content": json.dumps({"cypher_query": cypher_query})}}]
     }
 
 
@@ -101,9 +99,7 @@ class Text2CypherConstructionTest(testing.TestCase):
             language_model=LanguageModel(model="ollama/mistral"),
             k=7,
         )
-        self.assertEqual(
-            module.instructions, default_text2cypher_instructions(7)
-        )
+        self.assertEqual(module.instructions, default_text2cypher_instructions(7))
         self.assertIn("LIMIT 7", module.instructions)
 
     def test_get_config_from_config_roundtrip(self):
@@ -194,9 +190,7 @@ class Text2CypherCallTest(testing.TestCase):
 
     async def test_compute_output_spec_shape(self):
         kb = await self._make_populated_kb("spec_kb")
-        spec = await self._module(kb).compute_output_spec(
-            Query.to_symbolic_data_model()
-        )
+        spec = await self._module(kb).compute_output_spec(Query.to_symbolic_data_model())
         self.assertEqual(spec.get_schema(), CypherQueryResult.get_schema())
 
     def test_graph_schema_data_model_shape(self):

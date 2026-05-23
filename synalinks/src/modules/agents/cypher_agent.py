@@ -258,8 +258,8 @@ def _build_tools(knowledge_base, output_format: str = "csv", k: int = 50):
 class CypherAgent(Module):
     """A ready-to-use Cypher agent backed by a knowledge base.
 
-    CypherAgent is a thin specialization of :class:`FunctionCallingAgent`
-    that pre-wires three Cypher tools bound to a :class:`KnowledgeBase`
+    CypherAgent is a thin specialization of `FunctionCallingAgent`
+    that pre-wires three Cypher tools bound to a `KnowledgeBase`
     (graph adapter):
 
     - ``get_graph_schema``: discovers all node and relation labels
@@ -267,9 +267,9 @@ class CypherAgent(Module):
     - ``get_node_sample``: fetches a few nodes from a given label so
       the LM can see the data shape before writing queries.
     - ``run_cypher_query``: executes a read-only Cypher query via
-      :meth:`KnowledgeBase.cypher` with ``read_only=True``.
+      `KnowledgeBase.cypher` with ``read_only=True``.
 
-    The constructor mirrors :class:`FunctionCallingAgent` — every
+    The constructor mirrors `FunctionCallingAgent` — every
     parameter on that class is accepted here with identical semantics.
     The only additions are ``knowledge_base`` (required, must expose a
     graph adapter) and ``output_format`` (controls the Cypher tools'
@@ -350,7 +350,7 @@ class CypherAgent(Module):
             to the LM. ``"csv"`` (default) is compact and minimizes
             input tokens; ``"json"`` returns a list of dicts. Applies
             to both ``get_node_sample`` and ``run_cypher_query``.
-        tools (list): Additional :class:`Tool` instances (or plain
+        tools (list): Additional `Tool` instances (or plain
             async functions) to expose alongside the three built-in
             Cypher tools — for example a calculator, a datetime
             helper, a web-search tool. Tool names must not collide

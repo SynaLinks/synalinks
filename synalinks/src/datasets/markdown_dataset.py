@@ -73,7 +73,7 @@ class MarkdownDocument(DataModel):
 
     ``filepath`` is the first declared field so it serves as the PK
     when stored directly. In practice you usually want to store the
-    flattened :class:`MarkdownSection` rows instead (so retrieval
+    flattened `MarkdownSection` rows instead (so retrieval
     chunks at heading granularity), and use ``MarkdownDocument`` only
     as the dataset's yield shape.
     """
@@ -117,7 +117,7 @@ _MD = MarkdownIt("commonmark")
 def parse_markdown_sections(text: str) -> List[Dict[str, Any]]:
     """Split a Markdown document into heading-delimited sections.
 
-    Uses :mod:`markdown_it` under the hood, so all CommonMark heading
+    Uses `markdown_it` under the hood, so all CommonMark heading
     forms are honored — ATX (``# ... ######``), setext (``===`` /
     ``---``), and (importantly) ``#`` characters inside fenced code
     blocks are NOT treated as headings. A leading YAML front-matter
@@ -237,14 +237,14 @@ _DEFAULT_INPUT_TEMPLATE = (
 class MarkdownDataset(Dataset):
     """Streaming dataset over a directory of Markdown files.
 
-    Each file is parsed via :func:`parse_markdown_sections` into a list
-    of heading-delimited :class:`MarkdownSection` objects, wrapped in a
-    :class:`MarkdownDocument` and yielded one per source file. Rows
+    Each file is parsed via `parse_markdown_sections` into a list
+    of heading-delimited `MarkdownSection` objects, wrapped in a
+    `MarkdownDocument` and yielded one per source file. Rows
     accumulate into batches of size ``batch_size`` — the same contract
-    as :class:`CSVDataset` and the other loaders.
+    as `CSVDataset` and the other loaders.
 
     The yielded shape is inputs-only (no ``output_template``), so the
-    dataset can be handed straight to :meth:`KnowledgeBase.update`.
+    dataset can be handed straight to `KnowledgeBase.update`.
     For section-level retrieval, iterate the dataset and store the
     flattened ``MarkdownSection`` rows in a dedicated table:
 
@@ -269,14 +269,14 @@ class MarkdownDataset(Dataset):
             subdirectories.
         glob_pattern (str): Filename suffix to match
             (case-insensitive). Defaults to ``".md"``.
-        input_data_model (DataModel): See :class:`Dataset`. Defaults
-            to :class:`MarkdownDocument`.
-        input_schema (dict | str): See :class:`Dataset`.
-        input_template (str): See :class:`Dataset`. Defaults to a
+        input_data_model (DataModel): See `Dataset`. Defaults
+            to `MarkdownDocument`.
+        input_schema (dict | str): See `Dataset`.
+        input_template (str): See `Dataset`. Defaults to a
             template producing ``MarkdownDocument``-shaped JSON.
         batch_size (int): Examples per yielded batch. Defaults to 8.
         limit (int): Optional cap on the number of files consumed.
-        repeat (int): See :class:`Dataset`.
+        repeat (int): See `Dataset`.
     """
 
     def __init__(

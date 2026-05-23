@@ -7,6 +7,7 @@ import os
 import re
 import shutil
 import tarfile
+import tempfile
 import urllib
 import warnings
 import zipfile
@@ -221,7 +222,7 @@ def get_file(
         hash_algorithm = "md5"
     datadir_base = os.path.expanduser(cache_dir)
     if not os.access(datadir_base, os.W_OK):
-        datadir_base = os.path.join("/tmp", ".synalinks")
+        datadir_base = os.path.join(tempfile.gettempdir(), ".synalinks")
     datadir = os.path.join(datadir_base, cache_subdir)
     os.makedirs(datadir, exist_ok=True)
 

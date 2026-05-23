@@ -31,7 +31,7 @@ class CSVDataset(Dataset):
     ``output_template`` to JSON, validated against the corresponding
     ``DataModel`` (or ``synalinks.ChatMessages`` when ``None``), and
     accumulated into batches of size ``batch_size`` — the same
-    contract as :class:`HuggingFaceDataset`.
+    contract as `HuggingFaceDataset`.
 
     Templates receive each CSV row as a dict keyed by column name, so
     column names must be valid Python identifiers (or you can alias

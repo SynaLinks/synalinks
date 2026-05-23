@@ -114,10 +114,10 @@ class MontySandbox(Sandbox, pydantic_monty.AbstractOS):
     Host callables can be exposed inside the sandbox as global async
     functions. Pass them per call (``run(..., external_functions=...)``)
     or bind them once — via the ``external_functions`` constructor arg or
-    :meth:`bind_functions` — so they are available on every subsequent
+    `bind_functions` — so they are available on every subsequent
     ``run`` without re-passing them. A per-call ``external_functions`` is
     merged on top of the bound set and wins on name clashes. Bound
-    functions persist across :meth:`reset` (they configure the sandbox,
+    functions persist across `reset` (they configure the sandbox,
     they are not run-produced state) but are **not** serialized by
     ``get_config`` / ``dump`` — re-bind them after ``load`` /
     ``from_config``.
@@ -139,7 +139,7 @@ class MontySandbox(Sandbox, pydantic_monty.AbstractOS):
         external_functions (dict): Optional. Mapping of name → callable
             (sync or async) bound persistently and exposed as global
             async functions on every ``run``. Add more later with
-            :meth:`bind_functions`.
+            `bind_functions`.
     """
 
     description: str = (
@@ -624,7 +624,7 @@ class MontySandbox(Sandbox, pydantic_monty.AbstractOS):
     def journal(self) -> List[Dict[str, Any]]:
         """Ordered log of every mutation performed on the filesystem.
 
-        Where :meth:`changes` is a deduplicated summary of the *final*
+        Where `changes` is a deduplicated summary of the *final*
         state, this returns one entry per action in the order it
         happened — so repeated writes, renames, and create-then-delete
         sequences are all visible. Each entry has an ``action``
@@ -632,7 +632,7 @@ class MontySandbox(Sandbox, pydantic_monty.AbstractOS):
         ``"rename"``) and a ``path``; writes additionally carry ``kind``
         (``"create"`` / ``"modify"``) and ``size``, and renames carry the
         origin ``src`` and ``size``. The list is JSON-safe and survives
-        :meth:`get_state` / :meth:`set_state`.
+        `get_state` / `set_state`.
         """
         return [dict(entry) for entry in self._journal]
 
@@ -698,7 +698,7 @@ class MontySandbox(Sandbox, pydantic_monty.AbstractOS):
         Searches the same base+overlay view code sees, skipping tombstoned
         paths, and returns sorted absolute virtual paths (files and
         directories). ``*`` stays within a segment; use ``**`` to cross
-        directories (or :meth:`rglob` for a recursive search).
+        directories (or `rglob` for a recursive search).
         """
         root_key = self._key(root)
         regex = self._glob_to_regex(pattern)
@@ -711,7 +711,7 @@ class MontySandbox(Sandbox, pydantic_monty.AbstractOS):
         return sorted(out)
 
     def rglob(self, pattern: str, root: str = "/") -> List[str]:
-        """Recursive :meth:`glob`: ``rglob(p)`` is ``glob("**/" + p)``."""
+        """Recursive `glob`: ``rglob(p)`` is ``glob("**/" + p)``."""
         return self.glob("**/" + pattern, root=root)
 
     def _base_snapshot(self) -> Dict[str, bytes]:
@@ -739,7 +739,7 @@ class MontySandbox(Sandbox, pydantic_monty.AbstractOS):
 
         Always captures the overlay (writes, tombstones, mkdir'd dirs,
         journal). With ``snapshot_base=True`` it also materializes the
-        read-through base (the ``workdir`` files) so :meth:`set_state` can
+        read-through base (the ``workdir`` files) so `set_state` can
         restore the whole filesystem **without** the original ``workdir``
         on disk — at the cost of embedding those file contents.
         """
@@ -759,7 +759,7 @@ class MontySandbox(Sandbox, pydantic_monty.AbstractOS):
         return state
 
     def set_state(self, state: dict) -> None:
-        """Restore filesystem state produced by :meth:`get_state`.
+        """Restore filesystem state produced by `get_state`.
 
         Restores the overlay, and — if the state carries a ``base``
         snapshot (from ``get_state(snapshot_base=True)``) — the base files
@@ -781,7 +781,7 @@ class MontySandbox(Sandbox, pydantic_monty.AbstractOS):
         """Base (pre-overlay) bytes for ``key``, ignoring overlay/tombstones.
 
         This is the "fork point" content for a forked child: what the file
-        held when the branch was taken. Used by :meth:`merge` for three-way
+        held when the branch was taken. Used by `merge` for three-way
         conflict detection.
         """
         if key in self._base_files:
@@ -803,7 +803,7 @@ class MontySandbox(Sandbox, pydantic_monty.AbstractOS):
 
         Materializes everything readable right now into a single
         ``key -> bytes`` map, with overlay writes shadowing the base and
-        tombstoned paths removed — the snapshot a :meth:`fork` promotes
+        tombstoned paths removed — the snapshot a `fork` promotes
         into its child's base.
         """
         files = self._base_snapshot()  # fresh dict: in-memory base + workdir reads
@@ -822,7 +822,7 @@ class MontySandbox(Sandbox, pydantic_monty.AbstractOS):
         overlay starts empty. So the child sees exactly the files the
         parent sees now, but every write/edit/delete the child makes lands
         only in the child's overlay — the parent is never touched. Because
-        the overlay starts empty, :meth:`diff` on the child reports
+        the overlay starts empty, `diff` on the child reports
         precisely what the child changed (a clean merge boundary).
 
         The child is self-contained (no host ``workdir`` coupling: its base
@@ -856,13 +856,13 @@ class MontySandbox(Sandbox, pydantic_monty.AbstractOS):
     def diff(self) -> dict:
         """Filesystem changes this sandbox made relative to its base.
 
-        For a sandbox produced by :meth:`fork`, this is exactly the patch
+        For a sandbox produced by `fork`, this is exactly the patch
         the child introduced since the fork point. Returns
         ``{"written": [{"path", "kind", "size"}, ...], "deleted": [...]}``
         where ``kind`` is ``"create"`` (new file) or ``"modify"`` (the path
         existed in the base). Deletions of paths that never existed in the
         base are omitted (they are no-ops). For the raw, transferable state
-        use :meth:`get_state`; this is the review-friendly summary.
+        use `get_state`; this is the review-friendly summary.
         """
         written = [
             {
@@ -1148,7 +1148,7 @@ class MontySandbox(Sandbox, pydantic_monty.AbstractOS):
     async def run_python_file(self, path: str) -> dict:
         """Run a Python script file from the sandbox filesystem.
 
-        Reads ``path`` (a script written with :meth:`write_file`) from the
+        Reads ``path`` (a script written with `write_file`) from the
         overlay and executes its contents in the sandbox, sharing the REPL
         namespace with prior runs. Use this to run a self-contained script
         you built — the sandbox cannot ``import`` other overlay files, so

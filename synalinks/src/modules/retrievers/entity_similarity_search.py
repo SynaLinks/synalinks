@@ -19,7 +19,7 @@ from synalinks.src.saving import serialization_lib
 
 
 class EntitySimilaritySearchInput(DataModel):
-    """Input shape for :class:`EntitySimilaritySearch`."""
+    """Input shape for `EntitySimilaritySearch`."""
 
     similarity_search: List[str] = Field(
         description="Natural-language queries for vector similarity",
@@ -35,14 +35,14 @@ class EntitySimilaritySearchInput(DataModel):
 class EntitySimilaritySearch(Module):
     """Vector similarity search over entities of a single label.
 
-    Graph-side counterpart of :class:`SimilaritySearch`. Thin
+    Graph-side counterpart of `SimilaritySearch`. Thin
     deterministic wrapper around
-    :meth:`KnowledgeBase.entity_similarity_search`. The query text
+    `KnowledgeBase.entity_similarity_search`. The query text
     comes straight from the input data model's ``similarity_search``
     field — an embedded Generator builds the query from the inputs.
 
     Single-label only: to retrieve entities of multiple labels,
-    compose several :class:`EntitySimilaritySearch` modules in the
+    compose several `EntitySimilaritySearch` modules in the
     program DAG and merge their outputs explicitly.
 
     Args:

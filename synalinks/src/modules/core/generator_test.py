@@ -253,9 +253,7 @@ class GeneratorModuleTest(testing.TestCase):
                 Query(query="the-input-query"),
                 ChatMessages(
                     messages=[
-                        ChatMessage(
-                            role="user", content="earlier-user-turn"
-                        ).get_json(),
+                        ChatMessage(role="user", content="earlier-user-turn").get_json(),
                         ChatMessage(
                             role="assistant", content="earlier-assistant-turn"
                         ).get_json(),

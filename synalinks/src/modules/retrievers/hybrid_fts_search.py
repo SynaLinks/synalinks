@@ -19,7 +19,7 @@ from synalinks.src.saving import serialization_lib
 
 
 class HybridFTSSearchInput(DataModel):
-    """Input shape for :class:`HybridFTSSearch`.
+    """Input shape for `HybridFTSSearch`.
 
     The ``keywords`` list is optional — when omitted, the adapter
     re-uses the vector side's text for BM25 scoring as well.
@@ -44,13 +44,13 @@ class HybridFTSSearch(Module):
     """Reciprocal-Rank-Fusion of vector similarity + BM25 fulltext.
 
     LM-driven wrapper around
-    :meth:`KnowledgeBase.hybrid_fts_search`. The vector side's text
+    `KnowledgeBase.hybrid_fts_search`. The vector side's text
     comes from the input's ``similarity_search`` field; the BM25
     side's text comes from ``keywords`` if present, otherwise the
     adapter falls back to ``similarity_search``.
 
     Single-table only: to retrieve from multiple tables, compose
-    several :class:`HybridFTSSearch` modules in the program DAG and
+    several `HybridFTSSearch` modules in the program DAG and
     merge their outputs explicitly.
 
     Example:

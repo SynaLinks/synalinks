@@ -21,7 +21,7 @@ from synalinks.src.saving import serialization_lib
 
 
 class PathHybridFTSSearchInput(DataModel):
-    """Input shape for :class:`PathHybridFTSSearch`.
+    """Input shape for `PathHybridFTSSearch`.
 
     The ``*_keywords`` lists are optional — when omitted, the
     similarity-search text is reused for BM25 scoring on that side.
@@ -53,7 +53,7 @@ class PathHybridFTSSearch(Module):
     """Hybrid (vec + BM25) variable-length path search, AND semantics.
 
     LM-driven wrapper around
-    :meth:`KnowledgeBase.path_hybrid_fts_search`. Each side is
+    `KnowledgeBase.path_hybrid_fts_search`. Each side is
     hybrid-searched (vec + fts) independently; the path's combined
     ``rrf_score`` is the sum of the subject-side and object-side
     hybrid scores — the 4-source RRF identity. Falls back to

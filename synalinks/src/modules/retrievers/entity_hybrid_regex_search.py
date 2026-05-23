@@ -19,7 +19,7 @@ from synalinks.src.saving import serialization_lib
 
 
 class EntityHybridRegexSearchInput(DataModel):
-    """Input shape for :class:`EntityHybridRegexSearch`.
+    """Input shape for `EntityHybridRegexSearch`.
 
     The ``regex_patterns`` list is optional — when omitted, the
     adapter falls back to plain vector similarity over
@@ -44,9 +44,9 @@ class EntityHybridRegexSearchInput(DataModel):
 class EntityHybridRegexSearch(Module):
     """RRF fusion of vector similarity + regex matching over entities.
 
-    Graph-side counterpart of :class:`HybridRegexSearch`. Thin
+    Graph-side counterpart of `HybridRegexSearch`. Thin
     deterministic wrapper around
-    :meth:`KnowledgeBase.entity_hybrid_regex_search`. The vector
+    `KnowledgeBase.entity_hybrid_regex_search`. The vector
     side's text comes from the input's ``similarity_search`` field;
     the regex side's patterns come from ``regex_patterns``. When
     ``regex_patterns`` is empty the adapter falls back to plain
@@ -56,7 +56,7 @@ class EntityHybridRegexSearch(Module):
     and not vulnerable to catastrophic backtracking.
 
     Single-label only: to retrieve entities of multiple labels,
-    compose several :class:`EntityHybridRegexSearch` modules in the
+    compose several `EntityHybridRegexSearch` modules in the
     program DAG and merge their outputs explicitly.
 
     Args:

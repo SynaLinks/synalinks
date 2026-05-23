@@ -21,7 +21,7 @@ from synalinks.src.saving import serialization_lib
 
 
 class PathSimilaritySearchInput(DataModel):
-    """Input shape for :class:`PathSimilaritySearch`."""
+    """Input shape for `PathSimilaritySearch`."""
 
     subj_similarity_search: List[str] = Field(
         description="Natural-language queries for the subject endpoint",
@@ -41,7 +41,7 @@ class PathSimilaritySearch(Module):
     """Vector variable-length path search where BOTH endpoints match.
 
     LM-driven wrapper around
-    :meth:`KnowledgeBase.path_similarity_search`. Returns paths of
+    `KnowledgeBase.path_similarity_search`. Returns paths of
     ``min_hops..max_hops`` edges whose subject endpoint is
     vector-close to ``subj_similarity_search`` AND whose object
     endpoint is vector-close to ``obj_similarity_search``.

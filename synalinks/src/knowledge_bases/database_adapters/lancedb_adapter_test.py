@@ -153,7 +153,8 @@ class LanceDBAdapterTest(testing.TestCase):
             ]
         )
         rows = await a.sql(
-            "SELECT country, count(*) AS n FROM Customer GROUP BY country ORDER BY country"
+            "SELECT country, count(*) AS n FROM Customer "
+            "GROUP BY country ORDER BY country"
         )
         self.assertEqual(rows, [{"country": "UK", "n": 1}, {"country": "USA", "n": 2}])
 

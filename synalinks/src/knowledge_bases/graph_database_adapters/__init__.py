@@ -9,7 +9,7 @@ from synalinks.src.knowledge_bases.graph_database_adapters.ladybug_adapter impor
 def get(uri):
     """Resolve a graph-database URI to its adapter class.
 
-    Mirrors :func:`database_adapters.get`: ``None`` returns the
+    Mirrors `database_adapters.get`: ``None`` returns the
     default adapter (LadybugDB) so a no-args ``KnowledgeBase()`` can
     auto-pair both stores under ``synalinks_home()``.
     """

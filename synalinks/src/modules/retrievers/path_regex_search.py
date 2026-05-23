@@ -21,7 +21,7 @@ from synalinks.src.saving import serialization_lib
 
 
 class PathRegexSearchInput(DataModel):
-    """Input shape for :class:`PathRegexSearch`."""
+    """Input shape for `PathRegexSearch`."""
 
     subj_regex_search: str = Field(
         description="Regex pattern (RE2) for the subject endpoint",
@@ -41,7 +41,7 @@ class PathRegexSearch(Module):
     """Regex variable-length path search where BOTH endpoints match.
 
     LM-driven wrapper around
-    :meth:`KnowledgeBase.path_regex_search`. Returns paths of
+    `KnowledgeBase.path_regex_search`. Returns paths of
     ``min_hops..max_hops`` edges whose subject endpoint matches
     ``subj_regex_search`` AND whose object endpoint matches
     ``obj_regex_search``. Regex uses RE2, so patterns are linear-time

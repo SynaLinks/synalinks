@@ -3,10 +3,10 @@
 <!-- colab-badge:end -->
 
 
-::: guides.24_python_synthesis
+::: guides.25_python_synthesis
 
 ## Source
 
 ````python
---8<-- "guides/24_python_synthesis.py:341"
+--8<-- "guides/25_python_synthesis.py:341"
 ````

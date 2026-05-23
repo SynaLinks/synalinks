@@ -1,5 +1,7 @@
 # License Apache 2.0: (c) 2025-2026 Yoan Sallami (Synalinks Team)
 
+import tempfile
+
 import numpy as np
 
 from synalinks.src import testing
@@ -75,14 +77,16 @@ class PlotHistoryTest(testing.TestCase):
         """Test basic plot_history function."""
         metrics = ["reward", "reward_val", "f1_score", "accuracy"]
         history = self.generate_random_history(num_epochs=30, metrics=metrics)
-        plot_history(history, to_folder="/tmp/")
+        plot_history(history, to_folder=tempfile.gettempdir())
 
     def test_plot_history_with_mean_and_std(self):
         """Test plot_history_with_mean_and_std function."""
         metrics = ["reward", "reward_val", "f1_score", "accuracy"]
         history = self.generate_random_history(num_epochs=30, metrics=metrics)
         history1 = self.generate_random_history(num_epochs=30, metrics=metrics)
-        plot_history_with_mean_and_std([history, history1], to_folder="/tmp/")
+        plot_history_with_mean_and_std(
+            [history, history1], to_folder=tempfile.gettempdir()
+        )
 
     def test_plot_history_comparison(self):
         """Test plot_history_comparison function."""
@@ -91,7 +95,7 @@ class PlotHistoryTest(testing.TestCase):
         comparison_histories = self.generate_comparison_histories(
             conditions=conditions, num_epochs=25, metrics=metrics
         )
-        plot_history_comparison(comparison_histories, to_folder="/tmp/")
+        plot_history_comparison(comparison_histories, to_folder=tempfile.gettempdir())
 
     def test_plot_history_comparison_with_mean_and_std(self):
         """Test plot_history_comparison_with_mean_and_std function."""
@@ -100,7 +104,9 @@ class PlotHistoryTest(testing.TestCase):
         comparison_histories = self.generate_comparison_histories_with_runs(
             conditions=conditions, num_runs=4, num_epochs=25, metrics=metrics
         )
-        plot_history_comparison_with_mean_and_std(comparison_histories, to_folder="/tmp/")
+        plot_history_comparison_with_mean_and_std(
+            comparison_histories, to_folder=tempfile.gettempdir()
+        )
 
     def test_plot_history_with_filter(self):
         """Test plot_history with metrics filter."""
@@ -114,7 +120,9 @@ class PlotHistoryTest(testing.TestCase):
         ]
         history = self.generate_random_history(num_epochs=20, metrics=metrics)
         metrics_filter = ["reward", "f1_score", "accuracy"]
-        plot_history(history, metrics_filter=metrics_filter, to_folder="/tmp/")
+        plot_history(
+            history, metrics_filter=metrics_filter, to_folder=tempfile.gettempdir()
+        )
 
     def test_plot_history_comparison_with_filter(self):
         """Test plot_history_comparison with metrics filter."""
@@ -132,7 +140,9 @@ class PlotHistoryTest(testing.TestCase):
         )
         metrics_filter = ["reward", "f1_score", "accuracy"]
         plot_history_comparison(
-            comparison_histories, metrics_filter=metrics_filter, to_folder="/tmp/"
+            comparison_histories,
+            metrics_filter=metrics_filter,
+            to_folder=tempfile.gettempdir(),
         )
 
     def test_plot_history_with_high_values(self):
@@ -150,7 +160,11 @@ class PlotHistoryTest(testing.TestCase):
             0.15 + i * 0.05 for i in range(epochs)
         ]  # Goes up to ~0.85
 
-        plot_history(history, to_folder="/tmp/", to_file="test_history_high_values.png")
+        plot_history(
+            history,
+            to_folder=tempfile.gettempdir(),
+            to_file="test_history_high_values.png",
+        )
 
     def test_plot_history_comparison_with_high_values(self):
         """Test comparison plot with values exceeding 1.0."""
@@ -177,7 +191,7 @@ class PlotHistoryTest(testing.TestCase):
         comparison_histories = {"Program A": history_a, "Program B": history_b}
         plot_history_comparison(
             comparison_histories,
-            to_folder="/tmp/",
+            to_folder=tempfile.gettempdir(),
             to_file="test_history_comparison_high_values.png",
         )
 
@@ -210,7 +224,7 @@ class PlotHistoryTest(testing.TestCase):
 
         plot_history_comparison_with_mean_and_std(
             comparison_histories,
-            to_folder="/tmp/",
+            to_folder=tempfile.gettempdir(),
             to_file="test_history_different_epochs.png",
         )
 
@@ -226,7 +240,7 @@ class PlotHistoryTest(testing.TestCase):
         plot_history_comparison(
             comparison_histories,
             linestyle_cycle=custom_linestyles,
-            to_folder="/tmp/",
+            to_folder=tempfile.gettempdir(),
             to_file="test_history_custom_linestyles.png",
         )
 
@@ -241,6 +255,6 @@ class PlotHistoryTest(testing.TestCase):
         plot_history_comparison_with_mean_and_std(
             comparison_histories,
             alpha=0.4,  # Higher transparency
-            to_folder="/tmp/",
+            to_folder=tempfile.gettempdir(),
             to_file="test_history_alpha_transparency.png",
         )

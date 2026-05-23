@@ -3,10 +3,10 @@
 <!-- colab-badge:end -->
 
 
-::: guides.12_rewards
+::: guides.13_rewards
 
 ## Source
 
 ````python
---8<-- "guides/12_rewards.py:340"
+--8<-- "guides/13_rewards.py:340"
 ````

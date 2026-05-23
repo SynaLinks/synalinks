@@ -132,6 +132,7 @@ omit = [
 
 [dependency-groups]
 dev = [
+    "keras-tuner>=1.4",
     "mkdocstrings[python]>=1.0.4",
     "zensical>=0.0.43",
 ]

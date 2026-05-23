@@ -202,16 +202,16 @@ def _build_tools(knowledge_base, output_format: str = "csv", k: int = 50):
 class SQLAgent(Module):
     """A ready-to-use SQL agent backed by a knowledge base.
 
-    SQLAgent is a thin specialization of :class:`FunctionCallingAgent`
-    that pre-wires three SQL tools bound to a :class:`KnowledgeBase`:
+    SQLAgent is a thin specialization of `FunctionCallingAgent`
+    that pre-wires three SQL tools bound to a `KnowledgeBase`:
 
     - ``get_database_schema``: discovers all tables and their columns.
     - ``get_table_sample``: fetches a few rows so the LM can see the
       data shape before writing queries.
     - ``run_sql_query``: executes a ``SELECT`` query via
-      :meth:`KnowledgeBase.query` with ``read_only=True``.
+      `KnowledgeBase.query` with ``read_only=True``.
 
-    The constructor mirrors :class:`FunctionCallingAgent` — every
+    The constructor mirrors `FunctionCallingAgent` — every
     parameter on that class is accepted here with identical
     semantics. The only additions are ``knowledge_base`` (required)
     and ``output_format`` (controls the SQL tools' result rendering).
@@ -282,7 +282,7 @@ class SQLAgent(Module):
             the LM. ``"csv"`` (default) is compact and minimizes input
             tokens; ``"json"`` returns a list of dicts. Applies to both
             ``get_table_sample`` and ``run_sql_query``.
-        tools (list): Additional :class:`Tool` instances (or plain
+        tools (list): Additional `Tool` instances (or plain
             async functions) to expose alongside the three built-in
             SQL tools — for example a calculator, a datetime helper,
             a web-search tool. Tool names must not collide with the

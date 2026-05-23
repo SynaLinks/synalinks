@@ -3,10 +3,10 @@
 <!-- colab-badge:end -->
 
 
-::: guides.5_agents
+::: guides.6_agents
 
 ## Source
 
 ````python
---8<-- "guides/5_agents.py:439"
+--8<-- "guides/6_agents.py:442"
 ````

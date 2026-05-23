@@ -389,6 +389,7 @@ class DuckDBAdapter(DatabaseAdapter):
             installer.close()
 
     def wipe_database(self):
+        """Drop every table in the ``main`` schema, clearing all data."""
         with self._connect(read_only=False) as con:
             tables = con.execute(f"""
                 SELECT table_name 
@@ -616,6 +617,16 @@ class DuckDBAdapter(DatabaseAdapter):
         self,
         remove_embedding=True,
     ) -> List[SymbolicDataModel]:
+        """Reflect every table in the ``main`` schema into a symbolic model.
+
+        Args:
+            remove_embedding (bool): Strip the embedding column from each
+                reflected schema. Defaults to ``True``.
+
+        Returns:
+            List[SymbolicDataModel]: One ``SymbolicDataModel`` per table,
+                representing the current database schema.
+        """
         with self._connect(read_only=True) as con:
             tables = con.execute("""
                 SELECT table_name 
@@ -940,7 +951,7 @@ class DuckDBAdapter(DatabaseAdapter):
                 ``True``.
 
         Returns:
-            The :class:`SymbolicDataModel` for the loaded table. Pass
+            The `SymbolicDataModel` for the loaded table. Pass
             it to ``fulltext_search`` / ``similarity_search`` / ``get``
             to query the data.
         """
@@ -966,7 +977,7 @@ class DuckDBAdapter(DatabaseAdapter):
     ) -> SymbolicDataModel:
         """Bulk-load a Parquet file directly into a new (or existing) table.
 
-        Same fast-path trade-offs as :meth:`from_csv` — bypasses the
+        Same fast-path trade-offs as `from_csv` — bypasses the
         Python row pipeline for native DuckDB ingestion. Parquet's
         schema is explicit in the file's footer, so types are
         preserved end-to-end without auto-detection guesswork.
@@ -978,7 +989,7 @@ class DuckDBAdapter(DatabaseAdapter):
             table_description: Optional schema description.
 
         Returns:
-            The :class:`SymbolicDataModel` for the loaded table.
+            The `SymbolicDataModel` for the loaded table.
         """
         return await self._bulk_load(
             path,
@@ -997,8 +1008,8 @@ class DuckDBAdapter(DatabaseAdapter):
     ) -> SymbolicDataModel:
         """Bulk-load a JSON file (top-level array of objects).
 
-        Same fast-path trade-offs as :meth:`from_csv` /
-        :meth:`from_parquet`. Use :meth:`from_jsonl` for one-object-
+        Same fast-path trade-offs as `from_csv` /
+        `from_parquet`. Use `from_jsonl` for one-object-
         per-line NDJSON sources.
 
         Args:
@@ -1009,7 +1020,7 @@ class DuckDBAdapter(DatabaseAdapter):
             table_description: Optional schema description.
 
         Returns:
-            The :class:`SymbolicDataModel` for the loaded table.
+            The `SymbolicDataModel` for the loaded table.
         """
         return await self._bulk_load(
             path,
@@ -1028,8 +1039,8 @@ class DuckDBAdapter(DatabaseAdapter):
     ) -> SymbolicDataModel:
         """Bulk-load a JSON Lines (NDJSON) file.
 
-        Same fast-path trade-offs as :meth:`from_csv` /
-        :meth:`from_parquet`. Use this for very large JSON sources that
+        Same fast-path trade-offs as `from_csv` /
+        `from_parquet`. Use this for very large JSON sources that
         aren't a single array.
 
         Args:
@@ -1039,7 +1050,7 @@ class DuckDBAdapter(DatabaseAdapter):
             table_description: Optional schema description.
 
         Returns:
-            The :class:`SymbolicDataModel` for the loaded table.
+            The `SymbolicDataModel` for the loaded table.
         """
         return await self._bulk_load(
             path,
@@ -1189,7 +1200,7 @@ class DuckDBAdapter(DatabaseAdapter):
             source: ``SymbolicDataModel`` for the table to rename, or
                 its name as a string. String form is PascalCase-
                 normalized so callers can pass the original filename-
-                style input they used in :meth:`from_csv`.
+                style input they used in `from_csv`.
             table_name: New table name. Optional. Always normalized to
                 PascalCase.
             table_description: New schema description. Optional. Lives
@@ -1197,7 +1208,7 @@ class DuckDBAdapter(DatabaseAdapter):
                 carry per-table descriptions natively).
 
         Returns:
-            A fresh :class:`SymbolicDataModel` for the (possibly
+            A fresh `SymbolicDataModel` for the (possibly
             renamed) table, reflecting the post-rename column shape
             and the supplied description.
         """
@@ -1360,7 +1371,7 @@ class DuckDBAdapter(DatabaseAdapter):
             remove_embedding: Strip the embedding column from results.
 
         Returns:
-            A list of :class:`JsonDataModel` records.
+            A list of `JsonDataModel` records.
         """
         table = table_identifier(table_name)
         try:
@@ -1870,11 +1881,11 @@ class DuckDBAdapter(DatabaseAdapter):
         return format_search_results(arrow_table, output_format)
 
     async def hybrid_search(self, *args, **kwargs):
-        """Deprecated alias of :meth:`hybrid_fts_search`.
+        """Deprecated alias of `hybrid_fts_search`.
 
         Kept so call sites pre-dating the rename keep working. Prefer
         the new name in new code — it's symmetric with
-        :meth:`hybrid_regex_search`.
+        `hybrid_regex_search`.
         """
         return await self.hybrid_fts_search(*args, **kwargs)
 
@@ -1896,8 +1907,8 @@ class DuckDBAdapter(DatabaseAdapter):
     ):
         """Reciprocal-Rank-Fusion of vector similarity + BM25 fulltext.
 
-        Internally runs :meth:`similarity_search` and
-        :meth:`fulltext_search` against the same ``table_name``, then
+        Internally runs `similarity_search` and
+        `fulltext_search` against the same ``table_name``, then
         fuses their rankings with the RRF formula
         ``sum(1 / (k_rank + rank))``. Falls back to pure FTS if no
         embedding model is configured.
@@ -1924,10 +1935,10 @@ class DuckDBAdapter(DatabaseAdapter):
             fulltext_threshold: Optional minimum fulltext relevance on
                 the normalized ``[0, 1]`` scale.
             ef_search: Forwarded to the vector branch
-                (:meth:`similarity_search`); overrides HNSW's
+                (`similarity_search`); overrides HNSW's
                 search-time candidate-list depth.
             conjunctive: Forwarded to the BM25 branch
-                (:meth:`fulltext_search`); switches to AND-mode query.
+                (`fulltext_search`); switches to AND-mode query.
             bm25_b: Forwarded to the BM25 branch; document-length
                 normalization override.
             bm25_k: Forwarded to the BM25 branch; term-frequency
@@ -2067,11 +2078,11 @@ class DuckDBAdapter(DatabaseAdapter):
     ):
         """Reciprocal-Rank-Fusion of vector similarity + regex match.
 
-        Sibling of :meth:`hybrid_fts_search`. The vector half embeds
+        Sibling of `hybrid_fts_search`. The vector half embeds
         ``text_or_texts``; the regex half matches
         ``pattern_or_patterns`` against the table's string columns.
-        Degenerates to plain :meth:`similarity_search` when no
-        patterns are supplied, or to plain :meth:`regex_search` when
+        Degenerates to plain `similarity_search` when no
+        patterns are supplied, or to plain `regex_search` when
         no embedding model is configured.
 
         Args:
@@ -2083,10 +2094,10 @@ class DuckDBAdapter(DatabaseAdapter):
             k_rank: RRF smoothing constant.
             similarity_threshold: Optional maximum vector distance.
             ef_search: Forwarded to the vector branch
-                (:meth:`similarity_search`); overrides HNSW's
+                (`similarity_search`); overrides HNSW's
                 search-time candidate-list depth.
-            fields: Forwarded to :meth:`regex_search`.
-            case_sensitive: Forwarded to :meth:`regex_search`.
+            fields: Forwarded to `regex_search`.
+            case_sensitive: Forwarded to `regex_search`.
             output_format: ``"json"`` (list of dicts, default) or
                 ``"csv"`` (CSV string).
         """

@@ -3,10 +3,10 @@
 <!-- colab-badge:end -->
 
 
-::: guides.9_observability
+::: guides.10_observability
 
 ## Source
 
 ````python
---8<-- "guides/9_observability.py:287"
+--8<-- "guides/10_observability.py:287"
 ````

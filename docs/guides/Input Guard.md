@@ -3,10 +3,10 @@
 <!-- colab-badge:end -->
 
 
-::: guides.7_input_guard
+::: guides.8_input_guard
 
 ## Source
 
 ````python
---8<-- "guides/7_input_guard.py:294"
+--8<-- "guides/8_input_guard.py:294"
 ````

@@ -530,7 +530,7 @@ class RecursiveLanguageModelAgent(Module):
             ``llm_query`` and ``llm_query_batched`` inside the sandbox
             and use the recursive instructions. If ``False``, run
             without the sub-LM helpers.
-        tools (list): Optional. Extra :class:`Tool` instances exposed to
+        tools (list): Optional. Extra `Tool` instances exposed to
             the sandbox in addition to ``submit`` (and ``llm_query`` /
             ``llm_query_batched`` when ``recursive=True``). The names
             ``submit``, ``llm_query``, and ``llm_query_batched`` are
@@ -548,9 +548,9 @@ class RecursiveLanguageModelAgent(Module):
             code generator.
         instructions (str): Optional. Instructions for the per-turn
             code generator. Defaults to either
-            :func:`get_recursive_instructions` (when ``recursive=True``,
+            `get_recursive_instructions` (when ``recursive=True``,
             with the ``{max_llm_calls}`` placeholder substituted) or
-            :func:`get_default_instructions` otherwise.
+            `get_default_instructions` otherwise.
         final_instructions (str): Optional. Instructions for the final
             answer generator. Defaults to ``instructions``.
         temperature (float): Optional. Sampling temperature
@@ -615,7 +615,7 @@ class RecursiveLanguageModelAgent(Module):
             ``spawn_subagents`` / ``merge_subagent`` / ``discard_subagent``
             tools (called between snippets, with the REPL idle, so they can
             fork it). Each subagent runs in parallel on a
-            :meth:`MontySandbox.fork` that inherits this agent's current REPL
+            `MontySandbox.fork` that inherits this agent's current REPL
             state (variables, functions, imports) *and* files; its work only
             lands on an explicit ``merge_subagent``. ``1`` (recommended) lets
             this agent spawn subagents that cannot themselves spawn; higher
@@ -837,11 +837,11 @@ class RecursiveLanguageModelAgent(Module):
         """Build the lone tool the LM can call.
 
         ``run_python_code`` is the *only* tool exposed to the LM. It wraps
-        the sandbox's :meth:`MontySandbox.run_python_code` (which runs the
+        the sandbox's `MontySandbox.run_python_code` (which runs the
         snippet in the persistent sandbox) and clips the captured streams
         to ``max_output_chars``. The tools (``submit``, ``llm_query`` and
         the user tools) and the ``inputs`` payload are not passed here —
-        :meth:`call` binds them onto the sandbox before each run (via
+        `call` binds them onto the sandbox before each run (via
         ``bind_functions`` and a persisted ``inputs`` variable). The
         sandbox is closed over, so a fresh tool is built per call. For
         ``compute_output_spec`` the closure is built with ``sandbox=None``

@@ -19,7 +19,7 @@ from synalinks.src.saving import serialization_lib
 
 
 class RelationHybridRegexSearchInput(DataModel):
-    """Input shape for :class:`RelationHybridRegexSearch`.
+    """Input shape for `RelationHybridRegexSearch`.
 
     The ``regex_patterns`` list is optional — when omitted, the
     adapter falls back to plain vector similarity over
@@ -44,19 +44,19 @@ class RelationHybridRegexSearchInput(DataModel):
 class RelationHybridRegexSearch(Module):
     """RRF of vector similarity + regex match over relations.
 
-    Graph-side counterpart of :class:`HybridRegexSearch`, but for
+    Graph-side counterpart of `HybridRegexSearch`, but for
     edges. LM-driven wrapper around
-    :meth:`KnowledgeBase.relation_hybrid_regex_search`. Per matched
+    `KnowledgeBase.relation_hybrid_regex_search`. Per matched
     edge, the final ``rrf_score`` is the sum of the subject's and
     the object's hybrid scores — same 4-source-RRF reduction as
-    :class:`RelationHybridFTSSearch`. Falls back to plain vector
+    `RelationHybridFTSSearch`. Falls back to plain vector
     similarity when ``regex_patterns`` is empty.
 
     Regex uses RE2, so patterns are linear-time and not vulnerable
     to catastrophic backtracking.
 
     Single-label only: to retrieve relations of multiple labels,
-    compose several :class:`RelationHybridRegexSearch` modules in the
+    compose several `RelationHybridRegexSearch` modules in the
     program DAG and merge their outputs explicitly.
 
     Args:

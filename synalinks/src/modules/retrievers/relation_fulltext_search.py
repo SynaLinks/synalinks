@@ -19,7 +19,7 @@ from synalinks.src.saving import serialization_lib
 
 
 class RelationFullTextSearchInput(DataModel):
-    """Input shape for :class:`RelationFullTextSearch`."""
+    """Input shape for `RelationFullTextSearch`."""
 
     fulltext_search: List[str] = Field(
         description="Keyword queries for BM25 full-text search",
@@ -35,14 +35,14 @@ class RelationFullTextSearchInput(DataModel):
 class RelationFullTextSearch(Module):
     """BM25 full-text search over relations of a single label.
 
-    Graph-side counterpart of :class:`FullTextSearch`, but for edges.
+    Graph-side counterpart of `FullTextSearch`, but for edges.
     LM-driven wrapper around
-    :meth:`KnowledgeBase.relation_fulltext_search`. Per matched edge,
+    `KnowledgeBase.relation_fulltext_search`. Per matched edge,
     the final ``score`` is the sum of the subject-side and object-side
     BM25 scores — either-endpoint union.
 
     Single-label only: to retrieve relations of multiple labels,
-    compose several :class:`RelationFullTextSearch` modules in the
+    compose several `RelationFullTextSearch` modules in the
     program DAG and merge their outputs explicitly.
 
     Args:

@@ -55,12 +55,12 @@ class TextDataset(Dataset):
     name ends in ``glob_pattern`` (default ``".txt"``, case-insensitive),
     and yields one row per file. Each row is rendered through the
     Jinja2 ``input_template`` to JSON, validated against
-    ``input_data_model`` (defaults to :class:`TextDocument`), and
+    ``input_data_model`` (defaults to `TextDocument`), and
     accumulated into batches of size ``batch_size`` — the same contract
-    as :class:`CSVDataset` and the other loaders.
+    as `CSVDataset` and the other loaders.
 
     The yielded shape is inputs-only (no ``output_template``), so the
-    dataset can be handed straight to :meth:`KnowledgeBase.update`:
+    dataset can be handed straight to `KnowledgeBase.update`:
 
     ```python
     import synalinks
@@ -77,7 +77,7 @@ class TextDataset(Dataset):
     ``input_data_model=YourModel`` and an ``input_template`` that
     renders the extra fields. The ``_iter_rows`` output always carries
     just ``filepath`` + ``text``; subclass and override
-    :meth:`_iter_rows` if you need to inject more per-file metadata.
+    `_iter_rows` if you need to inject more per-file metadata.
 
     Args:
         root (str): Directory to walk. Must exist.
@@ -87,15 +87,15 @@ class TextDataset(Dataset):
             ``root`` are read.
         glob_pattern (str): Filename suffix to match
             (case-insensitive). Defaults to ``".txt"``.
-        input_data_model (DataModel): See :class:`Dataset`. Defaults to
-            :class:`TextDocument`.
-        input_schema (dict | str): See :class:`Dataset`.
-        input_template (str): See :class:`Dataset`. Defaults to a
+        input_data_model (DataModel): See `Dataset`. Defaults to
+            `TextDocument`.
+        input_schema (dict | str): See `Dataset`.
+        input_template (str): See `Dataset`. Defaults to a
             template producing ``TextDocument``-shaped JSON.
         batch_size (int): Examples per yielded batch. Defaults to 8.
         limit (int): Optional cap on the number of files consumed.
             With a limit set, ``__len__`` is also available.
-        repeat (int): See :class:`Dataset`.
+        repeat (int): See `Dataset`.
     """
 
     def __init__(

@@ -2,7 +2,7 @@
 """LanceDB database adapter.
 
 LanceDB is a vector-native, embedded columnar store. This adapter mirrors the
-:class:`DuckDBAdapter` contract (same public methods, same result shapes) on top
+`DuckDBAdapter` contract (same public methods, same result shapes) on top
 of LanceDB:
 
 - vector similarity search is native (``table.search(vector)``),
@@ -293,10 +293,21 @@ class LanceDBAdapter(DatabaseAdapter):
     # -- table lifecycle -------------------------------------------------------
 
     def wipe_database(self):
+        """Drop every table in the database, clearing all data."""
         for name in self._db.table_names():
             self._db.drop_table(name, ignore_missing=True)
 
     def get_symbolic_data_models(self) -> List[SymbolicDataModel]:
+        """Reflect every table in the database into a symbolic model.
+
+        Each table's JSON schema is recovered from the stashed Arrow
+        metadata (or rebuilt from the Arrow schema), with the embedding
+        column kept.
+
+        Returns:
+            List[SymbolicDataModel]: One ``SymbolicDataModel`` per table,
+                representing the current database schema.
+        """
         models = []
         for table_name in self._db.table_names():
             schema = self._table_json_schema(table_name, remove_embedding=False)
@@ -365,6 +376,20 @@ class LanceDBAdapter(DatabaseAdapter):
         self,
         data_model_or_data_models: Union[List[JsonDataModel], JsonDataModel],
     ) -> Union[Any, List[Any]]:
+        """Upsert records, then rebuild per-column FTS indexes.
+
+        Records are bucketed by table and applied with LanceDB's
+        ``merge_insert`` keyed off the first declared field (the primary
+        key). Returns the primary key value(s).
+
+        Args:
+            data_model_or_data_models: A single ``JsonDataModel`` or a list
+                of ``JsonDataModel`` to insert or update.
+
+        Returns:
+            The primary key value(s) of the upserted records: a single
+            value for a single input, or a list aligned with the input.
+        """
         return_single = not isinstance(data_model_or_data_models, list)
         data_models = (
             [data_model_or_data_models] if return_single else data_model_or_data_models
@@ -435,7 +460,20 @@ class LanceDBAdapter(DatabaseAdapter):
         *,
         table_name: str,
         remove_embedding: bool = True,
-    ):
+    ) -> Union[Optional[JsonDataModel], List[Optional[JsonDataModel]]]:
+        """Look up one or more records by primary key in a single table.
+
+        Args:
+            id_or_ids: A single primary key value, or a list of values.
+            table_name: Target table.
+            remove_embedding: Strip the embedding column from the returned
+                records. Defaults to ``True`` to keep results LM-friendly.
+
+        Returns:
+            For a scalar id: the matching ``JsonDataModel``, or ``None`` if
+            not found. For a list of ids: a list in the same order, with
+            ``None`` in the slots that didn't match.
+        """
         return_single = not isinstance(id_or_ids, list)
         ids = [id_or_ids] if return_single else list(id_or_ids)
         if not ids:
@@ -475,6 +513,20 @@ class LanceDBAdapter(DatabaseAdapter):
         offset: int = 0,
         remove_embedding: bool = True,
     ) -> List[JsonDataModel]:
+        """List rows from a single table, paginated.
+
+        Returns an empty list (with a warning) if the table doesn't exist,
+        so callers can safely enumerate without pre-checking.
+
+        Args:
+            table_name: Target table.
+            limit: Maximum number of records to return.
+            offset: Number of records to skip.
+            remove_embedding: Strip the embedding column from results.
+
+        Returns:
+            A list of ``JsonDataModel`` records.
+        """
         table = table_identifier(table_name)
         if table not in self._db.table_names():
             warnings.warn(f"Failed to read table '{table}': not found")
@@ -507,6 +559,16 @@ class LanceDBAdapter(DatabaseAdapter):
         *,
         table_name: str,
     ) -> int:
+        """Delete records by primary key from a single table.
+
+        Args:
+            id_or_ids: A single primary key value, or a list of values.
+            table_name: Target table.
+
+        Returns:
+            The number of rows actually deleted (0 if none matched or if
+            the table doesn't exist).
+        """
         ids = [id_or_ids] if not isinstance(id_or_ids, list) else list(id_or_ids)
         if not ids:
             return 0
@@ -522,6 +584,15 @@ class LanceDBAdapter(DatabaseAdapter):
         return before - tbl.count_rows()
 
     async def drop_table(self, table_name: str) -> bool:
+        """Drop a table and remove it from the known-tables registry.
+
+        Args:
+            table_name: Target table.
+
+        Returns:
+            ``True`` if a table was dropped, ``False`` if no such table
+            existed.
+        """
         table = table_identifier(table_name)
         if table not in self._db.table_names():
             return False
@@ -535,7 +606,20 @@ class LanceDBAdapter(DatabaseAdapter):
         *,
         table_name: Optional[str] = None,
         table_description: Optional[str] = None,
-    ):
+    ) -> SymbolicDataModel:
+        """Rename a table and/or update its schema description.
+
+        Args:
+            source: ``SymbolicDataModel`` for the table to rename, or its
+                name as a string. Always normalized to PascalCase.
+            table_name: New table name. Optional — pass to rename the table.
+            table_description: New schema description. Optional.
+
+        Returns:
+            A ``SymbolicDataModel`` for the (possibly renamed) table,
+            reflecting its current column shape and the supplied
+            description.
+        """
         old = table_identifier(
             source.get_schema()["title"] if hasattr(source, "get_schema") else source
         )
@@ -561,7 +645,29 @@ class LanceDBAdapter(DatabaseAdapter):
         self._db.create_table(table, data=arrow_table)
         return SymbolicDataModel(schema=json_schema)
 
-    async def from_csv(self, path, *, table_name=None, table_description=None, **kwargs):
+    async def from_csv(
+        self,
+        path: str,
+        *,
+        table_name: Optional[str] = None,
+        table_description: Optional[str] = None,
+        **kwargs: Any,
+    ) -> SymbolicDataModel:
+        """Bulk-load a CSV file directly into a new (or existing) table.
+
+        Reads the file with PyArrow and creates the table from the file's
+        columns; the first column is the primary key.
+
+        Args:
+            path: Path to the CSV file.
+            table_name: Target table name. Defaults to the file's stem,
+                PascalCase-normalized.
+            table_description: Optional schema description.
+            **kwargs: Reserved for adapter-specific options.
+
+        Returns:
+            The ``SymbolicDataModel`` for the loaded table.
+        """
         import pyarrow.csv as pa_csv
 
         return await self._from_arrow(
@@ -569,15 +675,55 @@ class LanceDBAdapter(DatabaseAdapter):
         )
 
     async def from_parquet(
-        self, path, *, table_name=None, table_description=None, **kwargs
-    ):
+        self,
+        path: str,
+        *,
+        table_name: Optional[str] = None,
+        table_description: Optional[str] = None,
+        **kwargs: Any,
+    ) -> SymbolicDataModel:
+        """Bulk-load a Parquet file directly into a new (or existing) table.
+
+        Reads the file with PyArrow and creates the table from the file's
+        columns; the first column is the primary key.
+
+        Args:
+            path: Path to the Parquet file.
+            table_name: Target table name. Defaults to the file's stem,
+                PascalCase-normalized.
+            table_description: Optional schema description.
+            **kwargs: Reserved for adapter-specific options.
+
+        Returns:
+            The ``SymbolicDataModel`` for the loaded table.
+        """
         import pyarrow.parquet as pa_parquet
 
         return await self._from_arrow(
             pa_parquet.read_table(path), table_name or _stem(path), table_description
         )
 
-    async def from_json(self, path, *, table_name=None, table_description=None, **kwargs):
+    async def from_json(
+        self,
+        path: str,
+        *,
+        table_name: Optional[str] = None,
+        table_description: Optional[str] = None,
+        **kwargs: Any,
+    ) -> SymbolicDataModel:
+        """Bulk-load a JSON file (top-level array of objects).
+
+        Args:
+            path: Path to the JSON file. Must contain a top-level array of
+                objects, e.g. ``[{"id": "a", "text": "..."}, ...]``.
+            table_name: Target table name. Defaults to the file's stem,
+                PascalCase-normalized.
+            table_description: Optional schema description.
+            **kwargs: Reserved for adapter-specific options.
+
+        Returns:
+            The ``SymbolicDataModel`` for the loaded table.
+        """
         with open(path, "rb") as f:
             records = orjson.loads(f.read())
         return await self._from_arrow(
@@ -585,8 +731,25 @@ class LanceDBAdapter(DatabaseAdapter):
         )
 
     async def from_jsonl(
-        self, path, *, table_name=None, table_description=None, **kwargs
-    ):
+        self,
+        path: str,
+        *,
+        table_name: Optional[str] = None,
+        table_description: Optional[str] = None,
+        **kwargs: Any,
+    ) -> SymbolicDataModel:
+        """Bulk-load a JSON Lines (NDJSON) file.
+
+        Args:
+            path: Path to the JSONL file (one JSON object per line).
+            table_name: Target table name. Defaults to the file's stem,
+                PascalCase-normalized.
+            table_description: Optional schema description.
+            **kwargs: Reserved for adapter-specific options.
+
+        Returns:
+            The ``SymbolicDataModel`` for the loaded table.
+        """
         records = []
         with open(path, "rb") as f:
             for line in f:
@@ -637,6 +800,23 @@ class LanceDBAdapter(DatabaseAdapter):
         ef_search: Optional[int] = None,
         output_format: str = "json",
     ):
+        """Vector similarity search against a single table.
+
+        Requires an embedding model on the adapter. Multiple queries are
+        merged into a single ranked result set (best score per id kept).
+
+        Args:
+            text_or_texts: Query text, or list of query texts.
+            table_name: Target table.
+            k: Maximum number of rows returned.
+            threshold: Optional maximum vector distance — rows beyond this
+                distance are dropped.
+            ef_search: Optional override for the HNSW search-time
+                candidate-list depth. Accepted for parity with the DuckDB
+                adapter.
+            output_format: ``"json"`` (list of dicts, default) or ``"csv"``
+                (CSV string).
+        """
         if not text_or_texts:
             return format_search_results([], output_format)
         if not self.embedding_model:
@@ -682,8 +862,24 @@ class LanceDBAdapter(DatabaseAdapter):
         k: int = 10,
         threshold: Optional[float] = None,
         output_format: str = "json",
-        **kwargs,
+        **kwargs: Any,
     ):
+        """Full-text search against a single table (Tantivy FTS).
+
+        Multiple queries are merged (best score per id kept). Raw Tantivy
+        scores are min-max rescaled to ``[0, 1]`` so they're comparable
+        with the DuckDB adapter.
+
+        Args:
+            text_or_texts: Query text, or list of query texts.
+            table_name: Target table.
+            k: Maximum number of rows returned.
+            threshold: Optional minimum relevance on the normalized
+                ``[0, 1]`` scale; filters on the same scale as ``score``.
+            output_format: ``"json"`` (list of dicts, default) or ``"csv"``
+                (CSV string).
+            **kwargs: Reserved for adapter-specific options.
+        """
         if not text_or_texts:
             return format_search_results([], output_format)
         texts = [text_or_texts] if not isinstance(text_or_texts, list) else text_or_texts
@@ -727,6 +923,21 @@ class LanceDBAdapter(DatabaseAdapter):
         k: int = 10,
         output_format: str = "json",
     ):
+        """Find rows whose string fields match a regular expression.
+
+        Scans the column(s) and filters with Python's ``re`` module.
+
+        Args:
+            pattern: The regex pattern (Python ``re`` syntax).
+            table_name: Target table.
+            fields: Field names to match against. Defaults to every
+                string-typed field on the schema. Names not present as
+                string columns are silently dropped.
+            case_sensitive: When ``False``, matches case-insensitively.
+            k: Maximum number of rows returned.
+            output_format: ``"json"`` (list of dicts, default) or ``"csv"``
+                (CSV string).
+        """
         if not pattern:
             return format_search_results([], output_format)
         table = table_identifier(table_name)
@@ -760,6 +971,11 @@ class LanceDBAdapter(DatabaseAdapter):
         return format_search_results(out, output_format)
 
     async def hybrid_search(self, *args, **kwargs):
+        """Deprecated alias of `hybrid_fts_search`.
+
+        Kept so call sites pre-dating the rename keep working. Prefer the
+        new name in new code — it's symmetric with `hybrid_regex_search`.
+        """
         return await self.hybrid_fts_search(*args, **kwargs)
 
     async def hybrid_fts_search(
@@ -774,8 +990,33 @@ class LanceDBAdapter(DatabaseAdapter):
         fulltext_threshold: Optional[float] = None,
         ef_search: Optional[int] = None,
         output_format: str = "json",
-        **kwargs,
+        **kwargs: Any,
     ):
+        """Reciprocal-Rank-Fusion of vector similarity + fulltext.
+
+        Runs `similarity_search` and `fulltext_search` against the same
+        table, then fuses their rankings with the RRF formula
+        ``sum(1 / (k_rank + rank))``. Falls back to pure FTS when no
+        embedding model is configured.
+
+        Args:
+            text_or_texts: Query text or list of query texts for the vector
+                branch.
+            keywords: Query text or list for the fulltext branch. Aligns by
+                position with ``text_or_texts``; when omitted, the text is
+                reused for both branches.
+            table_name: Target table.
+            k: Maximum number of rows returned.
+            k_rank: RRF smoothing constant (default 60). Lower values weight
+                top-ranked rows more strongly.
+            similarity_threshold: Optional maximum vector distance.
+            fulltext_threshold: Optional minimum fulltext relevance on the
+                normalized ``[0, 1]`` scale.
+            ef_search: Forwarded to the vector branch (`similarity_search`).
+            output_format: ``"json"`` (list of dicts, default) or ``"csv"``
+                (CSV string).
+            **kwargs: Reserved for adapter-specific options.
+        """
         if not text_or_texts:
             return format_search_results([], output_format)
         table = table_identifier(table_name)
@@ -858,8 +1099,30 @@ class LanceDBAdapter(DatabaseAdapter):
         case_sensitive: bool = True,
         ef_search: Optional[int] = None,
         output_format: str = "json",
-        **kwargs,
+        **kwargs: Any,
     ):
+        """Reciprocal-Rank-Fusion of vector similarity + regex match.
+
+        Sibling of `hybrid_fts_search`. The vector half embeds
+        ``text_or_texts``; the regex half matches ``pattern_or_patterns``
+        against the table's string columns. The two rankings are fused
+        with the RRF formula ``sum(1 / (k_rank + rank))``.
+
+        Args:
+            text_or_texts: Query text (or list) for the vector half.
+            pattern_or_patterns: Regex pattern (or list) for the regex
+                half. ``None`` skips the regex half.
+            table_name: Target table.
+            k: Maximum number of rows returned.
+            k_rank: RRF smoothing constant (default 60).
+            similarity_threshold: Optional maximum vector distance.
+            fields: Forwarded to `regex_search`.
+            case_sensitive: Forwarded to `regex_search`.
+            ef_search: Forwarded to the vector branch (`similarity_search`).
+            output_format: ``"json"`` (list of dicts, default) or ``"csv"``
+                (CSV string).
+            **kwargs: Reserved for adapter-specific options.
+        """
         if not text_or_texts:
             return format_search_results([], output_format)
         table = table_identifier(table_name)

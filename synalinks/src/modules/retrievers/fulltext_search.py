@@ -19,7 +19,7 @@ from synalinks.src.saving import serialization_lib
 
 
 class FullTextSearchInput(DataModel):
-    """Input shape for :class:`FullTextSearch`."""
+    """Input shape for `FullTextSearch`."""
 
     fulltext_search: List[str] = Field(
         description="Keyword queries for BM25 full-text search",
@@ -35,16 +35,16 @@ class FullTextSearchInput(DataModel):
 class FullTextSearch(Module):
     """BM25 full-text search against a single KB table.
 
-    LM-driven wrapper around :meth:`KnowledgeBase.fulltext_search`. An
-    embedded :class:`Generator` turns the module's inputs into a
-    :class:`FullTextSearchInput` query (the ``fulltext_search`` field),
+    LM-driven wrapper around `KnowledgeBase.fulltext_search`. An
+    embedded `Generator` turns the module's inputs into a
+    `FullTextSearchInput` query (the ``fulltext_search`` field),
     which is then run against the table. Use this when you want a
     keyword-matching retrieval step without the vector branch (e.g.
     the corpus has no embeddings, or BM25 alone is the right
     relevance signal).
 
     Single-table only: to retrieve from multiple tables, compose
-    several :class:`FullTextSearch` modules in the program DAG and
+    several `FullTextSearch` modules in the program DAG and
     merge their outputs explicitly.
 
     Example:

@@ -25,20 +25,20 @@ class UpdateKnowledge(Module):
     Dispatches on the input's shape:
 
     * ``KnowledgeGraph`` (``is_knowledge_graph``) →
-      :meth:`KnowledgeBase.update_knowledge_graph` (bulk entities + relations).
+      `KnowledgeBase.update_knowledge_graph` (bulk entities + relations).
     * ``KnowledgeGraphs`` wrapper (``is_knowledge_graphs``) →
-      :meth:`KnowledgeBase.update_knowledge_graph` once per wrapped KG
+      `KnowledgeBase.update_knowledge_graph` once per wrapped KG
       (the KB has no bulk multi-graph endpoint).
     * ``Entities`` wrapper (``is_entities``) →
-      :meth:`KnowledgeBase.update_entities` with the wrapped list (bulk nodes).
+      `KnowledgeBase.update_entities` with the wrapped list (bulk nodes).
     * ``Relations`` wrapper (``is_relations``) →
-      :meth:`KnowledgeBase.update_relations` with the wrapped list (bulk edges).
+      `KnowledgeBase.update_relations` with the wrapped list (bulk edges).
     * ``Relation`` (``is_relation``) →
-      :meth:`KnowledgeBase.update_relations` (single edge; endpoints upserted
+      `KnowledgeBase.update_relations` (single edge; endpoints upserted
       as needed).
     * ``Entity`` (``is_entity``) →
-      :meth:`KnowledgeBase.update_entities` (single node).
-    * Anything else → :meth:`KnowledgeBase.update` (SQL row/table store);
+      `KnowledgeBase.update_entities` (single node).
+    * Anything else → `KnowledgeBase.update` (SQL row/table store);
       the first declared field is used as the primary key for upsert.
 
     To pass a Python list of entities or relations rather than a wrapper

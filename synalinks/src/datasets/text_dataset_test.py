@@ -65,9 +65,7 @@ class TextDatasetTest(testing.TestCase):
         _write(os.path.join(self.tmp, "lower.txt"), "l")
         ds = TextDataset(root=self.tmp, batch_size=10)
         (x,) = next(iter(ds))
-        self.assertEqual(
-            sorted(item.filepath for item in x), ["lower.txt", "upper.TXT"]
-        )
+        self.assertEqual(sorted(item.filepath for item in x), ["lower.txt", "upper.TXT"])
 
     def test_custom_glob_pattern(self):
         _write(os.path.join(self.tmp, "note.text"), "body")
@@ -115,9 +113,7 @@ class TextDatasetTest(testing.TestCase):
         _write(os.path.join(self.tmp, "b.txt"), "beta")
         ds = TextDataset(root=self.tmp, batch_size=4, repeat=2)
         (x,) = next(iter(ds))
-        self.assertEqual(
-            [item.text for item in x], ["alpha", "alpha", "beta", "beta"]
-        )
+        self.assertEqual([item.text for item in x], ["alpha", "alpha", "beta", "beta"])
 
     def test_inputs_only_yields_one_tuple(self):
         _write(os.path.join(self.tmp, "a.txt"), "x")

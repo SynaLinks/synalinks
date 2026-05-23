@@ -31,7 +31,7 @@ def uniquify(name):
 def to_snake_case(text: str) -> str:
     """Convert a string to snake_case.
 
-    The mirror image of :func:`to_pascal_case`: splits on non-
+    The mirror image of `to_pascal_case`: splits on non-
     alphanumeric separators *and* on case boundaries, then lowercases
     each remaining word and joins them with underscores.
 
