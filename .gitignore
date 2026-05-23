@@ -148,5 +148,5 @@ mlflow.db
 # Claude skills
 synalinks-skills/
 
-# Reseach projects
-synalinks-research/
+research-blogs/
+AUTOBLOG.md

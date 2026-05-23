@@ -9,6 +9,37 @@
 uv pip install synalinks
 ```
 
+## Set up a language model
+
+Every program below sends requests to a language model, so you need one reachable
+*before* you run any of the examples.
+
+The examples use a model served locally by [Ollama](https://ollama.com) — it is free
+and needs no API key. Install Ollama, then pull the model once:
+
+```shell
+ollama pull mistral
+```
+
+Ollama serves the model in the background; keep it running while you execute a program.
+
+Prefer a hosted provider? Synalinks integrates Anthropic, Mistral, Groq, OpenAI and more.
+Set the matching API key and change the `model` string — the rest of the code stays the
+same:
+
+```python
+import os
+
+os.environ["ANTHROPIC_API_KEY"] = "your-api-key"
+
+language_model = synalinks.LanguageModel(
+    model="anthropic/claude-3-5-sonnet-latest",
+)
+```
+
+See the [Language Models API](Synalinks API/Language Models API.md) for the full list of
+supported providers and model strings.
+
 ## Programming your application: 4 ways
 
 ### Using the `Functional` API
@@ -51,8 +82,24 @@ async def main():
         description="Useful to answer in a step by step manner.",
     )
 
+    # Run the program and print the structured result.
+    result = await program(
+        Query(query="What is 2 + 2? Reason step by step."),
+    )
+    print(result.prettify_json())
+
 if __name__ == "__main__":
     asyncio.run(main())
+```
+
+Running this prints the structured output — both the model's reasoning and the typed
+`answer` field:
+
+```json
+{
+  "thinking": "Two plus two means adding 2 and 2 together, which gives 4.",
+  "answer": 4.0
+}
 ```
 
 ### Subclassing the `Program` class
@@ -100,6 +147,8 @@ async def main():
                 description=description,
                 trainable=trainable,
             )
+            # Keep a reference so get_config() below can serialize it.
+            self.language_model = language_model
             self.answer = synalinks.Generator(
                 data_model=AnswerWithThinking,
                 language_model=language_model,
@@ -289,6 +338,10 @@ result = await program(
     Query(query="What is the French city of aerospace?"),
 )
 ```
+
+`await` only works inside an `async` function (or a notebook cell). In a script, call it
+from your `async def main()` and launch it with `asyncio.run(main())`, exactly like the
+Functional API example above.
 
 ## Training your program
 

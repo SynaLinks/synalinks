@@ -10,11 +10,11 @@ for merging and manipulating data models.
 ```mermaid
 graph LR
     subgraph Operators
-        CONCAT[A + B: Concatenate]
-        AND[A & B: Safe Merge]
-        OR[A | B: First Non-None]
-        XOR[A ^ B: Exclusive]
-        NOT[~A: Cancel]
+        CONCAT["A + B: Concatenate"]
+        AND["A & B: Safe Merge"]
+        OR["A | B: First Non-None"]
+        XOR["A ^ B: Exclusive"]
+        NOT["~A: Cancel"]
     end
 ```
 

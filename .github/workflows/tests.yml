@@ -31,8 +31,14 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
           enable-cache: true
+      # setup-uv used to create a `.venv` automatically; since uv 0.11.16 it no
+      # longer does, so `uv pip install` (in shell/install.sh) has no
+      # environment and aborts with "No virtual environment found". Create it
+      # explicitly — the `.venv` that install.sh and `uv run` both target.
+      - name: Create virtual environment
+        run: uv venv
       - name: Display Python version
-        run: python -c "import sys; print(sys.version)"
+        run: uv run python -c "import sys; print(sys.version)"
       - name: Install graphviz (macOS)
         if: runner.os == 'macOS'
         run: brew install graphviz

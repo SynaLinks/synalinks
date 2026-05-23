@@ -31,6 +31,12 @@ jobs:
         with:
           python-version: "3.12"
           enable-cache: true
+      # setup-uv used to create a `.venv` automatically; since uv 0.11.16 it no
+      # longer does, so `uv pip install` (in shell/install.sh) has no
+      # environment and aborts with "No virtual environment found". Create it
+      # explicitly — the `.venv` that install.sh and `uv run` both target.
+      - name: Create virtual environment
+        run: uv venv
       # mkdocstrings imports the `synalinks` and guide modules to render the
       # `:::` reference pages, so the package + its deps must be installed —
       # the same toolchain shell/doc.sh builds with locally. `ghp-import`

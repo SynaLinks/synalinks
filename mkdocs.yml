@@ -146,7 +146,7 @@ nav:
         - Synalinks API/Modules API/Agents Modules/index.md
         - Synalinks API/Modules API/Agents Modules/FunctionCallingAgent module.md
         - Synalinks API/Modules API/Agents Modules/CypherAgent module.md
-        - Synalinks API/Modules API/Agents Modules/RecursiveLanguageModelAgent module.md
+        - Synalinks API/Modules API/Agents Modules/RLMAgent module.md
         - Synalinks API/Modules API/Agents Modules/SQLAgent module.md
         - Synalinks API/Modules API/Agents Modules/VectorRAGAgent module.md
         - Synalinks API/Modules API/Agents Modules/DeepAgent module.md
