@@ -104,7 +104,7 @@ outputs = await synalinks.VectorRAGAgent(
 
 ## Program Visualization
 
-![rag_agent](../assets/examples/rag_agent.png)
+![rag_agent](https://synalinks.github.io/synalinks/assets/examples/rag_agent.png)
 
 ## API References
 

@@ -119,7 +119,7 @@ for iteration in range(MAX_ITERATIONS):
 
 ## Program Visualization
 
-![interactive_math_agent](../assets/examples/interactive_math_agent.png)
+![interactive_math_agent](https://synalinks.github.io/synalinks/assets/examples/interactive_math_agent.png)
 
 ## API References
 

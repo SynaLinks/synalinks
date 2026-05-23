@@ -35,7 +35,7 @@ def plot_history(
 
     Example:
 
-    ![training_history.png](../../assets/training_history.png)
+    ![training_history.png](https://synalinks.github.io/synalinks/assets/training_history.png)
 
     Args:
         history (History): The training history.
@@ -147,7 +147,7 @@ def plot_history_with_mean_and_std(
 
     Example:
 
-    ![training_history_with_mean_and_std.png](../../assets/training_history_with_mean_and_std.png)
+    ![training_history_with_mean_and_std.png](https://synalinks.github.io/synalinks/assets/training_history_with_mean_and_std.png)
 
     Args:
         history_list (list): A list of History objects from multiple runs.

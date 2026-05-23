@@ -75,7 +75,7 @@ answer = await synalinks.Generator(
 
 ## Program Visualization
 
-![document_rag](../assets/examples/document_rag.png)
+![document_rag](https://synalinks.github.io/synalinks/assets/examples/document_rag.png)
 
 ## API References
 

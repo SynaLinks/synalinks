@@ -4,7 +4,7 @@
 # Recursive Language Model Agent
 
 This is the last guide in the series, and we now build on everything
-that came before. [Guide 5](Agents.md) introduced agents — a loop that decides,
+that came before. [Guide 5](https://synalinks.github.io/synalinks/guides/Agents/) introduced agents — a loop that decides,
 acts, observes, and repeats. This guide presents a more powerful
 agent design: one that can **spawn a smaller helper agent for
 sub-tasks**, the way a recursive function in CS101 calls itself on
@@ -80,7 +80,7 @@ Two standard fixes you might have already met:
   but pays all three costs every time.
 - **Offline retrieval.** Pre-process the input into chunks, store
   them in a vector index, and retrieve the top few at query time.
-  This is the RAG pipeline from [Guide 6](Knowledge%20Base.md). It is cheap at query
+  This is the RAG pipeline from [Guide 6](https://synalinks.github.io/synalinks/guides/Knowledge%20Base/). It is cheap at query
   time, but the chunk size and the embedding model are picked
   *before the question is known*, which puts a ceiling on how good
   retrieval can ever be.

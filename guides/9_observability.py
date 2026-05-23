@@ -162,7 +162,7 @@ objects obeying a `Trainable` schema that the optimizers in
 weights in a neural network. The most common cases hold a system
 instruction or a list of few-shot examples, but in general the
 JSON object can carry any structured state its schema permits
-([Guide 11](Trainable%20Variables.md)).
+([Guide 11](https://synalinks.github.io/synalinks/guides/Trainable%20Variables/)).
 
 ## Inspection Without Running: `plot_program()`
 

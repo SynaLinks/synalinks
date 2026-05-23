@@ -2,7 +2,7 @@
 # Agents
 
 Picture a language model as a person sitting at a desk. A plain
-`Generator` (which you have seen since [Guide 1](Getting%20Started.md)) lets that person read
+`Generator` (which you have seen since [Guide 1](https://synalinks.github.io/synalinks/guides/Getting%20Started/)) lets that person read
 one question and write one answer, then stop. An **agent** gives them
 more freedom: the person may also pick up the phone and call a
 helper — a calculator, a search engine, a clock — read the helper's
@@ -48,7 +48,7 @@ tools, or stop?" It signals "stop" by producing an empty list of tool
 calls.
 
 Synalinks' `FunctionCallingAgent` wraps a `ChainOfThought` module (the
-one you met in [Guide 4](Modules.md)). At each step that module must produce two
+one you met in [Guide 4](https://synalinks.github.io/synalinks/guides/Modules/)). At each step that module must produce two
 things: a free-form `thinking` field (so we — and downstream optimizers
 — can see the model's intermediate reasoning), and a `tool_calls`
 array (the list of helper calls it wants to make this turn). An empty

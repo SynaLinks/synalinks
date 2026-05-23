@@ -3,8 +3,8 @@
 """
 # SQL Agent
 
-[Guide 5](Agents.md) showed the agent loop in the abstract: a model that
-decides, acts, observes, and repeats. [Guide 6](Knowledge%20Base.md) introduced
+[Guide 5](https://synalinks.github.io/synalinks/guides/Agents/) showed the agent loop in the abstract: a model that
+decides, acts, observes, and repeats. [Guide 6](https://synalinks.github.io/synalinks/guides/Knowledge%20Base/) introduced
 the `KnowledgeBase` — a typed, queryable store backed by DuckDB. This
 guide combines the two. An **SQL Agent** is an agent whose tool set is
 pre-wired for working with a knowledge base via SQL: it can discover

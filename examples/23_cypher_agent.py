@@ -1,13 +1,13 @@
 """
 # Cypher Agent
 
-The `SQLAgent` ([Code Example](SQL%20Agent.md)) answers questions over a
+The `SQLAgent` ([Code Example](https://synalinks.github.io/synalinks/Code Examples/SQL%20Agent/)) answers questions over a
 *tabular* knowledge base. The **Cypher Agent** is its graph counterpart: it
 answers questions over a **knowledge graph** (nodes and edges) by writing
 read-only [Cypher](https://opencypher.org/) queries.
 
 `synalinks.CypherAgent` is a thin specialization of
-[`FunctionCallingAgent`](Autonomous%20Agent.md) that pre-wires three tools,
+[`FunctionCallingAgent`](https://synalinks.github.io/synalinks/Code Examples/Autonomous%20Agent/) that pre-wires three tools,
 all bound to a `KnowledgeBase` with a graph adapter:
 
 | Tool | Purpose |

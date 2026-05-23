@@ -1,7 +1,7 @@
 """
 # Data Models
 
-In [Guide 1](Getting%20Started.md) you met the three core ingredients: `DataModel`, `Generator`,
+In [Guide 1](https://synalinks.github.io/synalinks/guides/Getting%20Started/) you met the three core ingredients: `DataModel`, `Generator`,
 and `Program`. This guide zooms in on the first of them. Data models are
 the language you use to describe what your LM should produce — and they
 are the reason the rest of the framework can give you typed objects
@@ -430,7 +430,7 @@ The example below stitches the ideas of this guide into one runnable
 program. A `ReviewInput` flows into a `Generator` that returns a
 `ReviewAnalysis`. The `Generator` is `await`ed because under the hood it
 talks to the LM over the network — exactly the same `async`/`await`
-pattern from [Guide 1](Getting%20Started.md).
+pattern from [Guide 1](https://synalinks.github.io/synalinks/guides/Getting%20Started/).
 
 ```python
 import asyncio

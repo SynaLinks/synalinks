@@ -3,7 +3,7 @@
 """
 # Deep Agent
 
-[Guide 5](Agents.md) introduced the agent loop — decide, act, observe, repeat.
+[Guide 5](https://synalinks.github.io/synalinks/guides/Agents/) introduced the agent loop — decide, act, observe, repeat.
 That loop is general: as long as you give it a set of typed tools,
 the model can reason about *anything*. This guide picks a specific
 useful shape for those tools: a workspace on disk. The result is a

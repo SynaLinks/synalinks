@@ -34,7 +34,7 @@ def plot_metrics(
 
     Example:
 
-    ![evaluation_metrics.png](../../assets/evaluation_metrics.png)
+    ![evaluation_metrics.png](https://synalinks.github.io/synalinks/assets/evaluation_metrics.png)
 
     Args:
         metrics (dict): The metrics from a program evaluation.
@@ -144,7 +144,7 @@ def plot_metrics_comparison(
     synalinks.utils.plot_metrics_comparison(metrics_comparison)
     ```
 
-    ![evaluation_metrics_comparison.png](../../assets/evaluation_metrics_comparison.png)
+    ![evaluation_metrics_comparison.png](https://synalinks.github.io/synalinks/assets/evaluation_metrics_comparison.png)
 
     Args:
         metrics_dict (dict): Dictionary where keys are condition names (e.g., model names)
@@ -301,7 +301,7 @@ def plot_metrics_comparison_with_mean_and_std(
     )
     ```
 
-    ![evaluation_comparaison_with_mean_and_std.png](../../assets/evaluation_comparaison_with_mean_and_std.png)
+    ![evaluation_comparaison_with_mean_and_std.png](https://synalinks.github.io/synalinks/assets/evaluation_comparaison_with_mean_and_std.png)
 
     Args:
         metrics_comparison_dict (dict): Dictionary where keys are condition names and
@@ -515,7 +515,7 @@ def plot_metrics_with_mean_and_std(
 
     Example:
 
-    ![evaluation_metrics_with_mean_and_std.png](../../assets/evaluation_metrics_with_mean_and_std.png)
+    ![evaluation_metrics_with_mean_and_std.png](https://synalinks.github.io/synalinks/assets/evaluation_metrics_with_mean_and_std.png)
 
     Args:
         metrics_list (list[dict]): List of metrics dictionaries from multiple

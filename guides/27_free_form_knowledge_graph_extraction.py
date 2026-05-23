@@ -1,8 +1,8 @@
 """
 # Free-form Knowledge Graph Extraction
 
-The [previous guide](Knowledge%20Graph%20Extraction.md) built graphs
-against a *fixed* ontology: every node type was a subclass with a
+The [previous guide](https://synalinks.github.io/synalinks/guides/Knowledge%20Graph%20Extraction/) built graphs
+against a *fixed* graph schema: every node type was a subclass with a
 `Literal` label (`label: Literal["City"]`), so the model could only emit
 the entity and relation types you declared. That is the right tool when
 you know the shape of your domain up front and want to *store and query*
@@ -39,7 +39,7 @@ schema you hand the `Generator`.
 |---|---|---|
 | Label | `Literal["City"]` (fixed) | `str` (open) |
 | Node types | One subclass per type | One generic node |
-| Ontology | You define it | The model discovers it |
+| Graph schema | You define it | The model discovers it |
 | Decoding | Picks among known types | Emits any label string |
 | Best for | Known domain, typed queries | Exploration, unknown corpora |
 | Risk | Misses types you didn't model | Label drift / inconsistency |
@@ -165,7 +165,7 @@ to whether the labels are fixed or open.
   labels) but leaves the **labels open** — drop the `Literal`, use the
   inherited `label: str`, and collapse the type union into one generic
   `Node` and one generic `Edge`.
-- The model **discovers the ontology**: maximal coverage, at the cost of
+- The model **discovers the graph schema**: maximal coverage, at the cost of
   label consistency. Start free-form to learn a corpus; promote the
   labels worth keeping into a constrained schema (Guide 26) later.
 - **No `entity_models` / `relation_models` needed.** The store creates

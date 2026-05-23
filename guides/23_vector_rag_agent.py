@@ -3,9 +3,9 @@
 """
 # Vector RAG Agent
 
-[Guide 6](Knowledge%20Base.md) showed how to store documents in a
+[Guide 6](https://synalinks.github.io/synalinks/guides/Knowledge%20Base/) showed how to store documents in a
 `KnowledgeBase` and query them with similarity / fulltext / hybrid
-search. [Guide 5](Agents.md) introduced the agent loop. This guide combines
+search. [Guide 5](https://synalinks.github.io/synalinks/guides/Agents/) introduced the agent loop. This guide combines
 the two: a **Vector RAG Agent** is an agent whose tool set is
 pre-wired for retrieval, so the *agent itself* decides whether to
 search, what table to search, and how to phrase the query.

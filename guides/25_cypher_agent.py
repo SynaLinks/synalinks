@@ -3,7 +3,7 @@
 """
 # Cypher Agent
 
-[Guide 22](SQL%20Agent.md) built an **SQL Agent** — an agent whose tools let
+[Guide 22](https://synalinks.github.io/synalinks/guides/SQL%20Agent/) built an **SQL Agent** — an agent whose tools let
 it discover a schema, sample rows, and run read-only `SELECT` queries over a
 tabular `KnowledgeBase`. This guide builds the **graph** counterpart. A
 **Cypher Agent** answers questions over a *knowledge graph* — nodes connected

@@ -4,7 +4,7 @@
 # Deployment: FastMCP
 
 The previous guide,
-[FastAPI Deployment](FastAPI%20Deployment.md), exposed a Synalinks
+[FastAPI Deployment](https://synalinks.github.io/synalinks/guides/FastAPI%20Deployment/), exposed a Synalinks
 program to **HTTP** callers — browsers, mobile apps, other backend
 services. This guide exposes the same kind of program to a *very*
 different kind of caller: a **language model client**.
@@ -187,7 +187,7 @@ defaults to `gemini/gemini-3.1-flash-lite-preview`, which expects
 a `GEMINI_API_KEY` env var. If you don't have one, edit
 `build_and_save_program` and change the model string — a free
 local option is `"ollama/llama3.2:latest"` (see
-[Getting Started](Getting%20Started.md) for setup). `fastmcp`
+[Getting Started](https://synalinks.github.io/synalinks/guides/Getting%20Started/) for setup). `fastmcp`
 itself is already a Synalinks dependency, so nothing extra to
 install.
 
@@ -297,7 +297,7 @@ and trust the LM to fill it in.
 Same caveat as the FastAPI guide: the program is shared across
 tool invocations. Serving them only *reads* the program's
 trainable variables (the configurable knobs an optimiser tunes
-during training — see the [Training](Training.md) guide). The
+during training — see the [Training](https://synalinks.github.io/synalinks/guides/Training/) guide). The
 optimiser is the only thing that ever *writes* to them, and it
 doesn't run at tool-call time. If you intend to expose training
 itself as a tool, give each training run its own program copy so
@@ -328,9 +328,9 @@ they don't fight over the same knobs.
 
 ## What To Learn Next
 
-- [FastAPI Deployment](FastAPI%20Deployment.md) — the sibling
+- [FastAPI Deployment](https://synalinks.github.io/synalinks/guides/FastAPI%20Deployment/) — the sibling
   guide.
-- [Observability](Observability.md) — production tracing applies
+- [Observability](https://synalinks.github.io/synalinks/guides/Observability/) — production tracing applies
   here too; the spans nest cleanly under MCP tool calls if you
   enable it inside the lifespan.
 - FastMCP's [getting started][fastmcp-start] — for transports

@@ -25,7 +25,7 @@ A slightly more formal description: a knowledge base is a triple
   least relevant.
 
 In Synalinks, `S` is defined by `DataModel` classes (the Pydantic-style
-typed records you have seen since [Guide 2](Data%20Models.md)). The indices are provided by
+typed records you have seen since [Guide 2](https://synalinks.github.io/synalinks/guides/Data%20Models/)). The indices are provided by
 **DuckDB**, an embedded SQL engine, plus a couple of DuckDB extensions
 for text and vector search. `Q` is exposed on a `KnowledgeBase`
 object via five complementary retrieval methods —
@@ -403,7 +403,7 @@ even if you never become a security engineer.
 #### Letting an LM write the SQL: `read_only=True`
 
 `kb.sql` is also how you let a language model write SQL against
-the KB (an "SQL agent" — see the [SQL Agent example](../Code%20Examples/SQL%20Agent.md)).
+the KB (an "SQL agent" — see the [SQL Agent example](https://synalinks.github.io/synalinks/Code%20Examples/SQL%20Agent/)).
 The model's output is, by definition, untrusted: it may be
 malformed, mutating, or trying to read files. Passing
 `read_only=True` enables two layers of defence:

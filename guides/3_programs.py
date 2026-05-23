@@ -35,7 +35,7 @@ If you like a slightly more formal description: a `Program` is a pair
   whose main field is a string of natural-language guidance) and
   its few-shot examples (a JSON variable whose main field is a
   list of input/output pairs), but in general a trainable variable
-  can hold any structured state — see [Guide 11](Trainable%20Variables.md).
+  can hold any structured state — see [Guide 11](https://synalinks.github.io/synalinks/guides/Trainable%20Variables/).
 
 In one sentence: a `Program` is a flowchart of modules plus the knobs
 the framework is allowed to tune.
@@ -199,7 +199,7 @@ A very common trap: the line `await Generator(...)(inputs)` returns a
 to read `outputs.answer` at this point you get back the placeholder's
 metadata, not an actual answer. Real data only appears once you call
 `program(concrete_input)`. (This is the same construction-vs-execution
-distinction you saw in [Guide 1](Getting%20Started.md): defining and running are two separate
+distinction you saw in [Guide 1](https://synalinks.github.io/synalinks/guides/Getting%20Started/): defining and running are two separate
 steps.)
 
 Because the wiring is just Python expressions on symbolic values, you

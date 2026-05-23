@@ -3,7 +3,7 @@
 """
 # Metrics
 
-[Guide 12](Rewards.md) covered **rewards** — the single number the *optimizer*
+[Guide 12](https://synalinks.github.io/synalinks/guides/Rewards/) covered **rewards** — the single number the *optimizer*
 uses to decide whether one program is better than another. This
 guide is about **metrics**, the other half of the scoring story.
 A metric is what *you* watch. Some of them you would write down
@@ -20,7 +20,7 @@ options.
   per `compile()`, and the optimizer treats it as the truth.
 - A **metric** is *observed*, not optimized. You can attach as
   many as you like; the framework reports them in the progress
-  bar, in `history.history`, and (in [Guide 16](Hyperparameter%20Search.md) / [Guide 17](Multi-Objective%20LM%20Selection.md)) to the tuner's
+  bar, in `history.history`, and (in [Guide 16](https://synalinks.github.io/synalinks/guides/Hyperparameter%20Search/) / [Guide 17](https://synalinks.github.io/synalinks/guides/Multi-Objective%20LM%20Selection/)) to the tuner's
   oracle. The optimizer never reads them.
 
 In other words: reward is the *steering wheel*, metrics are the
@@ -28,7 +28,7 @@ In other words: reward is the *steering wheel*, metrics are the
 steering wheel points the wrong way, the car still goes off the
 road.
 
-A handy convention to internalize from [Guide 16](Hyperparameter%20Search.md): every training
+A handy convention to internalize from [Guide 16](https://synalinks.github.io/synalinks/guides/Hyperparameter%20Search/): every training
 metric `m` you declare also gets a mirrored **`val_m`** measured
 on the validation split, *if* you pass `validation_split=` or
 `validation_data=` to `fit()`. So adding one metric to `compile`
@@ -50,7 +50,7 @@ flowchart LR
 ```
 
 Solid arrows show the optimization loop you have known since
-[Guide 14](Training.md). The dashed arrows are metrics — the same prediction and
+[Guide 14](https://synalinks.github.io/synalinks/guides/Training/). The dashed arrows are metrics — the same prediction and
 ground truth flow into them, but nothing they say loops back
 into the optimizer. They exist for you, not for the algorithm.
 
@@ -78,7 +78,7 @@ batch and reduce it over the epoch.
 
 Every metric, like every reward, accepts the masking arguments
 `in_mask`, `out_mask`, `in_mask_pattern`, and `out_mask_pattern`
-(see [Guide 12](Rewards.md)). They behave identically. Use them to focus the
+(see [Guide 12](https://synalinks.github.io/synalinks/guides/Rewards/)). They behave identically. Use them to focus the
 metric on the field(s) where it actually means something.
 
 ## The Three Families of Metric
@@ -118,7 +118,7 @@ sets.
 All four accept an `average=` argument (`None`, `"micro"`,
 `"macro"`, `"weighted"`) that controls how multiple output
 fields are combined into one number. We met `macro` in
-[Guide 17](Multi-Objective%20LM%20Selection.md): it averages per-field scores with equal weight, so
+[Guide 17](https://synalinks.github.io/synalinks/guides/Multi-Objective%20LM%20Selection/): it averages per-field scores with equal weight, so
 rare classes count as much as common ones.
 
 **Multi-class classification with one boolean per class.** Use
@@ -129,7 +129,7 @@ independent 0/1 prediction.
   **`BinaryFBetaScore`**, **`BinaryPrecision`**,
   **`BinaryRecall`** — same recipe as the QA-level ones, but
   scored field-by-field on booleans. This is the metric
-  family [Guide 17](Multi-Objective%20LM%20Selection.md) used for emotion classification.
+  family [Guide 17](https://synalinks.github.io/synalinks/guides/Multi-Objective%20LM%20Selection/) used for emotion classification.
 
 **Multi-class classification with one list of labels.** Use the
 **Categorical*** variants — they aggregate over a single list-
@@ -144,7 +144,7 @@ valued field.
 **regression** flavor:
 
 - **`CosineSimilarity`** — same idea as the reward of the
-  same name ([Guide 12](Rewards.md)), but used as an observed metric. Needs
+  same name ([Guide 12](https://synalinks.github.io/synalinks/guides/Rewards/)), but used as an observed metric. Needs
   an `embedding_model`.
 
 A quick rule of thumb to navigate the prefixes:
@@ -164,7 +164,7 @@ values into one number.
   reward-shaped function `(y_true, y_pred) -> float` into a
   metric, tracking its running mean.
 
-You met `MeanMetricWrapper` in [Guide 14](Training.md)'s compile block,
+You met `MeanMetricWrapper` in [Guide 14](https://synalinks.github.io/synalinks/guides/Training/)'s compile block,
 turning the same `ExactMatch` you used as the reward into an
 observed mean metric called `mean_reward`. That is the
 canonical use of this wrapper: "I want to see the reward as a
@@ -249,7 +249,7 @@ After `program.fit(...)` returns a `history` object, the dict
 `history.history` is keyed by metric name. Every metric named
 `m` produces a `m` column (training) and, if you supplied
 validation data, a `val_m` column. With the example from
-[Guide 14](Training.md):
+[Guide 14](https://synalinks.github.io/synalinks/guides/Training/):
 
 ```python
 print(list(history.history.keys()))
@@ -314,7 +314,7 @@ A pragmatic default for a non-trivial training run:
 
 - A **reward** drives optimization (one per `compile`). A
   **metric** is observed only (any number). Both share the
-  same masking API ([Guide 12](Rewards.md)).
+  same masking API ([Guide 12](https://synalinks.github.io/synalinks/guides/Rewards/)).
 - Three families: **quality** (Accuracy, F1, FBeta,
   Precision/Recall in Binary / Categorical / word-level
   variants), **reductions** (`Mean`, `Sum`,
@@ -404,7 +404,7 @@ async def main():
         name="math_program",
     )
 
-    # The reward ([Guide 12](Rewards.md)) drives the optimizer.
+    # The reward ([Guide 12](https://synalinks.github.io/synalinks/guides/Rewards/)) drives the optimizer.
     reward = synalinks.rewards.ExactMatch(in_mask=["answer"])
 
     # The metrics are observed only. We mix all three families:

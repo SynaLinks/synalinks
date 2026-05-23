@@ -93,10 +93,10 @@ results = await synalinks.RetrieveKnowledge(
 ## Program Visualizations
 
 ### Invoice Extraction Pipeline
-![invoice_extraction](../assets/examples/invoice_extraction.png)
+![invoice_extraction](https://synalinks.github.io/synalinks/assets/examples/invoice_extraction.png)
 
 ### Business Q&A System
-![business_qa](../assets/examples/business_qa.png)
+![business_qa](https://synalinks.github.io/synalinks/assets/examples/business_qa.png)
 
 ## API References
 

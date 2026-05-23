@@ -26,7 +26,7 @@ FastAPI server.
 [fastapi]: https://fastapi.tiangolo.com/
 
 The sibling guide,
-[FastMCP Deployment](FastMCP%20Deployment.md), wraps the same kind
+[FastMCP Deployment](https://synalinks.github.io/synalinks/guides/FastMCP%20Deployment/), wraps the same kind
 of program for a *different* kind of caller — a language model
 client. The two adapters look strikingly similar; pick by who's
 calling.
@@ -219,8 +219,8 @@ A sentence each on the moving parts:
   `response_model=NumericalAnswer` as an extra decorator argument;
   it still works, but it's redundant when you have the annotation.)
 - **`if result is None`** — a Synalinks guard (see
-  [Input Guard](Input%20Guard.md) /
-  [Output Guard](Output%20Guard.md)) returns `None` when it refuses
+  [Input Guard](https://synalinks.github.io/synalinks/guides/Input%20Guard/) /
+  [Output Guard](https://synalinks.github.io/synalinks/guides/Output%20Guard/)) returns `None` when it refuses
   the call. We translate that into HTTP `422 Unprocessable Entity`,
   which means "I understood the request, my own rules just won't
   let me process it." (Why not `502 Bad Gateway`? `502` means an
@@ -258,7 +258,7 @@ Prerequisites:
   `GEMINI_API_KEY` env var. If you don't have one, edit
   `build_and_save_program` and change the model string — a free
   local option is `"ollama/llama3.2:latest"` (see
-  [Getting Started](Getting%20Started.md) for setup).
+  [Getting Started](https://synalinks.github.io/synalinks/guides/Getting%20Started/) for setup).
 - The FastAPI toolkit installed:
   `uv pip install "fastapi[standard]" uvicorn`. The `[standard]`
   extra is what gives you the `fastapi` CLI used below; plain
@@ -329,7 +329,7 @@ read about:
   *inside the lifespan*, before the first request handler runs.
   Every span Synalinks records is then forwarded to MLflow (or
   whichever sink you wired up). See
-  [Observability](Observability.md).
+  [Observability](https://synalinks.github.io/synalinks/guides/Observability/).
 
 [security]: https://fastapi.tiangolo.com/tutorial/security/
 
@@ -341,7 +341,7 @@ read about:
 every concurrent request. The reason it is safe to share is that
 serving requests only *reads* the program's **trainable
 variables** (the configurable knobs an optimiser tunes during
-training — see the [Training](Training.md) guide). The optimiser
+training — see the [Training](https://synalinks.github.io/synalinks/guides/Training/) guide). The optimiser
 is the only thing that ever *writes* to them, and the optimiser
 doesn't run at request time. If you ever expose training itself as
 an endpoint, give each training job its own program copy so they
@@ -367,9 +367,9 @@ don't fight over the same knobs.
 
 ## What To Learn Next
 
-- [FastMCP Deployment](FastMCP%20Deployment.md) — same shape, but
+- [FastMCP Deployment](https://synalinks.github.io/synalinks/guides/FastMCP%20Deployment/) — same shape, but
   the caller is a language model rather than an HTTP client.
-- [Observability](Observability.md) — production without tracing
+- [Observability](https://synalinks.github.io/synalinks/guides/Observability/) — production without tracing
   is debugging in the dark.
 - FastAPI's [tutorial][fastapi] for query params, dependencies,
   background tasks, and the wider surface area. (It's good. Use it.)

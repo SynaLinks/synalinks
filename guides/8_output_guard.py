@@ -1,7 +1,7 @@
 """
 # Output Guards
 
-[Guide 7](Input%20Guard.md) put a guard at the *entrance* of the program. This guide
+[Guide 7](https://synalinks.github.io/synalinks/guides/Input%20Guard/) put a guard at the *entrance* of the program. This guide
 puts one at the *exit*. An **output guard** is a sanity check on
 what the LM has just produced: if the answer looks fine, the guard
 waves it through; if it looks unsafe, the guard swaps in a canned
@@ -32,7 +32,7 @@ overall program computes:
 In words: run the generator on the input `x` to get a candidate
 answer, then run the guard on that answer; if the guard objected
 (returned a replacement), use the replacement, otherwise use the
-original. Just like [Guide 7](Input%20Guard.md), we get this `if`/`else` *out of the
+original. Just like [Guide 7](https://synalinks.github.io/synalinks/guides/Input%20Guard/), we get this `if`/`else` *out of the
 operator algebra alone*, without ever writing an `if` in the program
 graph. ("**Branch-free composition**" just means we express the same
 logic with operators on values, so the graph stays a straight
@@ -280,7 +280,7 @@ can still let you down:
 ## Take-Home Summary
 
 - An **output guard** is a post-generation filter — the mirror
-  image of the input guards from [Guide 7](Input%20Guard.md). Together they bracket
+  image of the input guards from [Guide 7](https://synalinks.github.io/synalinks/guides/Input%20Guard/). Together they bracket
   the LM call on both sides.
 - **Contract:** the guard returns `None` to *admit* (no
   objection) and a replacement value to *block*. The

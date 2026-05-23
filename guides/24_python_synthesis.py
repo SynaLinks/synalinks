@@ -1,7 +1,7 @@
 """
 # Program Synthesis
 
-Every guide since [Guide 11](Trainable%20Variables.md) optimized the same kind of
+Every guide since [Guide 11](https://synalinks.github.io/synalinks/guides/Trainable%20Variables/) optimized the same kind of
 trainable state: **prose**. An `instruction` string the LM reads on
 every call, and a list of few-shot `examples` it imitates. The
 optimizer's job was to write better English.
@@ -97,13 +97,13 @@ synthesis = synalinks.PythonSynthesis(
 
 ## Why It Needs `OMEGA` (and not `RandomFewShot`)
 
-`RandomFewShot` ([Guide 14](Training.md)) optimizes a `Generator` by collecting
+`RandomFewShot` ([Guide 14](https://synalinks.github.io/synalinks/guides/Training/)) optimizes a `Generator` by collecting
 high-reward `(input, output)` pairs and pasting them into the prompt as
 demonstrations. It has no machinery to *write code* — it only curates
 examples. Point it at a `PythonSynthesis` module and it has nothing to
 do; the script never changes.
 
-`OMEGA` is an **evolutionary** optimizer ([Guide 14](Training.md)
+`OMEGA` is an **evolutionary** optimizer ([Guide 14](https://synalinks.github.io/synalinks/guides/Training/)
 introduced it briefly). It treats the script as a **genome** and runs a genetic
 algorithm over a population of script variants:
 
@@ -251,7 +251,7 @@ best = sorted(
 print(best[0]["python_script"])  # the highest-scoring evolved algorithm
 ```
 
-This is the same property the [Training guide](Training.md) emphasized for prompts,
+This is the same property the [Training guide](https://synalinks.github.io/synalinks/guides/Training/) emphasized for prompts,
 taken to its conclusion: the artifact of training is source code. You
 can read it, audit it, copy it into a regular module, and run it forever
 with zero LM calls.

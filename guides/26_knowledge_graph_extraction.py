@@ -1,7 +1,7 @@
 """
 # Knowledge Graph Extraction
 
-[Guide 6](Knowledge%20Base.md) stored *flat* records — one table per
+[Guide 6](https://synalinks.github.io/synalinks/guides/Knowledge%20Base/) stored *flat* records — one table per
 `DataModel`, retrieved by full-text or vector search. That is enough
 when the answer lives inside a single record ("what is the total of
 invoice INV-2024-002?"). It is *not* enough when the answer lives in
@@ -205,7 +205,7 @@ knowledge_graph = entities & relations
 Each call now reasons about *one* thing, which a mid-sized model does
 more reliably than the all-at-once version. The `&` operator
 (logical AND) is what stitches the stages together — the
-[Data Model Operators example](../Code%20Examples/Data%20Model%20Operators.md)
+[Data Model Operators example](https://synalinks.github.io/synalinks/Code%20Examples/Data%20Model%20Operators/)
 covers it and its siblings in depth.
 
 ## Strategy 3 — Multi-Stage Extraction
@@ -278,7 +278,7 @@ traversal rather than look entities up one by one.
 
 Once stored, the graph answers connection-shaped questions the flat KB
 could not. The retrieval surface is covered in the
-[Knowledge Base guide](Knowledge%20Base.md); the two graph-native entry
+[Knowledge Base guide](https://synalinks.github.io/synalinks/guides/Knowledge%20Base/); the two graph-native entry
 points are:
 
 - **`kb.local_graph_search(query, label=..., max_hops=N)`** — vector-match
@@ -313,7 +313,7 @@ dropping or hallucinating parts of the graph — the schema never
 changes, only how many calls you spend filling it. And remember the
 generators are **trainable**: before adding stages, you can often close
 the gap by optimizing the prompts of a simpler pipeline (see the
-[Training guide](Training.md)).
+[Training guide](https://synalinks.github.io/synalinks/guides/Training/)).
 
 ## Key Takeaways
 

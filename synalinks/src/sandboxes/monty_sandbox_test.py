@@ -159,7 +159,11 @@ class MontySandboxTest(testing.TestCase):
 
 class MontySandboxOverlayTest(testing.TestCase):
     def _workdir(self):
-        tmp = tempfile.mkdtemp()
+        # Resolve symlinks so the path matches what MontySandbox stores
+        # internally (it calls Path(workdir).resolve()). On macOS the temp
+        # dir lives under /var -> /private/var, so an unresolved path would
+        # not equal sandbox.workdir.
+        tmp = str(Path(tempfile.mkdtemp()).resolve())
         (Path(tmp) / "config.json").write_text('{"debug": false}')
         return tmp
 

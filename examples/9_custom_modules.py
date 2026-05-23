@@ -118,7 +118,7 @@ implement serialization and deserialization methods (`get_config()` and
 
 ## Program Visualization
 
-![backtracking_of_thought](../assets/examples/backtracking_of_thought.png)
+![backtracking_of_thought](https://synalinks.github.io/synalinks/assets/examples/backtracking_of_thought.png)
 
 ## API References
 

@@ -326,12 +326,12 @@ If you take only four ideas from this guide, take these:
 
 ## Where to Go Next
 
-- **[Guide 2](Data%20Models.md) — Data Models.** Nested objects, list fields, enums, custom
+- **[Guide 2](https://synalinks.github.io/synalinks/guides/Data%20Models/) — Data Models.** Nested objects, list fields, enums, custom
   validation. Most real programs use richer schemas than `Question` and
   `Answer`.
-- **[Guide 3](Programs.md) — Programs.** The other two ways to build a `Program`
+- **[Guide 3](https://synalinks.github.io/synalinks/guides/Programs/) — Programs.** The other two ways to build a `Program`
   (subclassing and the `Sequential` shortcut) and when to prefer each.
-- **[Guide 4](Modules.md) — Modules.** The catalogue of pre-built modules beyond
+- **[Guide 4](https://synalinks.github.io/synalinks/guides/Modules/) — Modules.** The catalogue of pre-built modules beyond
   `Generator`: chain-of-thought, decision-making, voting, and more.
 
 ## API References

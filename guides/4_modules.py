@@ -1,7 +1,7 @@
 """
 # Modules
 
-In [Guide 3](Programs.md) we treated a `Program` as a flowchart made of `Module`s. So
+In [Guide 3](https://synalinks.github.io/synalinks/guides/Programs/) we treated a `Program` as a flowchart made of `Module`s. So
 far the only module you have seen up close is `Generator`. This guide
 introduces the rest of the catalogue — the bricks you snap together to
 build interesting programs.
@@ -15,13 +15,13 @@ A slightly more formal way to say it: a module is an asynchronous
 function `f: DataModel -> DataModel`. **Asynchronous** just means the
 function is defined with `async def`, so it can wait for slow
 operations like an LM call without freezing the rest of the program. A
-`DataModel` (you met it in [Guide 2](Data%20Models.md)) is a Pydantic-based class that
+`DataModel` (you met it in [Guide 2](https://synalinks.github.io/synalinks/guides/Data%20Models/)) is a Pydantic-based class that
 pins down which fields exist and what type each one is.
 
 Some modules carry **trainable state** — JSON objects that the
 optimizer is allowed to rewrite during training. Each trainable
 variable obeys a fixed schema (a subclass of `synalinks.Trainable`
-— [Guide 11](Trainable%20Variables.md) shows you how to write your own). The two most common
+— [Guide 11](https://synalinks.github.io/synalinks/guides/Trainable%20Variables/) shows you how to write your own). The two most common
 shapes for that JSON object are:
 
 - `instructions` — a variable whose primary field is the system

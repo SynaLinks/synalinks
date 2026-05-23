@@ -6,7 +6,7 @@
 In a few guides we will meet **training** — the process that runs
 your `Program` on labeled examples, scores its predictions with a
 reward, and rewrites the program's internal knobs to do better
-next time. Before we can talk about that loop sensibly ([Guide 14](Training.md)),
+next time. Before we can talk about that loop sensibly ([Guide 14](https://synalinks.github.io/synalinks/guides/Training/)),
 we need to understand what *kind of state* on a `Module` the
 optimizer is even allowed to touch. That is the topic of this
 guide. By the end you will have written a `Module` of your own

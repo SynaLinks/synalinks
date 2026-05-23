@@ -36,7 +36,7 @@ generator that yields one **batch** at a time. A batch is either:
 - a two-tuple `(x, y)` for training.
 
 Both `x` and `y` are **NumPy object arrays** whose elements are
-`DataModel` instances. In [Guide 14](Training.md) (Training) we will build such
+`DataModel` instances. In [Guide 14](https://synalinks.github.io/synalinks/guides/Training/) (Training) we will build such
 arrays by hand — e.g.
 `np.array([Question(...), Question(...)], dtype="object")` — to
 keep the training example self-contained. A `Dataset` produces
@@ -105,7 +105,7 @@ Walking through the arguments:
   first positional argument of `datasets.load_dataset`).
   `"gsm8k"` here; for a community dataset you would use the
   full `"owner/name"` form, as in `"dair-ai/emotion"`
-  ([Guide 17](Multi-Objective%20LM%20Selection.md)).
+  ([Guide 17](https://synalinks.github.io/synalinks/guides/Multi-Objective%20LM%20Selection/)).
 - **`name`** is the **configuration name** when a dataset
   ships several variants. `gsm8k` has a configuration called
   `"main"` and one called `"socratic"`; we pick `"main"`.
@@ -146,7 +146,7 @@ Two filters you will use over and over:
 - **`| tojson`** — the Jinja2 filter that quotes and escapes a
   Python value into a JSON literal. Always use it around any
   string field. Skipping `tojson` is the templating equivalent
-  of forgetting to parameterize a SQL query ([Guide 6](Knowledge%20Base.md)) — quotes,
+  of forgetting to parameterize a SQL query ([Guide 6](https://synalinks.github.io/synalinks/guides/Knowledge%20Base/)) — quotes,
   backslashes, and Unicode in the source row will quietly break
   your output.
 - **`| float`** (and `| int`, etc.) — coerce the value to a

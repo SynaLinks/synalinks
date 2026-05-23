@@ -3,7 +3,7 @@
 """
 # Picking the Best Language Model: Multi-Objective Search
 
-[Guide 16](Hyperparameter%20Search.md) introduced hyperparameter search and tuned three knobs of
+[Guide 16](https://synalinks.github.io/synalinks/guides/Hyperparameter%20Search/) introduced hyperparameter search and tuned three knobs of
 a single language model: chain-of-thought on or off, sampling
 temperature, and reasoning effort. In this guide we change the
 kind of question we ask. Instead of tuning *one* model, we
@@ -149,7 +149,7 @@ story.
 `[0, 1]`** — it just thresholds them at runtime to decide which
 side of `0`/`1` each prediction lands on. That opens up a second
 output layout: instead of independent booleans per class, ask the
-LM for a **confidence per class**. `synalinks.Score` ([Guide 2](Data%20Models.md)) is the
+LM for a **confidence per class**. `synalinks.Score` ([Guide 2](https://synalinks.github.io/synalinks/guides/Data%20Models/)) is the
 natural type — a discretized `[0, 1]` enum that the LM is
 constrained to emit one of eleven values from (`0.0`, `0.1`, ...,
 `1.0`).
@@ -209,7 +209,7 @@ Score-typed labels, `ExactMatch` will give you `0.0` whenever the
 LM's confidence is anything other than the exact ground-truth
 value — even `0.99` against `1.0`. Use `BinaryF1Score` as both the
 **reward** and the **metric** in that case (or write your own
-threshold-based reward via `RewardFunctionWrapper`, [Guide 12](Rewards.md)).
+threshold-based reward via `RewardFunctionWrapper`, [Guide 12](https://synalinks.github.io/synalinks/guides/Rewards/)).
 
 The runnable example below demonstrates both layouts behind a
 `USE_SCORE_LABELS` toggle so you can see the wiring of each.
@@ -249,7 +249,7 @@ The `tojson` filter is the safe way to embed a value into JSON —
 it escapes quotes, backslashes, and control characters so they
 cannot accidentally break the JSON output. Skipping it is the
 templating equivalent of forgetting to parameterize a SQL query
-([Guide 6](Knowledge%20Base.md)); the bugs it prevents are unpleasant in exactly the
+([Guide 6](https://synalinks.github.io/synalinks/guides/Knowledge%20Base/)); the bugs it prevents are unpleasant in exactly the
 same way. For this dataset, the template emits `true` for the
 matching class and `false` for every other one — which yields a
 single-label record because the source dataset is single-label.
@@ -258,7 +258,7 @@ if the data ever called for it.
 
 ## Dataset Helpers: `load_split`, `materialize`, `split_train_test`
 
-Three helpers from `synalinks.datasets` (introduced in [Guide 10](Datasets.md))
+Three helpers from `synalinks.datasets` (introduced in [Guide 10](https://synalinks.github.io/synalinks/guides/Datasets/))
 do all of the heavy lifting:
 
 - **`synalinks.datasets.load_split(...)`** — a one-call shortcut
@@ -314,7 +314,7 @@ those kwargs forward through `synalinks.datasets.load_split`.
 
 ## A Multi-Objective `GridSearch`
 
-The tuner construction is almost the same as in [Guide 16](Hyperparameter%20Search.md), with
+The tuner construction is almost the same as in [Guide 16](https://synalinks.github.io/synalinks/guides/Hyperparameter%20Search/), with
 two differences:
 
 - **`objective` is a *list*.** When you pass more than one
@@ -592,7 +592,7 @@ def load_emotion_split(split: str, limit: int):
 
     `synalinks.datasets.load_split` is the one-call shortcut for
     "build a non-streaming HuggingFaceDataset and materialize it" —
-    see [Guide 10](Datasets.md).
+    see [Guide 10](https://synalinks.github.io/synalinks/guides/Datasets/).
     """
     return synalinks.datasets.load_split(
         path="dair-ai/emotion",

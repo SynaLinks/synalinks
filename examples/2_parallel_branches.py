@@ -114,7 +114,7 @@ asyncio.run(main())
 
 ## Program Visualization
 
-![parallel_branches](../assets/examples/parallel_branches.png)
+![parallel_branches](https://synalinks.github.io/synalinks/assets/examples/parallel_branches.png)
 
 ## API References
 

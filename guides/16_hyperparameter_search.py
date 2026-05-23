@@ -6,7 +6,7 @@
 So far you have been making design choices by hand. Should the
 program use plain `Generator` or `ChainOfThought`? What sampling
 temperature should the LM use? Should the optimizer keep three
-few-shot examples or eight? In [Guide 14](Training.md) we picked sensible defaults
+few-shot examples or eight? In [Guide 14](https://synalinks.github.io/synalinks/guides/Training/) we picked sensible defaults
 and moved on. That works for one or two knobs, but as your
 programs get richer the number of choices grows quickly, and
 "sensible default" stops being a defensible engineering decision.
@@ -24,7 +24,7 @@ because the words sound almost identical:
 
 - A **parameter** is something the *training loop* updates as it
   runs. In a neural network it would be a floating-point weight;
-  in Synalinks ([Guide 14](Training.md)) it is a JSON object obeying a
+  in Synalinks ([Guide 14](https://synalinks.github.io/synalinks/guides/Training/)) it is a JSON object obeying a
   `Trainable` schema — most often holding an instruction string
   or a list of few-shot examples, but in general any structured
   data the schema permits. Training changes these values
@@ -90,7 +90,7 @@ the `hp` argument:
   sample one item from a fixed list.
 
 The function returns a *compiled* `Program` — a `Program` on which
-you have already called `.compile(...)` exactly as in [Guide 14](Training.md).
+you have already called `.compile(...)` exactly as in [Guide 14](https://synalinks.github.io/synalinks/guides/Training/).
 This is the same shape as the `build_model(hp)` function you would
 write in a Keras-Tuner script. The only Synalinks-specific detail
 is that `build_program` is **`async`**, because module calls are
@@ -134,7 +134,7 @@ async def build_program(hp):
 
 A small detail that catches everyone the first time: notice the
 `synalinks.clear_session()` call at the top of the function. You
-first met `clear_session` in [Guide 1](Getting%20Started.md). Without it, every trial would
+first met `clear_session` in [Guide 1](https://synalinks.github.io/synalinks/guides/Getting%20Started/). Without it, every trial would
 accumulate module-name suffixes (`generator_1`, `generator_2`,
 `generator_3`, ...) and your trial logs would drift between runs,
 making the search non-reproducible. Calling `clear_session()` at
@@ -181,7 +181,7 @@ Two ideas in that block are new:
 
 To actually run the search you call `tuner.search(...)`. Anything
 you pass to `search` gets forwarded into `program.fit(...)` under
-the hood, so the arguments will look very familiar from [Guide 14](Training.md):
+the hood, so the arguments will look very familiar from [Guide 14](https://synalinks.github.io/synalinks/guides/Training/):
 
 ```python
 tuner.search(
@@ -225,7 +225,7 @@ the constructor shape above, so swapping between them is one line.
   `Choice` exactly once. Use this when your search space is
   small and discrete — for instance, "try each of these three
   models" — and you do not want any to be visited twice. We
-  meet `GridSearch` head-on in [Guide 17](Multi-Objective%20LM%20Selection.md).
+  meet `GridSearch` head-on in [Guide 17](https://synalinks.github.io/synalinks/guides/Multi-Objective%20LM%20Selection/).
 
 ## One Bit of Plumbing: `disable_keras_backend`
 
@@ -326,7 +326,7 @@ Before you press "go," it is worth knowing four levers:
   *parameter* is a value that training updates as it runs.
 - The contract you write is **one `async` function**,
   `build_program(hp)`, that samples hyperparameters from `hp` and
-  returns a *compiled* `Program` (as in [Guide 14](Training.md)).
+  returns a *compiled* `Program` (as in [Guide 14](https://synalinks.github.io/synalinks/guides/Training/)).
 - A **tuner** plus an **objective** (`("val_reward", "max")`)
   drives a loop of **trials**; each trial calls `build_program`
   with a new HP set and then runs `program.fit`.

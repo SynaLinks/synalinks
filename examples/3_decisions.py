@@ -106,7 +106,7 @@ asyncio.run(main())
 
 ## Program Visualization
 
-![decision_making](../assets/examples/decision_making.png)
+![decision_making](https://synalinks.github.io/synalinks/assets/examples/decision_making.png)
 
 ## API References
 

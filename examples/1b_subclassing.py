@@ -145,7 +145,7 @@ asyncio.run(main())
 
 ## Program Visualization
 
-![chain_of_thought](../assets/examples/chain_of_thought.png)
+![chain_of_thought](https://synalinks.github.io/synalinks/assets/examples/chain_of_thought.png)
 
 ## API References
 

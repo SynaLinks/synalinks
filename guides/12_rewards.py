@@ -3,7 +3,7 @@
 """
 # Rewards
 
-Training, which we will meet in [Guide 14](Training.md), has one input you cannot
+Training, which we will meet in [Guide 14](https://synalinks.github.io/synalinks/guides/Training/), has one input you cannot
 afford to choose carelessly: a **reward function** that tells the
 optimizer how good each prediction was. Pick the wrong reward and
 the optimizer cheerfully optimizes the wrong thing — happily, on
@@ -110,7 +110,7 @@ A second sharp edge: `ExactMatch` does literal string equality.
 Trailing whitespace, units, capitalization, and Unicode
 normalization all matter. `"42 "` does not equal `"42"`, and
 `"Paris"` does not equal `"paris"`. The mitigation is to lock
-down the output schema ([Guide 2](Data%20Models.md)) so the LM produces stable
+down the output schema ([Guide 2](https://synalinks.github.io/synalinks/guides/Data%20Models/)) so the LM produces stable
 formats, and to use `in_mask` to focus on the field where
 strict equality is genuinely the right test.
 
@@ -214,7 +214,7 @@ the wrapper awaits it.
 The decorator
 `@synalinks.saving.register_synalinks_serializable()` is what
 lets your custom reward survive `program.save(...)` /
-`Program.load(...)` ([Guide 3](Programs.md)): without it, the loader will not
+`Program.load(...)` ([Guide 3](https://synalinks.github.io/synalinks/guides/Programs/)): without it, the loader will not
 know how to reconstruct the function.
 
 ### Bonus: combining rewards

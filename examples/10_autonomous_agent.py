@@ -93,7 +93,7 @@ outputs = await synalinks.FunctionCallingAgent(
 
 ## Program Visualization
 
-![math_agent](../assets/examples/math_agent.png)
+![math_agent](https://synalinks.github.io/synalinks/assets/examples/math_agent.png)
 
 ## API References
 

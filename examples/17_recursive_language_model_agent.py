@@ -114,7 +114,7 @@ trajectory into the target schema.
 
 ## Program Visualization
 
-![rlm_needle](../assets/examples/rlm_needle.png)
+![rlm_needle](https://synalinks.github.io/synalinks/assets/examples/rlm_needle.png)
 
 ## API References
 

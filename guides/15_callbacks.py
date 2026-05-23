@@ -1,7 +1,7 @@
 """
 # Callbacks: Hooking Into the Training Loop
 
-[Guide 14](Training.md) walked through `program.fit(...)`: the trainer pulls
+[Guide 14](https://synalinks.github.io/synalinks/guides/Training/) walked through `program.fit(...)`: the trainer pulls
 batches from your dataset, scores predictions against the reward,
 asks the optimizer for an updated set of trainable variables, and
 loops. That description is true, but it leaves out one detail.
@@ -30,7 +30,7 @@ By the end of this guide you will be able to:
   (early-stopping, checkpointing, fault-tolerance, CSV logging),
 - read the lifecycle hooks well enough to write your own,
 - recognize the `Monitor` callback as the bridge between training
-  and the observability story from [Guide 9](Observability.md).
+  and the observability story from [Guide 9](https://synalinks.github.io/synalinks/guides/Observability/).
 
 ## What a Callback Looks Like
 
@@ -90,7 +90,7 @@ next one reads it.
 ## The Four Built-Ins You Will Actually Use
 
 Synalinks ships five callbacks. One of them (`Monitor`) belongs in
-the observability story and is covered in [Guide 9](Observability.md); the other four
+the observability story and is covered in [Guide 9](https://synalinks.github.io/synalinks/guides/Observability/); the other four
 solve concrete operational problems that come up on almost every
 non-trivial run.
 
@@ -215,7 +215,7 @@ The resulting file plays nicely with `pandas.read_csv`,
 `matplotlib`, spreadsheets, anything. No structured logging
 service required for the basics.
 
-### `Monitor` — MLflow Integration ([Guide 9](Observability.md))
+### `Monitor` — MLflow Integration ([Guide 9](https://synalinks.github.io/synalinks/guides/Observability/))
 
 Synalinks also ships a `Monitor` callback that logs everything
 `CSVLogger` does — plus the program plot and the saved program
@@ -230,7 +230,7 @@ synalinks.enable_observability(
 ```
 
 which configures both the `Monitor` hook (per-call traces) **and**
-the `Monitor` callback (per-epoch metrics) for you. [Guide 9](Observability.md)
+the `Monitor` callback (per-epoch metrics) for you. [Guide 9](https://synalinks.github.io/synalinks/guides/Observability/)
 covers the observability story end-to-end.
 
 ## Putting Them Together
@@ -380,7 +380,7 @@ already have values when `on_epoch_end` runs.
   Most real runs use all four.
 - **`Monitor`** is the MLflow bridge; configure it via
   `synalinks.enable_observability(...)` rather than instantiating
-  it directly ([Guide 9](Observability.md)).
+  it directly ([Guide 9](https://synalinks.github.io/synalinks/guides/Observability/)).
 - **`monitor=` is the most error-prone argument.** Verify the
   exact metric name by inspecting `history.history.keys()`.
 - **Custom callbacks** subclass `synalinks.callbacks.Callback`
@@ -467,7 +467,7 @@ async def main():
         optimizer=synalinks.optimizers.RandomFewShot(),
     )
 
-    # A toy training set. Real runs would use a Dataset ([Guide 10](Datasets.md)).
+    # A toy training set. Real runs would use a Dataset ([Guide 10](https://synalinks.github.io/synalinks/guides/Datasets/)).
     x_train = np.array(
         [MathProblem(problem=p) for p in ("1+1", "2+3", "4+5", "7-2", "3*3", "8/2")],
         dtype="object",

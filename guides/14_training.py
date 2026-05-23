@@ -3,10 +3,10 @@
 
 So far we have *used* language models. In this guide we **improve**
 them — without ever touching their weights. The pieces have been
-assembled in the last four guides: [Guide 10](Datasets.md) explained where the
-training data comes from; [Guide 11](Trainable%20Variables.md) explained what trainable state
-lives on a `Module`; [Guide 12](Rewards.md) explained how a reward function
-scores a prediction; [Guide 13](Metrics.md) explained the metrics you watch
+assembled in the last four guides: [Guide 10](https://synalinks.github.io/synalinks/guides/Datasets/) explained where the
+training data comes from; [Guide 11](https://synalinks.github.io/synalinks/guides/Trainable%20Variables/) explained what trainable state
+lives on a `Module`; [Guide 12](https://synalinks.github.io/synalinks/guides/Rewards/) explained how a reward function
+scores a prediction; [Guide 13](https://synalinks.github.io/synalinks/guides/Metrics/) explained the metrics you watch
 while it all runs. This guide is where those four ingredients come
 together.
 
@@ -45,7 +45,7 @@ numbers inside the network.
 Synalinks does **none of this**. A Synalinks `Program` is a DAG of
 `Module`s. The parameters exposed to training are **JSON objects**
 attached to the modules — each one obeying a fixed schema (a
-subclass of `synalinks.Trainable`, the topic of [Guide 11](Trainable%20Variables.md)). On a
+subclass of `synalinks.Trainable`, the topic of [Guide 11](https://synalinks.github.io/synalinks/guides/Trainable%20Variables/)). On a
 `Generator`, the two trainable variables you will meet most often
 are:
 
@@ -58,7 +58,7 @@ are:
 
 Both are *special cases*: a trainable variable can in general
 hold any structured data its schema permits (you will see a
-`Persona` variable with a custom field in [Guide 11](Trainable%20Variables.md)). We never
+`Persona` variable with a custom field in [Guide 11](https://synalinks.github.io/synalinks/guides/Trainable%20Variables/)). We never
 look inside the LM, and we never compute gradients. The LM is
 treated as a complete black box: we call it, we get text back,
 we score the text. What we optimize is the **context** — the
@@ -117,7 +117,7 @@ Now the precise versions, used consistently throughout this guide:
     - `instruction_variable` — a JSON object whose primary field
       is the system instruction shown to the LM (think: "You are
       an expert at solving math problems..."). The variable also
-      carries optimizer bookkeeping fields; see [Guide 11](Trainable%20Variables.md).
+      carries optimizer bookkeeping fields; see [Guide 11](https://synalinks.github.io/synalinks/guides/Trainable%20Variables/).
     - `examples_variable` — a JSON object whose primary field is
       a list of `(input, target)` pairs inserted into the prompt
       as *few-shot demonstrations* (worked examples the LM can
@@ -294,7 +294,7 @@ precise description) so the LM produces stable formats.
 
 Formula: `r = max(0, cos(emb(y_pred), emb(y_true)))`. In words: turn
 both strings into **embedding vectors** (numeric representations of
-meaning, the same kind we used in [Guide 6](Knowledge%20Base.md)), measure the angle between
+meaning, the same kind we used in [Guide 6](https://synalinks.github.io/synalinks/guides/Knowledge%20Base/)), measure the angle between
 them, and use that as the score. Use this reward when paraphrases of
 the right answer should still earn partial credit.
 
