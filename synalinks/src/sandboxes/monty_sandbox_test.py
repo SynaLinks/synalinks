@@ -347,7 +347,7 @@ class MontySandboxFilesystemTest(testing.TestCase):
         (Path(tmp) / "config.json").write_text('{"debug": false}')
         sub = Path(tmp) / "src"
         sub.mkdir()
-        (sub / "main.py").write_text("print('hi')\n")
+        (sub / "main.py").write_text("print('hi')\n", newline="")
         return tmp
 
     def test_reads_fall_through_to_base(self):
@@ -592,8 +592,8 @@ class MontySandboxWorkdirStressTest(testing.TestCase):
         (Path(tmp) / "config.json").write_text('{"version": 1}')
         src = Path(tmp) / "src"
         src.mkdir()
-        (src / "main.py").write_text("print('main')\n")
-        (src / "util.py").write_text("X = 1\n")
+        (src / "main.py").write_text("print('main')\n", newline="")
+        (src / "util.py").write_text("X = 1\n", newline="")
         docs = Path(tmp) / "docs"
         docs.mkdir()
         (docs / "intro.md").write_text("# Intro")
@@ -903,7 +903,7 @@ class MontySandboxToolMethodsTest(testing.TestCase):
 
     def _workdir(self):
         tmp = tempfile.mkdtemp()
-        (Path(tmp) / "main.py").write_text("print('hi')\n")
+        (Path(tmp) / "main.py").write_text("print('hi')\n", newline="")
         return tmp
 
     async def test_run_python_code_runs_and_reports(self):
@@ -965,7 +965,7 @@ class MontySandboxToolMethodsTest(testing.TestCase):
 
     async def test_read_file_pagination(self):
         workdir = tempfile.mkdtemp()
-        (Path(workdir) / "f.txt").write_text("l1\nl2\nl3\nl4\n")
+        (Path(workdir) / "f.txt").write_text("l1\nl2\nl3\nl4\n", newline="")
         sb = MontySandbox(workdir=workdir)
         # 1-based: start at line 2, take 2 lines -> lines 2 and 3.
         page = await sb.read_file("/f.txt", offset=2, limit=2)
@@ -996,8 +996,8 @@ class MontySandboxToolMethodsTest(testing.TestCase):
 
     async def test_search_files_glob_plus_grep(self):
         workdir = tempfile.mkdtemp()
-        (Path(workdir) / "a.py").write_text("x = 1\nTODO: fix\n")
-        (Path(workdir) / "notes.txt").write_text("TODO: docs\n")
+        (Path(workdir) / "a.py").write_text("x = 1\nTODO: fix\n", newline="")
+        (Path(workdir) / "notes.txt").write_text("TODO: docs\n", newline="")
         sb = MontySandbox(workdir=workdir)
         # grep restricted to .py files by the glob
         res = await sb.search_files(pattern="TODO", glob="**/*.py")
@@ -1014,7 +1014,7 @@ class MontySandboxToolMethodsTest(testing.TestCase):
 
     async def test_search_files_pagination(self):
         workdir = tempfile.mkdtemp()
-        (Path(workdir) / "f.txt").write_text("hit\nhit\nhit\n")
+        (Path(workdir) / "f.txt").write_text("hit\nhit\nhit\n", newline="")
         sb = MontySandbox(workdir=workdir)
         # 1-based: the 2nd match is on line 2.
         page = await sb.search_files(pattern="hit", offset=2, limit=1)
@@ -1024,7 +1024,7 @@ class MontySandboxToolMethodsTest(testing.TestCase):
 
     async def test_edit_file_unique_replace(self):
         workdir = tempfile.mkdtemp()
-        (Path(workdir) / "f.py").write_text("x = 1\ny = 2\n")
+        (Path(workdir) / "f.py").write_text("x = 1\ny = 2\n", newline="")
         sb = MontySandbox(workdir=workdir)
         self.assertEqual(
             await sb.edit_file("/f.py", old="x = 1", new="x = 99"),
