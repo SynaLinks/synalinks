@@ -10,7 +10,7 @@ from litellm.types.utils import Usage
 from synalinks.src import testing
 from synalinks.src.backend import EmbeddingRequest
 from synalinks.src.backend import Embeddings
-from synalinks.src.backend.common import global_state
+from synalinks.src.backend.common.op_scope import _OP_SCOPE
 from synalinks.src.modules.embedding_models.embedding_model import EmbeddingModel
 
 
@@ -95,7 +95,9 @@ def _em_response(prompt_tokens, n_vectors, cost=None):
 
 
 def _set_scope(value):
-    global_state.set_global_attribute("synalinks_op_scope", value)
+    # Phase scope is contextvars-backed; set it directly on the current
+    # context for these counter-routing tests (wall-clock is unaffected).
+    _OP_SCOPE.set(value)
 
 
 class EMCounterPopulationTest(testing.TestCase):

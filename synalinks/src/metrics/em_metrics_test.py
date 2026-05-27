@@ -1,18 +1,28 @@
 # License Apache 2.0: (c) 2025-2026 Yoan Sallami (Synalinks Team)
 
 from synalinks.src import testing
+from synalinks.src.backend.common.op_scope import _add_phase_wall_clock_s
+from synalinks.src.metrics.em_metrics import AvgEmbeddingCachedTokensPerCall
 from synalinks.src.metrics.em_metrics import AvgEmbeddingCostPerCall
+from synalinks.src.metrics.em_metrics import AvgEmbeddingLatency
 from synalinks.src.metrics.em_metrics import AvgEmbeddingTokensPerCall
 from synalinks.src.metrics.em_metrics import AvgEmbeddingVectorsPerCall
+from synalinks.src.metrics.em_metrics import AvgOptimizerEmbeddingCachedTokensPerCall
 from synalinks.src.metrics.em_metrics import AvgOptimizerEmbeddingCostPerCall
+from synalinks.src.metrics.em_metrics import AvgOptimizerEmbeddingLatency
 from synalinks.src.metrics.em_metrics import AvgOptimizerEmbeddingTokensPerCall
 from synalinks.src.metrics.em_metrics import AvgOptimizerEmbeddingVectorsPerCall
+from synalinks.src.metrics.em_metrics import AvgRewardEmbeddingCachedTokensPerCall
 from synalinks.src.metrics.em_metrics import AvgRewardEmbeddingCostPerCall
+from synalinks.src.metrics.em_metrics import AvgRewardEmbeddingLatency
 from synalinks.src.metrics.em_metrics import AvgRewardEmbeddingTokensPerCall
 from synalinks.src.metrics.em_metrics import AvgRewardEmbeddingVectorsPerCall
 from synalinks.src.metrics.em_metrics import EmbeddingCachedTokens
 from synalinks.src.metrics.em_metrics import EmbeddingCacheHitRate
 from synalinks.src.metrics.em_metrics import EmbeddingCost
+from synalinks.src.metrics.em_metrics import EmbeddingErrorRate
+from synalinks.src.metrics.em_metrics import EmbeddingFailedCalls
+from synalinks.src.metrics.em_metrics import EmbeddingFallbackActivations
 from synalinks.src.metrics.em_metrics import EmbeddingThroughput
 from synalinks.src.metrics.em_metrics import EmbeddingTokens
 from synalinks.src.metrics.em_metrics import EmbeddingTokensPerSecond
@@ -21,6 +31,9 @@ from synalinks.src.metrics.em_metrics import EmbeddingVectorsPerSecond
 from synalinks.src.metrics.em_metrics import OptimizerEmbeddingCachedTokens
 from synalinks.src.metrics.em_metrics import OptimizerEmbeddingCacheHitRate
 from synalinks.src.metrics.em_metrics import OptimizerEmbeddingCost
+from synalinks.src.metrics.em_metrics import OptimizerEmbeddingErrorRate
+from synalinks.src.metrics.em_metrics import OptimizerEmbeddingFailedCalls
+from synalinks.src.metrics.em_metrics import OptimizerEmbeddingFallbackActivations
 from synalinks.src.metrics.em_metrics import OptimizerEmbeddingThroughput
 from synalinks.src.metrics.em_metrics import OptimizerEmbeddingTokens
 from synalinks.src.metrics.em_metrics import OptimizerEmbeddingTokensPerSecond
@@ -29,6 +42,9 @@ from synalinks.src.metrics.em_metrics import OptimizerEmbeddingVectorsPerSecond
 from synalinks.src.metrics.em_metrics import RewardEmbeddingCachedTokens
 from synalinks.src.metrics.em_metrics import RewardEmbeddingCacheHitRate
 from synalinks.src.metrics.em_metrics import RewardEmbeddingCost
+from synalinks.src.metrics.em_metrics import RewardEmbeddingErrorRate
+from synalinks.src.metrics.em_metrics import RewardEmbeddingFailedCalls
+from synalinks.src.metrics.em_metrics import RewardEmbeddingFallbackActivations
 from synalinks.src.metrics.em_metrics import RewardEmbeddingThroughput
 from synalinks.src.metrics.em_metrics import RewardEmbeddingTokens
 from synalinks.src.metrics.em_metrics import RewardEmbeddingTokensPerSecond
@@ -118,14 +134,35 @@ class EmbeddingMetricsResultTest(testing.TestCase):
     def test_throughput(self):
         em = _stub_em()
         m_rps = _bind(EmbeddingThroughput(), [em])
+        # Throughput divides by phase wall-clock, not summed call time.
+        _add_phase_wall_clock_s("inference", 4.0)
         _record(em, prompt=100, vectors=2, elapsed=2.0, cost=0.0)
         _record(em, prompt=100, vectors=2, elapsed=2.0, cost=0.0)
         self.assertEqual(m_rps.result(), 2 / 4.0)
 
+    def test_avg_latency(self):
+        em = _stub_em()
+        m_lat = _bind(AvgEmbeddingLatency(), [em])
+        _record(em, prompt=100, vectors=2, elapsed=2.0, cost=0.0)
+        _record(em, prompt=100, vectors=2, elapsed=3.0, cost=0.0)
+        # Mean per-call latency = summed call time / calls = 5.0 / 2
+        # (unchanged by the wall-clock throughput switch).
+        self.assertEqual(m_lat.result(), 5.0 / 2)
+
+    def test_cached_tokens_average(self):
+        em = _stub_em()
+        m = _bind(AvgEmbeddingCachedTokensPerCall(), [em])
+        _record(em, prompt=100, vectors=2, elapsed=0.1, cost=0.0)
+        _record(em, prompt=100, vectors=2, elapsed=0.1, cost=0.0)
+        _bump_cached(em, 60, phase="inference")
+        self.assertEqual(m.result(), 30.0)  # 60 / 2
+
     def test_zero_division_safety(self):
         em = _stub_em()
         m = _bind(AvgEmbeddingTokensPerCall(), [em])
+        m_lat = _bind(AvgEmbeddingLatency(), [em])
         self.assertEqual(m.result(), 0.0)
+        self.assertEqual(m_lat.result(), 0.0)
 
 
 class EMAutoBindTest(testing.TestCase):
@@ -214,6 +251,58 @@ def _bump_cached(em, n, phase):
     setattr(em, attr, getattr(em, attr, 0) + n)
 
 
+def _bump(em, suffix, n, phase):
+    attr = f"{phase}_cumulated_{suffix}"
+    setattr(em, attr, getattr(em, attr, 0) + n)
+
+
+class EmbeddingFailureMetricsTest(testing.TestCase):
+    def test_failure_metrics(self):
+        em = _stub_em()
+        m_failed = _bind(EmbeddingFailedCalls(), [em])
+        m_fallback = _bind(EmbeddingFallbackActivations(), [em])
+        m_error = _bind(EmbeddingErrorRate(), [em])
+        # 3 successful calls; 1 failed call that fell back.
+        _record(em, prompt=10, vectors=1, phase="inference")
+        _record(em, prompt=10, vectors=1, phase="inference")
+        _record(em, prompt=10, vectors=1, phase="inference")
+        _bump(em, "failed_calls", 1, phase="inference")
+        _bump(em, "fallback_activations", 1, phase="inference")
+        self.assertEqual(m_failed.result(), 1)
+        self.assertEqual(m_fallback.result(), 1)
+        self.assertEqual(m_error.result(), 1 / 4)
+
+    def test_failure_metrics_per_phase(self):
+        for phase, FailedM, FallbackM, ErrorM in (
+            (
+                "reward",
+                RewardEmbeddingFailedCalls,
+                RewardEmbeddingFallbackActivations,
+                RewardEmbeddingErrorRate,
+            ),
+            (
+                "optimizer",
+                OptimizerEmbeddingFailedCalls,
+                OptimizerEmbeddingFallbackActivations,
+                OptimizerEmbeddingErrorRate,
+            ),
+        ):
+            with self.subTest(phase=phase):
+                em = _stub_em()
+                m_failed = _bind(FailedM(), [em])
+                m_fallback = _bind(FallbackM(), [em])
+                m_error = _bind(ErrorM(), [em])
+                self.assertEqual(m_failed.result(), 0)
+                self.assertEqual(m_fallback.result(), 0)
+                self.assertEqual(m_error.result(), 0.0)
+                _record(em, prompt=10, vectors=1, phase=phase)
+                _bump(em, "failed_calls", 3, phase=phase)
+                _bump(em, "fallback_activations", 2, phase=phase)
+                self.assertEqual(m_failed.result(), 3)
+                self.assertEqual(m_fallback.result(), 2)
+                self.assertEqual(m_error.result(), 3 / 4)
+
+
 class EMRatesAndCacheTest(testing.TestCase):
     """`result()` paths for rate, per-call, and cache-hit-rate metrics that
     the existing tests don't hit. Three phases (inference/reward/optimizer)
@@ -262,6 +351,7 @@ class EMRatesAndCacheTest(testing.TestCase):
 
                 _record(em, prompt=200, vectors=8, elapsed=4.0, phase=phase)
                 _bump_cached(em, 50, phase=phase)
+                _add_phase_wall_clock_s(phase, 4.0)  # throughput denominator
 
                 self.assertEqual(m_tps.result(), 50.0)  # 200 / 4.0
                 self.assertEqual(m_vps.result(), 2.0)  # 8 / 4.0
@@ -281,7 +371,23 @@ class EMRatesAndCacheTest(testing.TestCase):
                 self.assertEqual(m.result(), 0.0)
                 _record(em, prompt=10, vectors=1, elapsed=2.0, phase=phase)
                 _record(em, prompt=10, vectors=1, elapsed=2.0, phase=phase)
+                _add_phase_wall_clock_s(phase, 4.0)
                 self.assertEqual(m.result(), 2 / 4.0)
+
+    def test_avg_latency_per_phase(self):
+        # Inference latency has a dedicated test above; cover the reward +
+        # optimizer variants (elapsed_s_delta / calls_delta).
+        for phase, Latency in (
+            ("reward", AvgRewardEmbeddingLatency),
+            ("optimizer", AvgOptimizerEmbeddingLatency),
+        ):
+            with self.subTest(phase=phase):
+                em = _stub_em()
+                m = _bind(Latency(), [em])
+                self.assertEqual(m.result(), 0.0)
+                _record(em, prompt=10, vectors=1, elapsed=2.0, phase=phase)
+                _record(em, prompt=10, vectors=1, elapsed=2.0, phase=phase)
+                self.assertEqual(m.result(), 4.0 / 2)
 
     def test_avg_per_call_metrics_per_phase(self):
         # `AvgRewardEmbeddingTokensPerCall`, `AvgRewardEmbeddingVectorsPerCall`,
@@ -316,3 +422,19 @@ class EMRatesAndCacheTest(testing.TestCase):
                 self.assertEqual(m_t.result(), 200.0)
                 self.assertEqual(m_v.result(), 4.0)
                 self.assertAlmostEqual(m_c.result(), 0.002)
+
+    def test_cached_average_per_phase(self):
+        # Inference variant has a dedicated test above; cover reward +
+        # optimizer for `Avg*EmbeddingCachedTokensPerCall`.
+        for phase, AvgCached in (
+            ("reward", AvgRewardEmbeddingCachedTokensPerCall),
+            ("optimizer", AvgOptimizerEmbeddingCachedTokensPerCall),
+        ):
+            with self.subTest(phase=phase):
+                em = _stub_em()
+                m_cached = _bind(AvgCached(), [em])
+                self.assertEqual(m_cached.result(), 0.0)
+                _record(em, prompt=100, vectors=2, phase=phase)
+                _record(em, prompt=100, vectors=2, phase=phase)
+                _bump_cached(em, 60, phase=phase)
+                self.assertEqual(m_cached.result(), 30.0)  # 60 / 2

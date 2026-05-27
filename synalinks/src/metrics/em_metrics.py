@@ -4,7 +4,7 @@
 
 All metrics read counters that the EM populates on each provider call.
 Routing across `inference`, `reward`, and `optimizer` phases follows the
-`synalinks_op_scope` global flag set by the trainer.
+active `op_scope` (a contextvar the trainer sets per phase).
 
 Class hierarchy:
 
@@ -14,6 +14,7 @@ Class hierarchy:
 """
 
 from synalinks.src.api_export import synalinks_export
+from synalinks.src.backend.common.op_scope import read_phase_wall_clock_s
 from synalinks.src.metrics.metric import Metric
 
 _TRACKED_SUFFIXES = (
@@ -24,6 +25,8 @@ _TRACKED_SUFFIXES = (
     "elapsed_s",
     "cost",
     "cached_tokens",
+    "failed_calls",
+    "fallback_activations",
 )
 
 
@@ -71,8 +74,8 @@ class EmbeddingModelOperationalMetric(Metric):
 
     Subclasses set `_phase` to one of ``"inference"``, ``"reward"``, or
     ``"optimizer"`` to read the corresponding counter set on each bound
-    embedding model. Counters are populated by the EM based on the
-    ``synalinks_op_scope`` global flag set by the trainer.
+    embedding model. Counters are populated by the EM based on the active
+    ``op_scope`` (contextvar) the trainer sets for each phase.
 
     Binds itself automatically to every `EmbeddingModel` reachable from
     the program (and their `.fallback` chains) on `program.compile()`.
@@ -84,6 +87,7 @@ class EmbeddingModelOperationalMetric(Metric):
         super().__init__(name=name)
         self._embedding_models = []
         self._baselines = {suffix: 0 for suffix in _TRACKED_SUFFIXES}
+        self._wall_baseline = 0.0
 
     @property
     def embedding_models(self):
@@ -103,9 +107,17 @@ class EmbeddingModelOperationalMetric(Metric):
     def _snapshot(self):
         for suffix in _TRACKED_SUFFIXES:
             self._baselines[suffix] = self._read(suffix)
+        self._wall_baseline = read_phase_wall_clock_s(self._phase)
 
     def _delta(self, suffix):
         return self._read(suffix) - self._baselines.get(suffix, 0)
+
+    def _wall_clock_delta(self):
+        """Wall-clock seconds the trainer spent in this metric's phase since
+        the last snapshot — the throughput denominator (concurrency-safe,
+        unlike summed `elapsed_s`).
+        """
+        return read_phase_wall_clock_s(self._phase) - self._wall_baseline
 
     def reset_state(self):
         self._snapshot()
@@ -161,10 +173,31 @@ class EmbeddingThroughput(EmbeddingModelOperationalMetric):
         super().__init__(name=name)
 
     def result(self):
-        elapsed = self._delta("elapsed_s")
-        if elapsed <= 0.0:
+        wall = self._wall_clock_delta()
+        if wall <= 0.0:
             return 0.0
-        return self._delta("calls") / elapsed
+        return self._delta("calls") / wall
+
+
+@synalinks_export("synalinks.metrics.AvgEmbeddingLatency")
+class AvgEmbeddingLatency(EmbeddingModelOperationalMetric):
+    """Average wall-clock latency in seconds per embedding call over this run.
+
+    Computed as ``elapsed_s / calls``. Because ``elapsed_s`` accumulates each
+    call's own duration, this reports the mean per-call latency regardless of
+    concurrency -- unlike `EmbeddingThroughput`, which divides by the phase's
+    wall-clock span. The two coincide (latency = 1 / throughput) only when
+    calls run serially.
+    """
+
+    def __init__(self, name="avg_embedding_latency"):
+        super().__init__(name=name)
+
+    def result(self):
+        calls = self._delta("calls")
+        if calls <= 0:
+            return 0.0
+        return self._delta("elapsed_s") / calls
 
 
 @synalinks_export("synalinks.metrics.EmbeddingTokensPerSecond")
@@ -175,10 +208,10 @@ class EmbeddingTokensPerSecond(EmbeddingModelOperationalMetric):
         super().__init__(name=name)
 
     def result(self):
-        elapsed = self._delta("elapsed_s")
-        if elapsed <= 0.0:
+        wall = self._wall_clock_delta()
+        if wall <= 0.0:
             return 0.0
-        return self._delta("tokens") / elapsed
+        return self._delta("tokens") / wall
 
 
 @synalinks_export("synalinks.metrics.EmbeddingVectorsPerSecond")
@@ -189,10 +222,10 @@ class EmbeddingVectorsPerSecond(EmbeddingModelOperationalMetric):
         super().__init__(name=name)
 
     def result(self):
-        elapsed = self._delta("elapsed_s")
-        if elapsed <= 0.0:
+        wall = self._wall_clock_delta()
+        if wall <= 0.0:
             return 0.0
-        return self._delta("vectors") / elapsed
+        return self._delta("vectors") / wall
 
 
 @synalinks_export("synalinks.metrics.AvgEmbeddingTokensPerCall")
@@ -237,6 +270,20 @@ class AvgEmbeddingCostPerCall(EmbeddingModelOperationalMetric):
         return self._delta("cost") / calls
 
 
+@synalinks_export("synalinks.metrics.AvgEmbeddingCachedTokensPerCall")
+class AvgEmbeddingCachedTokensPerCall(EmbeddingModelOperationalMetric):
+    """Average cached prompt tokens per embedding call over this run."""
+
+    def __init__(self, name="avg_embedding_cached_tokens_per_call"):
+        super().__init__(name=name)
+
+    def result(self):
+        calls = self._delta("calls")
+        if calls <= 0:
+            return 0.0
+        return self._delta("cached_tokens") / calls
+
+
 @synalinks_export("synalinks.metrics.EmbeddingCachedTokens")
 class EmbeddingCachedTokens(EmbeddingModelOperationalMetric):
     """Prompt tokens served from cache during embedding inference."""
@@ -260,6 +307,43 @@ class EmbeddingCacheHitRate(EmbeddingModelOperationalMetric):
         if prompt <= 0:
             return 0.0
         return self._delta("cached_tokens") / prompt
+
+
+@synalinks_export("synalinks.metrics.EmbeddingFailedCalls")
+class EmbeddingFailedCalls(EmbeddingModelOperationalMetric):
+    """Embedding calls that exhausted all retries and failed this run."""
+
+    def __init__(self, name="embedding_failed_calls"):
+        super().__init__(name=name)
+
+    def result(self):
+        return int(self._delta("failed_calls"))
+
+
+@synalinks_export("synalinks.metrics.EmbeddingFallbackActivations")
+class EmbeddingFallbackActivations(EmbeddingModelOperationalMetric):
+    """Times a failed embedding call triggered its `fallback` chain."""
+
+    def __init__(self, name="embedding_fallback_activations"):
+        super().__init__(name=name)
+
+    def result(self):
+        return int(self._delta("fallback_activations"))
+
+
+@synalinks_export("synalinks.metrics.EmbeddingErrorRate")
+class EmbeddingErrorRate(EmbeddingModelOperationalMetric):
+    """Fraction of embedding calls that failed: failed / (succeeded + failed)."""
+
+    def __init__(self, name="embedding_error_rate"):
+        super().__init__(name=name)
+
+    def result(self):
+        failed = self._delta("failed_calls")
+        total = self._delta("calls") + failed
+        if total <= 0:
+            return 0.0
+        return failed / total
 
 
 # ---------------------------------------------------------------------------
@@ -320,10 +404,24 @@ class RewardEmbeddingThroughput(EmbeddingModelRewardsOperationalMetric):
         super().__init__(name=name)
 
     def result(self):
-        elapsed = self._delta("elapsed_s")
-        if elapsed <= 0.0:
+        wall = self._wall_clock_delta()
+        if wall <= 0.0:
             return 0.0
-        return self._delta("calls") / elapsed
+        return self._delta("calls") / wall
+
+
+@synalinks_export("synalinks.metrics.AvgRewardEmbeddingLatency")
+class AvgRewardEmbeddingLatency(EmbeddingModelRewardsOperationalMetric):
+    """Average latency (s) per embedding call during reward computation."""
+
+    def __init__(self, name="avg_reward_embedding_latency"):
+        super().__init__(name=name)
+
+    def result(self):
+        calls = self._delta("calls")
+        if calls <= 0:
+            return 0.0
+        return self._delta("elapsed_s") / calls
 
 
 @synalinks_export("synalinks.metrics.RewardEmbeddingTokensPerSecond")
@@ -334,10 +432,10 @@ class RewardEmbeddingTokensPerSecond(EmbeddingModelRewardsOperationalMetric):
         super().__init__(name=name)
 
     def result(self):
-        elapsed = self._delta("elapsed_s")
-        if elapsed <= 0.0:
+        wall = self._wall_clock_delta()
+        if wall <= 0.0:
             return 0.0
-        return self._delta("tokens") / elapsed
+        return self._delta("tokens") / wall
 
 
 @synalinks_export("synalinks.metrics.RewardEmbeddingVectorsPerSecond")
@@ -348,10 +446,10 @@ class RewardEmbeddingVectorsPerSecond(EmbeddingModelRewardsOperationalMetric):
         super().__init__(name=name)
 
     def result(self):
-        elapsed = self._delta("elapsed_s")
-        if elapsed <= 0.0:
+        wall = self._wall_clock_delta()
+        if wall <= 0.0:
             return 0.0
-        return self._delta("vectors") / elapsed
+        return self._delta("vectors") / wall
 
 
 @synalinks_export("synalinks.metrics.AvgRewardEmbeddingTokensPerCall")
@@ -396,6 +494,20 @@ class AvgRewardEmbeddingCostPerCall(EmbeddingModelRewardsOperationalMetric):
         return self._delta("cost") / calls
 
 
+@synalinks_export("synalinks.metrics.AvgRewardEmbeddingCachedTokensPerCall")
+class AvgRewardEmbeddingCachedTokensPerCall(EmbeddingModelRewardsOperationalMetric):
+    """Average cached prompt tokens per embedding call during reward computation."""
+
+    def __init__(self, name="avg_reward_embedding_cached_tokens_per_call"):
+        super().__init__(name=name)
+
+    def result(self):
+        calls = self._delta("calls")
+        if calls <= 0:
+            return 0.0
+        return self._delta("cached_tokens") / calls
+
+
 @synalinks_export("synalinks.metrics.RewardEmbeddingCachedTokens")
 class RewardEmbeddingCachedTokens(EmbeddingModelRewardsOperationalMetric):
     """Prompt tokens served from cache during reward-phase embeddings."""
@@ -419,6 +531,43 @@ class RewardEmbeddingCacheHitRate(EmbeddingModelRewardsOperationalMetric):
         if prompt <= 0:
             return 0.0
         return self._delta("cached_tokens") / prompt
+
+
+@synalinks_export("synalinks.metrics.RewardEmbeddingFailedCalls")
+class RewardEmbeddingFailedCalls(EmbeddingModelRewardsOperationalMetric):
+    """Embedding calls that failed during reward computation."""
+
+    def __init__(self, name="reward_embedding_failed_calls"):
+        super().__init__(name=name)
+
+    def result(self):
+        return int(self._delta("failed_calls"))
+
+
+@synalinks_export("synalinks.metrics.RewardEmbeddingFallbackActivations")
+class RewardEmbeddingFallbackActivations(EmbeddingModelRewardsOperationalMetric):
+    """Embedding fallback activations during reward computation."""
+
+    def __init__(self, name="reward_embedding_fallback_activations"):
+        super().__init__(name=name)
+
+    def result(self):
+        return int(self._delta("fallback_activations"))
+
+
+@synalinks_export("synalinks.metrics.RewardEmbeddingErrorRate")
+class RewardEmbeddingErrorRate(EmbeddingModelRewardsOperationalMetric):
+    """Fraction of embedding calls that failed during reward computation."""
+
+    def __init__(self, name="reward_embedding_error_rate"):
+        super().__init__(name=name)
+
+    def result(self):
+        failed = self._delta("failed_calls")
+        total = self._delta("calls") + failed
+        if total <= 0:
+            return 0.0
+        return failed / total
 
 
 # ---------------------------------------------------------------------------
@@ -479,10 +628,24 @@ class OptimizerEmbeddingThroughput(EmbeddingModelOptimizersOperationalMetric):
         super().__init__(name=name)
 
     def result(self):
-        elapsed = self._delta("elapsed_s")
-        if elapsed <= 0.0:
+        wall = self._wall_clock_delta()
+        if wall <= 0.0:
             return 0.0
-        return self._delta("calls") / elapsed
+        return self._delta("calls") / wall
+
+
+@synalinks_export("synalinks.metrics.AvgOptimizerEmbeddingLatency")
+class AvgOptimizerEmbeddingLatency(EmbeddingModelOptimizersOperationalMetric):
+    """Average latency (s) per embedding call during the optimizer step."""
+
+    def __init__(self, name="avg_optimizer_embedding_latency"):
+        super().__init__(name=name)
+
+    def result(self):
+        calls = self._delta("calls")
+        if calls <= 0:
+            return 0.0
+        return self._delta("elapsed_s") / calls
 
 
 @synalinks_export("synalinks.metrics.OptimizerEmbeddingTokensPerSecond")
@@ -493,10 +656,10 @@ class OptimizerEmbeddingTokensPerSecond(EmbeddingModelOptimizersOperationalMetri
         super().__init__(name=name)
 
     def result(self):
-        elapsed = self._delta("elapsed_s")
-        if elapsed <= 0.0:
+        wall = self._wall_clock_delta()
+        if wall <= 0.0:
             return 0.0
-        return self._delta("tokens") / elapsed
+        return self._delta("tokens") / wall
 
 
 @synalinks_export("synalinks.metrics.OptimizerEmbeddingVectorsPerSecond")
@@ -507,10 +670,10 @@ class OptimizerEmbeddingVectorsPerSecond(EmbeddingModelOptimizersOperationalMetr
         super().__init__(name=name)
 
     def result(self):
-        elapsed = self._delta("elapsed_s")
-        if elapsed <= 0.0:
+        wall = self._wall_clock_delta()
+        if wall <= 0.0:
             return 0.0
-        return self._delta("vectors") / elapsed
+        return self._delta("vectors") / wall
 
 
 @synalinks_export("synalinks.metrics.AvgOptimizerEmbeddingTokensPerCall")
@@ -555,6 +718,20 @@ class AvgOptimizerEmbeddingCostPerCall(EmbeddingModelOptimizersOperationalMetric
         return self._delta("cost") / calls
 
 
+@synalinks_export("synalinks.metrics.AvgOptimizerEmbeddingCachedTokensPerCall")
+class AvgOptimizerEmbeddingCachedTokensPerCall(EmbeddingModelOptimizersOperationalMetric):
+    """Average cached prompt tokens per embedding call during the optimizer step."""
+
+    def __init__(self, name="avg_optimizer_embedding_cached_tokens_per_call"):
+        super().__init__(name=name)
+
+    def result(self):
+        calls = self._delta("calls")
+        if calls <= 0:
+            return 0.0
+        return self._delta("cached_tokens") / calls
+
+
 @synalinks_export("synalinks.metrics.OptimizerEmbeddingCachedTokens")
 class OptimizerEmbeddingCachedTokens(EmbeddingModelOptimizersOperationalMetric):
     """Prompt tokens served from cache during optimizer-phase embeddings."""
@@ -578,3 +755,40 @@ class OptimizerEmbeddingCacheHitRate(EmbeddingModelOptimizersOperationalMetric):
         if prompt <= 0:
             return 0.0
         return self._delta("cached_tokens") / prompt
+
+
+@synalinks_export("synalinks.metrics.OptimizerEmbeddingFailedCalls")
+class OptimizerEmbeddingFailedCalls(EmbeddingModelOptimizersOperationalMetric):
+    """Embedding calls that failed during the optimizer step."""
+
+    def __init__(self, name="optimizer_embedding_failed_calls"):
+        super().__init__(name=name)
+
+    def result(self):
+        return int(self._delta("failed_calls"))
+
+
+@synalinks_export("synalinks.metrics.OptimizerEmbeddingFallbackActivations")
+class OptimizerEmbeddingFallbackActivations(EmbeddingModelOptimizersOperationalMetric):
+    """Embedding fallback activations during the optimizer step."""
+
+    def __init__(self, name="optimizer_embedding_fallback_activations"):
+        super().__init__(name=name)
+
+    def result(self):
+        return int(self._delta("fallback_activations"))
+
+
+@synalinks_export("synalinks.metrics.OptimizerEmbeddingErrorRate")
+class OptimizerEmbeddingErrorRate(EmbeddingModelOptimizersOperationalMetric):
+    """Fraction of embedding calls that failed during the optimizer step."""
+
+    def __init__(self, name="optimizer_embedding_error_rate"):
+        super().__init__(name=name)
+
+    def result(self):
+        failed = self._delta("failed_calls")
+        total = self._delta("calls") + failed
+        if total <= 0:
+            return 0.0
+        return failed / total

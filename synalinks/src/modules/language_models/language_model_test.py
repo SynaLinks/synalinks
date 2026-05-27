@@ -15,7 +15,7 @@ from synalinks.src.backend import ChatMessage
 from synalinks.src.backend import ChatMessages
 from synalinks.src.backend import ChatRole
 from synalinks.src.backend import DataModel
-from synalinks.src.backend.common import global_state
+from synalinks.src.backend.common.op_scope import _OP_SCOPE
 from synalinks.src.modules.language_models import LanguageModel
 
 
@@ -170,6 +170,44 @@ class LanguageModelTest(testing.TestCase):
         self.assertEqual(response_format["type"], "json_schema")
         self.assertEqual(response_format["json_schema"]["name"], "structured_output")
 
+    @patch("litellm.acompletion")
+    async def test_reasoning_effort_disable_sends_think_false_for_ollama(
+        self, mock_completion
+    ):
+        """`reasoning_effort="disable"` turns native thinking off on ollama
+        (which reasons by default) by sending `think=False`; `"none"` leaves the
+        model at its default and sends nothing.
+        """
+        mock_completion.return_value = {
+            "choices": [{"message": {"content": "ok"}}]
+        }
+        messages = ChatMessages(
+            messages=[ChatMessage(role=ChatRole.USER, content="Hello")]
+        )
+
+        ollama_lm = LanguageModel(model="ollama_chat/qwen3:8b")
+        await ollama_lm(messages, reasoning_effort="disable")
+        self.assertIs(mock_completion.call_args.kwargs.get("think"), False)
+
+        await ollama_lm(messages, reasoning_effort="none")
+        self.assertNotIn("think", mock_completion.call_args.kwargs)
+
+    @patch("litellm.acompletion")
+    async def test_reasoning_effort_disable_noop_for_non_ollama(self, mock_completion):
+        """Opt-in providers reason only when enabled, so "disable" sends no
+        `think` flag (it is ollama-specific and would be rejected elsewhere).
+        """
+        mock_completion.return_value = {
+            "choices": [{"message": {"content": "ok"}}]
+        }
+        messages = ChatMessages(
+            messages=[ChatMessage(role=ChatRole.USER, content="Hello")]
+        )
+
+        lm = LanguageModel(model="openai/gpt-4o-mini")
+        await lm(messages, reasoning_effort="disable")
+        self.assertNotIn("think", mock_completion.call_args.kwargs)
+
 
 def _lm_response(prompt_tokens, completion_tokens, total_tokens=None, cost=None):
     """Build a realistic LiteLLM ModelResponse (mirrors what acompletion returns)."""
@@ -203,7 +241,9 @@ def _chat_messages():
 
 
 def _set_scope(value):
-    global_state.set_global_attribute("synalinks_op_scope", value)
+    # Phase scope is contextvars-backed; set it directly on the current
+    # context for these counter-routing tests (wall-clock is unaffected).
+    _OP_SCOPE.set(value)
 
 
 class LMCounterPopulationTest(testing.TestCase):

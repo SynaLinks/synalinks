@@ -1,5 +1,6 @@
 # License Apache 2.0: (c) 2025-2026 Yoan Sallami (Synalinks Team)
 
+import warnings
 from typing import TYPE_CHECKING
 from typing import Any
 from typing import Dict
@@ -19,6 +20,7 @@ from synalinks.src.backend import Field
 from synalinks.src.backend import Trainable
 from synalinks.src.backend import out_mask_json
 from synalinks.src.backend.common import numpy as np
+from synalinks.src.modules.core.generator import Generator
 from synalinks.src.modules.core.input_module import Input
 from synalinks.src.modules.embedding_models import get as _get_em
 from synalinks.src.modules.ttc.chain_of_thought import ChainOfThought
@@ -287,6 +289,13 @@ class OMEGA(EvolutionaryOptimizer):
         reasoning_effort (string): Optional. The reasoning effort for the LM call
             between ['minimal', 'low', 'medium', 'high', 'disable', 'none', None].
             Default to None (no reasoning).
+        use_chain_of_thought (bool): Whether the mutation/crossover programs use
+            a `ChainOfThought` (which first writes a prompt-driven `thinking`
+            field, then the variable) or a plain `Generator` that emits the
+            variable directly. Disabling it gives a tighter, more bounded
+            generation (fewer tokens, no runaway reasoning) at the cost of the
+            explicit reasoning step -- useful for smaller/local models that ramble
+            under thinking. (Default to True).
         algorithm (str): The mechanism to use for the genetic algorithm
             between ['ga', 'dns']. This parameter is provided for ablation
             studies and shouldn't be modified. (Default to 'dns').
@@ -315,6 +324,7 @@ class OMEGA(EvolutionaryOptimizer):
         mutation_temperature=0.3,
         crossover_temperature=0.3,
         reasoning_effort=None,
+        use_chain_of_thought=True,
         merging_rate=0.02,
         algorithm="dns",
         selection="softmax",
@@ -340,6 +350,7 @@ class OMEGA(EvolutionaryOptimizer):
             instructions = ""
         self.instructions = instructions
         self.reasoning_effort = reasoning_effort
+        self.use_chain_of_thought = use_chain_of_thought
 
         # DNS-specific parameters
         self.embedding_model = _get_em(embedding_model)
@@ -362,6 +373,11 @@ class OMEGA(EvolutionaryOptimizer):
         # a cycle if `omega` loads before `programs.program` finishes.
         from synalinks.src.programs.program import Program
 
+        # `ChainOfThought` prepends a prompt-driven `thinking` field; a plain
+        # `Generator` emits the variable directly. The `in_mask` below keeps only
+        # the variable fields either way, so they are drop-in interchangeable.
+        module_cls = ChainOfThought if self.use_chain_of_thought else Generator
+
         for trainable_variable in trainable_variables:
             schema_id = id(trainable_variable.get_schema())
             mask = list(Trainable.keys())
@@ -371,7 +387,7 @@ class OMEGA(EvolutionaryOptimizer):
 
             if schema_id not in self.mutation_programs:
                 inputs = Input(data_model=MutationInputs)
-                outputs = await ChainOfThought(
+                outputs = await module_cls(
                     data_model=symbolic_variable,
                     language_model=self.language_model,
                     temperature=self.mutation_temperature,
@@ -392,7 +408,7 @@ class OMEGA(EvolutionaryOptimizer):
                             ]
                         )
                     ),
-                    name=f"mutation_cot_{schema_id}_" + self.name,
+                    name=f"mutation_module_{schema_id}_" + self.name,
                 )(inputs)
                 outputs = outputs.in_mask(mask=list(symbolic_variable.keys()))
                 program = Program(
@@ -405,7 +421,7 @@ class OMEGA(EvolutionaryOptimizer):
 
             if schema_id not in self.crossover_programs:
                 inputs = Input(data_model=CrossoverInputs)
-                outputs = await ChainOfThought(
+                outputs = await module_cls(
                     data_model=symbolic_variable,
                     language_model=self.language_model,
                     temperature=self.crossover_temperature,
@@ -426,7 +442,7 @@ class OMEGA(EvolutionaryOptimizer):
                             ]
                         )
                     ),
-                    name=f"crossover_cot_{schema_id}_" + self.name,
+                    name=f"crossover_module_{schema_id}_" + self.name,
                 )(inputs)
                 outputs = outputs.in_mask(mask=list(symbolic_variable.keys()))
                 program = Program(
@@ -483,7 +499,18 @@ class OMEGA(EvolutionaryOptimizer):
             current_variable=masked_variable,
         )
         program = self.mutation_programs[schema_id]
-        return await program(inputs, training=training)
+        # A failing LM call (timeout, rate limit, transient API error) must not
+        # kill fit(): warn and return None so the current best candidate is kept.
+        # assign_candidate / maybe_add_candidate treat a None candidate as a no-op.
+        try:
+            return await program(inputs, training=training)
+        except Exception as e:
+            warnings.warn(
+                f"OMEGA mutation at step {step} failed and was skipped "
+                f"(keeping the current best candidate): {type(e).__name__}: {e}",
+                stacklevel=2,
+            )
+            return None
 
     async def merge_candidate(
         self,
@@ -536,7 +563,18 @@ class OMEGA(EvolutionaryOptimizer):
             current_variable=current_variable,
         )
         program = self.crossover_programs[schema_id]
-        return await program(inputs, training=training)
+        # A failing LM call (timeout, rate limit, transient API error) must not
+        # kill fit(): warn and return None so the current best candidate is kept.
+        # assign_candidate / maybe_add_candidate treat a None candidate as a no-op.
+        try:
+            return await program(inputs, training=training)
+        except Exception as e:
+            warnings.warn(
+                f"OMEGA crossover at step {step} failed and was skipped "
+                f"(keeping the current best candidate): {type(e).__name__}: {e}",
+                stacklevel=2,
+            )
+            return None
 
     async def competition(self, candidates: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """Apply Dominated Novelty Search (DNS) competition.
@@ -622,6 +660,7 @@ class OMEGA(EvolutionaryOptimizer):
             {
                 "instructions": self.instructions,
                 "reasoning_effort": self.reasoning_effort,
+                "use_chain_of_thought": self.use_chain_of_thought,
                 "k_nearest_fitter": self.k_nearest_fitter,
                 "algorithm": self.algorithm,
             }

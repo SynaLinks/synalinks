@@ -1,25 +1,53 @@
 # License Apache 2.0: (c) 2025-2026 Yoan Sallami (Synalinks Team)
 
+import asyncio
+from unittest import mock
+
 from synalinks.src import testing
-from synalinks.src.backend.common import global_state
+from synalinks.src.backend.common.global_state import clear_session
+from synalinks.src.backend.common.op_scope import _add_phase_wall_clock_s
+from synalinks.src.backend.common.op_scope import current_op_scope
+from synalinks.src.backend.common.op_scope import op_scope
+from synalinks.src.backend.common.op_scope import read_phase_wall_clock_s
+from synalinks.src.metrics.lm_metrics import AvgCacheCreationTokensPerCall
+from synalinks.src.metrics.lm_metrics import AvgCachedTokensPerCall
 from synalinks.src.metrics.lm_metrics import AvgCostPerCall
 from synalinks.src.metrics.lm_metrics import AvgInputTokensPerCall
+from synalinks.src.metrics.lm_metrics import AvgLatency
+from synalinks.src.metrics.lm_metrics import AvgOptimizerCacheCreationTokensPerCall
+from synalinks.src.metrics.lm_metrics import AvgOptimizerCachedTokensPerCall
 from synalinks.src.metrics.lm_metrics import AvgOptimizerCostPerCall
 from synalinks.src.metrics.lm_metrics import AvgOptimizerInputTokensPerCall
+from synalinks.src.metrics.lm_metrics import AvgOptimizerLatency
 from synalinks.src.metrics.lm_metrics import AvgOptimizerOutputTokensPerCall
+from synalinks.src.metrics.lm_metrics import AvgOptimizerReasoningTokensPerCall
+from synalinks.src.metrics.lm_metrics import AvgOptimizerTotalTokensPerCall
 from synalinks.src.metrics.lm_metrics import AvgOutputTokensPerCall
+from synalinks.src.metrics.lm_metrics import AvgReasoningTokensPerCall
+from synalinks.src.metrics.lm_metrics import AvgRewardCacheCreationTokensPerCall
+from synalinks.src.metrics.lm_metrics import AvgRewardCachedTokensPerCall
 from synalinks.src.metrics.lm_metrics import AvgRewardCostPerCall
 from synalinks.src.metrics.lm_metrics import AvgRewardInputTokensPerCall
+from synalinks.src.metrics.lm_metrics import AvgRewardLatency
 from synalinks.src.metrics.lm_metrics import AvgRewardOutputTokensPerCall
+from synalinks.src.metrics.lm_metrics import AvgRewardReasoningTokensPerCall
+from synalinks.src.metrics.lm_metrics import AvgRewardTotalTokensPerCall
+from synalinks.src.metrics.lm_metrics import AvgTotalTokensPerCall
 from synalinks.src.metrics.lm_metrics import CacheCreationTokens
 from synalinks.src.metrics.lm_metrics import CachedTokens
 from synalinks.src.metrics.lm_metrics import CacheHitRate
 from synalinks.src.metrics.lm_metrics import Cost
+from synalinks.src.metrics.lm_metrics import ErrorRate
+from synalinks.src.metrics.lm_metrics import FailedCalls
+from synalinks.src.metrics.lm_metrics import FallbackActivations
 from synalinks.src.metrics.lm_metrics import InputTokens
 from synalinks.src.metrics.lm_metrics import OptimizerCacheCreationTokens
 from synalinks.src.metrics.lm_metrics import OptimizerCachedTokens
 from synalinks.src.metrics.lm_metrics import OptimizerCacheHitRate
 from synalinks.src.metrics.lm_metrics import OptimizerCost
+from synalinks.src.metrics.lm_metrics import OptimizerErrorRate
+from synalinks.src.metrics.lm_metrics import OptimizerFailedCalls
+from synalinks.src.metrics.lm_metrics import OptimizerFallbackActivations
 from synalinks.src.metrics.lm_metrics import OptimizerInputTokens
 from synalinks.src.metrics.lm_metrics import OptimizerReasoningTokens
 from synalinks.src.metrics.lm_metrics import OptimizerReasoningTokenShare
@@ -33,6 +61,9 @@ from synalinks.src.metrics.lm_metrics import RewardCacheCreationTokens
 from synalinks.src.metrics.lm_metrics import RewardCachedTokens
 from synalinks.src.metrics.lm_metrics import RewardCacheHitRate
 from synalinks.src.metrics.lm_metrics import RewardCost
+from synalinks.src.metrics.lm_metrics import RewardErrorRate
+from synalinks.src.metrics.lm_metrics import RewardFailedCalls
+from synalinks.src.metrics.lm_metrics import RewardFallbackActivations
 from synalinks.src.metrics.lm_metrics import RewardInputTokens
 from synalinks.src.metrics.lm_metrics import RewardReasoningTokens
 from synalinks.src.metrics.lm_metrics import RewardReasoningTokenShare
@@ -130,10 +161,24 @@ class OperationalMetricsResultTest(testing.TestCase):
         lm = _stub_lm()
         m_tps = _bind(TokensPerSecond(), [lm])
         m_rps = _bind(Throughput(), [lm])
+        # Two calls of 2s each (summed elapsed = 4s) that ran concurrently in
+        # a 2s wall-clock window. Throughput divides by wall-clock, so it
+        # reflects real RPS (2/2) rather than the deflated 2/4 the old
+        # summed-elapsed denominator would give.
+        _add_phase_wall_clock_s("inference", 2.0)
         _record(lm, prompt=400, completion=100, elapsed=2.0, cost=0.0)
         _record(lm, prompt=400, completion=100, elapsed=2.0, cost=0.0)
-        self.assertEqual(m_tps.result(), 1000 / 4.0)
-        self.assertEqual(m_rps.result(), 2 / 4.0)
+        self.assertEqual(m_tps.result(), 1000 / 2.0)
+        self.assertEqual(m_rps.result(), 2 / 2.0)
+
+    def test_avg_latency(self):
+        lm = _stub_lm()
+        m_lat = _bind(AvgLatency(), [lm])
+        _record(lm, prompt=400, completion=100, elapsed=2.0, cost=0.0)
+        _record(lm, prompt=400, completion=100, elapsed=3.0, cost=0.0)
+        # Mean per-call latency = summed call time / calls = 5.0 / 2
+        # (unchanged by the wall-clock throughput switch).
+        self.assertEqual(m_lat.result(), 5.0 / 2)
 
     def test_cost_metrics(self):
         lm = _stub_lm()
@@ -143,6 +188,43 @@ class OperationalMetricsResultTest(testing.TestCase):
         _record(lm, prompt=10, completion=5, elapsed=0.1, cost=0.005)
         self.assertAlmostEqual(m_cost.result(), 0.008)
         self.assertAlmostEqual(m_avg.result(), 0.004)
+
+    def test_total_tokens_average(self):
+        lm = _stub_lm()
+        m = _bind(AvgTotalTokensPerCall(), [lm])
+        _record(lm, prompt=100, completion=20, elapsed=0.1, cost=0.0)
+        _record(lm, prompt=300, completion=80, elapsed=0.1, cost=0.0)
+        # total tokens = 120 + 380 = 500 over 2 calls.
+        self.assertEqual(m.result(), 250.0)
+
+    def test_extra_token_averages(self):
+        lm = _stub_lm_with_extras()
+        m_cached = _bind(AvgCachedTokensPerCall(), [lm])
+        m_cachecreate = _bind(AvgCacheCreationTokensPerCall(), [lm])
+        m_reasoning = _bind(AvgReasoningTokensPerCall(), [lm])
+        _record(lm, prompt=100, completion=20, elapsed=0.1, cost=0.0)
+        _record(lm, prompt=100, completion=20, elapsed=0.1, cost=0.0)
+        _bump(lm, "cached_tokens", 60, phase="inference")
+        _bump(lm, "cache_creation_tokens", 40, phase="inference")
+        _bump(lm, "reasoning_tokens", 30, phase="inference")
+        self.assertEqual(m_cached.result(), 30.0)  # 60 / 2
+        self.assertEqual(m_cachecreate.result(), 20.0)  # 40 / 2
+        self.assertEqual(m_reasoning.result(), 15.0)  # 30 / 2
+
+    def test_failure_metrics(self):
+        lm = _stub_lm()
+        m_failed = _bind(FailedCalls(), [lm])
+        m_fallback = _bind(FallbackActivations(), [lm])
+        m_error = _bind(ErrorRate(), [lm])
+        # 3 successful calls; 1 failed call that fell back.
+        _record(lm, prompt=10, completion=5, elapsed=0.1, cost=0.0)
+        _record(lm, prompt=10, completion=5, elapsed=0.1, cost=0.0)
+        _record(lm, prompt=10, completion=5, elapsed=0.1, cost=0.0)
+        _bump(lm, "failed_calls", 1, phase="inference")
+        _bump(lm, "fallback_activations", 1, phase="inference")
+        self.assertEqual(m_failed.result(), 1)
+        self.assertEqual(m_fallback.result(), 1)
+        self.assertEqual(m_error.result(), 1 / 4)  # failed / (succeeded + failed)
 
     def test_reset_state_snapshots_baseline(self):
         lm = _stub_lm()
@@ -159,9 +241,15 @@ class OperationalMetricsResultTest(testing.TestCase):
         m_avg_in = _bind(AvgInputTokensPerCall(), [lm])
         m_tps = _bind(TokensPerSecond(), [lm])
         m_rps = _bind(Throughput(), [lm])
+        m_lat = _bind(AvgLatency(), [lm])
+        m_avg_total = _bind(AvgTotalTokensPerCall(), [lm])
+        m_error = _bind(ErrorRate(), [lm])
         self.assertEqual(m_avg_in.result(), 0.0)
         self.assertEqual(m_tps.result(), 0.0)
         self.assertEqual(m_rps.result(), 0.0)
+        self.assertEqual(m_lat.result(), 0.0)
+        self.assertEqual(m_avg_total.result(), 0.0)
+        self.assertEqual(m_error.result(), 0.0)
 
     def test_result_is_zero_before_bind(self):
         # No bind_program() call → no LMs → metric reports 0 instead of crashing.
@@ -263,28 +351,62 @@ class LMPhaseRoutingTest(testing.TestCase):
         self.assertAlmostEqual(m.result(), 0.005)
 
 
-class OpScopeFlagTest(testing.TestCase):
-    """The trainer sets ``global_state["synalinks_op_scope"]`` to one of
-    "inference" | "reward" | "optimizer" | None, and the LM/EM route
-    counter updates based on the value. Pin the contract here so a future
-    refactor doesn't silently break attribution.
+class OpScopeTest(testing.TestCase):
+    """`op_scope` marks a region as inference/reward/optimizer so the LM/EM
+    attribute calls to a phase and throughput can use the phase's wall-clock.
+    It is contextvars-backed (propagates into concurrent child tasks, unlike a
+    threading.local) and accrues per-phase wall-clock with a nesting stack.
+    Pin the contract so a refactor can't silently break attribution.
     """
 
-    def test_scope_default_is_none(self):
-        global_state.set_global_attribute("synalinks_op_scope", None)
-        self.assertIsNone(global_state.get_global_attribute("synalinks_op_scope"))
+    def test_default_scope_is_none(self):
+        self.assertIsNone(current_op_scope())
 
-    def test_scope_round_trip(self):
-        prev = global_state.get_global_attribute("synalinks_op_scope")
-        try:
-            for value in ("inference", "reward", "optimizer"):
-                global_state.set_global_attribute("synalinks_op_scope", value)
-                self.assertEqual(
-                    global_state.get_global_attribute("synalinks_op_scope"),
-                    value,
-                )
-        finally:
-            global_state.set_global_attribute("synalinks_op_scope", prev)
+    def test_context_manager_sets_and_restores(self):
+        self.assertIsNone(current_op_scope())
+        with op_scope("reward"):
+            self.assertEqual(current_op_scope(), "reward")
+            with op_scope("optimizer"):
+                self.assertEqual(current_op_scope(), "optimizer")
+            self.assertEqual(current_op_scope(), "reward")
+        self.assertIsNone(current_op_scope())
+
+    def test_propagates_into_concurrent_child_tasks(self):
+        # The reason for contextvars over threading.local: a scope entered
+        # before asyncio.gather() is inherited by every child coroutine (this
+        # is exactly the trainer's compute_reward / predict_on_batch pattern),
+        # so concurrent LM calls are all attributed to the right phase.
+        async def _run():
+            async def observe():
+                await asyncio.sleep(0)  # force interleaving
+                return current_op_scope()
+
+            with op_scope("reward"):
+                in_reward = await asyncio.gather(*[observe() for _ in range(5)])
+            with op_scope("optimizer"):
+                in_optimizer = await asyncio.gather(*[observe() for _ in range(5)])
+            return in_reward, in_optimizer
+
+        in_reward, in_optimizer = asyncio.run(_run())
+        self.assertEqual(in_reward, ["reward"] * 5)
+        self.assertEqual(in_optimizer, ["optimizer"] * 5)
+
+    def test_nested_wall_clock_is_self_time(self):
+        # Optimizer wraps reward; each phase should be credited only its own
+        # time, so the nested reward span is not double-counted on optimizer.
+        clear_session()  # reset the (thread-local) wall-clock accumulators
+        # perf_counter() is called once per enter and once per exit:
+        # enter(opt)=0, enter(rew)=2, exit(rew)=5, exit(opt)=9
+        ticks = [0.0, 2.0, 5.0, 9.0]
+        with mock.patch(
+            "synalinks.src.backend.common.op_scope.time.perf_counter",
+            side_effect=ticks,
+        ):
+            with op_scope("optimizer"):
+                with op_scope("reward"):
+                    pass
+        self.assertEqual(read_phase_wall_clock_s("reward"), 3.0)  # 5 - 2
+        self.assertEqual(read_phase_wall_clock_s("optimizer"), 6.0)  # (2-0)+(9-5)
 
 
 # The reward- and optimizer-phase metric classes mirror the inference set
@@ -319,6 +441,7 @@ class LMRatesAndCachePerPhaseTest(testing.TestCase):
             "inference",
             TokensPerSecond,
             Throughput,
+            AvgLatency,
             AvgInputTokensPerCall,
             AvgOutputTokensPerCall,
             AvgCostPerCall,
@@ -332,6 +455,7 @@ class LMRatesAndCachePerPhaseTest(testing.TestCase):
             "reward",
             RewardTokensPerSecond,
             RewardThroughput,
+            AvgRewardLatency,
             AvgRewardInputTokensPerCall,
             AvgRewardOutputTokensPerCall,
             AvgRewardCostPerCall,
@@ -345,6 +469,7 @@ class LMRatesAndCachePerPhaseTest(testing.TestCase):
             "optimizer",
             OptimizerTokensPerSecond,
             OptimizerThroughput,
+            AvgOptimizerLatency,
             AvgOptimizerInputTokensPerCall,
             AvgOptimizerOutputTokensPerCall,
             AvgOptimizerCostPerCall,
@@ -361,6 +486,7 @@ class LMRatesAndCachePerPhaseTest(testing.TestCase):
             phase,
             Tps,
             Rps,
+            Lat,
             AvgIn,
             AvgOut,
             AvgCost,
@@ -375,6 +501,7 @@ class LMRatesAndCachePerPhaseTest(testing.TestCase):
                 metrics = {
                     "tps": _bind(Tps(), [lm]),
                     "rps": _bind(Rps(), [lm]),
+                    "lat": _bind(Lat(), [lm]),
                     "avg_in": _bind(AvgIn(), [lm]),
                     "avg_out": _bind(AvgOut(), [lm]),
                     "avg_cost": _bind(AvgCost(), [lm]),
@@ -388,6 +515,7 @@ class LMRatesAndCachePerPhaseTest(testing.TestCase):
                 ratio_keys = (
                     "tps",
                     "rps",
+                    "lat",
                     "avg_in",
                     "avg_out",
                     "avg_cost",
@@ -410,9 +538,11 @@ class LMRatesAndCachePerPhaseTest(testing.TestCase):
                 _bump(lm, "cached_tokens", 50, phase=phase)
                 _bump(lm, "cache_creation_tokens", 10, phase=phase)
                 _bump(lm, "reasoning_tokens", 40, phase=phase)
+                _add_phase_wall_clock_s(phase, 4.0)  # throughput denominator
 
                 self.assertEqual(metrics["tps"].result(), 500 / 4.0)
                 self.assertEqual(metrics["rps"].result(), 2 / 4.0)
+                self.assertEqual(metrics["lat"].result(), 4.0 / 2)
                 self.assertEqual(metrics["avg_in"].result(), 200.0)
                 self.assertEqual(metrics["avg_out"].result(), 50.0)
                 self.assertAlmostEqual(metrics["avg_cost"].result(), 0.002)
@@ -421,3 +551,91 @@ class LMRatesAndCachePerPhaseTest(testing.TestCase):
                 self.assertEqual(metrics["hit_rate"].result(), 50 / 400)
                 self.assertEqual(metrics["reasoning"].result(), 40)
                 self.assertEqual(metrics["r_share"].result(), 40 / 100)
+
+
+class LMExtraAveragesPerPhaseTest(testing.TestCase):
+    """Extra per-call token averages (total / cached / cache-creation /
+    reasoning) for the reward and optimizer phases. The inference variants
+    are covered by dedicated tests above."""
+
+    PHASES = (
+        (
+            "reward",
+            AvgRewardTotalTokensPerCall,
+            AvgRewardCachedTokensPerCall,
+            AvgRewardCacheCreationTokensPerCall,
+            AvgRewardReasoningTokensPerCall,
+        ),
+        (
+            "optimizer",
+            AvgOptimizerTotalTokensPerCall,
+            AvgOptimizerCachedTokensPerCall,
+            AvgOptimizerCacheCreationTokensPerCall,
+            AvgOptimizerReasoningTokensPerCall,
+        ),
+    )
+
+    def test_extra_averages_per_phase(self):
+        for (
+            phase,
+            AvgTotal,
+            AvgCached,
+            AvgCacheCreate,
+            AvgReasoning,
+        ) in self.PHASES:
+            with self.subTest(phase=phase):
+                lm = _stub_lm_with_extras()
+                m_total = _bind(AvgTotal(), [lm])
+                m_cached = _bind(AvgCached(), [lm])
+                m_cachecreate = _bind(AvgCacheCreate(), [lm])
+                m_reasoning = _bind(AvgReasoning(), [lm])
+                # Zero-state.
+                self.assertEqual(m_total.result(), 0.0)
+                self.assertEqual(m_cached.result(), 0.0)
+                self.assertEqual(m_cachecreate.result(), 0.0)
+                self.assertEqual(m_reasoning.result(), 0.0)
+                # 2 calls, 500 total tokens, 60 cached, 40 cache-creation,
+                # 30 reasoning.
+                _record(lm, prompt=100, completion=20, elapsed=0.1, cost=0.0, phase=phase)
+                _record(lm, prompt=300, completion=80, elapsed=0.1, cost=0.0, phase=phase)
+                _bump(lm, "cached_tokens", 60, phase=phase)
+                _bump(lm, "cache_creation_tokens", 40, phase=phase)
+                _bump(lm, "reasoning_tokens", 30, phase=phase)
+                self.assertEqual(m_total.result(), 250.0)  # 500 / 2
+                self.assertEqual(m_cached.result(), 30.0)  # 60 / 2
+                self.assertEqual(m_cachecreate.result(), 20.0)  # 40 / 2
+                self.assertEqual(m_reasoning.result(), 15.0)  # 30 / 2
+
+
+class LMFailureMetricsPerPhaseTest(testing.TestCase):
+    """`FailedCalls` / `FallbackActivations` / `ErrorRate` for the reward and
+    optimizer phases (inference is covered by a dedicated test above)."""
+
+    PHASES = (
+        ("reward", RewardFailedCalls, RewardFallbackActivations, RewardErrorRate),
+        (
+            "optimizer",
+            OptimizerFailedCalls,
+            OptimizerFallbackActivations,
+            OptimizerErrorRate,
+        ),
+    )
+
+    def test_failure_metrics_per_phase(self):
+        for phase, FailedM, FallbackM, ErrorM in self.PHASES:
+            with self.subTest(phase=phase):
+                lm = _stub_lm()
+                m_failed = _bind(FailedM(), [lm])
+                m_fallback = _bind(FallbackM(), [lm])
+                m_error = _bind(ErrorM(), [lm])
+                # Zero-state: error rate guarded against no calls.
+                self.assertEqual(m_failed.result(), 0)
+                self.assertEqual(m_fallback.result(), 0)
+                self.assertEqual(m_error.result(), 0.0)
+                # 1 success, 3 failed (2 of which fell back).
+                _record(lm, prompt=10, completion=5, elapsed=0.1, cost=0.0, phase=phase)
+                _bump(lm, "failed_calls", 3, phase=phase)
+                _bump(lm, "fallback_activations", 2, phase=phase)
+                self.assertEqual(m_failed.result(), 3)
+                self.assertEqual(m_fallback.result(), 2)
+                self.assertEqual(m_error.result(), 3 / 4)  # 3 failed / (1 + 3)

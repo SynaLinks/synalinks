@@ -17,6 +17,7 @@ from synalinks.src.api_export import synalinks_export
 from synalinks.src.backend import is_trainable
 from synalinks.src.backend.common import global_state
 from synalinks.src.backend.common.name_scope import current_path
+from synalinks.src.backend.common.op_scope import current_op_scope
 from synalinks.src.hooks.hook_list import HookList
 from synalinks.src.metrics import Metric
 from synalinks.src.ops.operation import Operation
@@ -153,7 +154,7 @@ class Module(BackendModule, Operation, SynalinksSaveable):
         # Top-level invocation counters. Bumped only when this module is the
         # entry module of a `CallContext` — i.e., when it's the outermost
         # `__call__` in the stack. Nested calls leave these untouched.
-        # Phase routing follows the same `synalinks_op_scope` convention as
+        # Phase routing follows the same `op_scope` contextvar convention as
         # LanguageModel / EmbeddingModel.
         # Named `invocations` (not `calls`) to avoid colliding with the
         # LM/EM `cumulated_calls` semantic (= one provider call per increment).
@@ -720,7 +721,7 @@ class Module(BackendModule, Operation, SynalinksSaveable):
             elapsed_s = time.perf_counter() - module_call_ctx.start_time
             self.cumulated_invocations += 1
             self.cumulated_invocation_elapsed_s += elapsed_s
-            op_scope = global_state.get_global_attribute("synalinks_op_scope")
+            op_scope = current_op_scope()
             if op_scope in ("inference", "reward", "optimizer"):
                 setattr(
                     self,

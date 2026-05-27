@@ -208,7 +208,7 @@ class ProgramOperationalMetricsIntegrationTest(testing.TestCase):
     """
 
     async def test_metric_reads_real_invocations(self):
-        from synalinks.src.backend.common import global_state
+        from synalinks.src.backend.common.op_scope import op_scope
 
         class Query(backend.DataModel):
             query: str
@@ -217,18 +217,15 @@ class ProgramOperationalMetricsIntegrationTest(testing.TestCase):
         metric = ProgramCalls()
         metric.bind_program(module)
 
-        global_state.set_global_attribute("synalinks_op_scope", "inference")
-        try:
+        with op_scope("inference"):
             await module(backend.SymbolicDataModel(data_model=Query))
             await module(backend.SymbolicDataModel(data_model=Query))
             await module(backend.SymbolicDataModel(data_model=Query))
-        finally:
-            global_state.set_global_attribute("synalinks_op_scope", None)
 
         self.assertEqual(metric.result(), 3)
 
     async def test_metric_reads_real_elapsed(self):
-        from synalinks.src.backend.common import global_state
+        from synalinks.src.backend.common.op_scope import op_scope
 
         class Query(backend.DataModel):
             query: str
@@ -237,11 +234,8 @@ class ProgramOperationalMetricsIntegrationTest(testing.TestCase):
         metric = ProgramElapsedTime()
         metric.bind_program(module)
 
-        global_state.set_global_attribute("synalinks_op_scope", "inference")
-        try:
+        with op_scope("inference"):
             await module(backend.SymbolicDataModel(data_model=Query))
-        finally:
-            global_state.set_global_attribute("synalinks_op_scope", None)
 
         # Real elapsed; just assert positive and finite.
         result = metric.result()

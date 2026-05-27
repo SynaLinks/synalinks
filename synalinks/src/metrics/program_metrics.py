@@ -35,8 +35,8 @@ class ProgramOperationalMetric(Metric):
 
     Subclasses set `_phase` to one of ``"inference"``, ``"reward"``, or
     ``"optimizer"`` to read the corresponding counter set. Counters are
-    populated based on the ``synalinks_op_scope`` global flag set by the
-    trainer.
+    populated based on the active ``op_scope`` (contextvar) the trainer
+    sets for each phase.
     """
 
     _phase = "inference"

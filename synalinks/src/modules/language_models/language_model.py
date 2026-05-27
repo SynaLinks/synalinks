@@ -18,7 +18,7 @@ from synalinks.src.backend import ChatMessage
 from synalinks.src.backend import ChatMessages
 from synalinks.src.backend import ChatRole
 from synalinks.src.backend import JsonDataModel
-from synalinks.src.backend.common import global_state
+from synalinks.src.backend.common.op_scope import current_op_scope
 from synalinks.src.modules.core.tool import Tool
 from synalinks.src.modules.module import Module
 from synalinks.src.saving import serialization_lib
@@ -424,6 +424,33 @@ class LanguageModel(Module):
     putting your API keys in the code or a config file that can lead to
     leackage when pushing it into repositories.
 
+    **Controlling reasoning effort**
+
+    Reasoning ("thinking") models can be steered with the `reasoning_effort`
+    parameter, passed either as a default in the constructor or per call. It
+    accepts:
+
+    - `"none"` (the default): send nothing, leaving the model at its provider
+      default reasoning behavior.
+    - `"disable"`: actively turn native reasoning *off*. This only has an
+      effect for providers that reason by default, i.e. ollama's thinking
+      models (`qwen3`, `deepseek-r1`, ...); it maps to ollama's `think=False`
+      toggle and is safely ignored by non-thinking ollama models. Opt-in
+      providers (OpenAI, Anthropic, Gemini, ...) reason only when explicitly
+      enabled, so there is nothing to send and this value is a no-op for them.
+    - any other value (e.g. `"low"`, `"medium"`, `"high"`): forwarded to the
+      provider as the reasoning effort, but only when the model supports
+      reasoning (otherwise it is silently dropped).
+
+    ```python
+    import synalinks
+
+    language_model = synalinks.LanguageModel(
+        model="openai/o3-mini",
+        reasoning_effort="medium",
+    )
+    ```
+
     Args:
         model (str): The model to use.
         api_base (str): Optional. The endpoint to use.
@@ -437,7 +464,9 @@ class LanguageModel(Module):
         hooks (list): Optional. Hooks to attach to this module's calls.
         **default_kwargs: Optional. Default generation parameters (e.g.
             `temperature`, `top_p`, `top_k`, `max_tokens`, `reasoning_effort`)
-            forwarded to every call. Per-call kwargs override these.
+            forwarded to every call. Per-call kwargs override these. See
+            "Controlling reasoning effort" above for the `reasoning_effort`
+            values and their semantics.
     """
 
     def __init__(
@@ -511,6 +540,12 @@ class LanguageModel(Module):
         self.cumulated_cached_tokens = 0
         self.cumulated_cache_creation_tokens = 0
         self.cumulated_reasoning_tokens = 0
+        # Failure counters: a call that exhausts all retries (`failed_calls`)
+        # and each time the `fallback` chain is invoked because of it
+        # (`fallback_activations`). Successful calls bump `cumulated_calls`;
+        # these are tracked separately so error rate is observable.
+        self.cumulated_failed_calls = 0
+        self.cumulated_fallback_activations = 0
         self.cumulated_details = {}
         self.last_call_prompt_tokens = 0
         self.last_call_completion_tokens = 0
@@ -536,10 +571,22 @@ class LanguageModel(Module):
             setattr(self, f"{_phase}_cumulated_cached_tokens", 0)
             setattr(self, f"{_phase}_cumulated_cache_creation_tokens", 0)
             setattr(self, f"{_phase}_cumulated_reasoning_tokens", 0)
+            setattr(self, f"{_phase}_cumulated_failed_calls", 0)
+            setattr(self, f"{_phase}_cumulated_fallback_activations", 0)
             setattr(self, f"{_phase}_cumulated_details", {})
         # No state depends on the input shape, so mark built up-front and
         # skip Module's auto-build path (which would try to trace `call`).
         self.built = True
+
+    def _record_event(self, suffix):
+        """Bump an all-time + phase-scoped operational counter by 1 (used for
+        `failed_calls` / `fallback_activations`). Phase follows the active
+        `op_scope`, matching how successful-call counters are attributed.
+        """
+        op = current_op_scope()
+        _accumulate(self, "", {suffix: 1}, None)
+        if op is not None:
+            _accumulate(self, f"{op}_", {suffix: 1}, None)
 
     async def call(self, messages, schema=None, tools=None, streaming=False, **kwargs):
         """
@@ -594,12 +641,24 @@ class LanguageModel(Module):
                 tools = tools.values()
             kwargs["tools"] = [_tool_to_wire(t) for t in tools]
 
-        # Handle reasoning_effort parameter - just forward to litellm if supported
+        # Handle reasoning_effort:
+        #   "none"    -> send nothing; leave the model at its provider default.
+        #   "disable" -> actively turn native reasoning OFF. This only needs an
+        #                explicit flag where reasoning is ON by default, i.e.
+        #                ollama's thinking models (qwen3, deepseek-r1, ...), which
+        #                reason unless told not to. `think=False` is the ollama
+        #                toggle and is safely ignored by non-thinking ollama
+        #                models. Opt-in providers (OpenAI, Anthropic, Gemini, ...)
+        #                reason only when enabled, so there is nothing to send.
+        #   otherwise -> forward the effort to litellm when the model supports it.
         reasoning_effort = kwargs.pop("reasoning_effort", "none")
         schema_had_thinking = bool(schema) and "thinking" in (
             schema.get("properties") or {}
         )
-        if reasoning_effort not in ("none", "disable"):
+        if reasoning_effort == "disable":
+            if self.model.startswith("ollama"):
+                kwargs["think"] = False
+        elif reasoning_effort != "none":
             if litellm.supports_reasoning(model=self.model):
                 kwargs["reasoning_effort"] = reasoning_effort
                 if schema_had_thinking:
@@ -766,7 +825,9 @@ class LanguageModel(Module):
             )
         except Exception as e:
             warnings.warn(f"All retries failed for {self}: {e}")
+            self._record_event("failed_calls")
             if self.fallback:
+                self._record_event("fallback_activations")
                 return await self.fallback(
                     messages,
                     schema=schema,
@@ -800,9 +861,7 @@ class LanguageModel(Module):
                     **kwargs,
                 )
                 elapsed_s = time.perf_counter() - t0
-                op_scope = global_state.get_global_attribute("synalinks_op_scope")
-                if op_scope not in ("inference", "reward", "optimizer"):
-                    op_scope = None
+                op_scope = current_op_scope()
                 response_cost = None
                 if hasattr(response, "_hidden_params"):
                     if "response_cost" in response._hidden_params:

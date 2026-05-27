@@ -1,5 +1,6 @@
 # License Apache 2.0: (c) 2025-2026 Yoan Sallami (Synalinks Team)
 
+from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 from synalinks.src import testing
@@ -153,6 +154,107 @@ class OMEGATest(testing.TestCase):
         # Should filter out some candidates based on DNS
         self.assertGreater(len(result), 0)
         self.assertLessEqual(len(result), len(candidates))
+
+    def _make_trainable_variable(self):
+        """A minimal trainable variable for mutation/crossover tests."""
+        trainable_variable = JsonDataModel(
+            json={"instructions": "do the thing"},
+            schema={
+                "type": "object",
+                "properties": {"instructions": {"type": "string"}},
+            },
+        )
+        trainable_variable.description = "the variable to optimize"
+        return trainable_variable
+
+    def _make_batch(self):
+        """Minimal x / y / y_pred batches whose items expose `get_json`."""
+        x = [JsonDataModel(json={"q": "hi"}, schema={"type": "object"})]
+        y = [JsonDataModel(json={"a": "bye"}, schema={"type": "object"})]
+        y_pred = [JsonDataModel(json={"a": "yo"}, schema={"type": "object"})]
+        return x, y, y_pred
+
+    async def test_mutate_candidate_survives_lm_failure(self):
+        """A failing mutation LM call is skipped (returns None), not fatal."""
+        optimizer = OMEGA()
+        optimizer.set_program(SimpleNamespace(description="A test program"))
+
+        trainable_variable = self._make_trainable_variable()
+        schema_id = id(trainable_variable.get_schema())
+        optimizer.mutation_programs[schema_id] = AsyncMock(
+            side_effect=RuntimeError("litellm timeout after 600s"),
+        )
+
+        x, y, y_pred = self._make_batch()
+
+        with self.assertWarns(UserWarning):
+            result = await optimizer.mutate_candidate(
+                3,
+                trainable_variable,
+                {"instructions": "do the thing"},
+                x=x,
+                y=y,
+                y_pred=y_pred,
+                training=True,
+            )
+
+        self.assertIsNone(result)
+        optimizer.mutation_programs[schema_id].assert_awaited_once()
+
+    async def test_merge_candidate_survives_lm_failure(self):
+        """A failing crossover LM call is skipped (returns None), not fatal."""
+        optimizer = OMEGA()
+        optimizer.set_program(SimpleNamespace(description="A test program"))
+
+        trainable_variable = self._make_trainable_variable()
+        schema_id = id(trainable_variable.get_schema())
+        optimizer.crossover_programs[schema_id] = AsyncMock(
+            side_effect=RuntimeError("litellm timeout after 600s"),
+        )
+
+        x, y, y_pred = self._make_batch()
+
+        with self.assertWarns(UserWarning):
+            result = await optimizer.merge_candidate(
+                3,
+                trainable_variable,
+                {"instructions": "current"},
+                {"instructions": "other"},
+                x=x,
+                y=y,
+                y_pred=y_pred,
+                training=True,
+            )
+
+        self.assertIsNone(result)
+        optimizer.crossover_programs[schema_id].assert_awaited_once()
+
+    async def test_mutate_candidate_returns_program_output_on_success(self):
+        """On success the mutation program's output is returned unchanged."""
+        optimizer = OMEGA()
+        optimizer.set_program(SimpleNamespace(description="A test program"))
+
+        trainable_variable = self._make_trainable_variable()
+        schema_id = id(trainable_variable.get_schema())
+        expected = JsonDataModel(
+            json={"instructions": "improved"},
+            schema={"type": "object"},
+        )
+        optimizer.mutation_programs[schema_id] = AsyncMock(return_value=expected)
+
+        x, y, y_pred = self._make_batch()
+
+        result = await optimizer.mutate_candidate(
+            3,
+            trainable_variable,
+            {"instructions": "do the thing"},
+            x=x,
+            y=y,
+            y_pred=y_pred,
+            training=True,
+        )
+
+        self.assertIs(result, expected)
 
     async def test_on_epoch_end_sorts_and_selects_candidates_ga(self):
         """Test on_epoch_end sorts candidates and selects top ones (GA mode)."""

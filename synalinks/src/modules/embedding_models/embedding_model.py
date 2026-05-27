@@ -14,7 +14,7 @@ from tenacity import wait_exponential
 from synalinks.src.api_export import synalinks_export
 from synalinks.src.backend import Embeddings
 from synalinks.src.backend import JsonDataModel
-from synalinks.src.backend.common import global_state
+from synalinks.src.backend.common.op_scope import current_op_scope
 from synalinks.src.modules.module import Module
 from synalinks.src.saving import serialization_lib
 
@@ -221,6 +221,10 @@ class EmbeddingModel(Module):
         self.cumulated_elapsed_s = 0.0
         self.cumulated_cost = 0.0
         self.cumulated_cached_tokens = 0
+        # Failure counters: a call that exhausts all retries (`failed_calls`)
+        # and each `fallback` invocation it triggers (`fallback_activations`).
+        self.cumulated_failed_calls = 0
+        self.cumulated_fallback_activations = 0
         self.cumulated_details = {}
         self.last_call_prompt_tokens = 0
         self.last_call_tokens = 0
@@ -240,10 +244,22 @@ class EmbeddingModel(Module):
             setattr(self, f"{_phase}_cumulated_elapsed_s", 0.0)
             setattr(self, f"{_phase}_cumulated_cost", 0.0)
             setattr(self, f"{_phase}_cumulated_cached_tokens", 0)
+            setattr(self, f"{_phase}_cumulated_failed_calls", 0)
+            setattr(self, f"{_phase}_cumulated_fallback_activations", 0)
             setattr(self, f"{_phase}_cumulated_details", {})
         # No state depends on the input shape, so mark built up-front and
         # skip Module's auto-build path (which would try to trace `call`).
         self.built = True
+
+    def _record_event(self, suffix):
+        """Bump an all-time + phase-scoped operational counter by 1 (used for
+        `failed_calls` / `fallback_activations`), attributed to the active
+        `op_scope` like the successful-call counters.
+        """
+        op = current_op_scope()
+        _accumulate(self, "", {suffix: 1}, None)
+        if op is not None:
+            _accumulate(self, f"{op}_", {suffix: 1}, None)
 
     async def call(self, inputs, **kwargs):
         """
@@ -265,7 +281,9 @@ class EmbeddingModel(Module):
             return await self._call_with_retry(texts, **kwargs)
         except Exception as e:
             warnings.warn(f"All retries failed for {self}: {e}")
+            self._record_event("failed_calls")
             if self.fallback:
+                self._record_event("fallback_activations")
                 return await self.fallback(
                     inputs,
                     **input_kwargs,
@@ -302,9 +320,7 @@ class EmbeddingModel(Module):
                         **kwargs,
                     )
                 elapsed_s = time.perf_counter() - t0
-                op_scope = global_state.get_global_attribute("synalinks_op_scope")
-                if op_scope not in ("inference", "reward", "optimizer"):
-                    op_scope = None
+                op_scope = current_op_scope()
                 response_cost = None
                 if hasattr(response, "_hidden_params"):
                     if "response_cost" in response._hidden_params:
