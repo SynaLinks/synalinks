@@ -307,11 +307,14 @@ combined = result1 + result2
 #    "details": "Additional details", "tags": ["a", "b"]}
 ```
 
-A small invariant worth knowing: if the two operands have *no* field
-names in common, then `a + b` and `b + a` produce the same result. (The
-math word for this property is **commutative**.) If they *do* share a
-field name, the operand on the right wins — so order does matter when
-fields overlap, and you should be deliberate about which goes first.
+One thing to keep in mind: `+` preserves field order — the left
+operand's fields come first, then the right operand's. So `a + b` and
+`b + a` hold the same values but lay the fields out in a different order;
+`+` is *not* commutative. And if the two operands share a field name,
+neither value is dropped: the colliding field from the right operand is
+kept under a numeric-suffixed name (e.g. `summary` and `summary_1`).
+Concatenation is append-only, so be deliberate about which operand goes
+first.
 
 ## Masking: keeping (or dropping) a subset of fields
 
