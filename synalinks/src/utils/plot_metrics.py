@@ -2,11 +2,19 @@
 
 import os
 
-import matplotlib.pyplot as plt
 import numpy as np
+from matplotlib.figure import Figure
 
 from synalinks.src.api_export import synalinks_export
 from synalinks.src.utils.plot_utils import generate_distinct_colors
+
+# Build figures through the object-oriented ``matplotlib.figure.Figure`` API
+# rather than ``pyplot``. ``pyplot`` lazily instantiates a GUI figure manager
+# (e.g. ``tk.Tk()``), which raises on hosts whose default backend is unusable
+# (such as a broken Tk install on Windows CI). These helpers only write a PNG
+# to disk, and a bare ``Figure`` renders headlessly through Agg on ``savefig``
+# with zero global side effects -- important because this module is imported
+# eagerly by ``import synalinks``.
 
 
 @synalinks_export("synalinks.utils.plot_metrics")
@@ -74,29 +82,32 @@ def plot_metrics(
 
     colors = generate_distinct_colors(len(metric_names))
 
-    plt.bar(metric_names, metric_values, color=colors, **kwargs)
+    fig = Figure()
+    ax = fig.subplots()
+
+    ax.bar(metric_names, metric_values, color=colors, **kwargs)
 
     if xlabel:
-        plt.xlabel(xlabel)
+        ax.set_xlabel(xlabel)
     if ylabel:
-        plt.ylabel(ylabel)
+        ax.set_ylabel(ylabel)
     if title:
-        plt.title(title)
+        ax.set_title(title)
 
     # Set y-axis limits: minimum 0.0, maximum 1.0 but allow exceeding if needed
     max_value = max(metric_values) if metric_values else 1.0
-    plt.ylim(0.0, max(1.0, max_value * 1.05))  # 5% padding above max value
-    plt.grid(grid)
+    ax.set_ylim(0.0, max(1.0, max_value * 1.05))  # 5% padding above max value
+    ax.grid(grid)
 
     # Rotate x-axis labels if there are many metrics
     if len(metric_names) > 5:
-        plt.xticks(rotation=45, ha="right")
+        ax.set_xticks(range(len(metric_names)))
+        ax.set_xticklabels(metric_names, rotation=45, ha="right")
 
     if to_folder:
         to_file = os.path.join(to_folder, to_file)
 
-    plt.savefig(to_file, dpi=300, bbox_inches="tight")
-    plt.close()
+    fig.savefig(to_file, dpi=300, bbox_inches="tight")
 
     try:
         import marimo as mo
@@ -202,6 +213,9 @@ def plot_metrics_comparison(
     num_conditions = len(condition_names)
     colors = generate_distinct_colors(num_conditions)
 
+    fig = Figure()
+    ax = fig.subplots()
+
     # Calculate bar positions
     bar_positions = []
     for i in range(num_conditions):
@@ -211,7 +225,7 @@ def plot_metrics_comparison(
     # Plot bars for each condition
     for i, condition in enumerate(condition_names):
         values = [metrics_dict[condition][metric] for metric in metric_names]
-        plt.bar(
+        ax.bar(
             bar_positions[i],
             values,
             bar_width,
@@ -221,32 +235,34 @@ def plot_metrics_comparison(
         )
 
     if xlabel:
-        plt.xlabel(xlabel)
+        ax.set_xlabel(xlabel)
     if ylabel:
-        plt.ylabel(ylabel)
+        ax.set_ylabel(ylabel)
     if title:
-        plt.title(title)
+        ax.set_title(title)
 
     # Set y-axis limits: minimum 0.0, maximum 1.0 but allow exceeding if needed
     all_values = [
-        metrics_dict[cond][metric] for cond in condition_names for metric in metric_names
+        metrics_dict[cond][metric]
+        for cond in condition_names
+        for metric in metric_names
     ]
     max_value = max(all_values) if all_values else 1.0
-    plt.ylim(0.0, max(1.0, max_value * 1.05))  # 5% padding above max value
+    ax.set_ylim(0.0, max(1.0, max_value * 1.05))  # 5% padding above max value
 
-    plt.grid(grid)
-    plt.xticks(x, metric_names)
-    plt.legend()
+    ax.grid(grid)
+    ax.set_xticks(x)
+    ax.set_xticklabels(metric_names)
+    ax.legend()
 
     # Rotate x-axis labels if there are many metrics
     if len(metric_names) > 5:
-        plt.xticks(x, metric_names, rotation=45, ha="right")
+        ax.set_xticklabels(metric_names, rotation=45, ha="right")
 
     if to_folder:
         to_file = os.path.join(to_folder, to_file)
 
-    plt.savefig(to_file, dpi=300, bbox_inches="tight")
-    plt.close()
+    fig.savefig(to_file, dpi=300, bbox_inches="tight")
 
     try:
         import marimo as mo
@@ -348,7 +364,9 @@ def plot_metrics_comparison_with_mean_and_std(
                 " metric dictionaries"
             )
         if not metrics_comparison_dict[condition]:
-            raise ValueError(f"Metrics list for condition '{condition}' cannot be empty")
+            raise ValueError(
+                f"Metrics list for condition '{condition}' cannot be empty"
+            )
 
     # Get metric names from first condition's first run
     all_metric_names = list(metrics_comparison_dict[condition_names[0]][0].keys())
@@ -393,6 +411,9 @@ def plot_metrics_comparison_with_mean_and_std(
     num_conditions = len(condition_names)
     colors = generate_distinct_colors(num_conditions)
 
+    fig = Figure()
+    ax = fig.subplots()
+
     # Calculate bar positions
     bar_positions = []
     for i in range(num_conditions):
@@ -405,7 +426,7 @@ def plot_metrics_comparison_with_mean_and_std(
         means = condition_stats[condition]["means"]
         stds = condition_stats[condition]["stds"]
 
-        bars = plt.bar(
+        bars = ax.bar(
             bar_positions[i],
             means,
             bar_width,
@@ -421,7 +442,7 @@ def plot_metrics_comparison_with_mean_and_std(
         if show_values:
             for j, (bar, mean, std) in enumerate(zip(bars, means, stds)):
                 height = bar.get_height()
-                plt.text(
+                ax.text(
                     bar.get_x() + bar.get_width() / 2.0,
                     height + std + 0.01,
                     f"{mean:.3f}±{std:.3f}",
@@ -432,11 +453,11 @@ def plot_metrics_comparison_with_mean_and_std(
                 )
 
     if xlabel:
-        plt.xlabel(xlabel)
+        ax.set_xlabel(xlabel)
     if ylabel:
-        plt.ylabel(ylabel)
+        ax.set_ylabel(ylabel)
     if title:
-        plt.title(title)
+        ax.set_title(title)
 
     # Set y-axis limits: minimum 0.0, maximum 1.0 but allow exceeding if needed
     all_means = [
@@ -445,25 +466,27 @@ def plot_metrics_comparison_with_mean_and_std(
         for mean in condition_stats[condition]["means"]
     ]
     all_stds = [
-        std for condition in condition_names for std in condition_stats[condition]["stds"]
+        std
+        for condition in condition_names
+        for std in condition_stats[condition]["stds"]
     ]
     max_val = max(np.array(all_means) + np.array(all_stds)) if all_means else 1.0
     y_padding = 0.15 if show_values else 0.05
-    plt.ylim(0.0, max(1.0, max_val + y_padding))
+    ax.set_ylim(0.0, max(1.0, max_val + y_padding))
 
-    plt.grid(grid)
-    plt.xticks(x, metric_names)
-    plt.legend()
+    ax.grid(grid)
+    ax.set_xticks(x)
+    ax.set_xticklabels(metric_names)
+    ax.legend()
 
     # Rotate x-axis labels if there are many metrics
     if len(metric_names) > 5:
-        plt.xticks(x, metric_names, rotation=45, ha="right")
+        ax.set_xticklabels(metric_names, rotation=45, ha="right")
 
     if to_folder:
         to_file = os.path.join(to_folder, to_file)
 
-    plt.savefig(to_file, dpi=300, bbox_inches="tight")
-    plt.close()
+    fig.savefig(to_file, dpi=300, bbox_inches="tight")
 
     try:
         import marimo as mo
@@ -584,8 +607,11 @@ def plot_metrics_with_mean_and_std(
 
     colors = generate_distinct_colors(len(metric_names))
 
+    fig = Figure()
+    ax = fig.subplots()
+
     # Create bar plot with error bars
-    bars = plt.bar(
+    bars = ax.bar(
         metric_names, means, yerr=stds, color=colors, capsize=capsize, **kwargs
     )
 
@@ -593,7 +619,7 @@ def plot_metrics_with_mean_and_std(
     if show_values:
         for i, (bar, mean, std) in enumerate(zip(bars, means, stds)):
             height = bar.get_height()
-            plt.text(
+            ax.text(
                 bar.get_x() + bar.get_width() / 2.0,
                 height + std + 0.01,
                 f"{mean:.3f}±{std:.3f}",
@@ -603,28 +629,28 @@ def plot_metrics_with_mean_and_std(
             )
 
     if xlabel:
-        plt.xlabel(xlabel)
+        ax.set_xlabel(xlabel)
     if ylabel:
-        plt.ylabel(ylabel)
+        ax.set_ylabel(ylabel)
     if title:
-        plt.title(title)
+        ax.set_title(title)
 
     # Set y-axis limits: minimum 0.0, maximum 1.0 but allow exceeding if needed
     max_val = max(np.array(means) + np.array(stds)) if means else 1.0
     y_padding = 0.1 if show_values else 0.05
-    plt.ylim(0.0, max(1.0, max_val + y_padding))
+    ax.set_ylim(0.0, max(1.0, max_val + y_padding))
 
-    plt.grid(grid)
+    ax.grid(grid)
 
     # Rotate x-axis labels if there are many metrics
     if len(metric_names) > 5:
-        plt.xticks(rotation=45, ha="right")
+        ax.set_xticks(range(len(metric_names)))
+        ax.set_xticklabels(metric_names, rotation=45, ha="right")
 
     if to_folder:
         to_file = os.path.join(to_folder, to_file)
 
-    plt.savefig(to_file, dpi=300, bbox_inches="tight")
-    plt.close()
+    fig.savefig(to_file, dpi=300, bbox_inches="tight")
 
     try:
         import marimo as mo

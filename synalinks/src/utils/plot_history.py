@@ -2,12 +2,20 @@
 
 import os
 
-import matplotlib.pyplot as plt
 import numpy as np
+from matplotlib.figure import Figure
 from matplotlib.ticker import MaxNLocator
 
 from synalinks.src.api_export import synalinks_export
 from synalinks.src.utils.plot_utils import generate_distinct_colors
+
+# Build figures through the object-oriented ``matplotlib.figure.Figure`` API
+# rather than ``pyplot``. ``pyplot`` lazily instantiates a GUI figure manager
+# (e.g. ``tk.Tk()``), which raises on hosts whose default backend is unusable
+# (such as a broken Tk install on Windows CI). These helpers only write a PNG
+# to disk, and a bare ``Figure`` renders headlessly through Agg on ``savefig``
+# with zero global side effects -- important because this module is imported
+# eagerly by ``import synalinks``.
 
 
 @synalinks_export("synalinks.utils.plot_history")
@@ -70,32 +78,34 @@ def plot_history(
 
     colors = generate_distinct_colors(len(all_metrics))
 
+    fig = Figure()
+    ax = fig.subplots()
+
     for i, metric in enumerate(all_metrics):
-        plt.plot(history.history[metric], label=metric, color=colors[i], **kwargs)
+        ax.plot(history.history[metric], label=metric, color=colors[i], **kwargs)
 
     if xlabel:
-        plt.xlabel(xlabel)
+        ax.set_xlabel(xlabel)
 
-    plt.gca().xaxis.set_major_locator(MaxNLocator(integer=True))
+    ax.xaxis.set_major_locator(MaxNLocator(integer=True))
 
     if ylabel:
-        plt.ylabel(ylabel)
+        ax.set_ylabel(ylabel)
     if title:
-        plt.title(title)
+        ax.set_title(title)
 
     # Set y-axis limits: minimum 0.0, maximum 1.0 but allow exceeding if needed
     all_values = [val for metric in all_metrics for val in history.history[metric]]
     max_value = max(all_values) if all_values else 1.0
-    plt.ylim(0.0, max(1.0, max_value * 1.05))  # 5% padding above max value
+    ax.set_ylim(0.0, max(1.0, max_value * 1.05))  # 5% padding above max value
 
-    plt.legend()
-    plt.grid(grid)
+    ax.legend()
+    ax.grid(grid)
 
     if to_folder:
         to_file = os.path.join(to_folder, to_file)
 
-    plt.savefig(to_file, dpi=300, bbox_inches="tight")
-    plt.close()
+    fig.savefig(to_file, dpi=300, bbox_inches="tight")
 
     try:
         import marimo as mo
@@ -218,7 +228,8 @@ def plot_history_with_mean_and_std(
 
     colors = generate_distinct_colors(len(all_metrics))
 
-    plt.figure(figsize=(10, 6))
+    fig = Figure(figsize=(10, 6))
+    ax = fig.subplots()
 
     for i, metric in enumerate(all_metrics):
         color = colors[i]
@@ -226,9 +237,9 @@ def plot_history_with_mean_and_std(
         mean = mean_values[metric]
         std = std_values[metric]
 
-        plt.plot(x, mean, label=f"{metric} (mean)", color=color, **kwargs)
+        ax.plot(x, mean, label=f"{metric} (mean)", color=color, **kwargs)
 
-        plt.fill_between(
+        ax.fill_between(
             x,
             mean - std,
             mean + std,
@@ -238,30 +249,29 @@ def plot_history_with_mean_and_std(
         )
 
     if xlabel:
-        plt.xlabel(xlabel)
+        ax.set_xlabel(xlabel)
 
-    plt.gca().xaxis.set_major_locator(MaxNLocator(integer=True))
+    ax.xaxis.set_major_locator(MaxNLocator(integer=True))
 
     if ylabel:
-        plt.ylabel(ylabel)
+        ax.set_ylabel(ylabel)
     if title:
-        plt.title(title)
+        ax.set_title(title)
 
     # Set y-axis limits: minimum 0.0, maximum 1.0 but allow exceeding if needed
     all_vals = []
     for metric in all_metrics:
         all_vals.extend(mean_values[metric] + std_values[metric])
     max_value = max(all_vals) if all_vals else 1.0
-    plt.ylim(0.0, max(1.0, max_value * 1.05))  # 5% padding above max value
+    ax.set_ylim(0.0, max(1.0, max_value * 1.05))  # 5% padding above max value
 
-    plt.legend()
-    plt.grid(grid)
+    ax.legend()
+    ax.grid(grid)
 
     if to_folder:
         to_file = os.path.join(to_folder, to_file)
 
-    plt.savefig(to_file, dpi=300, bbox_inches="tight")
-    plt.close()
+    fig.savefig(to_file, dpi=300, bbox_inches="tight")
 
     try:
         import marimo as mo
@@ -391,7 +401,8 @@ def plot_history_comparison(
     # Get colors for metrics and line styles for conditions
     colors = generate_distinct_colors(len(metric_names))
 
-    plt.figure(figsize=(12, 8))
+    fig = Figure(figsize=(12, 8))
+    ax = fig.subplots()
 
     # Plot each metric for each condition
     for metric_idx, metric in enumerate(metric_names):
@@ -399,7 +410,7 @@ def plot_history_comparison(
             history = history_dict[condition]
             linestyle = linestyle_cycle[cond_idx % len(linestyle_cycle)]
 
-            plt.plot(
+            ax.plot(
                 history.history[metric],
                 label=f"{condition} - {metric}",
                 color=colors[metric_idx],
@@ -408,14 +419,14 @@ def plot_history_comparison(
             )
 
     if xlabel:
-        plt.xlabel(xlabel)
+        ax.set_xlabel(xlabel)
 
-    plt.gca().xaxis.set_major_locator(MaxNLocator(integer=True))
+    ax.xaxis.set_major_locator(MaxNLocator(integer=True))
 
     if ylabel:
-        plt.ylabel(ylabel)
+        ax.set_ylabel(ylabel)
     if title:
-        plt.title(title)
+        ax.set_title(title)
 
     # Set y-axis limits: minimum 0.0, maximum 1.0 but allow exceeding if needed
     all_values = []
@@ -423,16 +434,15 @@ def plot_history_comparison(
         for metric in metric_names:
             all_values.extend(history_dict[condition].history[metric])
     max_value = max(all_values) if all_values else 1.0
-    plt.ylim(0.0, max(1.0, max_value * 1.05))  # 5% padding above max value
+    ax.set_ylim(0.0, max(1.0, max_value * 1.05))  # 5% padding above max value
 
-    plt.legend()
-    plt.grid(grid)
+    ax.legend()
+    ax.grid(grid)
 
     if to_folder:
         to_file = os.path.join(to_folder, to_file)
 
-    plt.savefig(to_file, dpi=300, bbox_inches="tight")
-    plt.close()
+    fig.savefig(to_file, dpi=300, bbox_inches="tight")
 
     try:
         import marimo as mo
@@ -526,10 +536,14 @@ def plot_history_comparison_with_mean_and_std(
                 f"Values for condition '{condition}' must be a list of History objects"
             )
         if not history_comparison_dict[condition]:
-            raise ValueError(f"History list for condition '{condition}' cannot be empty")
+            raise ValueError(
+                f"History list for condition '{condition}' cannot be empty"
+            )
 
     # Get metric names from first condition's first history
-    all_metric_names = list(history_comparison_dict[condition_names[0]][0].history.keys())
+    all_metric_names = list(
+        history_comparison_dict[condition_names[0]][0].history.keys()
+    )
 
     # Validate consistency across all conditions and histories
     for condition in condition_names:
@@ -584,7 +598,8 @@ def plot_history_comparison_with_mean_and_std(
     # Get colors for metrics
     colors = generate_distinct_colors(len(metric_names))
 
-    plt.figure(figsize=(12, 8))
+    fig = Figure(figsize=(12, 8))
+    ax = fig.subplots()
 
     # Plot each metric for each condition
     x = range(min_epochs)
@@ -597,7 +612,7 @@ def plot_history_comparison_with_mean_and_std(
             color = colors[metric_idx]
 
             # Plot mean line
-            plt.plot(
+            ax.plot(
                 x,
                 mean_vals,
                 label=f"{condition} - {metric}",
@@ -607,19 +622,19 @@ def plot_history_comparison_with_mean_and_std(
             )
 
             # Plot std band
-            plt.fill_between(
+            ax.fill_between(
                 x, mean_vals - std_vals, mean_vals + std_vals, color=color, alpha=alpha
             )
 
     if xlabel:
-        plt.xlabel(xlabel)
+        ax.set_xlabel(xlabel)
 
-    plt.gca().xaxis.set_major_locator(MaxNLocator(integer=True))
+    ax.xaxis.set_major_locator(MaxNLocator(integer=True))
 
     if ylabel:
-        plt.ylabel(ylabel)
+        ax.set_ylabel(ylabel)
     if title:
-        plt.title(title)
+        ax.set_title(title)
 
     # Set y-axis limits: minimum 0.0, maximum 1.0 but allow exceeding if needed
     all_values = []
@@ -629,16 +644,15 @@ def plot_history_comparison_with_mean_and_std(
             std_vals = condition_stats[condition][metric]["std"]
             all_values.extend(mean_vals + std_vals)
     max_value = max(all_values) if all_values else 1.0
-    plt.ylim(0.0, max(1.0, max_value * 1.05))  # 5% padding above max value
+    ax.set_ylim(0.0, max(1.0, max_value * 1.05))  # 5% padding above max value
 
-    plt.legend()
-    plt.grid(grid)
+    ax.legend()
+    ax.grid(grid)
 
     if to_folder:
         to_file = os.path.join(to_folder, to_file)
 
-    plt.savefig(to_file, dpi=300, bbox_inches="tight")
-    plt.close()
+    fig.savefig(to_file, dpi=300, bbox_inches="tight")
 
     try:
         import marimo as mo
