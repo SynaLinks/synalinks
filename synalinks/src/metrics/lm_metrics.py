@@ -4,7 +4,8 @@
 
 All metrics in this file read counters that the LM populates on each
 provider call. Routing across `inference`, `reward`, and `optimizer`
-phases follows the `synalinks_op_scope` global flag set by the trainer.
+phases follows the active `op_scope` (a contextvar the trainer sets via
+`synalinks.src.backend.common.op_scope.op_scope`).
 
 Class hierarchy:
 
@@ -14,6 +15,7 @@ Class hierarchy:
 """
 
 from synalinks.src.api_export import synalinks_export
+from synalinks.src.backend.common.op_scope import read_phase_wall_clock_s
 from synalinks.src.metrics.metric import Metric
 
 _TRACKED_SUFFIXES = (
@@ -26,6 +28,8 @@ _TRACKED_SUFFIXES = (
     "cached_tokens",
     "cache_creation_tokens",
     "reasoning_tokens",
+    "failed_calls",
+    "fallback_activations",
 )
 
 
@@ -73,8 +77,8 @@ class LMOperationalMetric(Metric):
 
     Subclasses set `_phase` to one of ``"inference"``, ``"reward"``, or
     ``"optimizer"`` to read from the corresponding counter set on each
-    bound LM. Counters are populated by the LM based on the
-    ``synalinks_op_scope`` global flag set by the trainer.
+    bound LM. Counters are populated by the LM based on the active
+    ``op_scope`` (contextvar) the trainer sets for each phase.
 
     The metric binds itself automatically to every `LanguageModel`
     reachable from the program (and their `.fallback` chains) when
@@ -87,6 +91,7 @@ class LMOperationalMetric(Metric):
         super().__init__(name=name)
         self._language_models = []
         self._baselines = {suffix: 0 for suffix in _TRACKED_SUFFIXES}
+        self._wall_baseline = 0.0
 
     @property
     def language_models(self):
@@ -106,9 +111,17 @@ class LMOperationalMetric(Metric):
     def _snapshot(self):
         for suffix in _TRACKED_SUFFIXES:
             self._baselines[suffix] = self._read(suffix)
+        self._wall_baseline = read_phase_wall_clock_s(self._phase)
 
     def _delta(self, suffix):
         return self._read(suffix) - self._baselines.get(suffix, 0)
+
+    def _wall_clock_delta(self):
+        """Wall-clock seconds the trainer spent in this metric's phase since
+        the last snapshot. Used as the throughput denominator so concurrent
+        (overlapping) calls don't inflate it the way summed `elapsed_s` does.
+        """
+        return read_phase_wall_clock_s(self._phase) - self._wall_baseline
 
     def reset_state(self):
         self._snapshot()
@@ -184,6 +197,62 @@ class AvgOutputTokensPerCall(LMOperationalMetric):
         return self._delta("completion_tokens") / calls
 
 
+@synalinks_export("synalinks.metrics.AvgTotalTokensPerCall")
+class AvgTotalTokensPerCall(LMOperationalMetric):
+    """Average total tokens (input + output) per LM call over this run."""
+
+    def __init__(self, name="avg_total_tokens_per_call"):
+        super().__init__(name=name)
+
+    def result(self):
+        calls = self._delta("calls")
+        if calls <= 0:
+            return 0.0
+        return self._delta("tokens") / calls
+
+
+@synalinks_export("synalinks.metrics.AvgCachedTokensPerCall")
+class AvgCachedTokensPerCall(LMOperationalMetric):
+    """Average cached prompt tokens per LM call over this run."""
+
+    def __init__(self, name="avg_cached_tokens_per_call"):
+        super().__init__(name=name)
+
+    def result(self):
+        calls = self._delta("calls")
+        if calls <= 0:
+            return 0.0
+        return self._delta("cached_tokens") / calls
+
+
+@synalinks_export("synalinks.metrics.AvgCacheCreationTokensPerCall")
+class AvgCacheCreationTokensPerCall(LMOperationalMetric):
+    """Average cache-creation tokens per LM call over this run."""
+
+    def __init__(self, name="avg_cache_creation_tokens_per_call"):
+        super().__init__(name=name)
+
+    def result(self):
+        calls = self._delta("calls")
+        if calls <= 0:
+            return 0.0
+        return self._delta("cache_creation_tokens") / calls
+
+
+@synalinks_export("synalinks.metrics.AvgReasoningTokensPerCall")
+class AvgReasoningTokensPerCall(LMOperationalMetric):
+    """Average reasoning/thinking tokens per LM call over this run."""
+
+    def __init__(self, name="avg_reasoning_tokens_per_call"):
+        super().__init__(name=name)
+
+    def result(self):
+        calls = self._delta("calls")
+        if calls <= 0:
+            return 0.0
+        return self._delta("reasoning_tokens") / calls
+
+
 @synalinks_export("synalinks.metrics.TokensPerSecond")
 class TokensPerSecond(LMOperationalMetric):
     """Throughput in total tokens per second over this run."""
@@ -192,10 +261,10 @@ class TokensPerSecond(LMOperationalMetric):
         super().__init__(name=name)
 
     def result(self):
-        elapsed = self._delta("elapsed_s")
-        if elapsed <= 0.0:
+        wall = self._wall_clock_delta()
+        if wall <= 0.0:
             return 0.0
-        return self._delta("tokens") / elapsed
+        return self._delta("tokens") / wall
 
 
 @synalinks_export("synalinks.metrics.Throughput")
@@ -206,10 +275,31 @@ class Throughput(LMOperationalMetric):
         super().__init__(name=name)
 
     def result(self):
-        elapsed = self._delta("elapsed_s")
-        if elapsed <= 0.0:
+        wall = self._wall_clock_delta()
+        if wall <= 0.0:
             return 0.0
-        return self._delta("calls") / elapsed
+        return self._delta("calls") / wall
+
+
+@synalinks_export("synalinks.metrics.AvgLatency")
+class AvgLatency(LMOperationalMetric):
+    """Average wall-clock latency in seconds per LM call over this run.
+
+    Computed as ``elapsed_s / calls``. Because ``elapsed_s`` accumulates each
+    call's own duration, this reports the mean per-call latency regardless of
+    how many calls ran concurrently -- unlike `Throughput`, which divides by
+    the phase's wall-clock span and so does reflect concurrency. The two
+    coincide (latency = 1 / throughput) only when calls run serially.
+    """
+
+    def __init__(self, name="avg_latency"):
+        super().__init__(name=name)
+
+    def result(self):
+        calls = self._delta("calls")
+        if calls <= 0:
+            return 0.0
+        return self._delta("elapsed_s") / calls
 
 
 @synalinks_export("synalinks.metrics.Cost")
@@ -315,6 +405,48 @@ class ReasoningTokenShare(LMOperationalMetric):
         return self._delta("reasoning_tokens") / completion
 
 
+@synalinks_export("synalinks.metrics.FailedCalls")
+class FailedCalls(LMOperationalMetric):
+    """LM calls that exhausted all retries and ultimately failed this run."""
+
+    def __init__(self, name="failed_calls"):
+        super().__init__(name=name)
+
+    def result(self):
+        return int(self._delta("failed_calls"))
+
+
+@synalinks_export("synalinks.metrics.FallbackActivations")
+class FallbackActivations(LMOperationalMetric):
+    """Times a failed LM call triggered its `fallback` chain this run."""
+
+    def __init__(self, name="fallback_activations"):
+        super().__init__(name=name)
+
+    def result(self):
+        return int(self._delta("fallback_activations"))
+
+
+@synalinks_export("synalinks.metrics.ErrorRate")
+class ErrorRate(LMOperationalMetric):
+    """Fraction of LM calls that failed: failed / (succeeded + failed).
+
+    The headline reliability signal: successful calls bump `calls`, failures
+    bump `failed_calls`, so the error rate is observable even though failures
+    leave the token / cost / latency counters untouched.
+    """
+
+    def __init__(self, name="error_rate"):
+        super().__init__(name=name)
+
+    def result(self):
+        failed = self._delta("failed_calls")
+        total = self._delta("calls") + failed
+        if total <= 0:
+            return 0.0
+        return failed / total
+
+
 # ---------------------------------------------------------------------------
 # Reward-phase metrics
 # ---------------------------------------------------------------------------
@@ -397,6 +529,62 @@ class AvgRewardOutputTokensPerCall(LMRewardsOperationalMetric):
         return self._delta("completion_tokens") / calls
 
 
+@synalinks_export("synalinks.metrics.AvgRewardTotalTokensPerCall")
+class AvgRewardTotalTokensPerCall(LMRewardsOperationalMetric):
+    """Average total tokens per LM call during reward computation."""
+
+    def __init__(self, name="avg_reward_total_tokens_per_call"):
+        super().__init__(name=name)
+
+    def result(self):
+        calls = self._delta("calls")
+        if calls <= 0:
+            return 0.0
+        return self._delta("tokens") / calls
+
+
+@synalinks_export("synalinks.metrics.AvgRewardCachedTokensPerCall")
+class AvgRewardCachedTokensPerCall(LMRewardsOperationalMetric):
+    """Average cached prompt tokens per LM call during reward computation."""
+
+    def __init__(self, name="avg_reward_cached_tokens_per_call"):
+        super().__init__(name=name)
+
+    def result(self):
+        calls = self._delta("calls")
+        if calls <= 0:
+            return 0.0
+        return self._delta("cached_tokens") / calls
+
+
+@synalinks_export("synalinks.metrics.AvgRewardCacheCreationTokensPerCall")
+class AvgRewardCacheCreationTokensPerCall(LMRewardsOperationalMetric):
+    """Average cache-creation tokens per LM call during reward computation."""
+
+    def __init__(self, name="avg_reward_cache_creation_tokens_per_call"):
+        super().__init__(name=name)
+
+    def result(self):
+        calls = self._delta("calls")
+        if calls <= 0:
+            return 0.0
+        return self._delta("cache_creation_tokens") / calls
+
+
+@synalinks_export("synalinks.metrics.AvgRewardReasoningTokensPerCall")
+class AvgRewardReasoningTokensPerCall(LMRewardsOperationalMetric):
+    """Average reasoning tokens per LM call during reward computation."""
+
+    def __init__(self, name="avg_reward_reasoning_tokens_per_call"):
+        super().__init__(name=name)
+
+    def result(self):
+        calls = self._delta("calls")
+        if calls <= 0:
+            return 0.0
+        return self._delta("reasoning_tokens") / calls
+
+
 @synalinks_export("synalinks.metrics.RewardTokensPerSecond")
 class RewardTokensPerSecond(LMRewardsOperationalMetric):
     """Throughput in tokens per second during reward computation."""
@@ -405,10 +593,10 @@ class RewardTokensPerSecond(LMRewardsOperationalMetric):
         super().__init__(name=name)
 
     def result(self):
-        elapsed = self._delta("elapsed_s")
-        if elapsed <= 0.0:
+        wall = self._wall_clock_delta()
+        if wall <= 0.0:
             return 0.0
-        return self._delta("tokens") / elapsed
+        return self._delta("tokens") / wall
 
 
 @synalinks_export("synalinks.metrics.RewardThroughput")
@@ -419,10 +607,24 @@ class RewardThroughput(LMRewardsOperationalMetric):
         super().__init__(name=name)
 
     def result(self):
-        elapsed = self._delta("elapsed_s")
-        if elapsed <= 0.0:
+        wall = self._wall_clock_delta()
+        if wall <= 0.0:
             return 0.0
-        return self._delta("calls") / elapsed
+        return self._delta("calls") / wall
+
+
+@synalinks_export("synalinks.metrics.AvgRewardLatency")
+class AvgRewardLatency(LMRewardsOperationalMetric):
+    """Average wall-clock latency (s) per LM call during reward computation."""
+
+    def __init__(self, name="avg_reward_latency"):
+        super().__init__(name=name)
+
+    def result(self):
+        calls = self._delta("calls")
+        if calls <= 0:
+            return 0.0
+        return self._delta("elapsed_s") / calls
 
 
 @synalinks_export("synalinks.metrics.RewardCost")
@@ -511,6 +713,43 @@ class RewardReasoningTokenShare(LMRewardsOperationalMetric):
         return self._delta("reasoning_tokens") / completion
 
 
+@synalinks_export("synalinks.metrics.RewardFailedCalls")
+class RewardFailedCalls(LMRewardsOperationalMetric):
+    """LM calls that failed during reward computation."""
+
+    def __init__(self, name="reward_failed_calls"):
+        super().__init__(name=name)
+
+    def result(self):
+        return int(self._delta("failed_calls"))
+
+
+@synalinks_export("synalinks.metrics.RewardFallbackActivations")
+class RewardFallbackActivations(LMRewardsOperationalMetric):
+    """Fallback activations triggered during reward computation."""
+
+    def __init__(self, name="reward_fallback_activations"):
+        super().__init__(name=name)
+
+    def result(self):
+        return int(self._delta("fallback_activations"))
+
+
+@synalinks_export("synalinks.metrics.RewardErrorRate")
+class RewardErrorRate(LMRewardsOperationalMetric):
+    """Fraction of LM calls that failed during reward computation."""
+
+    def __init__(self, name="reward_error_rate"):
+        super().__init__(name=name)
+
+    def result(self):
+        failed = self._delta("failed_calls")
+        total = self._delta("calls") + failed
+        if total <= 0:
+            return 0.0
+        return failed / total
+
+
 # ---------------------------------------------------------------------------
 # Optimizer-phase metrics
 # ---------------------------------------------------------------------------
@@ -595,6 +834,62 @@ class AvgOptimizerOutputTokensPerCall(LMOptimizersOperationalMetric):
         return self._delta("completion_tokens") / calls
 
 
+@synalinks_export("synalinks.metrics.AvgOptimizerTotalTokensPerCall")
+class AvgOptimizerTotalTokensPerCall(LMOptimizersOperationalMetric):
+    """Average total tokens per LM call during the optimizer step."""
+
+    def __init__(self, name="avg_optimizer_total_tokens_per_call"):
+        super().__init__(name=name)
+
+    def result(self):
+        calls = self._delta("calls")
+        if calls <= 0:
+            return 0.0
+        return self._delta("tokens") / calls
+
+
+@synalinks_export("synalinks.metrics.AvgOptimizerCachedTokensPerCall")
+class AvgOptimizerCachedTokensPerCall(LMOptimizersOperationalMetric):
+    """Average cached prompt tokens per LM call during the optimizer step."""
+
+    def __init__(self, name="avg_optimizer_cached_tokens_per_call"):
+        super().__init__(name=name)
+
+    def result(self):
+        calls = self._delta("calls")
+        if calls <= 0:
+            return 0.0
+        return self._delta("cached_tokens") / calls
+
+
+@synalinks_export("synalinks.metrics.AvgOptimizerCacheCreationTokensPerCall")
+class AvgOptimizerCacheCreationTokensPerCall(LMOptimizersOperationalMetric):
+    """Average cache-creation tokens per LM call during the optimizer step."""
+
+    def __init__(self, name="avg_optimizer_cache_creation_tokens_per_call"):
+        super().__init__(name=name)
+
+    def result(self):
+        calls = self._delta("calls")
+        if calls <= 0:
+            return 0.0
+        return self._delta("cache_creation_tokens") / calls
+
+
+@synalinks_export("synalinks.metrics.AvgOptimizerReasoningTokensPerCall")
+class AvgOptimizerReasoningTokensPerCall(LMOptimizersOperationalMetric):
+    """Average reasoning tokens per LM call during the optimizer step."""
+
+    def __init__(self, name="avg_optimizer_reasoning_tokens_per_call"):
+        super().__init__(name=name)
+
+    def result(self):
+        calls = self._delta("calls")
+        if calls <= 0:
+            return 0.0
+        return self._delta("reasoning_tokens") / calls
+
+
 @synalinks_export("synalinks.metrics.OptimizerTokensPerSecond")
 class OptimizerTokensPerSecond(LMOptimizersOperationalMetric):
     """Throughput in tokens per second during the optimizer step."""
@@ -603,10 +898,10 @@ class OptimizerTokensPerSecond(LMOptimizersOperationalMetric):
         super().__init__(name=name)
 
     def result(self):
-        elapsed = self._delta("elapsed_s")
-        if elapsed <= 0.0:
+        wall = self._wall_clock_delta()
+        if wall <= 0.0:
             return 0.0
-        return self._delta("tokens") / elapsed
+        return self._delta("tokens") / wall
 
 
 @synalinks_export("synalinks.metrics.OptimizerThroughput")
@@ -617,10 +912,24 @@ class OptimizerThroughput(LMOptimizersOperationalMetric):
         super().__init__(name=name)
 
     def result(self):
-        elapsed = self._delta("elapsed_s")
-        if elapsed <= 0.0:
+        wall = self._wall_clock_delta()
+        if wall <= 0.0:
             return 0.0
-        return self._delta("calls") / elapsed
+        return self._delta("calls") / wall
+
+
+@synalinks_export("synalinks.metrics.AvgOptimizerLatency")
+class AvgOptimizerLatency(LMOptimizersOperationalMetric):
+    """Average wall-clock latency (s) per LM call during the optimizer step."""
+
+    def __init__(self, name="avg_optimizer_latency"):
+        super().__init__(name=name)
+
+    def result(self):
+        calls = self._delta("calls")
+        if calls <= 0:
+            return 0.0
+        return self._delta("elapsed_s") / calls
 
 
 @synalinks_export("synalinks.metrics.OptimizerCost")
@@ -707,3 +1016,40 @@ class OptimizerReasoningTokenShare(LMOptimizersOperationalMetric):
         if completion <= 0:
             return 0.0
         return self._delta("reasoning_tokens") / completion
+
+
+@synalinks_export("synalinks.metrics.OptimizerFailedCalls")
+class OptimizerFailedCalls(LMOptimizersOperationalMetric):
+    """LM calls that failed during the optimizer step."""
+
+    def __init__(self, name="optimizer_failed_calls"):
+        super().__init__(name=name)
+
+    def result(self):
+        return int(self._delta("failed_calls"))
+
+
+@synalinks_export("synalinks.metrics.OptimizerFallbackActivations")
+class OptimizerFallbackActivations(LMOptimizersOperationalMetric):
+    """Fallback activations triggered during the optimizer step."""
+
+    def __init__(self, name="optimizer_fallback_activations"):
+        super().__init__(name=name)
+
+    def result(self):
+        return int(self._delta("fallback_activations"))
+
+
+@synalinks_export("synalinks.metrics.OptimizerErrorRate")
+class OptimizerErrorRate(LMOptimizersOperationalMetric):
+    """Fraction of LM calls that failed during the optimizer step."""
+
+    def __init__(self, name="optimizer_error_rate"):
+        super().__init__(name=name)
+
+    def result(self):
+        failed = self._delta("failed_calls")
+        total = self._delta("calls") + failed
+        if total <= 0:
+            return 0.0
+        return failed / total

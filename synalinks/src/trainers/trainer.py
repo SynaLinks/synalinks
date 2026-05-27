@@ -14,8 +14,8 @@ from synalinks.src import metrics as metrics_module
 from synalinks.src import optimizers as optimizers_module
 from synalinks.src import rewards as rewards_module
 from synalinks.src import tree
-from synalinks.src.backend.common import global_state
 from synalinks.src.backend.common import numpy
+from synalinks.src.backend.common.op_scope import op_scope
 from synalinks.src.saving import serialization_lib
 from synalinks.src.trainers.compile_utils import CompileMetrics
 from synalinks.src.trainers.compile_utils import CompileReward
@@ -245,9 +245,7 @@ class Trainer:
         del x
         del training
         rewards = []
-        prev_scope = global_state.get_global_attribute("synalinks_op_scope")
-        global_state.set_global_attribute("synalinks_op_scope", "reward")
-        try:
+        with op_scope("reward"):
             if self._compile_reward is not None:
                 if not self._compile_reward.built:
                     self._compile_reward.build(y[0], y_pred[0])
@@ -267,8 +265,6 @@ class Trainer:
             if len(rewards) == 0:
                 rewards = [0.0]
             return rewards
-        finally:
-            global_state.set_global_attribute("synalinks_op_scope", prev_scope)
 
     def stateless_compute_reward(
         self,
@@ -921,9 +917,7 @@ class Trainer:
         if self.trainable_variables and isinstance(
             self.optimizer, optimizers_module.Optimizer
         ):
-            prev_scope = global_state.get_global_attribute("synalinks_op_scope")
-            global_state.set_global_attribute("synalinks_op_scope", "optimizer")
-            try:
+            with op_scope("optimizer"):
                 metrics = await self.optimizer.optimize(
                     step,
                     self.trainable_variables,
@@ -932,8 +926,6 @@ class Trainer:
                     val_x=val_x,
                     val_y=val_y,
                 )
-            finally:
-                global_state.set_global_attribute("synalinks_op_scope", prev_scope)
         else:
             warnings.warn("The program does not have any trainable variables.")
             y_pred = await self.predict_on_batch(val_x)
@@ -1008,19 +1000,14 @@ class Trainer:
         """
         # Tag this work as "inference" so LanguageModel / EmbeddingModel can
         # attribute token / latency / cost to the program's forward pass
-        # only. See synalinks.src.backend.common.global_state key
-        # `synalinks_op_scope` — value is one of "inference", "reward",
-        # "optimizer", or None.
-        prev_scope = global_state.get_global_attribute("synalinks_op_scope")
-        global_state.set_global_attribute("synalinks_op_scope", "inference")
-        try:
+        # only. See synalinks.src.backend.common.op_scope — the active phase
+        # is one of "inference", "reward", "optimizer", or None.
+        with op_scope("inference"):
             tasks = []
             for inputs in x:
                 tasks.append(self(inputs, training=training))
             y_pred = await asyncio.gather(*tasks)
             return y_pred
-        finally:
-            global_state.set_global_attribute("synalinks_op_scope", prev_scope)
 
     def get_compile_config(self):
         """Returns a serialized config with information for compiling the program.

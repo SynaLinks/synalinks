@@ -13,8 +13,12 @@ from synalinks.src.metrics.accuracy_metrics import (
     CategoricalAccuracy as CategoricalAccuracy,
 )
 from synalinks.src.metrics.em_metrics import (
+    AvgEmbeddingCachedTokensPerCall as AvgEmbeddingCachedTokensPerCall,
+)
+from synalinks.src.metrics.em_metrics import (
     AvgEmbeddingCostPerCall as AvgEmbeddingCostPerCall,
 )
+from synalinks.src.metrics.em_metrics import AvgEmbeddingLatency as AvgEmbeddingLatency
 from synalinks.src.metrics.em_metrics import (
     AvgEmbeddingTokensPerCall as AvgEmbeddingTokensPerCall,
 )
@@ -22,7 +26,13 @@ from synalinks.src.metrics.em_metrics import (
     AvgEmbeddingVectorsPerCall as AvgEmbeddingVectorsPerCall,
 )
 from synalinks.src.metrics.em_metrics import (
+    AvgOptimizerEmbeddingCachedTokensPerCall as AvgOptimizerEmbeddingCachedTokensPerCall,
+)
+from synalinks.src.metrics.em_metrics import (
     AvgOptimizerEmbeddingCostPerCall as AvgOptimizerEmbeddingCostPerCall,
+)
+from synalinks.src.metrics.em_metrics import (
+    AvgOptimizerEmbeddingLatency as AvgOptimizerEmbeddingLatency,
 )
 from synalinks.src.metrics.em_metrics import (
     AvgOptimizerEmbeddingTokensPerCall as AvgOptimizerEmbeddingTokensPerCall,
@@ -31,7 +41,13 @@ from synalinks.src.metrics.em_metrics import (
     AvgOptimizerEmbeddingVectorsPerCall as AvgOptimizerEmbeddingVectorsPerCall,
 )
 from synalinks.src.metrics.em_metrics import (
+    AvgRewardEmbeddingCachedTokensPerCall as AvgRewardEmbeddingCachedTokensPerCall,
+)
+from synalinks.src.metrics.em_metrics import (
     AvgRewardEmbeddingCostPerCall as AvgRewardEmbeddingCostPerCall,
+)
+from synalinks.src.metrics.em_metrics import (
+    AvgRewardEmbeddingLatency as AvgRewardEmbeddingLatency,
 )
 from synalinks.src.metrics.em_metrics import (
     AvgRewardEmbeddingTokensPerCall as AvgRewardEmbeddingTokensPerCall,
@@ -46,6 +62,11 @@ from synalinks.src.metrics.em_metrics import (
     EmbeddingCacheHitRate as EmbeddingCacheHitRate,
 )
 from synalinks.src.metrics.em_metrics import EmbeddingCost as EmbeddingCost
+from synalinks.src.metrics.em_metrics import EmbeddingErrorRate as EmbeddingErrorRate
+from synalinks.src.metrics.em_metrics import EmbeddingFailedCalls as EmbeddingFailedCalls
+from synalinks.src.metrics.em_metrics import (
+    EmbeddingFallbackActivations as EmbeddingFallbackActivations,
+)
 from synalinks.src.metrics.em_metrics import (
     EmbeddingModelOperationalMetric as EmbeddingModelOperationalMetric,
 )
@@ -74,6 +95,15 @@ from synalinks.src.metrics.em_metrics import (
     OptimizerEmbeddingCost as OptimizerEmbeddingCost,
 )
 from synalinks.src.metrics.em_metrics import (
+    OptimizerEmbeddingErrorRate as OptimizerEmbeddingErrorRate,
+)
+from synalinks.src.metrics.em_metrics import (
+    OptimizerEmbeddingFailedCalls as OptimizerEmbeddingFailedCalls,
+)
+from synalinks.src.metrics.em_metrics import (
+    OptimizerEmbeddingFallbackActivations as OptimizerEmbeddingFallbackActivations,
+)
+from synalinks.src.metrics.em_metrics import (
     OptimizerEmbeddingThroughput as OptimizerEmbeddingThroughput,
 )
 from synalinks.src.metrics.em_metrics import (
@@ -95,6 +125,15 @@ from synalinks.src.metrics.em_metrics import (
     RewardEmbeddingCacheHitRate as RewardEmbeddingCacheHitRate,
 )
 from synalinks.src.metrics.em_metrics import RewardEmbeddingCost as RewardEmbeddingCost
+from synalinks.src.metrics.em_metrics import (
+    RewardEmbeddingErrorRate as RewardEmbeddingErrorRate,
+)
+from synalinks.src.metrics.em_metrics import (
+    RewardEmbeddingFailedCalls as RewardEmbeddingFailedCalls,
+)
+from synalinks.src.metrics.em_metrics import (
+    RewardEmbeddingFallbackActivations as RewardEmbeddingFallbackActivations,
+)
 from synalinks.src.metrics.em_metrics import (
     RewardEmbeddingThroughput as RewardEmbeddingThroughput,
 )
@@ -120,9 +159,22 @@ from synalinks.src.metrics.f_score_metrics import (
 from synalinks.src.metrics.f_score_metrics import CategoricalFBetaScore as ListFBetaScore
 from synalinks.src.metrics.f_score_metrics import F1Score as F1Score
 from synalinks.src.metrics.f_score_metrics import FBetaScore as FBetaScore
+from synalinks.src.metrics.lm_metrics import (
+    AvgCacheCreationTokensPerCall as AvgCacheCreationTokensPerCall,
+)
+from synalinks.src.metrics.lm_metrics import (
+    AvgCachedTokensPerCall as AvgCachedTokensPerCall,
+)
 from synalinks.src.metrics.lm_metrics import AvgCostPerCall as AvgCostPerCall
 from synalinks.src.metrics.lm_metrics import (
     AvgInputTokensPerCall as AvgInputTokensPerCall,
+)
+from synalinks.src.metrics.lm_metrics import AvgLatency as AvgLatency
+from synalinks.src.metrics.lm_metrics import (
+    AvgOptimizerCacheCreationTokensPerCall as AvgOptimizerCacheCreationTokensPerCall,
+)
+from synalinks.src.metrics.lm_metrics import (
+    AvgOptimizerCachedTokensPerCall as AvgOptimizerCachedTokensPerCall,
 )
 from synalinks.src.metrics.lm_metrics import (
     AvgOptimizerCostPerCall as AvgOptimizerCostPerCall,
@@ -130,23 +182,52 @@ from synalinks.src.metrics.lm_metrics import (
 from synalinks.src.metrics.lm_metrics import (
     AvgOptimizerInputTokensPerCall as AvgOptimizerInputTokensPerCall,
 )
+from synalinks.src.metrics.lm_metrics import AvgOptimizerLatency as AvgOptimizerLatency
 from synalinks.src.metrics.lm_metrics import (
     AvgOptimizerOutputTokensPerCall as AvgOptimizerOutputTokensPerCall,
 )
 from synalinks.src.metrics.lm_metrics import (
+    AvgOptimizerReasoningTokensPerCall as AvgOptimizerReasoningTokensPerCall,
+)
+from synalinks.src.metrics.lm_metrics import (
+    AvgOptimizerTotalTokensPerCall as AvgOptimizerTotalTokensPerCall,
+)
+from synalinks.src.metrics.lm_metrics import (
     AvgOutputTokensPerCall as AvgOutputTokensPerCall,
+)
+from synalinks.src.metrics.lm_metrics import (
+    AvgReasoningTokensPerCall as AvgReasoningTokensPerCall,
+)
+from synalinks.src.metrics.lm_metrics import (
+    AvgRewardCacheCreationTokensPerCall as AvgRewardCacheCreationTokensPerCall,
+)
+from synalinks.src.metrics.lm_metrics import (
+    AvgRewardCachedTokensPerCall as AvgRewardCachedTokensPerCall,
 )
 from synalinks.src.metrics.lm_metrics import AvgRewardCostPerCall as AvgRewardCostPerCall
 from synalinks.src.metrics.lm_metrics import (
     AvgRewardInputTokensPerCall as AvgRewardInputTokensPerCall,
 )
+from synalinks.src.metrics.lm_metrics import AvgRewardLatency as AvgRewardLatency
 from synalinks.src.metrics.lm_metrics import (
     AvgRewardOutputTokensPerCall as AvgRewardOutputTokensPerCall,
+)
+from synalinks.src.metrics.lm_metrics import (
+    AvgRewardReasoningTokensPerCall as AvgRewardReasoningTokensPerCall,
+)
+from synalinks.src.metrics.lm_metrics import (
+    AvgRewardTotalTokensPerCall as AvgRewardTotalTokensPerCall,
+)
+from synalinks.src.metrics.lm_metrics import (
+    AvgTotalTokensPerCall as AvgTotalTokensPerCall,
 )
 from synalinks.src.metrics.lm_metrics import CacheCreationTokens as CacheCreationTokens
 from synalinks.src.metrics.lm_metrics import CachedTokens as CachedTokens
 from synalinks.src.metrics.lm_metrics import CacheHitRate as CacheHitRate
 from synalinks.src.metrics.lm_metrics import Cost as Cost
+from synalinks.src.metrics.lm_metrics import ErrorRate as ErrorRate
+from synalinks.src.metrics.lm_metrics import FailedCalls as FailedCalls
+from synalinks.src.metrics.lm_metrics import FallbackActivations as FallbackActivations
 from synalinks.src.metrics.lm_metrics import InputTokens as InputTokens
 from synalinks.src.metrics.lm_metrics import LMOperationalMetric as LMOperationalMetric
 from synalinks.src.metrics.lm_metrics import (
@@ -165,6 +246,11 @@ from synalinks.src.metrics.lm_metrics import (
     OptimizerCacheHitRate as OptimizerCacheHitRate,
 )
 from synalinks.src.metrics.lm_metrics import OptimizerCost as OptimizerCost
+from synalinks.src.metrics.lm_metrics import OptimizerErrorRate as OptimizerErrorRate
+from synalinks.src.metrics.lm_metrics import OptimizerFailedCalls as OptimizerFailedCalls
+from synalinks.src.metrics.lm_metrics import (
+    OptimizerFallbackActivations as OptimizerFallbackActivations,
+)
 from synalinks.src.metrics.lm_metrics import OptimizerInputTokens as OptimizerInputTokens
 from synalinks.src.metrics.lm_metrics import (
     OptimizerOutputTokens as OptimizerOutputTokens,
@@ -189,6 +275,11 @@ from synalinks.src.metrics.lm_metrics import (
 from synalinks.src.metrics.lm_metrics import RewardCachedTokens as RewardCachedTokens
 from synalinks.src.metrics.lm_metrics import RewardCacheHitRate as RewardCacheHitRate
 from synalinks.src.metrics.lm_metrics import RewardCost as RewardCost
+from synalinks.src.metrics.lm_metrics import RewardErrorRate as RewardErrorRate
+from synalinks.src.metrics.lm_metrics import RewardFailedCalls as RewardFailedCalls
+from synalinks.src.metrics.lm_metrics import (
+    RewardFallbackActivations as RewardFallbackActivations,
+)
 from synalinks.src.metrics.lm_metrics import RewardInputTokens as RewardInputTokens
 from synalinks.src.metrics.lm_metrics import RewardOutputTokens as RewardOutputTokens
 from synalinks.src.metrics.lm_metrics import (
