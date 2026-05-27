@@ -5,10 +5,10 @@ import os
 from enum import Enum
 from typing import List
 
-import matplotlib.pyplot as plt
 import numpy as np
 import orjson
 from matplotlib import colors
+from matplotlib.figure import Figure
 from matplotlib.gridspec import GridSpec
 
 from synalinks.src.api_export import synalinks_export
@@ -375,8 +375,11 @@ def plot_task(
     n_cols = 3  # Input, True Output, Predicted Output
     n_rows = nb_examples + 1  # +1 for test input/output
 
-    # Create figure
-    fig = plt.figure(figsize=figsize)
+    # Create figure through the object-oriented API (no pyplot) so it never
+    # needs an interactive GUI backend: plot_task only writes the figure to
+    # disk, and a bare `Figure` renders headlessly via Agg on `savefig`. This
+    # avoids failures on hosts whose default backend (e.g. Tk) is unusable.
+    fig = Figure(figsize=figsize)
     gs = GridSpec(n_rows, n_cols, figure=fig, hspace=0.4, wspace=0.3)
 
     def plot_grid(ax, grid_data, title):
@@ -455,7 +458,7 @@ def plot_task(
         raise ValueError("Either y_true or y_pred must be provided.")
 
     # Manually adjust subplot spacing
-    plt.subplots_adjust(
+    fig.subplots_adjust(
         left=0.05,
         right=0.95,
         top=0.9,
@@ -465,8 +468,7 @@ def plot_task(
     )
 
     # Save and display
-    plt.savefig(filepath, bbox_inches="tight", dpi=300, facecolor="white")
-    plt.close()
+    fig.savefig(filepath, bbox_inches="tight", dpi=300, facecolor="white")
 
     try:
         from IPython import display
