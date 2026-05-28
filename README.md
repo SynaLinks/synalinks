@@ -111,6 +111,7 @@ Beyond the Keras programming style, Synalinks:
 - Have a fully embeddable & safe runtime that doesn't require any container like Docker to run, easing scripting, research and deployment in modern cloud environments (S3 etc.).
 - Use the familiar `.predict(x=...)`, `.compile(optimizer=..., reward=..., metrics=...)`, `.evaluate(x=..,y=...)`, `.fit(x=..., y=...)` that ML people love.
 - Support Knowledge Graph based systems based on Ladybug db with automatic semantic deduplication and constrained KG extraction
+- Use KerasTuner for hyperparameter search and multi-objective optimization
 
 ## Installation
 
