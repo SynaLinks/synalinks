@@ -98,30 +98,19 @@ Building robust LM apps is hard. Synalinks simplifies it with:
 - **[KerasTuner compatibility](https://synalinks.github.io/synalinks/guides/Hyperparameter%20Search/)** for hyperparameter search, with [multi-objective optimization](https://synalinks.github.io/synalinks/guides/Multi-Objective%20LM%20Selection/)
 - **Built-in [callbacks](https://synalinks.github.io/synalinks/guides/Callbacks/) and hooks** for [observability](https://synalinks.github.io/synalinks/guides/Observability/) (including an MLflow `Monitor` callback)
 
-<div align="center">
-
-| Framework | MCP | Logical Flow | Robust Branching | Parallel Function Calling | Hyperparameter Tuning | Ease of Use |
-| --- | --- | --- | --- | --- | --- | --- |
-| Synalinks | ✅ Yes | ✅ Yes | ✅ Yes | ✅ Yes | ✅ Yes | 😀 |
-| DSPy      | ✅ Yes | ❌ No | ❌ No | ❌ No | ❌ No | 😢 |
-| AdalFlow  | ✅ Yes | ❌ No | ❌ No | ❌ No | ❌ No | 😢 |
-| TextGrad  | ❌ No | ❌ No | ❌ No | ❌ No | ❌ No  | 😭 |
-| Trace     | ❌ No | ❌ No | ❌ No | ❌ No | ❌ No  | 😭 |
-
-</div>
-
 ### Notable differences with DSPy
 
 Beyond the Keras programming style, Synalinks:
 - Can [optimize *anything*](https://synalinks.github.io/synalinks/guides/Trainable%20Variables/), not only prompts
 - Is [async by default](https://synalinks.github.io/synalinks/guides/Programs/)
-- Supports [parallel branches](https://synalinks.github.io/synalinks/guides/Control%20Flow/) with `asyncio` to ease async programming
+- Supports [parallel branches](https://synalinks.github.io/synalinks/guides/Control%20Flow/) detection with `asyncio` to ease async programming
 - Implement logic-based python operators to easily [manipulate data models and the app control flow](https://synalinks.github.io/synalinks/guides/Control%20Flow/)
 - Use [*constrained* JSON decoding](https://synalinks.github.io/synalinks/guides/Data%20Models/) to be robust in production
-- Is fully compatible with Pydantic BaseModel (via `schema=` in every [module](https://synalinks.github.io/synalinks/guides/Data%20Models/)) to ease integration with FastAPI/FastMCP etc.
+- Is fully compatible with Pydantic BaseModel (via `schema=` in every [module](https://synalinks.github.io/synalinks/guides/Data%20Models/)) to ease integration with existing FastAPI/FastMCP services.
 - Have instrospection tools like `summary()` and `plot_program()` to write better documentation
-- Have a fully embeddable & safe runtime that doesn't require any container like Docker to run, easing scripting, research and deployment in modern cloud environments.
+- Have a fully embeddable & safe runtime that doesn't require any container like Docker to run, easing scripting, research and deployment in modern cloud environments (S3 etc.).
 - Use the familiar `.predict(x=...)`, `.compile(optimizer=..., reward=..., metrics=...)`, `.evaluate(x=..,y=...)`, `.fit(x=..., y=...)` that ML people love.
+- Support Knowledge Graph based systems based on Ladybug db with automatic semantic deduplication and constrained KG extraction
 
 ## Installation
 
