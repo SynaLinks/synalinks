@@ -311,7 +311,13 @@ def _py_in_mask_json(json, mask=None, pattern=None, recursive=True):
                 if isinstance(prop_value, dict):
                     stack.append(prop_value)
                 elif isinstance(prop_value, list):
-                    keys_to_keep.append(prop_key)
+                    # Recurse into list items so a kept array's items are
+                    # masked too, but do NOT force-keep the array key itself:
+                    # like objects, an array is kept only when its key matches
+                    # the mask/pattern. Force-keeping arrays made the value
+                    # masker disagree with the schema masker (which drops
+                    # unmatched arrays), leaving stray list fields on the
+                    # output and breaking, e.g., ExactMatch field comparisons.
                     for item in prop_value:
                         if isinstance(item, dict):
                             stack.append(item)
@@ -352,4 +358,5 @@ def in_mask_json(json, mask=None, pattern=None, recursive=True):
         json=json,
         mask=mask,
         pattern=pattern,
+        recursive=recursive,
     )
