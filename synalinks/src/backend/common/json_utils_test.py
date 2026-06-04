@@ -668,7 +668,25 @@ class JsonInMaskTest(testing.TestCase):
         result = in_mask_json(json, mask=["foo", "bar"])
         self.assertEqual(result, expected)
 
-    def test_mask_in_array(self):
+    def test_mask_in_array_drops_unmatched_array(self):
+        # An array whose key is not in the mask is dropped, just like an
+        # unmatched object. (Force-keeping arrays made the value masker
+        # disagree with the schema masker.)
+        json = {
+            "items": [
+                {"foo": "test", "bar": "test"},
+                {"foo_1": "test", "bar_1": "test"},
+            ]
+        }
+
+        expected = {}
+
+        result = in_mask_json(json, mask=["foo"])
+        self.assertEqual(result, expected)
+
+    def test_mask_in_array_keeps_matched_array_and_masks_items(self):
+        # When the array key matches the mask, the array is kept and its
+        # items are masked recursively.
         json = {
             "items": [
                 {"foo": "test", "bar": "test"},
@@ -678,7 +696,7 @@ class JsonInMaskTest(testing.TestCase):
 
         expected = {"items": [{"foo": "test"}, {"foo_1": "test"}]}
 
-        result = in_mask_json(json, mask=["foo"])
+        result = in_mask_json(json, mask=["item", "foo"])
         self.assertEqual(result, expected)
 
     def test_mask_empty_json(self):
