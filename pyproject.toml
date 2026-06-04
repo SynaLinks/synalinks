@@ -44,7 +44,7 @@ dependencies = [
   "pydantic-monty",
   "pydotplus",
   "rich",
-  "synaops>=0.2.0",
+  "synaops>=0.2.1",
   "tenacity",
 ]
 
