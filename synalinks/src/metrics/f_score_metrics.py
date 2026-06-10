@@ -122,20 +122,36 @@ class FBetaScore(Metric):
 
         if self.in_mask or self.in_mask_pattern:
             y_pred = tree.map_structure(
-                lambda x: x.in_mask(mask=self.in_mask, pattern=self.in_mask_pattern),
+                lambda x: (
+                    x.in_mask(mask=self.in_mask, pattern=self.in_mask_pattern)
+                    if x is not None
+                    else x
+                ),
                 y_pred,
             )
             y_true = tree.map_structure(
-                lambda x: x.in_mask(mask=self.in_mask, pattern=self.in_mask_pattern),
+                lambda x: (
+                    x.in_mask(mask=self.in_mask, pattern=self.in_mask_pattern)
+                    if x is not None
+                    else x
+                ),
                 y_true,
             )
         if self.out_mask or self.out_mask_pattern:
             y_pred = tree.map_structure(
-                lambda x: x.out_mask(mask=self.out_mask, pattern=self.out_mask_pattern),
+                lambda x: (
+                    x.out_mask(mask=self.out_mask, pattern=self.out_mask_pattern)
+                    if x is not None
+                    else x
+                ),
                 y_pred,
             )
             y_true = tree.map_structure(
-                lambda x: x.out_mask(mask=self.out_mask, pattern=self.out_mask_pattern),
+                lambda x: (
+                    x.out_mask(mask=self.out_mask, pattern=self.out_mask_pattern)
+                    if x is not None
+                    else x
+                ),
                 y_true,
             )
 
@@ -458,20 +474,36 @@ class BinaryFBetaScore(FBetaScore):
 
         if self.in_mask or self.in_mask_pattern:
             y_pred = tree.map_structure(
-                lambda x: x.in_mask(mask=self.in_mask, pattern=self.in_mask_pattern),
+                lambda x: (
+                    x.in_mask(mask=self.in_mask, pattern=self.in_mask_pattern)
+                    if x is not None
+                    else x
+                ),
                 y_pred,
             )
             y_true = tree.map_structure(
-                lambda x: x.in_mask(mask=self.in_mask, pattern=self.in_mask_pattern),
+                lambda x: (
+                    x.in_mask(mask=self.in_mask, pattern=self.in_mask_pattern)
+                    if x is not None
+                    else x
+                ),
                 y_true,
             )
         if self.out_mask or self.out_mask_pattern:
             y_pred = tree.map_structure(
-                lambda x: x.out_mask(mask=self.out_mask, pattern=self.out_mask_pattern),
+                lambda x: (
+                    x.out_mask(mask=self.out_mask, pattern=self.out_mask_pattern)
+                    if x is not None
+                    else x
+                ),
                 y_pred,
             )
             y_true = tree.map_structure(
-                lambda x: x.out_mask(mask=self.out_mask, pattern=self.out_mask_pattern),
+                lambda x: (
+                    x.out_mask(mask=self.out_mask, pattern=self.out_mask_pattern)
+                    if x is not None
+                    else x
+                ),
                 y_true,
             )
 
@@ -741,20 +773,36 @@ class CategoricalFBetaScore(FBetaScore):
 
         if self.in_mask or self.in_mask_pattern:
             y_pred = tree.map_structure(
-                lambda x: x.in_mask(mask=self.in_mask, pattern=self.in_mask_pattern),
+                lambda x: (
+                    x.in_mask(mask=self.in_mask, pattern=self.in_mask_pattern)
+                    if x is not None
+                    else x
+                ),
                 y_pred,
             )
             y_true = tree.map_structure(
-                lambda x: x.in_mask(mask=self.in_mask, pattern=self.in_mask_pattern),
+                lambda x: (
+                    x.in_mask(mask=self.in_mask, pattern=self.in_mask_pattern)
+                    if x is not None
+                    else x
+                ),
                 y_true,
             )
         if self.out_mask or self.out_mask_pattern:
             y_pred = tree.map_structure(
-                lambda x: x.out_mask(mask=self.out_mask, pattern=self.out_mask_pattern),
+                lambda x: (
+                    x.out_mask(mask=self.out_mask, pattern=self.out_mask_pattern)
+                    if x is not None
+                    else x
+                ),
                 y_pred,
             )
             y_true = tree.map_structure(
-                lambda x: x.out_mask(mask=self.out_mask, pattern=self.out_mask_pattern),
+                lambda x: (
+                    x.out_mask(mask=self.out_mask, pattern=self.out_mask_pattern)
+                    if x is not None
+                    else x
+                ),
                 y_true,
             )
 

@@ -115,22 +115,34 @@ def apply_masks(
 
     if (in_mask or in_mask_pattern) and y_pred:
         y_pred = tree.map_structure(
-            lambda x: x.in_mask(mask=in_mask, pattern=in_mask_pattern),
+            lambda x: (
+                x.in_mask(mask=in_mask, pattern=in_mask_pattern) if x is not None else x
+            ),
             y_pred,
         )
     if (in_mask or in_mask_pattern) and y_true:
         y_true = tree.map_structure(
-            lambda x: x.in_mask(mask=in_mask, pattern=in_mask_pattern),
+            lambda x: (
+                x.in_mask(mask=in_mask, pattern=in_mask_pattern) if x is not None else x
+            ),
             y_true,
         )
     if (out_mask or out_mask_pattern) and y_pred:
         y_pred = tree.map_structure(
-            lambda x: x.out_mask(mask=out_mask, pattern=out_mask_pattern),
+            lambda x: (
+                x.out_mask(mask=out_mask, pattern=out_mask_pattern)
+                if x is not None
+                else x
+            ),
             y_pred,
         )
     if (out_mask or out_mask_pattern) and y_true:
         y_true = tree.map_structure(
-            lambda x: x.out_mask(mask=out_mask, pattern=out_mask_pattern),
+            lambda x: (
+                x.out_mask(mask=out_mask, pattern=out_mask_pattern)
+                if x is not None
+                else x
+            ),
             y_true,
         )
     return y_true, y_pred
@@ -176,6 +188,12 @@ def squeeze_or_expand_to_same_rank(x1, x2, expand_rank_1=True):
 
 
 def reduce_values(values, reduction="mean"):
+    # An empty batch carries no signal to reduce, so every reduction collapses
+    # to a scalar 0.0. This keeps downstream scalar consumers (trackers, tuner
+    # objectives) from ever receiving an empty list (the ``"none"`` branch) or
+    # hitting ``min``/``max``'s "zero-size array" error.
+    if hasattr(values, "__len__") and len(values) == 0:
+        return 0.0
     if reduction is None or reduction == "none":
         # Preserve the per-sample structure: scalars stay scalars, lists/
         # arrays are returned unreduced.
