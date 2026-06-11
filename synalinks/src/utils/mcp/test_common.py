@@ -25,7 +25,13 @@ def run_streamable_server_multiprocessing(server: FastMCP) -> Generator[None, No
 
     The endpoint will be available at `http://localhost:{server.settings.port}/mcp/`.
     """
-    proc = multiprocessing.Process(
+    # Use the "fork" start method explicitly: the child inherits memory, so the
+    # FastMCP server (which holds unpicklable local tool-handler closures) does
+    # not need to be pickled. Python 3.14 changed the default start method on
+    # Linux from "fork" to "forkserver"; pinning "fork" keeps the previous
+    # behavior on all supported versions (>=3.11) and fixes 3.14.
+    ctx = multiprocessing.get_context("fork")
+    proc = ctx.Process(
         target=run_streamable_server,
         kwargs={"server": server, "server_port": server.settings.port},
         daemon=True,

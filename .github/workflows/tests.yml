@@ -39,8 +39,8 @@ jobs:
         run: brew install graphviz
       - name: Install Synalinks
         run: ./shell/install.sh
-      - name: Install pytest
-        run: uv pip install pytest pytest-cov
+      - name: Install dev/test dependencies
+        run: uv pip install --group dev
       - name: Run the tests
         run: uv run pytest --cov-config=pyproject.toml
       - name: Generate coverage badge
