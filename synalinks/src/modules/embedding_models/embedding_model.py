@@ -9,7 +9,6 @@ import litellm
 from tenacity import before_sleep_log
 from tenacity import retry
 from tenacity import stop_after_attempt
-from tenacity import wait_exponential
 
 from synalinks.src.api_export import synalinks_export
 from synalinks.src.backend import Embeddings
@@ -17,6 +16,7 @@ from synalinks.src.backend import JsonDataModel
 from synalinks.src.backend.common.op_scope import current_op_scope
 from synalinks.src.modules.module import Module
 from synalinks.src.saving import serialization_lib
+from synalinks.src.utils.retry_utils import rate_limit_aware_wait
 
 litellm.disable_aiohttp_transport = True
 
@@ -163,6 +163,8 @@ class EmbeddingModel(Module):
         model (str): The model to use.
         api_base (str): Optional. The endpoint to use.
         retry (int): Optional. The number of retry.
+        retry_max_wait (int): Optional. Max seconds to wait between retries when a
+            rate-limit `Retry-After` header is honored (default to 60).
         fallback (EmbeddingModel): Optional. The embedding model to fallback
             if anything is wrong.
         caching (bool): Enables caching (Default to True).
@@ -180,6 +182,7 @@ class EmbeddingModel(Module):
         model=None,
         api_base=None,
         retry=5,
+        retry_max_wait=60,
         fallback=None,
         caching=True,
         name=None,
@@ -203,6 +206,7 @@ class EmbeddingModel(Module):
         else:
             self.api_base = api_base
         self.retry = retry
+        self.retry_max_wait = retry_max_wait
         if fallback is not None:
             # Lazy import: `get` lives in the package __init__ which imports
             # this file at load time.
@@ -299,7 +303,9 @@ class EmbeddingModel(Module):
 
         @retry(
             stop=stop_after_attempt(self.retry),
-            wait=wait_exponential(multiplier=1, min=1, max=10),
+            # Honor a rate-limit `Retry-After` header (e.g. Azure OpenAI TPM
+            # throttling); fall back to exponential backoff for other errors.
+            wait=rate_limit_aware_wait(max_wait=self.retry_max_wait),
             before_sleep=before_sleep_log(logger, logging.WARNING),
             reraise=True,
         )
@@ -373,6 +379,7 @@ class EmbeddingModel(Module):
             "model": self.model,
             "api_base": self.api_base,
             "retry": self.retry,
+            "retry_max_wait": self.retry_max_wait,
             "name": self.name,
             "description": self.description,
             **self.default_kwargs,

@@ -11,7 +11,6 @@ import orjson
 from tenacity import before_sleep_log
 from tenacity import retry
 from tenacity import stop_after_attempt
-from tenacity import wait_exponential
 
 from synalinks.src.api_export import synalinks_export
 from synalinks.src.backend import ChatMessage
@@ -23,6 +22,7 @@ from synalinks.src.modules.core.tool import Tool
 from synalinks.src.modules.module import Module
 from synalinks.src.saving import serialization_lib
 from synalinks.src.utils.nlp_utils import shorten_text
+from synalinks.src.utils.retry_utils import rate_limit_aware_wait
 
 litellm.drop_params = True
 litellm.disable_aiohttp_transport = True
@@ -460,6 +460,8 @@ class LanguageModel(Module):
         api_base (str): Optional. The endpoint to use.
         timeout (int): Optional. The timeout value in seconds (Default to 600).
         retry (int): Optional. The number of retry (default to 5).
+        retry_max_wait (int): Optional. Max seconds to wait between retries when a
+            rate-limit `Retry-After` header is honored (default to 60).
         fallback (LanguageModel): Optional. The language model to fallback
             if anything is wrong.
         caching (bool): Optional. Enable caching of LM calls (Default to False).
@@ -479,6 +481,7 @@ class LanguageModel(Module):
         api_base=None,
         timeout=600,
         retry=5,
+        retry_max_wait=60,
         fallback=None,
         caching=False,
         name=None,
@@ -531,6 +534,7 @@ class LanguageModel(Module):
             )
         self.timeout = timeout
         self.retry = retry
+        self.retry_max_wait = retry_max_wait
         self.caching = caching
         self.default_kwargs = default_kwargs
         self.cumulated_cost = 0.0
@@ -873,7 +877,9 @@ class LanguageModel(Module):
 
         @retry(
             stop=stop_after_attempt(self.retry),
-            wait=wait_exponential(multiplier=1, min=1, max=10),
+            # Honor a rate-limit `Retry-After` header (e.g. Azure OpenAI TPM
+            # throttling); fall back to exponential backoff for other errors.
+            wait=rate_limit_aware_wait(max_wait=self.retry_max_wait),
             before_sleep=before_sleep_log(logger, logging.WARNING),
             reraise=True,
         )
@@ -1006,6 +1012,7 @@ class LanguageModel(Module):
             "api_base": self.api_base,
             "timeout": self.timeout,
             "retry": self.retry,
+            "retry_max_wait": self.retry_max_wait,
             "caching": self.caching,
             "name": self.name,
             "description": self.description,
