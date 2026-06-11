@@ -251,6 +251,8 @@ class EmbedKnowledge(Module):
         return schema
 
     async def _embed(self, data_model):
+        if data_model is None:
+            return None
         if self._embeds_whole_object(data_model) and data_model.get("embedding"):
             warnings.warn(
                 "Embedding already generated for this data model. "

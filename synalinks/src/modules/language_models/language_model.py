@@ -170,7 +170,11 @@ def _message_to_wire(message):
             ]
         return out
     if role == "tool":
-        return {"role": "tool", "content": content, "tool_call_id": message.tool_call_id}
+        return {
+            "role": "tool",
+            "content": content,
+            "tool_call_id": message.tool_call_id,
+        }
     if role == "function":
         return {
             "role": "function",
@@ -492,7 +496,9 @@ class LanguageModel(Module):
         # JsonDataModel guard would otherwise reject it.
         self._allow_non_json_data_model_positional_args = True
         if model is None:
-            raise ValueError("You need to set the `model` argument for any LanguageModel")
+            raise ValueError(
+                "You need to set the `model` argument for any LanguageModel"
+            )
         model_provider = model.split("/")[0]
         if model_provider == "ollama":
             # Switch from `ollama` to `ollama_chat`
@@ -588,7 +594,15 @@ class LanguageModel(Module):
         if op is not None:
             _accumulate(self, f"{op}_", {suffix: 1}, None)
 
-    async def call(self, messages, schema=None, tools=None, streaming=False, **kwargs):
+    async def call(
+        self,
+        messages,
+        schema=None,
+        tools=None,
+        tool_schemas=None,
+        streaming=False,
+        **kwargs,
+    ):
         """
         Call method to generate a response using the language model.
 
@@ -602,6 +616,12 @@ class LanguageModel(Module):
                 LM choose; they cannot both apply to the same call. In the
                 function-calling agent pattern, the tool-call generator uses
                 `tools` and the final generator uses `schema`.
+            tool_schemas (list): Optional iterable of already-wire-formatted
+                tool declaration dicts (OpenAI `{"type": "function", ...}`
+                shape) passed through verbatim, appended after any converted
+                `tools`. Use this to expose tools you already have a schema for
+                without wrapping them in a `synalinks.modules.Tool`. Subject to
+                the same mutual exclusivity with `schema` as `tools`.
             streaming (bool): Enable streaming (optional). Default to False.
                 Can be enabled only if schema is None.
             **kwargs (keyword arguments): The additional keywords arguments
@@ -609,7 +629,9 @@ class LanguageModel(Module):
         Returns:
             (dict): The generated structured response.
         """
-        if schema and tools:
+        if not messages:
+            return None
+        if schema and (tools or tool_schemas):
             raise ValueError(
                 "`schema` and `tools` cannot be passed to the same LM call: "
                 "schema forces structured output, while tools let the LM choose "
@@ -636,10 +658,16 @@ class LanguageModel(Module):
             else ChatMessages(messages=messages.get("messages", []))
         )
         formatted_messages = [_message_to_wire(m) for m in _typed_messages.messages]
-        if tools:
-            if isinstance(tools, dict):
-                tools = tools.values()
-            kwargs["tools"] = [_tool_to_wire(t) for t in tools]
+        if tools or tool_schemas:
+            wire_tools = []
+            if tools:
+                if isinstance(tools, dict):
+                    tools = tools.values()
+                wire_tools.extend(_tool_to_wire(t) for t in tools)
+            if tool_schemas:
+                # Already in OpenAI wire shape — pass through verbatim.
+                wire_tools.extend(tool_schemas)
+            kwargs["tools"] = wire_tools
 
         # Handle reasoning_effort:
         #   "none"    -> send nothing; leave the model at its provider default.
@@ -1023,7 +1051,9 @@ class StreamingIterator:
 
     def __init__(self, iterator):
         self._iterator = iterator
-        self._is_async = hasattr(iterator, "__anext__") or hasattr(iterator, "__aiter__")
+        self._is_async = hasattr(iterator, "__anext__") or hasattr(
+            iterator, "__aiter__"
+        )
 
     def __aiter__(self):
         return self

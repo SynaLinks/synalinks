@@ -73,6 +73,8 @@ class UpdateKnowledge(Module):
         self.knowledge_base = _get_kb(knowledge_base)
 
     async def _update(self, data_model):
+        if data_model is None:
+            return None
         # Order matters:
         #   * KnowledgeGraph passes is_entities AND is_relations
         #     (it has both fields) — check it FIRST.
@@ -90,7 +92,9 @@ class UpdateKnowledge(Module):
             # round-trips.
             await self.knowledge_base.update_entities(data_model.get("entities") or [])
         elif is_relations(data_model):
-            await self.knowledge_base.update_relations(data_model.get("relations") or [])
+            await self.knowledge_base.update_relations(
+                data_model.get("relations") or []
+            )
         elif is_relation(data_model):
             await self.knowledge_base.update_relations(data_model)
         elif is_entity(data_model):

@@ -273,6 +273,8 @@ class EmbeddingModel(Module):
             (Embeddings): The corresponding embedding vectors, wrapped as
                 an `Embeddings` JsonDataModel.
         """
+        if not inputs:
+            return None
         texts = inputs.get("texts")
         input_kwargs = copy.deepcopy(kwargs)
         # Merge instance-level defaults; per-call kwargs win.

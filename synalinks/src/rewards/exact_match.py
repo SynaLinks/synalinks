@@ -20,7 +20,7 @@ async def exact_match(y_true, y_pred):
             and 0.0 otherwise.
     """
     reward = 0.0
-    if y_pred is not None:
+    if y_pred is not None and y_true is not None:
         if y_pred.get_json() == y_true.get_json():
             reward = 1.0
     return reward

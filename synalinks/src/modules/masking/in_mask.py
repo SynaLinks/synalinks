@@ -85,7 +85,9 @@ class InMask(Module):
 
     async def call(self, inputs):
         outputs = tree.map_structure(
-            lambda x: x.in_mask(mask=self.mask, pattern=self.pattern),
+            lambda x: (
+                x.in_mask(mask=self.mask, pattern=self.pattern) if x is not None else x
+            ),
             inputs,
         )
         return outputs

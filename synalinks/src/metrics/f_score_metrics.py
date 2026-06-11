@@ -155,6 +155,10 @@ class FBetaScore(Metric):
                 y_true,
             )
 
+        if y_true is None or y_pred is None:
+            # A failed prediction yields `y_pred is None`; there is nothing to
+            # compare, so skip the sample instead of calling `.get_json()` on None.
+            return
         y_true = tree.flatten(tree.map_structure(lambda x: str(x), y_true.get_json()))
         y_pred = tree.flatten(tree.map_structure(lambda x: str(x), y_pred.get_json()))
 
@@ -518,6 +522,10 @@ class BinaryFBetaScore(FBetaScore):
                     "Use `in_mask` or `out_mask` to remove the other fields."
                 )
 
+        if y_true is None or y_pred is None:
+            # A failed prediction yields `y_pred is None`; there is nothing to
+            # compare, so skip the sample instead of calling `.get_json()` on None.
+            return
         y_true = tree.flatten(
             tree.map_structure(lambda x: convert_to_binary(x), y_true.get_json())
         )
@@ -806,6 +814,10 @@ class CategoricalFBetaScore(FBetaScore):
                 y_true,
             )
 
+        if y_true is None or y_pred is None:
+            # A failed prediction yields `y_pred is None`; there is nothing to
+            # compare, so skip the sample instead of calling `.get_json()` on None.
+            return
         y_true = tree.flatten(tree.map_structure(lambda x: x, y_true.get_json()))
         y_pred = tree.flatten(tree.map_structure(lambda x: x, y_pred.get_json()))
 

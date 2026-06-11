@@ -18,6 +18,7 @@ from synalinks.src.backend import is_strictly_chat_message
 from synalinks.src.backend import is_strictly_chat_messages
 from synalinks.src.modules.language_models import get as _get_lm
 from synalinks.src.modules.language_models.language_model import StreamingIterator
+from synalinks.src.modules.language_models.language_model import _tool_to_wire
 from synalinks.src.modules.module import Module
 from synalinks.src.saving import serialization_lib
 
@@ -30,6 +31,20 @@ ROLES = [
 ]
 
 _SYSTEM_PROMPT_ROLES = {ChatRole.SYSTEM.value, ChatRole.DEVELOPER.value}
+
+
+def _as_tool_list(tools):
+    """Normalize `tools` (a list, a `{name: Tool}` mapping, or None) to a list."""
+    if not tools:
+        return []
+    if isinstance(tools, dict):
+        return list(tools.values())
+    return list(tools)
+
+
+def _tools_to_schemas(tools):
+    """Convert live `Tool` objects to OpenAI wire-format declaration dicts."""
+    return [_tool_to_wire(tool) for tool in _as_tool_list(tools)]
 
 
 def _has_system_prompt(messages):
@@ -151,6 +166,14 @@ class Generator(Module):
             Default to None (no reasoning).
         streaming (str): Optional. If true stream the LM response, enabled only if
             `schema` is `None` and only during inference (not during training).
+        tools (list): Optional. Live `synalinks.modules.Tool` objects (or a
+            `{name: Tool}` mapping) the generator always exposes, merged with any
+            `tools` passed to `call`. Serialized as `tool_schemas` (their wire
+            form) in the config, the way `data_model` is stored as `schema`.
+        tool_schemas (list): Optional. Already-wire-formatted tool declaration
+            dicts (OpenAI `{"type": "function", ...}` shape) the generator always
+            exposes. Merged with any `tool_schemas` passed to `call`. Being plain
+            JSON, they serialize with the config (unlike per-call `tools`).
         name (str): Optional. The name of the module.
         description (str): Optional. The description of the module.
         trainable (bool): Whether the module's variables should be trainable.
@@ -172,6 +195,8 @@ class Generator(Module):
         temperature=0.0,
         reasoning_effort=None,
         streaming=False,
+        tools=None,
+        tool_schemas=None,
         name=None,
         description=None,
         trainable=True,
@@ -210,6 +235,14 @@ class Generator(Module):
         if schema and streaming:
             streaming = False
         self.streaming = streaming
+        # Live `Tool` objects the generator always exposes; merged with any
+        # passed per-call. They are not JSON, so `get_config` serializes them as
+        # wire-format `tool_schemas` (the way `data_model` is stored as `schema`).
+        self.tools = _as_tool_list(tools)
+        # Already wire-format (OpenAI `{"type": "function", ...}`) tool
+        # declarations the generator always exposes. Plain JSON dicts, so they
+        # serialize as-is and are merged with any per-call `tool_schemas`.
+        self.tool_schemas = tool_schemas
 
         predictions = [
             Prediction(
@@ -241,9 +274,13 @@ class Generator(Module):
             name="state_" + self.name,
         )
 
-    async def call(self, inputs, tools=None, training=False):
+    async def call(self, inputs, tools=None, tool_schemas=None, training=False):
         if not inputs:
             return None
+        # Merge the always-on, constructor-level tools/schemas with any passed
+        # per-call.
+        tools = self.tools + _as_tool_list(tools) or None
+        tool_schemas = list(self.tool_schemas or []) + list(tool_schemas or []) or None
         msgs = self.format_messages(inputs)
         if self.streaming and not training:
             streaming = True
@@ -253,6 +290,7 @@ class Generator(Module):
             msgs,
             schema=self.schema,
             tools=tools,
+            tool_schemas=tool_schemas,
             streaming=streaming,
             temperature=self.temperature,
             reasoning_effort=self.reasoning_effort,
@@ -285,7 +323,9 @@ class Generator(Module):
                 return result
         return None
 
-    async def compute_output_spec(self, inputs, tools=None, training=False):
+    async def compute_output_spec(
+        self, inputs, tools=None, tool_schemas=None, training=False
+    ):
         if self.schema:
             if self.return_inputs:
                 return await ops.concat(
@@ -385,6 +425,12 @@ class Generator(Module):
             "temperature": self.temperature,
             "reasoning_effort": self.reasoning_effort,
             "streaming": self.streaming,
+            # Live `tools` are converted to their wire form and stored alongside
+            # `tool_schemas` (the way `data_model` is stored as `schema`).
+            "tool_schemas": (
+                list(self.tool_schemas or []) + _tools_to_schemas(self.tools)
+            )
+            or None,
             "name": self.name,
             "description": self.description,
             "trainable": self.trainable,

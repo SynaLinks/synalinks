@@ -5,6 +5,8 @@ from synalinks.src.backend import DataModel
 from synalinks.src.backend import Field
 from synalinks.src.backend import SymbolicDataModel
 from synalinks.src.modules.core.generator import Generator
+from synalinks.src.modules.core.generator import _as_tool_list
+from synalinks.src.modules.core.generator import _tools_to_schemas
 from synalinks.src.modules.language_models import get as _get_lm
 from synalinks.src.modules.module import Module
 from synalinks.src.saving import serialization_lib
@@ -100,6 +102,14 @@ class ChainOfThought(Module):
             the outputs (Default to False) (see `Generator`).
         streaming (bool): Optional. If true, stream the LM response. Only takes
             effect when `data_model`/`schema` is `None` (Default to False).
+        tools (list): Optional. Live `synalinks.modules.Tool` objects (or a
+            `{name: Tool}` mapping) the underlying `Generator` always exposes,
+            merged with any passed to `call`. Serialized as `tool_schemas`
+            (see `Generator`).
+        tool_schemas (list): Optional. Already-wire-formatted tool declaration
+            dicts (OpenAI `{"type": "function", ...}` shape) the underlying
+            `Generator` always exposes, merged with any passed to `call`
+            (see `Generator`).
         name (str): Optional. The name of the module.
         description (str): Optional. The description of the module.
         trainable (bool): Whether the module's variables should be trainable.
@@ -121,6 +131,8 @@ class ChainOfThought(Module):
         use_outputs_schema=False,
         return_inputs=False,
         streaming=False,
+        tools=None,
+        tool_schemas=None,
         name=None,
         description=None,
         trainable=True,
@@ -151,6 +163,8 @@ class ChainOfThought(Module):
         if self.schema and streaming:
             streaming = False
         self.streaming = streaming
+        self.tools = _as_tool_list(tools)
+        self.tool_schemas = tool_schemas
 
         if self.schema:
             final_data_model = Thinking + SymbolicDataModel(schema=self.schema)
@@ -170,11 +184,15 @@ class ChainOfThought(Module):
             use_outputs_schema=self.use_outputs_schema,
             return_inputs=self.return_inputs,
             streaming=self.streaming,
+            tools=self.tools,
+            tool_schemas=self.tool_schemas,
             name="generator_" + self.name,
         )
 
-    async def call(self, inputs, tools=None, training=False):
-        return await self.generator(inputs, tools=tools, training=training)
+    async def call(self, inputs, tools=None, tool_schemas=None, training=False):
+        return await self.generator(
+            inputs, tools=tools, tool_schemas=tool_schemas, training=training
+        )
 
     def get_config(self):
         config = {
@@ -189,6 +207,12 @@ class ChainOfThought(Module):
             "use_outputs_schema": self.use_outputs_schema,
             "return_inputs": self.return_inputs,
             "streaming": self.streaming,
+            # Live `tools` are serialized as their wire form alongside
+            # `tool_schemas` (the way `data_model` is stored as `schema`).
+            "tool_schemas": (
+                list(self.tool_schemas or []) + _tools_to_schemas(self.tools)
+            )
+            or None,
             "name": self.name,
             "description": self.description,
             "trainable": self.trainable,

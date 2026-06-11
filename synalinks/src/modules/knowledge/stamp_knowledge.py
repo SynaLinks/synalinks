@@ -44,6 +44,8 @@ class StampKnowledge(Module):
         )
 
     async def _stamp(self, data_model):
+        if data_model is None:
+            return None
         timestamp = JsonDataModel(
             json={"created_at": datetime.now().isoformat()},
             schema=Stamp.get_schema(),

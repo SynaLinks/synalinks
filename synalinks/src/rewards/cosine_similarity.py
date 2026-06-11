@@ -40,7 +40,7 @@ async def cosine_similarity(y_true, y_pred, embedding_model=None, axis=-1):
             and towards 0.0 otherwise.
     """
     reward = 0.0
-    if y_pred is not None:
+    if y_pred is not None and y_true is not None:
         em = _get_em(embedding_model)
         # Flatten each data model's fields to strings, embed, and pull
         # the vectors out — same logic the old `ops.embedding` did.

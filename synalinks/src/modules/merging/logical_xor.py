@@ -44,4 +44,8 @@ class Xor(Module):
                     output = inputs[i]
                 else:
                     return None
+        # All inputs were None (the `None ^ None -> None` row of the table):
+        # there is nothing to clone.
+        if output is None:
+            return None
         return output.clone(name=self.name)

@@ -61,9 +61,11 @@ class Identity(Module):
         self.built = True
 
     async def call(self, inputs):
+        if inputs is None:
+            return None
         if isinstance(inputs, (JsonDataModel, SymbolicDataModel)):
             return inputs.clone()
         return tree.map_structure(
-            lambda x: x.clone(),
+            lambda x: x.clone() if x is not None else x,
             inputs,
         )
