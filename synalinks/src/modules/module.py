@@ -3,6 +3,7 @@
 # License Apache 2.0: (c) 2025-2026 Yoan Sallami (Synalinks Team)
 
 import collections
+import contextvars
 import inspect
 import time
 import uuid
@@ -15,7 +16,6 @@ from synalinks.src import tree
 from synalinks.src import utils
 from synalinks.src.api_export import synalinks_export
 from synalinks.src.backend import is_trainable
-from synalinks.src.backend.common import global_state
 from synalinks.src.backend.common.name_scope import current_path
 from synalinks.src.backend.common.op_scope import current_op_scope
 from synalinks.src.hooks.hook_list import HookList
@@ -33,6 +33,18 @@ else:
     raise RuntimeError(
         f"Backend '{backend.backend()}' must implement a module mixin class."
     )
+
+
+# Per-call execution context (`call_id`, `parent_call_id`, `training`,
+# `entry_module`). Stored in a `contextvars.ContextVar` rather than the
+# `threading.local` global state: an asyncio event loop runs many coroutines on
+# a single OS thread, so a thread-local context is shared — and corrupted —
+# between modules awaited concurrently, e.g. `asyncio.gather(modA(x), modB(x))`
+# or parallel branches in a `Program`. A `ContextVar` is copied into each
+# `asyncio.Task`/greenlet at creation, so concurrent calls each get an isolated
+# context while nested `await`s within a single call keep sharing it. This
+# mirrors the `op_scope` ContextVar (see `backend/common/op_scope.py`).
+_CALL_CONTEXT = contextvars.ContextVar("synalinks_call_ctx", default=None)
 
 
 @synalinks_export(["synalinks.Module", "synalinks.modules.Module"])
@@ -531,7 +543,7 @@ class Module(BackendModule, Operation, SynalinksSaveable):
         self._check_super_called()
         self._called = True
 
-        call_context = self._get_call_context()
+        call_context, call_ctx_token = self._enter_call_context()
 
         parent_call_id = call_context.call_id if call_context.call_id else None
 
@@ -625,7 +637,7 @@ class Module(BackendModule, Operation, SynalinksSaveable):
             raise e
         finally:
             # Destroy call context if we created it
-            self._maybe_reset_call_context()
+            self._maybe_reset_call_context(call_ctx_token)
         if self._hooks:
             self._hooks.on_call_end(
                 call_id=call_id,
@@ -702,22 +714,49 @@ class Module(BackendModule, Operation, SynalinksSaveable):
         )
         return inputs
 
-    def _get_call_context(self):
-        """Returns currently active `CallContext`."""
-        module_call_ctx = global_state.get_global_attribute("current_call_ctx")
+    def _enter_call_context(self):
+        """Returns the active `CallContext`, creating one if this is the entry
+        (outermost) module call.
+
+        The context lives in the `_CALL_CONTEXT` ContextVar, so concurrent
+        calls awaited on one event loop thread each get an isolated context
+        (see the note on `_CALL_CONTEXT`).
+
+        Returns a `(call_context, token)` tuple. `token` is the
+        `ContextVar.reset` token when this call created the context (and is
+        therefore the entry module); it is `None` when reusing a parent's
+        context. Pass the token to `_maybe_reset_call_context` to tear it down.
+        """
+        module_call_ctx = _CALL_CONTEXT.get()
         if module_call_ctx is None:
             # Enter new call context.
             module_call_ctx = CallContext(entry_module=self)
-            global_state.set_global_attribute("current_call_ctx", module_call_ctx)
+            token = _CALL_CONTEXT.set(module_call_ctx)
             self._clear_rewards()
-        return module_call_ctx
+            return module_call_ctx, token
+        return module_call_ctx, None
 
-    def _maybe_reset_call_context(self):
-        module_call_ctx = global_state.get_global_attribute("current_call_ctx")
-        if module_call_ctx is None:
-            global_state.set_global_attribute("current_call_ctx", None)
+    def _get_call_context(self):
+        """Returns the currently active `CallContext`, or `None`.
+
+        Read-only peek used by hooks/monitoring; unlike `_enter_call_context`
+        it never creates a context.
+        """
+        return _CALL_CONTEXT.get()
+
+    def _maybe_reset_call_context(self, token):
+        """Tear down the `CallContext` created by this call's
+        `_enter_call_context`.
+
+        A no-op for nested calls (`token is None`), which reuse the entry
+        module's context. When this call is the entry module, it accumulates
+        the invocation metrics and restores the ContextVar to its previous
+        (`None`) state via `token`.
+        """
+        if token is None:
             return
-        if module_call_ctx.entry_module is self:
+        module_call_ctx = _CALL_CONTEXT.get()
+        if module_call_ctx is not None and module_call_ctx.entry_module is self:
             elapsed_s = time.perf_counter() - module_call_ctx.start_time
             self.cumulated_invocations += 1
             self.cumulated_invocation_elapsed_s += elapsed_s
@@ -734,7 +773,7 @@ class Module(BackendModule, Operation, SynalinksSaveable):
                     getattr(self, f"{op_scope}_cumulated_invocation_elapsed_s")
                     + elapsed_s,
                 )
-            global_state.set_global_attribute("current_call_ctx", None)
+        _CALL_CONTEXT.reset(token)
 
     def _flatten_modules(self, include_self=True, recursive=True):
         modules = []
