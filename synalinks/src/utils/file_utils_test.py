@@ -203,10 +203,19 @@ class SafePathFilterTest(testing.TestCase):
             info.size = 0
             tf.addfile(info, fileobj=None)
 
-        with tarfile.open(archive_path) as tf:
-            with warnings.catch_warnings(record=True) as w:
-                warnings.simplefilter("always")
-                kept = list(file_utils.filter_safe_paths(tf.getmembers()))
+        # filter_safe_paths judges members against the *current* working
+        # directory (resolve_path(".")), so pin the CWD to tmp — otherwise the
+        # escape is non-deterministic depending on where an earlier test left
+        # the process (e.g. at "/", "../escape.txt" no longer escapes).
+        cwd = os.getcwd()
+        os.chdir(tmp)
+        try:
+            with tarfile.open(archive_path) as tf:
+                with warnings.catch_warnings(record=True) as w:
+                    warnings.simplefilter("always")
+                    kept = list(file_utils.filter_safe_paths(tf.getmembers()))
+        finally:
+            os.chdir(cwd)
         names = {m.name for m in kept}
         self.assertIn("ok.txt", names)
         self.assertNotIn("../escape.txt", names)

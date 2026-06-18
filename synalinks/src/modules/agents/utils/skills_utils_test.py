@@ -183,6 +183,12 @@ class FindAndDiscoverTest(testing.TestCase):
 
     def test_find_skill_md_prefers_uppercase_accepts_lowercase(self):
         d = self._write("low", _MINIMAL.replace("hello", "low"), filename="skill.md")
+        # On a case-insensitive filesystem (the default on macOS and Windows)
+        # "SKILL.md" and "skill.md" are the same file, so the uppercase
+        # preference cannot be observed — skip rather than assert a name the
+        # filesystem folds away.
+        if os.path.exists(os.path.join(d, "SKILL.md")):
+            self.skipTest("filesystem is case-insensitive")
         found = find_skill_md(d)
         self.assertIsNotNone(found)
         self.assertEqual(found.name, "skill.md")
@@ -220,7 +226,10 @@ class FindAndDiscoverTest(testing.TestCase):
 class SkillsPromptTest(testing.TestCase):
     def setUp(self):
         super().setUp()
-        self.root = tempfile.mkdtemp()
+        # realpath: on macOS tempfile returns /var/folders/... (a symlink to
+        # /private/var/...) while the rendered <location> is canonicalized, so
+        # pin the canonical form to keep the path assertions portable.
+        self.root = os.path.realpath(tempfile.mkdtemp())
 
     def tearDown(self):
         import shutil
