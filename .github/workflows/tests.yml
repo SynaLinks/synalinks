@@ -41,6 +41,24 @@ jobs:
         run: ./shell/install.sh
       - name: Install dev/test dependencies
         run: uv pip install --group dev
+      # GitHub's ubuntu-24.04 runners ship
+      # kernel.apparmor_restrict_unprivileged_userns=1, which lets unshare()
+      # create a user namespace but then neuters it so the /proc/self/setgroups
+      # write EPERMs — sandbox confinement can't initialize. Flip it off so the
+      # MirageSandbox confinement is genuinely exercised in CI (macOS has no
+      # such mechanism; confinement is Linux-only and those tests skip there).
+      - name: Enable unprivileged user namespaces (sandbox confinement)
+        if: runner.os == 'Linux'
+        run: |
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 || true
+          sudo sysctl -w kernel.unprivileged_userns_clone=1 || true
+      # Fail loudly if confinement is NOT actually available on Linux, rather
+      # than letting the confine tests silently skip — CI must keep confinement
+      # under test (the whole point of the step above).
+      - name: Assert sandbox confinement is available (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          uv run python -c "from synalinks.src.sandboxes.mirage_sandbox import _confinement_available; ok, why = _confinement_available(); print('confinement available:', ok, why); raise SystemExit(0 if ok else 1)"
       - name: Run the tests
         run: uv run pytest --cov-config=pyproject.toml
       - name: Generate coverage badge

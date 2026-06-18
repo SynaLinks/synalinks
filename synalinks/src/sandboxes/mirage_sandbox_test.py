@@ -362,15 +362,19 @@ class MirageSandboxTest(testing.TestCase):
         )
         self.assertEqual(sandbox.granted_capabilities()["mounts"]["/rw"], "WRITE")
 
+    @unittest.skipUnless(_CONFINE_OK, f"confinement unavailable: {_CONFINE_REASON}")
     async def test_native_true_stripped_under_confine(self):
         # native=True (host shell, bypasses confinement) is stripped when
-        # confinement is active, with a warning.
+        # confinement is active, with a warning. Requires real confinement: where
+        # it is unavailable, confine=True falls back to unconfined and native is
+        # left intact, so this assertion only holds on a confine-capable host.
         with self.assertWarns(RuntimeWarning):
             sandbox = MirageSandbox(
                 timeout=_TIMEOUT, confine=True, workspace_kwargs={"native": True}
             )
         self.assertFalse(sandbox.granted_capabilities()["native_shell"])
 
+    @unittest.skipUnless(_CONFINE_OK, f"confinement unavailable: {_CONFINE_REASON}")
     async def test_native_true_rejected_under_require_confinement(self):
         with self.assertRaises(ValueError):
             MirageSandbox(
