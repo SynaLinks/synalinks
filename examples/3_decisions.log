@@ -1,0 +1,14 @@
+============================================================
+Building a Decision-Making Program
+============================================================
+
+Testing with different queries...
+------------------------------------------------------------
+
+Query: 'What is 2 + 2?'
+Thinking: The given query involves basic arithmetic operations, specif...
+Choice: easy
+
+Query: 'Explain the implications of Gödel's incompleteness theorems'
+Thinking: Gödel's Incompleteness Theorems are a fundamental concept in...
+Choice: difficult

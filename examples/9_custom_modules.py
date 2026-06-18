@@ -308,14 +308,14 @@ async def main():
     load_dotenv()
 
     # Enable observability for tracing
-    synalinks.enable_observability(
-        tracking_uri="http://localhost:5000",
-        experiment_name="custom_backtracking_module",
-    )
+#     synalinks.enable_observability(
+#         tracking_uri="http://localhost:5000",
+#         experiment_name="custom_backtracking_module",
+#     )
 
     # Initialize the language model
     language_model = synalinks.LanguageModel(
-        model="gemini/gemini-3.1-flash-lite-preview",
+        model="ollama/mistral:latest",
     )
 
     # ==========================================================================

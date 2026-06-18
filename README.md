@@ -113,6 +113,11 @@ Beyond the Keras programming style, Synalinks:
 - Support Knowledge Graph based systems based on Ladybug db with automatic semantic deduplication and constrained KG extraction
 - Use KerasTuner for hyperparameter search and multi-objective optimization
 
+# Requirements
+
+- Python 3.12 or more
+- WL2 for windows users
+
 ## Installation
 
 ```shell

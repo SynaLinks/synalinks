@@ -1,0 +1,5 @@
+# Bundle the project templates used by `synalinks init` so they ship in both
+# the sdist and the wheel (graft captures dotfiles like .gitignore too).
+graft synalinks/cli/templates
+global-exclude __pycache__ *.py[cod]
+prune synalinks/cli/templates/*/.venv

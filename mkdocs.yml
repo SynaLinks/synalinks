@@ -23,6 +23,7 @@ extra_javascript:
 
 markdown_extensions:
   - admonition
+  - pymdownx.details
   - pymdownx.highlight:
       anchor_linenums: true
   - pymdownx.superfences:
@@ -70,6 +71,8 @@ nav:
     - guides/Cypher Agent.md
     - guides/Vector RAG Agent.md
     - guides/Deep Agent.md
+    - guides/Mixture of Models.md
+    - guides/Consul of Models.md
     - guides/FastAPI Deployment.md
     - guides/FastMCP Deployment.md
     - guides/Python Synthesis.md

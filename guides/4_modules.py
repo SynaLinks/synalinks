@@ -465,7 +465,7 @@ async def main():
     load_dotenv()
     synalinks.clear_session()
 
-    lm = synalinks.LanguageModel(model="ollama/llama3.2:latest")
+    lm = synalinks.LanguageModel(model="ollama/mistral:latest")
 
     # -------------------------------------------------------------------------
     # Generator
@@ -557,7 +557,7 @@ if __name__ == "__main__":
     asyncio.run(main())
 ```
 
-Expected output (with `ollama/llama3.2:latest`; LM outputs are
+Expected output (with `ollama/mistral:latest`; LM outputs are
 non-deterministic, so exact strings will vary):
 
 ```
@@ -668,13 +668,14 @@ class AnswerWithThinking(synalinks.DataModel):
 async def main():
     load_dotenv()
     synalinks.clear_session()
+    synalinks.enable_logging()
 
     # synalinks.enable_observability(
     #     tracking_uri="http://localhost:5000",
     #     experiment_name="guide_4_modules",
     # )
 
-    lm = synalinks.LanguageModel(model="ollama/llama3.2:latest")
+    lm = synalinks.LanguageModel(model="ollama/mistral:latest")
 
     # -------------------------------------------------------------------------
     # Generator Module
@@ -694,6 +695,7 @@ async def main():
         outputs=outputs,
         name="generator_demo",
     )
+    program.summary()
 
     result = await program(Query(query="What is Python?"))
     print(f"\nGenerator output: {result['answer'][:100]}...")
@@ -717,6 +719,7 @@ async def main():
         outputs=decision,
         name="decision_demo",
     )
+    decision_program.summary()
 
     result = await decision_program(Query(query="What is 2+2?"))
     print(f"\nDecision output: {result['choice']}")
@@ -760,6 +763,7 @@ async def main():
         outputs=outputs,
         name="branch_demo",
     )
+    branch_program.summary()
 
     result = await branch_program(Query(query="What is 15 * 23?"))
     print(f"\nMath branch result: {result['answer']}")
@@ -785,6 +789,7 @@ async def main():
         outputs=outputs,
         name="cot_demo",
     )
+    cot_program.summary()
 
     result = await cot_program(Query(query="If I have 3 apples and give 1 away?"))
     print(f"\nThinking: {result['thinking'][:100]}...")
@@ -820,6 +825,7 @@ async def main():
         outputs=merged,
         name="merge_demo",
     )
+    merge_program.summary()
 
     result = await merge_program(Query(query="What is AI?"))
     print(f"\nMerged fields: {list(result.get_json().keys())}")
@@ -844,6 +850,7 @@ async def main():
         outputs=masked,
         name="mask_demo",
     )
+    mask_program.summary()
 
     result = await mask_program(Query(query="What is 1+1?"))
     print(f"\nMasked output fields: {list(result.get_json().keys())}")

@@ -1,0 +1,1445 @@
+(DEBUG) [Synalinks]
+Call ID: 80d8e324-48c5-472a-afeb-284ef1ea662e
+Parent call ID: None
+Module: Generator
+Module Name: for
+Module Description: Use a `LanguageModel` to generate a data model from an arbitrary input data model.
+Data Model JSON Schema:
+[
+  {
+    "additionalProperties": false,
+    "description": "A question to reason about.",
+    "properties": {
+      "question": {
+        "description": "The question to consider",
+        "title": "Question",
+        "type": "string"
+      }
+    },
+    "required": [
+      "question"
+    ],
+    "title": "Question",
+    "type": "object"
+  }
+]
+
+(DEBUG) [Synalinks]
+Call ID: 80d8e324-48c5-472a-afeb-284ef1ea662e
+Parent call ID: None
+Module: Generator
+Module Name: for
+Module Description: Use a `LanguageModel` to generate a data model from an arbitrary input data model.
+Data Model JSON Schema:
+[
+  {
+    "additionalProperties": false,
+    "description": "The case in favor.",
+    "properties": {
+      "pros": {
+        "description": "The strongest argument in favor",
+        "title": "Pros",
+        "type": "string"
+      }
+    },
+    "required": [
+      "pros"
+    ],
+    "title": "Pros",
+    "type": "object"
+  }
+]
+
+(DEBUG) [Synalinks]
+Call ID: 388de072-d198-4cbd-8663-ca21c043942e
+Parent call ID: None
+Module: Generator
+Module Name: against
+Module Description: Use a `LanguageModel` to generate a data model from an arbitrary input data model.
+Data Model JSON Schema:
+[
+  {
+    "additionalProperties": false,
+    "description": "A question to reason about.",
+    "properties": {
+      "question": {
+        "description": "The question to consider",
+        "title": "Question",
+        "type": "string"
+      }
+    },
+    "required": [
+      "question"
+    ],
+    "title": "Question",
+    "type": "object"
+  }
+]
+
+(DEBUG) [Synalinks]
+Call ID: 388de072-d198-4cbd-8663-ca21c043942e
+Parent call ID: None
+Module: Generator
+Module Name: against
+Module Description: Use a `LanguageModel` to generate a data model from an arbitrary input data model.
+Data Model JSON Schema:
+[
+  {
+    "additionalProperties": false,
+    "description": "The case against.",
+    "properties": {
+      "cons": {
+        "description": "The strongest argument against",
+        "title": "Cons",
+        "type": "string"
+      }
+    },
+    "required": [
+      "cons"
+    ],
+    "title": "Cons",
+    "type": "object"
+  }
+]
+
+============================================================
+Pattern 1: Fan-out + Concat (+)
+============================================================
+Program: fan_out
+description: 'A `Functional` program is a `Program` defined as a directed graph 
+of modules.'
+┏━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━┳━━━━━━━━━━━━━━━━━━━┓
+┃                    ┃                         ┃  Vars ┃                   ┃
+┃ Module (type)      ┃ Output Schema           ┃     # ┃ Connected to      ┃
+┡━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━╇━━━━━━━━━━━━━━━━━━━┩
+│ input_module       │ Question:               │     0 │ -                 │
+│ (InputModule)      │   question: str         │       │                   │
+├────────────────────┼─────────────────────────┼───────┼───────────────────┤
+│ for (Generator)    │ Pros:                   │     1 │ input_module[0][… │
+│                    │   pros: str             │       │                   │
+├────────────────────┼─────────────────────────┼───────┼───────────────────┤
+│ against            │ Cons:                   │     1 │ input_module[0][… │
+│ (Generator)        │   cons: str             │       │                   │
+├────────────────────┼─────────────────────────┼───────┼───────────────────┤
+│ concat (Concat)    │ Pros:                   │     0 │ for[0][0],        │
+│                    │   pros: str             │       │ against[0][0]     │
+│                    │   cons: str             │       │                   │
+└────────────────────┴─────────────────────────┴───────┴───────────────────┘
+[Synalinks]
+Call ID: 2b13b3aa-ebb7-4332-9769-d3ba5be8ab19
+Parent call ID: None
+Module: Functional
+Module Name: fan_out
+Module Description: A `Functional` program is a `Program` defined as a directed graph of modules.
+Data Model JSON:
+[
+  {
+    "question": "Should small teams adopt microservices?"
+  }
+]
+
+[Synalinks]
+Call ID: 7a53818e-f8e5-4fee-8f32-edb9a02b0764
+Parent call ID: 2b13b3aa-ebb7-4332-9769-d3ba5be8ab19
+Module: Generator
+Module Name: for
+Module Description: Use a `LanguageModel` to generate a data model from an arbitrary input data model.
+Data Model JSON:
+[
+  {
+    "question": "Should small teams adopt microservices?"
+  }
+]
+
+[Synalinks]
+Call ID: 72b3c822-89ec-491b-b8ba-1828d9d6f4ed
+Parent call ID: 7a53818e-f8e5-4fee-8f32-edb9a02b0764
+Module: LanguageModel
+Module Name: language_model
+Module Description: A language model API wrapper.
+Data Model JSON:
+[
+  {
+    "messages": [
+      {
+        "role": "system",
+        "content": "<instructions>\nYour task is to answer with a JSON containing the following keys: ['pros']\n</instructions>\n"
+      },
+      {
+        "role": "user",
+        "content": "<input>\n{'question': 'Should small teams adopt microservices?'}\n</input>\n<output>\n"
+      }
+    ]
+  }
+]
+
+[Synalinks]
+Call ID: 61695190-2c82-4323-bfa9-e13ceaee64bd
+Parent call ID: 72b3c822-89ec-491b-b8ba-1828d9d6f4ed
+Module: Generator
+Module Name: against
+Module Description: Use a `LanguageModel` to generate a data model from an arbitrary input data model.
+Data Model JSON:
+[
+  {
+    "question": "Should small teams adopt microservices?"
+  }
+]
+
+[Synalinks]
+Call ID: cfef8e1d-9f8b-433f-8ee8-c03881e859c6
+Parent call ID: 61695190-2c82-4323-bfa9-e13ceaee64bd
+Module: LanguageModel
+Module Name: language_model
+Module Description: A language model API wrapper.
+Data Model JSON:
+[
+  {
+    "messages": [
+      {
+        "role": "system",
+        "content": "<instructions>\nYour task is to answer with a JSON containing the following keys: ['cons']\n</instructions>\n"
+      },
+      {
+        "role": "user",
+        "content": "<input>\n{'question': 'Should small teams adopt microservices?'}\n</input>\n<output>\n"
+      }
+    ]
+  }
+]
+
+[Synalinks]
+Call ID: 72b3c822-89ec-491b-b8ba-1828d9d6f4ed
+Parent call ID: 7a53818e-f8e5-4fee-8f32-edb9a02b0764
+Module: LanguageModel
+Module Name: language_model
+Module Description: A language model API wrapper.
+Data Model JSON:
+[
+  {
+    "pros": "1. Scalability: Microservices allow for independent scaling of individual services, which can help manage resources more efficiently and improve performance. \n"
+  }
+]
+
+[Synalinks]
+Call ID: 7a53818e-f8e5-4fee-8f32-edb9a02b0764
+Parent call ID: 2b13b3aa-ebb7-4332-9769-d3ba5be8ab19
+Module: Generator
+Module Name: for
+Module Description: Use a `LanguageModel` to generate a data model from an arbitrary input data model.
+Data Model JSON:
+[
+  {
+    "pros": "1. Scalability: Microservices allow for independent scaling of individual services, which can help manage resources more efficiently and improve performance. \n"
+  }
+]
+
+[Synalinks]
+Call ID: cfef8e1d-9f8b-433f-8ee8-c03881e859c6
+Parent call ID: 61695190-2c82-4323-bfa9-e13ceaee64bd
+Module: LanguageModel
+Module Name: language_model
+Module Description: A language model API wrapper.
+Data Model JSON:
+[
+  {
+    "cons": "1. Complexity: Microservices can lead to increased complexity due to the need for multiple services, each with its own database and technology stack. This can make debugging and maintenance more challenging. \n\n2. Communication Overhead: With microservices, communication between services can become a bottleneck, especially in small teams where resources are limited. \n\n3. Data Consistency: Ensuring data consistency across multiple services can be difficult, potentially leading to inconsistent user experiences or data errors. \n\n4. Deployment and Scaling: Deploying and scaling microservices individually can be time-consuming and require more resources compared to monolithic applications. \n\n5. Network Latency: The use of multiple services can increase network latency, which may impact performance for users."
+  }
+]
+
+[Synalinks]
+Call ID: 61695190-2c82-4323-bfa9-e13ceaee64bd
+Parent call ID: 72b3c822-89ec-491b-b8ba-1828d9d6f4ed
+Module: Generator
+Module Name: against
+Module Description: Use a `LanguageModel` to generate a data model from an arbitrary input data model.
+Data Model JSON:
+[
+  {
+    "cons": "1. Complexity: Microservices can lead to increased complexity due to the need for multiple services, each with its own database and technology stack. This can make debugging and maintenance more challenging. \n\n2. Communication Overhead: With microservices, communication between services can become a bottleneck, especially in small teams where resources are limited. \n\n3. Data Consistency: Ensuring data consistency across multiple services can be difficult, potentially leading to inconsistent user experiences or data errors. \n\n4. Deployment and Scaling: Deploying and scaling microservices individually can be time-consuming and require more resources compared to monolithic applications. \n\n5. Network Latency: The use of multiple services can increase network latency, which may impact performance for users."
+  }
+]
+
+[Synalinks]
+Call ID: 2b13b3aa-ebb7-4332-9769-d3ba5be8ab19
+Parent call ID: None
+Module: Functional
+Module Name: fan_out
+Module Description: A `Functional` program is a `Program` defined as a directed graph of modules.
+Data Model JSON:
+[
+  {
+    "pros": "1. Scalability: Microservices allow for independent scaling of individual services, which can help manage resources more efficiently and improve performance. \n",
+    "cons": "1. Complexity: Microservices can lead to increased complexity due to the need for multiple services, each with its own database and technology stack. This can make debugging and maintenance more challenging. \n\n2. Communication Overhead: With microservices, communication between services can become a bottleneck, especially in small teams where resources are limited. \n\n3. Data Consistency: Ensuring data consistency across multiple services can be difficult, potentially leading to inconsistent user experiences or data errors. \n\n4. Deployment and Scaling: Deploying and scaling microservices individually can be time-consuming and require more resources compared to monolithic applications. \n\n5. Network Latency: The use of multiple services can increase network latency, which may impact performance for users."
+  }
+]
+
+(DEBUG) [Synalinks]
+Call ID: 5b241b7e-f666-49bb-9b91-2e8d86680785
+Parent call ID: None
+Module: Branch
+Module Name: branch
+Module Description: Use a `LanguageModel` to select which module(s) to call based on an
+Data Model JSON Schema:
+[
+  {
+    "additionalProperties": false,
+    "description": "A user query to route.",
+    "properties": {
+      "query": {
+        "description": "The user query",
+        "title": "Query",
+        "type": "string"
+      }
+    },
+    "required": [
+      "query"
+    ],
+    "title": "Query",
+    "type": "object"
+  }
+]
+
+(DEBUG) [Synalinks]
+Call ID: 9cbd85d3-e030-4a56-ab15-c158f86772d5
+Parent call ID: 5b241b7e-f666-49bb-9b91-2e8d86680785
+Module: Decision
+Module Name: decision_branch
+Module Description: Perform a decision on the given input based on a question and a list of labels.
+Data Model JSON Schema:
+[
+  {
+    "additionalProperties": false,
+    "description": "A user query to route.",
+    "properties": {
+      "query": {
+        "description": "The user query",
+        "title": "Query",
+        "type": "string"
+      }
+    },
+    "required": [
+      "query"
+    ],
+    "title": "Query",
+    "type": "object"
+  }
+]
+
+(DEBUG) [Synalinks]
+Call ID: 6283e876-6a63-4a93-bc47-f779e3bc7dc6
+Parent call ID: 9cbd85d3-e030-4a56-ab15-c158f86772d5
+Module: Generator
+Module Name: generator_decision_branch
+Module Description: Use a `LanguageModel` to generate a data model from an arbitrary input data model.
+Data Model JSON Schema:
+[
+  {
+    "additionalProperties": false,
+    "properties": {
+      "query": {
+        "description": "The user query",
+        "title": "Query",
+        "type": "string"
+      },
+      "question": {
+        "description": "The question to ask yourself.",
+        "title": "Question",
+        "type": "string"
+      }
+    },
+    "required": [
+      "query",
+      "question"
+    ],
+    "title": "Query",
+    "type": "object"
+  }
+]
+
+(DEBUG) [Synalinks]
+Call ID: 6283e876-6a63-4a93-bc47-f779e3bc7dc6
+Parent call ID: 9cbd85d3-e030-4a56-ab15-c158f86772d5
+Module: Generator
+Module Name: generator_decision_branch
+Module Description: Use a `LanguageModel` to generate a data model from an arbitrary input data model.
+Data Model JSON Schema:
+[
+  {
+    "additionalProperties": false,
+    "properties": {
+      "thinking": {
+        "description": "Your step by step thinking to choose the correct label.",
+        "title": "Thinking",
+        "type": "string"
+      },
+      "choice": {
+        "enum": [
+          "easy",
+          "hard"
+        ],
+        "title": "Choice",
+        "type": "string"
+      }
+    },
+    "required": [
+      "thinking",
+      "choice"
+    ],
+    "title": "DecisionAnswer",
+    "type": "object"
+  }
+]
+
+(DEBUG) [Synalinks]
+Call ID: 76f7e6ab-7a47-40ae-befd-0c0d686912b9
+Parent call ID: 6283e876-6a63-4a93-bc47-f779e3bc7dc6
+Module: Generator
+Module Name: generator_decision_branch
+Module Description: Use a `LanguageModel` to generate a data model from an arbitrary input data model.
+Data Model JSON Schema:
+[
+  {
+    "additionalProperties": false,
+    "properties": {
+      "query": {
+        "description": "The user query",
+        "title": "Query",
+        "type": "string"
+      },
+      "question": {
+        "description": "The question to ask yourself.",
+        "title": "Question",
+        "type": "string"
+      }
+    },
+    "required": [
+      "query",
+      "question"
+    ],
+    "title": "Query",
+    "type": "object"
+  }
+]
+
+(DEBUG) [Synalinks]
+Call ID: 76f7e6ab-7a47-40ae-befd-0c0d686912b9
+Parent call ID: 6283e876-6a63-4a93-bc47-f779e3bc7dc6
+Module: Generator
+Module Name: generator_decision_branch
+Module Description: Use a `LanguageModel` to generate a data model from an arbitrary input data model.
+Data Model JSON Schema:
+[
+  {
+    "additionalProperties": false,
+    "properties": {
+      "thinking": {
+        "description": "Your step by step thinking to choose the correct label.",
+        "title": "Thinking",
+        "type": "string"
+      },
+      "choice": {
+        "enum": [
+          "easy",
+          "hard"
+        ],
+        "title": "Choice",
+        "type": "string"
+      }
+    },
+    "required": [
+      "thinking",
+      "choice"
+    ],
+    "title": "DecisionAnswer",
+    "type": "object"
+  }
+]
+
+(DEBUG) [Synalinks]
+Call ID: 9cbd85d3-e030-4a56-ab15-c158f86772d5
+Parent call ID: 5b241b7e-f666-49bb-9b91-2e8d86680785
+Module: Decision
+Module Name: decision_branch
+Module Description: Perform a decision on the given input based on a question and a list of labels.
+Data Model JSON Schema:
+[
+  {
+    "additionalProperties": false,
+    "properties": {
+      "thinking": {
+        "description": "Your step by step thinking to choose the correct label.",
+        "title": "Thinking",
+        "type": "string"
+      },
+      "choice": {
+        "enum": [
+          "easy",
+          "hard"
+        ],
+        "title": "Choice",
+        "type": "string"
+      }
+    },
+    "required": [
+      "thinking",
+      "choice"
+    ],
+    "title": "DecisionAnswer",
+    "type": "object"
+  }
+]
+
+(DEBUG) [Synalinks]
+Call ID: 983f0b1a-11ca-4e7b-b160-7718e0651c54
+Parent call ID: 76f7e6ab-7a47-40ae-befd-0c0d686912b9
+Module: Generator
+Module Name: generator
+Module Description: Use a `LanguageModel` to generate a data model from an arbitrary input data model.
+Data Model JSON Schema:
+[
+  {
+    "additionalProperties": false,
+    "properties": {
+      "query": {
+        "description": "The user query",
+        "title": "Query",
+        "type": "string"
+      },
+      "thinking": {
+        "description": "Your step by step thinking to choose the correct label.",
+        "title": "Thinking",
+        "type": "string"
+      },
+      "choice": {
+        "enum": [
+          "easy",
+          "hard"
+        ],
+        "title": "Choice",
+        "type": "string"
+      }
+    },
+    "required": [
+      "query",
+      "thinking",
+      "choice"
+    ],
+    "title": "Query",
+    "type": "object"
+  }
+]
+
+(DEBUG) [Synalinks]
+Call ID: 983f0b1a-11ca-4e7b-b160-7718e0651c54
+Parent call ID: 76f7e6ab-7a47-40ae-befd-0c0d686912b9
+Module: Generator
+Module Name: generator
+Module Description: Use a `LanguageModel` to generate a data model from an arbitrary input data model.
+Data Model JSON Schema:
+[
+  {
+    "additionalProperties": false,
+    "description": "A short, direct answer.",
+    "properties": {
+      "answer": {
+        "description": "The correct answer",
+        "title": "Answer",
+        "type": "string"
+      }
+    },
+    "required": [
+      "answer"
+    ],
+    "title": "Answer",
+    "type": "object"
+  }
+]
+
+(DEBUG) [Synalinks]
+Call ID: 1fec1ad1-95e9-4c53-9832-3c83e89aa49c
+Parent call ID: 983f0b1a-11ca-4e7b-b160-7718e0651c54
+Module: Generator
+Module Name: generator_1
+Module Description: Use a `LanguageModel` to generate a data model from an arbitrary input data model.
+Data Model JSON Schema:
+[
+  {
+    "additionalProperties": false,
+    "properties": {
+      "query": {
+        "description": "The user query",
+        "title": "Query",
+        "type": "string"
+      },
+      "thinking": {
+        "description": "Your step by step thinking to choose the correct label.",
+        "title": "Thinking",
+        "type": "string"
+      },
+      "choice": {
+        "enum": [
+          "easy",
+          "hard"
+        ],
+        "title": "Choice",
+        "type": "string"
+      }
+    },
+    "required": [
+      "query",
+      "thinking",
+      "choice"
+    ],
+    "title": "Query",
+    "type": "object"
+  }
+]
+
+(DEBUG) [Synalinks]
+Call ID: 1fec1ad1-95e9-4c53-9832-3c83e89aa49c
+Parent call ID: 983f0b1a-11ca-4e7b-b160-7718e0651c54
+Module: Generator
+Module Name: generator_1
+Module Description: Use a `LanguageModel` to generate a data model from an arbitrary input data model.
+Data Model JSON Schema:
+[
+  {
+    "additionalProperties": false,
+    "description": "An answer with step-by-step reasoning.",
+    "properties": {
+      "thinking": {
+        "description": "Your step by step thinking",
+        "title": "Thinking",
+        "type": "string"
+      },
+      "answer": {
+        "description": "The correct answer",
+        "title": "Answer",
+        "type": "string"
+      }
+    },
+    "required": [
+      "thinking",
+      "answer"
+    ],
+    "title": "AnswerWithThinking",
+    "type": "object"
+  }
+]
+
+(DEBUG) [Synalinks]
+Call ID: d4ecd03d-5f17-43ee-8cbd-78bad685e649
+Parent call ID: 1fec1ad1-95e9-4c53-9832-3c83e89aa49c
+Module: Decision
+Module Name: decision_branch
+Module Description: Perform a decision on the given input based on a question and a list of labels.
+Data Model JSON Schema:
+[
+  {
+    "additionalProperties": false,
+    "description": "A user query to route.",
+    "properties": {
+      "query": {
+        "description": "The user query",
+        "title": "Query",
+        "type": "string"
+      }
+    },
+    "required": [
+      "query"
+    ],
+    "title": "Query",
+    "type": "object"
+  }
+]
+
+(DEBUG) [Synalinks]
+Call ID: 5e592aea-396f-4c50-9b22-e6f52efb8f32
+Parent call ID: d4ecd03d-5f17-43ee-8cbd-78bad685e649
+Module: Generator
+Module Name: generator_decision_branch
+Module Description: Use a `LanguageModel` to generate a data model from an arbitrary input data model.
+Data Model JSON Schema:
+[
+  {
+    "additionalProperties": false,
+    "properties": {
+      "query": {
+        "description": "The user query",
+        "title": "Query",
+        "type": "string"
+      },
+      "question": {
+        "description": "The question to ask yourself.",
+        "title": "Question",
+        "type": "string"
+      }
+    },
+    "required": [
+      "query",
+      "question"
+    ],
+    "title": "Query",
+    "type": "object"
+  }
+]
+
+(DEBUG) [Synalinks]
+Call ID: 5e592aea-396f-4c50-9b22-e6f52efb8f32
+Parent call ID: d4ecd03d-5f17-43ee-8cbd-78bad685e649
+Module: Generator
+Module Name: generator_decision_branch
+Module Description: Use a `LanguageModel` to generate a data model from an arbitrary input data model.
+Data Model JSON Schema:
+[
+  {
+    "additionalProperties": false,
+    "properties": {
+      "thinking": {
+        "description": "Your step by step thinking to choose the correct label.",
+        "title": "Thinking",
+        "type": "string"
+      },
+      "choice": {
+        "enum": [
+          "easy",
+          "hard"
+        ],
+        "title": "Choice",
+        "type": "string"
+      }
+    },
+    "required": [
+      "thinking",
+      "choice"
+    ],
+    "title": "DecisionAnswer",
+    "type": "object"
+  }
+]
+
+(DEBUG) [Synalinks]
+Call ID: d4ecd03d-5f17-43ee-8cbd-78bad685e649
+Parent call ID: 1fec1ad1-95e9-4c53-9832-3c83e89aa49c
+Module: Decision
+Module Name: decision_branch
+Module Description: Perform a decision on the given input based on a question and a list of labels.
+Data Model JSON Schema:
+[
+  {
+    "additionalProperties": false,
+    "properties": {
+      "thinking": {
+        "description": "Your step by step thinking to choose the correct label.",
+        "title": "Thinking",
+        "type": "string"
+      },
+      "choice": {
+        "enum": [
+          "easy",
+          "hard"
+        ],
+        "title": "Choice",
+        "type": "string"
+      }
+    },
+    "required": [
+      "thinking",
+      "choice"
+    ],
+    "title": "DecisionAnswer",
+    "type": "object"
+  }
+]
+
+(DEBUG) [Synalinks]
+Call ID: d4b13295-a150-4800-973d-47a657f26ed0
+Parent call ID: 5e592aea-396f-4c50-9b22-e6f52efb8f32
+Module: Generator
+Module Name: generator
+Module Description: Use a `LanguageModel` to generate a data model from an arbitrary input data model.
+Data Model JSON Schema:
+[
+  {
+    "additionalProperties": false,
+    "properties": {
+      "query": {
+        "description": "The user query",
+        "title": "Query",
+        "type": "string"
+      },
+      "thinking": {
+        "description": "Your step by step thinking to choose the correct label.",
+        "title": "Thinking",
+        "type": "string"
+      },
+      "choice": {
+        "enum": [
+          "easy",
+          "hard"
+        ],
+        "title": "Choice",
+        "type": "string"
+      }
+    },
+    "required": [
+      "query",
+      "thinking",
+      "choice"
+    ],
+    "title": "Query",
+    "type": "object"
+  }
+]
+
+(DEBUG) [Synalinks]
+Call ID: d4b13295-a150-4800-973d-47a657f26ed0
+Parent call ID: 5e592aea-396f-4c50-9b22-e6f52efb8f32
+Module: Generator
+Module Name: generator
+Module Description: Use a `LanguageModel` to generate a data model from an arbitrary input data model.
+Data Model JSON Schema:
+[
+  {
+    "additionalProperties": false,
+    "description": "A short, direct answer.",
+    "properties": {
+      "answer": {
+        "description": "The correct answer",
+        "title": "Answer",
+        "type": "string"
+      }
+    },
+    "required": [
+      "answer"
+    ],
+    "title": "Answer",
+    "type": "object"
+  }
+]
+
+(DEBUG) [Synalinks]
+Call ID: e7d12208-be09-49bd-9102-b40e932543dd
+Parent call ID: d4b13295-a150-4800-973d-47a657f26ed0
+Module: Generator
+Module Name: generator_1
+Module Description: Use a `LanguageModel` to generate a data model from an arbitrary input data model.
+Data Model JSON Schema:
+[
+  {
+    "additionalProperties": false,
+    "properties": {
+      "query": {
+        "description": "The user query",
+        "title": "Query",
+        "type": "string"
+      },
+      "thinking": {
+        "description": "Your step by step thinking to choose the correct label.",
+        "title": "Thinking",
+        "type": "string"
+      },
+      "choice": {
+        "enum": [
+          "easy",
+          "hard"
+        ],
+        "title": "Choice",
+        "type": "string"
+      }
+    },
+    "required": [
+      "query",
+      "thinking",
+      "choice"
+    ],
+    "title": "Query",
+    "type": "object"
+  }
+]
+
+(DEBUG) [Synalinks]
+Call ID: e7d12208-be09-49bd-9102-b40e932543dd
+Parent call ID: d4b13295-a150-4800-973d-47a657f26ed0
+Module: Generator
+Module Name: generator_1
+Module Description: Use a `LanguageModel` to generate a data model from an arbitrary input data model.
+Data Model JSON Schema:
+[
+  {
+    "additionalProperties": false,
+    "description": "An answer with step-by-step reasoning.",
+    "properties": {
+      "thinking": {
+        "description": "Your step by step thinking",
+        "title": "Thinking",
+        "type": "string"
+      },
+      "answer": {
+        "description": "The correct answer",
+        "title": "Answer",
+        "type": "string"
+      }
+    },
+    "required": [
+      "thinking",
+      "answer"
+    ],
+    "title": "AnswerWithThinking",
+    "type": "object"
+  }
+]
+
+(DEBUG) [Synalinks]
+Call ID: 5b241b7e-f666-49bb-9b91-2e8d86680785
+Parent call ID: None
+Module: Branch
+Module Name: branch
+Module Description: Use a `LanguageModel` to select which module(s) to call based on an
+Data Model JSON Schema:
+[
+  {
+    "additionalProperties": false,
+    "properties": {
+      "thinking": {
+        "description": "Your step by step thinking to choose the correct label.",
+        "title": "Thinking",
+        "type": "string"
+      },
+      "choice": {
+        "enum": [
+          "easy",
+          "hard"
+        ],
+        "title": "Choice",
+        "type": "string"
+      },
+      "answer": {
+        "description": "The correct answer",
+        "title": "Answer",
+        "type": "string"
+      }
+    },
+    "required": [
+      "thinking",
+      "choice",
+      "answer"
+    ],
+    "title": "DecisionAnswer",
+    "type": "object"
+  },
+  {
+    "additionalProperties": false,
+    "properties": {
+      "thinking": {
+        "description": "Your step by step thinking to choose the correct label.",
+        "title": "Thinking",
+        "type": "string"
+      },
+      "choice": {
+        "enum": [
+          "easy",
+          "hard"
+        ],
+        "title": "Choice",
+        "type": "string"
+      },
+      "thinking_1": {
+        "description": "Your step by step thinking",
+        "title": "Thinking 1",
+        "type": "string"
+      },
+      "answer": {
+        "description": "The correct answer",
+        "title": "Answer",
+        "type": "string"
+      }
+    },
+    "required": [
+      "thinking",
+      "choice",
+      "thinking_1",
+      "answer"
+    ],
+    "title": "DecisionAnswer",
+    "type": "object"
+  }
+]
+
+
+Merged fields: ['pros', 'cons']
+  pros: 1. Scalability: Microservices allow for independent scaling of individ...
+  cons: 1. Complexity: Microservices can lead to increased complexity due to t...
+
+============================================================
+Pattern 2: Branch routing + Or (|)
+============================================================
+Program: routing
+description: 'A `Functional` program is a `Program` defined as a directed graph 
+of modules.'
+┏━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━┳━━━━━━━━━━━━━━━━━━━┓
+┃                    ┃                         ┃  Vars ┃                   ┃
+┃ Module (type)      ┃ Output Schema           ┃     # ┃ Connected to      ┃
+┡━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━╇━━━━━━━━━━━━━━━━━━━┩
+│ input_module_1     │ Query:                  │     0 │ -                 │
+│ (InputModule)      │   query: str            │       │                   │
+├────────────────────┼─────────────────────────┼───────┼───────────────────┤
+│ branch (Branch)    │ DecisionAnswer:         │     3 │ input_module_1[0… │
+│                    │   thinking: str         │       │                   │
+│                    │   choice:               │       │                   │
+│                    │ Literal['easy', 'hard'] │       │                   │
+│                    │   answer: str           │       │                   │
+│                    │ ---                     │       │                   │
+│                    │ DecisionAnswer:         │       │                   │
+│                    │   thinking: str         │       │                   │
+│                    │   choice:               │       │                   │
+│                    │ Literal['easy', 'hard'] │       │                   │
+│                    │   thinking_1: str       │       │                   │
+│                    │   answer: str           │       │                   │
+├────────────────────┼─────────────────────────┼───────┼───────────────────┤
+│ or (Or)            │ DecisionAnswer:         │     0 │ branch[0][0],     │
+│                    │   thinking: str         │       │ branch[0][1]      │
+│                    │   choice:               │       │                   │
+│                    │ Literal['easy', 'hard'] │       │                   │
+│                    │   answer: str           │       │                   │
+└────────────────────┴─────────────────────────┴───────┴───────────────────┘
+[Synalinks]
+Call ID: 717fdd22-62ad-4aa6-9c23-c19df90093a8
+Parent call ID: None
+Module: Functional
+Module Name: routing
+Module Description: A `Functional` program is a `Program` defined as a directed graph of modules.
+Data Model JSON:
+[
+  {
+    "query": "What is 2 + 2?"
+  }
+]
+
+[Synalinks]
+Call ID: 4986c872-67f0-4c78-b325-ebdded62ee10
+Parent call ID: 717fdd22-62ad-4aa6-9c23-c19df90093a8
+Module: Branch
+Module Name: branch
+Module Description: Use a `LanguageModel` to select which module(s) to call based on an
+Data Model JSON:
+[
+  {
+    "query": "What is 2 + 2?"
+  }
+]
+
+[Synalinks]
+Call ID: 39cbbf17-b1a4-4260-80a5-5ef7464a54b5
+Parent call ID: 4986c872-67f0-4c78-b325-ebdded62ee10
+Module: Decision
+Module Name: decision_branch
+Module Description: Perform a decision on the given input based on a question and a list of labels.
+Data Model JSON:
+[
+  {
+    "query": "What is 2 + 2?"
+  }
+]
+
+[Synalinks]
+Call ID: e2bddcf3-b943-47fe-a8be-1a863b80332e
+Parent call ID: 39cbbf17-b1a4-4260-80a5-5ef7464a54b5
+Module: Generator
+Module Name: generator_decision_branch
+Module Description: Use a `LanguageModel` to generate a data model from an arbitrary input data model.
+Data Model JSON:
+[
+  {
+    "query": "What is 2 + 2?",
+    "question": "How hard is this query to answer?"
+  }
+]
+
+[Synalinks]
+Call ID: a07da834-9d42-4e55-b085-70942c760816
+Parent call ID: e2bddcf3-b943-47fe-a8be-1a863b80332e
+Module: LanguageModel
+Module Name: language_model
+Module Description: A language model API wrapper.
+Data Model JSON:
+[
+  {
+    "messages": [
+      {
+        "role": "system",
+        "content": "<instructions>\nYou will be given a question, your task is to answer step-by-step to choose\none the following labels: ['easy', 'hard']\n</instructions>\n"
+      },
+      {
+        "role": "user",
+        "content": "<input>\n{'query': 'What is 2 + 2?', 'question': 'How hard is this query to answer?'}\n</input>\n<output>\n"
+      }
+    ]
+  }
+]
+
+[Synalinks]
+Call ID: a07da834-9d42-4e55-b085-70942c760816
+Parent call ID: e2bddcf3-b943-47fe-a8be-1a863b80332e
+Module: LanguageModel
+Module Name: language_model
+Module Description: A language model API wrapper.
+Data Model JSON:
+[
+  {
+    "thinking": "The question asks for a simple arithmetic operation, which can be easily solved. Therefore, the label would be 'easy'.",
+    "choice": "easy"
+  }
+]
+
+[Synalinks]
+Call ID: e2bddcf3-b943-47fe-a8be-1a863b80332e
+Parent call ID: 39cbbf17-b1a4-4260-80a5-5ef7464a54b5
+Module: Generator
+Module Name: generator_decision_branch
+Module Description: Use a `LanguageModel` to generate a data model from an arbitrary input data model.
+Data Model JSON:
+[
+  {
+    "thinking": "The question asks for a simple arithmetic operation, which can be easily solved. Therefore, the label would be 'easy'.",
+    "choice": "easy"
+  }
+]
+
+[Synalinks]
+Call ID: 39cbbf17-b1a4-4260-80a5-5ef7464a54b5
+Parent call ID: 4986c872-67f0-4c78-b325-ebdded62ee10
+Module: Decision
+Module Name: decision_branch
+Module Description: Perform a decision on the given input based on a question and a list of labels.
+Data Model JSON:
+[
+  {
+    "thinking": "The question asks for a simple arithmetic operation, which can be easily solved. Therefore, the label would be 'easy'.",
+    "choice": "easy"
+  }
+]
+
+[Synalinks]
+Call ID: 9e83482e-6191-456d-8bcf-ce063d4a15d1
+Parent call ID: a07da834-9d42-4e55-b085-70942c760816
+Module: Generator
+Module Name: generator
+Module Description: Use a `LanguageModel` to generate a data model from an arbitrary input data model.
+Data Model JSON:
+[
+  {
+    "query": "What is 2 + 2?",
+    "thinking": "The question asks for a simple arithmetic operation, which can be easily solved. Therefore, the label would be 'easy'.",
+    "choice": "easy"
+  }
+]
+
+[Synalinks]
+Call ID: dcf0bc67-6429-45a2-b59a-facb892f2932
+Parent call ID: 9e83482e-6191-456d-8bcf-ce063d4a15d1
+Module: LanguageModel
+Module Name: language_model
+Module Description: A language model API wrapper.
+Data Model JSON:
+[
+  {
+    "messages": [
+      {
+        "role": "system",
+        "content": "<instructions>\nYour task is to answer with a JSON containing the following keys: ['answer']\n</instructions>\n"
+      },
+      {
+        "role": "user",
+        "content": "<input>\n{'query': 'What is 2 + 2?', 'thinking': \"The question asks for a simple arithmetic operation, which can be easily solved. Therefore, the label would be 'easy'.\", 'choice': 'easy'}\n</input>\n<output>\n"
+      }
+    ]
+  }
+]
+
+[Synalinks]
+Call ID: dcf0bc67-6429-45a2-b59a-facb892f2932
+Parent call ID: 9e83482e-6191-456d-8bcf-ce063d4a15d1
+Module: LanguageModel
+Module Name: language_model
+Module Description: A language model API wrapper.
+Data Model JSON:
+[
+  {
+    "answer": "4"
+  }
+]
+
+[Synalinks]
+Call ID: 9e83482e-6191-456d-8bcf-ce063d4a15d1
+Parent call ID: a07da834-9d42-4e55-b085-70942c760816
+Module: Generator
+Module Name: generator
+Module Description: Use a `LanguageModel` to generate a data model from an arbitrary input data model.
+Data Model JSON:
+[
+  {
+    "answer": "4"
+  }
+]
+
+[Synalinks]
+Call ID: 4986c872-67f0-4c78-b325-ebdded62ee10
+Parent call ID: 717fdd22-62ad-4aa6-9c23-c19df90093a8
+Module: Branch
+Module Name: branch
+Module Description: Use a `LanguageModel` to select which module(s) to call based on an
+Data Model JSON:
+[
+  {
+    "thinking": "The question asks for a simple arithmetic operation, which can be easily solved. Therefore, the label would be 'easy'.",
+    "choice": "easy",
+    "answer": "4"
+  }
+]
+
+[Synalinks]
+Call ID: 717fdd22-62ad-4aa6-9c23-c19df90093a8
+Parent call ID: None
+Module: Functional
+Module Name: routing
+Module Description: A `Functional` program is a `Program` defined as a directed graph of modules.
+Data Model JSON:
+[
+  {
+    "thinking": "The question asks for a simple arithmetic operation, which can be easily solved. Therefore, the label would be 'easy'.",
+    "choice": "easy",
+    "answer": "4"
+  }
+]
+
+[Synalinks]
+Call ID: bd19d92b-5016-4f87-af19-b42c2376b03b
+Parent call ID: None
+Module: Functional
+Module Name: routing
+Module Description: A `Functional` program is a `Program` defined as a directed graph of modules.
+Data Model JSON:
+[
+  {
+    "query": "Explain why the sky is blue, from first principles."
+  }
+]
+
+[Synalinks]
+Call ID: fd8ec8ac-60a2-4892-8f78-bca235eac9f4
+Parent call ID: bd19d92b-5016-4f87-af19-b42c2376b03b
+Module: Branch
+Module Name: branch
+Module Description: Use a `LanguageModel` to select which module(s) to call based on an
+Data Model JSON:
+[
+  {
+    "query": "Explain why the sky is blue, from first principles."
+  }
+]
+
+[Synalinks]
+Call ID: 9db59e20-c8ea-402f-bf7b-48f7de7e21cd
+Parent call ID: fd8ec8ac-60a2-4892-8f78-bca235eac9f4
+Module: Decision
+Module Name: decision_branch
+Module Description: Perform a decision on the given input based on a question and a list of labels.
+Data Model JSON:
+[
+  {
+    "query": "Explain why the sky is blue, from first principles."
+  }
+]
+
+[Synalinks]
+Call ID: c0afc45c-e993-4773-9b04-eaa83cb230bc
+Parent call ID: 9db59e20-c8ea-402f-bf7b-48f7de7e21cd
+Module: Generator
+Module Name: generator_decision_branch
+Module Description: Use a `LanguageModel` to generate a data model from an arbitrary input data model.
+Data Model JSON:
+[
+  {
+    "query": "Explain why the sky is blue, from first principles.",
+    "question": "How hard is this query to answer?"
+  }
+]
+
+[Synalinks]
+Call ID: 1316be24-f2ee-4cbf-b1f6-36b338088c44
+Parent call ID: c0afc45c-e993-4773-9b04-eaa83cb230bc
+Module: LanguageModel
+Module Name: language_model
+Module Description: A language model API wrapper.
+Data Model JSON:
+[
+  {
+    "messages": [
+      {
+        "role": "system",
+        "content": "<instructions>\nYou will be given a question, your task is to answer step-by-step to choose\none the following labels: ['easy', 'hard']\n</instructions>\n"
+      },
+      {
+        "role": "user",
+        "content": "<input>\n{'query': 'Explain why the sky is blue, from first principles.', 'question': 'How hard is this query to answer?'}\n</input>\n<output>\n"
+      }
+    ]
+  }
+]
+
+[Synalinks]
+Call ID: 1316be24-f2ee-4cbf-b1f6-36b338088c44
+Parent call ID: c0afc45c-e993-4773-9b04-eaa83cb230bc
+Module: LanguageModel
+Module Name: language_model
+Module Description: A language model API wrapper.
+Data Model JSON:
+[
+  {
+    "thinking": "The question asks for an explanation of a scientific phenomenon based on first principles. This requires understanding and application of physics concepts such as light scattering, refraction, and absorption. Therefore, I would label this query as 'hard'.",
+    "choice": "hard"
+  }
+]
+
+[Synalinks]
+Call ID: c0afc45c-e993-4773-9b04-eaa83cb230bc
+Parent call ID: 9db59e20-c8ea-402f-bf7b-48f7de7e21cd
+Module: Generator
+Module Name: generator_decision_branch
+Module Description: Use a `LanguageModel` to generate a data model from an arbitrary input data model.
+Data Model JSON:
+[
+  {
+    "thinking": "The question asks for an explanation of a scientific phenomenon based on first principles. This requires understanding and application of physics concepts such as light scattering, refraction, and absorption. Therefore, I would label this query as 'hard'.",
+    "choice": "hard"
+  }
+]
+
+[Synalinks]
+Call ID: 9db59e20-c8ea-402f-bf7b-48f7de7e21cd
+Parent call ID: fd8ec8ac-60a2-4892-8f78-bca235eac9f4
+Module: Decision
+Module Name: decision_branch
+Module Description: Perform a decision on the given input based on a question and a list of labels.
+Data Model JSON:
+[
+  {
+    "thinking": "The question asks for an explanation of a scientific phenomenon based on first principles. This requires understanding and application of physics concepts such as light scattering, refraction, and absorption. Therefore, I would label this query as 'hard'.",
+    "choice": "hard"
+  }
+]
+
+[Synalinks]
+Call ID: 566d382b-5291-4fad-b086-056a06318576
+Parent call ID: 1316be24-f2ee-4cbf-b1f6-36b338088c44
+Module: Generator
+Module Name: generator_1
+Module Description: Use a `LanguageModel` to generate a data model from an arbitrary input data model.
+Data Model JSON:
+[
+  {
+    "query": "Explain why the sky is blue, from first principles.",
+    "thinking": "The question asks for an explanation of a scientific phenomenon based on first principles. This requires understanding and application of physics concepts such as light scattering, refraction, and absorption. Therefore, I would label this query as 'hard'.",
+    "choice": "hard"
+  }
+]
+
+[Synalinks]
+Call ID: 05ce4c3e-328d-46a9-8fe8-1e947a0ca632
+Parent call ID: 566d382b-5291-4fad-b086-056a06318576
+Module: LanguageModel
+Module Name: language_model
+Module Description: A language model API wrapper.
+Data Model JSON:
+[
+  {
+    "messages": [
+      {
+        "role": "system",
+        "content": "<instructions>\nYour task is to answer with a JSON containing the following keys: ['thinking', 'answer']\n</instructions>\n"
+      },
+      {
+        "role": "user",
+        "content": "<input>\n{'query': 'Explain why the sky is blue, from first principles.', 'thinking': \"The question asks for an explanation of a scientific phenomenon based on first principles. This requires understanding and application of physics concepts such as light scattering, refraction, and absorption. Therefore, I would label this query as 'hard'.\", 'choice': 'hard'}\n</input>\n<output>\n"
+      }
+    ]
+  }
+]
+
+[Synalinks]
+Call ID: 05ce4c3e-328d-46a9-8fe8-1e947a0ca632
+Parent call ID: 566d382b-5291-4fad-b086-056a06318576
+Module: LanguageModel
+Module Name: language_model
+Module Description: A language model API wrapper.
+Data Model JSON:
+[
+  {
+    "thinking": "To explain why the sky appears blue from a scientific perspective, we need to understand how light interacts with molecules in the Earth's atmosphere. The process involves Rayleigh scattering, which is the scattering of light by particles much smaller than the wavelength of light. In this case, the particles are air molecules and dust particles. Shorter wavelengths (like blue and violet) are scattered more than longer wavelengths (like red and yellow). However, we see the sky as blue rather than violet because our eyes are more sensitive to blue light and because sunlight reaches us with less violet light due to scattering.",
+    "answer": "The sky appears blue due to a process called Rayleigh scattering, where shorter wavelengths of light (like blue) are scattered more by air molecules and dust particles in the Earth's atmosphere. Although violet light is scattered more than blue light, we see the sky as blue rather than violet because our eyes are more sensitive to blue light and because sunlight reaches us with less violet light due to scattering."
+  }
+]
+
+[Synalinks]
+Call ID: 566d382b-5291-4fad-b086-056a06318576
+Parent call ID: 1316be24-f2ee-4cbf-b1f6-36b338088c44
+Module: Generator
+Module Name: generator_1
+Module Description: Use a `LanguageModel` to generate a data model from an arbitrary input data model.
+Data Model JSON:
+[
+  {
+    "thinking": "To explain why the sky appears blue from a scientific perspective, we need to understand how light interacts with molecules in the Earth's atmosphere. The process involves Rayleigh scattering, which is the scattering of light by particles much smaller than the wavelength of light. In this case, the particles are air molecules and dust particles. Shorter wavelengths (like blue and violet) are scattered more than longer wavelengths (like red and yellow). However, we see the sky as blue rather than violet because our eyes are more sensitive to blue light and because sunlight reaches us with less violet light due to scattering.",
+    "answer": "The sky appears blue due to a process called Rayleigh scattering, where shorter wavelengths of light (like blue) are scattered more by air molecules and dust particles in the Earth's atmosphere. Although violet light is scattered more than blue light, we see the sky as blue rather than violet because our eyes are more sensitive to blue light and because sunlight reaches us with less violet light due to scattering."
+  }
+]
+
+[Synalinks]
+Call ID: fd8ec8ac-60a2-4892-8f78-bca235eac9f4
+Parent call ID: bd19d92b-5016-4f87-af19-b42c2376b03b
+Module: Branch
+Module Name: branch
+Module Description: Use a `LanguageModel` to select which module(s) to call based on an
+Data Model JSON:
+[
+  {
+    "thinking": "The question asks for an explanation of a scientific phenomenon based on first principles. This requires understanding and application of physics concepts such as light scattering, refraction, and absorption. Therefore, I would label this query as 'hard'.",
+    "choice": "hard",
+    "thinking_1": "To explain why the sky appears blue from a scientific perspective, we need to understand how light interacts with molecules in the Earth's atmosphere. The process involves Rayleigh scattering, which is the scattering of light by particles much smaller than the wavelength of light. In this case, the particles are air molecules and dust particles. Shorter wavelengths (like blue and violet) are scattered more than longer wavelengths (like red and yellow). However, we see the sky as blue rather than violet because our eyes are more sensitive to blue light and because sunlight reaches us with less violet light due to scattering.",
+    "answer": "The sky appears blue due to a process called Rayleigh scattering, where shorter wavelengths of light (like blue) are scattered more by air molecules and dust particles in the Earth's atmosphere. Although violet light is scattered more than blue light, we see the sky as blue rather than violet because our eyes are more sensitive to blue light and because sunlight reaches us with less violet light due to scattering."
+  }
+]
+
+[Synalinks]
+Call ID: bd19d92b-5016-4f87-af19-b42c2376b03b
+Parent call ID: None
+Module: Functional
+Module Name: routing
+Module Description: A `Functional` program is a `Program` defined as a directed graph of modules.
+Data Model JSON:
+[
+  {
+    "thinking": "The question asks for an explanation of a scientific phenomenon based on first principles. This requires understanding and application of physics concepts such as light scattering, refraction, and absorption. Therefore, I would label this query as 'hard'.",
+    "choice": "hard",
+    "thinking_1": "To explain why the sky appears blue from a scientific perspective, we need to understand how light interacts with molecules in the Earth's atmosphere. The process involves Rayleigh scattering, which is the scattering of light by particles much smaller than the wavelength of light. In this case, the particles are air molecules and dust particles. Shorter wavelengths (like blue and violet) are scattered more than longer wavelengths (like red and yellow). However, we see the sky as blue rather than violet because our eyes are more sensitive to blue light and because sunlight reaches us with less violet light due to scattering.",
+    "answer": "The sky appears blue due to a process called Rayleigh scattering, where shorter wavelengths of light (like blue) are scattered more by air molecules and dust particles in the Earth's atmosphere. Although violet light is scattered more than blue light, we see the sky as blue rather than violet because our eyes are more sensitive to blue light and because sunlight reaches us with less violet light due to scattering."
+  }
+]
+
+
+Easy query -> 4
+Hard query -> The sky appears blue due to a process called Rayleigh scattering, wher...
+
+============================================================
+Pattern 3: Operators as control flow
+============================================================
+
+(a + b) fields: ['answer', 'cons']
+(a | None) -> {'answer': 'A'}
+(None | b) -> {'cons': 'B'}
+(a & None) -> None
+(a ^ None) is not None -> True
+(a ^ b) is None      -> True
+(~a) -> None

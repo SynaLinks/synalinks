@@ -1,0 +1,955 @@
+(DEBUG) [Synalinks]
+Call ID: eba41c3b-1d9c-4ea5-94f6-c0f31278cfc7
+Parent call ID: None
+Module: Generator
+Module Name: generator
+Module Description: Use a `LanguageModel` to generate a data model from an arbitrary input data model.
+Data Model JSON Schema:
+[
+  {
+    "additionalProperties": false,
+    "description": "User question.",
+    "properties": {
+      "query": {
+        "description": "User question",
+        "title": "Query",
+        "type": "string"
+      }
+    },
+    "required": [
+      "query"
+    ],
+    "title": "Query",
+    "type": "object"
+  }
+]
+
+(DEBUG) [Synalinks]
+Call ID: eba41c3b-1d9c-4ea5-94f6-c0f31278cfc7
+Parent call ID: None
+Module: Generator
+Module Name: generator
+Module Description: Use a `LanguageModel` to generate a data model from an arbitrary input data model.
+Data Model JSON Schema:
+[
+  {
+    "additionalProperties": false,
+    "description": "Answer with reasoning.",
+    "properties": {
+      "thinking": {
+        "description": "Step by step thinking",
+        "title": "Thinking",
+        "type": "string"
+      },
+      "answer": {
+        "description": "The final answer",
+        "title": "Answer",
+        "type": "string"
+      }
+    },
+    "required": [
+      "thinking",
+      "answer"
+    ],
+    "title": "AnswerWithThinking",
+    "type": "object"
+  }
+]
+
+[Synalinks]
+Call ID: 65dc0fe0-8980-4256-bd0a-2a6654339efa
+Parent call ID: None
+Module: Functional
+Module Name: functional_qa
+Module Description: A `Functional` program is a `Program` defined as a directed graph of modules.
+Data Model JSON:
+[
+  {
+    "query": "What is 2+2?"
+  }
+]
+
+[Synalinks]
+Call ID: 10d7d2da-7669-4627-853f-6540e0954539
+Parent call ID: 65dc0fe0-8980-4256-bd0a-2a6654339efa
+Module: Generator
+Module Name: generator
+Module Description: Use a `LanguageModel` to generate a data model from an arbitrary input data model.
+Data Model JSON:
+[
+  {
+    "query": "What is 2+2?"
+  }
+]
+
+[Synalinks]
+Call ID: 86ec5041-4b05-43e7-8d08-a7a1bc920dab
+Parent call ID: 10d7d2da-7669-4627-853f-6540e0954539
+Module: LanguageModel
+Module Name: language_model
+Module Description: A language model API wrapper.
+Data Model JSON:
+[
+  {
+    "messages": [
+      {
+        "role": "system",
+        "content": "<instructions>\nYour task is to answer with a JSON containing the following keys: ['thinking', 'answer']\n</instructions>\n"
+      },
+      {
+        "role": "user",
+        "content": "<input>\n{'query': 'What is 2+2?'}\n</input>\n<output>\n"
+      }
+    ]
+  }
+]
+
+[Synalinks]
+Call ID: 86ec5041-4b05-43e7-8d08-a7a1bc920dab
+Parent call ID: 10d7d2da-7669-4627-853f-6540e0954539
+Module: LanguageModel
+Module Name: language_model
+Module Description: A language model API wrapper.
+Data Model JSON:
+[
+  {
+    "thinking": "Performing basic arithmetic",
+    "answer": "4"
+  }
+]
+
+[Synalinks]
+Call ID: 10d7d2da-7669-4627-853f-6540e0954539
+Parent call ID: 65dc0fe0-8980-4256-bd0a-2a6654339efa
+Module: Generator
+Module Name: generator
+Module Description: Use a `LanguageModel` to generate a data model from an arbitrary input data model.
+Data Model JSON:
+[
+  {
+    "thinking": "Performing basic arithmetic",
+    "answer": "4"
+  }
+]
+
+[Synalinks]
+Call ID: 65dc0fe0-8980-4256-bd0a-2a6654339efa
+Parent call ID: None
+Module: Functional
+Module Name: functional_qa
+Module Description: A `Functional` program is a `Program` defined as a directed graph of modules.
+Data Model JSON:
+[
+  {
+    "thinking": "Performing basic arithmetic",
+    "answer": "4"
+  }
+]
+
+[Synalinks]
+Call ID: 9b21a84d-fdcf-49a4-8f99-df30259b1036
+Parent call ID: None
+Module: QAProgram
+Module Name: subclass_qa
+Module Description: A QA program using subclassing.
+Data Model JSON:
+[
+  {
+    "query": "What is 3+3?"
+  }
+]
+
+[Synalinks]
+Call ID: 6e973c76-6f3a-4c01-9afc-fe5ed4014b93
+Parent call ID: 9b21a84d-fdcf-49a4-8f99-df30259b1036
+Module: Generator
+Module Name: generator_1
+Module Description: Use a `LanguageModel` to generate a data model from an arbitrary input data model.
+Data Model JSON:
+[
+  {
+    "query": "What is 3+3?"
+  }
+]
+
+[Synalinks]
+Call ID: caf89d2e-4b5c-44a7-9bbd-c23a783f1a76
+Parent call ID: 6e973c76-6f3a-4c01-9afc-fe5ed4014b93
+Module: LanguageModel
+Module Name: language_model
+Module Description: A language model API wrapper.
+Data Model JSON:
+[
+  {
+    "messages": [
+      {
+        "role": "system",
+        "content": "<instructions>\nYour task is to answer with a JSON containing the following keys: ['answer']\n</instructions>\n"
+      },
+      {
+        "role": "user",
+        "content": "<input>\n{'query': 'What is 3+3?'}\n</input>\n<output>\n"
+      }
+    ]
+  }
+]
+
+[Synalinks]
+Call ID: caf89d2e-4b5c-44a7-9bbd-c23a783f1a76
+Parent call ID: 6e973c76-6f3a-4c01-9afc-fe5ed4014b93
+Module: LanguageModel
+Module Name: language_model
+Module Description: A language model API wrapper.
+Data Model JSON:
+[
+  {
+    "answer": "6"
+  }
+]
+
+[Synalinks]
+Call ID: 6e973c76-6f3a-4c01-9afc-fe5ed4014b93
+Parent call ID: 9b21a84d-fdcf-49a4-8f99-df30259b1036
+Module: Generator
+Module Name: generator_1
+Module Description: Use a `LanguageModel` to generate a data model from an arbitrary input data model.
+Data Model JSON:
+[
+  {
+    "answer": "6"
+  }
+]
+
+[Synalinks]
+Call ID: 517e482c-b0ff-4ab4-b678-c152cb12e8ab
+Parent call ID: caf89d2e-4b5c-44a7-9bbd-c23a783f1a76
+Module: Generator
+Module Name: generator_1
+Module Description: Use a `LanguageModel` to generate a data model from an arbitrary input data model.
+Data Model JSON:
+[
+  {
+    "query": "What is 3+3?"
+  }
+]
+
+[Synalinks]
+Call ID: df91296d-b402-41f8-9840-4c23aefaecb5
+Parent call ID: 517e482c-b0ff-4ab4-b678-c152cb12e8ab
+Module: LanguageModel
+Module Name: language_model
+Module Description: A language model API wrapper.
+Data Model JSON:
+[
+  {
+    "messages": [
+      {
+        "role": "system",
+        "content": "<instructions>\nYour task is to answer with a JSON containing the following keys: ['answer']\n</instructions>\n"
+      },
+      {
+        "role": "user",
+        "content": "<input>\n{'query': 'What is 3+3?'}\n</input>\n<output>\n"
+      }
+    ]
+  }
+]
+
+[Synalinks]
+Call ID: df91296d-b402-41f8-9840-4c23aefaecb5
+Parent call ID: 517e482c-b0ff-4ab4-b678-c152cb12e8ab
+Module: LanguageModel
+Module Name: language_model
+Module Description: A language model API wrapper.
+Data Model JSON:
+[
+  {
+    "answer": "6"
+  }
+]
+
+[Synalinks]
+Call ID: 517e482c-b0ff-4ab4-b678-c152cb12e8ab
+Parent call ID: caf89d2e-4b5c-44a7-9bbd-c23a783f1a76
+Module: Generator
+Module Name: generator_1
+Module Description: Use a `LanguageModel` to generate a data model from an arbitrary input data model.
+Data Model JSON:
+[
+  {
+    "answer": "6"
+  }
+]
+
+[Synalinks]
+Call ID: 9b21a84d-fdcf-49a4-8f99-df30259b1036
+Parent call ID: None
+Module: QAProgram
+Module Name: subclass_qa
+Module Description: A QA program using subclassing.
+Data Model JSON:
+[
+  {
+    "answer": "6"
+  }
+]
+
+============================================================
+Strategy 1: Functional API
+============================================================
+
+Functional API Result: 4
+
+============================================================
+Strategy 2: Subclassing API
+============================================================
+
+Subclassing API Result: 6
+
+============================================================
+Strategy 3: Sequential API
+============================================================
+Program: sequential_qa
+description: 'A sequential question-answering pipeline'
+┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━┓
+┃ Module (type)               ┃ Output Schema                    ┃  Vars # ┃
+┡━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━┩
+└─────────────────────────────┴──────────────────────────────────┴─────────┘
+(DEBUG) [Synalinks]
+Call ID: acef96de-c06a-4851-9633-91f98ffb028d
+Parent call ID: None
+Module: Generator
+Module Name: generator_2
+Module Description: Use a `LanguageModel` to generate a data model from an arbitrary input data model.
+Data Model JSON Schema:
+[
+  {
+    "additionalProperties": false,
+    "description": "User question.",
+    "properties": {
+      "query": {
+        "description": "User question",
+        "title": "Query",
+        "type": "string"
+      }
+    },
+    "required": [
+      "query"
+    ],
+    "title": "Query",
+    "type": "object"
+  }
+]
+
+(DEBUG) [Synalinks]
+Call ID: acef96de-c06a-4851-9633-91f98ffb028d
+Parent call ID: None
+Module: Generator
+Module Name: generator_2
+Module Description: Use a `LanguageModel` to generate a data model from an arbitrary input data model.
+Data Model JSON Schema:
+[
+  {
+    "additionalProperties": false,
+    "description": "Intermediate thinking output.",
+    "properties": {
+      "thinking": {
+        "description": "Step by step thinking",
+        "title": "Thinking",
+        "type": "string"
+      }
+    },
+    "required": [
+      "thinking"
+    ],
+    "title": "ThinkingOutput",
+    "type": "object"
+  }
+]
+
+(DEBUG) [Synalinks]
+Call ID: c035e371-e265-4c70-81a5-fa2852c8e198
+Parent call ID: None
+Module: Generator
+Module Name: generator_2
+Module Description: Use a `LanguageModel` to generate a data model from an arbitrary input data model.
+Data Model JSON Schema:
+[
+  {
+    "additionalProperties": false,
+    "description": "User question.",
+    "properties": {
+      "query": {
+        "description": "User question",
+        "title": "Query",
+        "type": "string"
+      }
+    },
+    "required": [
+      "query"
+    ],
+    "title": "Query",
+    "type": "object"
+  }
+]
+
+(DEBUG) [Synalinks]
+Call ID: c035e371-e265-4c70-81a5-fa2852c8e198
+Parent call ID: None
+Module: Generator
+Module Name: generator_2
+Module Description: Use a `LanguageModel` to generate a data model from an arbitrary input data model.
+Data Model JSON Schema:
+[
+  {
+    "additionalProperties": false,
+    "description": "Intermediate thinking output.",
+    "properties": {
+      "thinking": {
+        "description": "Step by step thinking",
+        "title": "Thinking",
+        "type": "string"
+      }
+    },
+    "required": [
+      "thinking"
+    ],
+    "title": "ThinkingOutput",
+    "type": "object"
+  }
+]
+
+(DEBUG) [Synalinks]
+Call ID: fb04398a-8445-48d2-8dc5-6946b8a0274b
+Parent call ID: None
+Module: Generator
+Module Name: generator_3
+Module Description: Use a `LanguageModel` to generate a data model from an arbitrary input data model.
+Data Model JSON Schema:
+[
+  {
+    "additionalProperties": false,
+    "description": "Intermediate thinking output.",
+    "properties": {
+      "thinking": {
+        "description": "Step by step thinking",
+        "title": "Thinking",
+        "type": "string"
+      }
+    },
+    "required": [
+      "thinking"
+    ],
+    "title": "ThinkingOutput",
+    "type": "object"
+  }
+]
+
+(DEBUG) [Synalinks]
+Call ID: fb04398a-8445-48d2-8dc5-6946b8a0274b
+Parent call ID: None
+Module: Generator
+Module Name: generator_3
+Module Description: Use a `LanguageModel` to generate a data model from an arbitrary input data model.
+Data Model JSON Schema:
+[
+  {
+    "additionalProperties": false,
+    "description": "Final answer.",
+    "properties": {
+      "answer": {
+        "description": "The final answer",
+        "title": "Answer",
+        "type": "string"
+      }
+    },
+    "required": [
+      "answer"
+    ],
+    "title": "Answer",
+    "type": "object"
+  }
+]
+
+[Synalinks]
+Call ID: be888310-1139-4b74-aa84-efff990e26ad
+Parent call ID: None
+Module: Sequential
+Module Name: sequential_qa
+Module Description: A sequential question-answering pipeline
+Data Model JSON:
+[
+  {
+    "query": "What is 4+4?"
+  }
+]
+
+[Synalinks]
+Call ID: d739b3f4-0bac-488f-9132-63fc37876153
+Parent call ID: be888310-1139-4b74-aa84-efff990e26ad
+Module: Generator
+Module Name: generator_2
+Module Description: Use a `LanguageModel` to generate a data model from an arbitrary input data model.
+Data Model JSON:
+[
+  {
+    "query": "What is 4+4?"
+  }
+]
+
+[Synalinks]
+Call ID: 1e010682-ea7d-4d42-90de-5b932c40e103
+Parent call ID: d739b3f4-0bac-488f-9132-63fc37876153
+Module: LanguageModel
+Module Name: language_model
+Module Description: A language model API wrapper.
+Data Model JSON:
+[
+  {
+    "messages": [
+      {
+        "role": "system",
+        "content": "<instructions>\nYour task is to answer with a JSON containing the following keys: ['thinking']\n</instructions>\n"
+      },
+      {
+        "role": "user",
+        "content": "<input>\n{'query': 'What is 4+4?'}\n</input>\n<output>\n"
+      }
+    ]
+  }
+]
+
+[Synalinks]
+Call ID: 1e010682-ea7d-4d42-90de-5b932c40e103
+Parent call ID: d739b3f4-0bac-488f-9132-63fc37876153
+Module: LanguageModel
+Module Name: language_model
+Module Description: A language model API wrapper.
+Data Model JSON:
+[
+  {
+    "thinking": "8"
+  }
+]
+
+[Synalinks]
+Call ID: d739b3f4-0bac-488f-9132-63fc37876153
+Parent call ID: be888310-1139-4b74-aa84-efff990e26ad
+Module: Generator
+Module Name: generator_2
+Module Description: Use a `LanguageModel` to generate a data model from an arbitrary input data model.
+Data Model JSON:
+[
+  {
+    "thinking": "8"
+  }
+]
+
+[Synalinks]
+Call ID: 26f71c7f-cb9f-4963-8030-c0ece6cf5344
+Parent call ID: 1e010682-ea7d-4d42-90de-5b932c40e103
+Module: Generator
+Module Name: generator_3
+Module Description: Use a `LanguageModel` to generate a data model from an arbitrary input data model.
+Data Model JSON:
+[
+  {
+    "thinking": "8"
+  }
+]
+
+[Synalinks]
+Call ID: faee67d0-0dc2-454b-bdf1-5d9f30bb7d6e
+Parent call ID: 26f71c7f-cb9f-4963-8030-c0ece6cf5344
+Module: LanguageModel
+Module Name: language_model
+Module Description: A language model API wrapper.
+Data Model JSON:
+[
+  {
+    "messages": [
+      {
+        "role": "system",
+        "content": "<instructions>\nYour task is to answer with a JSON containing the following keys: ['answer']\n</instructions>\n"
+      },
+      {
+        "role": "user",
+        "content": "<input>\n{'thinking': '8'}\n</input>\n<output>\n"
+      }
+    ]
+  }
+]
+
+[Synalinks]
+Call ID: faee67d0-0dc2-454b-bdf1-5d9f30bb7d6e
+Parent call ID: 26f71c7f-cb9f-4963-8030-c0ece6cf5344
+Module: LanguageModel
+Module Name: language_model
+Module Description: A language model API wrapper.
+Data Model JSON:
+[
+  {
+    "answer": "I am thinking for 8 units of time."
+  }
+]
+
+[Synalinks]
+Call ID: 26f71c7f-cb9f-4963-8030-c0ece6cf5344
+Parent call ID: 1e010682-ea7d-4d42-90de-5b932c40e103
+Module: Generator
+Module Name: generator_3
+Module Description: Use a `LanguageModel` to generate a data model from an arbitrary input data model.
+Data Model JSON:
+[
+  {
+    "answer": "I am thinking for 8 units of time."
+  }
+]
+
+[Synalinks]
+Call ID: be888310-1139-4b74-aa84-efff990e26ad
+Parent call ID: None
+Module: Sequential
+Module Name: sequential_qa
+Module Description: A sequential question-answering pipeline
+Data Model JSON:
+[
+  {
+    "answer": "I am thinking for 8 units of time."
+  }
+]
+
+(DEBUG) [Synalinks]
+Call ID: e87f03a6-fc9a-4614-8d35-b54cdd5e6441
+Parent call ID: None
+Module: ChainOfThought
+Module Name: cot_component
+Module Description: Reusable chain-of-thought component.
+Data Model JSON Schema:
+[
+  {
+    "additionalProperties": false,
+    "description": "User question.",
+    "properties": {
+      "query": {
+        "description": "User question",
+        "title": "Query",
+        "type": "string"
+      }
+    },
+    "required": [
+      "query"
+    ],
+    "title": "Query",
+    "type": "object"
+  }
+]
+
+(DEBUG) [Synalinks]
+Call ID: 08d395c5-b999-4944-83d0-b49e06ecbbeb
+Parent call ID: e87f03a6-fc9a-4614-8d35-b54cdd5e6441
+Module: Generator
+Module Name: generator_4
+Module Description: Use a `LanguageModel` to generate a data model from an arbitrary input data model.
+Data Model JSON Schema:
+[
+  {
+    "additionalProperties": false,
+    "description": "User question.",
+    "properties": {
+      "query": {
+        "description": "User question",
+        "title": "Query",
+        "type": "string"
+      }
+    },
+    "required": [
+      "query"
+    ],
+    "title": "Query",
+    "type": "object"
+  }
+]
+
+(DEBUG) [Synalinks]
+Call ID: 08d395c5-b999-4944-83d0-b49e06ecbbeb
+Parent call ID: e87f03a6-fc9a-4614-8d35-b54cdd5e6441
+Module: Generator
+Module Name: generator_4
+Module Description: Use a `LanguageModel` to generate a data model from an arbitrary input data model.
+Data Model JSON Schema:
+[
+  {
+    "additionalProperties": false,
+    "description": "Answer with reasoning.",
+    "properties": {
+      "thinking": {
+        "description": "Step by step thinking",
+        "title": "Thinking",
+        "type": "string"
+      },
+      "answer": {
+        "description": "The final answer",
+        "title": "Answer",
+        "type": "string"
+      }
+    },
+    "required": [
+      "thinking",
+      "answer"
+    ],
+    "title": "AnswerWithThinking",
+    "type": "object"
+  }
+]
+
+(DEBUG) [Synalinks]
+Call ID: e87f03a6-fc9a-4614-8d35-b54cdd5e6441
+Parent call ID: None
+Module: ChainOfThought
+Module Name: cot_component
+Module Description: Reusable chain-of-thought component.
+Data Model JSON Schema:
+[
+  {
+    "additionalProperties": false,
+    "description": "Answer with reasoning.",
+    "properties": {
+      "thinking": {
+        "description": "Step by step thinking",
+        "title": "Thinking",
+        "type": "string"
+      },
+      "answer": {
+        "description": "The final answer",
+        "title": "Answer",
+        "type": "string"
+      }
+    },
+    "required": [
+      "thinking",
+      "answer"
+    ],
+    "title": "AnswerWithThinking",
+    "type": "object"
+  }
+]
+
+
+Sequential API Result: I am thinking for 8 units of time.
+
+============================================================
+Strategy 4: Mixing Strategy
+============================================================
+Program: mixing_qa
+description: 'A `Functional` program is a `Program` defined as a directed graph 
+of modules.'
+┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━┓
+┃ Module (type)               ┃ Output Schema                    ┃  Vars # ┃
+┡━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━┩
+│ input_module_2              │ Query:                           │       0 │
+│ (InputModule)               │   query: str                     │         │
+├─────────────────────────────┼──────────────────────────────────┼─────────┤
+│ cot_component               │ AnswerWithThinking:              │       1 │
+│ (ChainOfThought)            │   thinking: str                  │         │
+│                             │   answer: str                    │         │
+└─────────────────────────────┴──────────────────────────────────┴─────────┘
+[Synalinks]
+Call ID: 71c8314d-c145-4607-851c-fe1bf917c11f
+Parent call ID: None
+Module: Functional
+Module Name: mixing_qa
+Module Description: A `Functional` program is a `Program` defined as a directed graph of modules.
+Data Model JSON:
+[
+  {
+    "query": "What is 5+5?"
+  }
+]
+
+[Synalinks]
+Call ID: 14dd9091-98da-4a58-89a8-2b49cb991c70
+Parent call ID: 71c8314d-c145-4607-851c-fe1bf917c11f
+Module: ChainOfThought
+Module Name: cot_component
+Module Description: Reusable chain-of-thought component.
+Data Model JSON:
+[
+  {
+    "query": "What is 5+5?"
+  }
+]
+
+[Synalinks]
+Call ID: e5f9e959-4de6-4957-b620-978e740e3443
+Parent call ID: 14dd9091-98da-4a58-89a8-2b49cb991c70
+Module: Generator
+Module Name: generator_4
+Module Description: Use a `LanguageModel` to generate a data model from an arbitrary input data model.
+Data Model JSON:
+[
+  {
+    "query": "What is 5+5?"
+  }
+]
+
+[Synalinks]
+Call ID: b9164296-643f-4867-adc0-f0cf6099a42b
+Parent call ID: e5f9e959-4de6-4957-b620-978e740e3443
+Module: LanguageModel
+Module Name: language_model
+Module Description: A language model API wrapper.
+Data Model JSON:
+[
+  {
+    "messages": [
+      {
+        "role": "system",
+        "content": "<instructions>\nYour task is to answer with a JSON containing the following keys: ['thinking', 'answer']\n</instructions>\n"
+      },
+      {
+        "role": "user",
+        "content": "<input>\n{'query': 'What is 5+5?'}\n</input>\n<output>\n"
+      }
+    ]
+  }
+]
+
+[Synalinks]
+Call ID: b9164296-643f-4867-adc0-f0cf6099a42b
+Parent call ID: e5f9e959-4de6-4957-b620-978e740e3443
+Module: LanguageModel
+Module Name: language_model
+Module Description: A language model API wrapper.
+Data Model JSON:
+[
+  {
+    "thinking": "Performing simple arithmetic",
+    "answer": "10"
+  }
+]
+
+[Synalinks]
+Call ID: e5f9e959-4de6-4957-b620-978e740e3443
+Parent call ID: 14dd9091-98da-4a58-89a8-2b49cb991c70
+Module: Generator
+Module Name: generator_4
+Module Description: Use a `LanguageModel` to generate a data model from an arbitrary input data model.
+Data Model JSON:
+[
+  {
+    "thinking": "Performing simple arithmetic",
+    "answer": "10"
+  }
+]
+
+[Synalinks]
+Call ID: 14dd9091-98da-4a58-89a8-2b49cb991c70
+Parent call ID: 71c8314d-c145-4607-851c-fe1bf917c11f
+Module: ChainOfThought
+Module Name: cot_component
+Module Description: Reusable chain-of-thought component.
+Data Model JSON:
+[
+  {
+    "thinking": "Performing simple arithmetic",
+    "answer": "10"
+  }
+]
+
+[Synalinks]
+Call ID: 71c8314d-c145-4607-851c-fe1bf917c11f
+Parent call ID: None
+Module: Functional
+Module Name: mixing_qa
+Module Description: A `Functional` program is a `Program` defined as a directed graph of modules.
+Data Model JSON:
+[
+  {
+    "thinking": "Performing simple arithmetic",
+    "answer": "10"
+  }
+]
+
+
+Mixing Strategy Result: 10
+
+============================================================
+Program Features
+============================================================
+
+Program Summary:
+Program: functional_qa
+description: 'A `Functional` program is a `Program` defined as a directed graph 
+of modules.'
+┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━┓
+┃ Module (type)               ┃ Output Schema                    ┃  Vars # ┃
+┡━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━┩
+│ input_module (InputModule)  │ Query:                           │       0 │
+│                             │   query: str                     │         │
+├─────────────────────────────┼──────────────────────────────────┼─────────┤
+│ generator (Generator)       │ AnswerWithThinking:              │       1 │
+│                             │   thinking: str                  │         │
+│                             │   answer: str                    │         │
+└─────────────────────────────┴──────────────────────────────────┴─────────┘
+(DEBUG) [Synalinks]
+Call ID: 12443f0c-568e-4489-8d74-c5311fcbddda
+Parent call ID: None
+Module: Generator
+Module Name: generator
+Module Description: Use a `LanguageModel` to generate a data model from an arbitrary input data model.
+Data Model JSON Schema:
+[
+  {
+    "additionalProperties": false,
+    "description": "User question.",
+    "properties": {
+      "query": {
+        "description": "User question",
+        "title": "Query",
+        "type": "string"
+      }
+    },
+    "required": [
+      "query"
+    ],
+    "title": "Query",
+    "type": "object"
+  }
+]
+
+(DEBUG) [Synalinks]
+Call ID: 12443f0c-568e-4489-8d74-c5311fcbddda
+Parent call ID: None
+Module: Generator
+Module Name: generator
+Module Description: Use a `LanguageModel` to generate a data model from an arbitrary input data model.
+Data Model JSON Schema:
+[
+  {
+    "additionalProperties": false,
+    "description": "Answer with reasoning.",
+    "properties": {
+      "thinking": {
+        "description": "Step by step thinking",
+        "title": "Thinking",
+        "type": "string"
+      },
+      "answer": {
+        "description": "The final answer",
+        "title": "Answer",
+        "type": "string"
+      }
+    },
+    "required": [
+      "thinking",
+      "answer"
+    ],
+    "title": "AnswerWithThinking",
+    "type": "object"
+  }
+]
+
+
+Saved program to functional_qa.json
+Loaded program: functional_qa

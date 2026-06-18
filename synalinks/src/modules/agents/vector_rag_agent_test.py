@@ -239,7 +239,7 @@ class VectorRAGAgentInstantiationTest(testing.TestCase):
             name="three_tools",
         )
 
-        tool_names = set(agent.agent.tools.keys())
+        tool_names = set(agent.tools.keys())
         self.assertEqual(
             tool_names,
             {
@@ -307,7 +307,7 @@ class VectorRAGAgentInstantiationTest(testing.TestCase):
             name="with_extra",
         )
 
-        tool_names = set(agent.agent.tools.keys())
+        tool_names = set(agent.tools.keys())
         self.assertEqual(
             tool_names,
             {
@@ -331,7 +331,7 @@ class VectorRAGAgentInstantiationTest(testing.TestCase):
             name="bare_fn",
         )
 
-        self.assertIn("calculator", agent.agent.tools)
+        self.assertIn("calculator", agent.tools)
 
     async def test_agent_tool_name_collision_raises(self):
         kb = self._make_kb()
@@ -390,4 +390,3 @@ class VectorRAGAgentInstantiationTest(testing.TestCase):
         )
 
         self.assertEqual(agent.instructions, custom)
-        self.assertEqual(agent.agent.instructions, custom)

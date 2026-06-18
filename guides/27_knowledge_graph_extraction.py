@@ -425,8 +425,9 @@ class GeographyRelations(synalinks.Relations):
 async def main():
     load_dotenv()
     synalinks.clear_session()
+    synalinks.enable_logging(log_level="info")
 
-    language_model = synalinks.LanguageModel(model="ollama/llama3.2:latest")
+    language_model = synalinks.LanguageModel(model="ollama/mistral:latest")
     embedding_model = synalinks.EmbeddingModel(model="ollama/mxbai-embed-large")
 
     document = Document(
@@ -476,6 +477,7 @@ async def main():
         name="one_stage_kg_extraction",
         description="Extract a geography knowledge graph in a single call.",
     )
+    one_stage.summary()
 
     await one_stage(document)
 
@@ -513,6 +515,7 @@ async def main():
         name="two_stage_kg_extraction",
         description="Extract entities, then relations, then store the graph.",
     )
+    two_stage.summary()
 
     await two_stage(document)
 

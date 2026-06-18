@@ -76,7 +76,7 @@ class AnswerWithThinking(synalinks.DataModel):
 async def main():
     load_dotenv()
 
-    language_model = synalinks.LanguageModel(model="gemini/gemini-3.1-flash-lite-preview")
+    language_model = synalinks.LanguageModel(model="ollama/qwen3:8b")
 
     # Build with Functional API
     inputs = synalinks.Input(data_model=Query)
@@ -175,10 +175,10 @@ async def main():
     load_dotenv()
 
     # Enable observability for tracing (view traces at http://localhost:5000)
-    synalinks.enable_observability(
-        tracking_uri="http://localhost:5000",
-        experiment_name="lesson_1a_functional_api",
-    )
+#     synalinks.enable_observability(
+#         tracking_uri="http://localhost:5000",
+#         experiment_name="lesson_1a_functional_api",
+#     )
 
     # -------------------------------------------------------------------------
     # 2.1: Configure the Language Model
@@ -186,7 +186,7 @@ async def main():
     # The LanguageModel is the AI brain that will process our requests.
     # We're using Google's Gemini model here.
     language_model = synalinks.LanguageModel(
-        model="gemini/gemini-3.1-flash-lite-preview",
+        model="ollama/qwen3:8b",
     )
 
     # -------------------------------------------------------------------------

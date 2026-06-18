@@ -1,0 +1,55 @@
+============================================================
+Example 1: In Mask - Keep Only Specific Fields
+============================================================
+Filters a data model to keep only the specified fields.
+
+Original fields: thinking, answer
+After in_mask(['answer']): ['answer']
+
+============================================================
+Example 2: Out Mask - Remove Specific Fields
+============================================================
+Removes specified fields from a data model.
+
+Original fields: thinking, answer
+After out_mask(['thinking']): ['answer']
+
+============================================================
+Example 3: Prefix - Add Prefix to Field Names
+============================================================
+Renames all fields by adding a prefix.
+
+Original fields: answer
+After prefix('original_'): ['original__answer']
+
+============================================================
+Example 4: Suffix - Add Suffix to Field Names
+============================================================
+Renames all fields by adding a suffix.
+
+Original fields: answer
+After suffix('_draft'): ['answer__draft']
+
+============================================================
+Example 5: Factorize - Group Similar Fields
+============================================================
+Groups similar fields (answer, answer_1, answer_2) into a list.
+
+After concat: answer, answer_1, answer_2
+After factorize: ['answers']
+  answers has 3 items
+
+============================================================
+Example 6: Pattern Masking - Regex-based Field Filtering
+============================================================
+Use regex patterns instead of explicit key lists.
+
+Original fields: thinking, answer
+After in_mask(pattern='answer$'): ['answer']
+
+============================================================
+Example 7: Concat Function with Custom Naming
+============================================================
+Using function form allows custom names for operations.
+
+Concat function allows custom naming for better traceability

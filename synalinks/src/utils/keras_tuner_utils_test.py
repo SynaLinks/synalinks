@@ -277,13 +277,66 @@ class TunerEndToEndTest(testing.TestCase):
             overwrite=True,
             seed=42,
         )
+        # The space is explored once at construction (`_populate_initial_space`)
+        # and then once per trial, so the hypermodel runs `1 + max_trials` times.
+        self.assertEqual(
+            len(seen), 1, "hypermodel should run once to explore the space at init"
+        )
+
         # Args go through to `program.fit(...)`. Our fake ignores them.
         tuner.search(epochs=1)
 
-        self.assertEqual(len(seen), 10, "hypermodel should run once per trial")
+        self.assertEqual(
+            len(seen), 11, "hypermodel should run once per trial after the init build"
+        )
         best = tuner.get_best_hyperparameters(num_trials=1)[0]
         # 10 random samples in [0, 1] — best x should land near 0.3.
         self.assertLess(abs(best.get("x") - 0.3), 0.3)
+
+    def test_async_hypermodel_populates_space_at_construction(self):
+        """An `async def build` must have its body run during the synchronous
+        space exploration in `BaseTuner.__init__`.
+
+        Regression test for the `RuntimeWarning: coroutine 'build_program' was
+        never awaited` raised when kt called the async hypermodel synchronously:
+        the coroutine body never ran, so `hp.Float(...)` never registered and
+        the initial search space was left empty. We assert both that no such
+        warning fires at construction and that the space is populated before
+        `search()` is ever called.
+        """
+        import warnings
+
+        disable_keras_backend()
+
+        async def build(hp):
+            hp.Float("x", 0.0, 1.0)
+
+            class _FakeProgram:
+                optimizer = object()
+
+                async def fit(self_inner, *args, **kwargs):
+                    h = SynalinksHistory()
+                    h.history = {"val_reward": [1.0]}
+                    return h
+
+            return _FakeProgram()
+
+        with warnings.catch_warnings():
+            warnings.simplefilter("error", RuntimeWarning)
+            tuner = RandomSearch(
+                hypermodel=build,
+                objective=Objective("val_reward", direction="max"),
+                max_trials=2,
+                directory=self._tmpdir,
+                project_name="async_space_population",
+                overwrite=True,
+                seed=1,
+            )
+
+        # The hyperparameter registered inside the async build must be visible
+        # in the oracle's space *before* any trial runs.
+        space_names = {hp.name for hp in tuner.oracle.get_space().space}
+        self.assertIn("x", space_names)
 
     def test_sync_hypermodel_is_also_accepted(self):
         """Hypermodels that return a Program directly (no `async def`) must

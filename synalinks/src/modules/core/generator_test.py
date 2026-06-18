@@ -118,7 +118,13 @@ class GeneratorModuleTest(testing.TestCase):
                     ChatMessage(
                         role="assistant",
                         content="",
-                        tool_calls=[{"id": "c1", "name": "run", "arguments": {"x": 1}}],
+                        tool_calls=[
+                            {
+                                "id": "c1",
+                                "type": "function",
+                                "function": {"name": "run", "arguments": {"x": 1}},
+                            }
+                        ],
                     ).get_json(),
                     ChatMessage(
                         role="tool",

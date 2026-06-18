@@ -335,7 +335,7 @@ class SQLAgentInstantiationTest(testing.TestCase):
             name="three_tools",
         )
 
-        tool_names = set(agent.agent.tools.keys())
+        tool_names = set(agent.tools.keys())
         self.assertEqual(
             tool_names,
             {"get_database_schema", "get_table_sample", "run_sql_query"},
@@ -360,7 +360,6 @@ class SQLAgentInstantiationTest(testing.TestCase):
         )
 
         self.assertEqual(agent.instructions, custom)
-        self.assertEqual(agent.agent.instructions, custom)
 
     async def test_agent_default_output_format_is_csv(self):
         kb = self._make_kb()
@@ -396,7 +395,7 @@ class SQLAgentInstantiationTest(testing.TestCase):
             name="with_extra",
         )
 
-        tool_names = set(agent.agent.tools.keys())
+        tool_names = set(agent.tools.keys())
         self.assertEqual(
             tool_names,
             {
@@ -419,7 +418,7 @@ class SQLAgentInstantiationTest(testing.TestCase):
             name="bare_fn",
         )
 
-        self.assertIn("calculator", agent.agent.tools)
+        self.assertIn("calculator", agent.tools)
 
     async def test_agent_tool_name_collision_raises(self):
         kb = self._make_kb()
@@ -512,4 +511,3 @@ class SQLAgentInstantiationTest(testing.TestCase):
         )
 
         self.assertEqual(agent.max_iterations, 7)
-        self.assertEqual(agent.agent.max_iterations, 7)

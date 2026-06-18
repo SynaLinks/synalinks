@@ -769,7 +769,7 @@ async def main():
     load_dotenv()
     synalinks.clear_session()
 
-    lm = synalinks.LanguageModel(model="ollama/llama3.2:latest")
+    lm = synalinks.LanguageModel(model="ollama/mistral:latest")
 
     kb = synalinks.KnowledgeBase(
         uri="duckdb://knowledge.db",
@@ -978,6 +978,7 @@ class Answer(synalinks.DataModel):
 async def main():
     load_dotenv()
     synalinks.clear_session()
+    synalinks.enable_logging()
 
     # synalinks.enable_observability(
     #     tracking_uri="http://localhost:5000",
@@ -1095,7 +1096,7 @@ async def main():
     print("Example 5: RAG Pipeline")
     print("=" * 60)
 
-    lm = synalinks.LanguageModel(model="ollama/llama3.2:latest")
+    lm = synalinks.LanguageModel(model="ollama/mistral:latest")
 
     inputs = synalinks.Input(data_model=Query)
 
@@ -1117,6 +1118,7 @@ async def main():
         outputs=outputs,
         name="rag_pipeline",
     )
+    rag_program.summary()
 
     result = await rag_program(Query(query="What is Python?"))
     print("\nRAG Query: What is Python?")

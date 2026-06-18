@@ -1,0 +1,20 @@
+============================================================
+Building a Chain-of-Thought Program (Sequential API)
+============================================================
+
+Running the program...
+------------------------------------------------------------
+
+Result:
+{
+  "thinking": "The key aspects of human cognition include perception, attention, memory, learning, reasoning, problem-solving, decision making, and language.",
+  "answer": "Perception, attention, memory, learning, reasoning, problem-solving, decision making, and language are the key aspects of human cognition."
+}
+
+============================================================
+Accessing individual fields:
+============================================================
+
+Thinking: The key aspects of human cognition include perception, attention, memory, learning, reasoning, probl...
+
+Answer: Perception, attention, memory, learning, reasoning, problem-solving, decision making, and language a...

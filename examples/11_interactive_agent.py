@@ -179,14 +179,14 @@ async def main():
     load_dotenv()
 
     # Enable observability for tracing
-    synalinks.enable_observability(
-        tracking_uri="http://localhost:5000",
-        experiment_name="interactive_math_agent",
-    )
+#     synalinks.enable_observability(
+#         tracking_uri="http://localhost:5000",
+#         experiment_name="interactive_math_agent",
+#     )
 
     # Initialize the language model
     language_model = synalinks.LanguageModel(
-        model="gemini/gemini-3.1-flash-lite-preview",
+        model="ollama/qwen3:8b",
     )
 
     # Define the tools available to the agent
@@ -268,8 +268,10 @@ async def main():
         # =======================================================================
         print("\nAgent wants to call the following tools:")
         for i, tool_call in enumerate(tool_calls):
-            tool_name = tool_call.get("name")
-            tool_args = tool_call.get("arguments")
+            # name/arguments nest under "function" (chat-completion shape)
+            fn = tool_call.get("function", tool_call)
+            tool_name = fn.get("name")
+            tool_args = fn.get("arguments")
             print(f"  [{i + 1}] {tool_name}({tool_args})")
 
         # Simulate user validation (in a real app, this would be interactive)

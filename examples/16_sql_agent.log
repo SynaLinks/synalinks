@@ -1,0 +1,114 @@
+============================================================
+SQL Agent with Knowledge Base
+============================================================
+
+Creating knowledge base...
+Populating with sample data...
+  Stored 5 customers
+  Stored 8 products
+  Stored 10 orders
+
+Building SQL agent...
+Program: sql_agent
+description: 'An agent that answers questions about data using SQL queries'
+┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━┓
+┃ Module (type)               ┃ Output Schema                    ┃  Vars # ┃
+┡━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━┩
+│ input_module (InputModule)  │ Query:                           │       0 │
+│                             │   query: str                     │         │
+├─────────────────────────────┼──────────────────────────────────┼─────────┤
+│ sql_agent (SQLAgent)        │ ChatRole: Literal['system',      │       2 │
+│                             │ 'developer', 'user',             │         │
+│                             │ 'assistant', 'tool', 'function'] │         │
+│                             │                                  │         │
+│                             │ ToolCallFunction:                │         │
+│                             │   name: str                      │         │
+│                             │   arguments: dict                │         │
+│                             │                                  │         │
+│                             │ ToolCall:                        │         │
+│                             │   id: str                        │         │
+│                             │   type: Literal['function'] =    │         │
+│                             │ 'function'                       │         │
+│                             │   function: ToolCallFunction     │         │
+│                             │                                  │         │
+│                             │ ChatMessage:                     │         │
+│                             │   role: ChatRole                 │         │
+│                             │   reasoning_content: str | None  │         │
+│                             │ = None                           │         │
+│                             │   thinking_blocks: list | None = │         │
+│                             │ None                             │         │
+│                             │   content: str | list | dict |   │         │
+│                             │ None = None                      │         │
+│                             │   tool_call_id: str | None =     │         │
+│                             │ None                             │         │
+│                             │   tool_calls: list[ToolCall] |   │         │
+│                             │ None = None                      │         │
+│                             │                                  │         │
+│                             │ ChatMessages:                    │         │
+│                             │   messages: list[ChatMessage] =  │         │
+│                             │ []                               │         │
+│                             │   answer: str                    │         │
+│                             │   sql_query: str                 │         │
+└─────────────────────────────┴──────────────────────────────────┴─────────┘
+
+============================================================
+SQL Agent Demo
+============================================================
+
+Question: What tables are available in the database?
+----------------------------------------
+
+Answer: The following tables are available in the database: Customer, Product, and SalesOrder.
+SQL: 
+
+
+Question: Who are the top 3 customers by total order amount?
+----------------------------------------
+Tool Call 1: get_database_schema()
+Tool Result: {'schema': 'Table: Customer\n  - id (string): \n  - name (string): \n  - email (string): \n  - country (string): \n\nTable: Product\n  - id (string): \n  - name (string): \n  - category (string): \n  ...
+Tool Call 2: run_sql_query(sql_query='SELECT c.name AS customer_name, SUM(so.total_amount) AS total_order_amount FROM Customer c JOIN SalesOrder so ON c.id = so.customer_id GROUP BY c.id ORDER BY total_order_amount DESC LIMIT 3;')
+Tool Result: {'success': False, 'error': 'Binder Error: column "name" must appear in the GROUP BY clause or must be part of an aggregate function.\nEither add it to the GROUP BY list, or use "ANY_VALUE(name)" if t...
+Tool Call 3: run_sql_query(sql_query='SELECT c.name AS customer_name, SUM(so.total_amount) AS total_order_amount FROM Customer c JOIN SalesOrder so ON c.id = so.customer_id GROUP BY c.id, c.name ORDER BY total_order_amount DESC LIMIT 3;')
+Tool Result: {'success': True, 'query': 'SELECT c.name AS customer_name, SUM(so.total_amount) AS total_order_amount FROM Customer c JOIN SalesOrder so ON c.id = so.customer_id GROUP BY c.id, c.name ORDER BY total_...
+
+Answer: The top 3 customers by total order amount are:
+1. **Carlos Garcia** - $1,539.96
+2. **Alice Johnson** - $1,489.96
+3. **Diana Chen** - $379.94
+SQL: SELECT c.name AS customer_name, SUM(so.total_amount) AS total_order_amount FROM Customer c JOIN SalesOrder so ON c.id = so.customer_id GROUP BY c.id, c.name ORDER BY total_order_amount DESC LIMIT 3;
+
+
+Question: What is the most popular product category?
+----------------------------------------
+Tool Call 1: get_database_schema()
+Tool Result: {'schema': 'Table: Customer\n  - id (string): \n  - name (string): \n  - email (string): \n  - country (string): \n\nTable: Product\n  - id (string): \n  - name (string): \n  - category (string): \n  ...
+Tool Call 2: run_sql_query(sql_query='SELECT Product.category, SUM(SalesOrder.quantity) as total_quantity\nFROM SalesOrder\nJOIN Product ON SalesOrder.product_id = Product.id\nGROUP BY Product.category\nORDER BY total_quantity DESC\nLIMIT 1;')
+Tool Result: {'success': True, 'query': 'SELECT Product.category, SUM(SalesOrder.quantity) as total_quantity\nFROM SalesOrder\nJOIN Product ON SalesOrder.product_id = Product.id\nGROUP BY Product.category\nORDER B...
+
+Answer: The most popular product category is Office.
+SQL: SELECT Product.category, SUM(SalesOrder.quantity) as total_quantity
+FROM SalesOrder
+JOIN Product ON SalesOrder.product_id = Product.id
+GROUP BY Product.category
+ORDER BY total_quantity DESC
+LIMIT 1;
+
+
+Question: Show me all pending orders with customer names
+----------------------------------------
+Tool Call 1: get_database_schema()
+Tool Result: {'schema': 'Table: Customer\n  - id (string): \n  - name (string): \n  - email (string): \n  - country (string): \n\nTable: Product\n  - id (string): \n  - name (string): \n  - category (string): \n  ...
+Tool Call 2: run_sql_query(sql_query="SELECT Customer.name AS customer_name, SalesOrder.id AS order_id, SalesOrder.status, SalesOrder.total_amount\nFROM SalesOrder\nJOIN Customer ON SalesOrder.customer_id = Customer.id\nWHERE SalesOrder.status = 'pending';")
+Tool Result: {'success': True, 'query': "SELECT Customer.name AS customer_name, SalesOrder.id AS order_id, SalesOrder.status, SalesOrder.total_amount\nFROM SalesOrder\nJOIN Customer ON SalesOrder.customer_id = Cus...
+
+Answer: Here are the pending orders with customer names:
+
+1. **Diana Chen** - Order ID: O006, Status: pending, Total Amount: $249.95
+2. **Alice Johnson** - Order ID: O010, Status: pending, Total Amount: $89.99
+
+No additional pending orders were found.
+SQL: SELECT Customer.name AS customer_name, SalesOrder.id AS order_id, SalesOrder.status, SalesOrder.total_amount
+FROM SalesOrder
+JOIN Customer ON SalesOrder.customer_id = Customer.id
+WHERE SalesOrder.status = 'pending';
+

@@ -384,10 +384,11 @@ async def length_under(y_true, y_pred, limit=200):
 async def main():
     load_dotenv()
     synalinks.clear_session()
+    synalinks.enable_logging()
 
     # Build a tiny QA program. The reward types we demonstrate below all
     # operate on `(y_true, y_pred)` pairs that match the `Answer` schema.
-    lm = synalinks.LanguageModel(model="ollama/llama3.2:latest")
+    lm = synalinks.LanguageModel(model="ollama/mistral:latest")
 
     inputs = synalinks.Input(data_model=Question)
     outputs = await synalinks.Generator(
@@ -400,6 +401,7 @@ async def main():
         outputs=outputs,
         name="qa_program",
     )
+    program.summary()
 
     y_pred = await program(Question(question="What is the capital of France?"))
     y_true = Answer(thinking="France has Paris as its capital.", answer="Paris")

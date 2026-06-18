@@ -342,7 +342,7 @@ async def main():
     load_dotenv()
     synalinks.clear_session()
 
-    lm = synalinks.LanguageModel(model="ollama/llama3.2:latest")
+    lm = synalinks.LanguageModel(model="ollama/qwen3:8b")
 
     calculator_tool = synalinks.Tool(calculator)
     time_tool = synalinks.Tool(get_current_time)
@@ -366,7 +366,7 @@ if __name__ == "__main__":
     asyncio.run(main())
 ```
 
-Expected output (from a run against `ollama/llama3.2:latest`):
+Expected output (from a run against `ollama/mistral:latest`):
 
 ```
 ============================================================
@@ -513,13 +513,14 @@ async def convert_temperature(value: float, from_unit: str, to_unit: str):
 async def main():
     load_dotenv()
     synalinks.clear_session()
+    synalinks.enable_logging()
 
     # synalinks.enable_observability(
     #     tracking_uri="http://localhost:5000",
     #     experiment_name="guide_6_agents",
     # )
 
-    lm = synalinks.LanguageModel(model="ollama/llama3.2:latest")
+    lm = synalinks.LanguageModel(model="ollama/qwen3:8b")
 
     # -------------------------------------------------------------------------
     # Autonomous Agent with Tools
@@ -547,6 +548,7 @@ async def main():
         outputs=outputs,
         name="tool_agent",
     )
+    agent_program.summary()
 
     print("\nQuery: What is 15 * 23 + 7?")
     result = await agent_program(Query(query="What is 15 * 23 + 7?"))

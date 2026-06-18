@@ -185,7 +185,7 @@ Prerequisites: an LM you have access to. The build function
 defaults to `gemini/gemini-3.1-flash-lite-preview`, which expects
 a `GEMINI_API_KEY` env var. If you don't have one, edit
 `build_and_save_program` and change the model string — a free
-local option is `"ollama/llama3.2:latest"` (see
+local option is `"ollama/mistral:latest"` (see
 [Getting Started](https://synalinks.github.io/synalinks/guides/Getting%20Started/) for setup). `fastmcp`
 itself is already a Synalinks dependency, so nothing extra to
 install.

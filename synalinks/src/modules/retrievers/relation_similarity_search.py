@@ -15,6 +15,8 @@ from synalinks.src.knowledge_bases import get as _get_kb
 from synalinks.src.modules.core.generator import Generator
 from synalinks.src.modules.language_models import get as _get_lm
 from synalinks.src.modules.module import Module
+from synalinks.src.modules.retrievers.infer_helpers import concat_infer_fields
+from synalinks.src.modules.retrievers.infer_helpers import kb_relation_labels
 from synalinks.src.saving import serialization_lib
 
 
@@ -54,11 +56,12 @@ class RelationSimilaritySearch(Module):
             Mutually inferrable with ``relation_model``.
         relation_model (Relation | SymbolicDataModel): Relation model
             providing ``schema`` via ``.get_schema()`` when ``schema``
-            is not given. One of ``schema``, ``relation_model``, or
-            ``label`` must be provided.
+            is not given.
         label (str): Target relation label. Defaults to the schema's
-            ``title``. One of ``schema``, ``relation_model``, or
-            ``label`` must be provided.
+            ``title``. **Optional** — when neither ``label`` nor a
+            schema to derive it from is given, the language model infers
+            the target relation label per call (constrained to the
+            knowledge base's actual relation labels).
         k (int): Maximum number of results. Defaults to 10.
         threshold (float): Optional maximum vector-distance threshold
             applied per endpoint.
@@ -106,18 +109,13 @@ class RelationSimilaritySearch(Module):
 
         if schema is None and relation_model is not None:
             schema = relation_model.get_schema()
-        if schema is None and label is None:
-            raise ValueError("One of `schema`, `relation_model`, or `label` is required")
         self.schema = schema
         self.relation_model = relation_model
 
-        if label is None:
-            label = schema.get("title")
-            if not label:
-                raise ValueError(
-                    "Could not infer `label` from `schema` (no `title`); "
-                    "pass `label` explicitly."
-                )
+        # `label` is optional: when it (and a schema to infer it from) is absent,
+        # the LM picks the relation label per call (see query_generator).
+        if label is None and schema is not None:
+            label = schema.get("title") or None
         self.label = label
 
         if output_format not in ("json", "csv"):
@@ -142,8 +140,28 @@ class RelationSimilaritySearch(Module):
         self.return_inputs = return_inputs
         self.return_query = return_query
 
+        # When the target label is fixed, the generator only produces the search
+        # queries. When it is not, concatenate an enum field (the KB's actual
+        # relation labels) onto the query schema so the LM also infers `label`.
+        if self.label is None:
+            gen_target = {
+                "schema": concat_infer_fields(
+                    RelationSimilaritySearchInput.get_schema(),
+                    [
+                        (
+                            "relation_label",
+                            "The relation label to search, chosen to best "
+                            "answer the inputs.",
+                            kb_relation_labels(self.knowledge_base),
+                        )
+                    ],
+                )
+            }
+        else:
+            gen_target = {"data_model": RelationSimilaritySearchInput}
+
         self.query_generator = Generator(
-            data_model=RelationSimilaritySearchInput,
+            **gen_target,
             language_model=self.language_model,
             prompt_template=self.prompt_template,
             examples=self.examples,
@@ -163,13 +181,16 @@ class RelationSimilaritySearch(Module):
         query = await self.query_generator(inputs, training=training)
         if not query:
             return None
-        queries = query.get_json().get("similarity_search", [])
-        if not queries:
+        query_json = query.get_json()
+        queries = query_json.get("similarity_search", [])
+        # Fixed label, or the one the LM inferred this call.
+        label = self.label or query_json.get("relation_label")
+        if not queries or not label:
             return None
 
         rows = await self.knowledge_base.relation_similarity_search(
             queries,
-            label=self.label,
+            label=label,
             k=self.k,
             threshold=self.threshold,
             ef_search=self.ef_search,

@@ -1,0 +1,125 @@
+Workdir: /tmp/deep_agent_demo_0xtdkh8y
+
+Program: deep_agent
+description: 'A coding agent with a sandboxed copy of a workdir.'
+┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━┓
+┃ Module (type)               ┃ Output Schema                    ┃  Vars # ┃
+┡━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━┩
+│ input_module (InputModule)  │ ChatRole: Literal['system',      │       0 │
+│                             │ 'developer', 'user',             │         │
+│                             │ 'assistant', 'tool', 'function'] │         │
+│                             │                                  │         │
+│                             │ ToolCallFunction:                │         │
+│                             │   name: str                      │         │
+│                             │   arguments: dict                │         │
+│                             │                                  │         │
+│                             │ ToolCall:                        │         │
+│                             │   id: str                        │         │
+│                             │   type: Literal['function'] =    │         │
+│                             │ 'function'                       │         │
+│                             │   function: ToolCallFunction     │         │
+│                             │                                  │         │
+│                             │ ChatMessage:                     │         │
+│                             │   role: ChatRole                 │         │
+│                             │   reasoning_content: str | None  │         │
+│                             │ = None                           │         │
+│                             │   thinking_blocks: list | None = │         │
+│                             │ None                             │         │
+│                             │   content: str | list | dict |   │         │
+│                             │ None = None                      │         │
+│                             │   tool_call_id: str | None =     │         │
+│                             │ None                             │         │
+│                             │   tool_calls: list[ToolCall] |   │         │
+│                             │ None = None                      │         │
+│                             │                                  │         │
+│                             │ ChatMessages:                    │         │
+│                             │   messages: list[ChatMessage] =  │         │
+│                             │ []                               │         │
+├─────────────────────────────┼──────────────────────────────────┼─────────┤
+│ deep_agent (DeepAgent)      │ ChatRole: Literal['system',      │       2 │
+│                             │ 'developer', 'user',             │         │
+│                             │ 'assistant', 'tool', 'function'] │         │
+│                             │                                  │         │
+│                             │ ToolCallFunction:                │         │
+│                             │   name: str                      │         │
+│                             │   arguments: dict                │         │
+│                             │                                  │         │
+│                             │ ToolCall:                        │         │
+│                             │   id: str                        │         │
+│                             │   type: Literal['function'] =    │         │
+│                             │ 'function'                       │         │
+│                             │   function: ToolCallFunction     │         │
+│                             │                                  │         │
+│                             │ ChatMessage:                     │         │
+│                             │   role: ChatRole                 │         │
+│                             │   reasoning_content: str | None  │         │
+│                             │ = None                           │         │
+│                             │   thinking_blocks: list | None = │         │
+│                             │ None                             │         │
+│                             │   content: str | list | dict |   │         │
+│                             │ None = None                      │         │
+│                             │   tool_call_id: str | None =     │         │
+│                             │ None                             │         │
+│                             │   tool_calls: list[ToolCall] |   │         │
+│                             │ None = None                      │         │
+│                             │                                  │         │
+│                             │ ChatMessages:                    │         │
+│                             │   messages: list[ChatMessage] =  │         │
+│                             │ []                               │         │
+└─────────────────────────────┴──────────────────────────────────┴─────────┘
+
+============================================================
+Task 1: Explore
+============================================================
+  Tool call: list_files(pattern='**/*', limit=20)
+  Tool result: {'files': ['/README.md', '/calculator.py'], 'total': 2, 'offset': 1, 'truncated': False}
+  Tool call: read_file(path='/README.md', start_line=1, end_line=10)
+  Tool result: error: MirageSandbox.read_file() got an unexpected keyword argument 'start_line'
+  Tool call: read_file(limit=0, offset=1, path='/README.md')
+  Tool result: {'content': '# Calculator\n\nA tiny module. Currently supports `add(a, b)`.\nPlanned: `multiply(a, b)`.\n', 'start_line': 1, 'end_line': 4, 'total_lines': 4, 'truncated': False}
+  Assistant: The directory contains:
+
+- `README.md`: Describes a simple calculator module supporting `add(a, b)` with plans to add `multiply(a, b)`.
+- `calculator.py`: Likely implements the calculator functionality.
+
+**Project purpose**: A minimal calculator module with basic arithmetic operations.
+
+============================================================
+Task 2: Extend (overlay edit)
+============================================================
+  Tool call: read_file(path='calculator.py')
+  Tool result: {'content': 'def add(a, b):\n    """Return a + b."""\n    return a + b\n', 'start_line': 1, 'end_line': 3, 'total_lines': 3, 'truncated': False}
+  Tool call: write_file(content='def add(a, b):\n    """Return a + b."""\n    return a + b\n\ndef multiply(a, b):\n    """Return a * b."""\n    return a * b', path='calculator.py')
+  Tool result: {'written': 'calculator.py', 'bytes': 117}
+  Tool call: read_file(path='calculator.py')
+  Tool result: {'content': 'def add(a, b):\n    """Return a + b."""\n    return a + b\n\ndef multiply(a, b):\n    """Return a * b."""\n    return a * b', 'start_line': 1, 'end_line': 7, 'total_lines': 7, 'truncated'...
+  Assistant: The `multiply(a, b)` function has been successfully added to `calculator.py` in the same style as `add`. The file now contains both functions with proper docstrings. Here's the confirmed content:
+
+```
+def add(a, b):
+    """Return a + b."""
+    return a + b
+
+def multiply(a, b):
+    """Return a * b."""
+    return a * b
+```
+
+✅ Changes verified via `read_file`. No further tool calls needed.
+
+--- calculator.py (sandbox overlay) ---
+def add(a, b):
+    """Return a + b."""
+    return a + b
+
+def multiply(a, b):
+    """Return a * b."""
+    return a * b
+
+--- calculator.py (on disk, unchanged) ---
+def add(a, b):
+    """Return a + b."""
+    return a + b
+
+--- overlay changes ---
+{'written': ['/calculator.py'], 'deleted': []}

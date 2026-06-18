@@ -2,7 +2,6 @@
 
 import asyncio
 import json
-from pathlib import Path
 from typing import Dict
 from typing import List
 from typing import Optional
@@ -13,14 +12,14 @@ from synalinks.src.backend import ChatMessages
 from synalinks.src.backend import ChatRole
 from synalinks.src.backend import SymbolicDataModel
 from synalinks.src.backend import is_strictly_chat_messages
-from synalinks.src.modules.agents.agent_utils import InputsSummary
-from synalinks.src.modules.agents.agent_utils import summarize_inputs
-from synalinks.src.modules.agents.agent_utils import unique_inputs_path
 from synalinks.src.modules.agents.function_calling_agent import FunctionCallingAgent
+from synalinks.src.modules.agents.utils.agents_utils import InputsSummary
+from synalinks.src.modules.agents.utils.agents_utils import resolve_workdir
+from synalinks.src.modules.agents.utils.agents_utils import summarize_inputs
+from synalinks.src.modules.agents.utils.agents_utils import unique_inputs_path
 from synalinks.src.modules.core.tool import Tool
 from synalinks.src.modules.language_models import get as _get_lm
-from synalinks.src.modules.module import Module
-from synalinks.src.sandboxes.monty_sandbox import MontySandbox
+from synalinks.src.sandboxes.mirage_sandbox import MirageSandbox
 from synalinks.src.saving import serialization_lib
 
 
@@ -48,7 +47,7 @@ copy-on-write filesystem.
 
 {workdir_line}
 Available tools: read_file, list_files, search_files, write_file,
-edit_file, run_python_code, run_python_file
+edit_file, run_bash
 
 Plan:
 1. Use `list_files` to discover files (glob, e.g. `**/*.py`).
@@ -57,24 +56,20 @@ Plan:
    1-based `start_line` / `end_line`. Page through long files with
    `offset` / `limit` (raise `offset` to read further in).
 4. Use `edit_file` for surgical changes (preferred over `write_file`).
-5. Use `run_python_code` to run a Python snippet directly, or
-   `write_file` a self-contained script into the overlay then
-   `run_python_file(path)` to execute it (a script cannot import other
-   overlay files).
+5. Use `run_bash` to run shell commands against the filesystem — pipes,
+   redirects, globs, `&&`, loops, and `python3` (e.g. `python3 script.py`
+   after `write_file`-ing it). `python3` is a real interpreter with the
+   full standard library, third-party packages and network.
 6. Once you have the answer, stop calling tools and respond.
 
 Notes:
-- The filesystem is copy-on-write: edits and new files land in an
-  in-memory overlay and never modify the real workspace on disk.
-- Paths are rooted at the workdir; `..` cannot escape it.
+- The filesystem is host-safe: edits and new files land in the sandbox's
+  mounted filesystem and never modify the real workspace on disk.
 - If the conversation includes an `InputsSummary`, you only see field
-  previews and sizes — the full, untruncated input values are saved as
-  the JSON file named in its `inputs_file` field. Read that file instead
-  of retyping values from the preview: either call the `read_file` tool,
-  or inside a `run_python_code` snippet parse it with
-  `json.loads(pathlib.Path(inputs_file).read_text())`. The sandbox has no
-  `open()`, and `json` provides only `loads` / `dumps` (no `json.load`),
-  so `json.load(open(...))` will not work.""".strip()
+  previews and sizes — the full, untruncated input values are saved as the
+  JSON file named in its `inputs_file` field. Read it with the `read_file`
+  tool (or `run_bash` `cat`) rather than retyping values from the preview.
+""".strip()
 
 
 def get_subagent_tools_guidance() -> str:
@@ -86,10 +81,11 @@ branch (a copy-on-write fork) of the filesystem:
   subagent sees the files you see *now* and may freely read/write/edit/
   delete them, but its changes stay on its own branch — they never touch
   your filesystem. Subagents run concurrently, so use this to parallelize
-  independent exploration or edits. Returns a `handle` and a `diff`
-  (its pending changes) per subagent.
+  independent exploration or edits. Returns a `handle` and a `patch`
+  (its pending changes as a git-style unified diff — the actual line-level
+  edits) plus a structured `diff` summary per subagent.
 - `merge_subagent(handle, paths=None, force=False)`: after reviewing a
-  subagent's `diff`, fold its changes into your filesystem (pass `paths` to
+  subagent's `patch`, fold its changes into your filesystem (pass `paths` to
   take only a subset). A path you also changed since spawning is a conflict
   and is refused (reported in `conflicts` / `skipped`); pass `force=True`
   to apply it anyway (the subagent's version wins).
@@ -105,12 +101,12 @@ You are a subagent working on a private, isolated branch of a sandboxed,
 copy-on-write filesystem. The files you see were inherited from the parent
 agent at the moment you were spawned; your edits stay on your branch and
 affect no one else. Available tools: read_file, list_files, search_files,
-write_file, edit_file, run_python_code, run_python_file.
+write_file, edit_file, run_bash.
 
 Plan:
 1. Explore with `list_files` / `search_files` / `read_file`.
 2. Make the changes your task requires with `edit_file` / `write_file`,
-   or run code with `run_python_code` / `run_python_file`.
+   or run code with `run_bash` (e.g. `python3 script.py`).
 3. Stop and report concisely what you did and what you changed — the parent
    agent reviews your branch and decides whether to keep it.
 
@@ -149,11 +145,11 @@ def _final_answer_text(output) -> str:
         "synalinks.DeepAgent",
     ]
 )
-class DeepAgent(Module):
+class DeepAgent(FunctionCallingAgent):
     """A coding agent whose tools are a sandboxed copy of a workdir.
 
     DeepAgent is a thin specialization of `FunctionCallingAgent`
-    that mounts the workdir in a `MontySandbox` and exposes the
+    that mounts the workdir in a `MirageSandbox` and exposes the
     sandbox's tool methods to the LM:
 
     - ``read_file``: read a file by 1-based line range (paginated).
@@ -161,17 +157,15 @@ class DeepAgent(Module):
     - ``search_files``: glob for files and grep their contents (regex).
     - ``write_file``: create/overwrite a file.
     - ``edit_file``: exact-string replacement.
-    - ``run_python_code``: run a Python snippet directly in the sandbox.
-    - ``run_python_file``: run a self-contained script the agent wrote
-      into the overlay.
+    - ``run_bash``: run a shell command (pipes, redirects, globs, loops and
+      ``python3``) against the mounted filesystem.
 
-    Every tool is backed by the sandbox's copy-on-write overlay and the
-    Monty interpreter, so the agent is **host-safe by construction**:
-    reads fall through to the real ``workdir`` but writes, edits and code
-    execution can never modify it or reach the host — so there is nothing
-    to gate, and all tools are always available. Inspect what the agent
-    did through ``agent.sandbox`` — ``changes()``, ``journal()``,
-    ``read_overlay()`` — and persist any of it yourself if desired.
+    Every tool is backed by the sandbox's mounted filesystem, seeded from
+    ``workdir``, so the agent is **host-safe by construction**: writes, edits
+    and code execution land in the mount and can never modify the real
+    ``workdir`` or reach the host — so there is nothing to gate, and all tools
+    are always available. Inspect what the agent did through ``agent.sandbox``
+    — ``changes()`` / ``diff()`` — and persist any of it yourself if desired.
 
     The constructor mirrors `FunctionCallingAgent` — every
     parameter on that class is accepted here with identical semantics.
@@ -207,44 +201,14 @@ class DeepAgent(Module):
     ```
 
     Args:
-        workdir (str): Optional working directory the agent operates on.
-            When given it must exist and is mounted read-through in the
-            sandbox (the LM's writes/edits stay in the overlay and never
-            touch it). When omitted, the sandbox starts as an empty
-            in-memory filesystem.
-        timeout (float): Per-snippet execution budget in seconds for
-            ``run_python_code`` / ``run_python_file``. Defaults to 30.
-        tools (list): Additional `Tool` instances (or plain async
-            functions) to expose alongside the built-in tools. Names must
-            not start with ``_`` or collide with built-ins.
-        sandbox (Sandbox): Optional ready-made sandbox to operate on instead
-            of building one from ``workdir`` — e.g. a `Sandbox.fork`
-            of another agent's filesystem. When given, ``workdir`` is used
-            only for the default instructions text.
-        max_subagent_depth (int): When ``> 0``, the agent gains
-            ``spawn_subagents`` / ``merge_subagent`` / ``discard_subagent``
-            tools, letting the LM run subagents in parallel — each on an
-            isolated `Sandbox.fork` of the filesystem whose changes
-            only land on an explicit ``merge_subagent``. The value caps
-            nesting: ``1`` (the recommended setting) lets this agent spawn
-            subagents that cannot themselves spawn; ``2`` allows one more
-            level, and so on. Defaults to ``0`` (subagents disabled —
-            backward-compatible). Requires a fork-capable sandbox
-            (``MontySandbox`` is).
-
-            Subagent forks here are **filesystem branches** (each gets a
-            fresh interpreter), so across parallel subagents you can fold
-            back **all** their file changes. Folding back Python REPL state
-            (variables/functions/imports) across subagents is a
-            `RecursiveLanguageModelAgent` feature — and limited to one
-            subagent there, because Monty serializes the REPL namespace only
-            as a whole (it can't union parallel namespaces). That is a
-            backend constraint, not a design shortcut.
         schema (dict): JSON schema for the final answer.
         data_model (DataModel): DataModel for the final answer.
             Mutually exclusive with ``schema``.
         language_model (LanguageModel): The language model that drives
             the agent loop.
+        sub_language_model (LanguageModel): Optional. The language model
+            that drives spawned subagents (typically a cheaper model).
+            Defaults to ``language_model`` when omitted.
         prompt_template (str): Forwarded to the tool-call generator.
         examples (list): Few-shot examples for the tool-call generator.
         instructions (str): Override the default system instructions.
@@ -258,6 +222,9 @@ class DeepAgent(Module):
             reasoning-capable LMs).
         use_chain_of_thought (bool): When ``True``, the tool-call
             generator emits a ``thinking`` field per round.
+        tools (list): Additional `Tool` instances (or plain async
+            functions) to expose alongside the built-in tools. Names must
+            not start with ``_`` or collide with built-ins.
         autonomous (bool): When ``True`` (default), the agent runs the
             tool loop end-to-end. When ``False``, returns one step at a
             time for human-in-the-loop workflows.
@@ -269,6 +236,41 @@ class DeepAgent(Module):
             RAG / SQL).
         streaming (bool): Stream the final answer when no ``schema`` is
             set. Defaults to ``False``.
+        timeout (float): Per-command execution budget in seconds for
+            ``run_bash``. Defaults to 30.
+        workdir (str): Optional working directory the agent operates on.
+            When given it must exist and its files seed the sandbox
+            filesystem (the LM's writes/edits stay there and never touch
+            the real directory). When omitted, the sandbox starts as an
+            empty in-memory filesystem.
+        sandbox (Sandbox): Optional ready-made sandbox to operate on instead
+            of building one from ``workdir`` — e.g. a `Sandbox.fork`
+            of another agent's filesystem. When given, ``workdir`` is used
+            only for the default instructions text.
+        skills (list): Optional. Folder paths (Agent Skill roots) whose skills
+            are listed for the agent as an ``<available_skills>`` context message
+            (see `FunctionCallingAgent`). The skill files must also be reachable
+            from the agent's sandbox (e.g. under ``workdir``) for their bodies to
+            be read on demand. Defaults to ``None``.
+        max_subagent_depth (int): When ``> 0``, the agent gains
+            ``spawn_subagents`` / ``merge_subagent`` / ``discard_subagent``
+            tools, letting the LM run subagents in parallel — each on an
+            isolated `Sandbox.fork` of the filesystem whose changes
+            only land on an explicit ``merge_subagent``. The value caps
+            nesting: ``1`` (the recommended setting) lets this agent spawn
+            subagents that cannot themselves spawn; ``2`` allows one more
+            level, and so on. Defaults to ``0`` (subagents disabled —
+            backward-compatible). Requires a fork-capable sandbox
+            (``MirageSandbox`` is).
+
+            Subagent forks here are **filesystem branches** (each gets a
+            fresh interpreter), so across parallel subagents you can fold
+            back **all** their file changes. Folding back Python REPL state
+            (variables/functions/imports) across subagents is a
+            `RecursiveLanguageModelAgent` feature — and limited to one
+            subagent there, because the REPL namespace serializes only
+            as a whole (it can't union parallel namespaces). That is a
+            backend constraint, not a design shortcut.
         name (str): Module name.
         description (str): Module description.
     """
@@ -276,15 +278,10 @@ class DeepAgent(Module):
     def __init__(
         self,
         *,
-        workdir: Optional[str] = None,
-        timeout: float = 30.0,
-        tools: Optional[List] = None,
-        sandbox=None,
-        max_subagent_depth: int = 0,
-        _subagent_depth: int = 0,
         schema=None,
         data_model=None,
         language_model=None,
+        sub_language_model=None,
         prompt_template=None,
         examples=None,
         instructions: Optional[str] = None,
@@ -294,26 +291,25 @@ class DeepAgent(Module):
         use_outputs_schema: bool = False,
         reasoning_effort: Optional[str] = None,
         use_chain_of_thought: bool = False,
+        tools: Optional[List] = None,
         autonomous: bool = True,
         return_inputs_with_trajectory: bool = True,
         max_iterations: int = 10,
         streaming: bool = False,
+        timeout: float = 30.0,
+        workdir: Optional[str] = None,
+        skills=None,
+        sandbox=None,
+        max_subagent_depth: int = 0,
+        _subagent_depth: int = 0,
         name: Optional[str] = None,
         description: Optional[str] = None,
     ):
-        super().__init__(name=name, description=description)
-
-        # `workdir` is optional: when omitted the sandbox is a pure
-        # in-memory filesystem. A provided path must exist and be a dir.
-        if workdir:
-            resolved_workdir = Path(workdir).resolve()
-            if not resolved_workdir.exists():
-                raise ValueError(f"workdir does not exist: {workdir}")
-            if not resolved_workdir.is_dir():
-                raise ValueError(f"workdir is not a directory: {workdir}")
-            self.workdir = str(resolved_workdir)
-        else:
-            self.workdir = None
+        # `workdir` is optional: when omitted the sandbox is a pure in-memory
+        # filesystem. Resolve it first — the sandbox and default instructions
+        # are derived from it, and they must exist before `super().__init__()`
+        # (which calls `_get_builtin_tools`).
+        self.workdir = resolve_workdir(workdir)
 
         if not isinstance(timeout, (int, float)) or timeout <= 0:
             raise ValueError(f"`timeout` must be a positive number, got {timeout!r}")
@@ -330,40 +326,25 @@ class DeepAgent(Module):
         # deeper, so the deepest subagents can't fan out endlessly.
         self._subagents_enabled = self._subagent_depth < self.max_subagent_depth
 
-        self.language_model = _get_lm(language_model)
+        # `sub_language_model` drives spawned subagents (typically a cheaper
+        # model). Defaults to the primary LM when omitted; ``get(None)`` would
+        # raise, so resolve only when a value is given.
+        self.sub_language_model = (
+            _get_lm(sub_language_model)
+            if sub_language_model is not None
+            else _get_lm(language_model)
+        )
 
-        if not schema and data_model:
-            schema = data_model.get_schema()
-        self.schema = schema
-
-        if instructions is None:
-            instructions = get_default_instructions(self.workdir)
-        if self._subagents_enabled:
-            instructions = instructions + "\n\n" + get_subagent_tools_guidance()
-        self.instructions = instructions
-        self.final_instructions = final_instructions
-
-        self.prompt_template = prompt_template
-        self.examples = examples
-        self.temperature = temperature
-        self.use_inputs_schema = use_inputs_schema
-        self.use_outputs_schema = use_outputs_schema
-        self.reasoning_effort = reasoning_effort
-        self.use_chain_of_thought = use_chain_of_thought
-        self.autonomous = autonomous
-        self.return_inputs_with_trajectory = return_inputs_with_trajectory
-        self.max_iterations = max_iterations
-        self.streaming = streaming
-
-        # The sandbox IS the filesystem the tools operate on: reads fall
-        # through to the workdir, writes/edits/code stay host-safe in the
-        # overlay. Inspect via `self.sandbox.changes()` / `.journal()`. A
-        # caller (or this agent, when spawning a subagent) may supply a
-        # ready-made sandbox — e.g. a `fork()` of a parent's filesystem.
+        # The sandbox IS the filesystem the tools operate on: it is seeded
+        # from the workdir and writes/edits/shell stay host-safe in the
+        # mount. Inspect via `self.sandbox.changes()` / `.diff()`. A caller
+        # (or this agent, when spawning a subagent) may supply a ready-made
+        # sandbox — e.g. a `fork()` of a parent's filesystem. Built before
+        # `super().__init__()` because `_get_builtin_tools` binds its file tools.
         self.sandbox = (
             sandbox
             if sandbox is not None
-            else MontySandbox(workdir=self.workdir, timeout=self.timeout)
+            else MirageSandbox(workdir=self.workdir, timeout=self.timeout)
         )
         # Subagent branches (forks) awaiting the parent's review, keyed by
         # handle; reset per `call()`, populated by `spawn_subagents`.
@@ -372,14 +353,44 @@ class DeepAgent(Module):
         # Overlay path the full (data) inputs are written to, resolved once on
         # first use so it can't shadow a workdir file (see `_materialize_inputs`).
         self._inputs_path: Optional[str] = None
+
+        if instructions is None:
+            instructions = get_default_instructions(self.workdir)
+        if self._subagents_enabled:
+            instructions = instructions + "\n\n" + get_subagent_tools_guidance()
+
+        super().__init__(
+            schema=schema,
+            data_model=data_model,
+            language_model=language_model,
+            prompt_template=prompt_template,
+            examples=examples,
+            instructions=instructions,
+            final_instructions=final_instructions,
+            temperature=temperature,
+            use_inputs_schema=use_inputs_schema,
+            use_outputs_schema=use_outputs_schema,
+            reasoning_effort=reasoning_effort,
+            use_chain_of_thought=use_chain_of_thought,
+            tools=tools,
+            autonomous=autonomous,
+            return_inputs_with_trajectory=return_inputs_with_trajectory,
+            max_iterations=max_iterations,
+            streaming=streaming,
+            workdir=workdir,
+            skills=skills,
+            name=name,
+            description=description,
+        )
+
+    def _get_builtin_tools(self):
         builtin_fns = [
             self.sandbox.read_file,
             self.sandbox.list_files,
             self.sandbox.search_files,
             self.sandbox.write_file,
             self.sandbox.edit_file,
-            self.sandbox.run_python_code,
-            self.sandbox.run_python_file,
+            self.sandbox.run_bash,
         ]
         if self._subagents_enabled:
             builtin_fns += [
@@ -387,40 +398,10 @@ class DeepAgent(Module):
                 self.merge_subagent,
                 self.discard_subagent,
             ]
-        builtin_tools = [Tool(fn) for fn in builtin_fns]
-        builtin_names = {t.name for t in builtin_tools}
+        return [Tool(fn) for fn in builtin_fns]
 
-        self.extra_tools = list(tools) if tools else []
-        merged_tools = list(builtin_tools)
-        for extra in self.extra_tools:
-            extra_tool = extra if isinstance(extra, Tool) else Tool(extra)
-            if extra_tool.name in builtin_names:
-                raise ValueError(
-                    f"Tool name {extra_tool.name!r} collides with a built-in "
-                    f"deep-agent tool. Rename the additional tool."
-                )
-            merged_tools.append(extra_tool)
-        # Leading-underscore check is centralized in FunctionCallingAgent.
-
-        self.agent = FunctionCallingAgent(
-            schema=self.schema,
-            language_model=self.language_model,
-            prompt_template=self.prompt_template,
-            examples=self.examples,
-            instructions=self.instructions,
-            final_instructions=self.final_instructions,
-            temperature=self.temperature,
-            use_inputs_schema=self.use_inputs_schema,
-            use_outputs_schema=self.use_outputs_schema,
-            reasoning_effort=self.reasoning_effort,
-            use_chain_of_thought=self.use_chain_of_thought,
-            tools=merged_tools,
-            autonomous=self.autonomous,
-            return_inputs_with_trajectory=self.return_inputs_with_trajectory,
-            max_iterations=self.max_iterations,
-            streaming=self.streaming,
-            name="agent_" + self.name,
-        )
+    def _builtin_tool_kind(self):
+        return "deep-agent"
 
     async def _materialize_inputs(self, inputs):
         """Replace data inputs with a metadata summary, full values on disk.
@@ -451,7 +432,7 @@ class DeepAgent(Module):
         self._subagents = {}
         self._subagent_counter = 0
         inputs = await self._materialize_inputs(inputs)
-        return await self.agent(inputs, training=training)
+        return await super().call(inputs, training=training)
 
     @staticmethod
     def _coerce_task(task) -> str:
@@ -473,7 +454,7 @@ class DeepAgent(Module):
         file you see now and freely write, edit or delete, but its changes
         are isolated and do NOT affect your filesystem. Subagents run
         concurrently. Nothing is applied automatically — review each
-        returned ``diff`` and then call ``merge_subagent(handle)`` to fold
+        returned ``patch`` and then call ``merge_subagent(handle)`` to fold
         the changes you want into your filesystem (or
         ``discard_subagent(handle)`` to drop a branch).
 
@@ -482,10 +463,13 @@ class DeepAgent(Module):
                 what that subagent should accomplish.
 
         Returns:
-            dict: ``subagents`` — a list of ``{handle, task, result, diff}``
-            (``diff`` is the subagent's pending ``{written, deleted}``
-            changes), or ``{handle, task, error}`` for a subagent that
-            failed; plus a top-level ``error`` when ``tasks`` is empty.
+            dict: ``subagents`` — a list of
+            ``{handle, task, result, diff, patch}`` per subagent, where
+            ``patch`` is the subagent's pending changes as a git-style unified
+            diff (the actual line-level edits) and ``diff`` is the structured
+            ``{written, deleted}`` summary of changed paths; or
+            ``{handle, task, error}`` for a subagent that failed; plus a
+            top-level ``error`` when ``tasks`` is empty.
         """
         prompts = [self._coerce_task(t) for t in (tasks or [])]
         if not prompts:
@@ -497,10 +481,16 @@ class DeepAgent(Module):
         from synalinks.src.programs.program import Program
 
         async def run_one(index: int, prompt: str):
-            fork = self.sandbox.fork(name=f"{self.name}_sub{index}")
+            # Subagents inherit the parent's confinement (``confine=None``):
+            # when this agent's sandbox is confined, the subagent is confined to
+            # its OWN fork (host hidden, network cut, isolated filesystem, and
+            # the parent's egress/mount/seccomp posture); when the parent runs
+            # unconfined, so does the subagent.
+            fork = self.sandbox.fork(name=f"{self.name}_sub{index}", confine=None)
             subagent = DeepAgent(
                 sandbox=fork,
-                language_model=self.language_model,
+                language_model=self.sub_language_model,
+                sub_language_model=self.sub_language_model,
                 tools=self.extra_tools,
                 instructions=get_subagent_instructions(),
                 temperature=self.temperature,
@@ -557,6 +547,7 @@ class DeepAgent(Module):
                     "task": prompt,
                     "result": answer,
                     "diff": fork.diff(),
+                    "patch": fork.patch(),
                 }
             )
         return {"subagents": report}
@@ -610,56 +601,28 @@ class DeepAgent(Module):
                 schema=InputsSummary.get_schema(),
                 name="inputs_summary_" + self.name,
             )
-        return await self.agent.compute_output_spec(inputs, training=training)
+        return await super().compute_output_spec(inputs, training=training)
 
     def get_config(self):
-        config = {
-            "workdir": self.workdir,
-            "timeout": self.timeout,
-            "max_subagent_depth": self.max_subagent_depth,
-            "schema": self.schema,
-            "prompt_template": self.prompt_template,
-            "examples": self.examples,
-            "instructions": self.instructions,
-            "final_instructions": self.final_instructions,
-            "temperature": self.temperature,
-            "use_inputs_schema": self.use_inputs_schema,
-            "use_outputs_schema": self.use_outputs_schema,
-            "reasoning_effort": self.reasoning_effort,
-            "use_chain_of_thought": self.use_chain_of_thought,
-            "autonomous": self.autonomous,
-            "return_inputs_with_trajectory": self.return_inputs_with_trajectory,
-            "max_iterations": self.max_iterations,
-            "streaming": self.streaming,
-            "name": self.name,
-            "description": self.description,
-        }
-        language_model_config = {
-            "language_model": serialization_lib.serialize_synalinks_object(
-                self.language_model,
-            )
-        }
-        tools_config = {
-            "tools": [
-                serialization_lib.serialize_synalinks_object(
-                    t if isinstance(t, Tool) else Tool(t)
-                )
-                for t in self.extra_tools
-            ]
-        }
-        return {**config, **language_model_config, **tools_config}
+        config = super().get_config()
+        config.update(
+            {
+                "timeout": self.timeout,
+                "max_subagent_depth": self.max_subagent_depth,
+                "sub_language_model": serialization_lib.serialize_synalinks_object(
+                    self.sub_language_model,
+                ),
+            }
+        )
+        return config
 
     @classmethod
     def from_config(cls, config):
-        language_model = serialization_lib.deserialize_synalinks_object(
-            config.pop("language_model")
-        )
-        tools = [
-            serialization_lib.deserialize_synalinks_object(t)
-            for t in config.pop("tools", [])
-        ]
-        return cls(
-            language_model=language_model,
-            tools=tools,
-            **config,
-        )
+        config = dict(config)
+        if config.get("sub_language_model") is not None:
+            config["sub_language_model"] = serialization_lib.deserialize_synalinks_object(
+                config.pop("sub_language_model")
+            )
+        else:
+            config.pop("sub_language_model", None)
+        return super().from_config(config)

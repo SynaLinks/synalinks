@@ -7,8 +7,6 @@ from synalinks.src.api_export import synalinks_export
 from synalinks.src.knowledge_bases import get as _get_kb
 from synalinks.src.modules.agents.function_calling_agent import FunctionCallingAgent
 from synalinks.src.modules.core.tool import Tool
-from synalinks.src.modules.language_models import get as _get_lm
-from synalinks.src.modules.module import Module
 from synalinks.src.saving import serialization_lib
 
 SEARCH_TYPES = ("similarity", "fulltext", "hybrid_fts")
@@ -245,7 +243,7 @@ def _build_tools(
         "synalinks.VectorRAGAgent",
     ]
 )
-class VectorRAGAgent(Module):
+class VectorRAGAgent(FunctionCallingAgent):
     """A ready-to-use retrieval-augmented agent backed by a knowledge base.
 
     VectorRAGAgent is a thin specialization of
@@ -368,6 +366,13 @@ class VectorRAGAgent(Module):
             Defaults to 5.
         streaming (bool): Stream the final answer when no ``schema``
             is set. Defaults to ``False``.
+        workdir (str): Optional. Path to a working directory. When it contains an
+            ``AGENTS.md`` file, its contents are injected as an additional input
+            so the agent follows the declared project conventions. Defaults to
+            ``None``.
+        skills (list): Optional. Folder paths (Agent Skill roots) whose skills
+            are listed for the agent as an ``<available_skills>`` context message
+            (see `FunctionCallingAgent`). Defaults to ``None``.
         name (str): Module name.
         description (str): Module description.
     """
@@ -398,22 +403,19 @@ class VectorRAGAgent(Module):
         return_inputs_with_trajectory: bool = True,
         max_iterations: int = 5,
         streaming: bool = False,
+        workdir: Optional[str] = None,
+        skills=None,
         name: Optional[str] = None,
         description: Optional[str] = None,
     ):
-        super().__init__(name=name, description=description)
-
         if knowledge_base is None:
             raise ValueError(
                 "`knowledge_base` is required for VectorRAGAgent: pass a "
                 "KnowledgeBase (or a URI) the agent can query."
             )
+        # Domain attributes the `_get_builtin_tools` hook depends on must be set
+        # before `super().__init__()` (which calls the hook).
         self.knowledge_base = _get_kb(knowledge_base)
-        self.language_model = _get_lm(language_model)
-
-        if not schema and data_model:
-            schema = data_model.get_schema()
-        self.schema = schema
 
         if search_type not in SEARCH_TYPES:
             raise ValueError(
@@ -437,22 +439,33 @@ class VectorRAGAgent(Module):
                 for m in self.knowledge_base.get_symbolic_data_models()
             ]
             instructions = get_default_instructions(tables, self.search_type)
-        self.instructions = instructions
-        self.final_instructions = final_instructions
 
-        self.prompt_template = prompt_template
-        self.examples = examples
-        self.temperature = temperature
-        self.use_inputs_schema = use_inputs_schema
-        self.use_outputs_schema = use_outputs_schema
-        self.reasoning_effort = reasoning_effort
-        self.use_chain_of_thought = use_chain_of_thought
-        self.autonomous = autonomous
-        self.return_inputs_with_trajectory = return_inputs_with_trajectory
-        self.max_iterations = max_iterations
-        self.streaming = streaming
+        super().__init__(
+            schema=schema,
+            data_model=data_model,
+            language_model=language_model,
+            prompt_template=prompt_template,
+            examples=examples,
+            instructions=instructions,
+            final_instructions=final_instructions,
+            temperature=temperature,
+            use_inputs_schema=use_inputs_schema,
+            use_outputs_schema=use_outputs_schema,
+            reasoning_effort=reasoning_effort,
+            use_chain_of_thought=use_chain_of_thought,
+            tools=tools,
+            autonomous=autonomous,
+            return_inputs_with_trajectory=return_inputs_with_trajectory,
+            max_iterations=max_iterations,
+            streaming=streaming,
+            workdir=workdir,
+            skills=skills,
+            name=name,
+            description=description,
+        )
 
-        builtin_tools = [
+    def _get_builtin_tools(self):
+        return [
             Tool(fn)
             for fn in _build_tools(
                 self.knowledge_base,
@@ -463,110 +476,30 @@ class VectorRAGAgent(Module):
                 output_format=self.output_format,
             )
         ]
-        builtin_names = {t.name for t in builtin_tools}
 
-        self.extra_tools = list(tools) if tools else []
-        merged_tools = list(builtin_tools)
-        for extra in self.extra_tools:
-            extra_tool = extra if isinstance(extra, Tool) else Tool(extra)
-            if extra_tool.name in builtin_names:
-                raise ValueError(
-                    f"Tool name {extra_tool.name!r} collides with a built-in "
-                    f"retrieval tool. Rename the additional tool."
-                )
-            merged_tools.append(extra_tool)
-        # Leading-underscore check is centralized in FunctionCallingAgent.
-
-        self.agent = FunctionCallingAgent(
-            schema=self.schema,
-            language_model=self.language_model,
-            prompt_template=self.prompt_template,
-            examples=self.examples,
-            instructions=self.instructions,
-            final_instructions=self.final_instructions,
-            temperature=self.temperature,
-            use_inputs_schema=self.use_inputs_schema,
-            use_outputs_schema=self.use_outputs_schema,
-            reasoning_effort=self.reasoning_effort,
-            use_chain_of_thought=self.use_chain_of_thought,
-            tools=merged_tools,
-            autonomous=self.autonomous,
-            return_inputs_with_trajectory=self.return_inputs_with_trajectory,
-            max_iterations=self.max_iterations,
-            streaming=self.streaming,
-            name="agent_" + self.name,
-        )
-
-    async def call(self, inputs, training=False):
-        return await self.agent(inputs, training=training)
-
-    async def compute_output_spec(self, inputs, training=False):
-        return await self.agent.compute_output_spec(inputs, training=training)
+    def _builtin_tool_kind(self):
+        return "retrieval"
 
     def get_config(self):
-        config = {
-            "schema": self.schema,
-            "search_type": self.search_type,
-            "k": self.k,
-            "similarity_threshold": self.similarity_threshold,
-            "fulltext_threshold": self.fulltext_threshold,
-            "output_format": self.output_format,
-            "prompt_template": self.prompt_template,
-            "examples": self.examples,
-            "instructions": self.instructions,
-            "final_instructions": self.final_instructions,
-            "temperature": self.temperature,
-            "use_inputs_schema": self.use_inputs_schema,
-            "use_outputs_schema": self.use_outputs_schema,
-            "reasoning_effort": self.reasoning_effort,
-            "use_chain_of_thought": self.use_chain_of_thought,
-            "autonomous": self.autonomous,
-            "return_inputs_with_trajectory": self.return_inputs_with_trajectory,
-            "max_iterations": self.max_iterations,
-            "streaming": self.streaming,
-            "name": self.name,
-            "description": self.description,
-        }
-        knowledge_base_config = {
-            "knowledge_base": serialization_lib.serialize_synalinks_object(
-                self.knowledge_base,
-            )
-        }
-        language_model_config = {
-            "language_model": serialization_lib.serialize_synalinks_object(
-                self.language_model,
-            )
-        }
-        tools_config = {
-            "tools": [
-                serialization_lib.serialize_synalinks_object(
-                    t if isinstance(t, Tool) else Tool(t)
-                )
-                for t in self.extra_tools
-            ]
-        }
-        return {
-            **config,
-            **knowledge_base_config,
-            **language_model_config,
-            **tools_config,
-        }
+        config = super().get_config()
+        config.update(
+            {
+                "search_type": self.search_type,
+                "k": self.k,
+                "similarity_threshold": self.similarity_threshold,
+                "fulltext_threshold": self.fulltext_threshold,
+                "output_format": self.output_format,
+                "knowledge_base": serialization_lib.serialize_synalinks_object(
+                    self.knowledge_base,
+                ),
+            }
+        )
+        return config
 
     @classmethod
     def from_config(cls, config):
-        knowledge_base = serialization_lib.deserialize_synalinks_object(
+        config = dict(config)
+        config["knowledge_base"] = serialization_lib.deserialize_synalinks_object(
             config.pop("knowledge_base")
         )
-        language_model = serialization_lib.deserialize_synalinks_object(
-            config.pop("language_model")
-        )
-        tools = [
-            serialization_lib.deserialize_synalinks_object(t)
-            for t in config.pop("tools", [])
-        ]
-        return cls(
-            knowledge_base=knowledge_base,
-            language_model=language_model,
-            tools=tools,
-            **config,
-        )
+        return super().from_config(config)

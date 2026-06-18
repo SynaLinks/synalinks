@@ -131,7 +131,7 @@ class Doc(synalinks.DataModel):
 class Answer(synalinks.DataModel):
     answer: str
 
-primary = synalinks.LanguageModel(model="ollama/qwen3:8b")
+primary = synalinks.LanguageModel(model="ollama/qwen3:8b", reasoning_effort="disable")
 
 inputs = synalinks.Input(data_model=Doc)
 outputs = await synalinks.RLM(
@@ -347,8 +347,8 @@ production, because the two jobs have very different shapes:
 Pass a separate `sub_language_model` to exploit the asymmetry:
 
 ```python
-primary = synalinks.LanguageModel(model="ollama/qwen3:8b")
-cheap   = synalinks.LanguageModel(model="ollama/qwen3:8b")
+primary = synalinks.LanguageModel(model="ollama/qwen3:8b", reasoning_effort="disable")
+cheap   = synalinks.LanguageModel(model="ollama/qwen3:8b", reasoning_effort="disable")
 
 agent = synalinks.RLM(
     data_model=Answer,
@@ -454,92 +454,107 @@ recursing.)
   read path.
 - **Sandbox syntax errors.** The sandbox parses each snippet
   before running it. An invalid f-string or an unbalanced brace
-  produces a `MontySyntaxError` observation, and the LM has to
+  produces a `SyntaxError` observation, and the LM has to
   regenerate. Repeated parse failures eat into `max_iterations`
   without producing any answer.
 
 ## Complete example
+
+A real task: **incident triage over a long multi-service log**. The input
+pairs a short `question` (fully visible to the primary LM) with a 2000-line
+`log` (only previewed). The question states only the *goal*; the agent decides
+*how*. Answering needs both halves of the design — code to find the first error
+line deterministically (structure), and the sub-LM to explain it (meaning):
 
 ```python
 import asyncio
 from dotenv import load_dotenv
 import synalinks
 
-class Doc(synalinks.DataModel):
-    text: str = synalinks.Field(description="The document to analyze")
+class LogReport(synalinks.DataModel):
+    question: str = synalinks.Field(description="The triage question to answer")
+    log: str = synalinks.Field(description="The full application log")
 
-class Answer(synalinks.DataModel):
-    answer: str = synalinks.Field(description="The final answer to the user")
+class Incident(synalinks.DataModel):
+    first_error_line: str = synalinks.Field(
+        description="The first line in the log containing 'ERROR', copied verbatim")
+    explanation: str = synalinks.Field(
+        description="One-sentence, plain-English explanation of that error")
 
 async def main():
     load_dotenv()
     synalinks.clear_session()
 
-    primary = synalinks.LanguageModel(model="ollama/qwen3:8b")
-    cheap   = synalinks.LanguageModel(model="ollama/qwen3:8b")
+    primary = synalinks.LanguageModel(model="ollama/qwen3:8b", reasoning_effort="disable")
+    cheap   = synalinks.LanguageModel(model="ollama/qwen3:8b", reasoning_effort="disable")
 
-    inputs = synalinks.Input(data_model=Doc)
+    inputs = synalinks.Input(data_model=LogReport)
     outputs = await synalinks.RLM(
-        data_model=Answer,
+        data_model=Incident,
         language_model=primary,
         sub_language_model=cheap,
-        max_iterations=4,
-        max_llm_calls=6,
+        max_iterations=5,
+        max_llm_calls=8,
     )(inputs)
-    agent = synalinks.Program(inputs=inputs, outputs=outputs, name="rlm_qa")
+    agent = synalinks.Program(inputs=inputs, outputs=outputs, name="rlm_triage")
 
-    long_text = open("book.txt").read()
-    result = await agent(Doc(text=long_text))
+    log = open("app.log").read()
+    question = (
+        "An incident took place. Find its root cause — the first error in this "
+        "chronological log — and explain in one sentence what went wrong."
+    )
+    result = await agent(LogReport(question=question, log=log))
     print(result.prettify_json())
 
 if __name__ == "__main__":
     asyncio.run(main())
 ```
 
-Inside the `agent(...)` call, the primary LM sees only the preview
-of `book.txt`. It writes Python that scans the full text inside the
-sandbox, picks out the spans worth looking at, dispatches them to
-the sub-LM, aggregates the answers, and finally calls `submit`.
+Inside the `agent(...)` call the primary LM sees only the *preview* of the
+log. From the goal alone it works out the approach: scan the full log inside
+the sandbox, keep the ERROR lines, take the first (the root cause — `db` here,
+with `api` / `worker` cascading off it), hand that one line to the sub-LM for a
+human-readable explanation, and `submit` the structured `Incident`. The
+structural part of the answer (`first_error_line`) is copied verbatim by
+deterministic code, not guessed — so it is correct regardless of model size,
+and a cheap sub-LM only ever phrases a single short line.
 
 ## Expected output (representative)
 
 ```text
-Haystack length: 8122 characters
+Log: 2000 lines, 116878 characters
+(ground truth: first failure in 'db' at 2026-01-15T10:00:00)
 
 ============================================================
-Example 1: needle-in-haystack via RLM
+Example 1: incident triage via RLM
 ============================================================
 
-Answer: The text is not truncated.
+Example 1 result:
+  first_error_line: 2026-01-15T10:00:00 ERROR db: connection pool exhausted (max=20): all connections checked out, rejecting new checkouts
+  explanation:      The database exhausted its connection pool (all 20 connections were in use), so it rejected new checkouts and dependent services began to fail.
+  first ERROR line correct? ✅
 
 ============================================================
-Example 2: tight budget forces code-side aggregation
+Example 2: walk the trajectory
 ============================================================
 
-Answer:
-
-============================================================
-Example 3: walk the trajectory
-============================================================
-
-Trajectory has 8 messages:
-  [00] assistant ```python import asyncio inputs = {'fields': [{'name': 'text', 'type': 'str', 'size': 8122, 'preview': 'Paragraph 0: Lor...
-  [01] tool      stdout: text Paragraph 0: Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut l...
-  [02] assistant ```python import asyncio inputs = {'fields': [{'name': 'text', 'type': 'str', 'size': 8122, 'preview': 'Paragraph 0: Lor...
-  [03] tool      error: MontySyntaxError: unexpected EOF while parsing at byte range 1599..1599
-  [04] assistant ```python import asyncio inputs = {'fields': [{'name': 'text', 'type': 'str', 'size': 8122, 'preview': 'Paragraph 0: Lor...
-  [05] tool      error: MontySyntaxError: unexpected EOF while parsing at byte range 1599..1599
-  [06] assistant ```python import asyncio inputs = {'fields': [{'name': 'text', 'type': 'str', 'size': 8122, 'preview': 'Paragraph 0: Lor...
-  [07] tool      error: MontySyntaxError: Expected `}`, found newline at byte range 1533..1534
+Trajectory has 4 messages:
+  [00] assistant {"code": "errors = [l for l in inputs['log'].splitlines() if ' ERROR '...
+  [01] tool      {'stdout': "2026-01-15T10:00:00 ERROR db: connection pool exhausted...
+  [02] assistant {"code": "first = errors[0]; s = llm_query(prompt=f'Explain: {first}')...
+  [03] tool      {'submit': 'accepted'}
 ```
 
-Output is *stochastic* (varies from run to run) and depends on which
-models you picked. With a small local model
-(`ollama/qwen3:8b`) you can see a realistic failure mode in
-the trajectory above: the model repeatedly emits syntactically
-invalid Python, which the sandbox rejects with `MontySyntaxError`.
-Larger primary models almost always close the loop cleanly with
-`submit`; this trap is genuine, not an artefact of the example.
+Output is *stochastic* (varies from run to run) and depends heavily on the
+models you pick. The **first_error_line is deterministic** — it is copied from
+the log by code, not the model — so a model that actually runs the scan gets it
+exactly right every time; only the phrasing of `explanation` varies. A capable
+primary model closes the loop in two or three turns. A small local model
+(`ollama/qwen3:8b`) is slower and less reliable here: it can over-think each
+step or guess from the preview instead of scanning — which is exactly why the
+deterministic `✅ / ❌` check above is worth printing. The lesson generalizes:
+keep the *structural* part of the answer in code so it stays correct
+independent of model strength, and spend the LM only on what needs language.
 
 ## Take-Home Summary
 
@@ -574,6 +589,8 @@ Larger primary models almost always close the loop cleanly with
 """
 
 import asyncio
+from datetime import datetime
+from datetime import timedelta
 
 from dotenv import load_dotenv
 
@@ -581,42 +598,112 @@ import synalinks
 
 # =============================================================================
 # Data Models
-# =============================================================================
-
-
-class Doc(synalinks.DataModel):
-    """A long document to analyze."""
-
-    text: str = synalinks.Field(description="The document text")
-
-
-class Answer(synalinks.DataModel):
-    """A final answer to the user query."""
-
-    answer: str = synalinks.Field(description="The final answer to the user")
-
-
-# =============================================================================
-# Synthetic long input — a noisy haystack with one needle
 #
-# We build a long, repetitive document and hide one fact ("magic number")
-# in the middle. The primary LM never sees this string; it only sees the
-# InputsSummary preview. Finding the needle requires writing code that
-# scans the full text in the sandbox and either uses a regex or batches
-# sub-LM calls over candidate spans.
+# A real RLM task: incident triage over a long, multi-service application log.
+# The input pairs a short `question` (the goal only) with a huge `log` (only
+# previewed). The answer is *structured* and needs both halves of the RLM
+# design:
+#   - CODE (structure): scan the lines, keep the ERRORs, take the first one
+#     (the log is chronological). Deterministic — never a sub-LM call.
+#   - sub-LM (meaning): turn that one terse error line into a plain-English
+#     explanation.
 # =============================================================================
 
 
-def build_haystack(needle: str, paragraphs: int = 200) -> str:
-    """Return a long document with `needle` placed near the middle."""
-    filler = (
-        "Lorem ipsum dolor sit amet, consectetur adipiscing elit. "
-        "Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. "
-        "Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris."
+class LogReport(synalinks.DataModel):
+    """An incident-triage request over a long application log."""
+
+    question: str = synalinks.Field(description="The triage question to answer")
+    log: str = synalinks.Field(
+        description="The full application log, one timestamped event per line"
     )
-    body = [f"Paragraph {i}: {filler}" for i in range(paragraphs)]
-    body[paragraphs // 2] = f"Paragraph {paragraphs // 2}: {needle}"
-    return "\n\n".join(body)
+
+
+class Incident(synalinks.DataModel):
+    """The triaged root-cause incident."""
+
+    first_error_line: str = synalinks.Field(
+        description="The first line in the log containing 'ERROR', copied verbatim"
+    )
+    explanation: str = synalinks.Field(
+        description="One-sentence, plain-English explanation of that error"
+    )
+
+
+# =============================================================================
+# Synthetic long input — a realistic multi-service log with one buried incident
+#
+# Thousands of INFO/DEBUG lines across five services, then — ~60% in — a real
+# incident: `db` fails FIRST (connection pool exhausted), and `api` / `worker`
+# cascade off it a few seconds later. The earliest ERROR by timestamp is the
+# db one, so the root cause is deterministic and checkable. The primary LM
+# never sees this text; it only gets the InputsSummary preview.
+# =============================================================================
+
+
+def build_incident_log(total_lines: int = 2000):
+    """Return ``(log_text, ground_truth)`` for a planted db-root-cause incident."""
+    base = datetime(2026, 1, 15, 9, 0, 0)
+    services = ["auth", "api", "cache", "worker", "db"]
+    info = [
+        "request handled in {ms}ms",
+        "health check ok",
+        "cache hit ratio {pct}%",
+        "scheduled job completed",
+        "connection established",
+    ]
+
+    def line(i, level, service, msg):
+        # Clean, easy-to-parse format: `<iso-ts> <LEVEL> <service>: <msg>`.
+        # ISO timestamps sort lexicographically, so "earliest" is just `min`.
+        ts = (base + timedelta(seconds=3 * i)).strftime("%Y-%m-%dT%H:%M:%S")
+        return f"{ts} {level} {service}: {msg}"
+
+    lines = []
+    for i in range(total_lines):
+        service = services[i % len(services)]
+        msg = info[i % len(info)].format(ms=10 + (i % 90), pct=80 + (i % 20))
+        level = "DEBUG" if i % 7 == 0 else "INFO"
+        lines.append(line(i, level, service, msg))
+
+    # Plant the incident ~60% in: db fails first (the root cause), then api and
+    # worker cascade off it over the next few seconds (downstream effects).
+    at = total_lines * 6 // 10
+    root_line = line(
+        at,
+        "ERROR",
+        "db",
+        "connection pool exhausted (max=20): all connections checked out, "
+        "rejecting new checkouts",
+    )
+    lines[at] = root_line
+    cascade = [
+        ("api", "upstream query timed out after 5000ms waiting for a db connection"),
+        ("worker", "job retry failed: could not acquire a db connection"),
+        ("api", "returned 503 to client: database unavailable"),
+    ]
+    for k, (svc, msg) in enumerate(cascade, start=1):
+        lines[at + k] = line(at + k, "ERROR", svc, msg)
+
+    ground_truth = {
+        "service": "db",
+        "timestamp": (base + timedelta(seconds=3 * at)).strftime("%Y-%m-%dT%H:%M:%S"),
+        "line": root_line,
+    }
+    return "\n".join(lines), ground_truth
+
+
+def show_incident(result, truth):
+    """Print the structured answer and check the deterministic part.
+
+    ``first_error_line`` is copied verbatim from the log by code, so it must
+    match the planted root-cause line exactly — a hard, model-independent check.
+    """
+    first_line = str(result.get("first_error_line", ""))
+    correct = truth["line"] in first_line
+    print(f"  first_error_line: {result.get('first_error_line')}")
+    print(f"  explanation:      {result.get('explanation')}")
+    print(f"  first ERROR line correct? {'✅' if correct else '❌'}")
 
 
 # =============================================================================
@@ -627,82 +714,69 @@ def build_haystack(needle: str, paragraphs: int = 200) -> str:
 async def main():
     load_dotenv()
     synalinks.clear_session()
+    synalinks.enable_logging()
 
     # A capable primary LM for orchestration; a cheap one for sub-queries.
     # Both default to the same model if you only pass `language_model=`.
-    primary = synalinks.LanguageModel(model="ollama/qwen3:8b")
-    cheap = synalinks.LanguageModel(model="ollama/qwen3:8b")
+    primary = synalinks.LanguageModel(
+        model="ollama/qwen3:8b", reasoning_effort="disable"
+    )
+    cheap = synalinks.LanguageModel(model="ollama/qwen3:8b", reasoning_effort="disable")
 
     # synalinks.enable_observability(
     #     project_name="recursive_language_model_agent_guide",
     # )
 
-    haystack = build_haystack(
-        needle="The magic number is 4242, please remember it.",
-        paragraphs=40,
+    log, truth = build_incident_log(total_lines=2000)
+    question = (
+        "An incident took place. Find its root cause — the first error in this "
+        "chronological log — and explain in one sentence what went wrong."
     )
-    print(f"Haystack length: {len(haystack)} characters\n")
-
-    # -------------------------------------------------------------------------
-    # Example 1: Minimal RLM — primary LM never sees the full document
-    # -------------------------------------------------------------------------
-    print("=" * 60)
-    print("Example 1: needle-in-haystack via RLM")
-    print("=" * 60)
-
-    inputs = synalinks.Input(data_model=Doc)
-    outputs = await synalinks.RLM(
-        data_model=Answer,
-        language_model=primary,
-        sub_language_model=cheap,
-        max_iterations=4,
-        max_llm_calls=6,
-    )(inputs)
-    agent = synalinks.Program(inputs=inputs, outputs=outputs, name="rlm_needle")
-
-    result = await agent(Doc(text=haystack))
-    print(f"\nAnswer: {result['answer']}")
-
-    # -------------------------------------------------------------------------
-    # Example 2: Same agent, tighter budgets — show the LM choosing
-    # code-side aggregation when sub-LM calls are scarce
-    # -------------------------------------------------------------------------
-    print("\n" + "=" * 60)
-    print("Example 2: tight budget forces code-side aggregation")
-    print("=" * 60)
-
-    inputs = synalinks.Input(data_model=Doc)
-    outputs = await synalinks.RLM(
-        data_model=Answer,
-        language_model=primary,
-        sub_language_model=cheap,
-        max_iterations=4,
-        max_llm_calls=2,  # almost no sub-LM budget — must use regex / slicing
-    )(inputs)
-    tight_agent = synalinks.Program(
-        inputs=inputs,
-        outputs=outputs,
-        name="rlm_tight",
+    print(f"Log: {len(log.splitlines())} lines, {len(log)} characters")
+    print(
+        f"(ground truth: first failure in '{truth['service']}' at {truth['timestamp']})\n"
     )
 
-    result = await tight_agent(Doc(text=haystack))
-    print(f"\nAnswer: {result['answer']}")
+    # -------------------------------------------------------------------------
+    # Example 1: Full triage — the primary LM never sees the 2000-line log,
+    # only its preview. It writes code to find the earliest ERROR (structure)
+    # and delegates the explanation to the sub-LM (meaning).
+    # -------------------------------------------------------------------------
+    print("=" * 60)
+    print("Example 1: incident triage via RLM")
+    print("=" * 60)
+
+    inputs = synalinks.Input(data_model=LogReport)
+    outputs = await synalinks.RLM(
+        data_model=Incident,
+        language_model=primary,
+        sub_language_model=cheap,
+        max_iterations=5,
+        max_llm_calls=8,
+    )(inputs)
+    agent = synalinks.Program(inputs=inputs, outputs=outputs, name="rlm_triage")
+    agent.summary()
+
+    result = await agent(LogReport(question=question, log=log))
+    print("\nExample 1 result:")
+    show_incident(result, truth)
 
     # -------------------------------------------------------------------------
-    # Example 3: Inspect the trajectory — every assistant code block and
-    # every observation is recorded when return_inputs_with_trajectory=True
-    # (the default). Useful for debugging which snippets the LM ran and
-    # which sub-LM calls it dispatched.
+    # Example 2: Inspect the trajectory — every assistant code block and every
+    # observation is recorded when return_inputs_with_trajectory=True (the
+    # default). Useful for seeing which snippets the agent ran, which sub-LM
+    # calls it dispatched, and how it converged on (or missed) the answer.
     # -------------------------------------------------------------------------
     print("\n" + "=" * 60)
-    print("Example 3: walk the trajectory")
+    print("Example 2: walk the trajectory")
     print("=" * 60)
 
     messages = result.get("messages") or []
     print(f"\nTrajectory has {len(messages)} messages:")
     for i, m in enumerate(messages):
         role = m.get("role")
-        content = (m.get("content") or "").strip()
+        content = m.get("content") or ""
+        content = (content if isinstance(content, str) else str(content)).strip()
         head = content[:120].replace("\n", " ")
         print(f"  [{i:02d}] {role:9s} {head}{'…' if len(content) > 120 else ''}")
 

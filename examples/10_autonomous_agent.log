@@ -1,0 +1,1104 @@
+(DEBUG) [Synalinks]
+Call ID: 70b57dca-4117-4f36-9d84-3184b9d8fe78
+Parent call ID: None
+Module: FunctionCallingAgent
+Module Name: function_calling_agent
+Module Description: A trainable parallel function calling agent.
+Data Model JSON Schema:
+[
+  {
+    "additionalProperties": false,
+    "properties": {
+      "query": {
+        "description": "The user query",
+        "title": "Query",
+        "type": "string"
+      }
+    },
+    "required": [
+      "query"
+    ],
+    "title": "Query",
+    "type": "object"
+  }
+]
+
+(DEBUG) [Synalinks]
+Call ID: a6f1e953-b4a7-40e6-9921-de5e45e61f58
+Parent call ID: 70b57dca-4117-4f36-9d84-3184b9d8fe78
+Module: Generator
+Module Name: tool_calls_generator_function_calling_agent
+Module Description: Use a `LanguageModel` to generate a data model from an arbitrary input data model.
+Data Model JSON Schema:
+[
+  {
+    "additionalProperties": false,
+    "properties": {
+      "query": {
+        "description": "The user query",
+        "title": "Query",
+        "type": "string"
+      }
+    },
+    "required": [
+      "query"
+    ],
+    "title": "Query",
+    "type": "object"
+  }
+]
+
+(DEBUG) [Synalinks]
+Call ID: a6f1e953-b4a7-40e6-9921-de5e45e61f58
+Parent call ID: 70b57dca-4117-4f36-9d84-3184b9d8fe78
+Module: Generator
+Module Name: tool_calls_generator_function_calling_agent
+Module Description: Use a `LanguageModel` to generate a data model from an arbitrary input data model.
+Data Model JSON Schema:
+[
+  {
+    "$defs": {
+      "ChatRole": {
+        "description": "The chat message roles",
+        "enum": [
+          "system",
+          "developer",
+          "user",
+          "assistant",
+          "tool",
+          "function"
+        ],
+        "title": "ChatRole",
+        "type": "string"
+      },
+      "ToolCall": {
+        "additionalProperties": false,
+        "description": "A tool call, shaped like an OpenAI Chat Completions tool call.\n\nMirrors the wire envelope (`{id, type, function: {name, arguments}}`)\nexcept that `arguments` stays a parsed dict rather than a JSON-encoded\nstring, so modules and agents can read it directly. The string encoding\nis applied only at the wire edge (see `backend.pydantic.chat_completions`).",
+        "properties": {
+          "id": {
+            "description": "The id of the tool call",
+            "title": "Id",
+            "type": "string"
+          },
+          "type": {
+            "const": "function",
+            "default": "function",
+            "description": "The tool call type (always `function` today)",
+            "title": "Type",
+            "type": "string"
+          },
+          "function": {
+            "$ref": "#/$defs/ToolCallFunction",
+            "description": "The function invocation (name + arguments)"
+          }
+        },
+        "required": [
+          "id",
+          "function"
+        ],
+        "title": "ToolCall",
+        "type": "object"
+      },
+      "ToolCallFunction": {
+        "additionalProperties": false,
+        "description": "The `function` payload of a tool call (name + parsed arguments).",
+        "properties": {
+          "name": {
+            "description": "The name of the function called",
+            "title": "Name",
+            "type": "string"
+          },
+          "arguments": {
+            "additionalProperties": true,
+            "description": "The arguments of the tool call",
+            "title": "Arguments",
+            "type": "object"
+          }
+        },
+        "required": [
+          "name",
+          "arguments"
+        ],
+        "title": "ToolCallFunction",
+        "type": "object"
+      }
+    },
+    "additionalProperties": false,
+    "description": "A chat message",
+    "properties": {
+      "role": {
+        "$ref": "#/$defs/ChatRole",
+        "description": "The chat message role"
+      },
+      "reasoning_content": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "description": "The reasoning/thinking content of the message. Keyed to match the litellm/DeepSeek `reasoning_content` chat-completion field (a provider extension, not part of the base OpenAI spec), so the message API stays a subset of the litellm-extended chat-completion message.",
+        "title": "Reasoning Content"
+      },
+      "thinking_blocks": {
+        "anyOf": [
+          {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "description": "Opaque provider-native thinking blocks (e.g. Anthropic's signed `thinking_blocks`; a litellm extension, not part of the base OpenAI spec). Carried through verbatim on assistant-message re-injection so multi-turn tool-use round-trips preserve signatures. None for providers that emit reasoning only as text.",
+        "title": "Thinking Blocks"
+      },
+      "content": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array"
+          },
+          {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "description": "The content of the message",
+        "title": "Content"
+      },
+      "tool_call_id": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "description": "The id of the tool call if role is `tool`",
+        "title": "Tool Call Id"
+      },
+      "tool_calls": {
+        "anyOf": [
+          {
+            "items": {
+              "$ref": "#/$defs/ToolCall"
+            },
+            "type": "array"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "description": "The tool calls of the agent",
+        "title": "Tool Calls"
+      }
+    },
+    "required": [
+      "role"
+    ],
+    "title": "ChatMessage",
+    "type": "object"
+  }
+]
+
+(DEBUG) [Synalinks]
+Call ID: 170ad37b-e0d9-4051-9911-1611ab90dcdf
+Parent call ID: a6f1e953-b4a7-40e6-9921-de5e45e61f58
+Module: Generator
+Module Name: tool_calls_generator_function_calling_agent
+Module Description: Use a `LanguageModel` to generate a data model from an arbitrary input data model.
+Data Model JSON Schema:
+[
+  {
+    "additionalProperties": false,
+    "properties": {
+      "query": {
+        "description": "The user query",
+        "title": "Query",
+        "type": "string"
+      }
+    },
+    "required": [
+      "query"
+    ],
+    "title": "Query",
+    "type": "object"
+  }
+]
+
+(DEBUG) [Synalinks]
+Call ID: 170ad37b-e0d9-4051-9911-1611ab90dcdf
+Parent call ID: a6f1e953-b4a7-40e6-9921-de5e45e61f58
+Module: Generator
+Module Name: tool_calls_generator_function_calling_agent
+Module Description: Use a `LanguageModel` to generate a data model from an arbitrary input data model.
+Data Model JSON Schema:
+[
+  {
+    "$defs": {
+      "ChatRole": {
+        "description": "The chat message roles",
+        "enum": [
+          "system",
+          "developer",
+          "user",
+          "assistant",
+          "tool",
+          "function"
+        ],
+        "title": "ChatRole",
+        "type": "string"
+      },
+      "ToolCall": {
+        "additionalProperties": false,
+        "description": "A tool call, shaped like an OpenAI Chat Completions tool call.\n\nMirrors the wire envelope (`{id, type, function: {name, arguments}}`)\nexcept that `arguments` stays a parsed dict rather than a JSON-encoded\nstring, so modules and agents can read it directly. The string encoding\nis applied only at the wire edge (see `backend.pydantic.chat_completions`).",
+        "properties": {
+          "id": {
+            "description": "The id of the tool call",
+            "title": "Id",
+            "type": "string"
+          },
+          "type": {
+            "const": "function",
+            "default": "function",
+            "description": "The tool call type (always `function` today)",
+            "title": "Type",
+            "type": "string"
+          },
+          "function": {
+            "$ref": "#/$defs/ToolCallFunction",
+            "description": "The function invocation (name + arguments)"
+          }
+        },
+        "required": [
+          "id",
+          "function"
+        ],
+        "title": "ToolCall",
+        "type": "object"
+      },
+      "ToolCallFunction": {
+        "additionalProperties": false,
+        "description": "The `function` payload of a tool call (name + parsed arguments).",
+        "properties": {
+          "name": {
+            "description": "The name of the function called",
+            "title": "Name",
+            "type": "string"
+          },
+          "arguments": {
+            "additionalProperties": true,
+            "description": "The arguments of the tool call",
+            "title": "Arguments",
+            "type": "object"
+          }
+        },
+        "required": [
+          "name",
+          "arguments"
+        ],
+        "title": "ToolCallFunction",
+        "type": "object"
+      }
+    },
+    "additionalProperties": false,
+    "description": "A chat message",
+    "properties": {
+      "role": {
+        "$ref": "#/$defs/ChatRole",
+        "description": "The chat message role"
+      },
+      "reasoning_content": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "description": "The reasoning/thinking content of the message. Keyed to match the litellm/DeepSeek `reasoning_content` chat-completion field (a provider extension, not part of the base OpenAI spec), so the message API stays a subset of the litellm-extended chat-completion message.",
+        "title": "Reasoning Content"
+      },
+      "thinking_blocks": {
+        "anyOf": [
+          {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "description": "Opaque provider-native thinking blocks (e.g. Anthropic's signed `thinking_blocks`; a litellm extension, not part of the base OpenAI spec). Carried through verbatim on assistant-message re-injection so multi-turn tool-use round-trips preserve signatures. None for providers that emit reasoning only as text.",
+        "title": "Thinking Blocks"
+      },
+      "content": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array"
+          },
+          {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "description": "The content of the message",
+        "title": "Content"
+      },
+      "tool_call_id": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "description": "The id of the tool call if role is `tool`",
+        "title": "Tool Call Id"
+      },
+      "tool_calls": {
+        "anyOf": [
+          {
+            "items": {
+              "$ref": "#/$defs/ToolCall"
+            },
+            "type": "array"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "description": "The tool calls of the agent",
+        "title": "Tool Calls"
+      }
+    },
+    "required": [
+      "role"
+    ],
+    "title": "ChatMessage",
+    "type": "object"
+  }
+]
+
+(DEBUG) [Synalinks]
+Call ID: 70b57dca-4117-4f36-9d84-3184b9d8fe78
+Parent call ID: None
+Module: FunctionCallingAgent
+Module Name: function_calling_agent
+Module Description: A trainable parallel function calling agent.
+Data Model JSON Schema:
+[
+  {
+    "additionalProperties": false,
+    "$defs": {
+      "ChatMessage": {
+        "additionalProperties": false,
+        "description": "A chat message",
+        "properties": {
+          "role": {
+            "$ref": "#/$defs/ChatRole",
+            "description": "The chat message role"
+          },
+          "reasoning_content": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "The reasoning/thinking content of the message. Keyed to match the litellm/DeepSeek `reasoning_content` chat-completion field (a provider extension, not part of the base OpenAI spec), so the message API stays a subset of the litellm-extended chat-completion message.",
+            "title": "Reasoning Content"
+          },
+          "thinking_blocks": {
+            "anyOf": [
+              {
+                "items": {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Opaque provider-native thinking blocks (e.g. Anthropic's signed `thinking_blocks`; a litellm extension, not part of the base OpenAI spec). Carried through verbatim on assistant-message re-injection so multi-turn tool-use round-trips preserve signatures. None for providers that emit reasoning only as text.",
+            "title": "Thinking Blocks"
+          },
+          "content": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "items": {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "The content of the message",
+            "title": "Content"
+          },
+          "tool_call_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "The id of the tool call if role is `tool`",
+            "title": "Tool Call Id"
+          },
+          "tool_calls": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/$defs/ToolCall"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "The tool calls of the agent",
+            "title": "Tool Calls"
+          }
+        },
+        "required": [
+          "role"
+        ],
+        "title": "ChatMessage",
+        "type": "object"
+      },
+      "ChatRole": {
+        "description": "The chat message roles",
+        "enum": [
+          "system",
+          "developer",
+          "user",
+          "assistant",
+          "tool",
+          "function"
+        ],
+        "title": "ChatRole",
+        "type": "string"
+      },
+      "ToolCall": {
+        "additionalProperties": false,
+        "description": "A tool call, shaped like an OpenAI Chat Completions tool call.\n\nMirrors the wire envelope (`{id, type, function: {name, arguments}}`)\nexcept that `arguments` stays a parsed dict rather than a JSON-encoded\nstring, so modules and agents can read it directly. The string encoding\nis applied only at the wire edge (see `backend.pydantic.chat_completions`).",
+        "properties": {
+          "id": {
+            "description": "The id of the tool call",
+            "title": "Id",
+            "type": "string"
+          },
+          "type": {
+            "const": "function",
+            "default": "function",
+            "description": "The tool call type (always `function` today)",
+            "title": "Type",
+            "type": "string"
+          },
+          "function": {
+            "$ref": "#/$defs/ToolCallFunction",
+            "description": "The function invocation (name + arguments)"
+          }
+        },
+        "required": [
+          "id",
+          "function"
+        ],
+        "title": "ToolCall",
+        "type": "object"
+      },
+      "ToolCallFunction": {
+        "additionalProperties": false,
+        "description": "The `function` payload of a tool call (name + parsed arguments).",
+        "properties": {
+          "name": {
+            "description": "The name of the function called",
+            "title": "Name",
+            "type": "string"
+          },
+          "arguments": {
+            "additionalProperties": true,
+            "description": "The arguments of the tool call",
+            "title": "Arguments",
+            "type": "object"
+          }
+        },
+        "required": [
+          "name",
+          "arguments"
+        ],
+        "title": "ToolCallFunction",
+        "type": "object"
+      }
+    },
+    "properties": {
+      "messages": {
+        "default": [],
+        "description": "The list of chat messages",
+        "items": {
+          "$ref": "#/$defs/ChatMessage"
+        },
+        "title": "Messages",
+        "type": "array"
+      },
+      "final_answer": {
+        "description": "The correct final numerical answer",
+        "title": "Final Answer",
+        "type": "number"
+      }
+    },
+    "required": [
+      "final_answer"
+    ],
+    "title": "ChatMessages",
+    "type": "object"
+  }
+]
+
+[Synalinks]
+Call ID: 700303e8-f5b2-4537-a4cf-60e52284e4fb
+Parent call ID: None
+Module: Functional
+Module Name: math_agent
+Module Description: A math agent
+Data Model JSON:
+[
+  {
+    "query": "How much is 152648 + 485?"
+  }
+]
+
+[Synalinks]
+Call ID: aa183ea2-9217-49c0-ba61-d0772042edc9
+Parent call ID: 700303e8-f5b2-4537-a4cf-60e52284e4fb
+Module: FunctionCallingAgent
+Module Name: function_calling_agent
+Module Description: A trainable parallel function calling agent.
+Data Model JSON:
+[
+  {
+    "query": "How much is 152648 + 485?"
+  }
+]
+
+[Synalinks]
+Call ID: 1c6fa061-74c0-4113-94d0-9787edae7ac5
+Parent call ID: aa183ea2-9217-49c0-ba61-d0772042edc9
+Module: Generator
+Module Name: tool_calls_generator_function_calling_agent
+Module Description: Use a `LanguageModel` to generate a data model from an arbitrary input data model.
+Data Model JSON:
+[
+  {
+    "query": "How much is 152648 + 485?",
+    "messages": []
+  }
+]
+
+[Synalinks]
+Call ID: dba546d2-9351-4dcb-8817-5b14f0d0cee0
+Parent call ID: 1c6fa061-74c0-4113-94d0-9787edae7ac5
+Module: LanguageModel
+Module Name: language_model
+Module Description: A language model API wrapper.
+Data Model JSON:
+[
+  {
+    "messages": [
+      {
+        "role": "system",
+        "content": "<instructions>\nThink step by step: Use the thinking field to elaborate what you observe and\nwhat do you need to accomplish next.\nReflect on prior steps: Review your previous actions and their outcomes to\navoid unnecessary repetition.\nAvoid unnecessary actions: If you already have enough information to complete\nthe user task, return an empty tool calls array.\n</instructions>\n"
+      },
+      {
+        "role": "user",
+        "content": "<input>\n{'query': 'How much is 152648 + 485?'}\n</input>\n<output>\n"
+      }
+    ]
+  }
+]
+
+[Synalinks]
+Call ID: dba546d2-9351-4dcb-8817-5b14f0d0cee0
+Parent call ID: 1c6fa061-74c0-4113-94d0-9787edae7ac5
+Module: LanguageModel
+Module Name: language_model
+Module Description: A language model API wrapper.
+Data Model JSON:
+[
+  {
+    "role": "assistant",
+    "content": "",
+    "reasoning_content": "Okay, the user is asking \"How much is 152648 + 485?\" So I need to calculate the sum of 152,648 and 485. Let me check if I have the right tools for this. The available function is 'calculate', which takes a mathematical expression as a string. The expression here is straightforward: adding two numbers. I should format the numbers correctly, making sure there are no typos. Let me verify the numbers again—152,648 and 485. Adding them together: 152,648 plus 400 is 153,048, then plus 85 more would be 153,133. Wait, but maybe I should just use the function to compute it accurately. The function can handle the addition, so I'll call 'calculate' with the expression \"152648 + 485\". That should give the correct result. No need for any other steps here since the function will handle the calculation.\n",
+    "tool_calls": [
+      {
+        "id": "call_hkwxl4ae",
+        "type": "function",
+        "function": {
+          "name": "calculate",
+          "arguments": {
+            "expression": "152648 + 485"
+          }
+        }
+      }
+    ]
+  }
+]
+
+[Synalinks]
+Call ID: 1c6fa061-74c0-4113-94d0-9787edae7ac5
+Parent call ID: aa183ea2-9217-49c0-ba61-d0772042edc9
+Module: Generator
+Module Name: tool_calls_generator_function_calling_agent
+Module Description: Use a `LanguageModel` to generate a data model from an arbitrary input data model.
+Data Model JSON:
+[
+  {
+    "role": "assistant",
+    "content": "",
+    "reasoning_content": "Okay, the user is asking \"How much is 152648 + 485?\" So I need to calculate the sum of 152,648 and 485. Let me check if I have the right tools for this. The available function is 'calculate', which takes a mathematical expression as a string. The expression here is straightforward: adding two numbers. I should format the numbers correctly, making sure there are no typos. Let me verify the numbers again—152,648 and 485. Adding them together: 152,648 plus 400 is 153,048, then plus 85 more would be 153,133. Wait, but maybe I should just use the function to compute it accurately. The function can handle the addition, so I'll call 'calculate' with the expression \"152648 + 485\". That should give the correct result. No need for any other steps here since the function will handle the calculation.\n",
+    "tool_calls": [
+      {
+        "id": "call_hkwxl4ae",
+        "type": "function",
+        "function": {
+          "name": "calculate",
+          "arguments": {
+            "expression": "152648 + 485"
+          }
+        }
+      }
+    ]
+  }
+]
+
+[Synalinks]
+Call ID: 0ddfcc52-d402-425d-a67e-9dcf9c473702
+Parent call ID: dba546d2-9351-4dcb-8817-5b14f0d0cee0
+Module: Tool
+Module Name: calculate
+Module Description: Calculate the result of a mathematical expression.
+Keyword Arguments:
+{
+  "expression": "152648 + 485"
+}
+
+[Synalinks]
+Call ID: 0ddfcc52-d402-425d-a67e-9dcf9c473702
+Parent call ID: dba546d2-9351-4dcb-8817-5b14f0d0cee0
+Module: Tool
+Module Name: calculate
+Module Description: Calculate the result of a mathematical expression.
+Data Model JSON:
+[
+  {
+    "result": 153133.0,
+    "log": "Successfully executed"
+  }
+]
+
+[Synalinks]
+Call ID: f53c4cd9-bca5-4d0e-a175-464974143ad8
+Parent call ID: 0ddfcc52-d402-425d-a67e-9dcf9c473702
+Module: Generator
+Module Name: tool_calls_generator_function_calling_agent
+Module Description: Use a `LanguageModel` to generate a data model from an arbitrary input data model.
+Data Model JSON:
+[
+  {
+    "query": "How much is 152648 + 485?",
+    "messages": [
+      {
+        "role": "assistant",
+        "content": "",
+        "reasoning_content": "Okay, the user is asking \"How much is 152648 + 485?\" So I need to calculate the sum of 152,648 and 485. Let me check if I have the right tools for this. The available function is 'calculate', which takes a mathematical expression as a string. The expression here is straightforward: adding two numbers. I should format the numbers correctly, making sure there are no typos. Let me verify the numbers again—152,648 and 485. Adding them together: 152,648 plus 400 is 153,048, then plus 85 more would be 153,133. Wait, but maybe I should just use the function to compute it accurately. The function can handle the addition, so I'll call 'calculate' with the expression \"152648 + 485\". That should give the correct result. No need for any other steps here since the function will handle the calculation.\n",
+        "tool_calls": [
+          {
+            "id": "call_hkwxl4ae",
+            "type": "function",
+            "function": {
+              "name": "calculate",
+              "arguments": {
+                "expression": "152648 + 485"
+              }
+            }
+          }
+        ]
+      },
+      {
+        "role": "tool",
+        "content": {
+          "result": 153133.0,
+          "log": "Successfully executed"
+        },
+        "tool_call_id": "call_hkwxl4ae"
+      }
+    ]
+  }
+]
+
+[Synalinks]
+Call ID: 26f25409-dcfd-4c60-b9b6-c6ef040a39a5
+Parent call ID: f53c4cd9-bca5-4d0e-a175-464974143ad8
+Module: LanguageModel
+Module Name: language_model
+Module Description: A language model API wrapper.
+Data Model JSON:
+[
+  {
+    "messages": [
+      {
+        "role": "system",
+        "content": "<instructions>\nThink step by step: Use the thinking field to elaborate what you observe and\nwhat do you need to accomplish next.\nReflect on prior steps: Review your previous actions and their outcomes to\navoid unnecessary repetition.\nAvoid unnecessary actions: If you already have enough information to complete\nthe user task, return an empty tool calls array.\n</instructions>\n"
+      },
+      {
+        "role": "user",
+        "content": "<input>\n{'query': 'How much is 152648 + 485?'}\n</input>\n<output>\n"
+      },
+      {
+        "role": "assistant",
+        "reasoning_content": "Okay, the user is asking \"How much is 152648 + 485?\" So I need to calculate the sum of 152,648 and 485. Let me check if I have the right tools for this. The available function is 'calculate', which takes a mathematical expression as a string. The expression here is straightforward: adding two numbers. I should format the numbers correctly, making sure there are no typos. Let me verify the numbers again—152,648 and 485. Adding them together: 152,648 plus 400 is 153,048, then plus 85 more would be 153,133. Wait, but maybe I should just use the function to compute it accurately. The function can handle the addition, so I'll call 'calculate' with the expression \"152648 + 485\". That should give the correct result. No need for any other steps here since the function will handle the calculation.\n",
+        "content": "",
+        "tool_calls": [
+          {
+            "id": "call_hkwxl4ae",
+            "type": "function",
+            "function": {
+              "name": "calculate",
+              "arguments": {
+                "expression": "152648 + 485"
+              }
+            }
+          }
+        ]
+      },
+      {
+        "role": "tool",
+        "content": {
+          "result": 153133.0,
+          "log": "Successfully executed"
+        },
+        "tool_call_id": "call_hkwxl4ae"
+      }
+    ]
+  }
+]
+
+[Synalinks]
+Call ID: 26f25409-dcfd-4c60-b9b6-c6ef040a39a5
+Parent call ID: f53c4cd9-bca5-4d0e-a175-464974143ad8
+Module: LanguageModel
+Module Name: language_model
+Module Description: A language model API wrapper.
+Data Model JSON:
+[
+  {
+    "role": "assistant",
+    "content": "The result of $152{,}648 + 485$ is **153{,}133**.",
+    "reasoning_content": "Okay, the user asked for the sum of 152,648 and 485. I used the calculate function with the expression \"152648 + 485\". The result came back as 153133.0. Let me check if that's correct. \n\nAdding 152,648 and 485:\n\nFirst, add the units place: 8 + 5 = 13. Carry over 1.\nThen the tens place: 4 + 8 = 12, plus the carried 1 makes 13. Carry over 1.\nHundreds place: 6 + 4 = 10, plus the carried 1 makes 11. Carry over 1.\nThousands place: 2 + 0 = 2, plus the carried 1 makes 3.\nTen-thousands place: 5 remains, and the 1 from the hundred-thousands place. So total is 153,133. \n\nThe calculation seems right. The function returned 153133.0, which matches my manual check. So the answer is correct. I should present it clearly to the user.\n"
+  }
+]
+
+[Synalinks]
+Call ID: f53c4cd9-bca5-4d0e-a175-464974143ad8
+Parent call ID: 0ddfcc52-d402-425d-a67e-9dcf9c473702
+Module: Generator
+Module Name: tool_calls_generator_function_calling_agent
+Module Description: Use a `LanguageModel` to generate a data model from an arbitrary input data model.
+Data Model JSON:
+[
+  {
+    "role": "assistant",
+    "content": "The result of $152{,}648 + 485$ is **153{,}133**.",
+    "reasoning_content": "Okay, the user asked for the sum of 152,648 and 485. I used the calculate function with the expression \"152648 + 485\". The result came back as 153133.0. Let me check if that's correct. \n\nAdding 152,648 and 485:\n\nFirst, add the units place: 8 + 5 = 13. Carry over 1.\nThen the tens place: 4 + 8 = 12, plus the carried 1 makes 13. Carry over 1.\nHundreds place: 6 + 4 = 10, plus the carried 1 makes 11. Carry over 1.\nThousands place: 2 + 0 = 2, plus the carried 1 makes 3.\nTen-thousands place: 5 remains, and the 1 from the hundred-thousands place. So total is 153,133. \n\nThe calculation seems right. The function returned 153133.0, which matches my manual check. So the answer is correct. I should present it clearly to the user.\n"
+  }
+]
+
+[Synalinks]
+Call ID: 4f610cad-74cb-404f-8f5d-dea1710a11a3
+Parent call ID: 26f25409-dcfd-4c60-b9b6-c6ef040a39a5
+Module: Generator
+Module Name: final_generator_function_calling_agent
+Module Description: Use a `LanguageModel` to generate a data model from an arbitrary input data model.
+Data Model JSON:
+[
+  {
+    "query": "How much is 152648 + 485?",
+    "messages": [
+      {
+        "role": "assistant",
+        "content": "",
+        "reasoning_content": "Okay, the user is asking \"How much is 152648 + 485?\" So I need to calculate the sum of 152,648 and 485. Let me check if I have the right tools for this. The available function is 'calculate', which takes a mathematical expression as a string. The expression here is straightforward: adding two numbers. I should format the numbers correctly, making sure there are no typos. Let me verify the numbers again—152,648 and 485. Adding them together: 152,648 plus 400 is 153,048, then plus 85 more would be 153,133. Wait, but maybe I should just use the function to compute it accurately. The function can handle the addition, so I'll call 'calculate' with the expression \"152648 + 485\". That should give the correct result. No need for any other steps here since the function will handle the calculation.\n",
+        "tool_calls": [
+          {
+            "id": "call_hkwxl4ae",
+            "type": "function",
+            "function": {
+              "name": "calculate",
+              "arguments": {
+                "expression": "152648 + 485"
+              }
+            }
+          }
+        ]
+      },
+      {
+        "role": "tool",
+        "content": {
+          "result": 153133.0,
+          "log": "Successfully executed"
+        },
+        "tool_call_id": "call_hkwxl4ae"
+      }
+    ]
+  }
+]
+
+[Synalinks]
+Call ID: 1d558f6a-fcbf-4bde-9899-6c9c20da6279
+Parent call ID: 4f610cad-74cb-404f-8f5d-dea1710a11a3
+Module: LanguageModel
+Module Name: language_model
+Module Description: A language model API wrapper.
+Data Model JSON:
+[
+  {
+    "messages": [
+      {
+        "role": "system",
+        "content": "<instructions>\nThink step by step: Use the thinking field to elaborate what you observe and\nwhat do you need to accomplish next.\nReflect on prior steps: Review your previous actions and their outcomes to\navoid unnecessary repetition.\nAvoid unnecessary actions: If you already have enough information to complete\nthe user task, return an empty tool calls array.\n</instructions>\n"
+      },
+      {
+        "role": "user",
+        "content": "<input>\n{'query': 'How much is 152648 + 485?'}\n</input>\n<output>\n"
+      },
+      {
+        "role": "assistant",
+        "reasoning_content": "Okay, the user is asking \"How much is 152648 + 485?\" So I need to calculate the sum of 152,648 and 485. Let me check if I have the right tools for this. The available function is 'calculate', which takes a mathematical expression as a string. The expression here is straightforward: adding two numbers. I should format the numbers correctly, making sure there are no typos. Let me verify the numbers again—152,648 and 485. Adding them together: 152,648 plus 400 is 153,048, then plus 85 more would be 153,133. Wait, but maybe I should just use the function to compute it accurately. The function can handle the addition, so I'll call 'calculate' with the expression \"152648 + 485\". That should give the correct result. No need for any other steps here since the function will handle the calculation.\n",
+        "content": "",
+        "tool_calls": [
+          {
+            "id": "call_hkwxl4ae",
+            "type": "function",
+            "function": {
+              "name": "calculate",
+              "arguments": {
+                "expression": "152648 + 485"
+              }
+            }
+          }
+        ]
+      },
+      {
+        "role": "tool",
+        "content": {
+          "result": 153133.0,
+          "log": "Successfully executed"
+        },
+        "tool_call_id": "call_hkwxl4ae"
+      }
+    ]
+  }
+]
+
+[Synalinks]
+Call ID: 1d558f6a-fcbf-4bde-9899-6c9c20da6279
+Parent call ID: 4f610cad-74cb-404f-8f5d-dea1710a11a3
+Module: LanguageModel
+Module Name: language_model
+Module Description: A language model API wrapper.
+Data Model JSON:
+[
+  {
+    "final_answer": 153133.0
+  }
+]
+
+[Synalinks]
+Call ID: 4f610cad-74cb-404f-8f5d-dea1710a11a3
+Parent call ID: 26f25409-dcfd-4c60-b9b6-c6ef040a39a5
+Module: Generator
+Module Name: final_generator_function_calling_agent
+Module Description: Use a `LanguageModel` to generate a data model from an arbitrary input data model.
+Data Model JSON:
+[
+  {
+    "final_answer": 153133.0
+  }
+]
+
+[Synalinks]
+Call ID: aa183ea2-9217-49c0-ba61-d0772042edc9
+Parent call ID: 700303e8-f5b2-4537-a4cf-60e52284e4fb
+Module: FunctionCallingAgent
+Module Name: function_calling_agent
+Module Description: A trainable parallel function calling agent.
+Data Model JSON:
+[
+  {
+    "messages": [
+      {
+        "role": "assistant",
+        "reasoning_content": "Okay, the user is asking \"How much is 152648 + 485?\" So I need to calculate the sum of 152,648 and 485. Let me check if I have the right tools for this. The available function is 'calculate', which takes a mathematical expression as a string. The expression here is straightforward: adding two numbers. I should format the numbers correctly, making sure there are no typos. Let me verify the numbers again—152,648 and 485. Adding them together: 152,648 plus 400 is 153,048, then plus 85 more would be 153,133. Wait, but maybe I should just use the function to compute it accurately. The function can handle the addition, so I'll call 'calculate' with the expression \"152648 + 485\". That should give the correct result. No need for any other steps here since the function will handle the calculation.\n",
+        "content": "",
+        "tool_calls": [
+          {
+            "id": "call_hkwxl4ae",
+            "type": "function",
+            "function": {
+              "name": "calculate",
+              "arguments": {
+                "expression": "152648 + 485"
+              }
+            }
+          }
+        ]
+      },
+      {
+        "role": "tool",
+        "content": {
+          "result": 153133.0,
+          "log": "Successfully executed"
+        },
+        "tool_call_id": "call_hkwxl4ae"
+      }
+    ],
+    "final_answer": 153133.0
+  }
+]
+
+[Synalinks]
+Call ID: 700303e8-f5b2-4537-a4cf-60e52284e4fb
+Parent call ID: None
+Module: Functional
+Module Name: math_agent
+Module Description: A math agent
+Data Model JSON:
+[
+  {
+    "messages": [
+      {
+        "role": "assistant",
+        "reasoning_content": "Okay, the user is asking \"How much is 152648 + 485?\" So I need to calculate the sum of 152,648 and 485. Let me check if I have the right tools for this. The available function is 'calculate', which takes a mathematical expression as a string. The expression here is straightforward: adding two numbers. I should format the numbers correctly, making sure there are no typos. Let me verify the numbers again—152,648 and 485. Adding them together: 152,648 plus 400 is 153,048, then plus 85 more would be 153,133. Wait, but maybe I should just use the function to compute it accurately. The function can handle the addition, so I'll call 'calculate' with the expression \"152648 + 485\". That should give the correct result. No need for any other steps here since the function will handle the calculation.\n",
+        "content": "",
+        "tool_calls": [
+          {
+            "id": "call_hkwxl4ae",
+            "type": "function",
+            "function": {
+              "name": "calculate",
+              "arguments": {
+                "expression": "152648 + 485"
+              }
+            }
+          }
+        ]
+      },
+      {
+        "role": "tool",
+        "content": {
+          "result": 153133.0,
+          "log": "Successfully executed"
+        },
+        "tool_call_id": "call_hkwxl4ae"
+      }
+    ],
+    "final_answer": 153133.0
+  }
+]
+
+Creating the autonomous agent...
+Running the agent...
+{
+  "messages": [
+    {
+      "role": "assistant",
+      "reasoning_content": "Okay, the user is asking \"How much is 152648 + 485?\" So I need to calculate the sum of 152,648 and 485. Let me check if I have the right tools for this. The available function is 'calculate', which takes a mathematical expression as a string. The expression here is straightforward: adding two numbers. I should format the numbers correctly, making sure there are no typos. Let me verify the numbers again—152,648 and 485. Adding them together: 152,648 plus 400 is 153,048, then plus 85 more would be 153,133. Wait, but maybe I should just use the function to compute it accurately. The function can handle the addition, so I'll call 'calculate' with the expression \"152648 + 485\". That should give the correct result. No need for any other steps here since the function will handle the calculation.\n",
+      "content": "",
+      "tool_calls": [
+        {
+          "id": "call_hkwxl4ae",
+          "type": "function",
+          "function": {
+            "name": "calculate",
+            "arguments": {
+              "expression": "152648 + 485"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "role": "tool",
+      "content": {
+        "result": 153133.0,
+        "log": "Successfully executed"
+      },
+      "tool_call_id": "call_hkwxl4ae"
+    }
+  ],
+  "final_answer": 153133.0
+}

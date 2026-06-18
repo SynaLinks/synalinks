@@ -1,0 +1,2709 @@
+(DEBUG) [Synalinks]
+Call ID: 1cfa0ef5-0aed-464e-b20a-55a748621c55
+Parent call ID: None
+Module: Generator
+Module Name: generator
+Module Description: Use a `LanguageModel` to generate a data model from an arbitrary input data model.
+Data Model JSON Schema:
+[
+  {
+    "additionalProperties": false,
+    "description": "User question.",
+    "properties": {
+      "query": {
+        "description": "User question",
+        "title": "Query",
+        "type": "string"
+      }
+    },
+    "required": [
+      "query"
+    ],
+    "title": "Query",
+    "type": "object"
+  }
+]
+
+(DEBUG) [Synalinks]
+Call ID: 1cfa0ef5-0aed-464e-b20a-55a748621c55
+Parent call ID: None
+Module: Generator
+Module Name: generator
+Module Description: Use a `LanguageModel` to generate a data model from an arbitrary input data model.
+Data Model JSON Schema:
+[
+  {
+    "additionalProperties": false,
+    "description": "Simple answer.",
+    "properties": {
+      "answer": {
+        "description": "The answer",
+        "title": "Answer",
+        "type": "string"
+      }
+    },
+    "required": [
+      "answer"
+    ],
+    "title": "Answer",
+    "type": "object"
+  }
+]
+
+============================================================
+Module 1: Generator
+============================================================
+Program: generator_demo
+description: 'A `Functional` program is a `Program` defined as a directed graph 
+of modules.'
+┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━┓
+┃ Module (type)               ┃ Output Schema                    ┃  Vars # ┃
+┡━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━┩
+│ input_module (InputModule)  │ Query:                           │       0 │
+│                             │   query: str                     │         │
+├─────────────────────────────┼──────────────────────────────────┼─────────┤
+│ generator (Generator)       │ Answer:                          │       1 │
+│                             │   answer: str                    │         │
+└─────────────────────────────┴──────────────────────────────────┴─────────┘
+[Synalinks]
+Call ID: 8ab9f176-3f12-4ee6-8600-22bf6d2a99d5
+Parent call ID: None
+Module: Functional
+Module Name: generator_demo
+Module Description: A `Functional` program is a `Program` defined as a directed graph of modules.
+Data Model JSON:
+[
+  {
+    "query": "What is Python?"
+  }
+]
+
+[Synalinks]
+Call ID: da44b4be-52cd-4614-adcf-abac7fd3e107
+Parent call ID: 8ab9f176-3f12-4ee6-8600-22bf6d2a99d5
+Module: Generator
+Module Name: generator
+Module Description: Use a `LanguageModel` to generate a data model from an arbitrary input data model.
+Data Model JSON:
+[
+  {
+    "query": "What is Python?"
+  }
+]
+
+[Synalinks]
+Call ID: 9423fb3a-aa41-4b39-9137-6376f4adb099
+Parent call ID: da44b4be-52cd-4614-adcf-abac7fd3e107
+Module: LanguageModel
+Module Name: language_model
+Module Description: A language model API wrapper.
+Data Model JSON:
+[
+  {
+    "messages": [
+      {
+        "role": "system",
+        "content": "<instructions>\nYour task is to answer with a JSON containing the following keys: ['answer']\n</instructions>\n"
+      },
+      {
+        "role": "user",
+        "content": "<input>\n{'query': 'What is Python?'}\n</input>\n<output>\n"
+      }
+    ]
+  }
+]
+
+[Synalinks]
+Call ID: 9423fb3a-aa41-4b39-9137-6376f4adb099
+Parent call ID: da44b4be-52cd-4614-adcf-abac7fd3e107
+Module: LanguageModel
+Module Name: language_model
+Module Description: A language model API wrapper.
+Data Model JSON:
+[
+  {
+    "answer": "Python is a high-level, interpreted programming language that supports multiple programming paradigms, including procedural, object-oriented, and functional programming."
+  }
+]
+
+[Synalinks]
+Call ID: da44b4be-52cd-4614-adcf-abac7fd3e107
+Parent call ID: 8ab9f176-3f12-4ee6-8600-22bf6d2a99d5
+Module: Generator
+Module Name: generator
+Module Description: Use a `LanguageModel` to generate a data model from an arbitrary input data model.
+Data Model JSON:
+[
+  {
+    "answer": "Python is a high-level, interpreted programming language that supports multiple programming paradigms, including procedural, object-oriented, and functional programming."
+  }
+]
+
+[Synalinks]
+Call ID: 8ab9f176-3f12-4ee6-8600-22bf6d2a99d5
+Parent call ID: None
+Module: Functional
+Module Name: generator_demo
+Module Description: A `Functional` program is a `Program` defined as a directed graph of modules.
+Data Model JSON:
+[
+  {
+    "answer": "Python is a high-level, interpreted programming language that supports multiple programming paradigms, including procedural, object-oriented, and functional programming."
+  }
+]
+
+(DEBUG) [Synalinks]
+Call ID: 7f507400-d863-4d49-8fef-29aaf7eca789
+Parent call ID: None
+Module: Decision
+Module Name: decision
+Module Description: Perform a decision on the given input based on a question and a list of labels.
+Data Model JSON Schema:
+[
+  {
+    "additionalProperties": false,
+    "description": "User question.",
+    "properties": {
+      "query": {
+        "description": "User question",
+        "title": "Query",
+        "type": "string"
+      }
+    },
+    "required": [
+      "query"
+    ],
+    "title": "Query",
+    "type": "object"
+  }
+]
+
+(DEBUG) [Synalinks]
+Call ID: 66453f3d-a7ea-4f54-8b5a-fb3e01e73455
+Parent call ID: 7f507400-d863-4d49-8fef-29aaf7eca789
+Module: Generator
+Module Name: generator_decision
+Module Description: Use a `LanguageModel` to generate a data model from an arbitrary input data model.
+Data Model JSON Schema:
+[
+  {
+    "additionalProperties": false,
+    "properties": {
+      "query": {
+        "description": "User question",
+        "title": "Query",
+        "type": "string"
+      },
+      "question": {
+        "description": "The question to ask yourself.",
+        "title": "Question",
+        "type": "string"
+      }
+    },
+    "required": [
+      "query",
+      "question"
+    ],
+    "title": "Query",
+    "type": "object"
+  }
+]
+
+(DEBUG) [Synalinks]
+Call ID: 66453f3d-a7ea-4f54-8b5a-fb3e01e73455
+Parent call ID: 7f507400-d863-4d49-8fef-29aaf7eca789
+Module: Generator
+Module Name: generator_decision
+Module Description: Use a `LanguageModel` to generate a data model from an arbitrary input data model.
+Data Model JSON Schema:
+[
+  {
+    "additionalProperties": false,
+    "properties": {
+      "thinking": {
+        "description": "Your step by step thinking to choose the correct label.",
+        "title": "Thinking",
+        "type": "string"
+      },
+      "choice": {
+        "enum": [
+          "factual",
+          "opinion",
+          "calculation"
+        ],
+        "title": "Choice",
+        "type": "string"
+      }
+    },
+    "required": [
+      "thinking",
+      "choice"
+    ],
+    "title": "DecisionAnswer",
+    "type": "object"
+  }
+]
+
+(DEBUG) [Synalinks]
+Call ID: 52c9cea7-a5da-4282-86dd-7b2fa91844f6
+Parent call ID: 66453f3d-a7ea-4f54-8b5a-fb3e01e73455
+Module: Generator
+Module Name: generator_decision
+Module Description: Use a `LanguageModel` to generate a data model from an arbitrary input data model.
+Data Model JSON Schema:
+[
+  {
+    "additionalProperties": false,
+    "properties": {
+      "query": {
+        "description": "User question",
+        "title": "Query",
+        "type": "string"
+      },
+      "question": {
+        "description": "The question to ask yourself.",
+        "title": "Question",
+        "type": "string"
+      }
+    },
+    "required": [
+      "query",
+      "question"
+    ],
+    "title": "Query",
+    "type": "object"
+  }
+]
+
+(DEBUG) [Synalinks]
+Call ID: 52c9cea7-a5da-4282-86dd-7b2fa91844f6
+Parent call ID: 66453f3d-a7ea-4f54-8b5a-fb3e01e73455
+Module: Generator
+Module Name: generator_decision
+Module Description: Use a `LanguageModel` to generate a data model from an arbitrary input data model.
+Data Model JSON Schema:
+[
+  {
+    "additionalProperties": false,
+    "properties": {
+      "thinking": {
+        "description": "Your step by step thinking to choose the correct label.",
+        "title": "Thinking",
+        "type": "string"
+      },
+      "choice": {
+        "enum": [
+          "factual",
+          "opinion",
+          "calculation"
+        ],
+        "title": "Choice",
+        "type": "string"
+      }
+    },
+    "required": [
+      "thinking",
+      "choice"
+    ],
+    "title": "DecisionAnswer",
+    "type": "object"
+  }
+]
+
+(DEBUG) [Synalinks]
+Call ID: 7f507400-d863-4d49-8fef-29aaf7eca789
+Parent call ID: None
+Module: Decision
+Module Name: decision
+Module Description: Perform a decision on the given input based on a question and a list of labels.
+Data Model JSON Schema:
+[
+  {
+    "additionalProperties": false,
+    "properties": {
+      "thinking": {
+        "description": "Your step by step thinking to choose the correct label.",
+        "title": "Thinking",
+        "type": "string"
+      },
+      "choice": {
+        "enum": [
+          "factual",
+          "opinion",
+          "calculation"
+        ],
+        "title": "Choice",
+        "type": "string"
+      }
+    },
+    "required": [
+      "thinking",
+      "choice"
+    ],
+    "title": "DecisionAnswer",
+    "type": "object"
+  }
+]
+
+
+Generator output: Python is a high-level, interpreted programming language that supports multiple programming paradigm...
+
+============================================================
+Module 2: Decision
+============================================================
+Program: decision_demo
+description: 'A `Functional` program is a `Program` defined as a directed graph 
+of modules.'
+┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━┓
+┃ Module (type)               ┃ Output Schema                    ┃  Vars # ┃
+┡━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━┩
+│ input_module_1              │ Query:                           │       0 │
+│ (InputModule)               │   query: str                     │         │
+├─────────────────────────────┼──────────────────────────────────┼─────────┤
+│ decision (Decision)         │ DecisionAnswer:                  │       1 │
+│                             │   thinking: str                  │         │
+│                             │   choice: Literal['factual',     │         │
+│                             │ 'opinion', 'calculation']        │         │
+└─────────────────────────────┴──────────────────────────────────┴─────────┘
+[Synalinks]
+Call ID: 36f824e3-d449-403a-88ad-bf0ebe17757f
+Parent call ID: None
+Module: Functional
+Module Name: decision_demo
+Module Description: A `Functional` program is a `Program` defined as a directed graph of modules.
+Data Model JSON:
+[
+  {
+    "query": "What is 2+2?"
+  }
+]
+
+[Synalinks]
+Call ID: 15fe0956-54f3-4036-8491-58d8e30da26a
+Parent call ID: 36f824e3-d449-403a-88ad-bf0ebe17757f
+Module: Decision
+Module Name: decision
+Module Description: Perform a decision on the given input based on a question and a list of labels.
+Data Model JSON:
+[
+  {
+    "query": "What is 2+2?"
+  }
+]
+
+[Synalinks]
+Call ID: 2cae552e-fb94-4bbc-8112-2f24440138a4
+Parent call ID: 15fe0956-54f3-4036-8491-58d8e30da26a
+Module: Generator
+Module Name: generator_decision
+Module Description: Use a `LanguageModel` to generate a data model from an arbitrary input data model.
+Data Model JSON:
+[
+  {
+    "query": "What is 2+2?",
+    "question": "What type of query is this?"
+  }
+]
+
+[Synalinks]
+Call ID: 2a295a33-019d-40b7-8b6b-8025f040b82c
+Parent call ID: 2cae552e-fb94-4bbc-8112-2f24440138a4
+Module: LanguageModel
+Module Name: language_model
+Module Description: A language model API wrapper.
+Data Model JSON:
+[
+  {
+    "messages": [
+      {
+        "role": "system",
+        "content": "<instructions>\nYou will be given a question, your task is to answer step-by-step to choose\none the following labels: ['factual', 'opinion', 'calculation']\n</instructions>\n"
+      },
+      {
+        "role": "user",
+        "content": "<input>\n{'query': 'What is 2+2?', 'question': 'What type of query is this?'}\n</input>\n<output>\n"
+      }
+    ]
+  }
+]
+
+[Synalinks]
+Call ID: 2a295a33-019d-40b7-8b6b-8025f040b82c
+Parent call ID: 2cae552e-fb94-4bbc-8112-2f24440138a4
+Module: LanguageModel
+Module Name: language_model
+Module Description: A language model API wrapper.
+Data Model JSON:
+[
+  {
+    "thinking": "This question asks for a mathematical calculation, so it falls under the 'calculation' category.",
+    "choice": "calculation"
+  }
+]
+
+[Synalinks]
+Call ID: 2cae552e-fb94-4bbc-8112-2f24440138a4
+Parent call ID: 15fe0956-54f3-4036-8491-58d8e30da26a
+Module: Generator
+Module Name: generator_decision
+Module Description: Use a `LanguageModel` to generate a data model from an arbitrary input data model.
+Data Model JSON:
+[
+  {
+    "thinking": "This question asks for a mathematical calculation, so it falls under the 'calculation' category.",
+    "choice": "calculation"
+  }
+]
+
+[Synalinks]
+Call ID: 15fe0956-54f3-4036-8491-58d8e30da26a
+Parent call ID: 36f824e3-d449-403a-88ad-bf0ebe17757f
+Module: Decision
+Module Name: decision
+Module Description: Perform a decision on the given input based on a question and a list of labels.
+Data Model JSON:
+[
+  {
+    "thinking": "This question asks for a mathematical calculation, so it falls under the 'calculation' category.",
+    "choice": "calculation"
+  }
+]
+
+[Synalinks]
+Call ID: 36f824e3-d449-403a-88ad-bf0ebe17757f
+Parent call ID: None
+Module: Functional
+Module Name: decision_demo
+Module Description: A `Functional` program is a `Program` defined as a directed graph of modules.
+Data Model JSON:
+[
+  {
+    "thinking": "This question asks for a mathematical calculation, so it falls under the 'calculation' category.",
+    "choice": "calculation"
+  }
+]
+
+[Synalinks]
+Call ID: e5b8b7a6-af83-4f47-8492-6b5e201a4b40
+Parent call ID: None
+Module: Functional
+Module Name: decision_demo
+Module Description: A `Functional` program is a `Program` defined as a directed graph of modules.
+Data Model JSON:
+[
+  {
+    "query": "Is Python a good language?"
+  }
+]
+
+[Synalinks]
+Call ID: c5447480-6a16-4fb5-9274-3fe4c3ed171f
+Parent call ID: e5b8b7a6-af83-4f47-8492-6b5e201a4b40
+Module: Decision
+Module Name: decision
+Module Description: Perform a decision on the given input based on a question and a list of labels.
+Data Model JSON:
+[
+  {
+    "query": "Is Python a good language?"
+  }
+]
+
+[Synalinks]
+Call ID: 57715271-34fb-42ea-aa24-6010078d6dc5
+Parent call ID: c5447480-6a16-4fb5-9274-3fe4c3ed171f
+Module: Generator
+Module Name: generator_decision
+Module Description: Use a `LanguageModel` to generate a data model from an arbitrary input data model.
+Data Model JSON:
+[
+  {
+    "query": "Is Python a good language?",
+    "question": "What type of query is this?"
+  }
+]
+
+[Synalinks]
+Call ID: 6e0e5e5c-b2e0-409a-a424-536ff06c06c9
+Parent call ID: 57715271-34fb-42ea-aa24-6010078d6dc5
+Module: LanguageModel
+Module Name: language_model
+Module Description: A language model API wrapper.
+Data Model JSON:
+[
+  {
+    "messages": [
+      {
+        "role": "system",
+        "content": "<instructions>\nYou will be given a question, your task is to answer step-by-step to choose\none the following labels: ['factual', 'opinion', 'calculation']\n</instructions>\n"
+      },
+      {
+        "role": "user",
+        "content": "<input>\n{'query': 'Is Python a good language?', 'question': 'What type of query is this?'}\n</input>\n<output>\n"
+      }
+    ]
+  }
+]
+
+[Synalinks]
+Call ID: 6e0e5e5c-b2e0-409a-a424-536ff06c06c9
+Parent call ID: 57715271-34fb-42ea-aa24-6010078d6dc5
+Module: LanguageModel
+Module Name: language_model
+Module Description: A language model API wrapper.
+Data Model JSON:
+[
+  {
+    "thinking": "The question is asking for an opinion or personal judgment, so it falls under the category of 'opinion'.",
+    "choice": "opinion"
+  }
+]
+
+[Synalinks]
+Call ID: 57715271-34fb-42ea-aa24-6010078d6dc5
+Parent call ID: c5447480-6a16-4fb5-9274-3fe4c3ed171f
+Module: Generator
+Module Name: generator_decision
+Module Description: Use a `LanguageModel` to generate a data model from an arbitrary input data model.
+Data Model JSON:
+[
+  {
+    "thinking": "The question is asking for an opinion or personal judgment, so it falls under the category of 'opinion'.",
+    "choice": "opinion"
+  }
+]
+
+[Synalinks]
+Call ID: c5447480-6a16-4fb5-9274-3fe4c3ed171f
+Parent call ID: e5b8b7a6-af83-4f47-8492-6b5e201a4b40
+Module: Decision
+Module Name: decision
+Module Description: Perform a decision on the given input based on a question and a list of labels.
+Data Model JSON:
+[
+  {
+    "thinking": "The question is asking for an opinion or personal judgment, so it falls under the category of 'opinion'.",
+    "choice": "opinion"
+  }
+]
+
+[Synalinks]
+Call ID: e5b8b7a6-af83-4f47-8492-6b5e201a4b40
+Parent call ID: None
+Module: Functional
+Module Name: decision_demo
+Module Description: A `Functional` program is a `Program` defined as a directed graph of modules.
+Data Model JSON:
+[
+  {
+    "thinking": "The question is asking for an opinion or personal judgment, so it falls under the category of 'opinion'.",
+    "choice": "opinion"
+  }
+]
+
+(DEBUG) [Synalinks]
+Call ID: a37650e0-4862-4f4d-8644-52c2807c693e
+Parent call ID: None
+Module: Branch
+Module Name: branch
+Module Description: Use a `LanguageModel` to select which module(s) to call based on an
+Data Model JSON Schema:
+[
+  {
+    "additionalProperties": false,
+    "description": "User question.",
+    "properties": {
+      "query": {
+        "description": "User question",
+        "title": "Query",
+        "type": "string"
+      }
+    },
+    "required": [
+      "query"
+    ],
+    "title": "Query",
+    "type": "object"
+  }
+]
+
+(DEBUG) [Synalinks]
+Call ID: 8445647b-67b1-424a-ab60-282f97a69e82
+Parent call ID: a37650e0-4862-4f4d-8644-52c2807c693e
+Module: Decision
+Module Name: decision_branch
+Module Description: Perform a decision on the given input based on a question and a list of labels.
+Data Model JSON Schema:
+[
+  {
+    "additionalProperties": false,
+    "description": "User question.",
+    "properties": {
+      "query": {
+        "description": "User question",
+        "title": "Query",
+        "type": "string"
+      }
+    },
+    "required": [
+      "query"
+    ],
+    "title": "Query",
+    "type": "object"
+  }
+]
+
+(DEBUG) [Synalinks]
+Call ID: 29f3feb0-1854-4888-bcbb-2db9724d34df
+Parent call ID: 8445647b-67b1-424a-ab60-282f97a69e82
+Module: Generator
+Module Name: generator_decision_branch
+Module Description: Use a `LanguageModel` to generate a data model from an arbitrary input data model.
+Data Model JSON Schema:
+[
+  {
+    "additionalProperties": false,
+    "properties": {
+      "query": {
+        "description": "User question",
+        "title": "Query",
+        "type": "string"
+      },
+      "question": {
+        "description": "The question to ask yourself.",
+        "title": "Question",
+        "type": "string"
+      }
+    },
+    "required": [
+      "query",
+      "question"
+    ],
+    "title": "Query",
+    "type": "object"
+  }
+]
+
+(DEBUG) [Synalinks]
+Call ID: 29f3feb0-1854-4888-bcbb-2db9724d34df
+Parent call ID: 8445647b-67b1-424a-ab60-282f97a69e82
+Module: Generator
+Module Name: generator_decision_branch
+Module Description: Use a `LanguageModel` to generate a data model from an arbitrary input data model.
+Data Model JSON Schema:
+[
+  {
+    "additionalProperties": false,
+    "properties": {
+      "thinking": {
+        "description": "Your step by step thinking to choose the correct label.",
+        "title": "Thinking",
+        "type": "string"
+      },
+      "choice": {
+        "enum": [
+          "math",
+          "general"
+        ],
+        "title": "Choice",
+        "type": "string"
+      }
+    },
+    "required": [
+      "thinking",
+      "choice"
+    ],
+    "title": "DecisionAnswer",
+    "type": "object"
+  }
+]
+
+(DEBUG) [Synalinks]
+Call ID: 125e10d4-9c3c-46b4-b544-2bba1853b051
+Parent call ID: 29f3feb0-1854-4888-bcbb-2db9724d34df
+Module: Generator
+Module Name: generator_decision_branch
+Module Description: Use a `LanguageModel` to generate a data model from an arbitrary input data model.
+Data Model JSON Schema:
+[
+  {
+    "additionalProperties": false,
+    "properties": {
+      "query": {
+        "description": "User question",
+        "title": "Query",
+        "type": "string"
+      },
+      "question": {
+        "description": "The question to ask yourself.",
+        "title": "Question",
+        "type": "string"
+      }
+    },
+    "required": [
+      "query",
+      "question"
+    ],
+    "title": "Query",
+    "type": "object"
+  }
+]
+
+(DEBUG) [Synalinks]
+Call ID: 125e10d4-9c3c-46b4-b544-2bba1853b051
+Parent call ID: 29f3feb0-1854-4888-bcbb-2db9724d34df
+Module: Generator
+Module Name: generator_decision_branch
+Module Description: Use a `LanguageModel` to generate a data model from an arbitrary input data model.
+Data Model JSON Schema:
+[
+  {
+    "additionalProperties": false,
+    "properties": {
+      "thinking": {
+        "description": "Your step by step thinking to choose the correct label.",
+        "title": "Thinking",
+        "type": "string"
+      },
+      "choice": {
+        "enum": [
+          "math",
+          "general"
+        ],
+        "title": "Choice",
+        "type": "string"
+      }
+    },
+    "required": [
+      "thinking",
+      "choice"
+    ],
+    "title": "DecisionAnswer",
+    "type": "object"
+  }
+]
+
+(DEBUG) [Synalinks]
+Call ID: 8445647b-67b1-424a-ab60-282f97a69e82
+Parent call ID: a37650e0-4862-4f4d-8644-52c2807c693e
+Module: Decision
+Module Name: decision_branch
+Module Description: Perform a decision on the given input based on a question and a list of labels.
+Data Model JSON Schema:
+[
+  {
+    "additionalProperties": false,
+    "properties": {
+      "thinking": {
+        "description": "Your step by step thinking to choose the correct label.",
+        "title": "Thinking",
+        "type": "string"
+      },
+      "choice": {
+        "enum": [
+          "math",
+          "general"
+        ],
+        "title": "Choice",
+        "type": "string"
+      }
+    },
+    "required": [
+      "thinking",
+      "choice"
+    ],
+    "title": "DecisionAnswer",
+    "type": "object"
+  }
+]
+
+(DEBUG) [Synalinks]
+Call ID: 6567ee8c-33b0-4cdd-aaf4-ab46791f0152
+Parent call ID: 125e10d4-9c3c-46b4-b544-2bba1853b051
+Module: Generator
+Module Name: generator_1
+Module Description: Use a `LanguageModel` to generate a data model from an arbitrary input data model.
+Data Model JSON Schema:
+[
+  {
+    "additionalProperties": false,
+    "properties": {
+      "query": {
+        "description": "User question",
+        "title": "Query",
+        "type": "string"
+      },
+      "thinking": {
+        "description": "Your step by step thinking to choose the correct label.",
+        "title": "Thinking",
+        "type": "string"
+      },
+      "choice": {
+        "enum": [
+          "math",
+          "general"
+        ],
+        "title": "Choice",
+        "type": "string"
+      }
+    },
+    "required": [
+      "query",
+      "thinking",
+      "choice"
+    ],
+    "title": "Query",
+    "type": "object"
+  }
+]
+
+(DEBUG) [Synalinks]
+Call ID: 6567ee8c-33b0-4cdd-aaf4-ab46791f0152
+Parent call ID: 125e10d4-9c3c-46b4-b544-2bba1853b051
+Module: Generator
+Module Name: generator_1
+Module Description: Use a `LanguageModel` to generate a data model from an arbitrary input data model.
+Data Model JSON Schema:
+[
+  {
+    "additionalProperties": false,
+    "description": "Simple answer.",
+    "properties": {
+      "answer": {
+        "description": "The answer",
+        "title": "Answer",
+        "type": "string"
+      }
+    },
+    "required": [
+      "answer"
+    ],
+    "title": "Answer",
+    "type": "object"
+  }
+]
+
+(DEBUG) [Synalinks]
+Call ID: 1a14b232-d1b2-4c72-8970-f4272f67ce94
+Parent call ID: 6567ee8c-33b0-4cdd-aaf4-ab46791f0152
+Module: Generator
+Module Name: generator_2
+Module Description: Use a `LanguageModel` to generate a data model from an arbitrary input data model.
+Data Model JSON Schema:
+[
+  {
+    "additionalProperties": false,
+    "properties": {
+      "query": {
+        "description": "User question",
+        "title": "Query",
+        "type": "string"
+      },
+      "thinking": {
+        "description": "Your step by step thinking to choose the correct label.",
+        "title": "Thinking",
+        "type": "string"
+      },
+      "choice": {
+        "enum": [
+          "math",
+          "general"
+        ],
+        "title": "Choice",
+        "type": "string"
+      }
+    },
+    "required": [
+      "query",
+      "thinking",
+      "choice"
+    ],
+    "title": "Query",
+    "type": "object"
+  }
+]
+
+(DEBUG) [Synalinks]
+Call ID: 1a14b232-d1b2-4c72-8970-f4272f67ce94
+Parent call ID: 6567ee8c-33b0-4cdd-aaf4-ab46791f0152
+Module: Generator
+Module Name: generator_2
+Module Description: Use a `LanguageModel` to generate a data model from an arbitrary input data model.
+Data Model JSON Schema:
+[
+  {
+    "additionalProperties": false,
+    "description": "Simple answer.",
+    "properties": {
+      "answer": {
+        "description": "The answer",
+        "title": "Answer",
+        "type": "string"
+      }
+    },
+    "required": [
+      "answer"
+    ],
+    "title": "Answer",
+    "type": "object"
+  }
+]
+
+(DEBUG) [Synalinks]
+Call ID: b1ddd770-fe8b-4965-805b-754aaf6f73a2
+Parent call ID: 1a14b232-d1b2-4c72-8970-f4272f67ce94
+Module: Decision
+Module Name: decision_branch
+Module Description: Perform a decision on the given input based on a question and a list of labels.
+Data Model JSON Schema:
+[
+  {
+    "additionalProperties": false,
+    "description": "User question.",
+    "properties": {
+      "query": {
+        "description": "User question",
+        "title": "Query",
+        "type": "string"
+      }
+    },
+    "required": [
+      "query"
+    ],
+    "title": "Query",
+    "type": "object"
+  }
+]
+
+(DEBUG) [Synalinks]
+Call ID: ce436cbd-ea98-465c-86ca-a78e69cd14a9
+Parent call ID: b1ddd770-fe8b-4965-805b-754aaf6f73a2
+Module: Generator
+Module Name: generator_decision_branch
+Module Description: Use a `LanguageModel` to generate a data model from an arbitrary input data model.
+Data Model JSON Schema:
+[
+  {
+    "additionalProperties": false,
+    "properties": {
+      "query": {
+        "description": "User question",
+        "title": "Query",
+        "type": "string"
+      },
+      "question": {
+        "description": "The question to ask yourself.",
+        "title": "Question",
+        "type": "string"
+      }
+    },
+    "required": [
+      "query",
+      "question"
+    ],
+    "title": "Query",
+    "type": "object"
+  }
+]
+
+(DEBUG) [Synalinks]
+Call ID: ce436cbd-ea98-465c-86ca-a78e69cd14a9
+Parent call ID: b1ddd770-fe8b-4965-805b-754aaf6f73a2
+Module: Generator
+Module Name: generator_decision_branch
+Module Description: Use a `LanguageModel` to generate a data model from an arbitrary input data model.
+Data Model JSON Schema:
+[
+  {
+    "additionalProperties": false,
+    "properties": {
+      "thinking": {
+        "description": "Your step by step thinking to choose the correct label.",
+        "title": "Thinking",
+        "type": "string"
+      },
+      "choice": {
+        "enum": [
+          "math",
+          "general"
+        ],
+        "title": "Choice",
+        "type": "string"
+      }
+    },
+    "required": [
+      "thinking",
+      "choice"
+    ],
+    "title": "DecisionAnswer",
+    "type": "object"
+  }
+]
+
+(DEBUG) [Synalinks]
+Call ID: b1ddd770-fe8b-4965-805b-754aaf6f73a2
+Parent call ID: 1a14b232-d1b2-4c72-8970-f4272f67ce94
+Module: Decision
+Module Name: decision_branch
+Module Description: Perform a decision on the given input based on a question and a list of labels.
+Data Model JSON Schema:
+[
+  {
+    "additionalProperties": false,
+    "properties": {
+      "thinking": {
+        "description": "Your step by step thinking to choose the correct label.",
+        "title": "Thinking",
+        "type": "string"
+      },
+      "choice": {
+        "enum": [
+          "math",
+          "general"
+        ],
+        "title": "Choice",
+        "type": "string"
+      }
+    },
+    "required": [
+      "thinking",
+      "choice"
+    ],
+    "title": "DecisionAnswer",
+    "type": "object"
+  }
+]
+
+(DEBUG) [Synalinks]
+Call ID: 00ac15ba-10f9-4354-bc2a-5a58d926f8b1
+Parent call ID: ce436cbd-ea98-465c-86ca-a78e69cd14a9
+Module: Generator
+Module Name: generator_1
+Module Description: Use a `LanguageModel` to generate a data model from an arbitrary input data model.
+Data Model JSON Schema:
+[
+  {
+    "additionalProperties": false,
+    "properties": {
+      "query": {
+        "description": "User question",
+        "title": "Query",
+        "type": "string"
+      },
+      "thinking": {
+        "description": "Your step by step thinking to choose the correct label.",
+        "title": "Thinking",
+        "type": "string"
+      },
+      "choice": {
+        "enum": [
+          "math",
+          "general"
+        ],
+        "title": "Choice",
+        "type": "string"
+      }
+    },
+    "required": [
+      "query",
+      "thinking",
+      "choice"
+    ],
+    "title": "Query",
+    "type": "object"
+  }
+]
+
+(DEBUG) [Synalinks]
+Call ID: 00ac15ba-10f9-4354-bc2a-5a58d926f8b1
+Parent call ID: ce436cbd-ea98-465c-86ca-a78e69cd14a9
+Module: Generator
+Module Name: generator_1
+Module Description: Use a `LanguageModel` to generate a data model from an arbitrary input data model.
+Data Model JSON Schema:
+[
+  {
+    "additionalProperties": false,
+    "description": "Simple answer.",
+    "properties": {
+      "answer": {
+        "description": "The answer",
+        "title": "Answer",
+        "type": "string"
+      }
+    },
+    "required": [
+      "answer"
+    ],
+    "title": "Answer",
+    "type": "object"
+  }
+]
+
+(DEBUG) [Synalinks]
+Call ID: 9a0fa9e2-3abb-4d52-9e34-908dde226ffe
+Parent call ID: 00ac15ba-10f9-4354-bc2a-5a58d926f8b1
+Module: Generator
+Module Name: generator_2
+Module Description: Use a `LanguageModel` to generate a data model from an arbitrary input data model.
+Data Model JSON Schema:
+[
+  {
+    "additionalProperties": false,
+    "properties": {
+      "query": {
+        "description": "User question",
+        "title": "Query",
+        "type": "string"
+      },
+      "thinking": {
+        "description": "Your step by step thinking to choose the correct label.",
+        "title": "Thinking",
+        "type": "string"
+      },
+      "choice": {
+        "enum": [
+          "math",
+          "general"
+        ],
+        "title": "Choice",
+        "type": "string"
+      }
+    },
+    "required": [
+      "query",
+      "thinking",
+      "choice"
+    ],
+    "title": "Query",
+    "type": "object"
+  }
+]
+
+(DEBUG) [Synalinks]
+Call ID: 9a0fa9e2-3abb-4d52-9e34-908dde226ffe
+Parent call ID: 00ac15ba-10f9-4354-bc2a-5a58d926f8b1
+Module: Generator
+Module Name: generator_2
+Module Description: Use a `LanguageModel` to generate a data model from an arbitrary input data model.
+Data Model JSON Schema:
+[
+  {
+    "additionalProperties": false,
+    "description": "Simple answer.",
+    "properties": {
+      "answer": {
+        "description": "The answer",
+        "title": "Answer",
+        "type": "string"
+      }
+    },
+    "required": [
+      "answer"
+    ],
+    "title": "Answer",
+    "type": "object"
+  }
+]
+
+(DEBUG) [Synalinks]
+Call ID: a37650e0-4862-4f4d-8644-52c2807c693e
+Parent call ID: None
+Module: Branch
+Module Name: branch
+Module Description: Use a `LanguageModel` to select which module(s) to call based on an
+Data Model JSON Schema:
+[
+  {
+    "additionalProperties": false,
+    "properties": {
+      "thinking": {
+        "description": "Your step by step thinking to choose the correct label.",
+        "title": "Thinking",
+        "type": "string"
+      },
+      "choice": {
+        "enum": [
+          "math",
+          "general"
+        ],
+        "title": "Choice",
+        "type": "string"
+      },
+      "answer": {
+        "description": "The answer",
+        "title": "Answer",
+        "type": "string"
+      }
+    },
+    "required": [
+      "thinking",
+      "choice",
+      "answer"
+    ],
+    "title": "DecisionAnswer",
+    "type": "object"
+  },
+  {
+    "additionalProperties": false,
+    "properties": {
+      "thinking": {
+        "description": "Your step by step thinking to choose the correct label.",
+        "title": "Thinking",
+        "type": "string"
+      },
+      "choice": {
+        "enum": [
+          "math",
+          "general"
+        ],
+        "title": "Choice",
+        "type": "string"
+      },
+      "answer": {
+        "description": "The answer",
+        "title": "Answer",
+        "type": "string"
+      }
+    },
+    "required": [
+      "thinking",
+      "choice",
+      "answer"
+    ],
+    "title": "DecisionAnswer",
+    "type": "object"
+  }
+]
+
+
+Decision output: calculation
+Decision output: opinion
+
+============================================================
+Module 3: Branch (includes decision-making)
+============================================================
+Program: branch_demo
+description: 'A `Functional` program is a `Program` defined as a directed graph 
+of modules.'
+┏━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━┳━━━━━━━━━━━━━━━━━━━┓
+┃                    ┃                         ┃  Vars ┃                   ┃
+┃ Module (type)      ┃ Output Schema           ┃     # ┃ Connected to      ┃
+┡━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━╇━━━━━━━━━━━━━━━━━━━┩
+│ input_module_2     │ Query:                  │     0 │ -                 │
+│ (InputModule)      │   query: str            │       │                   │
+├────────────────────┼─────────────────────────┼───────┼───────────────────┤
+│ branch (Branch)    │ DecisionAnswer:         │     3 │ input_module_2[0… │
+│                    │   thinking: str         │       │                   │
+│                    │   choice:               │       │                   │
+│                    │ Literal['math',         │       │                   │
+│                    │ 'general']              │       │                   │
+│                    │   answer: str           │       │                   │
+│                    │ ---                     │       │                   │
+│                    │ DecisionAnswer:         │       │                   │
+│                    │   thinking: str         │       │                   │
+│                    │   choice:               │       │                   │
+│                    │ Literal['math',         │       │                   │
+│                    │ 'general']              │       │                   │
+│                    │   answer: str           │       │                   │
+├────────────────────┼─────────────────────────┼───────┼───────────────────┤
+│ or (Or)            │ DecisionAnswer:         │     0 │ branch[0][0],     │
+│                    │   thinking: str         │       │ branch[0][1]      │
+│                    │   choice:               │       │                   │
+│                    │ Literal['math',         │       │                   │
+│                    │ 'general']              │       │                   │
+│                    │   answer: str           │       │                   │
+└────────────────────┴─────────────────────────┴───────┴───────────────────┘
+[Synalinks]
+Call ID: d3e7a883-794d-4ab0-a027-71d58e60b50f
+Parent call ID: None
+Module: Functional
+Module Name: branch_demo
+Module Description: A `Functional` program is a `Program` defined as a directed graph of modules.
+Data Model JSON:
+[
+  {
+    "query": "What is 15 * 23?"
+  }
+]
+
+[Synalinks]
+Call ID: 92b3cbda-9d13-411c-a1de-c71df46a82ce
+Parent call ID: d3e7a883-794d-4ab0-a027-71d58e60b50f
+Module: Branch
+Module Name: branch
+Module Description: Use a `LanguageModel` to select which module(s) to call based on an
+Data Model JSON:
+[
+  {
+    "query": "What is 15 * 23?"
+  }
+]
+
+[Synalinks]
+Call ID: cd4055b7-c80d-42ce-b545-962fd28b8056
+Parent call ID: 92b3cbda-9d13-411c-a1de-c71df46a82ce
+Module: Decision
+Module Name: decision_branch
+Module Description: Perform a decision on the given input based on a question and a list of labels.
+Data Model JSON:
+[
+  {
+    "query": "What is 15 * 23?"
+  }
+]
+
+[Synalinks]
+Call ID: 7cd4299d-8c8e-41f6-8ca1-3ef0607353cd
+Parent call ID: cd4055b7-c80d-42ce-b545-962fd28b8056
+Module: Generator
+Module Name: generator_decision_branch
+Module Description: Use a `LanguageModel` to generate a data model from an arbitrary input data model.
+Data Model JSON:
+[
+  {
+    "query": "What is 15 * 23?",
+    "question": "Is this a math or general question?"
+  }
+]
+
+[Synalinks]
+Call ID: e07dbf32-3eb1-418c-88c5-a8073749d3f9
+Parent call ID: 7cd4299d-8c8e-41f6-8ca1-3ef0607353cd
+Module: LanguageModel
+Module Name: language_model
+Module Description: A language model API wrapper.
+Data Model JSON:
+[
+  {
+    "messages": [
+      {
+        "role": "system",
+        "content": "<instructions>\nYou will be given a question, your task is to answer step-by-step to choose\none the following labels: ['math', 'general']\n</instructions>\n"
+      },
+      {
+        "role": "user",
+        "content": "<input>\n{'query': 'What is 15 * 23?', 'question': 'Is this a math or general question?'}\n</input>\n<output>\n"
+      }
+    ]
+  }
+]
+
+[Synalinks]
+Call ID: e07dbf32-3eb1-418c-88c5-a8073749d3f9
+Parent call ID: 7cd4299d-8c8e-41f6-8ca1-3ef0607353cd
+Module: LanguageModel
+Module Name: language_model
+Module Description: A language model API wrapper.
+Data Model JSON:
+[
+  {
+    "thinking": "The given query involves multiplication of two numbers, which is a mathematical operation. Therefore, the label for this question would be 'math'.",
+    "choice": "math"
+  }
+]
+
+[Synalinks]
+Call ID: 7cd4299d-8c8e-41f6-8ca1-3ef0607353cd
+Parent call ID: cd4055b7-c80d-42ce-b545-962fd28b8056
+Module: Generator
+Module Name: generator_decision_branch
+Module Description: Use a `LanguageModel` to generate a data model from an arbitrary input data model.
+Data Model JSON:
+[
+  {
+    "thinking": "The given query involves multiplication of two numbers, which is a mathematical operation. Therefore, the label for this question would be 'math'.",
+    "choice": "math"
+  }
+]
+
+[Synalinks]
+Call ID: cd4055b7-c80d-42ce-b545-962fd28b8056
+Parent call ID: 92b3cbda-9d13-411c-a1de-c71df46a82ce
+Module: Decision
+Module Name: decision_branch
+Module Description: Perform a decision on the given input based on a question and a list of labels.
+Data Model JSON:
+[
+  {
+    "thinking": "The given query involves multiplication of two numbers, which is a mathematical operation. Therefore, the label for this question would be 'math'.",
+    "choice": "math"
+  }
+]
+
+[Synalinks]
+Call ID: b7996255-9dd5-4674-840a-647230f8b737
+Parent call ID: e07dbf32-3eb1-418c-88c5-a8073749d3f9
+Module: Generator
+Module Name: generator_1
+Module Description: Use a `LanguageModel` to generate a data model from an arbitrary input data model.
+Data Model JSON:
+[
+  {
+    "query": "What is 15 * 23?",
+    "thinking": "The given query involves multiplication of two numbers, which is a mathematical operation. Therefore, the label for this question would be 'math'.",
+    "choice": "math"
+  }
+]
+
+[Synalinks]
+Call ID: a03609f5-da58-4e46-9df6-345dc3cb34ec
+Parent call ID: b7996255-9dd5-4674-840a-647230f8b737
+Module: LanguageModel
+Module Name: language_model
+Module Description: A language model API wrapper.
+Data Model JSON:
+[
+  {
+    "messages": [
+      {
+        "role": "system",
+        "content": "<instructions>\nYou are a math expert. Show your calculations.\n</instructions>\n"
+      },
+      {
+        "role": "user",
+        "content": "<input>\n{'query': 'What is 15 * 23?', 'thinking': \"The given query involves multiplication of two numbers, which is a mathematical operation. Therefore, the label for this question would be 'math'.\", 'choice': 'math'}\n</input>\n<output>\n"
+      }
+    ]
+  }
+]
+
+[Synalinks]
+Call ID: a03609f5-da58-4e46-9df6-345dc3cb34ec
+Parent call ID: b7996255-9dd5-4674-840a-647230f8b737
+Module: LanguageModel
+Module Name: language_model
+Module Description: A language model API wrapper.
+Data Model JSON:
+[
+  {
+    "answer": "345"
+  }
+]
+
+[Synalinks]
+Call ID: b7996255-9dd5-4674-840a-647230f8b737
+Parent call ID: e07dbf32-3eb1-418c-88c5-a8073749d3f9
+Module: Generator
+Module Name: generator_1
+Module Description: Use a `LanguageModel` to generate a data model from an arbitrary input data model.
+Data Model JSON:
+[
+  {
+    "answer": "345"
+  }
+]
+
+[Synalinks]
+Call ID: 92b3cbda-9d13-411c-a1de-c71df46a82ce
+Parent call ID: d3e7a883-794d-4ab0-a027-71d58e60b50f
+Module: Branch
+Module Name: branch
+Module Description: Use a `LanguageModel` to select which module(s) to call based on an
+Data Model JSON:
+[
+  {
+    "thinking": "The given query involves multiplication of two numbers, which is a mathematical operation. Therefore, the label for this question would be 'math'.",
+    "choice": "math",
+    "answer": "345"
+  }
+]
+
+[Synalinks]
+Call ID: d3e7a883-794d-4ab0-a027-71d58e60b50f
+Parent call ID: None
+Module: Functional
+Module Name: branch_demo
+Module Description: A `Functional` program is a `Program` defined as a directed graph of modules.
+Data Model JSON:
+[
+  {
+    "thinking": "The given query involves multiplication of two numbers, which is a mathematical operation. Therefore, the label for this question would be 'math'.",
+    "choice": "math",
+    "answer": "345"
+  }
+]
+
+[Synalinks]
+Call ID: 5fe2b41c-1134-45cd-94b2-1932df2bbb54
+Parent call ID: None
+Module: Functional
+Module Name: branch_demo
+Module Description: A `Functional` program is a `Program` defined as a directed graph of modules.
+Data Model JSON:
+[
+  {
+    "query": "Who wrote Hamlet?"
+  }
+]
+
+[Synalinks]
+Call ID: a9e9f699-1640-4d25-b2e9-bedd7e0ca1e5
+Parent call ID: 5fe2b41c-1134-45cd-94b2-1932df2bbb54
+Module: Branch
+Module Name: branch
+Module Description: Use a `LanguageModel` to select which module(s) to call based on an
+Data Model JSON:
+[
+  {
+    "query": "Who wrote Hamlet?"
+  }
+]
+
+[Synalinks]
+Call ID: a22e0b5b-0c2a-4fad-b090-2e2e874322a8
+Parent call ID: a9e9f699-1640-4d25-b2e9-bedd7e0ca1e5
+Module: Decision
+Module Name: decision_branch
+Module Description: Perform a decision on the given input based on a question and a list of labels.
+Data Model JSON:
+[
+  {
+    "query": "Who wrote Hamlet?"
+  }
+]
+
+[Synalinks]
+Call ID: 55441106-83f9-448b-9274-4b36a88ce338
+Parent call ID: a22e0b5b-0c2a-4fad-b090-2e2e874322a8
+Module: Generator
+Module Name: generator_decision_branch
+Module Description: Use a `LanguageModel` to generate a data model from an arbitrary input data model.
+Data Model JSON:
+[
+  {
+    "query": "Who wrote Hamlet?",
+    "question": "Is this a math or general question?"
+  }
+]
+
+[Synalinks]
+Call ID: f732f322-ac90-42ee-8735-02cbb1d7e37c
+Parent call ID: 55441106-83f9-448b-9274-4b36a88ce338
+Module: LanguageModel
+Module Name: language_model
+Module Description: A language model API wrapper.
+Data Model JSON:
+[
+  {
+    "messages": [
+      {
+        "role": "system",
+        "content": "<instructions>\nYou will be given a question, your task is to answer step-by-step to choose\none the following labels: ['math', 'general']\n</instructions>\n"
+      },
+      {
+        "role": "user",
+        "content": "<input>\n{'query': 'Who wrote Hamlet?', 'question': 'Is this a math or general question?'}\n</input>\n<output>\n"
+      }
+    ]
+  }
+]
+
+[Synalinks]
+Call ID: f732f322-ac90-42ee-8735-02cbb1d7e37c
+Parent call ID: 55441106-83f9-448b-9274-4b36a88ce338
+Module: LanguageModel
+Module Name: language_model
+Module Description: A language model API wrapper.
+Data Model JSON:
+[
+  {
+    "thinking": "The question is asking for information about literature, not numbers or mathematical operations. Therefore, the correct label is 'general'.",
+    "choice": "general"
+  }
+]
+
+[Synalinks]
+Call ID: 55441106-83f9-448b-9274-4b36a88ce338
+Parent call ID: a22e0b5b-0c2a-4fad-b090-2e2e874322a8
+Module: Generator
+Module Name: generator_decision_branch
+Module Description: Use a `LanguageModel` to generate a data model from an arbitrary input data model.
+Data Model JSON:
+[
+  {
+    "thinking": "The question is asking for information about literature, not numbers or mathematical operations. Therefore, the correct label is 'general'.",
+    "choice": "general"
+  }
+]
+
+[Synalinks]
+Call ID: a22e0b5b-0c2a-4fad-b090-2e2e874322a8
+Parent call ID: a9e9f699-1640-4d25-b2e9-bedd7e0ca1e5
+Module: Decision
+Module Name: decision_branch
+Module Description: Perform a decision on the given input based on a question and a list of labels.
+Data Model JSON:
+[
+  {
+    "thinking": "The question is asking for information about literature, not numbers or mathematical operations. Therefore, the correct label is 'general'.",
+    "choice": "general"
+  }
+]
+
+[Synalinks]
+Call ID: b0d04f5e-3063-4415-8c16-9617d1e1aa1c
+Parent call ID: f732f322-ac90-42ee-8735-02cbb1d7e37c
+Module: Generator
+Module Name: generator_2
+Module Description: Use a `LanguageModel` to generate a data model from an arbitrary input data model.
+Data Model JSON:
+[
+  {
+    "query": "Who wrote Hamlet?",
+    "thinking": "The question is asking for information about literature, not numbers or mathematical operations. Therefore, the correct label is 'general'.",
+    "choice": "general"
+  }
+]
+
+[Synalinks]
+Call ID: c8d8e633-ccc5-489f-84cf-84ba596fca1c
+Parent call ID: b0d04f5e-3063-4415-8c16-9617d1e1aa1c
+Module: LanguageModel
+Module Name: language_model
+Module Description: A language model API wrapper.
+Data Model JSON:
+[
+  {
+    "messages": [
+      {
+        "role": "system",
+        "content": "<instructions>\nYou are a general knowledge expert.\n</instructions>\n"
+      },
+      {
+        "role": "user",
+        "content": "<input>\n{'query': 'Who wrote Hamlet?', 'thinking': \"The question is asking for information about literature, not numbers or mathematical operations. Therefore, the correct label is 'general'.\", 'choice': 'general'}\n</input>\n<output>\n"
+      }
+    ]
+  }
+]
+
+[Synalinks]
+Call ID: c8d8e633-ccc5-489f-84cf-84ba596fca1c
+Parent call ID: b0d04f5e-3063-4415-8c16-9617d1e1aa1c
+Module: LanguageModel
+Module Name: language_model
+Module Description: A language model API wrapper.
+Data Model JSON:
+[
+  {
+    "answer": "William Shakespeare"
+  }
+]
+
+[Synalinks]
+Call ID: b0d04f5e-3063-4415-8c16-9617d1e1aa1c
+Parent call ID: f732f322-ac90-42ee-8735-02cbb1d7e37c
+Module: Generator
+Module Name: generator_2
+Module Description: Use a `LanguageModel` to generate a data model from an arbitrary input data model.
+Data Model JSON:
+[
+  {
+    "answer": "William Shakespeare"
+  }
+]
+
+[Synalinks]
+Call ID: a9e9f699-1640-4d25-b2e9-bedd7e0ca1e5
+Parent call ID: 5fe2b41c-1134-45cd-94b2-1932df2bbb54
+Module: Branch
+Module Name: branch
+Module Description: Use a `LanguageModel` to select which module(s) to call based on an
+Data Model JSON:
+[
+  {
+    "thinking": "The question is asking for information about literature, not numbers or mathematical operations. Therefore, the correct label is 'general'.",
+    "choice": "general",
+    "answer": "William Shakespeare"
+  }
+]
+
+[Synalinks]
+Call ID: 5fe2b41c-1134-45cd-94b2-1932df2bbb54
+Parent call ID: None
+Module: Functional
+Module Name: branch_demo
+Module Description: A `Functional` program is a `Program` defined as a directed graph of modules.
+Data Model JSON:
+[
+  {
+    "thinking": "The question is asking for information about literature, not numbers or mathematical operations. Therefore, the correct label is 'general'.",
+    "choice": "general",
+    "answer": "William Shakespeare"
+  }
+]
+
+(DEBUG) [Synalinks]
+Call ID: 71674a17-9627-4bde-be6a-18467fc24dc7
+Parent call ID: None
+Module: ChainOfThought
+Module Name: chain_of_thought
+Module Description: Useful to answer in a step by step manner.
+Data Model JSON Schema:
+[
+  {
+    "additionalProperties": false,
+    "description": "User question.",
+    "properties": {
+      "query": {
+        "description": "User question",
+        "title": "Query",
+        "type": "string"
+      }
+    },
+    "required": [
+      "query"
+    ],
+    "title": "Query",
+    "type": "object"
+  }
+]
+
+(DEBUG) [Synalinks]
+Call ID: 41fae7e0-ac0c-4a67-89d6-d7009d57a6f9
+Parent call ID: 71674a17-9627-4bde-be6a-18467fc24dc7
+Module: Generator
+Module Name: generator_chain_of_thought
+Module Description: Use a `LanguageModel` to generate a data model from an arbitrary input data model.
+Data Model JSON Schema:
+[
+  {
+    "additionalProperties": false,
+    "description": "User question.",
+    "properties": {
+      "query": {
+        "description": "User question",
+        "title": "Query",
+        "type": "string"
+      }
+    },
+    "required": [
+      "query"
+    ],
+    "title": "Query",
+    "type": "object"
+  }
+]
+
+(DEBUG) [Synalinks]
+Call ID: 41fae7e0-ac0c-4a67-89d6-d7009d57a6f9
+Parent call ID: 71674a17-9627-4bde-be6a-18467fc24dc7
+Module: Generator
+Module Name: generator_chain_of_thought
+Module Description: Use a `LanguageModel` to generate a data model from an arbitrary input data model.
+Data Model JSON Schema:
+[
+  {
+    "additionalProperties": false,
+    "properties": {
+      "thinking": {
+        "description": "Your step by step thinking",
+        "title": "Thinking",
+        "type": "string"
+      },
+      "answer": {
+        "description": "The answer",
+        "title": "Answer",
+        "type": "string"
+      }
+    },
+    "required": [
+      "thinking",
+      "answer"
+    ],
+    "title": "Thinking",
+    "type": "object"
+  }
+]
+
+(DEBUG) [Synalinks]
+Call ID: 448256f8-d0bf-45eb-b754-7249331b00dc
+Parent call ID: 41fae7e0-ac0c-4a67-89d6-d7009d57a6f9
+Module: Generator
+Module Name: generator_chain_of_thought
+Module Description: Use a `LanguageModel` to generate a data model from an arbitrary input data model.
+Data Model JSON Schema:
+[
+  {
+    "additionalProperties": false,
+    "description": "User question.",
+    "properties": {
+      "query": {
+        "description": "User question",
+        "title": "Query",
+        "type": "string"
+      }
+    },
+    "required": [
+      "query"
+    ],
+    "title": "Query",
+    "type": "object"
+  }
+]
+
+(DEBUG) [Synalinks]
+Call ID: 448256f8-d0bf-45eb-b754-7249331b00dc
+Parent call ID: 41fae7e0-ac0c-4a67-89d6-d7009d57a6f9
+Module: Generator
+Module Name: generator_chain_of_thought
+Module Description: Use a `LanguageModel` to generate a data model from an arbitrary input data model.
+Data Model JSON Schema:
+[
+  {
+    "additionalProperties": false,
+    "properties": {
+      "thinking": {
+        "description": "Your step by step thinking",
+        "title": "Thinking",
+        "type": "string"
+      },
+      "answer": {
+        "description": "The answer",
+        "title": "Answer",
+        "type": "string"
+      }
+    },
+    "required": [
+      "thinking",
+      "answer"
+    ],
+    "title": "Thinking",
+    "type": "object"
+  }
+]
+
+(DEBUG) [Synalinks]
+Call ID: 71674a17-9627-4bde-be6a-18467fc24dc7
+Parent call ID: None
+Module: ChainOfThought
+Module Name: chain_of_thought
+Module Description: Useful to answer in a step by step manner.
+Data Model JSON Schema:
+[
+  {
+    "additionalProperties": false,
+    "properties": {
+      "thinking": {
+        "description": "Your step by step thinking",
+        "title": "Thinking",
+        "type": "string"
+      },
+      "answer": {
+        "description": "The answer",
+        "title": "Answer",
+        "type": "string"
+      }
+    },
+    "required": [
+      "thinking",
+      "answer"
+    ],
+    "title": "Thinking",
+    "type": "object"
+  }
+]
+
+
+Math branch result: 345
+General branch result: William Shakespeare
+
+============================================================
+Module 4: ChainOfThought
+============================================================
+Program: cot_demo
+description: 'A `Functional` program is a `Program` defined as a directed graph 
+of modules.'
+┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━┓
+┃ Module (type)               ┃ Output Schema                    ┃  Vars # ┃
+┡━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━┩
+│ input_module_3              │ Query:                           │       0 │
+│ (InputModule)               │   query: str                     │         │
+├─────────────────────────────┼──────────────────────────────────┼─────────┤
+│ chain_of_thought            │ Thinking:                        │       1 │
+│ (ChainOfThought)            │   thinking: str                  │         │
+│                             │   answer: str                    │         │
+└─────────────────────────────┴──────────────────────────────────┴─────────┘
+[Synalinks]
+Call ID: d95e7016-50c4-426b-b4a8-c1427b7406b7
+Parent call ID: None
+Module: Functional
+Module Name: cot_demo
+Module Description: A `Functional` program is a `Program` defined as a directed graph of modules.
+Data Model JSON:
+[
+  {
+    "query": "If I have 3 apples and give 1 away?"
+  }
+]
+
+[Synalinks]
+Call ID: 59de254f-39fb-4c89-9e25-96704ecde546
+Parent call ID: d95e7016-50c4-426b-b4a8-c1427b7406b7
+Module: ChainOfThought
+Module Name: chain_of_thought
+Module Description: Useful to answer in a step by step manner.
+Data Model JSON:
+[
+  {
+    "query": "If I have 3 apples and give 1 away?"
+  }
+]
+
+[Synalinks]
+Call ID: 891422d9-fd50-4582-ae89-d026765ec480
+Parent call ID: 59de254f-39fb-4c89-9e25-96704ecde546
+Module: Generator
+Module Name: generator_chain_of_thought
+Module Description: Use a `LanguageModel` to generate a data model from an arbitrary input data model.
+Data Model JSON:
+[
+  {
+    "query": "If I have 3 apples and give 1 away?"
+  }
+]
+
+[Synalinks]
+Call ID: a162d477-0c13-4c0e-ac6b-7d5d671aee01
+Parent call ID: 891422d9-fd50-4582-ae89-d026765ec480
+Module: LanguageModel
+Module Name: language_model
+Module Description: A language model API wrapper.
+Data Model JSON:
+[
+  {
+    "messages": [
+      {
+        "role": "system",
+        "content": "<instructions>\nYour task is to answer with a JSON containing the following keys: ['thinking', 'answer']\n</instructions>\n"
+      },
+      {
+        "role": "user",
+        "content": "<input>\n{'query': 'If I have 3 apples and give 1 away?'}\n</input>\n<output>\n"
+      }
+    ]
+  }
+]
+
+[Synalinks]
+Call ID: a162d477-0c13-4c0e-ac6b-7d5d671aee01
+Parent call ID: 891422d9-fd50-4582-ae89-d026765ec480
+Module: LanguageModel
+Module Name: language_model
+Module Description: A language model API wrapper.
+Data Model JSON:
+[
+  {
+    "thinking": "The number of apples you have decreases by one if you give one away.",
+    "answer": "You will have 2 apples left."
+  }
+]
+
+[Synalinks]
+Call ID: 891422d9-fd50-4582-ae89-d026765ec480
+Parent call ID: 59de254f-39fb-4c89-9e25-96704ecde546
+Module: Generator
+Module Name: generator_chain_of_thought
+Module Description: Use a `LanguageModel` to generate a data model from an arbitrary input data model.
+Data Model JSON:
+[
+  {
+    "thinking": "The number of apples you have decreases by one if you give one away.",
+    "answer": "You will have 2 apples left."
+  }
+]
+
+[Synalinks]
+Call ID: 59de254f-39fb-4c89-9e25-96704ecde546
+Parent call ID: d95e7016-50c4-426b-b4a8-c1427b7406b7
+Module: ChainOfThought
+Module Name: chain_of_thought
+Module Description: Useful to answer in a step by step manner.
+Data Model JSON:
+[
+  {
+    "thinking": "The number of apples you have decreases by one if you give one away.",
+    "answer": "You will have 2 apples left."
+  }
+]
+
+[Synalinks]
+Call ID: d95e7016-50c4-426b-b4a8-c1427b7406b7
+Parent call ID: None
+Module: Functional
+Module Name: cot_demo
+Module Description: A `Functional` program is a `Program` defined as a directed graph of modules.
+Data Model JSON:
+[
+  {
+    "thinking": "The number of apples you have decreases by one if you give one away.",
+    "answer": "You will have 2 apples left."
+  }
+]
+
+(DEBUG) [Synalinks]
+Call ID: 9bae7c9d-54b2-4f60-9a25-dd40979d7375
+Parent call ID: None
+Module: Generator
+Module Name: expert_a
+Module Description: Use a `LanguageModel` to generate a data model from an arbitrary input data model.
+Data Model JSON Schema:
+[
+  {
+    "additionalProperties": false,
+    "description": "User question.",
+    "properties": {
+      "query": {
+        "description": "User question",
+        "title": "Query",
+        "type": "string"
+      }
+    },
+    "required": [
+      "query"
+    ],
+    "title": "Query",
+    "type": "object"
+  }
+]
+
+(DEBUG) [Synalinks]
+Call ID: 9bae7c9d-54b2-4f60-9a25-dd40979d7375
+Parent call ID: None
+Module: Generator
+Module Name: expert_a
+Module Description: Use a `LanguageModel` to generate a data model from an arbitrary input data model.
+Data Model JSON Schema:
+[
+  {
+    "additionalProperties": false,
+    "description": "Simple answer.",
+    "properties": {
+      "answer": {
+        "description": "The answer",
+        "title": "Answer",
+        "type": "string"
+      }
+    },
+    "required": [
+      "answer"
+    ],
+    "title": "Answer",
+    "type": "object"
+  }
+]
+
+(DEBUG) [Synalinks]
+Call ID: cd570918-7510-4fff-88e9-1b23cb029c38
+Parent call ID: None
+Module: Generator
+Module Name: expert_b
+Module Description: Use a `LanguageModel` to generate a data model from an arbitrary input data model.
+Data Model JSON Schema:
+[
+  {
+    "additionalProperties": false,
+    "description": "User question.",
+    "properties": {
+      "query": {
+        "description": "User question",
+        "title": "Query",
+        "type": "string"
+      }
+    },
+    "required": [
+      "query"
+    ],
+    "title": "Query",
+    "type": "object"
+  }
+]
+
+(DEBUG) [Synalinks]
+Call ID: cd570918-7510-4fff-88e9-1b23cb029c38
+Parent call ID: None
+Module: Generator
+Module Name: expert_b
+Module Description: Use a `LanguageModel` to generate a data model from an arbitrary input data model.
+Data Model JSON Schema:
+[
+  {
+    "additionalProperties": false,
+    "description": "Answer with reasoning.",
+    "properties": {
+      "thinking": {
+        "description": "Step by step thinking",
+        "title": "Thinking",
+        "type": "string"
+      },
+      "answer": {
+        "description": "The final answer",
+        "title": "Answer",
+        "type": "string"
+      }
+    },
+    "required": [
+      "thinking",
+      "answer"
+    ],
+    "title": "AnswerWithThinking",
+    "type": "object"
+  }
+]
+
+(DEBUG) [Synalinks]
+Call ID: 0e3577d7-32f7-41e5-995b-01818eee69b4
+Parent call ID: None
+Module: Concat
+Module Name: concat_1
+Module Description: Perform a concatenation operation.
+Data Model JSON Schema:
+[
+  {
+    "additionalProperties": false,
+    "description": "Simple answer.",
+    "properties": {
+      "answer": {
+        "description": "The answer",
+        "title": "Answer",
+        "type": "string"
+      }
+    },
+    "required": [
+      "answer"
+    ],
+    "title": "Answer",
+    "type": "object"
+  },
+  {
+    "additionalProperties": false,
+    "description": "Answer with reasoning.",
+    "properties": {
+      "thinking": {
+        "description": "Step by step thinking",
+        "title": "Thinking",
+        "type": "string"
+      },
+      "answer": {
+        "description": "The final answer",
+        "title": "Answer",
+        "type": "string"
+      }
+    },
+    "required": [
+      "thinking",
+      "answer"
+    ],
+    "title": "AnswerWithThinking",
+    "type": "object"
+  }
+]
+
+(DEBUG) [Synalinks]
+Call ID: 0e3577d7-32f7-41e5-995b-01818eee69b4
+Parent call ID: None
+Module: Concat
+Module Name: concat_1
+Module Description: Perform a concatenation operation.
+Data Model JSON Schema:
+[
+  {
+    "additionalProperties": false,
+    "properties": {
+      "answer": {
+        "description": "The answer",
+        "title": "Answer",
+        "type": "string"
+      },
+      "thinking": {
+        "description": "Step by step thinking",
+        "title": "Thinking",
+        "type": "string"
+      },
+      "answer_1": {
+        "description": "The final answer",
+        "title": "Answer 1",
+        "type": "string"
+      }
+    },
+    "required": [
+      "answer",
+      "thinking",
+      "answer_1"
+    ],
+    "title": "Answer",
+    "type": "object"
+  }
+]
+
+
+Thinking: The number of apples you have decreases by one if you give one away....
+Answer: You will have 2 apples left.
+
+============================================================
+Module 5: Concat (Merging)
+============================================================
+Program: merge_demo
+description: 'A `Functional` program is a `Program` defined as a directed graph 
+of modules.'
+┏━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━┳━━━━━━━━━━━━━━━━━━━┓
+┃                    ┃                         ┃  Vars ┃                   ┃
+┃ Module (type)      ┃ Output Schema           ┃     # ┃ Connected to      ┃
+┡━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━╇━━━━━━━━━━━━━━━━━━━┩
+│ input_module_4     │ Query:                  │     0 │ -                 │
+│ (InputModule)      │   query: str            │       │                   │
+├────────────────────┼─────────────────────────┼───────┼───────────────────┤
+│ expert_a           │ Answer:                 │     1 │ input_module_4[0… │
+│ (Generator)        │   answer: str           │       │                   │
+├────────────────────┼─────────────────────────┼───────┼───────────────────┤
+│ expert_b           │ AnswerWithThinking:     │     1 │ input_module_4[0… │
+│ (Generator)        │   thinking: str         │       │                   │
+│                    │   answer: str           │       │                   │
+├────────────────────┼─────────────────────────┼───────┼───────────────────┤
+│ concat_1 (Concat)  │ Answer:                 │     0 │ expert_a[0][0],   │
+│                    │   answer: str           │       │ expert_b[0][0]    │
+│                    │   thinking: str         │       │                   │
+│                    │   answer_1: str         │       │                   │
+└────────────────────┴─────────────────────────┴───────┴───────────────────┘
+[Synalinks]
+Call ID: 6040ff86-2fe3-4d30-b7d7-4e0d3e3475ac
+Parent call ID: None
+Module: Functional
+Module Name: merge_demo
+Module Description: A `Functional` program is a `Program` defined as a directed graph of modules.
+Data Model JSON:
+[
+  {
+    "query": "What is AI?"
+  }
+]
+
+[Synalinks]
+Call ID: ddf3ba88-f438-4f52-8923-ad7ba0e86dec
+Parent call ID: 6040ff86-2fe3-4d30-b7d7-4e0d3e3475ac
+Module: Generator
+Module Name: expert_a
+Module Description: Use a `LanguageModel` to generate a data model from an arbitrary input data model.
+Data Model JSON:
+[
+  {
+    "query": "What is AI?"
+  }
+]
+
+[Synalinks]
+Call ID: ead8ecac-6351-4876-bbb6-e525e9eaa196
+Parent call ID: ddf3ba88-f438-4f52-8923-ad7ba0e86dec
+Module: LanguageModel
+Module Name: language_model
+Module Description: A language model API wrapper.
+Data Model JSON:
+[
+  {
+    "messages": [
+      {
+        "role": "system",
+        "content": "<instructions>\nYou are expert A, brief answers.\n</instructions>\n"
+      },
+      {
+        "role": "user",
+        "content": "<input>\n{'query': 'What is AI?'}\n</input>\n<output>\n"
+      }
+    ]
+  }
+]
+
+[Synalinks]
+Call ID: a7b44650-167b-4824-9a07-2aa3b4ad4895
+Parent call ID: ead8ecac-6351-4876-bbb6-e525e9eaa196
+Module: Generator
+Module Name: expert_b
+Module Description: Use a `LanguageModel` to generate a data model from an arbitrary input data model.
+Data Model JSON:
+[
+  {
+    "query": "What is AI?"
+  }
+]
+
+[Synalinks]
+Call ID: d66b599b-29d9-4d05-b899-ff66fbbd2389
+Parent call ID: a7b44650-167b-4824-9a07-2aa3b4ad4895
+Module: LanguageModel
+Module Name: language_model
+Module Description: A language model API wrapper.
+Data Model JSON:
+[
+  {
+    "messages": [
+      {
+        "role": "system",
+        "content": "<instructions>\nYou are expert B, detailed answers.\n</instructions>\n"
+      },
+      {
+        "role": "user",
+        "content": "<input>\n{'query': 'What is AI?'}\n</input>\n<output>\n"
+      }
+    ]
+  }
+]
+
+[Synalinks]
+Call ID: ead8ecac-6351-4876-bbb6-e525e9eaa196
+Parent call ID: ddf3ba88-f438-4f52-8923-ad7ba0e86dec
+Module: LanguageModel
+Module Name: language_model
+Module Description: A language model API wrapper.
+Data Model JSON:
+[
+  {
+    "answer": "Artificial Intelligence (AI) refers to the simulation of human intelligence in machines that are programmed to think and learn like humans, enabling them to perform tasks without being explicitly programmed."
+  }
+]
+
+[Synalinks]
+Call ID: ddf3ba88-f438-4f52-8923-ad7ba0e86dec
+Parent call ID: 6040ff86-2fe3-4d30-b7d7-4e0d3e3475ac
+Module: Generator
+Module Name: expert_a
+Module Description: Use a `LanguageModel` to generate a data model from an arbitrary input data model.
+Data Model JSON:
+[
+  {
+    "answer": "Artificial Intelligence (AI) refers to the simulation of human intelligence in machines that are programmed to think and learn like humans, enabling them to perform tasks without being explicitly programmed."
+  }
+]
+
+[Synalinks]
+Call ID: d66b599b-29d9-4d05-b899-ff66fbbd2389
+Parent call ID: a7b44650-167b-4824-9a07-2aa3b4ad4895
+Module: LanguageModel
+Module Name: language_model
+Module Description: A language model API wrapper.
+Data Model JSON:
+[
+  {
+    "thinking": "Artificial Intelligence (AI) refers to the simulation of human intelligence in machines that are programmed to think and learn like humans. It involves the development of computer systems that can perform tasks that typically require human intelligence, such as understanding natural language, recognizing patterns, solving problems, and making decisions.",
+    "answer": "Artificial Intelligence (AI) is a branch of computer science that aims to create intelligent machines capable of performing tasks that would normally require human intelligence. It includes the development of algorithms and models that enable computers to learn from data, make decisions, and solve complex problems."
+  }
+]
+
+[Synalinks]
+Call ID: a7b44650-167b-4824-9a07-2aa3b4ad4895
+Parent call ID: ead8ecac-6351-4876-bbb6-e525e9eaa196
+Module: Generator
+Module Name: expert_b
+Module Description: Use a `LanguageModel` to generate a data model from an arbitrary input data model.
+Data Model JSON:
+[
+  {
+    "thinking": "Artificial Intelligence (AI) refers to the simulation of human intelligence in machines that are programmed to think and learn like humans. It involves the development of computer systems that can perform tasks that typically require human intelligence, such as understanding natural language, recognizing patterns, solving problems, and making decisions.",
+    "answer": "Artificial Intelligence (AI) is a branch of computer science that aims to create intelligent machines capable of performing tasks that would normally require human intelligence. It includes the development of algorithms and models that enable computers to learn from data, make decisions, and solve complex problems."
+  }
+]
+
+[Synalinks]
+Call ID: 04cbaec4-6564-4fb7-a37f-a51109afa243
+Parent call ID: d66b599b-29d9-4d05-b899-ff66fbbd2389
+Module: Concat
+Module Name: concat_1
+Module Description: Perform a concatenation operation.
+Data Model JSON:
+[
+  {
+    "answer": "Artificial Intelligence (AI) refers to the simulation of human intelligence in machines that are programmed to think and learn like humans, enabling them to perform tasks without being explicitly programmed."
+  },
+  {
+    "thinking": "Artificial Intelligence (AI) refers to the simulation of human intelligence in machines that are programmed to think and learn like humans. It involves the development of computer systems that can perform tasks that typically require human intelligence, such as understanding natural language, recognizing patterns, solving problems, and making decisions.",
+    "answer": "Artificial Intelligence (AI) is a branch of computer science that aims to create intelligent machines capable of performing tasks that would normally require human intelligence. It includes the development of algorithms and models that enable computers to learn from data, make decisions, and solve complex problems."
+  }
+]
+
+[Synalinks]
+Call ID: 04cbaec4-6564-4fb7-a37f-a51109afa243
+Parent call ID: d66b599b-29d9-4d05-b899-ff66fbbd2389
+Module: Concat
+Module Name: concat_1
+Module Description: Perform a concatenation operation.
+Data Model JSON:
+[
+  {
+    "answer": "Artificial Intelligence (AI) refers to the simulation of human intelligence in machines that are programmed to think and learn like humans, enabling them to perform tasks without being explicitly programmed.",
+    "thinking": "Artificial Intelligence (AI) refers to the simulation of human intelligence in machines that are programmed to think and learn like humans. It involves the development of computer systems that can perform tasks that typically require human intelligence, such as understanding natural language, recognizing patterns, solving problems, and making decisions.",
+    "answer_1": "Artificial Intelligence (AI) is a branch of computer science that aims to create intelligent machines capable of performing tasks that would normally require human intelligence. It includes the development of algorithms and models that enable computers to learn from data, make decisions, and solve complex problems."
+  }
+]
+
+[Synalinks]
+Call ID: 6040ff86-2fe3-4d30-b7d7-4e0d3e3475ac
+Parent call ID: None
+Module: Functional
+Module Name: merge_demo
+Module Description: A `Functional` program is a `Program` defined as a directed graph of modules.
+Data Model JSON:
+[
+  {
+    "answer": "Artificial Intelligence (AI) refers to the simulation of human intelligence in machines that are programmed to think and learn like humans, enabling them to perform tasks without being explicitly programmed.",
+    "thinking": "Artificial Intelligence (AI) refers to the simulation of human intelligence in machines that are programmed to think and learn like humans. It involves the development of computer systems that can perform tasks that typically require human intelligence, such as understanding natural language, recognizing patterns, solving problems, and making decisions.",
+    "answer_1": "Artificial Intelligence (AI) is a branch of computer science that aims to create intelligent machines capable of performing tasks that would normally require human intelligence. It includes the development of algorithms and models that enable computers to learn from data, make decisions, and solve complex problems."
+  }
+]
+
+(DEBUG) [Synalinks]
+Call ID: 654370ae-0775-41ba-b58f-df363966eb06
+Parent call ID: None
+Module: Generator
+Module Name: generator_3
+Module Description: Use a `LanguageModel` to generate a data model from an arbitrary input data model.
+Data Model JSON Schema:
+[
+  {
+    "additionalProperties": false,
+    "description": "User question.",
+    "properties": {
+      "query": {
+        "description": "User question",
+        "title": "Query",
+        "type": "string"
+      }
+    },
+    "required": [
+      "query"
+    ],
+    "title": "Query",
+    "type": "object"
+  }
+]
+
+(DEBUG) [Synalinks]
+Call ID: 654370ae-0775-41ba-b58f-df363966eb06
+Parent call ID: None
+Module: Generator
+Module Name: generator_3
+Module Description: Use a `LanguageModel` to generate a data model from an arbitrary input data model.
+Data Model JSON Schema:
+[
+  {
+    "additionalProperties": false,
+    "description": "Answer with reasoning.",
+    "properties": {
+      "thinking": {
+        "description": "Step by step thinking",
+        "title": "Thinking",
+        "type": "string"
+      },
+      "answer": {
+        "description": "The final answer",
+        "title": "Answer",
+        "type": "string"
+      }
+    },
+    "required": [
+      "thinking",
+      "answer"
+    ],
+    "title": "AnswerWithThinking",
+    "type": "object"
+  }
+]
+
+(DEBUG) [Synalinks]
+Call ID: 5b5227af-3132-48f4-8f77-1c1a389a88e2
+Parent call ID: None
+Module: InMask
+Module Name: in_mask
+Module Description: A module to keep specific fields of the given data models
+Data Model JSON Schema:
+[
+  {
+    "additionalProperties": false,
+    "description": "Answer with reasoning.",
+    "properties": {
+      "thinking": {
+        "description": "Step by step thinking",
+        "title": "Thinking",
+        "type": "string"
+      },
+      "answer": {
+        "description": "The final answer",
+        "title": "Answer",
+        "type": "string"
+      }
+    },
+    "required": [
+      "thinking",
+      "answer"
+    ],
+    "title": "AnswerWithThinking",
+    "type": "object"
+  }
+]
+
+(DEBUG) [Synalinks]
+Call ID: 5b5227af-3132-48f4-8f77-1c1a389a88e2
+Parent call ID: None
+Module: InMask
+Module Name: in_mask
+Module Description: A module to keep specific fields of the given data models
+Data Model JSON Schema:
+[
+  {
+    "additionalProperties": false,
+    "description": "Answer with reasoning.",
+    "properties": {
+      "answer": {
+        "description": "The final answer",
+        "title": "Answer",
+        "type": "string"
+      }
+    },
+    "required": [
+      "answer"
+    ],
+    "title": "AnswerWithThinking",
+    "type": "object"
+  }
+]
+
+
+Merged fields: ['answer', 'thinking', 'answer_1']
+
+============================================================
+Module 6: InMask and OutMask
+============================================================
+Program: mask_demo
+description: 'A `Functional` program is a `Program` defined as a directed graph 
+of modules.'
+┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━┓
+┃ Module (type)               ┃ Output Schema                    ┃  Vars # ┃
+┡━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━┩
+│ input_module_5              │ Query:                           │       0 │
+│ (InputModule)               │   query: str                     │         │
+├─────────────────────────────┼──────────────────────────────────┼─────────┤
+│ generator_3 (Generator)     │ AnswerWithThinking:              │       1 │
+│                             │   thinking: str                  │         │
+│                             │   answer: str                    │         │
+├─────────────────────────────┼──────────────────────────────────┼─────────┤
+│ in_mask (InMask)            │ AnswerWithThinking:              │       0 │
+│                             │   answer: str                    │         │
+└─────────────────────────────┴──────────────────────────────────┴─────────┘
+[Synalinks]
+Call ID: a4f2a640-4f32-4e55-819f-eb94f437226a
+Parent call ID: None
+Module: Functional
+Module Name: mask_demo
+Module Description: A `Functional` program is a `Program` defined as a directed graph of modules.
+Data Model JSON:
+[
+  {
+    "query": "What is 1+1?"
+  }
+]
+
+[Synalinks]
+Call ID: a301b4ef-6238-4396-b108-aaf6d2a464f0
+Parent call ID: a4f2a640-4f32-4e55-819f-eb94f437226a
+Module: Generator
+Module Name: generator_3
+Module Description: Use a `LanguageModel` to generate a data model from an arbitrary input data model.
+Data Model JSON:
+[
+  {
+    "query": "What is 1+1?"
+  }
+]
+
+[Synalinks]
+Call ID: 489fad1d-47e9-4e3a-b4f1-01b29ad820e5
+Parent call ID: a301b4ef-6238-4396-b108-aaf6d2a464f0
+Module: LanguageModel
+Module Name: language_model
+Module Description: A language model API wrapper.
+Data Model JSON:
+[
+  {
+    "messages": [
+      {
+        "role": "system",
+        "content": "<instructions>\nYour task is to answer with a JSON containing the following keys: ['thinking', 'answer']\n</instructions>\n"
+      },
+      {
+        "role": "user",
+        "content": "<input>\n{'query': 'What is 1+1?'}\n</input>\n<output>\n"
+      }
+    ]
+  }
+]
+
+[Synalinks]
+Call ID: 489fad1d-47e9-4e3a-b4f1-01b29ad820e5
+Parent call ID: a301b4ef-6238-4396-b108-aaf6d2a464f0
+Module: LanguageModel
+Module Name: language_model
+Module Description: A language model API wrapper.
+Data Model JSON:
+[
+  {
+    "thinking": "Performing basic arithmetic",
+    "answer": "2"
+  }
+]
+
+[Synalinks]
+Call ID: a301b4ef-6238-4396-b108-aaf6d2a464f0
+Parent call ID: a4f2a640-4f32-4e55-819f-eb94f437226a
+Module: Generator
+Module Name: generator_3
+Module Description: Use a `LanguageModel` to generate a data model from an arbitrary input data model.
+Data Model JSON:
+[
+  {
+    "thinking": "Performing basic arithmetic",
+    "answer": "2"
+  }
+]
+
+[Synalinks]
+Call ID: 2d60a02f-ff86-4aa0-942c-77fcceb44799
+Parent call ID: 489fad1d-47e9-4e3a-b4f1-01b29ad820e5
+Module: InMask
+Module Name: in_mask
+Module Description: A module to keep specific fields of the given data models
+Data Model JSON:
+[
+  {
+    "thinking": "Performing basic arithmetic",
+    "answer": "2"
+  }
+]
+
+[Synalinks]
+Call ID: 2d60a02f-ff86-4aa0-942c-77fcceb44799
+Parent call ID: 489fad1d-47e9-4e3a-b4f1-01b29ad820e5
+Module: InMask
+Module Name: in_mask
+Module Description: A module to keep specific fields of the given data models
+Data Model JSON:
+[
+  {
+    "answer": "2"
+  }
+]
+
+[Synalinks]
+Call ID: a4f2a640-4f32-4e55-819f-eb94f437226a
+Parent call ID: None
+Module: Functional
+Module Name: mask_demo
+Module Description: A `Functional` program is a `Program` defined as a directed graph of modules.
+Data Model JSON:
+[
+  {
+    "answer": "2"
+  }
+]
+
+
+Masked output fields: ['answer']
+Answer: 2

@@ -1,0 +1,25 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+
+# Environment
+.env
+
+# Local synalinks checkout for framework debugging / PRs (see AGENTS.md)
+synalinks/
+
+# Synalinks / experiment artifacts
+checkpoints/*.json
+runs/*
+run.csv
+results.tsv
+*.png
+trained_*.json
+
+# Keep the placeholder dirs themselves
+!checkpoints/.gitkeep
+!runs/.gitkeep
+!data/.gitkeep

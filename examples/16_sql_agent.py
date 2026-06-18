@@ -108,7 +108,7 @@ kb = synalinks.KnowledgeBase(
 )
 
 # Configure language model
-lm = synalinks.LanguageModel(model="gemini/gemini-3.1-flash-lite-preview")
+lm = synalinks.LanguageModel(model="ollama/qwen3:8b")
 
 # Build the agent via the Functional API
 inputs = synalinks.Input(data_model=Query)
@@ -196,6 +196,7 @@ The agent automatically:
 
 # --8<-- [start:source]
 import asyncio
+import json
 import os
 
 from dotenv import load_dotenv
@@ -462,7 +463,7 @@ async def main():
 
     print("\nBuilding SQL agent...")
 
-    lm = synalinks.LanguageModel(model="gemini/gemini-3.1-flash-lite-preview")
+    lm = synalinks.LanguageModel(model="ollama/qwen3:8b")
 
     inputs = synalinks.Input(data_model=Query)
     outputs = await synalinks.SQLAgent(
@@ -506,10 +507,19 @@ async def main():
                 if msg.get("role") == "assistant" and msg.get("tool_calls"):
                     for tool_call in msg["tool_calls"]:
                         tool_calls_count += 1
-                        args = tool_call.get("arguments", {})
+                        # name/arguments nest under "function" (the
+                        # chat-completion shape); fall back to a flat dict.
+                        fn = tool_call.get("function", tool_call)
+                        name = fn.get("name", "?")
+                        args = fn.get("arguments", {})
+                        if isinstance(args, str):
+                            try:
+                                args = json.loads(args)
+                            except (ValueError, TypeError):
+                                args = {"_raw": args}
                         args_str = ", ".join(f"{k}={repr(v)}" for k, v in args.items())
                         print(
-                            f"Tool Call {tool_calls_count}: {tool_call['name']}({args_str})"
+                            f"Tool Call {tool_calls_count}: {name}({args_str})"
                         )
                 elif msg.get("role") == "tool":
                     content = msg.get("content", "")

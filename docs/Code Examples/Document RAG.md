@@ -10,3 +10,14 @@
 ````python
 --8<-- "examples/13_document_rag.py:89"
 ````
+
+## Run log
+
+The log below is the **unedited** combined output of running the example above
+with local models (ollama).
+
+??? example "Full run log — `examples/13_document_rag.log`"
+
+    ```text
+    --8<-- "examples/13_document_rag.log"
+    ```

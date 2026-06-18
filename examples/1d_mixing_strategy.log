@@ -1,0 +1,47 @@
+============================================================
+Example 1: Simple Chain-of-Thought (Mixing Strategy)
+============================================================
+Program built: True
+Inner module built: True
+
+Calling program...
+
+Result:
+  Thinking: To find 15% of 80, we first convert the percentage to a decimal (15/100 = 0.15),...
+  Answer: 12
+
+============================================================
+Example 2: Self-Critiquing Reasoner (Multi-Step)
+============================================================
+
+Result:
+  Original: A tomato is botanically considered a fruit...
+  Refinement: However, in culinary and cooking contexts, it's often treate...
+  Final: fruit
+
+============================================================
+Key Advantages of the Mixing Strategy
+============================================================
+
+1. ENCAPSULATION
+   - Logic is neatly packaged in a class
+   - Easy to share, import, and reuse
+
+2. MINIMAL BOILERPLATE
+   - Only implement __init__() and build()
+   - No need for call(), get_config(), or from_config()
+
+3. FLEXIBILITY
+   - Full power of Functional API inside build()
+   - Can create complex graphs with branches, parallel paths, etc.
+
+4. COMPOSABILITY
+   - Mixed programs work as modules in larger programs
+   - Build complex applications by combining simple pieces
+
+5. AUTOMATIC SERIALIZATION
+   - The Functional API handles saving/loading automatically
+   - No manual serialization code needed
+
+This pattern is recommended for most production applications!
+

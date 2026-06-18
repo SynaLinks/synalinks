@@ -168,7 +168,7 @@ async def main():
     load_dotenv()
     synalinks.clear_session()
 
-    lm = synalinks.LanguageModel(model="ollama/llama3.2:latest")
+    lm = synalinks.LanguageModel(model="ollama/mistral:latest")
 
     # 1. Symbolic entry point.
     inputs = synalinks.Input(data_model=Query)
@@ -290,7 +290,7 @@ class Thinking(synalinks.DataModel):
 class Answer(synalinks.DataModel):
     answer: str = synalinks.Field(description="The final answer")
 
-lm = synalinks.LanguageModel(model="ollama/llama3.2:latest")
+lm = synalinks.LanguageModel(model="ollama/mistral:latest")
 
 program = synalinks.Sequential(
     name="sequential_qa",
@@ -402,7 +402,7 @@ results = await program.predict([query1, query2, query3])
 
 ## Expected output
 
-Running this file end-to-end (with `ollama/llama3.2:latest` and the prompts
+Running this file end-to-end (with `ollama/mistral:latest` and the prompts
 below) produces:
 
 ```
@@ -585,13 +585,14 @@ class ChainOfThought(synalinks.Program):
 async def main():
     load_dotenv()
     synalinks.clear_session()
+    synalinks.enable_logging()
 
     # synalinks.enable_observability(
     #     tracking_uri="http://localhost:5000",
     #     experiment_name="guide_3_programs",
     # )
 
-    lm = synalinks.LanguageModel(model="ollama/llama3.2:latest")
+    lm = synalinks.LanguageModel(model="ollama/mistral:latest")
 
     # -------------------------------------------------------------------------
     # Functional API
@@ -637,6 +638,7 @@ async def main():
         name="sequential_qa",
         description="A sequential question-answering pipeline",
     )
+    sequential_program.summary()
     sequential_program.add(synalinks.Input(data_model=Query))
     sequential_program.add(
         synalinks.Generator(data_model=ThinkingOutput, language_model=lm)
@@ -663,6 +665,7 @@ async def main():
         outputs=outputs,
         name="mixing_qa",
     )
+    mixing_program.summary()
 
     result = await mixing_program(Query(query="What is 5+5?"))
     print(f"\nMixing Strategy Result: {result['answer']}")

@@ -25,6 +25,7 @@ from synalinks.src.backend.pydantic.common import ChatMessage
 from synalinks.src.backend.pydantic.common import ChatMessages
 from synalinks.src.backend.pydantic.common import ChatRole
 from synalinks.src.backend.pydantic.common import ToolCall
+from synalinks.src.backend.pydantic.common import ToolCallFunction
 from synalinks.src.backend.pydantic.core import DataModel
 
 
@@ -111,6 +112,22 @@ class ChatCompletionMessage(DataModel):
     )
     audio: Optional[Dict[str, Any]] = Field(
         description="Audio response payload when the audio modality is used",
+        default=None,
+    )
+    reasoning_content: Optional[str] = Field(
+        description=(
+            "Provider reasoning text (litellm/DeepSeek-style extension, not "
+            "part of the base OpenAI spec). Maps to "
+            "`ChatMessage.reasoning_content`."
+        ),
+        default=None,
+    )
+    thinking_blocks: Optional[List[Dict[str, Any]]] = Field(
+        description=(
+            "Opaque provider-native thinking blocks (e.g. Anthropic's signed "
+            "blocks; litellm extension). Carried through verbatim so multi-turn "
+            "tool-use round-trips preserve signatures."
+        ),
         default=None,
     )
 
@@ -500,11 +517,16 @@ def to_chat_completion_message(message):
     """Convert a synalinks `ChatMessage` to a `ChatCompletionMessage`.
 
     Performs the structural changes needed to match the OpenAI wire
-    format: the flat `ToolCall` is wrapped into `{type, function}`,
-    `arguments` is JSON-encoded into a string, and `Dict` content (the
-    synalinks tool-result payload extension) is JSON-encoded to a string
-    since OpenAI's `tool` role requires string content. Synalinks-only
-    fields (`thinking`, `created_at`) are dropped.
+    format: each `ToolCall`'s `function.arguments` dict is JSON-encoded
+    into a string, and `Dict` content (the synalinks tool-result payload
+    extension) is JSON-encoded to a string since OpenAI's `tool` role
+    requires string content. The synalinks `reasoning_content` /
+    `thinking_blocks` fields map onto the wire `reasoning_content` /
+    `thinking_blocks` (litellm provider extensions) so reasoning survives a
+    round-trip.
+    Role handling mirrors the language-model wire path: an assistant
+    message with empty content emits `content=null`, and the legacy
+    `function` role carries its name in `name`.
 
     Args:
         message (ChatMessage): The synalinks message to convert.
@@ -512,9 +534,13 @@ def to_chat_completion_message(message):
     Returns:
         (ChatCompletionMessage): The OpenAI-shaped message.
     """
+    role = message.role
+    if isinstance(role, ChatRole):
+        role = role.value
     content = message.content
     if isinstance(content, dict):
         content = json.dumps(content)
+
     tool_calls = None
     if message.tool_calls:
         tool_calls = [
@@ -522,21 +548,36 @@ def to_chat_completion_message(message):
                 id=tc.id,
                 type="function",
                 function=ChatCompletionFunctionCall(
-                    name=tc.name,
-                    arguments=json.dumps(tc.arguments),
+                    name=tc.function.name,
+                    arguments=json.dumps(tc.function.arguments),
                 ),
             )
             for tc in message.tool_calls
         ]
-    role = message.role
-    if isinstance(role, ChatRole):
-        role = role.value
-    return ChatCompletionMessage(
-        role=role,
-        content=content,
-        tool_call_id=message.tool_call_id,
-        tool_calls=tool_calls,
-    )
+
+    if role == "assistant":
+        return ChatCompletionMessage(
+            role="assistant",
+            content=content if content else None,
+            reasoning_content=message.reasoning_content or None,
+            thinking_blocks=message.thinking_blocks or None,
+            tool_calls=tool_calls,
+        )
+    if role == "function":
+        # Legacy function role: OpenAI carries the function name in `name`.
+        return ChatCompletionMessage(
+            role="function",
+            content=content,
+            name=message.tool_call_id or "",
+        )
+    if role == "tool":
+        return ChatCompletionMessage(
+            role="tool",
+            content=content,
+            tool_call_id=message.tool_call_id,
+        )
+    # user / system / developer
+    return ChatCompletionMessage(role=role, content=content)
 
 
 @synalinks_export(
@@ -566,10 +607,13 @@ def to_chat_completion_messages(messages):
 def from_chat_completion_message(message):
     """Convert a `ChatCompletionMessage` to a synalinks `ChatMessage`.
 
-    Unwraps the `{type, function}` envelope on tool calls and parses
-    `arguments` from its JSON-encoded string back into a dict. The
-    legacy `function` role is mapped to `tool`. Fields with no synalinks
-    equivalent (`name`, `refusal`, `audio`) are dropped.
+    Parses each tool call's `function.arguments` from its JSON-encoded
+    string back into a dict (the `{id, type, function}` envelope is
+    preserved). The legacy `function` role is mapped to `tool`. The
+    `reasoning_content` / `thinking_blocks` provider extensions are mapped
+    back onto the synalinks `reasoning_content` / `thinking_blocks` fields.
+    Fields with no synalinks equivalent (`name`, `refusal`, `audio`) are
+    dropped.
 
     Args:
         message (ChatCompletionMessage): The OpenAI-shaped message.
@@ -589,19 +633,21 @@ def from_chat_completion_message(message):
         tool_calls = [
             ToolCall(
                 id=tc.id,
-                name=tc.function.name,
-                arguments=(
-                    json.loads(tc.function.arguments) if tc.function.arguments else {}
+                type="function",
+                function=ToolCallFunction(
+                    name=tc.function.name,
+                    arguments=(
+                        json.loads(tc.function.arguments) if tc.function.arguments else {}
+                    ),
                 ),
             )
             for tc in message.tool_calls
         ]
-    content = message.content
-    if content is None:
-        content = ""
     return ChatMessage(
         role=role,
-        content=content,
+        content=message.content,
+        reasoning_content=message.reasoning_content,
+        thinking_blocks=message.thinking_blocks,
         tool_call_id=message.tool_call_id,
         tool_calls=tool_calls,
     )

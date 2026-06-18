@@ -139,6 +139,7 @@ class CypherAnswer(synalinks.DataModel):
 async def main():
     load_dotenv()
     synalinks.clear_session()
+    synalinks.enable_logging()
 
     # `graph_uri=` selects the graph adapter; `:memory:` is ephemeral.
     knowledge_base = synalinks.KnowledgeBase(
@@ -174,6 +175,7 @@ async def main():
         name="cypher_agent",
         description="A Cypher agent that answers questions about a knowledge graph.",
     )
+    agent.summary()
 
     result = await agent(Query(query="Who lives in Paris?"))
     print("Answer:", result.get("answer"))

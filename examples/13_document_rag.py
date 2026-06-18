@@ -139,18 +139,18 @@ async def main():
     load_dotenv()
 
     # Enable observability for tracing
-    synalinks.enable_observability(
-        tracking_uri="http://localhost:5000",
-        experiment_name="document_rag_pipeline",
-    )
+#     synalinks.enable_observability(
+#         tracking_uri="http://localhost:5000",
+#         experiment_name="document_rag_pipeline",
+#     )
 
     # Initialize models
     language_model = synalinks.LanguageModel(
-        model="gemini/gemini-3.1-flash-lite-preview",
+        model="ollama/mistral:latest",
     )
 
     embedding_model = synalinks.EmbeddingModel(
-        model="gemini/gemini-embedding-001",
+        model="ollama/all-minilm",
     )
 
     # Clean up any existing database

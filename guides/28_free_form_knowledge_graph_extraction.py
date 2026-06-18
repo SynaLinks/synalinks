@@ -237,8 +237,9 @@ class Graph(synalinks.KnowledgeGraph):
 async def main():
     load_dotenv()
     synalinks.clear_session()
+    synalinks.enable_logging(log_level="info")
 
-    language_model = synalinks.LanguageModel(model="ollama/llama3.2:latest")
+    language_model = synalinks.LanguageModel(model="ollama/mistral:latest")
     embedding_model = synalinks.EmbeddingModel(model="ollama/mxbai-embed-large")
 
     document = Document(
@@ -292,6 +293,7 @@ async def main():
         name="free_form_kg_extraction",
         description="Extract an open-label knowledge graph and store it.",
     )
+    program.summary()
 
     await program(document)
 

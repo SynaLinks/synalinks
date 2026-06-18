@@ -161,13 +161,13 @@ def build_haystack(needle: str, paragraphs: int = 200) -> str:
 async def main():
     load_dotenv()
 
-    synalinks.enable_observability(
-        tracking_uri="http://localhost:5000",
-        experiment_name="rlm_needle",
-    )
+#     synalinks.enable_observability(
+#         tracking_uri="http://localhost:5000",
+#         experiment_name="rlm_needle",
+#     )
 
     language_model = synalinks.LanguageModel(
-        model="gemini/gemini-3.1-flash-lite-preview",
+        model="ollama/qwen3:8b",
     )
 
     haystack = build_haystack(

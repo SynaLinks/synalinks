@@ -65,22 +65,30 @@ def default_prompt_template():
         (str): The default prompt template.
     """
     return """
-# Instructions
+<instructions>
 {{ instructions }}
+</instructions>
 {% if inputs_schema %}
-# Input Schema
+<input_schema>
 {{ inputs_schema }}
+</input_schema>
 {% endif %}{% if outputs_schema %}
-# Output schema
+<output_schema>
 {{ outputs_schema }}
+</output_schema>
 {% endif %}{% if examples %}
-# Examples
+<examples>
 {% for example in examples %}
-## Input:
+<example>
+<input>
 {{ example[0] }}
-## Output:
+</input>
+<output>
 {{ example[1] }}
+</output>
+</example>
 {% endfor %}
+</examples>
 {% endif %}
 """.strip()
 
@@ -209,8 +217,6 @@ class Generator(Module):
         if not schema and data_model:
             schema = data_model.get_schema()
         self.schema = schema
-        # `language_model` may be None; `ops.predict` resolves the default
-        # at call time (or raises if none is set).
         self.language_model = _get_lm(language_model)
         if not prompt_template:
             prompt_template = default_prompt_template()
@@ -387,7 +393,7 @@ class Generator(Module):
                 messages.append(
                     ChatMessage(
                         role="user",
-                        content=f"## Input:\n{inputs_fields}\n## Output:\n",
+                        content=f"<input>\n{inputs_fields}\n</input>\n<output>\n",
                     )
                 )
             messages.extend(msgs)
@@ -395,7 +401,8 @@ class Generator(Module):
         if is_chat_message(inputs):
             return ChatMessages(messages=[system_message, inputs.get_json()])
         user_message = ChatMessage(
-            role="user", content=f"## Input:\n{inputs.get_json()}\n## Output:\n"
+            role="user", 
+            content=f"<input>\n{inputs.get_json()}\n</input>\n<output>\n",
         )
         return ChatMessages(messages=[system_message, user_message])
 

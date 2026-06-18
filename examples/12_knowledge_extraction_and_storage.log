@@ -1,0 +1,62 @@
+Example 1: Creating a Knowledge Base
+==================================================
+Knowledge base created at: ./examples/business_data.db
+Tables: []
+
+Example 2: Extracting and Storing Invoices
+==================================================
+
+Extracting invoices...
+  - INV-2024-001: TechSupply Co. - 307.84 USD
+  - INV-2024-002: Cloud Services Inc. - 149.0 EUR
+  - INV-2024-003: Office Furniture Ltd. - 1127.0 USD
+
+Example 3: Extracting and Storing Customers
+==================================================
+
+Extracting customers...
+  - CUST-001: Acme Corporation (john.doe@acme.com)
+  - CUST-002: Jane Smith (jane.smith@startup.io)
+
+Example 4: Searching the Knowledge Base
+==================================================
+
+Search for 'cloud' in invoices:
+  Found: {'invoice_number': 'INV-2024-002', 'vendor': 'Cloud Services Inc.', 'date': '2024-01-20', 'total_amount': 149.0, 'currency': 'EUR', 'description': 'Monthly subscription for cloud hosting services\n        - Basic Plan (January 2024)\n        - Storage: 500GB\n        - Bandwidth: Unlimited', 'embedding': None, 'score': 1.0}
+
+Search for 'office equipment purchase':
+  Found: {'invoice_number': 'INV-2024-003', 'vendor': 'Office Furniture Ltd.', 'date': '2024-01-02', 'total_amount': 1127.0, 'currency': 'USD', 'description': "{ \n    'Standing Desk - Adjustable Height': 599.0,\n    'Ergonomic Chair - Premium': 449.0,\n    'Desk Lamp - LED': 79.0\n}", 'embedding': None, 'score': 0.032266458495966696}
+  Found: {'invoice_number': 'INV-2024-001', 'vendor': 'TechSupply Co.', 'date': '2024-01-15', 'total_amount': 307.84, 'currency': 'USD', 'description': '10x USB-C Cables @ $12.99 each\n- 5x Wireless Mouse @ $29.99 each', 'embedding': None, 'score': 0.01639344262295082}
+  Found: {'invoice_number': 'INV-2024-002', 'vendor': 'Cloud Services Inc.', 'date': '2024-01-20', 'total_amount': 149.0, 'currency': 'EUR', 'description': 'Monthly subscription for cloud hosting services\n        - Basic Plan (January 2024)\n        - Storage: 500GB\n        - Bandwidth: Unlimited', 'embedding': None, 'score': 0.016129032258064516}
+
+Example 5: Q&A System with RetrieveKnowledge
+==================================================
+
+Asking questions:
+
+Q: What is the total amount of the invoice from TechSupply?
+A: The total amount of the invoice from TechSupply is $307.84.
+
+Q: Which invoice is for cloud services?
+A: The invoice for cloud services is INV-2024-002.
+
+Q: What is Jane Smith's email?
+A: Jane Smith's email is jane.smith@startup.io.
+
+Q: How much was the standing desk invoice?
+A: The standing desk invoice was $1127.0 (USD). The invoice number is INV-2024-003.
+
+
+Example 6: Listing All Stored Records
+==================================================
+
+Customer (2 records):
+  - CUST-001: Acme Corporation
+  - CUST-002: Jane Smith
+
+Invoice (3 records):
+  - INV-2024-001: TechSupply Co. - 307.84 USD
+  - INV-2024-002: Cloud Services Inc. - 149.0 EUR
+  - INV-2024-003: Office Furniture Ltd. - 1127.0 USD
+
+Done!

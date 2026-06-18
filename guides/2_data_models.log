@@ -1,0 +1,234 @@
+(DEBUG) [Synalinks]
+Call ID: e556b3c8-846d-411e-8150-2ad33e0f543d
+Parent call ID: None
+Module: Generator
+Module Name: generator
+Module Description: Use a `LanguageModel` to generate a data model from an arbitrary input data model.
+Data Model JSON Schema:
+[
+  {
+    "additionalProperties": false,
+    "description": "A product review to analyze.",
+    "properties": {
+      "review_text": {
+        "description": "The text of the product review",
+        "title": "Review Text",
+        "type": "string"
+      }
+    },
+    "required": [
+      "review_text"
+    ],
+    "title": "ReviewInput",
+    "type": "object"
+  }
+]
+
+(DEBUG) [Synalinks]
+Call ID: e556b3c8-846d-411e-8150-2ad33e0f543d
+Parent call ID: None
+Module: Generator
+Module Name: generator
+Module Description: Use a `LanguageModel` to generate a data model from an arbitrary input data model.
+Data Model JSON Schema:
+[
+  {
+    "$defs": {
+      "Score": {
+        "description": "A discretized confidence score on an 11-level scale from 0.0 to 1.0.\n\nUse `Score` as the type of a `DataModel` field when you want the\nlanguage model to pick a confidence level from a fixed set of named\nvalues rather than to emit an arbitrary float. Because `Score` is\nboth a `float` and an `Enum`, the JSON schema constrains the model\nto one of the eleven labels, while downstream Python code can use\nthe value in arithmetic directly (e.g. `0.95` is `Score.GOOD + 0.05`).\n\nThe labels:\n\n| Name           | Value |\n| -------------- | ----- |\n| `VERY_BAD`     | 0.0   |\n| `POOR`         | 0.1   |\n| `BELOW_AVERAGE`| 0.2   |\n| `LOW_AVERAGE`  | 0.3   |\n| `MEDIUM_LOW`   | 0.4   |\n| `MEDIUM`       | 0.5   |\n| `MEDIUM_HIGH`  | 0.6   |\n| `ABOVE_AVERAGE`| 0.7   |\n| `HIGH_AVERAGE` | 0.8   |\n| `GOOD`         | 0.9   |\n| `VERY_GOOD`    | 1.0   |\n\nExample:\n\n```python\nimport synalinks\n\nclass Sentiment(synalinks.DataModel):\n    joy: synalinks.Score = synalinks.Field(\n        description=\"How strongly the text expresses joy\",\n    )\n    anger: synalinks.Score = synalinks.Field(\n        description=\"How strongly the text expresses anger\",\n    )\n\n# Score values are real floats, usable in arithmetic.\nblended = synalinks.Score.GOOD + 0.05  # approx 0.95\n```\n\nSee `synalinks/src/metrics/f_score_metrics.py` and\n`examples/19_multi_objective_lm_selection.py` for end-to-end usage\ninside metrics and multi-label classification.",
+        "enum": [
+          0.0,
+          0.1,
+          0.2,
+          0.3,
+          0.4,
+          0.5,
+          0.6,
+          0.7,
+          0.8,
+          0.9,
+          1.0
+        ],
+        "title": "Score",
+        "type": "number"
+      },
+      "Sentiment": {
+        "enum": [
+          "positive",
+          "negative",
+          "neutral"
+        ],
+        "title": "Sentiment",
+        "type": "string"
+      }
+    },
+    "additionalProperties": false,
+    "description": "Structured analysis of a review.",
+    "properties": {
+      "sentiment": {
+        "$ref": "#/$defs/Sentiment",
+        "description": "The overall sentiment of the review"
+      },
+      "confidence": {
+        "$ref": "#/$defs/Score",
+        "description": "Confidence in the sentiment classification"
+      },
+      "key_points": {
+        "description": "Main points mentioned by the reviewer",
+        "items": {
+          "type": "string"
+        },
+        "title": "Key Points",
+        "type": "array"
+      },
+      "recommended": {
+        "description": "Whether the reviewer would recommend the product",
+        "title": "Recommended",
+        "type": "boolean"
+      }
+    },
+    "required": [
+      "sentiment",
+      "confidence",
+      "key_points",
+      "recommended"
+    ],
+    "title": "ReviewAnalysis",
+    "type": "object"
+  }
+]
+
+Program: review_analyzer
+description: 'A `Functional` program is a `Program` defined as a directed graph 
+of modules.'
+┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━┓
+┃ Module (type)               ┃ Output Schema                    ┃  Vars # ┃
+┡━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━┩
+│ input_module (InputModule)  │ ReviewInput:                     │       0 │
+│                             │   review_text: str               │         │
+├─────────────────────────────┼──────────────────────────────────┼─────────┤
+│ generator (Generator)       │ Sentiment: Literal['positive',   │       1 │
+│                             │ 'negative', 'neutral']           │         │
+│                             │                                  │         │
+│                             │ Score: Literal[0.0, 0.1, 0.2,    │         │
+│                             │ 0.3, 0.4, 0.5, 0.6, 0.7, 0.8,    │         │
+│                             │ 0.9, 1.0]                        │         │
+│                             │                                  │         │
+│                             │ ReviewAnalysis:                  │         │
+│                             │   sentiment: Sentiment           │         │
+│                             │   confidence: Score              │         │
+│                             │   key_points: list               │         │
+│                             │   recommended: bool              │         │
+└─────────────────────────────┴──────────────────────────────────┴─────────┘
+[Synalinks]
+Call ID: 772e0a32-5c3e-4502-bf01-e1c09432957a
+Parent call ID: None
+Module: Functional
+Module Name: review_analyzer
+Module Description: A `Functional` program is a `Program` defined as a directed graph of modules.
+Data Model JSON:
+[
+  {
+    "review_text": "This laptop is amazing! Fast processor, great screen, and the battery lasts all day. Only complaint is it runs a bit warm. Would definitely buy again!"
+  }
+]
+
+[Synalinks]
+Call ID: d231cef4-0c41-4f96-8df1-df591fa5d109
+Parent call ID: 772e0a32-5c3e-4502-bf01-e1c09432957a
+Module: Generator
+Module Name: generator
+Module Description: Use a `LanguageModel` to generate a data model from an arbitrary input data model.
+Data Model JSON:
+[
+  {
+    "review_text": "This laptop is amazing! Fast processor, great screen, and the battery lasts all day. Only complaint is it runs a bit warm. Would definitely buy again!"
+  }
+]
+
+[Synalinks]
+Call ID: 05cc8e29-16bf-40bf-bd0c-e70a83dd43f7
+Parent call ID: d231cef4-0c41-4f96-8df1-df591fa5d109
+Module: LanguageModel
+Module Name: language_model
+Module Description: A language model API wrapper.
+Data Model JSON:
+[
+  {
+    "messages": [
+      {
+        "role": "system",
+        "content": "<instructions>\nYour task is to answer with a JSON containing the following keys: ['sentiment', 'confidence', 'key_points', 'recommended']\n</instructions>\n"
+      },
+      {
+        "role": "user",
+        "content": "<input>\n{'review_text': 'This laptop is amazing! Fast processor, great screen, and the battery lasts all day. Only complaint is it runs a bit warm. Would definitely buy again!'}\n</input>\n<output>\n"
+      }
+    ]
+  }
+]
+
+[Synalinks]
+Call ID: 05cc8e29-16bf-40bf-bd0c-e70a83dd43f7
+Parent call ID: d231cef4-0c41-4f96-8df1-df591fa5d109
+Module: LanguageModel
+Module Name: language_model
+Module Description: A language model API wrapper.
+Data Model JSON:
+[
+  {
+    "sentiment": "positive",
+    "confidence": 0.9,
+    "key_points": [
+      "fast processor",
+      "great screen",
+      "battery lasts all day"
+    ],
+    "recommended": true
+  }
+]
+
+[Synalinks]
+Call ID: d231cef4-0c41-4f96-8df1-df591fa5d109
+Parent call ID: 772e0a32-5c3e-4502-bf01-e1c09432957a
+Module: Generator
+Module Name: generator
+Module Description: Use a `LanguageModel` to generate a data model from an arbitrary input data model.
+Data Model JSON:
+[
+  {
+    "sentiment": "positive",
+    "confidence": 0.9,
+    "key_points": [
+      "fast processor",
+      "great screen",
+      "battery lasts all day"
+    ],
+    "recommended": true
+  }
+]
+
+[Synalinks]
+Call ID: 772e0a32-5c3e-4502-bf01-e1c09432957a
+Parent call ID: None
+Module: Functional
+Module Name: review_analyzer
+Module Description: A `Functional` program is a `Program` defined as a directed graph of modules.
+Data Model JSON:
+[
+  {
+    "sentiment": "positive",
+    "confidence": 0.9,
+    "key_points": [
+      "fast processor",
+      "great screen",
+      "battery lasts all day"
+    ],
+    "recommended": true
+  }
+]
+
+Sentiment: positive
+Confidence: 0.9
+Key Points: ['fast processor', 'great screen', 'battery lasts all day']
+Recommended: True

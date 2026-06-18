@@ -67,7 +67,7 @@ class Sandbox(SynalinksSaveable):
 
     ## The contract
 
-    A backend (Monty REPL, Pyodide, Docker, subprocess) is defined by
+    A backend (Mirage, Pyodide, Docker, subprocess) is defined by
     overriding these primitives:
 
     - `run` — execute a snippet, return an `ExecutionResult`.
@@ -211,7 +211,7 @@ class Sandbox(SynalinksSaveable):
     # whose writes never touch the parent, ``diff`` to review what a
     # (forked) sandbox changed, and ``merge`` to fold a child's changes
     # back into a parent. Backends without a filesystem need not implement
-    # these; ``MontySandbox`` does, on top of its copy-on-write overlay.
+    # these; ``MirageSandbox`` does, on top of its mounted filesystem.
 
     def fork(self, *, name: Optional[str] = None) -> "Sandbox":
         """Return an isolated copy that shares this sandbox's current state.
@@ -315,7 +315,7 @@ class Sandbox(SynalinksSaveable):
     # then a ``FunctionCallingAgent``). The sandbox does not wrap them
     # itself; it just exposes capabilities an agent can be given. The file
     # methods default to a "no filesystem" error here; backends that mount
-    # one (e.g. ``MontySandbox`` with a ``workdir``) override them.
+    # one (e.g. ``MirageSandbox`` with a ``workdir``) override them.
 
     async def run_python_code(self, code: str) -> dict:
         """Execute Python code inside the sandbox and report the outcome.
@@ -356,6 +356,22 @@ class Sandbox(SynalinksSaveable):
             filesystem.
         """
         return {"error": "this sandbox has no filesystem"}
+
+    async def run_bash(self, command: str) -> dict:
+        """Run a shell command in the sandbox, if it provides a shell.
+
+        Backends with a real shell (e.g. ``MirageSandbox``) override this to
+        execute ``command`` against the mounted filesystem; the default has no
+        shell and returns an ``error``.
+
+        Args:
+            command (str): The shell command line to execute.
+
+        Returns:
+            dict: ``ok`` (bool), ``stdout``, ``stderr`` and ``exit_code`` — or
+            ``error`` when this sandbox has no shell.
+        """
+        return {"error": "this sandbox has no shell"}
 
     async def list_files(
         self, pattern: str = "**/*", offset: int = 1, limit: int = 0

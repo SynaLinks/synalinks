@@ -10,3 +10,14 @@
 ````python
 --8<-- "examples/1a_functional_api.py:127"
 ````
+
+## Run log
+
+The log below is the **unedited** combined output of running the example above
+with local models (ollama).
+
+??? example "Full run log — `examples/1a_functional_api.log`"
+
+    ```text
+    --8<-- "examples/1a_functional_api.log"
+    ```

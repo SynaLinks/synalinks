@@ -14,28 +14,19 @@ from synalinks.src.saving import serialization_lib
 
 
 def resolve_endpoint(schema, entity_model, label, side):
-    """Resolve (schema, label) for one path endpoint.
+    """Resolve ``(schema, label)`` for one path endpoint.
 
-    Mirrors the three-way contract used in the single-endpoint
-    entity-search modules: derive schema from entity_model if needed,
-    derive label from schema's title if needed, raise if neither is
-    available. ``side`` is ``"subj"`` or ``"obj"`` and is used only
-    in the error message.
+    Mirrors the single-endpoint entity-search contract: derive schema from
+    ``entity_model`` if needed and the label from the schema's ``title`` if
+    needed. The label is **optional** — when neither a label nor a schema to
+    derive it from is given it stays ``None``, and the caller lets the language
+    model infer the endpoint label per call. ``side`` (``"subj"`` / ``"obj"``)
+    is kept for symmetry with callers.
     """
     if schema is None and entity_model is not None:
         schema = entity_model.get_schema()
-    if schema is None and label is None:
-        raise ValueError(
-            f"One of `{side}_schema`, `{side}_entity_model`, or "
-            f"`{side}_label` is required"
-        )
-    if label is None:
-        label = schema.get("title")
-        if not label:
-            raise ValueError(
-                f"Could not infer `{side}_label` from `{side}_schema` "
-                f"(no `title`); pass `{side}_label` explicitly."
-            )
+    if label is None and schema is not None:
+        label = schema.get("title") or None
     return schema, label
 
 

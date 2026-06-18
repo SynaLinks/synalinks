@@ -1,0 +1,66 @@
+Synalinks version: 0.8.032
+============================================================
+Default Prompt Template
+============================================================
+
+Synalinks automatically constructs prompts using this template:
+
+<instructions>
+{{ instructions }}
+</instructions>
+{% if inputs_schema %}
+<input_schema>
+{{ inputs_schema }}
+</input_schema>
+{% endif %}{% if outputs_schema %}
+<output_schema>
+{{ outputs_schema }}
+</output_schema>
+{% endif %}{% if examples %}
+<examples>
+{% for example in examples %}
+<example>
+<input>
+{{ example[0] }}
+</input>
+<output>
+{{ example[1] }}
+</output>
+</example>
+{% endfor %}
+</examples>
+{% endif %}
+
+------------------------------------------------------------
+The template uses Markdown headers for structure.
+Your data model schemas are automatically inserted!
+
+============================================================
+Example 1: Simple Answer
+============================================================
+
+Query: What is the capital of France?
+Answer: Paris
+
+============================================================
+Example 2: Answer with Thinking (Chain of Thought)
+============================================================
+Just by adding a 'thinking' field to our output model,
+the LLM will show its reasoning!
+
+Query: If I have 3 apples and give away 1, how many do I have?
+
+Thinking: Subtracting one apple from the initial three leaves us with two apples.
+
+Answer: 2
+
+============================================================
+Key Takeaways
+============================================================
+
+1. NO MANUAL PROMPTING: Define data models, not prompts
+2. FIELD DESCRIPTIONS: Guide the LLM with Field(description=...)
+3. STRUCTURED OUTPUT: Responses always match your schema
+4. CHAIN OF THOUGHT: Add a 'thinking' field to get reasoning
+5. CLEAR SESSION: Use synalinks.clear_session() for reproducibility
+

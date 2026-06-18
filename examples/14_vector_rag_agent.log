@@ -1,0 +1,144 @@
+Step 1: Creating Knowledge Base
+============================================================
+Storing documents...
+  - Remote Work Policy
+  - Expense Reimbursement Policy
+  - Vacation and PTO Policy
+  - Product Pricing - Enterprise Plan
+  - Product Pricing - Startup Plan
+  - Customer Support Hours
+
+Step 2: Creating Vector RAG Agent
+============================================================
+Vector RAG Agent created!
+
+Step 3: Single-turn Questions
+============================================================
+
+────────────────────────────────────────────────────────────
+User: What is the remote work policy?
+────────────────────────────────────────────────────────────
+
+Agent: The **Remote Work Policy** allows employees to work remotely up to **3 days per week** with manager approval. Key requirements include:
+
+- **Submission**: Remote work requests must be submitted at least **48 hours in advance**.
+- **Availability**: Employees must be available during **core hours (10 AM - 4 PM)**.
+- **Requirements**: A **reliable internet connection** and **dedicated workspace** are mandatory.
+- **Equipment Allowance**: A **$500 allowance** is provided for home office setup.
+
+For full details, refer to the policy document (ID: policy-001).
+
+────────────────────────────────────────────────────────────
+User: How much PTO do employees get per year?
+────────────────────────────────────────────────────────────
+
+Agent: Full-time employees receive **20 days of PTO per year** according to the "Vacation and PTO Policy" document. This policy also states that PTO accrues at 1.67 days per month, with unused days carryable over (maximum 5 days). Sick leave is separate at 10 days per year.
+
+────────────────────────────────────────────────────────────
+User: If I have 100 users on the Enterprise plan, what would be the monthly cost per user after discount?
+────────────────────────────────────────────────────────────
+
+Agent: If you have 100 users on the Enterprise plan, the monthly cost per user after applying the 15% volume discount would be **$84.15**.
+
+### Breakdown:
+- **Base monthly rate**: $99/user (Enterprise plan)
+- **15% discount**: $99 × 0.15 = $14.85 discount
+- **Discounted monthly rate**: $99 - $14.85 = **$84.15/user**
+
+This calculation assumes the discount applies directly to the monthly rate. The annual billing (as noted in the document) would total $84.15 × 100 = **$8,415/year**.
+
+────────────────────────────────────────────────────────────
+User: What's the meal allowance for a 5-day international trip?
+────────────────────────────────────────────────────────────
+
+Agent: The meal allowance for an international trip is $100 per day, as stated in the **Expense Reimbursement Policy**. For a 5-day trip, this would total **$500**. This rate applies to daily meal expenses during international business travel.
+
+────────────────────────────────────────────────────────────
+User: What day is it today?
+────────────────────────────────────────────────────────────
+
+Agent: Today is **Monday, June 8, 2026**.
+
+────────────────────────────────────────────────────────────
+User: Compare the Startup and Enterprise plans.
+────────────────────────────────────────────────────────────
+
+Agent: Here's a comparison of the **Startup** and **Enterprise** plans based on available documentation:
+
+---
+
+### **Pricing**
+- **Startup Plan**:  
+  - **$29/user/month** (billed monthly) or **$25/user/month** (annual billing).  
+  - No setup fees or long-term contracts.  
+  - **Free trial**: 14 days with full feature access.  
+
+- **Enterprise Plan**:  
+  - **$99/user/month** (billed annually).  
+  - **Minimum 50 users** required.  
+  - **Volume discounts**:  
+    - 50-99 users: 10% discount  
+    - 100-249 users: 15% discount  
+    - 250+ users: 20% discount  
+
+---
+
+### **User Limits**
+- **Startup**: Teams of **5–49 users**.  
+- **Enterprise**: Requires **≥50 users**.  
+
+---
+
+### **Key Features**
+- **Startup**:  
+  - Basic features.  
+  - Email support.  
+  - **99% uptime SLA**.  
+
+- **Enterprise**:  
+  - SSO (Single Sign-On).  
+  - Advanced analytics.  
+  - Dedicated support.  
+  - Custom integrations.  
+  - **99.9% uptime SLA**.  
+
+---
+
+### **Contracts & Flexibility**
+- **Startup**: No long-term contracts.  
+- **Enterprise**: Annual billing (flexible terms for larger teams).  
+
+---
+
+### **Summary**
+The **Startup plan** is ideal for smaller teams seeking affordability and simplicity, while the **Enterprise plan** offers advanced features, scalability, and dedicated support for larger organizations. The Enterprise plan also provides cost savings for teams exceeding 50 users.
+
+
+Step 4: Multi-turn Conversation
+============================================================
+
+────────────────────────────────────────────────────────────
+User: What is the daily meal allowance for travel?
+
+Agent: The daily meal allowance for travel is specified in the Expense Reimbursement Policy:
+
+- **Domestic travel**: $75 per day
+- **International travel**: $100 per day
+
+This information is explicitly stated in the policy document (ID: policy-002).
+
+────────────────────────────────────────────────────────────
+User: What about for international trips?
+
+Agent: The daily meal allowance for **international trips** is **$100 per day**, as specified in the Expense Reimbursement Policy (ID: policy-002). This rate applies to all international travel expenses and covers meals during the trip. Let me know if you need further clarification!
+
+────────────────────────────────────────────────────────────
+User: If I'm traveling for 3 days internationally, what's my total meal budget?
+
+Agent: For a **3-day international trip**, your total meal budget would be:  
+**3 days × $100/day = $300**.  
+
+This calculation is based on the **Expense Reimbursement Policy (ID: policy-002)**, which sets the daily meal allowance at $100 for international travel. Let me know if you need further details!
+
+
+Done!

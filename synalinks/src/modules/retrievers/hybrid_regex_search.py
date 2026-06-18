@@ -15,6 +15,8 @@ from synalinks.src.knowledge_bases import get as _get_kb
 from synalinks.src.modules.core.generator import Generator
 from synalinks.src.modules.language_models import get as _get_lm
 from synalinks.src.modules.module import Module
+from synalinks.src.modules.retrievers.infer_helpers import concat_infer_fields
+from synalinks.src.modules.retrievers.infer_helpers import kb_table_names
 from synalinks.src.saving import serialization_lib
 
 
@@ -110,11 +112,12 @@ class HybridRegexSearch(Module):
             explicitly. Mutually inferrable with ``data_model``.
         data_model (DataModel | SymbolicDataModel): Data model
             providing ``schema`` via ``.get_schema()`` when ``schema``
-            is not given. One of ``schema``, ``data_model``, or
-            ``table_name`` must be provided.
+            is not given.
         table_name (str): Target table. Defaults to the schema's
-            ``title``. One of ``schema``, ``data_model``, or
-            ``table_name`` must be provided.
+            ``title``. **Optional** — when neither ``table_name`` nor a
+            schema to derive it from is given, the language model infers
+            the target table per call (constrained to the knowledge
+            base's actual tables).
         k (int): Maximum number of results. Defaults to 10.
         k_rank (int): RRF smoothing constant. Lower values emphasize
             top ranks more strongly. Defaults to 60.
@@ -172,18 +175,13 @@ class HybridRegexSearch(Module):
 
         if schema is None and data_model is not None:
             schema = data_model.get_schema()
-        if schema is None and table_name is None:
-            raise ValueError("One of `schema`, `data_model`, or `table_name` is required")
         self.schema = schema
         self.data_model = data_model
 
-        if table_name is None:
-            table_name = schema.get("title")
-            if not table_name:
-                raise ValueError(
-                    "Could not infer `table_name` from `schema` "
-                    "(no `title`); pass `table_name` explicitly."
-                )
+        # `table_name` is optional: when it (and a schema to infer it from) is
+        # absent, the LM picks the target table per call (see query_generator).
+        if table_name is None and schema is not None:
+            table_name = schema.get("title") or None
         self.table_name = table_name
 
         if output_format not in ("json", "csv"):
@@ -211,8 +209,25 @@ class HybridRegexSearch(Module):
         self.return_inputs = return_inputs
         self.return_query = return_query
 
+        if self.table_name is None:
+            gen_target = {
+                "schema": concat_infer_fields(
+                    HybridRegexSearchInput.get_schema(),
+                    [
+                        (
+                            "table_name",
+                            "The knowledge-base table to search, chosen to best "
+                            "answer the inputs.",
+                            kb_table_names(self.knowledge_base),
+                        )
+                    ],
+                )
+            }
+        else:
+            gen_target = {"data_model": HybridRegexSearchInput}
+
         self.query_generator = Generator(
-            data_model=HybridRegexSearchInput,
+            **gen_target,
             language_model=self.language_model,
             prompt_template=self.prompt_template,
             examples=self.examples,
@@ -235,14 +250,16 @@ class HybridRegexSearch(Module):
         payload = query.get_json()
         queries = payload.get("similarity_search", [])
         patterns = payload.get("regex_patterns")
-        # Need at least one signal — vector or regex — to look up.
-        if not queries and not patterns:
+        # Fixed table, or the one the LM inferred this call.
+        table_name = self.table_name or payload.get("table_name")
+        # Need at least one signal — vector or regex — and a table to look up.
+        if (not queries and not patterns) or not table_name:
             return None
 
         rows = await self.knowledge_base.hybrid_regex_search(
             text_or_texts=queries,
             pattern_or_patterns=patterns or None,
-            table_name=self.table_name,
+            table_name=table_name,
             k=self.k,
             k_rank=self.k_rank,
             similarity_threshold=self.similarity_threshold,

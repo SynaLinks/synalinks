@@ -6,16 +6,166 @@ import copy
 import re
 import shutil
 
-import orjson
 import rich
 import rich.table
 
 from synalinks.src import tree
 from synalinks.src.utils import io_utils
 
+# JSON-schema primitive type -> short Python annotation, for `beautify_schema`.
+_PRIMITIVE_TYPES = {
+    "string": "str",
+    "integer": "int",
+    "number": "float",
+    "boolean": "bool",
+    "null": "None",
+    "object": "dict",
+    "array": "list",
+}
+
 
 def count_params(variables):
     return len(variables)
+
+
+def _ref_name(ref):
+    """`"#/$defs/Foo"` -> `"Foo"`."""
+    return ref.rsplit("/", 1)[-1]
+
+
+def _schema_type_str(prop):
+    """Return a short, Pydantic-like type annotation for a property schema.
+
+    Maps JSON-schema constructs onto familiar Python typing notation:
+    `{"type": "string"}` -> `str`, arrays -> `list[...]`, `$ref` -> the
+    referenced model name, `anyOf`/`oneOf` -> `A | B`, `enum`/`const` ->
+    `Literal[...]`. Falls back to `Any` for schemas with no usable type.
+    """
+    if not isinstance(prop, dict):
+        return "Any"
+    if "$ref" in prop:
+        return _ref_name(prop["$ref"])
+    # pydantic occasionally wraps a lone `$ref` in `allOf`.
+    all_of = prop.get("allOf")
+    if all_of and len(all_of) == 1 and "$ref" in all_of[0]:
+        return _ref_name(all_of[0]["$ref"])
+    if "anyOf" in prop:
+        return " | ".join(_schema_type_str(p) for p in prop["anyOf"])
+    if "oneOf" in prop:
+        return " | ".join(_schema_type_str(p) for p in prop["oneOf"])
+    if "const" in prop:
+        return f"Literal[{prop['const']!r}]"
+    if "enum" in prop:
+        return "Literal[" + ", ".join(repr(v) for v in prop["enum"]) + "]"
+    type_ = prop.get("type")
+    if isinstance(type_, list):
+        return " | ".join(_PRIMITIVE_TYPES.get(t, t) for t in type_)
+    if type_ == "array":
+        items = prop.get("items")
+        if isinstance(items, dict) and items:
+            return f"list[{_schema_type_str(items)}]"
+        return "list"
+    if type_ == "object":
+        if "properties" in prop:
+            return prop.get("title", "object")
+        additional = prop.get("additionalProperties")
+        if isinstance(additional, dict) and additional:
+            return f"dict[str, {_schema_type_str(additional)}]"
+        return "dict"
+    if type_ is None:
+        return "Any"
+    return _PRIMITIVE_TYPES.get(type_, type_)
+
+
+def _format_default(value, max_len=32):
+    """Render a field default compactly, truncating long collections/strings."""
+    text = repr(value)
+    if len(text) > max_len:
+        text = text[: max_len - 1] + "…"
+    return text
+
+
+def _collect_def_refs(node, out):
+    """Append the names of `$defs` referenced anywhere within `node`, in the
+    order they're first seen (so nested models render in a stable order)."""
+    if isinstance(node, dict):
+        ref = node.get("$ref")
+        if isinstance(ref, str):
+            name = _ref_name(ref)
+            if name not in out:
+                out.append(name)
+        for value in node.values():
+            _collect_def_refs(value, out)
+    elif isinstance(node, list):
+        for value in node:
+            _collect_def_refs(value, out)
+
+
+def beautify_schema(schema):
+    """Render a JSON schema as a compact, Pydantic-like class definition.
+
+    Turns the verbose, deeply-indented JSON-schema dump into something closer
+    to the data model the user actually wrote, e.g.::
+
+        Query:
+          query: str
+
+    Models referenced through `$ref` are rendered as their own blocks *above*
+    the model that uses them, so each block appears after the ones it depends
+    on — the order you'd define them in code, root last. Field defaults are
+    shown Pydantic-style
+    as `name: type = <default>`; optional fields with no explicit default in
+    the schema (e.g. a `default_factory`) are suffixed with `?` instead.
+    Anything that isn't an object with `properties` (a bare enum, scalar,
+    dict, ...) is rendered as a single `Title: type` line.
+    """
+    if not isinstance(schema, dict):
+        return str(schema)
+    schema = copy.deepcopy(schema)
+    defs = schema.pop("$defs", {}) or {}
+
+    blocks = []
+    rendered = set()
+
+    def render(obj):
+        title = obj.get("title") or "Object"
+        if title in rendered:
+            return
+        rendered.add(title)
+
+        props = obj.get("properties")
+        if not props:
+            blocks.append(f"{title}: {_schema_type_str(obj)}")
+            return
+
+        required = set(obj.get("required", []))
+        lines = [f"{title}:"]
+        nested = []
+        for field_name, field_schema in props.items():
+            type_str = _schema_type_str(field_schema)
+            has_default = isinstance(field_schema, dict) and "default" in field_schema
+            if has_default:
+                # `name: type = <default>` — the value carries the optionality.
+                default = _format_default(field_schema["default"])
+                annotation = f"{field_name}: {type_str} = {default}"
+            elif field_name not in required:
+                # Optional with no explicit default in the schema (e.g. a
+                # `default_factory`): flag it without inventing a value.
+                annotation = f"{field_name}?: {type_str}"
+            else:
+                annotation = f"{field_name}: {type_str}"
+            lines.append(f"  {annotation}")
+            _collect_def_refs(field_schema, nested)
+        # Emit referenced models *first* so a block always appears after the
+        # ones it depends on — the order you'd define them in code. `title` is
+        # already marked `rendered`, so cycles can't recurse forever.
+        for ref in nested:
+            if ref in defs:
+                render(defs[ref])
+        blocks.append("\n".join(lines))
+
+    render(schema)
+    return "\n\n".join(blocks)
 
 
 def highlight_number(x):
@@ -46,10 +196,7 @@ def format_module_schema(module):
         return "?"
 
     def format_schema(schema):
-        schema = copy.deepcopy(schema)
-        if "$defs" in schema:
-            schema.pop("$defs")
-        return orjson.dumps(schema, option=orjson.OPT_INDENT_2).decode()
+        return beautify_schema(schema)
 
     # There are 2 approaches to get output schemas:
     # 1. Using `module._inbound_nodes`, which is possible if the program is a
@@ -160,19 +307,19 @@ def print_summary(
                     break
 
     if sequential_like:
-        default_line_length = 88
-        positions = positions or [0.45, 0.80, 1.0]
+        default_line_length = 90
+        positions = positions or [0.40, 0.87, 1.0]
         # header names for the different log elements
-        header = ["Module (type)", "Output Schema", "Variable #"]
+        header = ["Module (type)", "Output Schema", "Vars #"]
         alignment = ["left", "left", "right"]
     else:
-        default_line_length = 108
-        positions = positions or [0.3, 0.56, 0.74, 1.0]
+        default_line_length = 110
+        positions = positions or [0.28, 0.62, 0.74, 1.0]
         # header names for the different log elements
         header = [
             "Module (type)",
             "Output Schema",
-            "Variable #",
+            "Vars #",
             "Connected to",
         ]
         alignment = ["left", "left", "right", "left"]
@@ -187,7 +334,9 @@ def print_summary(
         alignment.append("center")
 
     # Compute columns widths
-    default_line_length = min(default_line_length, shutil.get_terminal_size().columns - 4)
+    default_line_length = min(
+        default_line_length, shutil.get_terminal_size().columns - 4
+    )
     line_length = line_length or default_line_length
     column_widths = []
     current = 0
@@ -224,7 +373,9 @@ def print_summary(
                 data_model_index = highlight_number(synalinks_history.data_model_index)
                 if connections:
                     connections += ", "
-                connections += f"{inbound_module.name}[{node_index}][{data_model_index}]"
+                connections += (
+                    f"{inbound_module.name}[{node_index}][{data_model_index}]"
+                )
         if not connections:
             connections = "-"
         return connections

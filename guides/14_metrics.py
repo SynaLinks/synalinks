@@ -390,7 +390,7 @@ async def main():
     load_dotenv()
     synalinks.clear_session()
 
-    lm = synalinks.LanguageModel(model="ollama/llama3.2:latest")
+    lm = synalinks.LanguageModel(model="ollama/mistral:latest")
 
     inputs = synalinks.Input(data_model=MathProblem)
     outputs = await synalinks.Generator(

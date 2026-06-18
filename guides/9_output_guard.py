@@ -214,7 +214,7 @@ async def main():
     load_dotenv()
     synalinks.clear_session()
 
-    lm = synalinks.LanguageModel(model="ollama/llama3.2:latest")
+    lm = synalinks.LanguageModel(model="ollama/mistral:latest")
 
     inputs = synalinks.Input(data_model=Query)
     answer = await synalinks.Generator(
@@ -386,13 +386,14 @@ class OutputGuard(synalinks.Module):
 async def main():
     load_dotenv()
     synalinks.clear_session()
+    synalinks.enable_logging()
 
     # synalinks.enable_observability(
     #     tracking_uri="http://localhost:5000",
     #     experiment_name="guide_9_output_guard",
     # )
 
-    lm = synalinks.LanguageModel(model="ollama/llama3.2:latest")
+    lm = synalinks.LanguageModel(model="ollama/mistral:latest")
 
     # -------------------------------------------------------------------------
     # Build Output Guarded Program

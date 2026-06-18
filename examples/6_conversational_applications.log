@@ -1,0 +1,6 @@
+Simple Chatbot Example
+Running the chatbot...
+{
+  "role": "assistant",
+  "content": "The capital of France is Paris."
+}

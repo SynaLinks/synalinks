@@ -299,17 +299,17 @@ SAMPLE_DOCUMENTS = [
 async def main():
     load_dotenv()
 
-    synalinks.enable_observability(
-        tracking_uri="http://localhost:5000",
-        experiment_name="vector_rag_agent",
-    )
+#     synalinks.enable_observability(
+#         tracking_uri="http://localhost:5000",
+#         experiment_name="vector_rag_agent",
+#     )
 
     language_model = synalinks.LanguageModel(
-        model="gemini/gemini-3.1-flash-lite-preview",
+        model="ollama/qwen3:8b",
     )
 
     embedding_model = synalinks.EmbeddingModel(
-        model="gemini/gemini-embedding-001",
+        model="ollama/all-minilm",
     )
 
     db_path = "./examples/rag_agent.db"

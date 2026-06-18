@@ -10,3 +10,15 @@
 ````python
 --8<-- "guides/19_recursive_language_model_agent.py:576"
 ````
+
+## Run log
+
+This guide calls `synalinks.enable_logging()`, so a full run traces every
+module call. The log below is the **unedited** output of running the guide
+above with local models.
+
+??? example "Full run log — `guides/19_recursive_language_model_agent.log`"
+
+    ```text
+    --8<-- "guides/19_recursive_language_model_agent.log"
+    ```

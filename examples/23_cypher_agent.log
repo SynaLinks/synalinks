@@ -1,0 +1,2 @@
+Answer: The person that Alice knows who lives in Paris is Bob.
+Cypher: MATCH (alice:Person)-[:Knows]->(person:Person)-[:LivesIn]->(city:City) WHERE alice.name = 'Alice' AND city.name = 'Paris' RETURN person.name

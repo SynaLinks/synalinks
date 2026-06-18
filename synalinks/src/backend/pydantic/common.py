@@ -8,15 +8,18 @@ because every chat-shaped path — generators, agents, datasets, tool
 calling — depends on `ChatMessage` / `ChatMessages` / `ToolCall`.
 """
 
+import warnings
 from enum import Enum
 from typing import Any
 from typing import Dict
 from typing import List
+from typing import Literal
 from typing import Optional
 from typing import Union
 
 from pydantic import Field
 from pydantic import field_validator
+from pydantic import model_validator
 
 from synalinks.src.api_export import synalinks_export
 from synalinks.src.backend.common.json_schema_utils import contains_schema
@@ -42,21 +45,47 @@ class ChatRole(str, Enum):
 
 @synalinks_export(
     [
-        "synalinks.backend.ToolCalling",
-        "synalinks.ToolCalling",
-        "synalinks.ToolCall",
-        "synalinks.backend.ToollCall",
+        "synalinks.backend.ToolCallFunction",
+        "synalinks.ToolCallFunction",
     ]
 )
-class ToolCall(DataModel):
-    id: str = Field(
-        description="The id of the tool call",
-    )
+class ToolCallFunction(DataModel):
+    """The `function` payload of a tool call (name + parsed arguments)."""
+
     name: str = Field(
         description="The name of the function called",
     )
     arguments: Dict[str, Any] = Field(
         description="The arguments of the tool call",
+    )
+
+
+@synalinks_export(
+    [
+        "synalinks.backend.ToolCall",
+        "synalinks.ToolCall",
+        "synalinks.backend.ToolCalling",
+        "synalinks.ToolCalling",
+    ]
+)
+class ToolCall(DataModel):
+    """A tool call, shaped like an OpenAI Chat Completions tool call.
+
+    Mirrors the wire envelope (`{id, type, function: {name, arguments}}`)
+    except that `arguments` stays a parsed dict rather than a JSON-encoded
+    string, so modules and agents can read it directly. The string encoding
+    is applied only at the wire edge (see `backend.pydantic.chat_completions`).
+    """
+
+    id: str = Field(
+        description="The id of the tool call",
+    )
+    type: Literal["function"] = Field(
+        description="The tool call type (always `function` today)",
+        default="function",
+    )
+    function: ToolCallFunction = Field(
+        description="The function invocation (name + arguments)",
     )
 
 
@@ -93,22 +122,29 @@ class ChatMessage(DataModel):
     role: ChatRole = Field(
         description="The chat message role",
     )
-    thinking: Optional[str] = Field(
-        description="The thinking/reasoning content of the message",
+    reasoning_content: Optional[str] = Field(
+        description=(
+            "The reasoning/thinking content of the message. Keyed to match the "
+            "litellm/DeepSeek `reasoning_content` chat-completion field (a "
+            "provider extension, not part of the base OpenAI spec), so the "
+            "message API stays a subset of the litellm-extended chat-completion "
+            "message."
+        ),
         default=None,
     )
     thinking_blocks: Optional[List[Dict[str, Any]]] = Field(
         description=(
             "Opaque provider-native thinking blocks (e.g. Anthropic's signed "
-            "`thinking_blocks`). Carried through verbatim on assistant-message "
-            "re-injection so multi-turn tool-use round-trips preserve signatures. "
-            "None for providers that emit reasoning only as text."
+            "`thinking_blocks`; a litellm extension, not part of the base "
+            "OpenAI spec). Carried through verbatim on assistant-message "
+            "re-injection so multi-turn tool-use round-trips preserve "
+            "signatures. None for providers that emit reasoning only as text."
         ),
         default=None,
     )
-    content: Union[str, Union[List[Dict[str, Any]], Dict[str, Any]]] = Field(
+    content: Optional[Union[str, List[Dict[str, Any]], Dict[str, Any]]] = Field(
         description="The content of the message",
-        default="",
+        default=None,
     )
     tool_call_id: Optional[str] = Field(
         description="The id of the tool call if role is `tool`",
@@ -118,6 +154,39 @@ class ChatMessage(DataModel):
         description="The tool calls of the agent",
         default=None,
     )
+
+    @model_validator(mode="before")
+    @classmethod
+    def _alias_thinking(cls, data):
+        """Accept the deprecated `thinking` key as an alias for `reasoning_content`.
+
+        `thinking` was renamed to `reasoning_content` so `ChatMessage`'s keys
+        stay a subset of the chat-completion message. Legacy construction
+        (``ChatMessage(thinking=...)`` / ``ChatMessage(**{"thinking": ...})``)
+        keeps working, mapping onto `reasoning_content`.
+        """
+        if isinstance(data, dict) and "thinking" in data:
+            thinking = data.pop("thinking")
+            data.setdefault("reasoning_content", thinking)
+            warnings.warn(
+                "`ChatMessage.thinking` is deprecated; use `reasoning_content` "
+                "(the OpenAI/litellm chat-completion key). The `thinking` alias "
+                "will be removed in a future release.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+        return data
+
+    @property
+    def thinking(self) -> Optional[str]:
+        """Deprecated read alias for `reasoning_content`."""
+        warnings.warn(
+            "`ChatMessage.thinking` is deprecated; read `reasoning_content` "
+            "instead. The `thinking` alias will be removed in a future release.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return self.reasoning_content
 
 
 @synalinks_export(

@@ -17,6 +17,8 @@ from synalinks.src.modules.module import Module
 from synalinks.src.modules.retrievers._path_helpers import deserialize_entity_model
 from synalinks.src.modules.retrievers._path_helpers import resolve_endpoint
 from synalinks.src.modules.retrievers._path_helpers import serialize_entity_model
+from synalinks.src.modules.retrievers.infer_helpers import concat_infer_fields
+from synalinks.src.modules.retrievers.infer_helpers import kb_entity_labels
 from synalinks.src.saving import serialization_lib
 
 
@@ -50,16 +52,20 @@ class PathRegexSearch(Module):
     Args:
         knowledge_base (KnowledgeBase): The knowledge base to search.
             Required.
-        subj_schema (dict): JSON schema of the subject entity.
+        subj_schema (dict): JSON schema of the subject entity. Used
+            to infer ``subj_label`` from its ``title`` when not given
+            explicitly. Mutually inferrable with ``subj_entity_model``.
         subj_entity_model (Entity | SymbolicDataModel): Subject entity
-            model. One of ``subj_schema``, ``subj_entity_model``, or
-            ``subj_label`` must be provided.
-        subj_label (str): Subject entity label.
+            model (provides ``subj_schema`` / ``subj_label``).
+        subj_label (str): Subject entity label. **Optional** — when
+            neither it nor a schema to derive it from is given, the
+            language model infers it per call (constrained to the
+            knowledge base's entity labels).
         obj_schema (dict): JSON schema of the object entity.
         obj_entity_model (Entity | SymbolicDataModel): Object entity
-            model. One of ``obj_schema``, ``obj_entity_model``, or
-            ``obj_label`` must be provided.
-        obj_label (str): Object entity label.
+            model (provides ``obj_schema`` / ``obj_label``).
+        obj_label (str): Object entity label. **Optional** — inferred
+            per call like ``subj_label`` when not given.
         rel_label (str): Optional rel-label constraint applied to
             every hop.
         min_hops (int): Minimum hop count, inclusive. Defaults to 1.
@@ -155,8 +161,38 @@ class PathRegexSearch(Module):
         self.return_inputs = return_inputs
         self.return_query = return_query
 
+        # Either endpoint label may be unset; when so the LM infers it per call,
+        # constrained to the KB's entity labels (concatenated onto the query).
+        infer_specs = []
+        if self.subj_label is None:
+            infer_specs.append(
+                (
+                    "subj_label",
+                    "The subject entity label for the path, chosen to best "
+                    "answer the inputs.",
+                    kb_entity_labels(self.knowledge_base),
+                )
+            )
+        if self.obj_label is None:
+            infer_specs.append(
+                (
+                    "obj_label",
+                    "The object entity label for the path, chosen to best "
+                    "answer the inputs.",
+                    kb_entity_labels(self.knowledge_base),
+                )
+            )
+        if infer_specs:
+            gen_target = {
+                "schema": concat_infer_fields(
+                    PathRegexSearchInput.get_schema(), infer_specs
+                )
+            }
+        else:
+            gen_target = {"data_model": PathRegexSearchInput}
+
         self.query_generator = Generator(
-            data_model=PathRegexSearchInput,
+            **gen_target,
             language_model=self.language_model,
             prompt_template=self.prompt_template,
             examples=self.examples,
@@ -179,14 +215,17 @@ class PathRegexSearch(Module):
         payload = query.get_json()
         subj_pattern = payload.get("subj_regex_search")
         obj_pattern = payload.get("obj_regex_search")
-        if not subj_pattern or not obj_pattern:
+        # Fixed endpoint labels, or the ones the LM inferred this call.
+        subj_label = self.subj_label or payload.get("subj_label")
+        obj_label = self.obj_label or payload.get("obj_label")
+        if not subj_pattern or not obj_pattern or not subj_label or not obj_label:
             return None
 
         rows = await self.knowledge_base.path_regex_search(
             subj_pattern=subj_pattern,
             obj_pattern=obj_pattern,
-            subj_label=self.subj_label,
-            obj_label=self.obj_label,
+            subj_label=subj_label,
+            obj_label=obj_label,
             label=self.rel_label,
             min_hops=self.min_hops,
             max_hops=self.max_hops,

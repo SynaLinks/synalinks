@@ -9,3 +9,14 @@
 ````python
 --8<-- "examples/14_vector_rag_agent.py:source"
 ````
+
+## Run log
+
+The log below is the **unedited** combined output of running the example above
+with local models (ollama).
+
+??? example "Full run log — `examples/14_vector_rag_agent.log`"
+
+    ```text
+    --8<-- "examples/14_vector_rag_agent.log"
+    ```

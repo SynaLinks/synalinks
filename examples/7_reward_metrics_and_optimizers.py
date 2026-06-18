@@ -108,19 +108,19 @@ async def main():
     load_dotenv()
 
     # Enable observability for tracing
-    synalinks.enable_observability(
-        tracking_uri="http://localhost:5000",
-        experiment_name="reward_metrics_optimizers",
-    )
+#     synalinks.enable_observability(
+#         tracking_uri="http://localhost:5000",
+#         experiment_name="reward_metrics_optimizers",
+#     )
 
     # Initialize the language model
     language_model = synalinks.LanguageModel(
-        model="gemini/gemini-3.1-flash-lite-preview",
+        model="ollama/mistral:latest",
     )
 
     # Initialize the embedding model for cosine similarity reward
     embedding_model = synalinks.EmbeddingModel(
-        model="gemini/gemini-embedding-001",
+        model="ollama/all-minilm",
     )
 
     # ==========================================================================

@@ -51,7 +51,7 @@ def _lm_response(*, content=None, tool_calls=None):
 
 
 class DeepAgentSandboxTest(testing.TestCase):
-    """The agent's tools are its MontySandbox methods (overlay-backed)."""
+    """The agent's tools are its MirageSandbox methods (filesystem-backed)."""
 
     def _workdir(self):
         tmpdir = tempfile.mkdtemp()
@@ -126,7 +126,7 @@ class DeepAgentInstantiationTest(testing.TestCase):
         lm = LanguageModel(model="ollama/mistral")
 
         agent = DeepAgent(workdir=wd, language_model=lm, name="all_tools")
-        tool_names = set(agent.agent.tools.keys())
+        tool_names = set(agent.tools.keys())
         self.assertEqual(
             tool_names,
             {
@@ -135,8 +135,7 @@ class DeepAgentInstantiationTest(testing.TestCase):
                 "search_files",
                 "write_file",
                 "edit_file",
-                "run_python_code",
-                "run_python_file",
+                "run_bash",
             },
         )
 
@@ -150,15 +149,14 @@ class DeepAgentInstantiationTest(testing.TestCase):
         self.assertEqual((await agent.sandbox.read_file("/scratch.txt"))["content"], "hi")
         # The full tool set is always available (nothing to gate).
         self.assertEqual(
-            set(agent.agent.tools.keys()),
+            set(agent.tools.keys()),
             {
                 "read_file",
                 "list_files",
                 "search_files",
                 "write_file",
                 "edit_file",
-                "run_python_code",
-                "run_python_file",
+                "run_bash",
             },
         )
 
@@ -172,7 +170,7 @@ class DeepAgentInstantiationTest(testing.TestCase):
             tools=[Tool(stamp_now)],
             name="with_extra",
         )
-        self.assertIn("stamp_now", agent.agent.tools)
+        self.assertIn("stamp_now", agent.tools)
 
     async def test_agent_tool_name_collision_raises(self):
         wd = self._workdir()
@@ -287,7 +285,7 @@ class DeepAgentSubagentTest(testing.TestCase):
         return LanguageModel(model="ollama/mistral")
 
     def _tool_names(self, agent):
-        return set(agent.agent.tools.keys())
+        return set(agent.tools.keys())
 
     async def test_subagents_off_by_default(self):
         agent = DeepAgent(language_model=self._lm(), name="off")
@@ -322,9 +320,9 @@ class DeepAgentSubagentTest(testing.TestCase):
             DeepAgent(language_model=self._lm(), max_subagent_depth=-1)
 
     async def test_sandbox_param_is_used_as_is(self):
-        from synalinks.src.sandboxes.monty_sandbox import MontySandbox
+        from synalinks.src.sandboxes.mirage_sandbox import MirageSandbox
 
-        sb = MontySandbox()
+        sb = MirageSandbox()
         await sb.write_file("/seed.txt", "seed")
         agent = DeepAgent(language_model=self._lm(), sandbox=sb, name="reuse")
         self.assertIs(agent.sandbox, sb)

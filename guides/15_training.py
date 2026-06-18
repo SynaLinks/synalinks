@@ -334,7 +334,7 @@ a validation split, every training metric `m` has a mirrored
 
 The runnable section below trains on an 8-example arithmetic dataset
 with `validation_split=0.2` (the last 20% is held out for validation)
-and `epochs=2`, using a local `ollama/llama3.2:latest`. The dataset
+and `epochs=2`, using a local `ollama/mistral:latest`. The dataset
 is deliberately tiny so the guide finishes in a few minutes; do *not*
 read the reported rewards as evidence of model quality at scale.
 
@@ -480,7 +480,7 @@ async def main():
     #     experiment_name="guide_15_training",
     # )
 
-    lm = synalinks.LanguageModel(model="ollama/llama3.2:latest")
+    lm = synalinks.LanguageModel(model="ollama/mistral:latest")
 
     # -------------------------------------------------------------------------
     # Prepare Training Data (as NumPy arrays)

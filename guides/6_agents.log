@@ -1,0 +1,2419 @@
+(DEBUG) [Synalinks]
+Call ID: aad30d16-28b4-4745-b3db-9dc09cb8a9b7
+Parent call ID: None
+Module: FunctionCallingAgent
+Module Name: function_calling_agent
+Module Description: A trainable parallel function calling agent.
+Data Model JSON Schema:
+[
+  {
+    "additionalProperties": false,
+    "description": "User request.",
+    "properties": {
+      "query": {
+        "description": "User request",
+        "title": "Query",
+        "type": "string"
+      }
+    },
+    "required": [
+      "query"
+    ],
+    "title": "Query",
+    "type": "object"
+  }
+]
+
+/home/yoan/SynalinksWorkspace/synalinks/synalinks/src/modules/module.py:828: UserWarning: Module 'function_calling_agent' looks like it has unbuilt state, but Synalinks is not able to trace the module `call()` in order to build it automatically. Possible causes:
+1. The `call()` method of your module may be crashing. Try to `__call__()` the module eagerly on some test input first to see if it works. 2. If the `call()` method is correct, then you may need to implement the `def build(self, inputs)` or `def compute_output_spec(inputs, training=False)` method on your module.Exception encountered: ''FunctionCallingAgent.compute_output_spec() got an unexpected keyword argument 'kwargs'''
+  warnings.warn(
+(DEBUG) [Synalinks]
+Call ID: f7a7bb3e-9b6f-49c4-98d5-590f183a2e2b
+Parent call ID: aad30d16-28b4-4745-b3db-9dc09cb8a9b7
+Module: Generator
+Module Name: tool_calls_generator_function_calling_agent
+Module Description: Use a `LanguageModel` to generate a data model from an arbitrary input data model.
+Data Model JSON Schema:
+[
+  {
+    "additionalProperties": false,
+    "description": "User request.",
+    "properties": {
+      "query": {
+        "description": "User request",
+        "title": "Query",
+        "type": "string"
+      }
+    },
+    "required": [
+      "query"
+    ],
+    "title": "Query",
+    "type": "object"
+  }
+]
+
+(DEBUG) [Synalinks]
+Call ID: f7a7bb3e-9b6f-49c4-98d5-590f183a2e2b
+Parent call ID: aad30d16-28b4-4745-b3db-9dc09cb8a9b7
+Module: Generator
+Module Name: tool_calls_generator_function_calling_agent
+Module Description: Use a `LanguageModel` to generate a data model from an arbitrary input data model.
+Data Model JSON Schema:
+[
+  {
+    "$defs": {
+      "ChatRole": {
+        "description": "The chat message roles",
+        "enum": [
+          "system",
+          "developer",
+          "user",
+          "assistant",
+          "tool",
+          "function"
+        ],
+        "title": "ChatRole",
+        "type": "string"
+      },
+      "ToolCall": {
+        "additionalProperties": false,
+        "description": "A tool call, shaped like an OpenAI Chat Completions tool call.\n\nMirrors the wire envelope (`{id, type, function: {name, arguments}}`)\nexcept that `arguments` stays a parsed dict rather than a JSON-encoded\nstring, so modules and agents can read it directly. The string encoding\nis applied only at the wire edge (see `backend.pydantic.chat_completions`).",
+        "properties": {
+          "id": {
+            "description": "The id of the tool call",
+            "title": "Id",
+            "type": "string"
+          },
+          "type": {
+            "const": "function",
+            "default": "function",
+            "description": "The tool call type (always `function` today)",
+            "title": "Type",
+            "type": "string"
+          },
+          "function": {
+            "$ref": "#/$defs/ToolCallFunction",
+            "description": "The function invocation (name + arguments)"
+          }
+        },
+        "required": [
+          "id",
+          "function"
+        ],
+        "title": "ToolCall",
+        "type": "object"
+      },
+      "ToolCallFunction": {
+        "additionalProperties": false,
+        "description": "The `function` payload of a tool call (name + parsed arguments).",
+        "properties": {
+          "name": {
+            "description": "The name of the function called",
+            "title": "Name",
+            "type": "string"
+          },
+          "arguments": {
+            "additionalProperties": true,
+            "description": "The arguments of the tool call",
+            "title": "Arguments",
+            "type": "object"
+          }
+        },
+        "required": [
+          "name",
+          "arguments"
+        ],
+        "title": "ToolCallFunction",
+        "type": "object"
+      }
+    },
+    "additionalProperties": false,
+    "description": "A chat message",
+    "properties": {
+      "role": {
+        "$ref": "#/$defs/ChatRole",
+        "description": "The chat message role"
+      },
+      "reasoning_content": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "description": "The reasoning/thinking content of the message. Keyed to match the litellm/DeepSeek `reasoning_content` chat-completion field (a provider extension, not part of the base OpenAI spec), so the message API stays a subset of the litellm-extended chat-completion message.",
+        "title": "Reasoning Content"
+      },
+      "thinking_blocks": {
+        "anyOf": [
+          {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "description": "Opaque provider-native thinking blocks (e.g. Anthropic's signed `thinking_blocks`; a litellm extension, not part of the base OpenAI spec). Carried through verbatim on assistant-message re-injection so multi-turn tool-use round-trips preserve signatures. None for providers that emit reasoning only as text.",
+        "title": "Thinking Blocks"
+      },
+      "content": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array"
+          },
+          {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "description": "The content of the message",
+        "title": "Content"
+      },
+      "tool_call_id": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "description": "The id of the tool call if role is `tool`",
+        "title": "Tool Call Id"
+      },
+      "tool_calls": {
+        "anyOf": [
+          {
+            "items": {
+              "$ref": "#/$defs/ToolCall"
+            },
+            "type": "array"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "description": "The tool calls of the agent",
+        "title": "Tool Calls"
+      }
+    },
+    "required": [
+      "role"
+    ],
+    "title": "ChatMessage",
+    "type": "object"
+  }
+]
+
+(DEBUG) [Synalinks]
+Call ID: aad30d16-28b4-4745-b3db-9dc09cb8a9b7
+Parent call ID: None
+Module: FunctionCallingAgent
+Module Name: function_calling_agent
+Module Description: A trainable parallel function calling agent.
+Data Model JSON Schema:
+[
+  {
+    "additionalProperties": false,
+    "$defs": {
+      "ChatMessage": {
+        "additionalProperties": false,
+        "description": "A chat message",
+        "properties": {
+          "role": {
+            "$ref": "#/$defs/ChatRole",
+            "description": "The chat message role"
+          },
+          "reasoning_content": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "The reasoning/thinking content of the message. Keyed to match the litellm/DeepSeek `reasoning_content` chat-completion field (a provider extension, not part of the base OpenAI spec), so the message API stays a subset of the litellm-extended chat-completion message.",
+            "title": "Reasoning Content"
+          },
+          "thinking_blocks": {
+            "anyOf": [
+              {
+                "items": {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Opaque provider-native thinking blocks (e.g. Anthropic's signed `thinking_blocks`; a litellm extension, not part of the base OpenAI spec). Carried through verbatim on assistant-message re-injection so multi-turn tool-use round-trips preserve signatures. None for providers that emit reasoning only as text.",
+            "title": "Thinking Blocks"
+          },
+          "content": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "items": {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "The content of the message",
+            "title": "Content"
+          },
+          "tool_call_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "The id of the tool call if role is `tool`",
+            "title": "Tool Call Id"
+          },
+          "tool_calls": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/$defs/ToolCall"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "The tool calls of the agent",
+            "title": "Tool Calls"
+          }
+        },
+        "required": [
+          "role"
+        ],
+        "title": "ChatMessage",
+        "type": "object"
+      },
+      "ChatRole": {
+        "description": "The chat message roles",
+        "enum": [
+          "system",
+          "developer",
+          "user",
+          "assistant",
+          "tool",
+          "function"
+        ],
+        "title": "ChatRole",
+        "type": "string"
+      },
+      "ToolCall": {
+        "additionalProperties": false,
+        "description": "A tool call, shaped like an OpenAI Chat Completions tool call.\n\nMirrors the wire envelope (`{id, type, function: {name, arguments}}`)\nexcept that `arguments` stays a parsed dict rather than a JSON-encoded\nstring, so modules and agents can read it directly. The string encoding\nis applied only at the wire edge (see `backend.pydantic.chat_completions`).",
+        "properties": {
+          "id": {
+            "description": "The id of the tool call",
+            "title": "Id",
+            "type": "string"
+          },
+          "type": {
+            "const": "function",
+            "default": "function",
+            "description": "The tool call type (always `function` today)",
+            "title": "Type",
+            "type": "string"
+          },
+          "function": {
+            "$ref": "#/$defs/ToolCallFunction",
+            "description": "The function invocation (name + arguments)"
+          }
+        },
+        "required": [
+          "id",
+          "function"
+        ],
+        "title": "ToolCall",
+        "type": "object"
+      },
+      "ToolCallFunction": {
+        "additionalProperties": false,
+        "description": "The `function` payload of a tool call (name + parsed arguments).",
+        "properties": {
+          "name": {
+            "description": "The name of the function called",
+            "title": "Name",
+            "type": "string"
+          },
+          "arguments": {
+            "additionalProperties": true,
+            "description": "The arguments of the tool call",
+            "title": "Arguments",
+            "type": "object"
+          }
+        },
+        "required": [
+          "name",
+          "arguments"
+        ],
+        "title": "ToolCallFunction",
+        "type": "object"
+      }
+    },
+    "properties": {
+      "messages": {
+        "default": [],
+        "description": "The list of chat messages",
+        "items": {
+          "$ref": "#/$defs/ChatMessage"
+        },
+        "title": "Messages",
+        "type": "array"
+      },
+      "answer": {
+        "description": "Final answer to the user",
+        "title": "Answer",
+        "type": "string"
+      }
+    },
+    "required": [
+      "answer"
+    ],
+    "title": "ChatMessages",
+    "type": "object"
+  }
+]
+
+============================================================
+Example 1: Autonomous Agent with Tools
+============================================================
+Program: tool_agent
+description: 'A `Functional` program is a `Program` defined as a directed graph 
+of modules.'
+┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━┓
+┃ Module (type)               ┃ Output Schema                    ┃  Vars # ┃
+┡━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━┩
+│ input_module (InputModule)  │ Query:                           │       0 │
+│                             │   query: str                     │         │
+├─────────────────────────────┼──────────────────────────────────┼─────────┤
+│ function_calling_agent      │ ChatRole: Literal['system',      │       2 │
+│ (FunctionCallingAgent)      │ 'developer', 'user',             │         │
+│                             │ 'assistant', 'tool', 'function'] │         │
+│                             │                                  │         │
+│                             │ ToolCallFunction:                │         │
+│                             │   name: str                      │         │
+│                             │   arguments: dict                │         │
+│                             │                                  │         │
+│                             │ ToolCall:                        │         │
+│                             │   id: str                        │         │
+│                             │   type: Literal['function'] =    │         │
+│                             │ 'function'                       │         │
+│                             │   function: ToolCallFunction     │         │
+│                             │                                  │         │
+│                             │ ChatMessage:                     │         │
+│                             │   role: ChatRole                 │         │
+│                             │   reasoning_content: str | None  │         │
+│                             │ = None                           │         │
+│                             │   thinking_blocks: list | None = │         │
+│                             │ None                             │         │
+│                             │   content: str | list | dict |   │         │
+│                             │ None = None                      │         │
+│                             │   tool_call_id: str | None =     │         │
+│                             │ None                             │         │
+│                             │   tool_calls: list[ToolCall] |   │         │
+│                             │ None = None                      │         │
+│                             │                                  │         │
+│                             │ ChatMessages:                    │         │
+│                             │   messages: list[ChatMessage] =  │         │
+│                             │ []                               │         │
+│                             │   answer: str                    │         │
+└─────────────────────────────┴──────────────────────────────────┴─────────┘
+[Synalinks]
+Call ID: 0554cdbd-4338-4d34-b630-150f929f8402
+Parent call ID: None
+Module: Functional
+Module Name: tool_agent
+Module Description: A `Functional` program is a `Program` defined as a directed graph of modules.
+Data Model JSON:
+[
+  {
+    "query": "What is 15 * 23 + 7?"
+  }
+]
+
+[Synalinks]
+Call ID: 169e3dee-da07-43c8-8725-d40456050077
+Parent call ID: 0554cdbd-4338-4d34-b630-150f929f8402
+Module: FunctionCallingAgent
+Module Name: function_calling_agent
+Module Description: A trainable parallel function calling agent.
+Data Model JSON:
+[
+  {
+    "query": "What is 15 * 23 + 7?"
+  }
+]
+
+[Synalinks]
+Call ID: 522c06d7-7a3a-4255-9df3-2692f8c93bfe
+Parent call ID: 169e3dee-da07-43c8-8725-d40456050077
+Module: Generator
+Module Name: tool_calls_generator_function_calling_agent
+Module Description: Use a `LanguageModel` to generate a data model from an arbitrary input data model.
+Data Model JSON:
+[
+  {
+    "query": "What is 15 * 23 + 7?",
+    "messages": []
+  }
+]
+
+[Synalinks]
+Call ID: ddd595a2-61b8-432e-8c6e-b8940039ed1f
+Parent call ID: 522c06d7-7a3a-4255-9df3-2692f8c93bfe
+Module: LanguageModel
+Module Name: language_model
+Module Description: A language model API wrapper.
+Data Model JSON:
+[
+  {
+    "messages": [
+      {
+        "role": "system",
+        "content": "<instructions>\nThink step by step: Use the thinking field to elaborate what you observe and\nwhat do you need to accomplish next.\nReflect on prior steps: Review your previous actions and their outcomes to\navoid unnecessary repetition.\nAvoid unnecessary actions: If you already have enough information to complete\nthe user task, return an empty tool calls array.\n</instructions>\n"
+      },
+      {
+        "role": "user",
+        "content": "<input>\n{'query': 'What is 15 * 23 + 7?'}\n</input>\n<output>\n"
+      }
+    ]
+  }
+]
+
+[Synalinks]
+Call ID: ddd595a2-61b8-432e-8c6e-b8940039ed1f
+Parent call ID: 522c06d7-7a3a-4255-9df3-2692f8c93bfe
+Module: LanguageModel
+Module Name: language_model
+Module Description: A language model API wrapper.
+Data Model JSON:
+[
+  {
+    "role": "assistant",
+    "content": "",
+    "reasoning_content": "Okay, let's see. The user is asking, \"What is 15 * 23 + 7?\" So I need to calculate that. First, I should check if there's a function available to handle mathematical expressions. Looking at the tools provided, there's the calculator function under the Evaluate a mathematical expression. The parameters require an expression as a string. The expression here is 15 multiplied by 23 and then added 7. So I can directly use the calculator function with the expression \"15 * 23 + 7\". I don't need to break it down further because the function should handle the order of operations. Let me make sure there's no other steps needed. No, since the function takes the entire expression, I can call it once with that string. Alright, that's all.\n",
+    "tool_calls": [
+      {
+        "id": "call_hjyv21sh",
+        "type": "function",
+        "function": {
+          "name": "calculator",
+          "arguments": {
+            "expression": "15 * 23 + 7"
+          }
+        }
+      }
+    ]
+  }
+]
+
+[Synalinks]
+Call ID: 522c06d7-7a3a-4255-9df3-2692f8c93bfe
+Parent call ID: 169e3dee-da07-43c8-8725-d40456050077
+Module: Generator
+Module Name: tool_calls_generator_function_calling_agent
+Module Description: Use a `LanguageModel` to generate a data model from an arbitrary input data model.
+Data Model JSON:
+[
+  {
+    "role": "assistant",
+    "content": "",
+    "reasoning_content": "Okay, let's see. The user is asking, \"What is 15 * 23 + 7?\" So I need to calculate that. First, I should check if there's a function available to handle mathematical expressions. Looking at the tools provided, there's the calculator function under the Evaluate a mathematical expression. The parameters require an expression as a string. The expression here is 15 multiplied by 23 and then added 7. So I can directly use the calculator function with the expression \"15 * 23 + 7\". I don't need to break it down further because the function should handle the order of operations. Let me make sure there's no other steps needed. No, since the function takes the entire expression, I can call it once with that string. Alright, that's all.\n",
+    "tool_calls": [
+      {
+        "id": "call_hjyv21sh",
+        "type": "function",
+        "function": {
+          "name": "calculator",
+          "arguments": {
+            "expression": "15 * 23 + 7"
+          }
+        }
+      }
+    ]
+  }
+]
+
+[Synalinks]
+Call ID: 41bef0a4-04bf-49e3-8149-ed7e6c0e9fd7
+Parent call ID: ddd595a2-61b8-432e-8c6e-b8940039ed1f
+Module: Tool
+Module Name: calculator
+Module Description: Evaluate a mathematical expression.
+Keyword Arguments:
+{
+  "expression": "15 * 23 + 7"
+}
+
+[Synalinks]
+Call ID: 41bef0a4-04bf-49e3-8149-ed7e6c0e9fd7
+Parent call ID: ddd595a2-61b8-432e-8c6e-b8940039ed1f
+Module: Tool
+Module Name: calculator
+Module Description: Evaluate a mathematical expression.
+Data Model JSON:
+[
+  {
+    "result": "352"
+  }
+]
+
+[Synalinks]
+Call ID: 67bb0e55-9ede-46cd-8f61-f5682da7f591
+Parent call ID: 41bef0a4-04bf-49e3-8149-ed7e6c0e9fd7
+Module: Generator
+Module Name: tool_calls_generator_function_calling_agent
+Module Description: Use a `LanguageModel` to generate a data model from an arbitrary input data model.
+Data Model JSON:
+[
+  {
+    "query": "What is 15 * 23 + 7?",
+    "messages": [
+      {
+        "role": "assistant",
+        "content": "",
+        "reasoning_content": "Okay, let's see. The user is asking, \"What is 15 * 23 + 7?\" So I need to calculate that. First, I should check if there's a function available to handle mathematical expressions. Looking at the tools provided, there's the calculator function under the Evaluate a mathematical expression. The parameters require an expression as a string. The expression here is 15 multiplied by 23 and then added 7. So I can directly use the calculator function with the expression \"15 * 23 + 7\". I don't need to break it down further because the function should handle the order of operations. Let me make sure there's no other steps needed. No, since the function takes the entire expression, I can call it once with that string. Alright, that's all.\n",
+        "tool_calls": [
+          {
+            "id": "call_hjyv21sh",
+            "type": "function",
+            "function": {
+              "name": "calculator",
+              "arguments": {
+                "expression": "15 * 23 + 7"
+              }
+            }
+          }
+        ]
+      },
+      {
+        "role": "tool",
+        "content": {
+          "result": "352"
+        },
+        "tool_call_id": "call_hjyv21sh"
+      }
+    ]
+  }
+]
+
+[Synalinks]
+Call ID: 61eec2e4-cc75-43e4-974a-abea551f2916
+Parent call ID: 67bb0e55-9ede-46cd-8f61-f5682da7f591
+Module: LanguageModel
+Module Name: language_model
+Module Description: A language model API wrapper.
+Data Model JSON:
+[
+  {
+    "messages": [
+      {
+        "role": "system",
+        "content": "<instructions>\nThink step by step: Use the thinking field to elaborate what you observe and\nwhat do you need to accomplish next.\nReflect on prior steps: Review your previous actions and their outcomes to\navoid unnecessary repetition.\nAvoid unnecessary actions: If you already have enough information to complete\nthe user task, return an empty tool calls array.\n</instructions>\n"
+      },
+      {
+        "role": "user",
+        "content": "<input>\n{'query': 'What is 15 * 23 + 7?'}\n</input>\n<output>\n"
+      },
+      {
+        "role": "assistant",
+        "reasoning_content": "Okay, let's see. The user is asking, \"What is 15 * 23 + 7?\" So I need to calculate that. First, I should check if there's a function available to handle mathematical expressions. Looking at the tools provided, there's the calculator function under the Evaluate a mathematical expression. The parameters require an expression as a string. The expression here is 15 multiplied by 23 and then added 7. So I can directly use the calculator function with the expression \"15 * 23 + 7\". I don't need to break it down further because the function should handle the order of operations. Let me make sure there's no other steps needed. No, since the function takes the entire expression, I can call it once with that string. Alright, that's all.\n",
+        "content": "",
+        "tool_calls": [
+          {
+            "id": "call_hjyv21sh",
+            "type": "function",
+            "function": {
+              "name": "calculator",
+              "arguments": {
+                "expression": "15 * 23 + 7"
+              }
+            }
+          }
+        ]
+      },
+      {
+        "role": "tool",
+        "content": {
+          "result": "352"
+        },
+        "tool_call_id": "call_hjyv21sh"
+      }
+    ]
+  }
+]
+
+[Synalinks]
+Call ID: 61eec2e4-cc75-43e4-974a-abea551f2916
+Parent call ID: 67bb0e55-9ede-46cd-8f61-f5682da7f591
+Module: LanguageModel
+Module Name: language_model
+Module Description: A language model API wrapper.
+Data Model JSON:
+[
+  {
+    "role": "assistant",
+    "content": "The result of $15 \\times 23 + 7$ is **352**.",
+    "reasoning_content": "Okay, the user asked for 15 * 23 + 7. I used the calculator function to evaluate that expression. The result came back as 352. Let me double-check the calculation to be sure. \n\nFirst, 15 multiplied by 23. Let me compute that: 15 * 20 is 300, and 15 * 3 is 45, so adding those gives 345. Then adding 7 gives 352. Yep, that's correct. \n\nSo the answer is 352. I should present that clearly to the user. No need for any additional steps or tool calls since the calculation is straightforward and the function handled it correctly.\n"
+  }
+]
+
+[Synalinks]
+Call ID: 67bb0e55-9ede-46cd-8f61-f5682da7f591
+Parent call ID: 41bef0a4-04bf-49e3-8149-ed7e6c0e9fd7
+Module: Generator
+Module Name: tool_calls_generator_function_calling_agent
+Module Description: Use a `LanguageModel` to generate a data model from an arbitrary input data model.
+Data Model JSON:
+[
+  {
+    "role": "assistant",
+    "content": "The result of $15 \\times 23 + 7$ is **352**.",
+    "reasoning_content": "Okay, the user asked for 15 * 23 + 7. I used the calculator function to evaluate that expression. The result came back as 352. Let me double-check the calculation to be sure. \n\nFirst, 15 multiplied by 23. Let me compute that: 15 * 20 is 300, and 15 * 3 is 45, so adding those gives 345. Then adding 7 gives 352. Yep, that's correct. \n\nSo the answer is 352. I should present that clearly to the user. No need for any additional steps or tool calls since the calculation is straightforward and the function handled it correctly.\n"
+  }
+]
+
+[Synalinks]
+Call ID: a9d7f983-4e5f-4750-a7cf-907d790ff3b8
+Parent call ID: 61eec2e4-cc75-43e4-974a-abea551f2916
+Module: Generator
+Module Name: final_generator_function_calling_agent
+Module Description: Use a `LanguageModel` to generate a data model from an arbitrary input data model.
+Data Model JSON:
+[
+  {
+    "query": "What is 15 * 23 + 7?",
+    "messages": [
+      {
+        "role": "assistant",
+        "content": "",
+        "reasoning_content": "Okay, let's see. The user is asking, \"What is 15 * 23 + 7?\" So I need to calculate that. First, I should check if there's a function available to handle mathematical expressions. Looking at the tools provided, there's the calculator function under the Evaluate a mathematical expression. The parameters require an expression as a string. The expression here is 15 multiplied by 23 and then added 7. So I can directly use the calculator function with the expression \"15 * 23 + 7\". I don't need to break it down further because the function should handle the order of operations. Let me make sure there's no other steps needed. No, since the function takes the entire expression, I can call it once with that string. Alright, that's all.\n",
+        "tool_calls": [
+          {
+            "id": "call_hjyv21sh",
+            "type": "function",
+            "function": {
+              "name": "calculator",
+              "arguments": {
+                "expression": "15 * 23 + 7"
+              }
+            }
+          }
+        ]
+      },
+      {
+        "role": "tool",
+        "content": {
+          "result": "352"
+        },
+        "tool_call_id": "call_hjyv21sh"
+      }
+    ]
+  }
+]
+
+[Synalinks]
+Call ID: 23320f72-f41a-4f9e-a5d2-e708beb759fd
+Parent call ID: a9d7f983-4e5f-4750-a7cf-907d790ff3b8
+Module: LanguageModel
+Module Name: language_model
+Module Description: A language model API wrapper.
+Data Model JSON:
+[
+  {
+    "messages": [
+      {
+        "role": "system",
+        "content": "<instructions>\nThink step by step: Use the thinking field to elaborate what you observe and\nwhat do you need to accomplish next.\nReflect on prior steps: Review your previous actions and their outcomes to\navoid unnecessary repetition.\nAvoid unnecessary actions: If you already have enough information to complete\nthe user task, return an empty tool calls array.\n</instructions>\n"
+      },
+      {
+        "role": "user",
+        "content": "<input>\n{'query': 'What is 15 * 23 + 7?'}\n</input>\n<output>\n"
+      },
+      {
+        "role": "assistant",
+        "reasoning_content": "Okay, let's see. The user is asking, \"What is 15 * 23 + 7?\" So I need to calculate that. First, I should check if there's a function available to handle mathematical expressions. Looking at the tools provided, there's the calculator function under the Evaluate a mathematical expression. The parameters require an expression as a string. The expression here is 15 multiplied by 23 and then added 7. So I can directly use the calculator function with the expression \"15 * 23 + 7\". I don't need to break it down further because the function should handle the order of operations. Let me make sure there's no other steps needed. No, since the function takes the entire expression, I can call it once with that string. Alright, that's all.\n",
+        "content": "",
+        "tool_calls": [
+          {
+            "id": "call_hjyv21sh",
+            "type": "function",
+            "function": {
+              "name": "calculator",
+              "arguments": {
+                "expression": "15 * 23 + 7"
+              }
+            }
+          }
+        ]
+      },
+      {
+        "role": "tool",
+        "content": {
+          "result": "352"
+        },
+        "tool_call_id": "call_hjyv21sh"
+      }
+    ]
+  }
+]
+
+[Synalinks]
+Call ID: 23320f72-f41a-4f9e-a5d2-e708beb759fd
+Parent call ID: a9d7f983-4e5f-4750-a7cf-907d790ff3b8
+Module: LanguageModel
+Module Name: language_model
+Module Description: A language model API wrapper.
+Data Model JSON:
+[
+  {
+    "answer": "The result of 15 * 23 + 7 is 352."
+  }
+]
+
+[Synalinks]
+Call ID: a9d7f983-4e5f-4750-a7cf-907d790ff3b8
+Parent call ID: 61eec2e4-cc75-43e4-974a-abea551f2916
+Module: Generator
+Module Name: final_generator_function_calling_agent
+Module Description: Use a `LanguageModel` to generate a data model from an arbitrary input data model.
+Data Model JSON:
+[
+  {
+    "answer": "The result of 15 * 23 + 7 is 352."
+  }
+]
+
+[Synalinks]
+Call ID: 169e3dee-da07-43c8-8725-d40456050077
+Parent call ID: 0554cdbd-4338-4d34-b630-150f929f8402
+Module: FunctionCallingAgent
+Module Name: function_calling_agent
+Module Description: A trainable parallel function calling agent.
+Data Model JSON:
+[
+  {
+    "messages": [
+      {
+        "role": "assistant",
+        "reasoning_content": "Okay, let's see. The user is asking, \"What is 15 * 23 + 7?\" So I need to calculate that. First, I should check if there's a function available to handle mathematical expressions. Looking at the tools provided, there's the calculator function under the Evaluate a mathematical expression. The parameters require an expression as a string. The expression here is 15 multiplied by 23 and then added 7. So I can directly use the calculator function with the expression \"15 * 23 + 7\". I don't need to break it down further because the function should handle the order of operations. Let me make sure there's no other steps needed. No, since the function takes the entire expression, I can call it once with that string. Alright, that's all.\n",
+        "content": "",
+        "tool_calls": [
+          {
+            "id": "call_hjyv21sh",
+            "type": "function",
+            "function": {
+              "name": "calculator",
+              "arguments": {
+                "expression": "15 * 23 + 7"
+              }
+            }
+          }
+        ]
+      },
+      {
+        "role": "tool",
+        "content": {
+          "result": "352"
+        },
+        "tool_call_id": "call_hjyv21sh"
+      }
+    ],
+    "answer": "The result of 15 * 23 + 7 is 352."
+  }
+]
+
+[Synalinks]
+Call ID: 0554cdbd-4338-4d34-b630-150f929f8402
+Parent call ID: None
+Module: Functional
+Module Name: tool_agent
+Module Description: A `Functional` program is a `Program` defined as a directed graph of modules.
+Data Model JSON:
+[
+  {
+    "messages": [
+      {
+        "role": "assistant",
+        "reasoning_content": "Okay, let's see. The user is asking, \"What is 15 * 23 + 7?\" So I need to calculate that. First, I should check if there's a function available to handle mathematical expressions. Looking at the tools provided, there's the calculator function under the Evaluate a mathematical expression. The parameters require an expression as a string. The expression here is 15 multiplied by 23 and then added 7. So I can directly use the calculator function with the expression \"15 * 23 + 7\". I don't need to break it down further because the function should handle the order of operations. Let me make sure there's no other steps needed. No, since the function takes the entire expression, I can call it once with that string. Alright, that's all.\n",
+        "content": "",
+        "tool_calls": [
+          {
+            "id": "call_hjyv21sh",
+            "type": "function",
+            "function": {
+              "name": "calculator",
+              "arguments": {
+                "expression": "15 * 23 + 7"
+              }
+            }
+          }
+        ]
+      },
+      {
+        "role": "tool",
+        "content": {
+          "result": "352"
+        },
+        "tool_call_id": "call_hjyv21sh"
+      }
+    ],
+    "answer": "The result of 15 * 23 + 7 is 352."
+  }
+]
+
+[Synalinks]
+Call ID: 0b0455b1-8305-49b0-8ce2-a9573b509908
+Parent call ID: None
+Module: Functional
+Module Name: tool_agent
+Module Description: A `Functional` program is a `Program` defined as a directed graph of modules.
+Data Model JSON:
+[
+  {
+    "query": "Convert 100 Fahrenheit to Celsius"
+  }
+]
+
+[Synalinks]
+Call ID: 4d67a13b-e546-4a2c-82c2-25fd34bcf8f7
+Parent call ID: 0b0455b1-8305-49b0-8ce2-a9573b509908
+Module: FunctionCallingAgent
+Module Name: function_calling_agent
+Module Description: A trainable parallel function calling agent.
+Data Model JSON:
+[
+  {
+    "query": "Convert 100 Fahrenheit to Celsius"
+  }
+]
+
+[Synalinks]
+Call ID: c50ff8d6-59aa-4251-b765-6882631c2eed
+Parent call ID: 4d67a13b-e546-4a2c-82c2-25fd34bcf8f7
+Module: Generator
+Module Name: tool_calls_generator_function_calling_agent
+Module Description: Use a `LanguageModel` to generate a data model from an arbitrary input data model.
+Data Model JSON:
+[
+  {
+    "query": "Convert 100 Fahrenheit to Celsius",
+    "messages": []
+  }
+]
+
+[Synalinks]
+Call ID: 2bc22c3f-13c6-4de3-8f27-88c8feb85cd8
+Parent call ID: c50ff8d6-59aa-4251-b765-6882631c2eed
+Module: LanguageModel
+Module Name: language_model
+Module Description: A language model API wrapper.
+Data Model JSON:
+[
+  {
+    "messages": [
+      {
+        "role": "system",
+        "content": "<instructions>\nThink step by step: Use the thinking field to elaborate what you observe and\nwhat do you need to accomplish next.\nReflect on prior steps: Review your previous actions and their outcomes to\navoid unnecessary repetition.\nAvoid unnecessary actions: If you already have enough information to complete\nthe user task, return an empty tool calls array.\n</instructions>\n"
+      },
+      {
+        "role": "user",
+        "content": "<input>\n{'query': 'Convert 100 Fahrenheit to Celsius'}\n</input>\n<output>\n"
+      }
+    ]
+  }
+]
+
+[Synalinks]
+Call ID: 2bc22c3f-13c6-4de3-8f27-88c8feb85cd8
+Parent call ID: c50ff8d6-59aa-4251-b765-6882631c2eed
+Module: LanguageModel
+Module Name: language_model
+Module Description: A language model API wrapper.
+Data Model JSON:
+[
+  {
+    "role": "assistant",
+    "content": "",
+    "reasoning_content": "Okay, the user wants to convert 100 Fahrenheit to Celsius. Let me check the available tools. There's a convert_temperature function. It requires the value, from_unit, and to_unit. The from_unit here is 'fahrenheit' and to_unit is 'celsius'. The value is 100. So I need to call the function with these parameters. Let me make sure I have all the arguments right. Yep, that's all. No need for other functions since it's a straightforward conversion.\n",
+    "tool_calls": [
+      {
+        "id": "call_c6dkh6ou",
+        "type": "function",
+        "function": {
+          "name": "convert_temperature",
+          "arguments": {
+            "from_unit": "fahrenheit",
+            "to_unit": "celsius",
+            "value": 100
+          }
+        }
+      }
+    ]
+  }
+]
+
+[Synalinks]
+Call ID: c50ff8d6-59aa-4251-b765-6882631c2eed
+Parent call ID: 4d67a13b-e546-4a2c-82c2-25fd34bcf8f7
+Module: Generator
+Module Name: tool_calls_generator_function_calling_agent
+Module Description: Use a `LanguageModel` to generate a data model from an arbitrary input data model.
+Data Model JSON:
+[
+  {
+    "role": "assistant",
+    "content": "",
+    "reasoning_content": "Okay, the user wants to convert 100 Fahrenheit to Celsius. Let me check the available tools. There's a convert_temperature function. It requires the value, from_unit, and to_unit. The from_unit here is 'fahrenheit' and to_unit is 'celsius'. The value is 100. So I need to call the function with these parameters. Let me make sure I have all the arguments right. Yep, that's all. No need for other functions since it's a straightforward conversion.\n",
+    "tool_calls": [
+      {
+        "id": "call_c6dkh6ou",
+        "type": "function",
+        "function": {
+          "name": "convert_temperature",
+          "arguments": {
+            "from_unit": "fahrenheit",
+            "to_unit": "celsius",
+            "value": 100
+          }
+        }
+      }
+    ]
+  }
+]
+
+[Synalinks]
+Call ID: 655b6d47-82ea-4456-95e9-948db1210456
+Parent call ID: 2bc22c3f-13c6-4de3-8f27-88c8feb85cd8
+Module: Tool
+Module Name: convert_temperature
+Module Description: Convert temperature between Celsius and Fahrenheit.
+Keyword Arguments:
+{
+  "from_unit": "fahrenheit",
+  "to_unit": "celsius",
+  "value": 100
+}
+
+[Synalinks]
+Call ID: 655b6d47-82ea-4456-95e9-948db1210456
+Parent call ID: 2bc22c3f-13c6-4de3-8f27-88c8feb85cd8
+Module: Tool
+Module Name: convert_temperature
+Module Description: Convert temperature between Celsius and Fahrenheit.
+Data Model JSON:
+[
+  {
+    "result": "37.8C"
+  }
+]
+
+[Synalinks]
+Call ID: 3d7d4bb7-fc19-4488-86b1-230f3398f34d
+Parent call ID: 655b6d47-82ea-4456-95e9-948db1210456
+Module: Generator
+Module Name: tool_calls_generator_function_calling_agent
+Module Description: Use a `LanguageModel` to generate a data model from an arbitrary input data model.
+Data Model JSON:
+[
+  {
+    "query": "Convert 100 Fahrenheit to Celsius",
+    "messages": [
+      {
+        "role": "assistant",
+        "content": "",
+        "reasoning_content": "Okay, the user wants to convert 100 Fahrenheit to Celsius. Let me check the available tools. There's a convert_temperature function. It requires the value, from_unit, and to_unit. The from_unit here is 'fahrenheit' and to_unit is 'celsius'. The value is 100. So I need to call the function with these parameters. Let me make sure I have all the arguments right. Yep, that's all. No need for other functions since it's a straightforward conversion.\n",
+        "tool_calls": [
+          {
+            "id": "call_c6dkh6ou",
+            "type": "function",
+            "function": {
+              "name": "convert_temperature",
+              "arguments": {
+                "from_unit": "fahrenheit",
+                "to_unit": "celsius",
+                "value": 100
+              }
+            }
+          }
+        ]
+      },
+      {
+        "role": "tool",
+        "content": {
+          "result": "37.8C"
+        },
+        "tool_call_id": "call_c6dkh6ou"
+      }
+    ]
+  }
+]
+
+[Synalinks]
+Call ID: 61a41773-58cc-4388-8cb8-3f73e2991fb7
+Parent call ID: 3d7d4bb7-fc19-4488-86b1-230f3398f34d
+Module: LanguageModel
+Module Name: language_model
+Module Description: A language model API wrapper.
+Data Model JSON:
+[
+  {
+    "messages": [
+      {
+        "role": "system",
+        "content": "<instructions>\nThink step by step: Use the thinking field to elaborate what you observe and\nwhat do you need to accomplish next.\nReflect on prior steps: Review your previous actions and their outcomes to\navoid unnecessary repetition.\nAvoid unnecessary actions: If you already have enough information to complete\nthe user task, return an empty tool calls array.\n</instructions>\n"
+      },
+      {
+        "role": "user",
+        "content": "<input>\n{'query': 'Convert 100 Fahrenheit to Celsius'}\n</input>\n<output>\n"
+      },
+      {
+        "role": "assistant",
+        "reasoning_content": "Okay, the user wants to convert 100 Fahrenheit to Celsius. Let me check the available tools. There's a convert_temperature function. It requires the value, from_unit, and to_unit. The from_unit here is 'fahrenheit' and to_unit is 'celsius'. The value is 100. So I need to call the function with these parameters. Let me make sure I have all the arguments right. Yep, that's all. No need for other functions since it's a straightforward conversion.\n",
+        "content": "",
+        "tool_calls": [
+          {
+            "id": "call_c6dkh6ou",
+            "type": "function",
+            "function": {
+              "name": "convert_temperature",
+              "arguments": {
+                "from_unit": "fahrenheit",
+                "to_unit": "celsius",
+                "value": 100
+              }
+            }
+          }
+        ]
+      },
+      {
+        "role": "tool",
+        "content": {
+          "result": "37.8C"
+        },
+        "tool_call_id": "call_c6dkh6ou"
+      }
+    ]
+  }
+]
+
+[Synalinks]
+Call ID: 61a41773-58cc-4388-8cb8-3f73e2991fb7
+Parent call ID: 3d7d4bb7-fc19-4488-86b1-230f3398f34d
+Module: LanguageModel
+Module Name: language_model
+Module Description: A language model API wrapper.
+Data Model JSON:
+[
+  {
+    "role": "assistant",
+    "content": "The converted temperature is **37.8°C**.  \n\nHere's the breakdown:  \n- **Original**: 100°F  \n- **Converted**: 37.8°C (using the formula: °C = (°F - 32) × 5/9)",
+    "reasoning_content": "Okay, the user asked to convert 100 Fahrenheit to Celsius. I used the convert_temperature function with the correct parameters: from_unit as 'fahrenheit', to_unit as 'celsius', and value 100. The tool response came back as \"37.8C\". Now I need to present this result clearly. Let me check if the calculation makes sense. Using the formula (°F - 32) * 5/9, 100-32 is 68, multiplied by 5/9 gives approximately 37.8, which matches the tool's result. So the answer is correct. I'll format the response to show both the original and converted values, making it user-friendly.\n"
+  }
+]
+
+[Synalinks]
+Call ID: 3d7d4bb7-fc19-4488-86b1-230f3398f34d
+Parent call ID: 655b6d47-82ea-4456-95e9-948db1210456
+Module: Generator
+Module Name: tool_calls_generator_function_calling_agent
+Module Description: Use a `LanguageModel` to generate a data model from an arbitrary input data model.
+Data Model JSON:
+[
+  {
+    "role": "assistant",
+    "content": "The converted temperature is **37.8°C**.  \n\nHere's the breakdown:  \n- **Original**: 100°F  \n- **Converted**: 37.8°C (using the formula: °C = (°F - 32) × 5/9)",
+    "reasoning_content": "Okay, the user asked to convert 100 Fahrenheit to Celsius. I used the convert_temperature function with the correct parameters: from_unit as 'fahrenheit', to_unit as 'celsius', and value 100. The tool response came back as \"37.8C\". Now I need to present this result clearly. Let me check if the calculation makes sense. Using the formula (°F - 32) * 5/9, 100-32 is 68, multiplied by 5/9 gives approximately 37.8, which matches the tool's result. So the answer is correct. I'll format the response to show both the original and converted values, making it user-friendly.\n"
+  }
+]
+
+[Synalinks]
+Call ID: da1ee1f0-7d5d-484a-b60d-9380c2405083
+Parent call ID: 61a41773-58cc-4388-8cb8-3f73e2991fb7
+Module: Generator
+Module Name: final_generator_function_calling_agent
+Module Description: Use a `LanguageModel` to generate a data model from an arbitrary input data model.
+Data Model JSON:
+[
+  {
+    "query": "Convert 100 Fahrenheit to Celsius",
+    "messages": [
+      {
+        "role": "assistant",
+        "content": "",
+        "reasoning_content": "Okay, the user wants to convert 100 Fahrenheit to Celsius. Let me check the available tools. There's a convert_temperature function. It requires the value, from_unit, and to_unit. The from_unit here is 'fahrenheit' and to_unit is 'celsius'. The value is 100. So I need to call the function with these parameters. Let me make sure I have all the arguments right. Yep, that's all. No need for other functions since it's a straightforward conversion.\n",
+        "tool_calls": [
+          {
+            "id": "call_c6dkh6ou",
+            "type": "function",
+            "function": {
+              "name": "convert_temperature",
+              "arguments": {
+                "from_unit": "fahrenheit",
+                "to_unit": "celsius",
+                "value": 100
+              }
+            }
+          }
+        ]
+      },
+      {
+        "role": "tool",
+        "content": {
+          "result": "37.8C"
+        },
+        "tool_call_id": "call_c6dkh6ou"
+      }
+    ]
+  }
+]
+
+[Synalinks]
+Call ID: 14eac84b-8b95-4c7b-8924-b0217143c588
+Parent call ID: da1ee1f0-7d5d-484a-b60d-9380c2405083
+Module: LanguageModel
+Module Name: language_model
+Module Description: A language model API wrapper.
+Data Model JSON:
+[
+  {
+    "messages": [
+      {
+        "role": "system",
+        "content": "<instructions>\nThink step by step: Use the thinking field to elaborate what you observe and\nwhat do you need to accomplish next.\nReflect on prior steps: Review your previous actions and their outcomes to\navoid unnecessary repetition.\nAvoid unnecessary actions: If you already have enough information to complete\nthe user task, return an empty tool calls array.\n</instructions>\n"
+      },
+      {
+        "role": "user",
+        "content": "<input>\n{'query': 'Convert 100 Fahrenheit to Celsius'}\n</input>\n<output>\n"
+      },
+      {
+        "role": "assistant",
+        "reasoning_content": "Okay, the user wants to convert 100 Fahrenheit to Celsius. Let me check the available tools. There's a convert_temperature function. It requires the value, from_unit, and to_unit. The from_unit here is 'fahrenheit' and to_unit is 'celsius'. The value is 100. So I need to call the function with these parameters. Let me make sure I have all the arguments right. Yep, that's all. No need for other functions since it's a straightforward conversion.\n",
+        "content": "",
+        "tool_calls": [
+          {
+            "id": "call_c6dkh6ou",
+            "type": "function",
+            "function": {
+              "name": "convert_temperature",
+              "arguments": {
+                "from_unit": "fahrenheit",
+                "to_unit": "celsius",
+                "value": 100
+              }
+            }
+          }
+        ]
+      },
+      {
+        "role": "tool",
+        "content": {
+          "result": "37.8C"
+        },
+        "tool_call_id": "call_c6dkh6ou"
+      }
+    ]
+  }
+]
+
+[Synalinks]
+Call ID: 14eac84b-8b95-4c7b-8924-b0217143c588
+Parent call ID: da1ee1f0-7d5d-484a-b60d-9380c2405083
+Module: LanguageModel
+Module Name: language_model
+Module Description: A language model API wrapper.
+Data Model JSON:
+[
+  {
+    "answer": "100 Fahrenheit is equal to 37.8°C."
+  }
+]
+
+[Synalinks]
+Call ID: da1ee1f0-7d5d-484a-b60d-9380c2405083
+Parent call ID: 61a41773-58cc-4388-8cb8-3f73e2991fb7
+Module: Generator
+Module Name: final_generator_function_calling_agent
+Module Description: Use a `LanguageModel` to generate a data model from an arbitrary input data model.
+Data Model JSON:
+[
+  {
+    "answer": "100 Fahrenheit is equal to 37.8°C."
+  }
+]
+
+[Synalinks]
+Call ID: 4d67a13b-e546-4a2c-82c2-25fd34bcf8f7
+Parent call ID: 0b0455b1-8305-49b0-8ce2-a9573b509908
+Module: FunctionCallingAgent
+Module Name: function_calling_agent
+Module Description: A trainable parallel function calling agent.
+Data Model JSON:
+[
+  {
+    "messages": [
+      {
+        "role": "assistant",
+        "reasoning_content": "Okay, the user wants to convert 100 Fahrenheit to Celsius. Let me check the available tools. There's a convert_temperature function. It requires the value, from_unit, and to_unit. The from_unit here is 'fahrenheit' and to_unit is 'celsius'. The value is 100. So I need to call the function with these parameters. Let me make sure I have all the arguments right. Yep, that's all. No need for other functions since it's a straightforward conversion.\n",
+        "content": "",
+        "tool_calls": [
+          {
+            "id": "call_c6dkh6ou",
+            "type": "function",
+            "function": {
+              "name": "convert_temperature",
+              "arguments": {
+                "from_unit": "fahrenheit",
+                "to_unit": "celsius",
+                "value": 100
+              }
+            }
+          }
+        ]
+      },
+      {
+        "role": "tool",
+        "content": {
+          "result": "37.8C"
+        },
+        "tool_call_id": "call_c6dkh6ou"
+      }
+    ],
+    "answer": "100 Fahrenheit is equal to 37.8°C."
+  }
+]
+
+[Synalinks]
+Call ID: 0b0455b1-8305-49b0-8ce2-a9573b509908
+Parent call ID: None
+Module: Functional
+Module Name: tool_agent
+Module Description: A `Functional` program is a `Program` defined as a directed graph of modules.
+Data Model JSON:
+[
+  {
+    "messages": [
+      {
+        "role": "assistant",
+        "reasoning_content": "Okay, the user wants to convert 100 Fahrenheit to Celsius. Let me check the available tools. There's a convert_temperature function. It requires the value, from_unit, and to_unit. The from_unit here is 'fahrenheit' and to_unit is 'celsius'. The value is 100. So I need to call the function with these parameters. Let me make sure I have all the arguments right. Yep, that's all. No need for other functions since it's a straightforward conversion.\n",
+        "content": "",
+        "tool_calls": [
+          {
+            "id": "call_c6dkh6ou",
+            "type": "function",
+            "function": {
+              "name": "convert_temperature",
+              "arguments": {
+                "from_unit": "fahrenheit",
+                "to_unit": "celsius",
+                "value": 100
+              }
+            }
+          }
+        ]
+      },
+      {
+        "role": "tool",
+        "content": {
+          "result": "37.8C"
+        },
+        "tool_call_id": "call_c6dkh6ou"
+      }
+    ],
+    "answer": "100 Fahrenheit is equal to 37.8°C."
+  }
+]
+
+[Synalinks]
+Call ID: 21c9bcab-7d79-470b-b8be-49377e792a11
+Parent call ID: None
+Module: Functional
+Module Name: tool_agent
+Module Description: A `Functional` program is a `Program` defined as a directed graph of modules.
+Data Model JSON:
+[
+  {
+    "query": "What time is it right now?"
+  }
+]
+
+[Synalinks]
+Call ID: 99a619e4-6a40-4bb2-baeb-1abe9d7a2f9d
+Parent call ID: 21c9bcab-7d79-470b-b8be-49377e792a11
+Module: FunctionCallingAgent
+Module Name: function_calling_agent
+Module Description: A trainable parallel function calling agent.
+Data Model JSON:
+[
+  {
+    "query": "What time is it right now?"
+  }
+]
+
+[Synalinks]
+Call ID: 37e82a39-38b1-4192-96e6-1e6a23548e99
+Parent call ID: 99a619e4-6a40-4bb2-baeb-1abe9d7a2f9d
+Module: Generator
+Module Name: tool_calls_generator_function_calling_agent
+Module Description: Use a `LanguageModel` to generate a data model from an arbitrary input data model.
+Data Model JSON:
+[
+  {
+    "query": "What time is it right now?",
+    "messages": []
+  }
+]
+
+[Synalinks]
+Call ID: d9a9e25b-bfa2-4e35-9af8-b2a596dff4d8
+Parent call ID: 37e82a39-38b1-4192-96e6-1e6a23548e99
+Module: LanguageModel
+Module Name: language_model
+Module Description: A language model API wrapper.
+Data Model JSON:
+[
+  {
+    "messages": [
+      {
+        "role": "system",
+        "content": "<instructions>\nThink step by step: Use the thinking field to elaborate what you observe and\nwhat do you need to accomplish next.\nReflect on prior steps: Review your previous actions and their outcomes to\navoid unnecessary repetition.\nAvoid unnecessary actions: If you already have enough information to complete\nthe user task, return an empty tool calls array.\n</instructions>\n"
+      },
+      {
+        "role": "user",
+        "content": "<input>\n{'query': 'What time is it right now?'}\n</input>\n<output>\n"
+      }
+    ]
+  }
+]
+
+[Synalinks]
+Call ID: d9a9e25b-bfa2-4e35-9af8-b2a596dff4d8
+Parent call ID: 37e82a39-38b1-4192-96e6-1e6a23548e99
+Module: LanguageModel
+Module Name: language_model
+Module Description: A language model API wrapper.
+Data Model JSON:
+[
+  {
+    "role": "assistant",
+    "content": "",
+    "reasoning_content": "Okay, the user is asking, \"What time is it right now?\" So I need to figure out the current date and time. Let me check the tools available. There's a function called get_current_time that doesn't require any parameters. Since the user wants the current time, I should call that function. I don't need any arguments for this, so I'll just trigger the tool call.\n",
+    "tool_calls": [
+      {
+        "id": "call_iybgqyiu",
+        "type": "function",
+        "function": {
+          "name": "get_current_time",
+          "arguments": {}
+        }
+      }
+    ]
+  }
+]
+
+[Synalinks]
+Call ID: 37e82a39-38b1-4192-96e6-1e6a23548e99
+Parent call ID: 99a619e4-6a40-4bb2-baeb-1abe9d7a2f9d
+Module: Generator
+Module Name: tool_calls_generator_function_calling_agent
+Module Description: Use a `LanguageModel` to generate a data model from an arbitrary input data model.
+Data Model JSON:
+[
+  {
+    "role": "assistant",
+    "content": "",
+    "reasoning_content": "Okay, the user is asking, \"What time is it right now?\" So I need to figure out the current date and time. Let me check the tools available. There's a function called get_current_time that doesn't require any parameters. Since the user wants the current time, I should call that function. I don't need any arguments for this, so I'll just trigger the tool call.\n",
+    "tool_calls": [
+      {
+        "id": "call_iybgqyiu",
+        "type": "function",
+        "function": {
+          "name": "get_current_time",
+          "arguments": {}
+        }
+      }
+    ]
+  }
+]
+
+[Synalinks]
+Call ID: 9b8193dc-a785-4ca0-9c31-636e0cf3d4df
+Parent call ID: d9a9e25b-bfa2-4e35-9af8-b2a596dff4d8
+Module: Tool
+Module Name: get_current_time
+Module Description: Get the current date and time.
+Data Model JSON:
+[
+  {
+    "time": "2026-06-06 23:12:24"
+  }
+]
+
+[Synalinks]
+Call ID: fe388b4f-971c-428f-a185-e26bad57ffd4
+Parent call ID: 9b8193dc-a785-4ca0-9c31-636e0cf3d4df
+Module: Generator
+Module Name: tool_calls_generator_function_calling_agent
+Module Description: Use a `LanguageModel` to generate a data model from an arbitrary input data model.
+Data Model JSON:
+[
+  {
+    "query": "What time is it right now?",
+    "messages": [
+      {
+        "role": "assistant",
+        "content": "",
+        "reasoning_content": "Okay, the user is asking, \"What time is it right now?\" So I need to figure out the current date and time. Let me check the tools available. There's a function called get_current_time that doesn't require any parameters. Since the user wants the current time, I should call that function. I don't need any arguments for this, so I'll just trigger the tool call.\n",
+        "tool_calls": [
+          {
+            "id": "call_iybgqyiu",
+            "type": "function",
+            "function": {
+              "name": "get_current_time",
+              "arguments": {}
+            }
+          }
+        ]
+      },
+      {
+        "role": "tool",
+        "content": {
+          "time": "2026-06-06 23:12:24"
+        },
+        "tool_call_id": "call_iybgqyiu"
+      }
+    ]
+  }
+]
+
+[Synalinks]
+Call ID: 8862134c-4b13-4c82-9182-d4d5dd484741
+Parent call ID: fe388b4f-971c-428f-a185-e26bad57ffd4
+Module: LanguageModel
+Module Name: language_model
+Module Description: A language model API wrapper.
+Data Model JSON:
+[
+  {
+    "messages": [
+      {
+        "role": "system",
+        "content": "<instructions>\nThink step by step: Use the thinking field to elaborate what you observe and\nwhat do you need to accomplish next.\nReflect on prior steps: Review your previous actions and their outcomes to\navoid unnecessary repetition.\nAvoid unnecessary actions: If you already have enough information to complete\nthe user task, return an empty tool calls array.\n</instructions>\n"
+      },
+      {
+        "role": "user",
+        "content": "<input>\n{'query': 'What time is it right now?'}\n</input>\n<output>\n"
+      },
+      {
+        "role": "assistant",
+        "reasoning_content": "Okay, the user is asking, \"What time is it right now?\" So I need to figure out the current date and time. Let me check the tools available. There's a function called get_current_time that doesn't require any parameters. Since the user wants the current time, I should call that function. I don't need any arguments for this, so I'll just trigger the tool call.\n",
+        "content": "",
+        "tool_calls": [
+          {
+            "id": "call_iybgqyiu",
+            "type": "function",
+            "function": {
+              "name": "get_current_time",
+              "arguments": {}
+            }
+          }
+        ]
+      },
+      {
+        "role": "tool",
+        "content": {
+          "time": "2026-06-06 23:12:24"
+        },
+        "tool_call_id": "call_iybgqyiu"
+      }
+    ]
+  }
+]
+
+[Synalinks]
+Call ID: 8862134c-4b13-4c82-9182-d4d5dd484741
+Parent call ID: fe388b4f-971c-428f-a185-e26bad57ffd4
+Module: LanguageModel
+Module Name: language_model
+Module Description: A language model API wrapper.
+Data Model JSON:
+[
+  {
+    "role": "assistant",
+    "content": "The current date and time is **June 6, 2026, at 11:12:24 PM**. Let me know if you need anything else!",
+    "reasoning_content": "Okay, the user asked, \"What time is it right now?\" I called the get_current_time function, and the response came back with the time as \"2026-06-06 23:12:24\". Now I need to present this information in a clear and friendly way. Let me check the format. The date is in YYYY-MM-DD and the time is in HH:MM:SS. The user probably just wants to know the current time, so maybe I should highlight the time part. But including the date might be helpful too. Let me make sure to mention both. I'll say something like, \"The current date and time is June 6, 2026, at 11:12:24 PM.\" Wait, the time is 23:12:24, which is 11:12:24 PM in 12-hour format. I should convert that to AM/PM. 23 hours is 11 PM, so 11:12:24 PM. Alright, putting it all together. Let me double-check the date and time to ensure there are no typos. Yep, looks good. That should answer the user's question accurately.\n"
+  }
+]
+
+[Synalinks]
+Call ID: fe388b4f-971c-428f-a185-e26bad57ffd4
+Parent call ID: 9b8193dc-a785-4ca0-9c31-636e0cf3d4df
+Module: Generator
+Module Name: tool_calls_generator_function_calling_agent
+Module Description: Use a `LanguageModel` to generate a data model from an arbitrary input data model.
+Data Model JSON:
+[
+  {
+    "role": "assistant",
+    "content": "The current date and time is **June 6, 2026, at 11:12:24 PM**. Let me know if you need anything else!",
+    "reasoning_content": "Okay, the user asked, \"What time is it right now?\" I called the get_current_time function, and the response came back with the time as \"2026-06-06 23:12:24\". Now I need to present this information in a clear and friendly way. Let me check the format. The date is in YYYY-MM-DD and the time is in HH:MM:SS. The user probably just wants to know the current time, so maybe I should highlight the time part. But including the date might be helpful too. Let me make sure to mention both. I'll say something like, \"The current date and time is June 6, 2026, at 11:12:24 PM.\" Wait, the time is 23:12:24, which is 11:12:24 PM in 12-hour format. I should convert that to AM/PM. 23 hours is 11 PM, so 11:12:24 PM. Alright, putting it all together. Let me double-check the date and time to ensure there are no typos. Yep, looks good. That should answer the user's question accurately.\n"
+  }
+]
+
+[Synalinks]
+Call ID: 42d1580c-9dad-4904-9677-123be7ca3567
+Parent call ID: 8862134c-4b13-4c82-9182-d4d5dd484741
+Module: Generator
+Module Name: final_generator_function_calling_agent
+Module Description: Use a `LanguageModel` to generate a data model from an arbitrary input data model.
+Data Model JSON:
+[
+  {
+    "query": "What time is it right now?",
+    "messages": [
+      {
+        "role": "assistant",
+        "content": "",
+        "reasoning_content": "Okay, the user is asking, \"What time is it right now?\" So I need to figure out the current date and time. Let me check the tools available. There's a function called get_current_time that doesn't require any parameters. Since the user wants the current time, I should call that function. I don't need any arguments for this, so I'll just trigger the tool call.\n",
+        "tool_calls": [
+          {
+            "id": "call_iybgqyiu",
+            "type": "function",
+            "function": {
+              "name": "get_current_time",
+              "arguments": {}
+            }
+          }
+        ]
+      },
+      {
+        "role": "tool",
+        "content": {
+          "time": "2026-06-06 23:12:24"
+        },
+        "tool_call_id": "call_iybgqyiu"
+      }
+    ]
+  }
+]
+
+[Synalinks]
+Call ID: 4a1a73be-6ba5-40a1-838a-538dce9650d8
+Parent call ID: 42d1580c-9dad-4904-9677-123be7ca3567
+Module: LanguageModel
+Module Name: language_model
+Module Description: A language model API wrapper.
+Data Model JSON:
+[
+  {
+    "messages": [
+      {
+        "role": "system",
+        "content": "<instructions>\nThink step by step: Use the thinking field to elaborate what you observe and\nwhat do you need to accomplish next.\nReflect on prior steps: Review your previous actions and their outcomes to\navoid unnecessary repetition.\nAvoid unnecessary actions: If you already have enough information to complete\nthe user task, return an empty tool calls array.\n</instructions>\n"
+      },
+      {
+        "role": "user",
+        "content": "<input>\n{'query': 'What time is it right now?'}\n</input>\n<output>\n"
+      },
+      {
+        "role": "assistant",
+        "reasoning_content": "Okay, the user is asking, \"What time is it right now?\" So I need to figure out the current date and time. Let me check the tools available. There's a function called get_current_time that doesn't require any parameters. Since the user wants the current time, I should call that function. I don't need any arguments for this, so I'll just trigger the tool call.\n",
+        "content": "",
+        "tool_calls": [
+          {
+            "id": "call_iybgqyiu",
+            "type": "function",
+            "function": {
+              "name": "get_current_time",
+              "arguments": {}
+            }
+          }
+        ]
+      },
+      {
+        "role": "tool",
+        "content": {
+          "time": "2026-06-06 23:12:24"
+        },
+        "tool_call_id": "call_iybgqyiu"
+      }
+    ]
+  }
+]
+
+[Synalinks]
+Call ID: 4a1a73be-6ba5-40a1-838a-538dce9650d8
+Parent call ID: 42d1580c-9dad-4904-9677-123be7ca3567
+Module: LanguageModel
+Module Name: language_model
+Module Description: A language model API wrapper.
+Data Model JSON:
+[
+  {
+    "answer": "The current time is 23:12:24 on June 6, 2026."
+  }
+]
+
+[Synalinks]
+Call ID: 42d1580c-9dad-4904-9677-123be7ca3567
+Parent call ID: 8862134c-4b13-4c82-9182-d4d5dd484741
+Module: Generator
+Module Name: final_generator_function_calling_agent
+Module Description: Use a `LanguageModel` to generate a data model from an arbitrary input data model.
+Data Model JSON:
+[
+  {
+    "answer": "The current time is 23:12:24 on June 6, 2026."
+  }
+]
+
+[Synalinks]
+Call ID: 99a619e4-6a40-4bb2-baeb-1abe9d7a2f9d
+Parent call ID: 21c9bcab-7d79-470b-b8be-49377e792a11
+Module: FunctionCallingAgent
+Module Name: function_calling_agent
+Module Description: A trainable parallel function calling agent.
+Data Model JSON:
+[
+  {
+    "messages": [
+      {
+        "role": "assistant",
+        "reasoning_content": "Okay, the user is asking, \"What time is it right now?\" So I need to figure out the current date and time. Let me check the tools available. There's a function called get_current_time that doesn't require any parameters. Since the user wants the current time, I should call that function. I don't need any arguments for this, so I'll just trigger the tool call.\n",
+        "content": "",
+        "tool_calls": [
+          {
+            "id": "call_iybgqyiu",
+            "type": "function",
+            "function": {
+              "name": "get_current_time",
+              "arguments": {}
+            }
+          }
+        ]
+      },
+      {
+        "role": "tool",
+        "content": {
+          "time": "2026-06-06 23:12:24"
+        },
+        "tool_call_id": "call_iybgqyiu"
+      }
+    ],
+    "answer": "The current time is 23:12:24 on June 6, 2026."
+  }
+]
+
+[Synalinks]
+Call ID: 21c9bcab-7d79-470b-b8be-49377e792a11
+Parent call ID: None
+Module: Functional
+Module Name: tool_agent
+Module Description: A `Functional` program is a `Program` defined as a directed graph of modules.
+Data Model JSON:
+[
+  {
+    "messages": [
+      {
+        "role": "assistant",
+        "reasoning_content": "Okay, the user is asking, \"What time is it right now?\" So I need to figure out the current date and time. Let me check the tools available. There's a function called get_current_time that doesn't require any parameters. Since the user wants the current time, I should call that function. I don't need any arguments for this, so I'll just trigger the tool call.\n",
+        "content": "",
+        "tool_calls": [
+          {
+            "id": "call_iybgqyiu",
+            "type": "function",
+            "function": {
+              "name": "get_current_time",
+              "arguments": {}
+            }
+          }
+        ]
+      },
+      {
+        "role": "tool",
+        "content": {
+          "time": "2026-06-06 23:12:24"
+        },
+        "tool_call_id": "call_iybgqyiu"
+      }
+    ],
+    "answer": "The current time is 23:12:24 on June 6, 2026."
+  }
+]
+
+[Synalinks]
+Call ID: 72430af9-16f0-4610-8afc-2f9ff4a688fc
+Parent call ID: None
+Module: Functional
+Module Name: tool_agent
+Module Description: A `Functional` program is a `Program` defined as a directed graph of modules.
+Data Model JSON:
+[
+  {
+    "query": "What is (25 * 4) + 10? Also, what's 32 Fahrenheit in Celsius?"
+  }
+]
+
+[Synalinks]
+Call ID: 056c5c7a-83e7-428e-8caf-4df9d18b8a2c
+Parent call ID: 72430af9-16f0-4610-8afc-2f9ff4a688fc
+Module: FunctionCallingAgent
+Module Name: function_calling_agent
+Module Description: A trainable parallel function calling agent.
+Data Model JSON:
+[
+  {
+    "query": "What is (25 * 4) + 10? Also, what's 32 Fahrenheit in Celsius?"
+  }
+]
+
+[Synalinks]
+Call ID: 133011ed-7e98-4754-9283-007c1f1517b0
+Parent call ID: 056c5c7a-83e7-428e-8caf-4df9d18b8a2c
+Module: Generator
+Module Name: tool_calls_generator_function_calling_agent
+Module Description: Use a `LanguageModel` to generate a data model from an arbitrary input data model.
+Data Model JSON:
+[
+  {
+    "query": "What is (25 * 4) + 10? Also, what's 32 Fahrenheit in Celsius?",
+    "messages": []
+  }
+]
+
+[Synalinks]
+Call ID: 619c895d-d7f5-4cc2-b14e-ae9c3598dd20
+Parent call ID: 133011ed-7e98-4754-9283-007c1f1517b0
+Module: LanguageModel
+Module Name: language_model
+Module Description: A language model API wrapper.
+Data Model JSON:
+[
+  {
+    "messages": [
+      {
+        "role": "system",
+        "content": "<instructions>\nThink step by step: Use the thinking field to elaborate what you observe and\nwhat do you need to accomplish next.\nReflect on prior steps: Review your previous actions and their outcomes to\navoid unnecessary repetition.\nAvoid unnecessary actions: If you already have enough information to complete\nthe user task, return an empty tool calls array.\n</instructions>\n"
+      },
+      {
+        "role": "user",
+        "content": "<input>\n{'query': \"What is (25 * 4) + 10? Also, what's 32 Fahrenheit in Celsius?\"}\n</input>\n<output>\n"
+      }
+    ]
+  }
+]
+
+[Synalinks]
+Call ID: 619c895d-d7f5-4cc2-b14e-ae9c3598dd20
+Parent call ID: 133011ed-7e98-4754-9283-007c1f1517b0
+Module: LanguageModel
+Module Name: language_model
+Module Description: A language model API wrapper.
+Data Model JSON:
+[
+  {
+    "role": "assistant",
+    "content": "",
+    "reasoning_content": "Okay, let's tackle the user's query step by step. First, they want to know the result of (25 * 4) + 10. That seems straightforward. I can use the calculator function for that. Let me compute 25 multiplied by 4, which is 100, then add 10 to get 110. So the first part should be 110.\n\nNext, they're asking to convert 32 Fahrenheit to Celsius. The convert_temperature function can handle that. The formula for converting Fahrenheit to Celsius is (°F - 32) * 5/9. Plugging in 32, that would be (32 - 32) * 5/9 = 0. So the result should be 0°C. \n\nI need to make sure I'm using the correct parameters for each function. For the calculator, the expression is \"(25 * 4) + 10\". For the temperature conversion, the value is 32, from_unit is 'fahrenheit', and to_unit is 'celsius'. Let me double-check the function parameters to avoid any mistakes. Everything looks good. Time to call the functions and provide the answers.\n",
+    "tool_calls": [
+      {
+        "id": "call_kutp95ia",
+        "type": "function",
+        "function": {
+          "name": "calculator",
+          "arguments": {
+            "expression": "(25 * 4) + 10"
+          }
+        }
+      },
+      {
+        "id": "call_fpl86msn",
+        "type": "function",
+        "function": {
+          "name": "convert_temperature",
+          "arguments": {
+            "from_unit": "fahrenheit",
+            "to_unit": "celsius",
+            "value": 32
+          }
+        }
+      }
+    ]
+  }
+]
+
+[Synalinks]
+Call ID: 133011ed-7e98-4754-9283-007c1f1517b0
+Parent call ID: 056c5c7a-83e7-428e-8caf-4df9d18b8a2c
+Module: Generator
+Module Name: tool_calls_generator_function_calling_agent
+Module Description: Use a `LanguageModel` to generate a data model from an arbitrary input data model.
+Data Model JSON:
+[
+  {
+    "role": "assistant",
+    "content": "",
+    "reasoning_content": "Okay, let's tackle the user's query step by step. First, they want to know the result of (25 * 4) + 10. That seems straightforward. I can use the calculator function for that. Let me compute 25 multiplied by 4, which is 100, then add 10 to get 110. So the first part should be 110.\n\nNext, they're asking to convert 32 Fahrenheit to Celsius. The convert_temperature function can handle that. The formula for converting Fahrenheit to Celsius is (°F - 32) * 5/9. Plugging in 32, that would be (32 - 32) * 5/9 = 0. So the result should be 0°C. \n\nI need to make sure I'm using the correct parameters for each function. For the calculator, the expression is \"(25 * 4) + 10\". For the temperature conversion, the value is 32, from_unit is 'fahrenheit', and to_unit is 'celsius'. Let me double-check the function parameters to avoid any mistakes. Everything looks good. Time to call the functions and provide the answers.\n",
+    "tool_calls": [
+      {
+        "id": "call_kutp95ia",
+        "type": "function",
+        "function": {
+          "name": "calculator",
+          "arguments": {
+            "expression": "(25 * 4) + 10"
+          }
+        }
+      },
+      {
+        "id": "call_fpl86msn",
+        "type": "function",
+        "function": {
+          "name": "convert_temperature",
+          "arguments": {
+            "from_unit": "fahrenheit",
+            "to_unit": "celsius",
+            "value": 32
+          }
+        }
+      }
+    ]
+  }
+]
+
+[Synalinks]
+Call ID: 998ce81a-94b8-48d5-81fc-cb1e466ca10e
+Parent call ID: 619c895d-d7f5-4cc2-b14e-ae9c3598dd20
+Module: Tool
+Module Name: calculator
+Module Description: Evaluate a mathematical expression.
+Keyword Arguments:
+{
+  "expression": "(25 * 4) + 10"
+}
+
+[Synalinks]
+Call ID: 998ce81a-94b8-48d5-81fc-cb1e466ca10e
+Parent call ID: 619c895d-d7f5-4cc2-b14e-ae9c3598dd20
+Module: Tool
+Module Name: calculator
+Module Description: Evaluate a mathematical expression.
+Data Model JSON:
+[
+  {
+    "result": "110"
+  }
+]
+
+[Synalinks]
+Call ID: 9e2d0281-ffa9-407d-920b-73376c82830a
+Parent call ID: 998ce81a-94b8-48d5-81fc-cb1e466ca10e
+Module: Tool
+Module Name: convert_temperature
+Module Description: Convert temperature between Celsius and Fahrenheit.
+Keyword Arguments:
+{
+  "from_unit": "fahrenheit",
+  "to_unit": "celsius",
+  "value": 32
+}
+
+[Synalinks]
+Call ID: 9e2d0281-ffa9-407d-920b-73376c82830a
+Parent call ID: 998ce81a-94b8-48d5-81fc-cb1e466ca10e
+Module: Tool
+Module Name: convert_temperature
+Module Description: Convert temperature between Celsius and Fahrenheit.
+Data Model JSON:
+[
+  {
+    "result": "0.0C"
+  }
+]
+
+[Synalinks]
+Call ID: 1a8eab9c-d22e-42c3-bcca-e2fda2672f70
+Parent call ID: 9e2d0281-ffa9-407d-920b-73376c82830a
+Module: Generator
+Module Name: tool_calls_generator_function_calling_agent
+Module Description: Use a `LanguageModel` to generate a data model from an arbitrary input data model.
+Data Model JSON:
+[
+  {
+    "query": "What is (25 * 4) + 10? Also, what's 32 Fahrenheit in Celsius?",
+    "messages": [
+      {
+        "role": "assistant",
+        "content": "",
+        "reasoning_content": "Okay, let's tackle the user's query step by step. First, they want to know the result of (25 * 4) + 10. That seems straightforward. I can use the calculator function for that. Let me compute 25 multiplied by 4, which is 100, then add 10 to get 110. So the first part should be 110.\n\nNext, they're asking to convert 32 Fahrenheit to Celsius. The convert_temperature function can handle that. The formula for converting Fahrenheit to Celsius is (°F - 32) * 5/9. Plugging in 32, that would be (32 - 32) * 5/9 = 0. So the result should be 0°C. \n\nI need to make sure I'm using the correct parameters for each function. For the calculator, the expression is \"(25 * 4) + 10\". For the temperature conversion, the value is 32, from_unit is 'fahrenheit', and to_unit is 'celsius'. Let me double-check the function parameters to avoid any mistakes. Everything looks good. Time to call the functions and provide the answers.\n",
+        "tool_calls": [
+          {
+            "id": "call_kutp95ia",
+            "type": "function",
+            "function": {
+              "name": "calculator",
+              "arguments": {
+                "expression": "(25 * 4) + 10"
+              }
+            }
+          },
+          {
+            "id": "call_fpl86msn",
+            "type": "function",
+            "function": {
+              "name": "convert_temperature",
+              "arguments": {
+                "from_unit": "fahrenheit",
+                "to_unit": "celsius",
+                "value": 32
+              }
+            }
+          }
+        ]
+      },
+      {
+        "role": "tool",
+        "content": {
+          "result": "110"
+        },
+        "tool_call_id": "call_kutp95ia"
+      },
+      {
+        "role": "tool",
+        "content": {
+          "result": "0.0C"
+        },
+        "tool_call_id": "call_fpl86msn"
+      }
+    ]
+  }
+]
+
+[Synalinks]
+Call ID: afc612df-0e2f-4155-bc19-6f7f3c3ee50d
+Parent call ID: 1a8eab9c-d22e-42c3-bcca-e2fda2672f70
+Module: LanguageModel
+Module Name: language_model
+Module Description: A language model API wrapper.
+Data Model JSON:
+[
+  {
+    "messages": [
+      {
+        "role": "system",
+        "content": "<instructions>\nThink step by step: Use the thinking field to elaborate what you observe and\nwhat do you need to accomplish next.\nReflect on prior steps: Review your previous actions and their outcomes to\navoid unnecessary repetition.\nAvoid unnecessary actions: If you already have enough information to complete\nthe user task, return an empty tool calls array.\n</instructions>\n"
+      },
+      {
+        "role": "user",
+        "content": "<input>\n{'query': \"What is (25 * 4) + 10? Also, what's 32 Fahrenheit in Celsius?\"}\n</input>\n<output>\n"
+      },
+      {
+        "role": "assistant",
+        "reasoning_content": "Okay, let's tackle the user's query step by step. First, they want to know the result of (25 * 4) + 10. That seems straightforward. I can use the calculator function for that. Let me compute 25 multiplied by 4, which is 100, then add 10 to get 110. So the first part should be 110.\n\nNext, they're asking to convert 32 Fahrenheit to Celsius. The convert_temperature function can handle that. The formula for converting Fahrenheit to Celsius is (°F - 32) * 5/9. Plugging in 32, that would be (32 - 32) * 5/9 = 0. So the result should be 0°C. \n\nI need to make sure I'm using the correct parameters for each function. For the calculator, the expression is \"(25 * 4) + 10\". For the temperature conversion, the value is 32, from_unit is 'fahrenheit', and to_unit is 'celsius'. Let me double-check the function parameters to avoid any mistakes. Everything looks good. Time to call the functions and provide the answers.\n",
+        "content": "",
+        "tool_calls": [
+          {
+            "id": "call_kutp95ia",
+            "type": "function",
+            "function": {
+              "name": "calculator",
+              "arguments": {
+                "expression": "(25 * 4) + 10"
+              }
+            }
+          },
+          {
+            "id": "call_fpl86msn",
+            "type": "function",
+            "function": {
+              "name": "convert_temperature",
+              "arguments": {
+                "from_unit": "fahrenheit",
+                "to_unit": "celsius",
+                "value": 32
+              }
+            }
+          }
+        ]
+      },
+      {
+        "role": "tool",
+        "content": {
+          "result": "110"
+        },
+        "tool_call_id": "call_kutp95ia"
+      },
+      {
+        "role": "tool",
+        "content": {
+          "result": "0.0C"
+        },
+        "tool_call_id": "call_fpl86msn"
+      }
+    ]
+  }
+]
+
+[Synalinks]
+Call ID: afc612df-0e2f-4155-bc19-6f7f3c3ee50d
+Parent call ID: 1a8eab9c-d22e-42c3-bcca-e2fda2672f70
+Module: LanguageModel
+Module Name: language_model
+Module Description: A language model API wrapper.
+Data Model JSON:
+[
+  {
+    "role": "assistant",
+    "content": "The result of (25 × 4) + 10 is **110**.  \n32°F is equivalent to **0.0°C**.",
+    "reasoning_content": "Okay, let me process the user's query again. They asked two things: first, the result of (25 * 4) + 10, and second, converting 32 Fahrenheit to Celsius. \n\nI called the calculator function with the expression \"(25 * 4) + 10\" and got the result 110. That seems correct because 25 times 4 is 100, plus 10 makes 110.\n\nThen, for the temperature conversion, I used the convert_temperature function with from_unit 'fahrenheit', to_unit 'celsius', and value 32. The response was \"0.0C\". That's right because the formula for converting Fahrenheit to Celsius is (32 - 32) * 5/9 = 0. So 32°F is indeed 0°C.\n\nThe user might be checking their understanding of basic math and temperature conversion. They might be a student or someone verifying calculations. The answer is straightforward, so I should present both results clearly. No need for extra steps since the functions provided the correct results. Just format the final answer neatly.\n"
+  }
+]
+
+[Synalinks]
+Call ID: 1a8eab9c-d22e-42c3-bcca-e2fda2672f70
+Parent call ID: 9e2d0281-ffa9-407d-920b-73376c82830a
+Module: Generator
+Module Name: tool_calls_generator_function_calling_agent
+Module Description: Use a `LanguageModel` to generate a data model from an arbitrary input data model.
+Data Model JSON:
+[
+  {
+    "role": "assistant",
+    "content": "The result of (25 × 4) + 10 is **110**.  \n32°F is equivalent to **0.0°C**.",
+    "reasoning_content": "Okay, let me process the user's query again. They asked two things: first, the result of (25 * 4) + 10, and second, converting 32 Fahrenheit to Celsius. \n\nI called the calculator function with the expression \"(25 * 4) + 10\" and got the result 110. That seems correct because 25 times 4 is 100, plus 10 makes 110.\n\nThen, for the temperature conversion, I used the convert_temperature function with from_unit 'fahrenheit', to_unit 'celsius', and value 32. The response was \"0.0C\". That's right because the formula for converting Fahrenheit to Celsius is (32 - 32) * 5/9 = 0. So 32°F is indeed 0°C.\n\nThe user might be checking their understanding of basic math and temperature conversion. They might be a student or someone verifying calculations. The answer is straightforward, so I should present both results clearly. No need for extra steps since the functions provided the correct results. Just format the final answer neatly.\n"
+  }
+]
+
+[Synalinks]
+Call ID: bfc64a78-5933-4cb8-b170-701465a534ce
+Parent call ID: afc612df-0e2f-4155-bc19-6f7f3c3ee50d
+Module: Generator
+Module Name: final_generator_function_calling_agent
+Module Description: Use a `LanguageModel` to generate a data model from an arbitrary input data model.
+Data Model JSON:
+[
+  {
+    "query": "What is (25 * 4) + 10? Also, what's 32 Fahrenheit in Celsius?",
+    "messages": [
+      {
+        "role": "assistant",
+        "content": "",
+        "reasoning_content": "Okay, let's tackle the user's query step by step. First, they want to know the result of (25 * 4) + 10. That seems straightforward. I can use the calculator function for that. Let me compute 25 multiplied by 4, which is 100, then add 10 to get 110. So the first part should be 110.\n\nNext, they're asking to convert 32 Fahrenheit to Celsius. The convert_temperature function can handle that. The formula for converting Fahrenheit to Celsius is (°F - 32) * 5/9. Plugging in 32, that would be (32 - 32) * 5/9 = 0. So the result should be 0°C. \n\nI need to make sure I'm using the correct parameters for each function. For the calculator, the expression is \"(25 * 4) + 10\". For the temperature conversion, the value is 32, from_unit is 'fahrenheit', and to_unit is 'celsius'. Let me double-check the function parameters to avoid any mistakes. Everything looks good. Time to call the functions and provide the answers.\n",
+        "tool_calls": [
+          {
+            "id": "call_kutp95ia",
+            "type": "function",
+            "function": {
+              "name": "calculator",
+              "arguments": {
+                "expression": "(25 * 4) + 10"
+              }
+            }
+          },
+          {
+            "id": "call_fpl86msn",
+            "type": "function",
+            "function": {
+              "name": "convert_temperature",
+              "arguments": {
+                "from_unit": "fahrenheit",
+                "to_unit": "celsius",
+                "value": 32
+              }
+            }
+          }
+        ]
+      },
+      {
+        "role": "tool",
+        "content": {
+          "result": "110"
+        },
+        "tool_call_id": "call_kutp95ia"
+      },
+      {
+        "role": "tool",
+        "content": {
+          "result": "0.0C"
+        },
+        "tool_call_id": "call_fpl86msn"
+      }
+    ]
+  }
+]
+
+[Synalinks]
+Call ID: 310dfe69-292b-4da6-84e7-7558fd4023fe
+Parent call ID: bfc64a78-5933-4cb8-b170-701465a534ce
+Module: LanguageModel
+Module Name: language_model
+Module Description: A language model API wrapper.
+Data Model JSON:
+[
+  {
+    "messages": [
+      {
+        "role": "system",
+        "content": "<instructions>\nThink step by step: Use the thinking field to elaborate what you observe and\nwhat do you need to accomplish next.\nReflect on prior steps: Review your previous actions and their outcomes to\navoid unnecessary repetition.\nAvoid unnecessary actions: If you already have enough information to complete\nthe user task, return an empty tool calls array.\n</instructions>\n"
+      },
+      {
+        "role": "user",
+        "content": "<input>\n{'query': \"What is (25 * 4) + 10? Also, what's 32 Fahrenheit in Celsius?\"}\n</input>\n<output>\n"
+      },
+      {
+        "role": "assistant",
+        "reasoning_content": "Okay, let's tackle the user's query step by step. First, they want to know the result of (25 * 4) + 10. That seems straightforward. I can use the calculator function for that. Let me compute 25 multiplied by 4, which is 100, then add 10 to get 110. So the first part should be 110.\n\nNext, they're asking to convert 32 Fahrenheit to Celsius. The convert_temperature function can handle that. The formula for converting Fahrenheit to Celsius is (°F - 32) * 5/9. Plugging in 32, that would be (32 - 32) * 5/9 = 0. So the result should be 0°C. \n\nI need to make sure I'm using the correct parameters for each function. For the calculator, the expression is \"(25 * 4) + 10\". For the temperature conversion, the value is 32, from_unit is 'fahrenheit', and to_unit is 'celsius'. Let me double-check the function parameters to avoid any mistakes. Everything looks good. Time to call the functions and provide the answers.\n",
+        "content": "",
+        "tool_calls": [
+          {
+            "id": "call_kutp95ia",
+            "type": "function",
+            "function": {
+              "name": "calculator",
+              "arguments": {
+                "expression": "(25 * 4) + 10"
+              }
+            }
+          },
+          {
+            "id": "call_fpl86msn",
+            "type": "function",
+            "function": {
+              "name": "convert_temperature",
+              "arguments": {
+                "from_unit": "fahrenheit",
+                "to_unit": "celsius",
+                "value": 32
+              }
+            }
+          }
+        ]
+      },
+      {
+        "role": "tool",
+        "content": {
+          "result": "110"
+        },
+        "tool_call_id": "call_kutp95ia"
+      },
+      {
+        "role": "tool",
+        "content": {
+          "result": "0.0C"
+        },
+        "tool_call_id": "call_fpl86msn"
+      }
+    ]
+  }
+]
+
+[Synalinks]
+Call ID: 310dfe69-292b-4da6-84e7-7558fd4023fe
+Parent call ID: bfc64a78-5933-4cb8-b170-701465a534ce
+Module: LanguageModel
+Module Name: language_model
+Module Description: A language model API wrapper.
+Data Model JSON:
+[
+  {
+    "answer": "**(25 * 4) + 10** equals **110**.\n\n**32°F** is equivalent to **0.0°C**."
+  }
+]
+
+[Synalinks]
+Call ID: bfc64a78-5933-4cb8-b170-701465a534ce
+Parent call ID: afc612df-0e2f-4155-bc19-6f7f3c3ee50d
+Module: Generator
+Module Name: final_generator_function_calling_agent
+Module Description: Use a `LanguageModel` to generate a data model from an arbitrary input data model.
+Data Model JSON:
+[
+  {
+    "answer": "**(25 * 4) + 10** equals **110**.\n\n**32°F** is equivalent to **0.0°C**."
+  }
+]
+
+[Synalinks]
+Call ID: 056c5c7a-83e7-428e-8caf-4df9d18b8a2c
+Parent call ID: 72430af9-16f0-4610-8afc-2f9ff4a688fc
+Module: FunctionCallingAgent
+Module Name: function_calling_agent
+Module Description: A trainable parallel function calling agent.
+Data Model JSON:
+[
+  {
+    "messages": [
+      {
+        "role": "assistant",
+        "reasoning_content": "Okay, let's tackle the user's query step by step. First, they want to know the result of (25 * 4) + 10. That seems straightforward. I can use the calculator function for that. Let me compute 25 multiplied by 4, which is 100, then add 10 to get 110. So the first part should be 110.\n\nNext, they're asking to convert 32 Fahrenheit to Celsius. The convert_temperature function can handle that. The formula for converting Fahrenheit to Celsius is (°F - 32) * 5/9. Plugging in 32, that would be (32 - 32) * 5/9 = 0. So the result should be 0°C. \n\nI need to make sure I'm using the correct parameters for each function. For the calculator, the expression is \"(25 * 4) + 10\". For the temperature conversion, the value is 32, from_unit is 'fahrenheit', and to_unit is 'celsius'. Let me double-check the function parameters to avoid any mistakes. Everything looks good. Time to call the functions and provide the answers.\n",
+        "content": "",
+        "tool_calls": [
+          {
+            "id": "call_kutp95ia",
+            "type": "function",
+            "function": {
+              "name": "calculator",
+              "arguments": {
+                "expression": "(25 * 4) + 10"
+              }
+            }
+          },
+          {
+            "id": "call_fpl86msn",
+            "type": "function",
+            "function": {
+              "name": "convert_temperature",
+              "arguments": {
+                "from_unit": "fahrenheit",
+                "to_unit": "celsius",
+                "value": 32
+              }
+            }
+          }
+        ]
+      },
+      {
+        "role": "tool",
+        "content": {
+          "result": "110"
+        },
+        "tool_call_id": "call_kutp95ia"
+      },
+      {
+        "role": "tool",
+        "content": {
+          "result": "0.0C"
+        },
+        "tool_call_id": "call_fpl86msn"
+      }
+    ],
+    "answer": "**(25 * 4) + 10** equals **110**.\n\n**32°F** is equivalent to **0.0°C**."
+  }
+]
+
+[Synalinks]
+Call ID: 72430af9-16f0-4610-8afc-2f9ff4a688fc
+Parent call ID: None
+Module: Functional
+Module Name: tool_agent
+Module Description: A `Functional` program is a `Program` defined as a directed graph of modules.
+Data Model JSON:
+[
+  {
+    "messages": [
+      {
+        "role": "assistant",
+        "reasoning_content": "Okay, let's tackle the user's query step by step. First, they want to know the result of (25 * 4) + 10. That seems straightforward. I can use the calculator function for that. Let me compute 25 multiplied by 4, which is 100, then add 10 to get 110. So the first part should be 110.\n\nNext, they're asking to convert 32 Fahrenheit to Celsius. The convert_temperature function can handle that. The formula for converting Fahrenheit to Celsius is (°F - 32) * 5/9. Plugging in 32, that would be (32 - 32) * 5/9 = 0. So the result should be 0°C. \n\nI need to make sure I'm using the correct parameters for each function. For the calculator, the expression is \"(25 * 4) + 10\". For the temperature conversion, the value is 32, from_unit is 'fahrenheit', and to_unit is 'celsius'. Let me double-check the function parameters to avoid any mistakes. Everything looks good. Time to call the functions and provide the answers.\n",
+        "content": "",
+        "tool_calls": [
+          {
+            "id": "call_kutp95ia",
+            "type": "function",
+            "function": {
+              "name": "calculator",
+              "arguments": {
+                "expression": "(25 * 4) + 10"
+              }
+            }
+          },
+          {
+            "id": "call_fpl86msn",
+            "type": "function",
+            "function": {
+              "name": "convert_temperature",
+              "arguments": {
+                "from_unit": "fahrenheit",
+                "to_unit": "celsius",
+                "value": 32
+              }
+            }
+          }
+        ]
+      },
+      {
+        "role": "tool",
+        "content": {
+          "result": "110"
+        },
+        "tool_call_id": "call_kutp95ia"
+      },
+      {
+        "role": "tool",
+        "content": {
+          "result": "0.0C"
+        },
+        "tool_call_id": "call_fpl86msn"
+      }
+    ],
+    "answer": "**(25 * 4) + 10** equals **110**.\n\n**32°F** is equivalent to **0.0°C**."
+  }
+]
+
+
+Query: What is 15 * 23 + 7?
+Answer: The result of 15 * 23 + 7 is 352.
+
+Query: Convert 100 Fahrenheit to Celsius
+Answer: 100 Fahrenheit is equal to 37.8°C.
+
+Query: What time is it right now?
+Answer: The current time is 23:12:24 on June 6, 2026.
+
+============================================================
+Example 2: Complex Multi-Tool Query
+============================================================
+
+Complex query result: **(25 * 4) + 10** equals **110**.
+
+**32°F** is equivalent to **0.0°C**.

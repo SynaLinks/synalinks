@@ -1,0 +1,366 @@
+(DEBUG) [Synalinks]
+Call ID: a0233b6b-0684-4308-984d-48025ae7c580
+Parent call ID: None
+Module: Generator
+Module Name: generator
+Module Description: Use a `LanguageModel` to generate a data model from an arbitrary input data model.
+Data Model JSON Schema:
+[
+  {
+    "additionalProperties": false,
+    "description": "User query.",
+    "properties": {
+      "query": {
+        "description": "User query",
+        "title": "Query",
+        "type": "string"
+      }
+    },
+    "required": [
+      "query"
+    ],
+    "title": "Query",
+    "type": "object"
+  }
+]
+
+(DEBUG) [Synalinks]
+Call ID: a0233b6b-0684-4308-984d-48025ae7c580
+Parent call ID: None
+Module: Generator
+Module Name: generator
+Module Description: Use a `LanguageModel` to generate a data model from an arbitrary input data model.
+Data Model JSON Schema:
+[
+  {
+    "additionalProperties": false,
+    "description": "Answer to the query.",
+    "properties": {
+      "answer": {
+        "description": "The answer",
+        "title": "Answer",
+        "type": "string"
+      }
+    },
+    "required": [
+      "answer"
+    ],
+    "title": "Answer",
+    "type": "object"
+  }
+]
+
+(DEBUG) [Synalinks]
+Call ID: ee8ed42a-b49c-415d-b4b3-02193a7b3a83
+Parent call ID: None
+Module: OutputGuard
+Module Name: output_guard
+Module Description: Guard that replaces outputs containing blacklisted words.
+Data Model JSON Schema:
+[
+  {
+    "additionalProperties": false,
+    "description": "Answer to the query.",
+    "properties": {
+      "answer": {
+        "description": "The answer",
+        "title": "Answer",
+        "type": "string"
+      }
+    },
+    "required": [
+      "answer"
+    ],
+    "title": "Answer",
+    "type": "object"
+  }
+]
+
+(DEBUG) [Synalinks]
+Call ID: ee8ed42a-b49c-415d-b4b3-02193a7b3a83
+Parent call ID: None
+Module: OutputGuard
+Module Name: output_guard
+Module Description: Guard that replaces outputs containing blacklisted words.
+Data Model JSON Schema:
+[
+  {
+    "additionalProperties": false,
+    "description": "Answer to the query.",
+    "properties": {
+      "answer": {
+        "description": "The answer",
+        "title": "Answer",
+        "type": "string"
+      }
+    },
+    "required": [
+      "answer"
+    ],
+    "title": "Answer",
+    "type": "object"
+  }
+]
+
+============================================================
+Building Output Guarded Program
+============================================================
+
+Program built successfully!
+Program: output_guarded_qa
+description: 'A `Functional` program is a `Program` defined as a directed graph 
+of modules.'
+┏━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━┳━━━━━━━━━━━━━━━━━━━┓
+┃                    ┃                         ┃  Vars ┃                   ┃
+┃ Module (type)      ┃ Output Schema           ┃     # ┃ Connected to      ┃
+┡━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━╇━━━━━━━━━━━━━━━━━━━┩
+│ input_module       │ Query:                  │     0 │ -                 │
+│ (InputModule)      │   query: str            │       │                   │
+├────────────────────┼─────────────────────────┼───────┼───────────────────┤
+│ generator          │ Answer:                 │     1 │ input_module[0][… │
+│ (Generator)        │   answer: str           │       │                   │
+├────────────────────┼─────────────────────────┼───────┼───────────────────┤
+│ output_guard       │ Answer:                 │     0 │ generator[0][0]   │
+│ (OutputGuard)      │   answer: str           │       │                   │
+├────────────────────┼─────────────────────────┼───────┼───────────────────┤
+│ xor (Xor)          │ Answer:                 │     0 │ output_guard[0][… │
+│                    │   answer: str           │       │ generator[0][0]   │
+├────────────────────┼─────────────────────────┼───────┼───────────────────┤
+│ or (Or)            │ Answer:                 │     0 │ output_guard[0][… │
+│                    │   answer: str           │       │ xor[0][0]         │
+└────────────────────┴─────────────────────────┴───────┴───────────────────┘
+[Synalinks]
+Call ID: 45dd6df8-23e5-4a2d-a0d0-e42f1ffbf393
+Parent call ID: None
+Module: Functional
+Module Name: output_guarded_qa
+Module Description: A `Functional` program is a `Program` defined as a directed graph of modules.
+Data Model JSON:
+[
+  {
+    "query": "What is the capital of France?"
+  }
+]
+
+[Synalinks]
+Call ID: 52722318-ac98-4f2d-b8ad-dc18b8ce7a99
+Parent call ID: 45dd6df8-23e5-4a2d-a0d0-e42f1ffbf393
+Module: Generator
+Module Name: generator
+Module Description: Use a `LanguageModel` to generate a data model from an arbitrary input data model.
+Data Model JSON:
+[
+  {
+    "query": "What is the capital of France?"
+  }
+]
+
+[Synalinks]
+Call ID: 151eb66c-b689-4f7c-9034-35bbed3d149e
+Parent call ID: 52722318-ac98-4f2d-b8ad-dc18b8ce7a99
+Module: LanguageModel
+Module Name: language_model
+Module Description: A language model API wrapper.
+Data Model JSON:
+[
+  {
+    "messages": [
+      {
+        "role": "system",
+        "content": "<instructions>\nYour task is to answer with a JSON containing the following keys: ['answer']\n</instructions>\n"
+      },
+      {
+        "role": "user",
+        "content": "<input>\n{'query': 'What is the capital of France?'}\n</input>\n<output>\n"
+      }
+    ]
+  }
+]
+
+[Synalinks]
+Call ID: 151eb66c-b689-4f7c-9034-35bbed3d149e
+Parent call ID: 52722318-ac98-4f2d-b8ad-dc18b8ce7a99
+Module: LanguageModel
+Module Name: language_model
+Module Description: A language model API wrapper.
+Data Model JSON:
+[
+  {
+    "answer": "Paris"
+  }
+]
+
+[Synalinks]
+Call ID: 52722318-ac98-4f2d-b8ad-dc18b8ce7a99
+Parent call ID: 45dd6df8-23e5-4a2d-a0d0-e42f1ffbf393
+Module: Generator
+Module Name: generator
+Module Description: Use a `LanguageModel` to generate a data model from an arbitrary input data model.
+Data Model JSON:
+[
+  {
+    "answer": "Paris"
+  }
+]
+
+[Synalinks]
+Call ID: d9e09845-e677-45f6-93d7-5cb060ee060e
+Parent call ID: 151eb66c-b689-4f7c-9034-35bbed3d149e
+Module: OutputGuard
+Module Name: output_guard
+Module Description: Guard that replaces outputs containing blacklisted words.
+Data Model JSON:
+[
+  {
+    "answer": "Paris"
+  }
+]
+
+[Synalinks]
+Call ID: 45dd6df8-23e5-4a2d-a0d0-e42f1ffbf393
+Parent call ID: None
+Module: Functional
+Module Name: output_guarded_qa
+Module Description: A `Functional` program is a `Program` defined as a directed graph of modules.
+Data Model JSON:
+[
+  {
+    "answer": "Paris"
+  }
+]
+
+[Synalinks]
+Call ID: ee99d065-eb2e-4ffc-9ef1-604ad53d27ee
+Parent call ID: None
+Module: Functional
+Module Name: output_guarded_qa
+Module Description: A `Functional` program is a `Program` defined as a directed graph of modules.
+Data Model JSON:
+[
+  {
+    "query": "Explain what Python is used for"
+  }
+]
+
+[Synalinks]
+Call ID: 74c198b2-1c71-41d4-a707-4320bfde737c
+Parent call ID: ee99d065-eb2e-4ffc-9ef1-604ad53d27ee
+Module: Generator
+Module Name: generator
+Module Description: Use a `LanguageModel` to generate a data model from an arbitrary input data model.
+Data Model JSON:
+[
+  {
+    "query": "Explain what Python is used for"
+  }
+]
+
+[Synalinks]
+Call ID: 2ba8be87-576f-43e9-a625-9ef03948f46f
+Parent call ID: 74c198b2-1c71-41d4-a707-4320bfde737c
+Module: LanguageModel
+Module Name: language_model
+Module Description: A language model API wrapper.
+Data Model JSON:
+[
+  {
+    "messages": [
+      {
+        "role": "system",
+        "content": "<instructions>\nYour task is to answer with a JSON containing the following keys: ['answer']\n</instructions>\n"
+      },
+      {
+        "role": "user",
+        "content": "<input>\n{'query': 'Explain what Python is used for'}\n</input>\n<output>\n"
+      }
+    ]
+  }
+]
+
+[Synalinks]
+Call ID: 2ba8be87-576f-43e9-a625-9ef03948f46f
+Parent call ID: 74c198b2-1c71-41d4-a707-4320bfde737c
+Module: LanguageModel
+Module Name: language_model
+Module Description: A language model API wrapper.
+Data Model JSON:
+[
+  {
+    "answer": "Python is a high-level, interpreted programming language that is widely used for various purposes such as web development (Django, Flask, Pyramid), data analysis and machine learning (NumPy, Pandas, Scikit-learn), artificial intelligence, scientific computing, automation of tasks, and more."
+  }
+]
+
+[Synalinks]
+Call ID: 74c198b2-1c71-41d4-a707-4320bfde737c
+Parent call ID: ee99d065-eb2e-4ffc-9ef1-604ad53d27ee
+Module: Generator
+Module Name: generator
+Module Description: Use a `LanguageModel` to generate a data model from an arbitrary input data model.
+Data Model JSON:
+[
+  {
+    "answer": "Python is a high-level, interpreted programming language that is widely used for various purposes such as web development (Django, Flask, Pyramid), data analysis and machine learning (NumPy, Pandas, Scikit-learn), artificial intelligence, scientific computing, automation of tasks, and more."
+  }
+]
+
+[Synalinks]
+Call ID: 4d2b6114-b3e5-45d7-b6fb-dcfe9d903bf7
+Parent call ID: 2ba8be87-576f-43e9-a625-9ef03948f46f
+Module: OutputGuard
+Module Name: output_guard
+Module Description: Guard that replaces outputs containing blacklisted words.
+Data Model JSON:
+[
+  {
+    "answer": "Python is a high-level, interpreted programming language that is widely used for various purposes such as web development (Django, Flask, Pyramid), data analysis and machine learning (NumPy, Pandas, Scikit-learn), artificial intelligence, scientific computing, automation of tasks, and more."
+  }
+]
+
+[Synalinks]
+Call ID: ee99d065-eb2e-4ffc-9ef1-604ad53d27ee
+Parent call ID: None
+Module: Functional
+Module Name: output_guarded_qa
+Module Description: A `Functional` program is a `Program` defined as a directed graph of modules.
+Data Model JSON:
+[
+  {
+    "answer": "Python is a high-level, interpreted programming language that is widely used for various purposes such as web development (Django, Flask, Pyramid), data analysis and machine learning (NumPy, Pandas, Scikit-learn), artificial intelligence, scientific computing, automation of tasks, and more."
+  }
+]
+
+
+============================================================
+Test 1: Safe Output (normal question)
+============================================================
+
+Query: 'What is the capital of France?'
+Result: {'answer': 'Paris'}
+
+============================================================
+Test 2: Another Safe Output
+============================================================
+
+Query: 'Explain what Python is used for'
+Result: {'answer': 'Python is a high-level, interpreted programming language that is widely used for various purposes such as web development (Django, Flask, Pyramid), data analysis and machine learning (NumPy, Pandas, Scikit-learn), artificial intelligence, scientific computing, automation of tasks, and more.'}
+
+============================================================
+Output Guard Pattern Explanation
+============================================================
+
+The output guard pattern works as follows:
+
+1. INPUT arrives
+2. GENERATOR produces an answer
+3. OUTPUT GUARD checks the answer for blacklisted content
+4. If blacklisted content found:
+   - Guard returns a replacement answer
+   - XOR: replacement ^ original = None (invalidates original)
+   - OR: replacement | None = replacement (use replacement)
+5. If no blacklisted content:
+   - Guard returns None
+   - XOR: None ^ original = original (keeps original)
+   - OR: None | original = original (use original)
+
+This pattern ensures unsafe outputs are replaced seamlessly!
+

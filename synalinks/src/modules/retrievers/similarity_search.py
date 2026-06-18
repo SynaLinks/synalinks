@@ -14,6 +14,8 @@ from synalinks.src.knowledge_bases import get as _get_kb
 from synalinks.src.modules.core.generator import Generator
 from synalinks.src.modules.language_models import get as _get_lm
 from synalinks.src.modules.module import Module
+from synalinks.src.modules.retrievers.infer_helpers import concat_infer_fields
+from synalinks.src.modules.retrievers.infer_helpers import kb_table_names
 from synalinks.src.saving import serialization_lib
 
 
@@ -90,11 +92,13 @@ class SimilaritySearch(Module):
             explicitly. Mutually inferrable with ``data_model``.
         data_model (DataModel | SymbolicDataModel): Data model
             providing ``schema`` via ``.get_schema()`` when ``schema``
-            is not given. One of ``schema``, ``data_model``, or
-            ``table_name`` must be provided.
+            is not given.
         table_name (str): Target table. Defaults to the schema's
-            ``title``. One of ``schema``, ``data_model``, or
-            ``table_name`` must be provided.
+            ``title``. **Optional** — when neither ``table_name`` nor a
+            schema to derive it from is given, the language model infers
+            the target table per call (constrained to the knowledge
+            base's actual tables), so a single module can search whatever
+            table best answers the inputs.
         k (int): Maximum number of results to return. Defaults to 10.
         threshold (float): Optional maximum vector-distance threshold.
             Lower distance = better match; rows above ``threshold``
@@ -161,18 +165,13 @@ class SimilaritySearch(Module):
 
         if schema is None and data_model is not None:
             schema = data_model.get_schema()
-        if schema is None and table_name is None:
-            raise ValueError("One of `schema`, `data_model`, or `table_name` is required")
         self.schema = schema
         self.data_model = data_model
 
-        if table_name is None:
-            table_name = schema.get("title")
-            if not table_name:
-                raise ValueError(
-                    "Could not infer `table_name` from `schema` "
-                    "(no `title`); pass `table_name` explicitly."
-                )
+        # `table_name` is optional: when it (and a schema to infer it from) is
+        # absent, the LM picks the target table per call (see query_generator).
+        if table_name is None and schema is not None:
+            table_name = schema.get("title") or None
         self.table_name = table_name
 
         if output_format not in ("json", "csv"):
@@ -197,8 +196,28 @@ class SimilaritySearch(Module):
         self.return_inputs = return_inputs
         self.return_query = return_query
 
+        # When the target table is fixed, the generator only produces the search
+        # queries. When it is not, concatenate an enum field (the KB's actual
+        # tables) onto the query schema so the LM also infers `table_name`.
+        if self.table_name is None:
+            gen_target = {
+                "schema": concat_infer_fields(
+                    SimilaritySearchInput.get_schema(),
+                    [
+                        (
+                            "table_name",
+                            "The knowledge-base table to search, chosen to best "
+                            "answer the inputs.",
+                            kb_table_names(self.knowledge_base),
+                        )
+                    ],
+                )
+            }
+        else:
+            gen_target = {"data_model": SimilaritySearchInput}
+
         self.query_generator = Generator(
-            data_model=SimilaritySearchInput,
+            **gen_target,
             language_model=self.language_model,
             prompt_template=self.prompt_template,
             examples=self.examples,
@@ -218,13 +237,16 @@ class SimilaritySearch(Module):
         query = await self.query_generator(inputs, training=training)
         if not query:
             return None
-        queries = query.get_json().get("similarity_search", [])
-        if not queries:
+        query_json = query.get_json()
+        queries = query_json.get("similarity_search", [])
+        # Fixed table, or the one the LM inferred this call.
+        table_name = self.table_name or query_json.get("table_name")
+        if not queries or not table_name:
             return None
 
         rows = await self.knowledge_base.similarity_search(
             queries,
-            table_name=self.table_name,
+            table_name=table_name,
             k=self.k,
             threshold=self.threshold,
             ef_search=self.ef_search,

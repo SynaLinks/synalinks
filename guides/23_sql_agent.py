@@ -114,7 +114,7 @@ The additions are SQL-specific:
 ```python
 import synalinks
 
-lm = synalinks.LanguageModel(model="ollama/mistral")
+lm = synalinks.LanguageModel(model="ollama/qwen3:8b")
 kb = synalinks.KnowledgeBase(
     uri="duckdb://my_database.db",
     data_models=[Customer, Product, SalesOrder],
@@ -244,6 +244,7 @@ class SQLAnswer(synalinks.DataModel):
 async def main():
     load_dotenv()
     synalinks.clear_session()
+    synalinks.enable_logging()
 
     db_path = "./guides/sql_agent_guide.db"
     if os.path.exists(db_path):
@@ -274,7 +275,7 @@ async def main():
     for o in orders:
         await kb.update(o.to_json_data_model())
 
-    language_model = synalinks.LanguageModel(model="ollama/mistral")
+    language_model = synalinks.LanguageModel(model="ollama/qwen3:8b")
 
     # Build the agent. The data_model param sets the schema of the
     # final answer — the LM is required to produce both a natural-
@@ -293,6 +294,7 @@ async def main():
         name="sql_agent",
         description="A SQL agent that answers questions about the database.",
     )
+    agent.summary()
 
     # Ask a non-trivial question that requires a JOIN + GROUP BY.
     result = await agent(

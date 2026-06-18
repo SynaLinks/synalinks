@@ -64,7 +64,7 @@ class Query(synalinks.DataModel):
 
 async def main():
     load_dotenv()
-    language_model = synalinks.LanguageModel(model="gemini/gemini-3.1-flash-lite-preview")
+    language_model = synalinks.LanguageModel(model="ollama/mistral:latest")
 
     inputs = synalinks.Input(data_model=Query)
 
@@ -145,13 +145,13 @@ async def main():
     load_dotenv()
 
     # Enable observability for tracing (view traces at http://localhost:5000)
-    synalinks.enable_observability(
-        tracking_uri="http://localhost:5000",
-        experiment_name="lesson_3_decisions",
-    )
+#     synalinks.enable_observability(
+#         tracking_uri="http://localhost:5000",
+#         experiment_name="lesson_3_decisions",
+#     )
 
     language_model = synalinks.LanguageModel(
-        model="gemini/gemini-3.1-flash-lite-preview",
+        model="ollama/mistral:latest",
     )
 
     # -------------------------------------------------------------------------

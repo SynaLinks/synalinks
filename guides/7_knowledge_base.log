@@ -1,0 +1,812 @@
+(DEBUG) [Synalinks]
+Call ID: 11e4c451-622e-4c42-bf4b-ee751fb91f87
+Parent call ID: None
+Module: RetrieveKnowledge
+Module Name: retrieve_knowledge
+Module Description: Module for retrieving knowledge from a knowledge base.
+Data Model JSON Schema:
+[
+  {
+    "additionalProperties": false,
+    "description": "User query.",
+    "properties": {
+      "query": {
+        "description": "User question",
+        "title": "Query",
+        "type": "string"
+      }
+    },
+    "required": [
+      "query"
+    ],
+    "title": "Query",
+    "type": "object"
+  }
+]
+
+(DEBUG) [Synalinks]
+Call ID: 3c7dd773-b6de-4d35-80cc-39763c07d6ca
+Parent call ID: 11e4c451-622e-4c42-bf4b-ee751fb91f87
+Module: Generator
+Module Name: search_query_generator_retrieve_knowledge
+Module Description: Use a `LanguageModel` to generate a data model from an arbitrary input data model.
+Data Model JSON Schema:
+[
+  {
+    "additionalProperties": false,
+    "description": "User query.",
+    "properties": {
+      "query": {
+        "description": "User question",
+        "title": "Query",
+        "type": "string"
+      }
+    },
+    "required": [
+      "query"
+    ],
+    "title": "Query",
+    "type": "object"
+  }
+]
+
+(DEBUG) [Synalinks]
+Call ID: 3c7dd773-b6de-4d35-80cc-39763c07d6ca
+Parent call ID: 11e4c451-622e-4c42-bf4b-ee751fb91f87
+Module: Generator
+Module Name: search_query_generator_retrieve_knowledge
+Module Description: Use a `LanguageModel` to generate a data model from an arbitrary input data model.
+Data Model JSON Schema:
+[
+  {
+    "additionalProperties": false,
+    "description": "Output schema used by every search type except ``hybrid_regex``.",
+    "properties": {
+      "tables": {
+        "description": "The tables to lookup",
+        "items": {
+          "type": "string"
+        },
+        "title": "Tables",
+        "type": "array"
+      },
+      "search": {
+        "description": "The list of similarity search request",
+        "items": {
+          "type": "string"
+        },
+        "title": "Search",
+        "type": "array"
+      }
+    },
+    "required": [
+      "tables",
+      "search"
+    ],
+    "title": "SearchQuery",
+    "type": "object"
+  }
+]
+
+(DEBUG) [Synalinks]
+Call ID: 6f12aaed-4071-4bc9-bb28-f1b36975fd97
+Parent call ID: 3c7dd773-b6de-4d35-80cc-39763c07d6ca
+Module: Generator
+Module Name: search_query_generator_retrieve_knowledge
+Module Description: Use a `LanguageModel` to generate a data model from an arbitrary input data model.
+Data Model JSON Schema:
+[
+  {
+    "additionalProperties": false,
+    "description": "User query.",
+    "properties": {
+      "query": {
+        "description": "User question",
+        "title": "Query",
+        "type": "string"
+      }
+    },
+    "required": [
+      "query"
+    ],
+    "title": "Query",
+    "type": "object"
+  }
+]
+
+(DEBUG) [Synalinks]
+Call ID: 6f12aaed-4071-4bc9-bb28-f1b36975fd97
+Parent call ID: 3c7dd773-b6de-4d35-80cc-39763c07d6ca
+Module: Generator
+Module Name: search_query_generator_retrieve_knowledge
+Module Description: Use a `LanguageModel` to generate a data model from an arbitrary input data model.
+Data Model JSON Schema:
+[
+  {
+    "additionalProperties": false,
+    "description": "Output schema used by every search type except ``hybrid_regex``.",
+    "properties": {
+      "tables": {
+        "description": "The tables to lookup",
+        "items": {
+          "type": "string"
+        },
+        "title": "Tables",
+        "type": "array"
+      },
+      "search": {
+        "description": "The list of similarity search request",
+        "items": {
+          "type": "string"
+        },
+        "title": "Search",
+        "type": "array"
+      }
+    },
+    "required": [
+      "tables",
+      "search"
+    ],
+    "title": "SearchQuery",
+    "type": "object"
+  }
+]
+
+(DEBUG) [Synalinks]
+Call ID: 11e4c451-622e-4c42-bf4b-ee751fb91f87
+Parent call ID: None
+Module: RetrieveKnowledge
+Module Name: retrieve_knowledge
+Module Description: Module for retrieving knowledge from a knowledge base.
+Data Model JSON Schema:
+[
+  {
+    "additionalProperties": false,
+    "properties": {
+      "query": {
+        "description": "User question",
+        "title": "Query",
+        "type": "string"
+      },
+      "tables": {
+        "description": "The tables to lookup",
+        "items": {
+          "type": "string"
+        },
+        "title": "Tables",
+        "type": "array"
+      },
+      "search": {
+        "description": "The list of similarity search request",
+        "items": {
+          "type": "string"
+        },
+        "title": "Search",
+        "type": "array"
+      },
+      "result": {
+        "description": "The result",
+        "items": {},
+        "title": "Result",
+        "type": "array"
+      }
+    },
+    "required": [
+      "query",
+      "tables",
+      "search",
+      "result"
+    ],
+    "title": "Query",
+    "type": "object"
+  }
+]
+
+(DEBUG) [Synalinks]
+Call ID: 5455c4ba-8f63-4748-8de9-463dd856b429
+Parent call ID: None
+Module: Generator
+Module Name: generator
+Module Description: Use a `LanguageModel` to generate a data model from an arbitrary input data model.
+Data Model JSON Schema:
+[
+  {
+    "additionalProperties": false,
+    "properties": {
+      "query": {
+        "description": "User question",
+        "title": "Query",
+        "type": "string"
+      },
+      "tables": {
+        "description": "The tables to lookup",
+        "items": {
+          "type": "string"
+        },
+        "title": "Tables",
+        "type": "array"
+      },
+      "search": {
+        "description": "The list of similarity search request",
+        "items": {
+          "type": "string"
+        },
+        "title": "Search",
+        "type": "array"
+      },
+      "result": {
+        "description": "The result",
+        "items": {},
+        "title": "Result",
+        "type": "array"
+      }
+    },
+    "required": [
+      "query",
+      "tables",
+      "search",
+      "result"
+    ],
+    "title": "Query",
+    "type": "object"
+  }
+]
+
+(DEBUG) [Synalinks]
+Call ID: 5455c4ba-8f63-4748-8de9-463dd856b429
+Parent call ID: None
+Module: Generator
+Module Name: generator
+Module Description: Use a `LanguageModel` to generate a data model from an arbitrary input data model.
+Data Model JSON Schema:
+[
+  {
+    "additionalProperties": false,
+    "description": "Answer based on retrieved context.",
+    "properties": {
+      "answer": {
+        "description": "Answer based on the context provided",
+        "title": "Answer",
+        "type": "string"
+      }
+    },
+    "required": [
+      "answer"
+    ],
+    "title": "Answer",
+    "type": "object"
+  }
+]
+
+============================================================
+Example 1: Knowledge Base with Full-Text Search
+============================================================
+
+Storing documents...
+  Stored: Introduction to Python
+  Stored: Machine Learning Basics
+  Stored: Deep Learning
+  Stored: Natural Language Processing
+
+============================================================
+Example 2: Full-Text Search
+============================================================
+
+Search: 'programming language'
+Found 2 results:
+  - Introduction to Python: Python is a high-level programming language....
+  - Natural Language Processing: NLP enables computers to understand and process hu...
+
+============================================================
+Example 3: Get by ID
+============================================================
+
+Get doc2:
+  Title: Machine Learning Basics
+  Content: Machine learning is a subset of AI that enables systems to learn.
+
+============================================================
+Example 4: Get All Records
+============================================================
+
+All documents (4):
+  - doc1: Introduction to Python
+  - doc2: Machine Learning Basics
+  - doc3: Deep Learning
+  - doc4: Natural Language Processing
+
+============================================================
+Example 5: RAG Pipeline
+============================================================
+Program: rag_pipeline
+description: 'A `Functional` program is a `Program` defined as a directed graph 
+of modules.'
+┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━┓
+┃ Module (type)               ┃ Output Schema                    ┃  Vars # ┃
+┡━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━┩
+│ input_module (InputModule)  │ Query:                           │       0 │
+│                             │   query: str                     │         │
+├─────────────────────────────┼──────────────────────────────────┼─────────┤
+│ retrieve_knowledge          │ Query:                           │       1 │
+│ (RetrieveKnowledge)         │   query: str                     │         │
+│                             │   tables: list                   │         │
+│                             │   search: list                   │         │
+│                             │   result: list                   │         │
+├─────────────────────────────┼──────────────────────────────────┼─────────┤
+│ generator (Generator)       │ Answer:                          │       1 │
+│                             │   answer: str                    │         │
+└─────────────────────────────┴──────────────────────────────────┴─────────┘
+[Synalinks]
+Call ID: 2a65e890-de94-44e3-b5a5-65495ea05f46
+Parent call ID: None
+Module: Functional
+Module Name: rag_pipeline
+Module Description: A `Functional` program is a `Program` defined as a directed graph of modules.
+Data Model JSON:
+[
+  {
+    "query": "What is Python?"
+  }
+]
+
+[Synalinks]
+Call ID: a17fad91-b1d0-4603-b5de-c310ed08b49e
+Parent call ID: 2a65e890-de94-44e3-b5a5-65495ea05f46
+Module: RetrieveKnowledge
+Module Name: retrieve_knowledge
+Module Description: Module for retrieving knowledge from a knowledge base.
+Data Model JSON:
+[
+  {
+    "query": "What is Python?"
+  }
+]
+
+[Synalinks]
+Call ID: 7ba85456-2734-4a43-a610-a7bea4de2193
+Parent call ID: a17fad91-b1d0-4603-b5de-c310ed08b49e
+Module: Generator
+Module Name: search_query_generator_retrieve_knowledge
+Module Description: Use a `LanguageModel` to generate a data model from an arbitrary input data model.
+Data Model JSON:
+[
+  {
+    "query": "What is Python?"
+  }
+]
+
+[Synalinks]
+Call ID: c318e8f5-08ff-47c6-b354-663df3b77ce1
+Parent call ID: 7ba85456-2734-4a43-a610-a7bea4de2193
+Module: LanguageModel
+Module Name: language_model
+Module Description: A language model API wrapper.
+Data Model JSON:
+[
+  {
+    "messages": [
+      {
+        "role": "system",
+        "content": "<instructions>\nYour task is to retrieve information among the following tables: ['Document'].\nFirst, decide step-by-step which tables you need, then use the `search` to\nperform a lookup.\nThe `search` field should be a list of natural language search queries for the information to look for.\n</instructions>\n"
+      },
+      {
+        "role": "user",
+        "content": "<input>\n{'query': 'What is Python?'}\n</input>\n<output>\n"
+      }
+    ]
+  }
+]
+
+[Synalinks]
+Call ID: c318e8f5-08ff-47c6-b354-663df3b77ce1
+Parent call ID: 7ba85456-2734-4a43-a610-a7bea4de2193
+Module: LanguageModel
+Module Name: language_model
+Module Description: A language model API wrapper.
+Data Model JSON:
+[
+  {
+    "tables": [
+      "Wikipedia"
+    ],
+    "search": [
+      "Python programming language"
+    ]
+  }
+]
+
+[Synalinks]
+Call ID: 7ba85456-2734-4a43-a610-a7bea4de2193
+Parent call ID: a17fad91-b1d0-4603-b5de-c310ed08b49e
+Module: Generator
+Module Name: search_query_generator_retrieve_knowledge
+Module Description: Use a `LanguageModel` to generate a data model from an arbitrary input data model.
+Data Model JSON:
+[
+  {
+    "tables": [
+      "Wikipedia"
+    ],
+    "search": [
+      "Python programming language"
+    ]
+  }
+]
+
+[Synalinks]
+Call ID: a17fad91-b1d0-4603-b5de-c310ed08b49e
+Parent call ID: 2a65e890-de94-44e3-b5a5-65495ea05f46
+Module: RetrieveKnowledge
+Module Name: retrieve_knowledge
+Module Description: Module for retrieving knowledge from a knowledge base.
+Data Model JSON:
+[
+  {
+    "query": "What is Python?",
+    "tables": [
+      "Wikipedia"
+    ],
+    "search": [
+      "Python programming language"
+    ],
+    "result": [
+      {
+        "id": "doc1",
+        "title": "Introduction to Python",
+        "content": "Python is a high-level programming language.",
+        "score": 1.0
+      },
+      {
+        "id": "doc4",
+        "title": "Natural Language Processing",
+        "content": "NLP enables computers to understand and process human language.",
+        "score": 0.0
+      }
+    ]
+  }
+]
+
+[Synalinks]
+Call ID: 2e21bf78-1f39-424f-ae81-4075ce648d10
+Parent call ID: c318e8f5-08ff-47c6-b354-663df3b77ce1
+Module: Generator
+Module Name: generator
+Module Description: Use a `LanguageModel` to generate a data model from an arbitrary input data model.
+Data Model JSON:
+[
+  {
+    "query": "What is Python?",
+    "tables": [
+      "Wikipedia"
+    ],
+    "search": [
+      "Python programming language"
+    ],
+    "result": [
+      {
+        "id": "doc1",
+        "title": "Introduction to Python",
+        "content": "Python is a high-level programming language.",
+        "score": 1.0
+      },
+      {
+        "id": "doc4",
+        "title": "Natural Language Processing",
+        "content": "NLP enables computers to understand and process human language.",
+        "score": 0.0
+      }
+    ]
+  }
+]
+
+[Synalinks]
+Call ID: 5cd50f63-6dbb-4a1f-9e0b-f04ccc3466c6
+Parent call ID: 2e21bf78-1f39-424f-ae81-4075ce648d10
+Module: LanguageModel
+Module Name: language_model
+Module Description: A language model API wrapper.
+Data Model JSON:
+[
+  {
+    "messages": [
+      {
+        "role": "system",
+        "content": "<instructions>\nYour task is to answer with a JSON containing the following keys: ['answer']\n</instructions>\n"
+      },
+      {
+        "role": "user",
+        "content": "<input>\n{'query': 'What is Python?', 'tables': ['Wikipedia'], 'search': ['Python programming language'], 'result': [{'id': 'doc1', 'title': 'Introduction to Python', 'content': 'Python is a high-level programming language.', 'score': 1.0}, {'id': 'doc4', 'title': 'Natural Language Processing', 'content': 'NLP enables computers to understand and process human language.', 'score': 0.0}]}\n</input>\n<output>\n"
+      }
+    ]
+  }
+]
+
+[Synalinks]
+Call ID: 5cd50f63-6dbb-4a1f-9e0b-f04ccc3466c6
+Parent call ID: 2e21bf78-1f39-424f-ae81-4075ce648d10
+Module: LanguageModel
+Module Name: language_model
+Module Description: A language model API wrapper.
+Data Model JSON:
+[
+  {
+    "answer": "Python is a high-level programming language."
+  }
+]
+
+[Synalinks]
+Call ID: 2e21bf78-1f39-424f-ae81-4075ce648d10
+Parent call ID: c318e8f5-08ff-47c6-b354-663df3b77ce1
+Module: Generator
+Module Name: generator
+Module Description: Use a `LanguageModel` to generate a data model from an arbitrary input data model.
+Data Model JSON:
+[
+  {
+    "answer": "Python is a high-level programming language."
+  }
+]
+
+[Synalinks]
+Call ID: 2a65e890-de94-44e3-b5a5-65495ea05f46
+Parent call ID: None
+Module: Functional
+Module Name: rag_pipeline
+Module Description: A `Functional` program is a `Program` defined as a directed graph of modules.
+Data Model JSON:
+[
+  {
+    "answer": "Python is a high-level programming language."
+  }
+]
+
+[Synalinks]
+Call ID: 45e60550-3664-44ad-a989-09267f3b4333
+Parent call ID: None
+Module: Functional
+Module Name: rag_pipeline
+Module Description: A `Functional` program is a `Program` defined as a directed graph of modules.
+Data Model JSON:
+[
+  {
+    "query": "Tell me about neural networks"
+  }
+]
+
+[Synalinks]
+Call ID: c9397206-6c03-43af-ba6c-77211b10b2d2
+Parent call ID: 45e60550-3664-44ad-a989-09267f3b4333
+Module: RetrieveKnowledge
+Module Name: retrieve_knowledge
+Module Description: Module for retrieving knowledge from a knowledge base.
+Data Model JSON:
+[
+  {
+    "query": "Tell me about neural networks"
+  }
+]
+
+[Synalinks]
+Call ID: 5abe8ff1-4726-49bd-97c7-7d60afb94f87
+Parent call ID: c9397206-6c03-43af-ba6c-77211b10b2d2
+Module: Generator
+Module Name: search_query_generator_retrieve_knowledge
+Module Description: Use a `LanguageModel` to generate a data model from an arbitrary input data model.
+Data Model JSON:
+[
+  {
+    "query": "Tell me about neural networks"
+  }
+]
+
+[Synalinks]
+Call ID: 2bfd2747-cfcc-4b34-a938-ad40f9222902
+Parent call ID: 5abe8ff1-4726-49bd-97c7-7d60afb94f87
+Module: LanguageModel
+Module Name: language_model
+Module Description: A language model API wrapper.
+Data Model JSON:
+[
+  {
+    "messages": [
+      {
+        "role": "system",
+        "content": "<instructions>\nYour task is to retrieve information among the following tables: ['Document'].\nFirst, decide step-by-step which tables you need, then use the `search` to\nperform a lookup.\nThe `search` field should be a list of natural language search queries for the information to look for.\n</instructions>\n"
+      },
+      {
+        "role": "user",
+        "content": "<input>\n{'query': 'Tell me about neural networks'}\n</input>\n<output>\n"
+      }
+    ]
+  }
+]
+
+[Synalinks]
+Call ID: 2bfd2747-cfcc-4b34-a938-ad40f9222902
+Parent call ID: 5abe8ff1-4726-49bd-97c7-7d60afb94f87
+Module: LanguageModel
+Module Name: language_model
+Module Description: A language model API wrapper.
+Data Model JSON:
+[
+  {
+    "tables": [
+      "Neural Network"
+    ],
+    "search": [
+      "What is a neural network?",
+      "How does a neural network work?",
+      "Components of a neural network",
+      "Learning algorithms in neural networks"
+    ]
+  }
+]
+
+[Synalinks]
+Call ID: 5abe8ff1-4726-49bd-97c7-7d60afb94f87
+Parent call ID: c9397206-6c03-43af-ba6c-77211b10b2d2
+Module: Generator
+Module Name: search_query_generator_retrieve_knowledge
+Module Description: Use a `LanguageModel` to generate a data model from an arbitrary input data model.
+Data Model JSON:
+[
+  {
+    "tables": [
+      "Neural Network"
+    ],
+    "search": [
+      "What is a neural network?",
+      "How does a neural network work?",
+      "Components of a neural network",
+      "Learning algorithms in neural networks"
+    ]
+  }
+]
+
+[Synalinks]
+Call ID: c9397206-6c03-43af-ba6c-77211b10b2d2
+Parent call ID: 45e60550-3664-44ad-a989-09267f3b4333
+Module: RetrieveKnowledge
+Module Name: retrieve_knowledge
+Module Description: Module for retrieving knowledge from a knowledge base.
+Data Model JSON:
+[
+  {
+    "query": "Tell me about neural networks",
+    "tables": [
+      "Neural Network"
+    ],
+    "search": [
+      "What is a neural network?",
+      "How does a neural network work?",
+      "Components of a neural network",
+      "Learning algorithms in neural networks"
+    ],
+    "result": [
+      {
+        "id": "doc3",
+        "title": "Deep Learning",
+        "content": "Deep learning uses neural networks with many layers.",
+        "score": 1.0
+      },
+      {
+        "id": "doc2",
+        "title": "Machine Learning Basics",
+        "content": "Machine learning is a subset of AI that enables systems to learn.",
+        "score": 0.0
+      }
+    ]
+  }
+]
+
+[Synalinks]
+Call ID: 8f771f1d-ef8c-4631-b5e8-f23dbf5bb155
+Parent call ID: 2bfd2747-cfcc-4b34-a938-ad40f9222902
+Module: Generator
+Module Name: generator
+Module Description: Use a `LanguageModel` to generate a data model from an arbitrary input data model.
+Data Model JSON:
+[
+  {
+    "query": "Tell me about neural networks",
+    "tables": [
+      "Neural Network"
+    ],
+    "search": [
+      "What is a neural network?",
+      "How does a neural network work?",
+      "Components of a neural network",
+      "Learning algorithms in neural networks"
+    ],
+    "result": [
+      {
+        "id": "doc3",
+        "title": "Deep Learning",
+        "content": "Deep learning uses neural networks with many layers.",
+        "score": 1.0
+      },
+      {
+        "id": "doc2",
+        "title": "Machine Learning Basics",
+        "content": "Machine learning is a subset of AI that enables systems to learn.",
+        "score": 0.0
+      }
+    ]
+  }
+]
+
+[Synalinks]
+Call ID: 40747008-3739-4de5-820e-bde921eaaaee
+Parent call ID: 8f771f1d-ef8c-4631-b5e8-f23dbf5bb155
+Module: LanguageModel
+Module Name: language_model
+Module Description: A language model API wrapper.
+Data Model JSON:
+[
+  {
+    "messages": [
+      {
+        "role": "system",
+        "content": "<instructions>\nYour task is to answer with a JSON containing the following keys: ['answer']\n</instructions>\n"
+      },
+      {
+        "role": "user",
+        "content": "<input>\n{'query': 'Tell me about neural networks', 'tables': ['Neural Network'], 'search': ['What is a neural network?', 'How does a neural network work?', 'Components of a neural network', 'Learning algorithms in neural networks'], 'result': [{'id': 'doc3', 'title': 'Deep Learning', 'content': 'Deep learning uses neural networks with many layers.', 'score': 1.0}, {'id': 'doc2', 'title': 'Machine Learning Basics', 'content': 'Machine learning is a subset of AI that enables systems to learn.', 'score': 0.0}]}\n</input>\n<output>\n"
+      }
+    ]
+  }
+]
+
+[Synalinks]
+Call ID: 40747008-3739-4de5-820e-bde921eaaaee
+Parent call ID: 8f771f1d-ef8c-4631-b5e8-f23dbf5bb155
+Module: LanguageModel
+Module Name: language_model
+Module Description: A language model API wrapper.
+Data Model JSON:
+[
+  {
+    "answer": "Deep learning uses neural networks with many layers."
+  }
+]
+
+[Synalinks]
+Call ID: 8f771f1d-ef8c-4631-b5e8-f23dbf5bb155
+Parent call ID: 2bfd2747-cfcc-4b34-a938-ad40f9222902
+Module: Generator
+Module Name: generator
+Module Description: Use a `LanguageModel` to generate a data model from an arbitrary input data model.
+Data Model JSON:
+[
+  {
+    "answer": "Deep learning uses neural networks with many layers."
+  }
+]
+
+[Synalinks]
+Call ID: 45e60550-3664-44ad-a989-09267f3b4333
+Parent call ID: None
+Module: Functional
+Module Name: rag_pipeline
+Module Description: A `Functional` program is a `Program` defined as a directed graph of modules.
+Data Model JSON:
+[
+  {
+    "answer": "Deep learning uses neural networks with many layers."
+  }
+]
+
+
+RAG Query: What is Python?
+Answer: Python is a high-level programming language.
+
+RAG Query: Tell me about neural networks
+Answer: Deep learning uses neural networks with many layers.
+
+============================================================
+Example 6: Raw SQL Query
+============================================================
+
+SQL: SELECT WHERE title LIKE '%Learning%'
+  - doc2: Machine Learning Basics
+  - doc3: Deep Learning

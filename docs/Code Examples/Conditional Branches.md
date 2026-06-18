@@ -10,3 +10,14 @@
 ````python
 --8<-- "examples/4_conditional_branches.py:129"
 ````
+
+## Run log
+
+The log below is the **unedited** combined output of running the example above
+with local models (ollama).
+
+??? example "Full run log — `examples/4_conditional_branches.log`"
+
+    ```text
+    --8<-- "examples/4_conditional_branches.log"
+    ```

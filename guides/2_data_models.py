@@ -471,7 +471,7 @@ async def main():
     load_dotenv()
     synalinks.clear_session()
 
-    language_model = synalinks.LanguageModel(model="ollama/llama3.2:latest")
+    language_model = synalinks.LanguageModel(model="ollama/mistral:latest")
 
     inputs = synalinks.Input(data_model=ReviewInput)
     outputs = await synalinks.Generator(
@@ -502,7 +502,7 @@ if __name__ == "__main__":
     asyncio.run(main())
 ```
 
-Expected output (with `ollama/llama3.2:latest`; exact wording is
+Expected output (with `ollama/mistral:latest`; exact wording is
 nondeterministic across runs):
 
 ```
@@ -581,13 +581,14 @@ class ReviewAnalysis(synalinks.DataModel):
 async def main():
     load_dotenv()
     synalinks.clear_session()
+    synalinks.enable_logging()
 
     # synalinks.enable_observability(
     #     tracking_uri="http://localhost:5000",
     #     experiment_name="guide_2_data_models",
     # )
 
-    language_model = synalinks.LanguageModel(model="ollama/llama3.2:latest")
+    language_model = synalinks.LanguageModel(model="ollama/mistral:latest")
 
     inputs = synalinks.Input(data_model=ReviewInput)
     outputs = await synalinks.Generator(
@@ -600,6 +601,7 @@ async def main():
         outputs=outputs,
         name="review_analyzer",
     )
+    program.summary()
 
     result = await program(
         ReviewInput(

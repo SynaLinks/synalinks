@@ -153,6 +153,7 @@ The agent will typically:
 
 # --8<-- [start:source]
 import asyncio
+import json
 import os
 import shutil
 import tempfile
@@ -191,9 +192,18 @@ def print_messages(result) -> None:
         role = msg.get("role")
         if role == "assistant" and msg.get("tool_calls"):
             for call in msg["tool_calls"]:
-                args = call.get("arguments", {})
+                # Tool calls nest name/arguments under "function" (the
+                # chat-completion shape); fall back to a flat dict just in case.
+                fn = call.get("function", call)
+                name = fn.get("name", "?")
+                args = fn.get("arguments", {})
+                if isinstance(args, str):
+                    try:
+                        args = json.loads(args)
+                    except (ValueError, TypeError):
+                        args = {"_raw": args}
                 args_str = ", ".join(f"{k}={v!r}" for k, v in args.items())
-                print(f"  Tool call: {call['name']}({args_str})")
+                print(f"  Tool call: {name}({args_str})")
         elif role == "tool":
             content = msg.get("content", "")
             if isinstance(content, dict):
@@ -221,7 +231,7 @@ async def main():
     try:
         populate_workspace(workdir)
 
-        lm = synalinks.LanguageModel(model="gemini/gemini-3.1-flash-lite-preview")
+        lm = synalinks.LanguageModel(model="ollama/qwen3:8b")
 
         # Keep a reference to the DeepAgent so we can inspect its sandbox
         # (the copy-on-write overlay) after the run.

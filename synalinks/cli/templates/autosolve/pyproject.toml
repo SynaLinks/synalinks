@@ -1,0 +1,10 @@
+[project]
+name = "synalinks-autosolve"
+version = "0.1.0"
+description = "Autosolve template for building and self-improving neuro-symbolic systems with a coding agent."
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "synalinks",
+    "python-dotenv",
+]

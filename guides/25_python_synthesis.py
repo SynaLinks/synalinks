@@ -42,7 +42,7 @@ holds and *who* runs it:
 | | `Generator` | `PythonSynthesis` |
 |---|---|---|
 | Trainable variable | instruction + examples (text) | a Python script (code) |
-| Runs the variable at inference | the LM | the Monty sandbox |
+| Runs the variable at inference | the LM | the Mirage sandbox |
 | LM calls per prediction | one | **zero** |
 | LM calls during training | scoring/optimizing the prompt | authoring/refining the script |
 | Output | whatever the LM emits | whatever the script assigns to `result` |
@@ -59,22 +59,20 @@ object. The contract the script must honor:
 - `result` must validate against the module's target schema (the
   `data_model` you pass in). If it does not, the run is discarded.
 
-The script runs inside the **Monty** sandbox
-(https://github.com/pydantic/monty), a restricted Python interpreter.
-This is not a detail you can ignore — the optimizer must write code that
-*stays inside the sandbox*, so you need to know its walls:
+The script runs inside the **Mirage** sandbox — a real, isolated
+Python 3 interpreter, sandboxed from the host. Because it is genuine
+CPython, the optimizer can write ordinary Python:
 
-- Only a subset of the stdlib is importable: `sys`, `os`, `typing`,
-  `asyncio`, `re`, `datetime`, `json`, `math`, `pathlib`. Notably
-  **`itertools`, `collections`, `functools`, `random` and `time` are
-  not** — and neither is any third-party library (`numpy`, `pandas`).
-- No `class` definitions and no `match` statements. Use functions and
-  `if`/`elif` chains.
-- The host filesystem, environment variables and network are
-  unreachable: `open()`, `os.system`, `os.environ`, `sys.argv` and
-  friends are pruned or gated away.
-- Execution is bounded by the module's `timeout` (default 5s) and
-  Monty's memory limits.
+- The **full standard library** is importable, along with any
+  third-party package installed in the environment (`numpy`, `pandas`,
+  …), and `class` definitions and `match` statements are supported.
+- Tools bound to the module are exposed as **global async callables**
+  under their tool name: `await` them inside an `async def` driven by
+  `asyncio.run(...)`; each call returns a dict.
+- The sandbox is host-safe — the script runs isolated from the real
+  workspace — and execution is bounded by the module's `timeout`
+  (long-running scripts are aborted). The exact constraints ultimately
+  depend on the active sandbox (`sandbox.description`).
 
 Because LM-authored code fails *often* — a syntax slip, a forbidden
 import, an infinite loop, an output of the wrong shape — the module is
@@ -136,7 +134,7 @@ optimizer = synalinks.optimizers.OMEGA(
 ```mermaid
 flowchart TD
     S["Seed script"] --> POP["Population of scripts"]
-    POP --> RUN["Run each in the Monty sandbox over the batch"]
+    POP --> RUN["Run each in the Mirage sandbox over the batch"]
     RUN --> REW["ExactMatch reward on the output"]
     REW --> MUT["OMEGA: LM mutates / crosses over the survivors"]
     MUT --> DNS["DNS: drop candidates that are dominated AND similar"]

@@ -256,7 +256,7 @@ Prerequisites:
   `gemini/gemini-3.1-flash-lite-preview`, which expects a
   `GEMINI_API_KEY` env var. If you don't have one, edit
   `build_and_save_program` and change the model string — a free
-  local option is `"ollama/llama3.2:latest"` (see
+  local option is `"ollama/mistral:latest"` (see
   [Getting Started](https://synalinks.github.io/synalinks/guides/Getting%20Started/) for setup).
 - The FastAPI toolkit installed:
   `uv pip install "fastapi[standard]" uvicorn`. The `[standard]`

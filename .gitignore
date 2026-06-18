@@ -35,6 +35,9 @@ wheels/
 
 # Django
 *.log
+# Keep guide/example run logs (committed as reproducibility proof, embedded in the docs)
+!guides/*.log
+!examples/*.log
 db.sqlite3
 db.sqlite3-journal
 local_settings.py

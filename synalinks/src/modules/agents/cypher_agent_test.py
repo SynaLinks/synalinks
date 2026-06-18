@@ -263,7 +263,7 @@ class CypherAgentInstantiationTest(testing.TestCase):
             data_model=CypherAnswer,
             tools=[Tool(calculator)],
         )
-        tool_names = set(agent.agent.tools.keys())
+        tool_names = set(agent.tools.keys())
         self.assertIn("calculator", tool_names)
         self.assertIn("get_graph_schema", tool_names)
         self.assertIn("run_cypher_query", tool_names)

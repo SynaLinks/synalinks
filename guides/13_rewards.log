@@ -1,0 +1,178 @@
+(DEBUG) [Synalinks]
+Call ID: 77e60eff-20f9-40f0-baa1-7e5de18654a7
+Parent call ID: None
+Module: Generator
+Module Name: generator
+Module Description: Use a `LanguageModel` to generate a data model from an arbitrary input data model.
+Data Model JSON Schema:
+[
+  {
+    "additionalProperties": false,
+    "description": "A question for the program to answer.",
+    "properties": {
+      "question": {
+        "description": "The question to answer",
+        "title": "Question",
+        "type": "string"
+      }
+    },
+    "required": [
+      "question"
+    ],
+    "title": "Question",
+    "type": "object"
+  }
+]
+
+(DEBUG) [Synalinks]
+Call ID: 77e60eff-20f9-40f0-baa1-7e5de18654a7
+Parent call ID: None
+Module: Generator
+Module Name: generator
+Module Description: Use a `LanguageModel` to generate a data model from an arbitrary input data model.
+Data Model JSON Schema:
+[
+  {
+    "additionalProperties": false,
+    "description": "An answer to a question, with reasoning.",
+    "properties": {
+      "thinking": {
+        "description": "Step-by-step reasoning",
+        "title": "Thinking",
+        "type": "string"
+      },
+      "answer": {
+        "description": "The final answer",
+        "title": "Answer",
+        "type": "string"
+      }
+    },
+    "required": [
+      "thinking",
+      "answer"
+    ],
+    "title": "Answer",
+    "type": "object"
+  }
+]
+
+Program: qa_program
+description: 'A `Functional` program is a `Program` defined as a directed graph 
+of modules.'
+┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━┓
+┃ Module (type)               ┃ Output Schema                    ┃  Vars # ┃
+┡━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━┩
+│ input_module (InputModule)  │ Question:                        │       0 │
+│                             │   question: str                  │         │
+├─────────────────────────────┼──────────────────────────────────┼─────────┤
+│ generator (Generator)       │ Answer:                          │       1 │
+│                             │   thinking: str                  │         │
+│                             │   answer: str                    │         │
+└─────────────────────────────┴──────────────────────────────────┴─────────┘
+[Synalinks]
+Call ID: e82567dc-45d2-4994-b0f5-d9e1b3675ae4
+Parent call ID: None
+Module: Functional
+Module Name: qa_program
+Module Description: A `Functional` program is a `Program` defined as a directed graph of modules.
+Data Model JSON:
+[
+  {
+    "question": "What is the capital of France?"
+  }
+]
+
+[Synalinks]
+Call ID: b9d4179c-1bb0-485f-a1fa-c43ba359e8aa
+Parent call ID: e82567dc-45d2-4994-b0f5-d9e1b3675ae4
+Module: Generator
+Module Name: generator
+Module Description: Use a `LanguageModel` to generate a data model from an arbitrary input data model.
+Data Model JSON:
+[
+  {
+    "question": "What is the capital of France?"
+  }
+]
+
+[Synalinks]
+Call ID: 5432f6db-b750-43b8-9ea5-9bcd0798e97b
+Parent call ID: b9d4179c-1bb0-485f-a1fa-c43ba359e8aa
+Module: LanguageModel
+Module Name: language_model
+Module Description: A language model API wrapper.
+Data Model JSON:
+[
+  {
+    "messages": [
+      {
+        "role": "system",
+        "content": "<instructions>\nYour task is to answer with a JSON containing the following keys: ['thinking', 'answer']\n</instructions>\n"
+      },
+      {
+        "role": "user",
+        "content": "<input>\n{'question': 'What is the capital of France?'}\n</input>\n<output>\n"
+      }
+    ]
+  }
+]
+
+[Synalinks]
+Call ID: 5432f6db-b750-43b8-9ea5-9bcd0798e97b
+Parent call ID: b9d4179c-1bb0-485f-a1fa-c43ba359e8aa
+Module: LanguageModel
+Module Name: language_model
+Module Description: A language model API wrapper.
+Data Model JSON:
+[
+  {
+    "thinking": "The capital of France is Paris.",
+    "answer": "Paris"
+  }
+]
+
+[Synalinks]
+Call ID: b9d4179c-1bb0-485f-a1fa-c43ba359e8aa
+Parent call ID: e82567dc-45d2-4994-b0f5-d9e1b3675ae4
+Module: Generator
+Module Name: generator
+Module Description: Use a `LanguageModel` to generate a data model from an arbitrary input data model.
+Data Model JSON:
+[
+  {
+    "thinking": "The capital of France is Paris.",
+    "answer": "Paris"
+  }
+]
+
+[Synalinks]
+Call ID: e82567dc-45d2-4994-b0f5-d9e1b3675ae4
+Parent call ID: None
+Module: Functional
+Module Name: qa_program
+Module Description: A `Functional` program is a `Program` defined as a directed graph of modules.
+Data Model JSON:
+[
+  {
+    "thinking": "The capital of France is Paris.",
+    "answer": "Paris"
+  }
+]
+
+y_pred: {'thinking': 'The capital of France is Paris.', 'answer': 'Paris'}
+y_true: {'thinking': 'France has Paris as its capital.', 'answer': 'Paris'}
+
+============================================================
+1. ExactMatch(in_mask=['answer'])
+============================================================
+  reward: 1.000
+
+============================================================
+2. RewardFunctionWrapper(fn=length_under, limit=200)
+============================================================
+  reward: 1.000
+
+============================================================
+3. Blended reward: 0.7 * ExactMatch + 0.3 * length_under_200
+============================================================
+  reward: 1.000

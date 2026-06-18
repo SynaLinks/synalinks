@@ -1,0 +1,40 @@
+============================================================
+Example 1: Concatenation Operator (+)
+============================================================
+Combines fields from two data models into one.
+
+Combined result fields: ['answer', 'critique']
+  answer: 4...
+  critique: The provided input is not a critique, but rather a...
+
+============================================================
+Example 2: Logical OR Operator (|)
+============================================================
+Returns the first non-None value. Perfect for branches!
+
+Easy query result: 2
+
+============================================================
+Example 3: Logical AND Operator (&)
+============================================================
+Safe merge - returns None if either input is None.
+
+Pattern: Branch -> Safe concat (&) -> Process -> Merge (|)
+
+============================================================
+Example 4: NOT Operator (~)
+============================================================
+Converts any data to None. Useful for conditional cancellation.
+
+Original: answer='42'
+After ~: None
+
+============================================================
+Example 5: XOR Operator (^)
+============================================================
+Returns data only if exactly ONE operand is non-None.
+
+XOR Truth Table:
+  data ^ None = has data: True
+  None ^ data = has data: True
+  data ^ data = is None: True

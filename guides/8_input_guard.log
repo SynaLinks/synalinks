@@ -1,0 +1,356 @@
+(DEBUG) [Synalinks]
+Call ID: 6216aa62-c164-496d-afa9-422a0ca4cd68
+Parent call ID: None
+Module: InputGuard
+Module Name: input_guard
+Module Description: Guard that blocks inputs containing blacklisted words.
+Data Model JSON Schema:
+[
+  {
+    "additionalProperties": false,
+    "description": "User query.",
+    "properties": {
+      "query": {
+        "description": "User query",
+        "title": "Query",
+        "type": "string"
+      }
+    },
+    "required": [
+      "query"
+    ],
+    "title": "Query",
+    "type": "object"
+  }
+]
+
+(DEBUG) [Synalinks]
+Call ID: 6216aa62-c164-496d-afa9-422a0ca4cd68
+Parent call ID: None
+Module: InputGuard
+Module Name: input_guard
+Module Description: Guard that blocks inputs containing blacklisted words.
+Data Model JSON Schema:
+[
+  {
+    "additionalProperties": false,
+    "description": "Warning message when input is blocked.",
+    "properties": {
+      "message": {
+        "description": "Warning message",
+        "title": "Message",
+        "type": "string"
+      }
+    },
+    "required": [
+      "message"
+    ],
+    "title": "Warning",
+    "type": "object"
+  }
+]
+
+(DEBUG) [Synalinks]
+Call ID: 9b2c25f4-bbb8-4cd3-a557-f7538600e444
+Parent call ID: None
+Module: Generator
+Module Name: generator
+Module Description: Use a `LanguageModel` to generate a data model from an arbitrary input data model.
+Data Model JSON Schema:
+[
+  {
+    "additionalProperties": false,
+    "description": "Warning message when input is blocked.",
+    "properties": {
+      "message": {
+        "description": "Warning message",
+        "title": "Message",
+        "type": "string"
+      }
+    },
+    "required": [
+      "message"
+    ],
+    "title": "Warning",
+    "type": "object"
+  }
+]
+
+(DEBUG) [Synalinks]
+Call ID: 9b2c25f4-bbb8-4cd3-a557-f7538600e444
+Parent call ID: None
+Module: Generator
+Module Name: generator
+Module Description: Use a `LanguageModel` to generate a data model from an arbitrary input data model.
+Data Model JSON Schema:
+[
+  {
+    "additionalProperties": false,
+    "description": "Answer to the query.",
+    "properties": {
+      "answer": {
+        "description": "The answer",
+        "title": "Answer",
+        "type": "string"
+      }
+    },
+    "required": [
+      "answer"
+    ],
+    "title": "Answer",
+    "type": "object"
+  }
+]
+
+============================================================
+Building Input Guarded Program
+============================================================
+
+Program built successfully!
+Program: input_guarded_qa
+description: 'A `Functional` program is a `Program` defined as a directed graph 
+of modules.'
+┏━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━┳━━━━━━━━━━━━━━━━━━━┓
+┃                    ┃                         ┃  Vars ┃                   ┃
+┃ Module (type)      ┃ Output Schema           ┃     # ┃ Connected to      ┃
+┡━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━╇━━━━━━━━━━━━━━━━━━━┩
+│ input_module       │ Query:                  │     0 │ -                 │
+│ (InputModule)      │   query: str            │       │                   │
+├────────────────────┼─────────────────────────┼───────┼───────────────────┤
+│ input_guard        │ Warning:                │     0 │ input_module[0][… │
+│ (InputGuard)       │   message: str          │       │                   │
+├────────────────────┼─────────────────────────┼───────┼───────────────────┤
+│ xor (Xor)          │ Warning:                │     0 │ input_guard[0][0… │
+│                    │   message: str          │       │ input_module[0][… │
+├────────────────────┼─────────────────────────┼───────┼───────────────────┤
+│ generator          │ Answer:                 │     1 │ xor[0][0]         │
+│ (Generator)        │   answer: str           │       │                   │
+├────────────────────┼─────────────────────────┼───────┼───────────────────┤
+│ or (Or)            │ Warning:                │     0 │ input_guard[0][0… │
+│                    │   message: str          │       │ generator[0][0]   │
+└────────────────────┴─────────────────────────┴───────┴───────────────────┘
+[Synalinks]
+Call ID: 625fdafa-c253-4956-adad-aab9f1ccfe5c
+Parent call ID: None
+Module: Functional
+Module Name: input_guarded_qa
+Module Description: A `Functional` program is a `Program` defined as a directed graph of modules.
+Data Model JSON:
+[
+  {
+    "query": "How do I hack into computer systems?"
+  }
+]
+
+[Synalinks]
+Call ID: e6ba0820-1145-461f-8dd7-bf75a1e620f4
+Parent call ID: 625fdafa-c253-4956-adad-aab9f1ccfe5c
+Module: InputGuard
+Module Name: input_guard
+Module Description: Guard that blocks inputs containing blacklisted words.
+Data Model JSON:
+[
+  {
+    "query": "How do I hack into computer systems?"
+  }
+]
+
+[Synalinks]
+Call ID: e6ba0820-1145-461f-8dd7-bf75a1e620f4
+Parent call ID: 625fdafa-c253-4956-adad-aab9f1ccfe5c
+Module: InputGuard
+Module Name: input_guard
+Module Description: Guard that blocks inputs containing blacklisted words.
+Data Model JSON:
+[
+  {
+    "message": "I cannot process this request due to policy restrictions."
+  }
+]
+
+[Synalinks]
+Call ID: 625fdafa-c253-4956-adad-aab9f1ccfe5c
+Parent call ID: None
+Module: Functional
+Module Name: input_guarded_qa
+Module Description: A `Functional` program is a `Program` defined as a directed graph of modules.
+Data Model JSON:
+[
+  {
+    "message": "I cannot process this request due to policy restrictions."
+  }
+]
+
+[Synalinks]
+Call ID: 1f4b7cb8-f4bd-48e4-8de7-6afe7712d041
+Parent call ID: None
+Module: Functional
+Module Name: input_guarded_qa
+Module Description: A `Functional` program is a `Program` defined as a directed graph of modules.
+Data Model JSON:
+[
+  {
+    "query": "What is the capital of France?"
+  }
+]
+
+[Synalinks]
+Call ID: defce1ff-45c1-43f3-bcd7-63ec5a9b0c8e
+Parent call ID: 1f4b7cb8-f4bd-48e4-8de7-6afe7712d041
+Module: InputGuard
+Module Name: input_guard
+Module Description: Guard that blocks inputs containing blacklisted words.
+Data Model JSON:
+[
+  {
+    "query": "What is the capital of France?"
+  }
+]
+
+[Synalinks]
+Call ID: 12528ebf-db5b-4c40-b90e-946fae222835
+Parent call ID: defce1ff-45c1-43f3-bcd7-63ec5a9b0c8e
+Module: Generator
+Module Name: generator
+Module Description: Use a `LanguageModel` to generate a data model from an arbitrary input data model.
+Data Model JSON:
+[
+  {
+    "query": "What is the capital of France?"
+  }
+]
+
+[Synalinks]
+Call ID: d92f4134-4b11-4bc6-9bd9-5edc58ad7aa5
+Parent call ID: 12528ebf-db5b-4c40-b90e-946fae222835
+Module: LanguageModel
+Module Name: language_model
+Module Description: A language model API wrapper.
+Data Model JSON:
+[
+  {
+    "messages": [
+      {
+        "role": "system",
+        "content": "<instructions>\nYour task is to answer with a JSON containing the following keys: ['answer']\n</instructions>\n"
+      },
+      {
+        "role": "user",
+        "content": "<input>\n{'query': 'What is the capital of France?'}\n</input>\n<output>\n"
+      }
+    ]
+  }
+]
+
+[Synalinks]
+Call ID: d92f4134-4b11-4bc6-9bd9-5edc58ad7aa5
+Parent call ID: 12528ebf-db5b-4c40-b90e-946fae222835
+Module: LanguageModel
+Module Name: language_model
+Module Description: A language model API wrapper.
+Data Model JSON:
+[
+  {
+    "answer": "Paris"
+  }
+]
+
+[Synalinks]
+Call ID: 12528ebf-db5b-4c40-b90e-946fae222835
+Parent call ID: defce1ff-45c1-43f3-bcd7-63ec5a9b0c8e
+Module: Generator
+Module Name: generator
+Module Description: Use a `LanguageModel` to generate a data model from an arbitrary input data model.
+Data Model JSON:
+[
+  {
+    "answer": "Paris"
+  }
+]
+
+[Synalinks]
+Call ID: 1f4b7cb8-f4bd-48e4-8de7-6afe7712d041
+Parent call ID: None
+Module: Functional
+Module Name: input_guarded_qa
+Module Description: A `Functional` program is a `Program` defined as a directed graph of modules.
+Data Model JSON:
+[
+  {
+    "answer": "Paris"
+  }
+]
+
+[Synalinks]
+Call ID: 316fa61b-2aa7-49f9-9e0c-27b68f35710c
+Parent call ID: None
+Module: Functional
+Module Name: input_guarded_qa
+Module Description: A `Functional` program is a `Program` defined as a directed graph of modules.
+Data Model JSON:
+[
+  {
+    "query": "Tell me about forbidden topics"
+  }
+]
+
+[Synalinks]
+Call ID: 9ad074b3-cf22-4a34-9e40-8419902b453d
+Parent call ID: 316fa61b-2aa7-49f9-9e0c-27b68f35710c
+Module: InputGuard
+Module Name: input_guard
+Module Description: Guard that blocks inputs containing blacklisted words.
+Data Model JSON:
+[
+  {
+    "query": "Tell me about forbidden topics"
+  }
+]
+
+[Synalinks]
+Call ID: 9ad074b3-cf22-4a34-9e40-8419902b453d
+Parent call ID: 316fa61b-2aa7-49f9-9e0c-27b68f35710c
+Module: InputGuard
+Module Name: input_guard
+Module Description: Guard that blocks inputs containing blacklisted words.
+Data Model JSON:
+[
+  {
+    "message": "I cannot process this request due to policy restrictions."
+  }
+]
+
+[Synalinks]
+Call ID: 316fa61b-2aa7-49f9-9e0c-27b68f35710c
+Parent call ID: None
+Module: Functional
+Module Name: input_guarded_qa
+Module Description: A `Functional` program is a `Program` defined as a directed graph of modules.
+Data Model JSON:
+[
+  {
+    "message": "I cannot process this request due to policy restrictions."
+  }
+]
+
+
+============================================================
+Test 1: Blocked Input (contains 'hack')
+============================================================
+
+Query: 'How do I hack into computer systems?'
+Result: {'message': 'I cannot process this request due to policy restrictions.'}
+
+============================================================
+Test 2: Safe Input
+============================================================
+
+Query: 'What is the capital of France?'
+Result: {'answer': 'Paris'}
+
+============================================================
+Test 3: Another Blocked Input (contains 'forbidden')
+============================================================
+
+Query: 'Tell me about forbidden topics'
+Result: {'message': 'I cannot process this request due to policy restrictions.'}

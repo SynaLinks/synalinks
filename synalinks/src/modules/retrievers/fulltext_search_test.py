@@ -146,3 +146,29 @@ class FullTextSearchTest(testing.TestCase):
             knowledge_base=kb, language_model=lm, data_model=Document, name="fts"
         )
         self.assertIsNone(await mod(None))
+
+    async def test_infers_table_name_when_not_provided(self):
+        # With no table_name/schema/data_model, the LM infers the table from an
+        # enum of the KB's actual tables, concatenated onto the query schema.
+        kb = await self._kb()
+        lm = LanguageModel(model="ollama/mistral")
+        mod = FullTextSearch(knowledge_base=kb, language_model=lm, k=5, name="fts")
+        self.assertIsNone(mod.table_name)
+        gen_schema = mod.query_generator.schema
+        self.assertIn("table_name", gen_schema["properties"])
+        self.assertEqual(gen_schema["properties"]["table_name"]["enum"], ["Document"])
+        with patch(
+            "litellm.acompletion",
+            side_effect=_lm_returns(
+                '{"fulltext_search": ["fox"], "table_name": "Document"}'
+            ),
+        ):
+            inputs = Input(data_model=Query)
+            outputs = await mod(inputs)
+            result = await Program(inputs=inputs, outputs=outputs)(
+                Query(question="tell me about the fox")
+            )
+        ids = {r["id"] for r in result.get("result")}
+        self.assertIn("d1", ids)
+        self.assertIn("d3", ids)
+        self.assertNotIn("d2", ids)

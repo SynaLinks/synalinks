@@ -33,20 +33,19 @@ workspace by the time the loop ends. Bug fixes, refactors, scaffolds,
 data-wrangling pipelines, exploratory code reviews — anything where
 "the result is some new state in the workspace" is the right ending.
 
-## The Seven Tools
+## The Six Tools
 
 `synalinks.DeepAgent` wraps a `FunctionCallingAgent` and pre-wires
-seven tools, all bound to a single working directory you supply:
+six tools, all bound to a single working directory you supply:
 
 | Tool | Purpose |
 |------|---------|
 | `list_files(pattern)` | List files matching a glob (e.g. `**/*.py`). |
 | `search_files(pattern, glob)` | Grep file *contents* by regex across files matching a glob. Returns `(path, line_number, line)` matches. |
 | `read_file(path, offset, limit)` | Line-paginated file read. Output carries 1-based `start_line` / `end_line`, so the LM can cite line numbers later without re-reading. |
-| `write_file(path, content)` | Create or overwrite a file (in the overlay). |
+| `write_file(path, content)` | Create or overwrite a file (in the sandbox filesystem). |
 | `edit_file(path, old, new)` | Replace an exact substring; rejects 0 or 2+ occurrences so the LM has to add surrounding context to disambiguate (pass `replace_all=True` to override). |
-| `run_python_code(code)` | Run a Python snippet directly in the sandbox interpreter. |
-| `run_python_file(path)` | Run a self-contained script the agent wrote into the overlay (it cannot import other overlay files). |
+| `run_bash(command)` | Run a shell command against the sandbox filesystem — pipes, redirects, globs, `&&`, loops, and `python3` (a real interpreter with the full standard library, third-party packages, and network). Write a script with `write_file`, then run it with `python3 script.py`. |
 
 Two design choices are worth highlighting:
 
@@ -73,44 +72,48 @@ Here is the single idea that makes the deep agent safe to point at a
 real directory: **the tools operate on a sandboxed, copy-on-write
 copy of the workdir, never the workdir itself.**
 
-### Reads fall through, writes stay in the overlay
+### A copy-on-write filesystem, seeded from your workdir
 
-`DeepAgent` mounts the workdir in a `MontySandbox`. Reads
-(`read_file`, `list_files`, `search_files`) fall through to the real
-files on disk, so the agent sees your project as it is. But every
-mutation — `write_file`, `edit_file`, and anything `run_python_code` /
-`run_python_file` writes — lands in an **in-memory overlay** layered on
-top. The real workspace on disk is never modified. (Paths are still
-rooted at the workdir — `..` cannot escape it — so reads stay inside
+`DeepAgent` mounts the workdir in a `MirageSandbox`. The agent sees your
+project as it is — `read_file`, `list_files`, `search_files` resolve
+against the mounted copy — but every mutation (`write_file`, `edit_file`,
+and anything `run_bash` writes) lands in the sandbox's **copy-on-write
+filesystem**, never on the real disk. The host workspace is never
+modified. (Paths are rooted at the workdir, so the agent stays inside
 the directory you mounted.)
 
-That means there is no capability to gate: the agent simply *cannot*
-damage the host through its tools, because nothing it does is ever
-written back to disk. All seven tools are therefore always available.
+That means there is no capability to gate: the agent cannot damage the
+host through its tools, because nothing it does is written back to disk.
+All six tools are therefore always available.
 
-### Code runs in the Monty interpreter, not the host
+### Code runs in an isolated subprocess, not on the host
 
-`run_python_code` and `run_python_file` do not shell out. They execute
-in **Monty**, a restricted Python interpreter embedded in the sandbox.
-There is no `open()` (file access goes through the overlay-backed
-tools), no `subprocess`, no arbitrary host I/O; `json` exposes only
-`loads` / `dumps`. `timeout` (default 30s) bounds each execution.
+`run_bash` does not shell out to your machine. It runs in **Mirage** —
+an isolated, confined CPython subprocess with the workdir mounted as the
+copy-on-write filesystem. The `python3` it exposes is a *real*
+interpreter (full standard library, third-party packages, even network),
+so the agent can write and run ordinary scripts — but its writes stay in
+the sandbox filesystem, and confinement (seccomp, read-only host binds,
+an egress allowlist) bounds what it can reach. `timeout` (default 30s)
+bounds each execution.
 
-This is why there is no `run_bash` and no `allow_write` / `allow_bash`
-switches that earlier designs had: the containment is structural, not a
-set of gates you can forget to turn on.
+The containment is structural — a sandboxed filesystem plus a confined
+subprocess — rather than a set of `allow_write` / `allow_bash` gates you
+could forget to turn on.
 
 ### Inspecting and persisting what the agent did
 
-Because changes live in the overlay, you read them back through the
-sandbox rather than off disk. The `DeepAgent` instance exposes it as
-`agent.sandbox`:
+Because changes live in the sandbox filesystem, you read them back
+through the sandbox rather than off disk. The `DeepAgent` instance
+exposes it as `agent.sandbox`:
 
 - `agent.sandbox.changes()` → `{"written": [...], "deleted": [...]}`,
-  a summary of the final overlay state.
-- `agent.sandbox.journal()` → an ordered log of every mutation.
-- `agent.sandbox.read_overlay(path)` → the effective bytes for a path
-  (overlay value if written, else the base file).
+  a summary of the final sandbox state.
+- `agent.sandbox.diff()` → per-path detail of every change
+  (`{"path", "kind", "size"}`) against the seeded workdir.
+- `await agent.sandbox.read_file(path)` → `{"content": ...}`, the
+  effective content for a path (sandbox value if written, else the
+  seeded file).
 
 If you want any of it on disk, persist it yourself from those reads.
 
@@ -123,13 +126,13 @@ The additions are workspace-specific:
 | Param | Required | Default | Notes |
 |-------|----------|---------|-------|
 | `workdir` | yes | — | Must exist and be a directory. Mounted read-through in the sandbox; the agent's writes/edits stay in the overlay and never touch it. (Omit it for an empty in-memory workspace.) |
-| `timeout` | no | `30.0` | Per-execution budget in seconds for `run_python_code` / `run_python_file`. |
+| `timeout` | no | `30.0` | Per-execution budget in seconds for `run_bash`. |
 | `tools` | no | `None` | Extra `Tool` instances or async functions to append to the built-ins. Same name-collision and no-leading-underscore rules as `FunctionCallingAgent`. |
 
 ```python
 import synalinks
 
-lm = synalinks.LanguageModel(model="ollama/mistral")
+lm = synalinks.LanguageModel(model="ollama/qwen3:8b")
 
 inputs = synalinks.Input(data_model=synalinks.ChatMessages)
 outputs = await synalinks.DeepAgent(
@@ -162,7 +165,7 @@ workdir = tempfile.mkdtemp(prefix="deep_demo_")
 with open(os.path.join(workdir, "calculator.py"), "w") as f:
     f.write("def add(a, b):\n    return a + b\n")
 
-lm = synalinks.LanguageModel(model="ollama/mistral")
+lm = synalinks.LanguageModel(model="ollama/qwen3:8b")
 inputs = synalinks.Input(data_model=synalinks.ChatMessages)
 deep = synalinks.DeepAgent(
     workdir=workdir,
@@ -175,17 +178,17 @@ agent = synalinks.Program(inputs=inputs, outputs=outputs)
 task = synalinks.ChatMessages(messages=[synalinks.ChatMessage(
     role="user",
     content=(
-        "Open calculator.py, add a `multiply(a, b)` function, "
-        "and run `run_python_code` with "
-        "`from calculator import multiply; print(multiply(6, 7))` "
-        "to confirm it prints 42."
+        "Open calculator.py, add a `multiply(a, b)` function and an "
+        '`if __name__ == "__main__":` block that prints `multiply(6, 7)`, '
+        "then use `run_bash` to run `python3 calculator.py` to confirm "
+        "it prints 42."
     ),
 )])
 result = await agent(task)
 
-# Changes live in the overlay, not on disk — inspect them via the sandbox:
+# Changes live in the sandbox filesystem, not on disk — inspect via the sandbox:
 print(deep.sandbox.changes())                       # {'written': ['/calculator.py'], ...}
-print(deep.sandbox.read_overlay("calculator.py").decode())
+print((await deep.sandbox.read_file("calculator.py"))["content"])
 ```
 
 What the agent will typically do:
@@ -194,8 +197,9 @@ What the agent will typically do:
    markers.
 2. `edit_file("calculator.py", "def add(a, b):\n    return a + b\n", "def add(a, b):\n    return a + b\n\ndef multiply(a, b):\n    return a * b\n")`
    — or write the whole file with `write_file`. The model picks.
-3. `run_python_code("from calculator import multiply; print(multiply(6, 7))")`
-   — verify the change against the overlay.
+3. `run_bash("python3 calculator.py")` — run the file in the sandbox to
+   verify it prints 42. (Run a script *file*: a `python3 -c` snippet
+   can't import the overlay's modules — only file execution sees them.)
 4. Stop calling tools; produce the final assistant message.
 
 If the verify step fails (syntax error, wrong number printed), the
@@ -260,6 +264,7 @@ def populate_workspace(workdir: str) -> None:
 async def main():
     load_dotenv()
     synalinks.clear_session()
+    synalinks.enable_logging()
 
     workdir = tempfile.mkdtemp(prefix="deep_agent_guide_")
     try:
@@ -267,7 +272,7 @@ async def main():
 
         # The LM that drives the agent. Any function-calling-capable model
         # works; pick a small local model for fast iteration during dev.
-        language_model = synalinks.LanguageModel(model="ollama/mistral")
+        language_model = synalinks.LanguageModel(model="ollama/qwen3:8b")
 
         # Build the agent. The workdir is the only thing DeepAgent adds on
         # top of FunctionCallingAgent's signature; everything else is
@@ -289,17 +294,22 @@ async def main():
             name="deep_agent",
             description="A coding agent with sandboxed file and Python tools.",
         )
+        agent.summary()
 
-        # The task: read the file, add a function, verify by running Python.
+        # The task: read the file, add a function, verify by running the file.
+        # (Run a script *file* with `python3 calculator.py` — that executes in
+        # the sandbox filesystem. A `python3 -c` snippet cannot import the
+        # overlay's modules, so the self-check lives inside the file itself.)
         task = synalinks.ChatMessages(
             messages=[
                 synalinks.ChatMessage(
                     role="user",
                     content=(
-                        "Open calculator.py, add a `multiply(a, b)` function "
-                        "in the same style as `add`, and use run_python_code "
-                        "to run `from calculator import multiply; "
-                        "print(multiply(6, 7))` to confirm it prints 42."
+                        "Open calculator.py and add a `multiply(a, b)` function "
+                        "in the same style as `add`. Then add an "
+                        '`if __name__ == "__main__":` block that prints '
+                        "`multiply(6, 7)`, and use `run_bash` to run "
+                        "`python3 calculator.py` to confirm it prints 42."
                     ),
                 )
             ]
@@ -312,14 +322,14 @@ async def main():
         if final:
             print("Agent:", final[-1].get("content"))
 
-        # The agent's edits live in the overlay, not on disk. Inspect them
-        # through the sandbox: `changes()` summarizes what was written, and
-        # `read_overlay(...)` returns the effective file content.
-        print("\nOverlay changes:", deep.sandbox.changes())
-        overlay = deep.sandbox.read_overlay("calculator.py")
-        if overlay is not None:
-            print("\n--- calculator.py (overlay) ---")
-            print(overlay.decode())
+        # The agent's edits live in the sandbox filesystem, not on disk.
+        # Inspect them through the sandbox: `changes()` summarizes what was
+        # written, and `read_file(...)` returns the effective file content.
+        print("\nSandbox changes:", deep.sandbox.changes())
+        overlay = await deep.sandbox.read_file("calculator.py")
+        if overlay:
+            print("\n--- calculator.py (sandbox) ---")
+            print(overlay["content"])
     finally:
         shutil.rmtree(workdir, ignore_errors=True)
 

@@ -1,6 +1,8 @@
 # License Apache 2.0: (c) 2025-2026 Yoan Sallami (Synalinks Team)
 
 import json
+import os
+import tempfile
 from unittest.mock import patch
 
 from synalinks.src import testing
@@ -410,11 +412,11 @@ class FunctionCallingAgentTest(testing.TestCase):
         self.assertTrue(is_chat_messages(result))
         messages = result.get("messages", [])
         # Final assistant message must come from the no-schema final_generator
-        # and carry the thinking field populated from reasoning_content.
+        # and carry the reasoning_content field populated from reasoning_content.
         last = messages[-1]
         self.assertEqual(last.get("role"), "assistant")
         self.assertEqual(last.get("content"), "The answer is 2.")
-        self.assertEqual(last.get("thinking"), "1 + 1 equals 2.")
+        self.assertEqual(last.get("reasoning_content"), "1 + 1 equals 2.")
 
     @patch("litellm.acompletion")
     async def test_autonomous_mode_no_data_model_with_chain_of_thought(
@@ -469,7 +471,7 @@ class FunctionCallingAgentTest(testing.TestCase):
         last = result.get("messages")[-1]
         self.assertEqual(last.get("role"), "assistant")
         self.assertEqual(last.get("content"), "Done.")
-        self.assertEqual(last.get("thinking"), "No work needed.")
+        self.assertEqual(last.get("reasoning_content"), "No work needed.")
 
     @patch("litellm.acompletion")
     async def test_autonomous_mode_streaming_final_answer(self, mock_completion):
@@ -639,8 +641,11 @@ class FunctionCallingAgentTest(testing.TestCase):
                     tool_calls=[
                         {
                             "id": "test-tool-call-id",
-                            "name": "calculate",
-                            "arguments": {"expression": "5 * 5"},
+                            "type": "function",
+                            "function": {
+                                "name": "calculate",
+                                "arguments": {"expression": "5 * 5"},
+                            },
                         }
                     ],
                 ),
@@ -844,3 +849,164 @@ class FunctionCallingAgentTest(testing.TestCase):
 
         # Verify we completed all steps
         self.assertEqual(step, 2)  # 0, 1, 2 = 3 steps
+
+    # The root AGENTS.md body is injected verbatim (no added framing), so the
+    # marker is a snippet of the file's own content.
+    _AGENTS_MD_MARKER = "Always be terse."
+
+    def _make_workdir_with_agents_md(self, body="# Conventions\nAlways be terse.\n"):
+        tmpdir = tempfile.mkdtemp()
+        self.addCleanup(self._cleanup_tmpdir, tmpdir)
+        with open(os.path.join(tmpdir, "AGENTS.md"), "w", encoding="utf-8") as f:
+            f.write(body)
+        return tmpdir
+
+    def _cleanup_tmpdir(self, tmpdir):
+        import shutil
+
+        shutil.rmtree(tmpdir, ignore_errors=True)
+
+    async def test_agents_md_read_once_at_construction(self):
+        """AGENTS.md is read at construction and cached as a user message."""
+        workdir = self._make_workdir_with_agents_md()
+        agent = FunctionCallingAgent(
+            language_model=LanguageModel(model="ollama/mistral"),
+            tools=[Tool(calculate)],
+            workdir=workdir,
+        )
+        self.assertIsNotNone(agent.agents_md_message)
+        self.assertEqual(agent.agents_md_message.role, "user")
+        self.assertIn(self._AGENTS_MD_MARKER, agent.agents_md_message.content)
+
+        # Deleting the file after construction must not change the cached value:
+        # it was read once and is not re-read on subsequent access.
+        os.remove(os.path.join(workdir, "AGENTS.md"))
+        self.assertIsNotNone(agent.agents_md_message)
+
+    async def test_no_workdir_means_no_agents_md_message(self):
+        agent = FunctionCallingAgent(
+            language_model=LanguageModel(model="ollama/mistral"),
+            tools=[Tool(calculate)],
+        )
+        self.assertIsNone(agent.agents_md_message)
+
+    @patch("litellm.acompletion")
+    async def test_agents_md_not_reinjected_across_interactive_steps(
+        self, mock_completion
+    ):
+        """Feeding a returned trajectory back in must not stack AGENTS.md copies."""
+        workdir = self._make_workdir_with_agents_md()
+        agent = FunctionCallingAgent(
+            language_model=LanguageModel(model="ollama/mistral"),
+            tools=[Tool(calculate)],
+            autonomous=False,
+            return_inputs_with_trajectory=True,
+            workdir=workdir,
+        )
+
+        mock_completion.side_effect = [
+            _lm_response(
+                content="Calculating.",
+                tool_calls=[{"name": "calculate", "arguments": {"expression": "1 + 1"}}],
+            ),
+            _lm_response(content="No more tools."),
+            _lm_response(content="Done: 1 + 1 = 2."),
+        ]
+
+        input_messages = ChatMessages(
+            messages=[ChatMessage(role="user", content="What is 1 + 1?")]
+        )
+
+        # Two interactive turns, feeding the trajectory back into the agent.
+        result = await agent(input_messages)
+        result = await agent(result)
+
+        messages = result.get("messages", [])
+        agents_md_count = sum(
+            1
+            for m in messages
+            if isinstance(m.get("content"), str)
+            and self._AGENTS_MD_MARKER in m["content"]
+        )
+        self.assertEqual(agents_md_count, 1)
+        # And it stays the first message.
+        self.assertIn(self._AGENTS_MD_MARKER, messages[0]["content"])
+
+    # -- skills ---------------------------------------------------------------
+
+    def _make_skills_root(self, name="pdf-filler", description="Fill PDF forms."):
+        """Create a skills *root* containing one ``<name>/SKILL.md`` skill."""
+        root = tempfile.mkdtemp()
+        self.addCleanup(self._cleanup_tmpdir, root)
+        skill_dir = os.path.join(root, name)
+        os.makedirs(skill_dir)
+        with open(os.path.join(skill_dir, "SKILL.md"), "w", encoding="utf-8") as f:
+            f.write(
+                f"---\nname: {name}\ndescription: {description}\n---\n# {name}\nBody.\n"
+            )
+        return root
+
+    async def test_skills_discovered_once_at_construction(self):
+        """`skills` roots are discovered at construction into a context message."""
+        root = self._make_skills_root()
+        agent = FunctionCallingAgent(
+            language_model=LanguageModel(model="ollama/mistral"),
+            tools=[Tool(calculate)],
+            skills=[root],
+        )
+        self.assertIsNotNone(agent.skills_message)
+        self.assertEqual(agent.skills_message.role, "user")
+        self.assertIn("<available_skills>", agent.skills_message.content)
+        self.assertIn("pdf-filler", agent.skills_message.content)
+        self.assertIn("Fill PDF forms.", agent.skills_message.content)
+
+    async def test_no_skills_means_no_skills_message(self):
+        agent = FunctionCallingAgent(
+            language_model=LanguageModel(model="ollama/mistral"),
+            tools=[Tool(calculate)],
+        )
+        self.assertIsNone(agent.skills_message)
+        self.assertEqual(agent.skills, [])
+
+    async def test_skills_path_must_exist(self):
+        with self.assertRaises(ValueError):
+            FunctionCallingAgent(
+                language_model=LanguageModel(model="ollama/mistral"),
+                tools=[Tool(calculate)],
+                skills=["/does/not/exist"],
+            )
+
+    @patch("litellm.acompletion")
+    async def test_skills_injected_and_not_reinjected(self, mock_completion):
+        """The available-skills message is injected once and not stacked."""
+        root = self._make_skills_root()
+        agent = FunctionCallingAgent(
+            language_model=LanguageModel(model="ollama/mistral"),
+            tools=[Tool(calculate)],
+            autonomous=False,
+            return_inputs_with_trajectory=True,
+            skills=[root],
+        )
+
+        mock_completion.side_effect = [
+            _lm_response(
+                content="Calculating.",
+                tool_calls=[{"name": "calculate", "arguments": {"expression": "1 + 1"}}],
+            ),
+            _lm_response(content="No more tools."),
+            _lm_response(content="Done."),
+        ]
+
+        input_messages = ChatMessages(
+            messages=[ChatMessage(role="user", content="What is 1 + 1?")]
+        )
+        result = await agent(input_messages)
+        result = await agent(result)
+
+        messages = result.get("messages", [])
+        skills_count = sum(
+            1
+            for m in messages
+            if isinstance(m.get("content"), str) and "<available_skills>" in m["content"]
+        )
+        self.assertEqual(skills_count, 1)

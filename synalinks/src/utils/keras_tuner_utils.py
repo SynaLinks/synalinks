@@ -66,6 +66,7 @@ instantiation of `RandomSearch` / `BayesianOptimization` / `Hyperband` /
 raised pointing the user at the fix.
 """
 
+import functools
 import inspect
 
 from synalinks.src.api_export import synalinks_export
@@ -164,6 +165,62 @@ def _patch_kt_inference():
     _kt_inference_patched = True
 
 
+def _sync_driving_hypermodel(hypermodel):
+    """Wrap a (possibly async) hypermodel so `build(hp)` returns a concrete
+    program, never an un-awaited coroutine.
+
+    keras_tuner explores the hyperparameter space **synchronously** during
+    tuner construction: ``BaseTuner.__init__`` → ``_populate_initial_space``
+    → ``_activate_all_conditions`` calls ``self.hypermodel.build(hp)`` (and
+    relies on the ``hp.Float(...)`` / ``hp.Choice(...)`` calls inside it to
+    register the search space, including any conditional scopes). A synalinks
+    ``build_program`` is typically ``async def``, so calling it synchronously
+    just returns a coroutine that is never awaited — its body never runs.
+
+    The visible symptom is ``RuntimeWarning: coroutine 'build_program' was
+    never awaited`` (raised from ``base_tuner.py`` at construction); the
+    latent bug is that the initial search space is left empty and conditional
+    hyperparameters are never discovered. (Random/Grid search happen to
+    survive an empty initial space by populating it lazily on the first
+    trial, but that masks the conditional-HP loss.)
+
+    Driving the coroutine to completion here fixes both. ``run_maybe_nested``
+    is safe whether or not an event loop is already running, so this also
+    works inside notebooks and async test harnesses. The same wrapper is used
+    for the per-trial build in ``_run_trial_async`` (via ``tuner.hypermodel``),
+    so building never returns an awaitable there either.
+    """
+    import keras_tuner as kt
+
+    if isinstance(hypermodel, kt.HyperModel):
+        inner_build = hypermodel.build
+
+        @functools.wraps(inner_build)
+        def sync_build(hp, *args, **kwargs):
+            result = inner_build(hp, *args, **kwargs)
+            if inspect.isawaitable(result):
+                result = run_maybe_nested(result)
+            return result
+
+        hypermodel.build = sync_build
+        return hypermodel
+
+    if callable(hypermodel):
+
+        @functools.wraps(hypermodel)
+        def sync_build(hp, *args, **kwargs):
+            result = hypermodel(hp, *args, **kwargs)
+            if inspect.isawaitable(result):
+                result = run_maybe_nested(result)
+            return result
+
+        return sync_build
+
+    # `None` (subclass defines the space in run_trial) or anything else: leave
+    # it untouched and let keras_tuner validate it.
+    return hypermodel
+
+
 def _resolve_kt_tuner(name):
     """Build the synalinks-aware subclass of `keras_tuner.<name>` on demand."""
     if name in _REAL_SUBCLASSES:
@@ -193,6 +250,17 @@ def _resolve_kt_tuner(name):
     base = getattr(kt, name)
 
     class _SynalinksAwareTuner(base):
+        def __init__(self, *args, **kwargs):
+            # `hypermodel` is the first positional argument of every public
+            # kt tuner (RandomSearch/BayesianOptimization/Hyperband/GridSearch).
+            # Wrap it before `super().__init__` runs the synchronous space
+            # exploration that would otherwise drop an un-awaited coroutine.
+            if "hypermodel" in kwargs:
+                kwargs["hypermodel"] = _sync_driving_hypermodel(kwargs["hypermodel"])
+            elif args:
+                args = (_sync_driving_hypermodel(args[0]),) + args[1:]
+            super().__init__(*args, **kwargs)
+
         def run_trial(self, trial, *fit_args, **fit_kwargs):
             # `run_maybe_nested` works whether or not an event loop is
             # already running (notebooks, IPython, async test harnesses),

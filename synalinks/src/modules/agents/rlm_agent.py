@@ -20,14 +20,12 @@ from synalinks.src.backend import Field
 from synalinks.src.backend import JsonDataModel
 from synalinks.src.backend import SymbolicDataModel
 from synalinks.src.backend import is_chat_messages
-from synalinks.src.modules.agents.agent_utils import InputsSummary
-from synalinks.src.modules.agents.agent_utils import summarize_inputs
-from synalinks.src.modules.core.generator import Generator
+from synalinks.src.modules.agents.function_calling_agent import FunctionCallingAgent
+from synalinks.src.modules.agents.utils.agents_utils import InputsSummary
+from synalinks.src.modules.agents.utils.agents_utils import summarize_inputs
 from synalinks.src.modules.core.tool import Tool
 from synalinks.src.modules.language_models import get as _get_lm
-from synalinks.src.modules.module import Module
-from synalinks.src.modules.ttc.chain_of_thought import ChainOfThought
-from synalinks.src.sandboxes.monty_sandbox import MontySandbox
+from synalinks.src.sandboxes.mirage_sandbox import MirageSandbox
 from synalinks.src.saving import serialization_lib
 from synalinks.src.saving.object_registration import get_registered_name
 from synalinks.src.saving.object_registration import get_registered_object
@@ -51,17 +49,21 @@ and sizes; always read the real values through `inputs[field]` inside your
 code, never re-type them from the preview.
 
 Use `print(...)` to log intermediate observations. `submit` and any tools
-bound to the agent are async callables *inside* the sandbox (see the tools
-catalog), not separate tool calls — call them inside `async def main():` and
-drive with `asyncio.run(main())`; calling without `await` returns a coroutine
-object, not the value. Reach them only from the code you pass to
+bound to the agent are functions available *inside* the sandbox (see the tools
+catalog), not separate tool calls — call them directly, e.g.
+`out = submit(...)`. Reach them only from the code you pass to
 `run_python_code`.
 
+A snippet looks like this (note the variable is `inputs`, plural — it is a
+dict; `input` is something else):
+
+    text = inputs["some_field"]          # read the full value via the binding
+    submit(result={"answer": text[:200]})
+
 Termination: call `submit(result={...})` from inside your snippet, with
-`result` matching its schema. `submit` is async, so `await` it inside
-`async def main(): ...`. It captures the answer and ends the run in one step.
-If the payload fails schema validation you'll see the error on the next turn
-and can retry.
+`result` matching its schema. It captures the answer and ends the run in one
+step. If the payload fails schema validation you'll see the error on the next
+turn and can retry.
 
 `submit` is the only termination path; calling `run_python_code` with an
 empty snippet is a no-op and you'll be reminded to call `submit`. Don't run
@@ -113,10 +115,15 @@ check `error` before trusting `result`. Plan recursion accordingly:
 prefer code-side aggregation (regex, set ops, sorting,
 dict-comprehension counting) over re-querying.
 
-Use `print(...)` to log intermediate observations. All sandbox tools
-are async, call them inside `async def main():` and drive with
-`asyncio.run(main())`; calling without `await` yields a coroutine
-object, not the value.
+Use `print(...)` to log intermediate observations. Call sandbox tools
+directly, e.g. `out = llm_query(prompt)`.
+
+A snippet looks like this (note the variable is `inputs`, plural — it is a
+dict; `input` is something else):
+
+    text = inputs["some_field"]          # read the full value via the binding
+    out = llm_query(prompt=f"... {text[:500]} ...")   # returns {"result": ...}
+    submit(result={"answer": out["result"]})
 
 Working rules:
 
@@ -143,11 +150,11 @@ Working rules:
 
 Termination: call `submit(result={...})` from inside your snippet, with
 `result` matching its schema. `submit`, `llm_query` and `llm_query_batched`
-are async callables *inside* the sandbox (advertised in the tools catalog),
-not separate tool calls — reach them only from the code you pass to
-`run_python_code`. `submit` is the only termination path; an empty
-snippet is a no-op and you'll be reminded to call `submit`. Don't run out of
-iterations without calling it.
+are functions available *inside* the sandbox (advertised in the tools
+catalog), not separate tool calls — call them directly and reach them only
+from the code you pass to `run_python_code`. `submit` is the only termination
+path; an empty snippet is a no-op and you'll be reminded to call `submit`.
+Don't run out of iterations without calling it.
 """.strip()
 
 
@@ -156,8 +163,8 @@ class ToolSpec(DataModel):
 
     name: str = Field(
         description=(
-            "The async callable's name in the sandbox. Invoke with "
-            "`await {name}(**kwargs)`."
+            "The function's name in the sandbox. Call it directly as "
+            "`{name}(**kwargs)`."
         )
     )
     description: str = Field(
@@ -178,11 +185,10 @@ class ToolsCatalog(DataModel):
     tools: list[ToolSpec] = Field(
         default=[],
         description=(
-            "Tools callable inside the sandbox as global async functions. "
-            "Every tool returns a dict, a tool wrapping `async def f(x) "
-            "-> int` yields `{'result': <value>}`; a tool already returning "
-            "a dict yields that dict directly. Call with `await` inside "
-            "`async def main(): ...` and drive with `asyncio.run(main())`."
+            "Tools callable inside the sandbox as global functions: call them "
+            "directly, `result = name(**kwargs)`. Every tool returns a dict — a "
+            "tool wrapping `def f(x) -> int` yields `{'result': <value>}`; a "
+            "tool already returning a dict yields that dict directly."
         ),
     )
 
@@ -357,7 +363,7 @@ def _build_llm_query_batched_tool(sub_language_model, max_llm_calls, counter, lo
 
 def _adapt_tool_for_sandbox(tool):
     """Route a sandbox tool call through the `Tool` Module (preserving
-    observability/retry) and return a plain dict Monty can marshal back.
+    observability/retry) and return a plain dict the sandbox can marshal back.
     """
 
     async def adapter(**kwargs):
@@ -379,8 +385,9 @@ isolated *fork* of the sandbox that inherits your current REPL state
 (variables, functions, imports) AND files:
 - `spawn_subagents(tasks)`: launch one subagent per task string. Each runs
   concurrently on its own fork; its REPL/file changes stay on that fork and do
-  NOT affect you. Returns a `handle`, the subagent's `result`, and a file
-  `diff` per subagent. Call it as a top-level tool (not from inside a snippet).
+  NOT affect you. Returns a `handle`, the subagent's `result`, and a `patch`
+  (its file changes as a git-style unified diff — the actual line-level edits)
+  per subagent. Call it as a top-level tool (not from inside a snippet).
 - `merge_subagent(handle, paths=None, force=False, adopt_repl=False)`: fold a
   subagent's file changes into your sandbox (paths/force as for files).
   `adopt_repl=True` ALSO adopts that subagent's whole Python namespace
@@ -429,18 +436,18 @@ def _subagent_answer(output) -> str:
         "synalinks.RLM",
     ]
 )
-class RecursiveLanguageModelAgent(Module):
+class RecursiveLanguageModelAgent(FunctionCallingAgent):
     """A recursive-language-model agent.
 
     Each turn the LM calls a single tool,
     ``run_python_code(code: str)``, which runs the snippet in a
-    persistent `Monty <https://github.com/pydantic/monty>`_ REPL sandbox and
+    persistent REPL sandbox (by default a ``MirageSandbox``) and
     returns ``{"stdout", "stderr", "error"}``. State (variables, imports,
     function definitions) accumulates across turns so the agent can build up
     intermediate values, probe data, and iterate. ``submit``, the recursive
     helpers and any user tools are **not** exposed to the LM as tools — they
-    live *inside* the sandbox as async callables (advertised through the
-    tools catalog), reachable only from the code passed to
+    live *inside* the sandbox as plain synchronous functions (advertised
+    through the tools catalog), reachable only from the code passed to
     ``run_python_code``.
 
     When ``recursive=True`` (the default), two extra helpers are exposed
@@ -457,9 +464,8 @@ class RecursiveLanguageModelAgent(Module):
     useful when the task is purely computational and recursion would
     only add cost.
 
-    Bound user tools (if any) appear inside the sandbox as global
-    **async** callables; scripts must ``await`` them inside an
-    ``async def`` and drive with ``asyncio.run(...)``.
+    Bound user tools (if any) appear inside the sandbox as global functions;
+    scripts call them directly, ``result = tool_name(...)``.
 
     Termination: the snippet calls the in-sandbox ``submit(result=...)``
     callable with the final payload. If ``max_iterations`` is reached
@@ -522,26 +528,10 @@ class RecursiveLanguageModelAgent(Module):
             per-turn code generator and the final-formatting step.
         sub_language_model (LanguageModel): Optional. The language
             model used by ``llm_query`` and ``llm_query_batched`` when
-            ``recursive=True``. Defaults to ``language_model``, pass a
-            cheaper / smaller model here when the recursive sub-queries
-            don't need the primary LM's full capability. Ignored when
-            ``recursive=False``.
-        recursive (bool): Optional. If ``True`` (default), expose
-            ``llm_query`` and ``llm_query_batched`` inside the sandbox
-            and use the recursive instructions. If ``False``, run
-            without the sub-LM helpers.
-        tools (list): Optional. Extra `Tool` instances exposed to
-            the sandbox in addition to ``submit`` (and ``llm_query`` /
-            ``llm_query_batched`` when ``recursive=True``). The names
-            ``submit``, ``llm_query``, and ``llm_query_batched`` are
-            always reserved at construction time, even when
-            ``recursive=False``, so tool naming stays stable across the
-            two modes.
-
-            **Naming gotcha**: each tool is registered under
-            ``tool.name == tool._func.__name__``. ``Tool(_my_helper)``
-            shows up inside the script as ``_my_helper``. Rename the
-            function rather than relying on an alias.
+            ``recursive=True``, and by spawned subagents. Defaults to
+            ``language_model``, pass a cheaper / smaller model here when
+            the recursive sub-queries don't need the primary LM's full
+            capability. Ignored when ``recursive=False``.
         prompt_template (str): Optional. Prompt template forwarded to
             the per-turn code generator.
         examples (list): Optional. Examples forwarded to the per-turn
@@ -565,6 +555,18 @@ class RecursiveLanguageModelAgent(Module):
         use_chain_of_thought (bool): Optional. Wrap the per-turn
             generator in ChainOfThought so it emits a ``thinking``
             field alongside the tool call. Default ``False``.
+        tools (list): Optional. Extra `Tool` instances exposed to
+            the sandbox in addition to ``submit`` (and ``llm_query`` /
+            ``llm_query_batched`` when ``recursive=True``). The names
+            ``submit``, ``llm_query``, and ``llm_query_batched`` are
+            always reserved at construction time, even when
+            ``recursive=False``, so tool naming stays stable across the
+            two modes.
+
+            **Naming gotcha**: each tool is registered under
+            ``tool.name == tool._func.__name__``. ``Tool(_my_helper)``
+            shows up inside the script as ``_my_helper``. Rename the
+            function rather than relying on an alias.
         autonomous (bool): Optional. If ``True`` (default), run the
             full code/execute/observe loop until the LM calls
             ``submit`` or ``max_iterations`` is reached, then produce a
@@ -574,14 +576,21 @@ class RecursiveLanguageModelAgent(Module):
             human-in-the-loop use. For cross-call REPL state in
             interactive mode, hand a ``Sandbox`` to ``call`` via the
             ``sandbox`` kwarg; the agent itself stays stateless.
+        return_inputs_with_trajectory (bool): Optional. Whether to
+            return the full trajectory alongside the final answer
+            (Default ``True``).
+        max_iterations (int): Maximum number of code-execution turns
+            before forcing the final answer step (Default 20).
         timeout (int): Per-turn execution budget in seconds
             (Default 60). Recursive sub-LM calls dominate per-turn wall
             time; ``llm_query_batched`` of even a handful of prompts
             can take several seconds. Snippets that exceed the budget
             turn into an observation so the LM can recover on the next
             turn.
-        max_iterations (int): Maximum number of code-execution turns
-            before forcing the final answer step (Default 20).
+        recursive (bool): Optional. If ``True`` (default), expose
+            ``llm_query`` and ``llm_query_batched`` inside the sandbox
+            and use the recursive instructions. If ``False``, run
+            without the sub-LM helpers.
         max_llm_calls (int): Hard cap on sub-LM calls per agent
             invocation, shared between ``llm_query`` and
             ``llm_query_batched`` (Default 50). Once the budget is
@@ -593,9 +602,18 @@ class RecursiveLanguageModelAgent(Module):
             Anything beyond is truncated with a
             ``… (truncated, N chars omitted)`` marker so a single
             noisy turn cannot blow up the trajectory.
-        return_inputs_with_trajectory (bool): Optional. Whether to
-            return the full trajectory alongside the final answer
-            (Default ``True``).
+        workdir (str): Optional. Host directory the agent operates on. When
+            building its own sandbox (i.e. no ``sandbox`` instance is supplied),
+            the workdir seeds the sandbox filesystem. If it contains an
+            ``AGENTS.md`` file, its contents are also injected as an additional
+            input so the agent follows the declared project conventions (see
+            ``read_agents_md``). Must point to an existing directory. Defaults
+            to ``None``.
+        skills (list): Optional. Folder paths (Agent Skill roots) whose skills
+            are listed for the agent as an ``<available_skills>`` context message
+            (see `FunctionCallingAgent`). The skill files must also be reachable
+            from the agent's sandbox (e.g. under ``workdir``) for their bodies to
+            be read on demand. Defaults to ``None``.
         sandbox (Sandbox): Optional. A pre-built ``Sandbox`` instance to
             reuse across calls. When supplied, the agent will not build
             its own sandbox at ``call()`` time and ``sandbox_type`` is
@@ -605,7 +623,7 @@ class RecursiveLanguageModelAgent(Module):
             fresh sandbox of ``sandbox_type`` is built per call.
         sandbox_type (type): Optional. The ``Sandbox`` subclass to
             instantiate when no sandbox is supplied (here or to
-            ``call()``). Defaults to ``MontySandbox``, or to
+            ``call()``). Defaults to ``MirageSandbox``, or to
             ``type(sandbox)`` when ``sandbox`` is given. Any ``Sandbox``
             subclass whose ``__init__`` accepts
             ``(timeout=..., name=...)`` works; register custom
@@ -615,7 +633,7 @@ class RecursiveLanguageModelAgent(Module):
             ``spawn_subagents`` / ``merge_subagent`` / ``discard_subagent``
             tools (called between snippets, with the REPL idle, so they can
             fork it). Each subagent runs in parallel on a
-            `MontySandbox.fork` that inherits this agent's current REPL
+            `Sandbox.fork` that inherits this agent's current REPL
             state (variables, functions, imports) *and* files; its work only
             lands on an explicit ``merge_subagent``. ``1`` (recommended) lets
             this agent spawn subagents that cannot themselves spawn; higher
@@ -624,7 +642,7 @@ class RecursiveLanguageModelAgent(Module):
             Across parallel subagents you can fold back **all** their file
             changes, but only **one** subagent's REPL namespace per
             ``spawn_subagents`` batch (via ``merge_subagent(..., adopt_repl=
-            True)``): Monty serializes the REPL only as a whole, so parallel
+            True)``): the REPL serializes only as a whole, so parallel
             namespaces can't be unioned. That is a backend constraint, not a
             design shortcut.
         name (str): Optional. The name of the module.
@@ -638,8 +656,6 @@ class RecursiveLanguageModelAgent(Module):
         data_model=None,
         language_model=None,
         sub_language_model=None,
-        recursive=True,
-        tools=None,
         prompt_template=None,
         examples=None,
         instructions=None,
@@ -649,12 +665,17 @@ class RecursiveLanguageModelAgent(Module):
         use_outputs_schema=False,
         reasoning_effort=None,
         use_chain_of_thought=False,
+        tools=None,
         autonomous=True,
-        timeout=60,
+        return_inputs_with_trajectory=True,
         max_iterations=20,
+        streaming=False,
+        timeout=60,
+        recursive=True,
         max_llm_calls=50,
         max_output_chars=10_000,
-        return_inputs_with_trajectory=True,
+        workdir=None,
+        skills=None,
         sandbox=None,
         sandbox_type=None,
         max_subagent_depth=0,
@@ -662,43 +683,53 @@ class RecursiveLanguageModelAgent(Module):
         name=None,
         description=None,
     ):
-        super().__init__(name=name, description=description)
-
         if not isinstance(max_subagent_depth, int) or max_subagent_depth < 0:
             raise ValueError(
                 "`max_subagent_depth` must be a non-negative int, got "
                 f"{max_subagent_depth!r}"
             )
+        # Domain attributes set before `super().__init__()`: the base
+        # constructor builds the (inherited) step + final generators from the
+        # instructions composed here, and `_get_builtin_tools` (called from
+        # there) needs none of them — RLM's callable tool is built per call.
         self.max_subagent_depth = max_subagent_depth
         self._subagent_depth = _subagent_depth
         # Subagent delegation is offered only while we may still go one level
         # deeper, so the deepest subagents can't fan out endlessly.
         self._subagents_enabled = self._subagent_depth < self.max_subagent_depth
 
-        if not schema and data_model:
-            schema = data_model.get_schema()
-        # `schema` is optional, when omitted, the agent operates in
-        # "schemaless" mode and returns a ChatMessages trajectory (with
-        # a final assistant message appended) instead of a typed answer.
-        self.schema = schema
+        self.recursive = recursive
+        self.timeout = timeout
+        self.max_llm_calls = max_llm_calls
+        self.max_output_chars = max_output_chars
 
-        self.language_model = _get_lm(language_model)
         # `sub_language_model` defaults to the primary LM when omitted.
         # ``get(None)`` would raise, so resolve only when a value is given.
         self.sub_language_model = (
             _get_lm(sub_language_model)
             if sub_language_model is not None
-            else self.language_model
+            else _get_lm(language_model)
         )
-        self.recursive = recursive
-        self.prompt_template = prompt_template
-        self.examples = examples
 
+        # Sandbox handling: a concrete sandbox supplied at construction is
+        # reused across calls and its class becomes `sandbox_type`; otherwise a
+        # fresh `sandbox_type` (default MirageSandbox) is built per `call()`.
+        # Resolved here because the sandbox's prompt description is composed
+        # into the instructions below.
+        self.sandbox = sandbox
+        if sandbox is not None:
+            self.sandbox_type = type(sandbox)
+        else:
+            self.sandbox_type = sandbox_type or MirageSandbox
+
+        # Compose instructions before delegating to the base constructor. The
+        # final generator keeps the base instructions (recursive/default plus
+        # subagent guidance); only the step generator gets the sandbox
+        # description appended.
         if not instructions:
             if recursive:
                 instructions = get_recursive_instructions().replace(
-                    "{max_llm_calls}",
-                    str(max_llm_calls),
+                    "{max_llm_calls}", str(max_llm_calls)
                 )
             else:
                 instructions = get_default_instructions()
@@ -708,82 +739,57 @@ class RecursiveLanguageModelAgent(Module):
             guidance = get_subagent_tools_guidance()
             if guidance not in instructions:
                 instructions = instructions + "\n\n" + guidance
-        self.instructions = instructions
-        self.final_instructions = final_instructions or instructions
-
-        # Sandbox handling: if a concrete sandbox is supplied at
-        # construction, reuse it across calls and derive sandbox_type
-        # from its class. Otherwise fall back to sandbox_type (default
-        # MontySandbox) and build one fresh per `call()`. Set early so
-        # the sandbox-specific prompt text can be composed into the
-        # code generator's instructions below.
-        self.sandbox = sandbox
-        if sandbox is not None:
-            self.sandbox_type = type(sandbox)
-        else:
-            self.sandbox_type = sandbox_type or MontySandbox
+        resolved_final_instructions = final_instructions or instructions
         sandbox_description = self.sandbox_type.description
         if sandbox_description:
-            self.instructions = self.instructions + "\n\n" + sandbox_description
+            instructions = instructions + "\n\n" + sandbox_description
 
-        self.temperature = temperature
-        self.use_inputs_schema = use_inputs_schema
-        self.use_outputs_schema = use_outputs_schema
-        self.reasoning_effort = reasoning_effort
-        self.use_chain_of_thought = use_chain_of_thought
-        self.autonomous = autonomous
+        super().__init__(
+            schema=schema,
+            data_model=data_model,
+            language_model=language_model,
+            prompt_template=prompt_template,
+            examples=examples,
+            instructions=instructions,
+            final_instructions=resolved_final_instructions,
+            temperature=temperature,
+            use_inputs_schema=use_inputs_schema,
+            use_outputs_schema=use_outputs_schema,
+            reasoning_effort=reasoning_effort,
+            use_chain_of_thought=use_chain_of_thought,
+            tools=tools,
+            autonomous=autonomous,
+            return_inputs_with_trajectory=return_inputs_with_trajectory,
+            max_iterations=max_iterations,
+            streaming=streaming,
+            workdir=workdir,
+            skills=skills,
+            name=name,
+            description=description,
+        )
 
-        self.timeout = timeout
-        self.max_iterations = max_iterations
-        self.max_llm_calls = max_llm_calls
-        self.max_output_chars = max_output_chars
-        self.return_inputs_with_trajectory = return_inputs_with_trajectory
-
+        # User tools are stored by the base constructor in `self.tools` but,
+        # for RLM, are exposed *inside* the sandbox (advertised via the
+        # catalog) rather than as native tool calls. Reject reserved helper
+        # names here, after the base's public-name check.
         reserved = self._reserved_tool_names()
-        self.tools = {}
-        if tools:
-            for tool in tools:
-                if tool.name.startswith("_"):
-                    raise ValueError(
-                        f"Tool name {tool.name!r} starts with an underscore. "
-                        f"Tools exposed to the LM must have public names — "
-                        f"rename the function or pass an explicit `name=` "
-                        f"to Tool(...)."
-                    )
-                if tool.name in reserved:
-                    raise ValueError(
-                        f"Tool name '{tool.name}' is reserved by {type(self).__name__}."
-                    )
-                self.tools[tool.name] = tool
-
+        for tool_name in self.tools:
+            if tool_name in reserved:
+                raise ValueError(
+                    f"Tool name '{tool_name}' is reserved by {type(self).__name__}."
+                )
         self.tools_catalog = _build_tools_catalog(self.tools)
 
-        # The per-turn generator is schemaless: the loop calls it with
-        # `tools=[run_python_code]`, so each snippet arrives as a native
-        # tool call. The `run_python_code` tool is per-call (it closes
-        # over the sandbox) and passed at call time.
-        generator_cls = ChainOfThought if use_chain_of_thought else Generator
-        self.code_generator = generator_cls(
-            prompt_template=self.prompt_template,
-            examples=self.examples,
-            instructions=self.instructions,
-            temperature=self.temperature,
-            use_inputs_schema=self.use_inputs_schema,
-            use_outputs_schema=self.use_outputs_schema,
-            reasoning_effort=self.reasoning_effort,
-            language_model=self.language_model,
-            name="code_generator_" + self.name,
-        )
+    def _get_builtin_tools(self):
+        # RLM exposes no native tools at construction: its only callable tool,
+        # `run_python_code`, closes over a per-call sandbox and is built in
+        # `_begin_call`. User tools live inside the sandbox, not as native calls.
+        return []
 
-        self.final_generator = Generator(
-            schema=self.schema,
-            language_model=self.language_model,
-            instructions=self.final_instructions,
-            temperature=self.temperature,
-            reasoning_effort=self.reasoning_effort,
-            return_inputs=False,
-            name="final_generator_" + self.name,
-        )
+    def _requires_tools(self):
+        # `run_python_code` (built per call) is always available, so a user may
+        # construct an RLM agent with no tools at all.
+        return False
 
     def _reserved_tool_names(self) -> frozenset:
         """Names a user tool cannot collide with at construction time.
@@ -837,7 +843,7 @@ class RecursiveLanguageModelAgent(Module):
         """Build the lone tool the LM can call.
 
         ``run_python_code`` is the *only* tool exposed to the LM. It wraps
-        the sandbox's `MontySandbox.run_python_code` (which runs the
+        the sandbox's ``run_python_code`` (which runs the
         snippet in the persistent sandbox) and clips the captured streams
         to ``max_output_chars``. The tools (``submit``, ``llm_query`` and
         the user tools) and the ``inputs`` payload are not passed here —
@@ -861,14 +867,14 @@ class RecursiveLanguageModelAgent(Module):
             return text
 
         async def run_python_code(code: str) -> dict:
-            """Execute one async Python snippet in the persistent sandbox.
+            """Execute one Python snippet in the persistent sandbox.
 
             State persists across calls — variables, imports and function
             definitions stay defined. The user input is bound as a dict named
             `inputs`; read full values via `inputs[field]`. Other tools
-            (`submit`, `llm_query`, ...) are pre-imported async callables —
-            call them inside `async def main(): ...` and drive with
-            `asyncio.run(main())`. Call `submit(result={...})` to end the run.
+            (`submit`, `llm_query`, ...) are pre-imported functions — call them
+            directly, e.g. `out = llm_query(prompt)`. Call `submit(result={...})`
+            to end the run.
 
             Args:
                 code (str): The Python snippet to execute in the
@@ -904,7 +910,7 @@ class RecursiveLanguageModelAgent(Module):
             Each task is handed to a fresh subagent on its own fork that
             inherits your current REPL state (variables, functions, imports)
             and files. Subagents run concurrently; their changes are isolated.
-            Review each returned ``diff`` then ``merge_subagent(handle)`` to
+            Review each returned ``patch`` then ``merge_subagent(handle)`` to
             fold a subagent's work into your sandbox.
 
             Args:
@@ -913,17 +919,28 @@ class RecursiveLanguageModelAgent(Module):
 
             Returns:
                 dict: ``subagents`` — a list of ``{handle, task, result,
-                diff}`` (or ``{handle, task, error}`` for a failed subagent),
-                or a top-level ``error`` when ``tasks`` is empty.
+                diff, patch}`` per subagent, where ``patch`` is the subagent's
+                pending changes as a git-style unified diff (the actual
+                line-level edits) and ``diff`` is the structured
+                ``{written, deleted}`` summary; or ``{handle, task, error}``
+                for a failed subagent; or a top-level ``error`` when ``tasks``
+                is empty.
             """
             prompts = [str(t) for t in (tasks or [])]
             if not prompts:
                 return {"error": "no tasks provided"}
 
             async def run_one(index, prompt):
-                fork = sandbox.fork(copy_repl=True, name=f"{self.name}_sub{index}")
+                # Subagents inherit the parent's confinement (``confine=None``):
+                # when this sandbox is confined, the subagent is confined to its
+                # OWN fork (host hidden, network cut, isolated filesystem, and
+                # the parent's egress/mount/seccomp posture); when the parent
+                # runs unconfined, so does the subagent.
+                fork = sandbox.fork(
+                    copy_repl=True, name=f"{self.name}_sub{index}", confine=None
+                )
                 subagent = RecursiveLanguageModelAgent(
-                    language_model=self.language_model,
+                    language_model=self.sub_language_model,
                     sub_language_model=self.sub_language_model,
                     sandbox=fork,
                     recursive=self.recursive,
@@ -978,6 +995,7 @@ class RecursiveLanguageModelAgent(Module):
                         "task": prompt,
                         "result": answer,
                         "diff": fork.diff(),
+                        "patch": fork.patch(),
                     }
                 )
             return {"subagents": report}
@@ -1048,21 +1066,12 @@ class RecursiveLanguageModelAgent(Module):
             "discard_subagent": Tool(discard_subagent, name="discard_subagent"),
         }
 
-    async def call(self, inputs, training=False, sandbox=None):
-        if not inputs:
-            return None
-
-        if not self.autonomous and not is_chat_messages(inputs):
-            raise ValueError(
-                f"In interactive mode, the {type(self).__name__} needs a "
-                "ChatMessages-like data model as inputs"
-            )
-
+    async def _begin_call(self, inputs, training, *, sandbox=None):
         # Per-call tool set: user tools plus a fresh `submit` bound to a
-        # private holder, plus any per-call recursive helpers. submit is
-        # the canonical termination signal, always exposed, schema'd or
-        # not, and everything in this set is built fresh per call so
-        # concurrent invocations don't share holders, counters, or locks.
+        # private holder, plus any per-call recursive helpers. submit is the
+        # canonical termination signal, always exposed, schema'd or not, and
+        # everything here is built fresh per call so concurrent invocations
+        # don't share holders, counters, or locks.
         call_tools = dict(self.tools)
         submit_holder = {"value": None}
         call_tools["submit"] = _build_submit_tool(self.schema, submit_holder)
@@ -1076,8 +1085,8 @@ class RecursiveLanguageModelAgent(Module):
             inputs_json = inputs.get_json()
             # The LM prompt only sees a metadata summary of the inputs —
             # previews and sizes, never the full value. The sandbox gets the
-            # complete `inputs_json` rebound on every `run_python_code`
-            # call, so `inputs[field]` is always reachable.
+            # complete `inputs_json` rebound on every `run_python_code` call,
+            # so `inputs[field]` is always reachable.
             base = summarize_inputs(inputs_json)
             if call_tools_catalog is not None:
                 base = await ops.concat(
@@ -1091,156 +1100,179 @@ class RecursiveLanguageModelAgent(Module):
                 name="trajectory_" + self.name,
             )
 
-        agent_messages = trajectory.get("messages")
-
         # Sandbox resolution order: per-call kwarg > constructor-supplied
-        # sandbox > fresh sandbox of `sandbox_type`. The first two cases
-        # let the caller (or the agent's owner) keep REPL state alive
-        # across calls; the third is the stateless-per-call default.
+        # sandbox > fresh sandbox of `sandbox_type`. The first two cases let the
+        # caller (or the agent's owner) keep REPL state alive across calls; the
+        # third is the stateless-per-call default. A freshly built sandbox is
+        # seeded from `workdir` when one is set.
         if sandbox is None:
-            sandbox = self.sandbox or self.sandbox_type(timeout=self.timeout)
+            if self.sandbox is not None:
+                sandbox = self.sandbox
+            elif self.workdir is not None:
+                sandbox = self.sandbox_type(workdir=self.workdir, timeout=self.timeout)
+            else:
+                sandbox = self.sandbox_type(timeout=self.timeout)
 
-        # The per-turn snippet is delivered as a native `run_python_code`
-        # tool call — the only tool the LM can call, wrapping the sandbox's
-        # own `run_python_code`. The sandbox-side tools (submit, llm_query,
-        # user tools) are NOT exposed to the LM; they live inside the
-        # sandbox as async callables (advertised via the tools catalog).
-        # Bind them onto the sandbox so every `run_python_code` snippet can
-        # reach them.
+        # The per-turn snippet is delivered as a native `run_python_code` tool
+        # call — the only tool the LM can call, wrapping the sandbox's own
+        # `run_python_code`. The sandbox-side tools (submit, llm_query, user
+        # tools) are NOT exposed to the LM; they live inside the sandbox as
+        # plain synchronous functions (advertised via the tools catalog). Bind
+        # them onto the sandbox so every `run_python_code` snippet can reach them.
         external_functions = {
             name: _adapt_tool_for_sandbox(t) for name, t in call_tools.items()
         }
         sandbox.bind_functions(external_functions)
-        # Persist the full input payload as `inputs` in the sandbox
-        # namespace. Monty's per-run `inputs=` binding does not persist, so
-        # copy it into a real variable once; every snippet then reads it via
-        # `inputs[field]`.
+        # Persist the full input payload as `inputs` in the sandbox namespace.
+        # The per-run `inputs=` binding does not persist, so copy it into a real
+        # variable once; every snippet then reads it via `inputs[field]`.
         await sandbox.run("inputs = _rlm_inputs", inputs={"_rlm_inputs": inputs_json})
         run_tool = self._build_run_python_code_tool(sandbox)
 
         # Subagent tools (spawn / merge / discard) are *native* tools the LM
         # calls directly alongside run_python_code — never from inside a
-        # snippet — so the REPL is idle when they fork/merge it. Built fresh
-        # per call with a private fork registry and a single-REPL-adoption guard.
+        # snippet — so the REPL is idle when they fork/merge it. Built fresh per
+        # call with a private fork registry and a single-REPL-adoption guard.
         subagent_registry = {}
         extra_native_tools = {}
         if self._subagents_enabled:
             extra_native_tools = self._build_subagent_tools(
                 sandbox, subagent_registry, [0], {"adopted": False}
             )
-        native_tools = [run_tool, *extra_native_tools.values()]
 
-        iterations = self.max_iterations if self.autonomous else 1
-        submitted_final = None
+        ctx = {
+            "sandbox": sandbox,
+            "run_tool": run_tool,
+            "extra_native_tools": extra_native_tools,
+            "submit_holder": submit_holder,
+            "native_tools": [run_tool, *extra_native_tools.values()],
+            "submitted_final": None,
+        }
+        return trajectory, ctx
 
-        for _ in range(iterations):
-            tool_calls = await self.code_generator(trajectory, tools=native_tools)
-            if not tool_calls:
-                break
-            # The generator returns an assistant ChatMessage with native
-            # `tool_calls` ({id, name, arguments}); append it as-is.
-            agent_messages.append(tool_calls.get_json())
-            native_tool_calls = tool_calls.get("tool_calls") or []
-            if not native_tool_calls:
-                # No tool call this turn — nudge toward run_python_code /
-                # submit and spend another iteration.
-                agent_messages.append(
-                    ChatMessage(
-                        role=ChatRole.USER,
-                        content=(
-                            "(no tool call) Call `run_python_code` with a "
-                            "snippet, and call `submit(result={...})` inside "
-                            "it to terminate the run."
-                        ),
-                    ).get_json()
+    def _native_tools(self, ctx):
+        # The LM only ever calls `run_python_code` (plus the subagent tools);
+        # user tools are reachable from inside the sandbox, not as native calls.
+        return ctx["native_tools"]
+
+    def _requires_tools(self):
+        return False
+
+    def _on_empty_generation(self, agent_messages, ctx):
+        # RLM simply stops the loop on an empty generation (no message added).
+        return None
+
+    async def _on_no_tool_calls(self, tool_calls, agent_messages, ctx):
+        # The shared loop only appends the assistant message when there are
+        # native tool calls; on an empty turn RLM keeps it and nudges the model
+        # toward `run_python_code` / `submit`, then keeps iterating.
+        agent_messages.append(tool_calls.get_json())
+        agent_messages.append(
+            ChatMessage(
+                role=ChatRole.USER,
+                content=(
+                    "(no tool call) Call `run_python_code` with a snippet, and "
+                    "call `submit(result={...})` inside it to terminate the run."
+                ),
+            ).get_json()
+        )
+        return False
+
+    async def _dispatch_tool_calls(self, native_tool_calls, agent_messages, ctx):
+        # Sequential dispatch: a `submit()` inside a snippet writes to the
+        # holder, short-circuiting the run. The subagent tools fork/merge the
+        # idle REPL, so they must not run concurrently with a snippet.
+        run_tool = ctx["run_tool"]
+        extra_native_tools = ctx["extra_native_tools"]
+        submit_holder = ctx["submit_holder"]
+        for tool_call in native_tool_calls:
+            function = tool_call.get("function") or {}
+            tool_name = function.get("name")
+            tool_args = function.get("arguments") or {}
+            tool_call_id = tool_call.get("id")
+            if tool_name in extra_native_tools:
+                # spawn_subagents / merge_subagent / discard_subagent —
+                # native tools, invoked with the REPL idle.
+                try:
+                    result = await extra_native_tools[tool_name](**tool_args)
+                    content = result.get_json() if hasattr(result, "get_json") else result
+                except Exception as e:
+                    content = {"error": f"{type(e).__name__}: {e}"}
+            elif tool_name != "run_python_code":
+                callable_tools = ", ".join(
+                    ["'run_python_code'", *(f"'{n}'" for n in extra_native_tools)]
                 )
-                trajectory.update({"messages": agent_messages})
-                continue
-
-            for tool_call in native_tool_calls:
-                tool_name = tool_call.get("name")
-                tool_args = tool_call.get("arguments") or {}
-                tool_call_id = tool_call.get("id")
-                if tool_name in extra_native_tools:
-                    # spawn_subagents / merge_subagent / discard_subagent —
-                    # native tools, invoked with the REPL idle.
-                    try:
-                        result = await extra_native_tools[tool_name](**tool_args)
-                        content = (
-                            result.get_json() if hasattr(result, "get_json") else result
-                        )
-                    except Exception as e:
-                        content = {"error": f"{type(e).__name__}: {e}"}
-                elif tool_name != "run_python_code":
-                    callable_tools = ", ".join(
-                        ["'run_python_code'", *(f"'{n}'" for n in extra_native_tools)]
+                content = {
+                    "error": (
+                        f"Unknown tool '{tool_name}'. Callable tools are "
+                        f"{callable_tools}; everything else is a sandbox "
+                        "function reachable from your snippet."
                     )
-                    content = {
-                        "error": (
-                            f"Unknown tool '{tool_name}'. Callable tools are "
-                            f"{callable_tools}; everything else is a sandbox "
-                            "function reachable from your snippet."
-                        )
-                    }
-                else:
-                    try:
-                        result = await run_tool(**tool_args)
-                        content = (
-                            result.get_json() if hasattr(result, "get_json") else result
-                        )
-                    except Exception as e:
-                        content = {"error": f"{type(e).__name__}: {e}"}
-                    # submit() inside the snippet wrote to the holder. Clear it
-                    # either way so a stale payload can't short-circuit a later
-                    # retry.
-                    submitted = submit_holder["value"]
-                    submit_holder["value"] = None
-                    if submitted is not None:
-                        content = dict(content)
-                        if self.schema:
-                            try:
-                                jsonschema.validate(submitted, self.schema)
-                            except ValidationError as ve:
-                                content["submit"] = (
-                                    f"validation failed: {ve.message}. "
-                                    "Revise the payload and call submit again."
-                                )
-                            else:
-                                submitted_final = submitted
-                                content["submit"] = "accepted"
+                }
+            else:
+                try:
+                    result = await run_tool(**tool_args)
+                    content = result.get_json() if hasattr(result, "get_json") else result
+                except Exception as e:
+                    content = {"error": f"{type(e).__name__}: {e}"}
+                # submit() inside the snippet wrote to the holder. Clear it
+                # either way so a stale payload can't short-circuit a later retry.
+                submitted = submit_holder["value"]
+                submit_holder["value"] = None
+                if submitted is not None:
+                    content = dict(content)
+                    if self.schema:
+                        try:
+                            jsonschema.validate(submitted, self.schema)
+                        except ValidationError as ve:
+                            content["submit"] = (
+                                f"validation failed: {ve.message}. "
+                                "Revise the payload and call submit again."
+                            )
                         else:
-                            submitted_final = submitted
+                            ctx["submitted_final"] = submitted
                             content["submit"] = "accepted"
-                agent_messages.append(
-                    ChatMessage(
-                        role=ChatRole.TOOL,
-                        tool_call_id=tool_call_id,
-                        content=content,
-                    ).get_json()
-                )
-                if submitted_final is not None:
-                    break
-            trajectory.update({"messages": agent_messages})
-            if submitted_final is not None:
-                break
+                    else:
+                        ctx["submitted_final"] = submitted
+                        content["submit"] = "accepted"
+            agent_messages.append(
+                ChatMessage(
+                    role=ChatRole.TOOL,
+                    tool_call_id=tool_call_id,
+                    content=content,
+                ).get_json()
+            )
+            if ctx["submitted_final"] is not None:
+                return True
+        return False
+
+    async def _run_interactive(self, trajectory, agent_messages, ctx, training):
+        # RLM's interactive mode is a single pass of the same loop.
+        return await self._run_loop(
+            trajectory, agent_messages, ctx, training, max_steps=1
+        )
+
+    def _wrap_trajectory(self, agent_messages):
+        return JsonDataModel(
+            json=ChatMessages(
+                messages=[ChatMessage(**msg) for msg in agent_messages]
+            ).get_json(),
+            schema=ChatMessages.get_schema(),
+            name=self.name,
+        )
+
+    async def _finish(self, trajectory, agent_messages, ctx, training):
+        submitted_final = ctx["submitted_final"]
 
         # Interactive mode: only invoke the final generator when the LM itself
         # signalled completion via submit. Otherwise return the updated
         # trajectory so the caller can decide when to continue.
         if not self.autonomous and submitted_final is None:
-            validated_messages = ChatMessages(
-                messages=[ChatMessage(**msg) for msg in agent_messages]
-            )
-            return JsonDataModel(
-                json=validated_messages.get_json(),
-                schema=ChatMessages.get_schema(),
-                name=self.name,
-            )
+            return self._wrap_trajectory(agent_messages)
 
-        # submit short-circuit: the LM already produced the final payload
-        # inside the sandbox, so we skip the final-formatting LM call.
-        # Schemaless mode treats the payload as the content of a final
-        # assistant ChatMessage appended to the trajectory.
+        # submit short-circuit: the LM already produced the final payload inside
+        # the sandbox, so skip the final-formatting LM call. Schemaless mode
+        # treats the payload as the content of a final assistant message.
         if submitted_final is not None:
             if self.schema:
                 final_result = JsonDataModel(
@@ -1249,55 +1281,32 @@ class RecursiveLanguageModelAgent(Module):
                     name="final_generator_" + self.name,
                 )
             else:
-                # Schemaless: the answer is submitted as {"answer": "..."}; use
-                # that string as the final assistant message content (falling
-                # back to the whole payload if `answer` is absent).
                 agent_messages.append(
                     ChatMessage(
                         role=ChatRole.ASSISTANT,
                         content=submitted_final.get("answer", submitted_final),
                     ).get_json()
                 )
-                validated_messages = ChatMessages(
-                    messages=[ChatMessage(**msg) for msg in agent_messages]
-                )
-                return JsonDataModel(
-                    json=validated_messages.get_json(),
-                    schema=ChatMessages.get_schema(),
-                    name=self.name,
-                )
+                return self._wrap_trajectory(agent_messages)
         else:
             final_result = await self.final_generator(trajectory)
             if not self.schema:
-                # Schemaless fallback: the final generator emits a
-                # ChatMessage. Append it to the trajectory and return.
+                # Schemaless fallback: the final generator emits a ChatMessage.
                 if final_result:
                     agent_messages.append(final_result.get_json())
-                validated_messages = ChatMessages(
-                    messages=[ChatMessage(**msg) for msg in agent_messages]
-                )
-                return JsonDataModel(
-                    json=validated_messages.get_json(),
-                    schema=ChatMessages.get_schema(),
-                    name=self.name,
-                )
+                return self._wrap_trajectory(agent_messages)
 
         if self.return_inputs_with_trajectory:
-            validated_messages = ChatMessages(
-                messages=[ChatMessage(**msg) for msg in agent_messages]
-            )
             return await ops.concat(
-                JsonDataModel(
-                    json=validated_messages.get_json(),
-                    schema=ChatMessages.get_schema(),
-                    name=self.name,
-                ),
+                self._wrap_trajectory(agent_messages),
                 final_result,
                 name=self.name,
             )
         return final_result
 
-    async def compute_output_spec(self, inputs, training=False, sandbox=None):
+    async def compute_output_spec(self, inputs, training=False, sandbox=None, **kwargs):
+        # See FunctionCallingAgent.compute_output_spec: `call()` takes **kwargs
+        # (sandbox is threaded through it), so mirror the signature here.
         if not self.autonomous and not is_chat_messages(inputs):
             raise ValueError(
                 f"In interactive mode, the {type(self).__name__} needs a "
@@ -1321,7 +1330,7 @@ class RecursiveLanguageModelAgent(Module):
         # The closure placeholders are never executed during spec tracing;
         # only the tool's signature/docstring shape the prompt.
         spec_tool = self._build_run_python_code_tool(None)
-        _ = await self.code_generator(generator_inputs, tools=[spec_tool])
+        _ = await self.tool_calls_generator(generator_inputs, tools=[spec_tool])
         if not self.autonomous:
             # Interactive mode: the common case is returning the trajectory.
             # When the LM emits empty code the runtime returns the final
@@ -1353,82 +1362,44 @@ class RecursiveLanguageModelAgent(Module):
         return await self.final_generator(inputs)
 
     def get_config(self):
-        config = {
-            "schema": self.schema,
-            "recursive": self.recursive,
-            "prompt_template": self.prompt_template,
-            "examples": self.examples,
-            "instructions": self.instructions,
-            "final_instructions": self.final_instructions,
-            "temperature": self.temperature,
-            "use_inputs_schema": self.use_inputs_schema,
-            "use_outputs_schema": self.use_outputs_schema,
-            "reasoning_effort": self.reasoning_effort,
-            "use_chain_of_thought": self.use_chain_of_thought,
-            "autonomous": self.autonomous,
-            "timeout": self.timeout,
-            "max_iterations": self.max_iterations,
-            "max_llm_calls": self.max_llm_calls,
-            "max_output_chars": self.max_output_chars,
-            "return_inputs_with_trajectory": self.return_inputs_with_trajectory,
-            "sandbox_type": get_registered_name(self.sandbox_type),
-            "max_subagent_depth": self.max_subagent_depth,
-            "name": self.name,
-            "description": self.description,
-        }
-        language_model_config = {
-            "language_model": serialization_lib.serialize_synalinks_object(
-                self.language_model,
-            ),
-            "sub_language_model": serialization_lib.serialize_synalinks_object(
-                self.sub_language_model,
-            ),
-        }
-        sandbox_config = {
-            "sandbox": (
-                serialization_lib.serialize_synalinks_object(self.sandbox)
-                if self.sandbox is not None
-                else None
-            )
-        }
-        tools_config = {
-            "tools": [
-                serialization_lib.serialize_synalinks_object(tool)
-                for tool in self.tools.values()
-            ]
-        }
-        return {**config, **language_model_config, **sandbox_config, **tools_config}
+        config = super().get_config()
+        config.update(
+            {
+                "recursive": self.recursive,
+                "timeout": self.timeout,
+                "max_llm_calls": self.max_llm_calls,
+                "max_output_chars": self.max_output_chars,
+                "max_subagent_depth": self.max_subagent_depth,
+                "sandbox_type": get_registered_name(self.sandbox_type),
+                "sub_language_model": serialization_lib.serialize_synalinks_object(
+                    self.sub_language_model,
+                ),
+                "sandbox": (
+                    serialization_lib.serialize_synalinks_object(self.sandbox)
+                    if self.sandbox is not None
+                    else None
+                ),
+            }
+        )
+        return config
 
     @classmethod
     def from_config(cls, config):
-        tools = [
-            serialization_lib.deserialize_synalinks_object(tool)
-            for tool in config.pop("tools", [])
-        ]
-        language_model = serialization_lib.deserialize_synalinks_object(
-            config.pop("language_model")
-        )
-        sub_language_model = None
-        if "sub_language_model" in config:
-            sub_language_model = serialization_lib.deserialize_synalinks_object(
+        config = dict(config)
+        if config.get("sub_language_model") is not None:
+            config["sub_language_model"] = serialization_lib.deserialize_synalinks_object(
                 config.pop("sub_language_model")
             )
-        sandbox = None
-        if "sandbox" in config:
-            sandbox_serialized = config.pop("sandbox")
-            if sandbox_serialized is not None:
-                sandbox = serialization_lib.deserialize_synalinks_object(
-                    sandbox_serialized
-                )
+        else:
+            config.pop("sub_language_model", None)
         sandbox_type_name = config.pop("sandbox_type", None)
-        sandbox_type = (
+        config["sandbox_type"] = (
             get_registered_object(sandbox_type_name) if sandbox_type_name else None
         )
-        return cls(
-            language_model=language_model,
-            sub_language_model=sub_language_model,
-            tools=tools or None,
-            sandbox=sandbox,
-            sandbox_type=sandbox_type,
-            **config,
-        )
+        if config.get("sandbox") is not None:
+            config["sandbox"] = serialization_lib.deserialize_synalinks_object(
+                config.pop("sandbox")
+            )
+        else:
+            config.pop("sandbox", None)
+        return super().from_config(config)

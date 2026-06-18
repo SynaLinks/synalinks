@@ -117,7 +117,7 @@ kb = synalinks.KnowledgeBase(
 )
 # ... populate kb ...
 
-lm = synalinks.LanguageModel(model="ollama/mistral")
+lm = synalinks.LanguageModel(model="ollama/qwen3:8b")
 
 inputs = synalinks.Input(data_model=synalinks.ChatMessages)
 outputs = await synalinks.VectorRAGAgent(
@@ -289,6 +289,7 @@ SAMPLE_DOCUMENTS = [
 async def main():
     load_dotenv()
     synalinks.clear_session()
+    synalinks.enable_logging()
 
     db_path = "./guides/vector_rag_agent_guide.db"
     if os.path.exists(db_path):
@@ -308,7 +309,7 @@ async def main():
     for doc in SAMPLE_DOCUMENTS:
         await kb.update(doc.to_json_data_model())
 
-    language_model = synalinks.LanguageModel(model="ollama/mistral")
+    language_model = synalinks.LanguageModel(model="ollama/qwen3:8b")
 
     # Build the agent with the default hybrid_fts mode.
     inputs = synalinks.Input(data_model=synalinks.ChatMessages)
@@ -324,6 +325,7 @@ async def main():
         name="vector_rag_agent",
         description="A RAG agent that retrieves and answers from documents.",
     )
+    agent.summary()
 
     # Ask a question that needs retrieval to answer correctly.
     question = synalinks.ChatMessages(

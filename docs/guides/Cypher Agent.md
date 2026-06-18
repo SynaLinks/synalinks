@@ -9,3 +9,15 @@
 ````python
 --8<-- "guides/26_cypher_agent.py:101"
 ````
+
+## Run log
+
+This guide calls `synalinks.enable_logging()`, so a full run traces every
+module call. The log below is the **unedited** output of running the guide
+above with local models.
+
+??? example "Full run log — `guides/26_cypher_agent.log`"
+
+    ```text
+    --8<-- "guides/26_cypher_agent.log"
+    ```

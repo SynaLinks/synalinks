@@ -11,7 +11,7 @@ from synalinks.src.backend import JsonDataModel
 from synalinks.src.backend import SymbolicDataModel
 from synalinks.src.backend import Trainable
 from synalinks.src.modules.module import Module
-from synalinks.src.sandboxes.monty_sandbox import MontySandbox
+from synalinks.src.sandboxes.mirage_sandbox import MirageSandbox
 from synalinks.src.saving import serialization_lib
 from synalinks.src.saving.object_registration import get_registered_name
 from synalinks.src.saving.object_registration import get_registered_object
@@ -20,55 +20,30 @@ from synalinks.src.saving.object_registration import get_registered_object
 class PythonScript(Trainable):
     """The python code to transform a JSON object into another JSON object.
 
-    The script is executed inside the Monty
-    (https://github.com/pydantic/monty) sandboxed Python interpreter, which
-    implements only a subset of Python. Scripts must observe the following
-    constraints:
+    The script is executed inside the active sandbox (by default a
+    ``MirageSandbox`` — a real Python 3 interpreter). Scripts must observe the
+    following constraints:
 
     - The input JSON object is exposed as a dict named ``inputs``; the script
       must assign the output JSON object to a variable named ``result`` before
       it ends.
-    - Only this subset of the standard library is importable: ``sys``,
-      ``os``, ``typing``, ``asyncio``, ``re``, ``datetime``, ``json``,
-      ``math``, ``pathlib``. Notably, ``time``, ``random``, ``itertools``,
-      ``collections``, ``functools`` and the rest of the stdlib are **not**
-      available.
-    - No third-party libraries can be imported (e.g. ``numpy``, ``pandas``,
-      ``pydantic``).
-    - ``class`` definitions and ``match`` statements are not supported; use
-      functions and ``if``/``elif`` chains instead.
-    - The host filesystem, environment variables and network are not
-      reachable from the script. ``os``, ``sys`` and ``pathlib`` import but
-      their dangerous surface is pruned or gated: ``open()``, ``os.system``,
-      ``os.listdir``, ``os.environ``, ``os.path``, ``sys.argv`` and
-      ``Path.read_text`` are all unavailable.
-    - ``asyncio`` is also a stub: only ``asyncio.run`` and ``asyncio.gather``
-      are exposed. There is no ``asyncio.sleep``, ``wait_for``, ``Future``,
-      ``create_task`` or ``TaskGroup``, and no time primitives of any kind
-      (``time`` is not importable either).
-    - Tools bound to the module are exposed as **global async callables**
-      under their tool name. They must be awaited inside an ``async def``
-      and driven with ``asyncio.run(...)``. Every tool call returns a
-      **dict**: a tool wrapping ``async def f(x) -> int`` yields
+    - The full standard library is importable, along with any third-party
+      packages installed in the environment, and ``class`` / ``match``
+      statements are supported — write ordinary Python.
+    - Tools bound to the module are exposed as **global functions** under
+      their tool name: call them directly. Every tool call returns a
+      **dict**: a tool wrapping ``def f(x) -> int`` yields
       ``{"result": <value>}``, a tool that already returns a dict yields
       that dict directly. For example, with a bound tool ``web_search``:
 
       ```python
-      import asyncio
-
-      async def main():
-          hits = await web_search(query=inputs.get("q"))
-          # hits is a dict — index the field you need
-          return {"answer": hits["results"][0]["title"]}
-
-      result = asyncio.run(main())
+      hits = web_search(query=inputs.get("q"))
+      # hits is a dict — index the field you need
+      result = {"answer": hits["results"][0]["title"]}
       ```
-
-      Independent tool calls can be fanned out with ``asyncio.gather``.
-      Calling a tool without ``await`` returns a coroutine object, not the
-      real value.
-    - Execution is bounded by the module's ``timeout`` and by Monty's memory
-      limits; long-running or allocation-heavy scripts will be aborted.
+    - Execution is bounded by the module's ``timeout``; long-running scripts
+      are aborted. The exact language and stdlib constraints ultimately depend
+      on the active sandbox (consult ``sandbox.description``).
     """
 
     python_script: str = Field(
@@ -104,14 +79,14 @@ def _adapt_tool_for_sandbox(tool):
 
 
 def _relabel_error(error: str) -> str:
-    """Translate a MontyError class name into the module's legacy label.
+    """Translate a sandbox error class name into the module's legacy label.
 
-    ``MontySandbox.run`` surfaces errors as ``"MontyXxxError: ..."``; the
+    ``MirageSandbox`` surfaces errors as plain Python ``"XxxError: ..."``; the
     historical contract of this module is ``"Syntax Error: ..."`` /
     ``"Runtime Error: ..."`` (matching the rest of the stdout/stderr).
     """
     head, _, rest = error.partition(":")
-    label = "Syntax Error" if head == "MontySyntaxError" else "Runtime Error"
+    label = "Syntax Error" if head == "SyntaxError" else "Runtime Error"
     return f"{label}:{rest}"
 
 
@@ -122,18 +97,19 @@ async def _run_script(
     timeout,
     tools,
     sandbox=None,
-    sandbox_type=MontySandbox,
+    sandbox_type=MirageSandbox,
 ):
-    """Execute the script inside a ``MontySandbox``.
+    """Execute the script inside the sandbox.
 
     The script contract is unchanged: assign the output to a variable named
     ``result``. A trailing ``result`` expression is appended so the
     sandbox's last-expression return captures that value.
 
     ``tools`` is a ``{name: Tool}`` mapping; each ``Tool`` is exposed as a
-    global async callable inside the sandbox and must be ``await``-ed.
+    plain synchronous global function inside the sandbox (called directly,
+    no ``await``).
 
-    ``sandbox`` is optional. When ``None``, a fresh ``MontySandbox`` is
+    ``sandbox`` is optional. When ``None``, a fresh ``MirageSandbox`` is
     built for just this call — the normal case, giving every input an
     independent namespace. When supplied, the caller owns the sandbox
     and state persists across calls (useful at training time to explore
@@ -157,7 +133,7 @@ async def _run_script(
     if execution.error:
         relabelled = _relabel_error(execution.error)
         # Syntax errors happen at compile time — no script output precedes them.
-        if execution.error.startswith("MontySyntaxError"):
+        if execution.error.startswith("SyntaxError"):
             return None, "", f"{relabelled}\n"
         return (
             None,
@@ -190,12 +166,10 @@ async def _run_script(
 class PythonSynthesis(Module):
     """A code Python code transformation on JSON data.
 
-    The script runs inside the `Monty <https://github.com/pydantic/monty>`_
-    sandboxed Python interpreter: the host filesystem, environment and network
-    are unreachable from the script. Monty only supports a subset of Python
-    (no third-party libraries, limited standard library, no class or match
-    statements), so the generated script must stay within what Monty can
-    execute.
+    The script runs inside the active sandbox (by default a ``MirageSandbox``,
+    a real Python 3 interpreter): the full standard library and any installed
+    third-party packages are available, and ``class`` / ``match`` statements
+    are supported. The exact constraints depend on the active sandbox.
 
     This module features a python code as trainable variable, allowing the optimizers
     to refine the code during the training loop based on iterative feedback and
@@ -240,10 +214,6 @@ class PythonSynthesis(Module):
         )
     ```
     
-    If you want to explore the future of neuro-symbolic self-evolving systems, contact us.
-    While these systems are not "hard" to code thanks to Synalinks, they requires 
-    technical knowledge and a deep understanding of multiple AI paradigm.
-
     Args:
         schema (dict): The target JSON schema.
             If not provided use the `data_model` to infer it.
@@ -258,15 +228,14 @@ class PythonSynthesis(Module):
             evaluation. (Default to False).
         timeout (int): Maximum execution time in seconds. (Default 5 seconds).
         tools (list): Optional. A list of `Tool` (or MCP tools) exposed to the
-            script as global async callables. Because `Tool`s are async,
-            scripts must call them inside an `async def` and `await` them
-            (see the ``PythonScript`` docs). Passing `None` or an empty list
-            means no tools are bound.
+            script as global functions — scripts call them directly (see the
+            ``PythonScript`` docs). Passing `None` or an empty list means no
+            tools are bound.
 
             **Naming gotcha**: each tool is registered inside the sandbox
             under ``tool.name``, which is ``tool._func.__name__``. So
             ``Tool(_my_helper)`` registers as ``_my_helper`` (underscore
-            preserved) and the script must call ``await _my_helper(...)``.
+            preserved) and the script must call ``_my_helper(...)``.
             Name your tool functions exactly as you want them to appear
             inside the generated script — rename the function, don't rely
             on an alias.
@@ -281,7 +250,7 @@ class PythonSynthesis(Module):
             per call.
         sandbox_type (type): Optional. The ``Sandbox`` subclass used to
             build a fresh sandbox per call when no ``sandbox`` is
-            injected. Defaults to ``MontySandbox``, or to
+            injected. Defaults to ``MirageSandbox``, or to
             ``type(sandbox)`` when ``sandbox`` is given. Any ``Sandbox``
             subclass whose ``__init__`` accepts ``(timeout=..., name=...)``
             works; register custom subclasses with
@@ -350,13 +319,13 @@ class PythonSynthesis(Module):
         # Sandbox handling mirrors RecursiveLanguageModelAgent: if a
         # concrete sandbox is supplied at construction, reuse it across
         # calls and derive `sandbox_type` from its class. Otherwise fall
-        # back to `sandbox_type` (default MontySandbox) and build one
+        # back to `sandbox_type` (default MirageSandbox) and build one
         # fresh per `call()`.
         self.sandbox = sandbox
         if sandbox is not None:
             self.sandbox_type = type(sandbox)
         else:
-            self.sandbox_type = sandbox_type or MontySandbox
+            self.sandbox_type = sandbox_type or MirageSandbox
 
         if not seed_scripts:
             seed_scripts = []

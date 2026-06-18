@@ -1,0 +1,434 @@
+[Synalinks]
+Call ID: 9f172fea-015f-4a34-815d-05e8a7fe2164
+Parent call ID: None
+Module: Functional
+Module Name: traced_qa
+Module Description: A `Functional` program is a `Program` defined as a directed graph of modules.
+Data Model JSON:
+[
+  {
+    "query": "What is Python used for?"
+  }
+]
+
+[Synalinks]
+Call ID: dc5f0d9c-3cae-43f7-84fd-ce7e04a103f1
+Parent call ID: 9f172fea-015f-4a34-815d-05e8a7fe2164
+Module: Generator
+Module Name: generator
+Module Description: Use a `LanguageModel` to generate a data model from an arbitrary input data model.
+Data Model JSON:
+[
+  {
+    "query": "What is Python used for?"
+  }
+]
+
+[Synalinks]
+Call ID: 54e2546d-c304-4c75-895d-24220f26f2b9
+Parent call ID: dc5f0d9c-3cae-43f7-84fd-ce7e04a103f1
+Module: LanguageModel
+Module Name: language_model
+Module Description: A language model API wrapper.
+Data Model JSON:
+[
+  {
+    "messages": [
+      {
+        "role": "system",
+        "content": "<instructions>\nYour task is to answer with a JSON containing the following keys: ['thinking', 'answer']\n</instructions>\n"
+      },
+      {
+        "role": "user",
+        "content": "<input>\n{'query': 'What is Python used for?'}\n</input>\n<output>\n"
+      }
+    ]
+  }
+]
+
+[Synalinks]
+Call ID: 54e2546d-c304-4c75-895d-24220f26f2b9
+Parent call ID: dc5f0d9c-3cae-43f7-84fd-ce7e04a103f1
+Module: LanguageModel
+Module Name: language_model
+Module Description: A language model API wrapper.
+Data Model JSON:
+[
+  {
+    "thinking": "Python is a versatile programming language that can be used for various purposes such as web development, data analysis, artificial intelligence, machine learning, scientific computing, and more.",
+    "answer": "Python is primarily used for software development, data analysis, machine learning, artificial intelligence, web development, and scripting."
+  }
+]
+
+[Synalinks]
+Call ID: dc5f0d9c-3cae-43f7-84fd-ce7e04a103f1
+Parent call ID: 9f172fea-015f-4a34-815d-05e8a7fe2164
+Module: Generator
+Module Name: generator
+Module Description: Use a `LanguageModel` to generate a data model from an arbitrary input data model.
+Data Model JSON:
+[
+  {
+    "thinking": "Python is a versatile programming language that can be used for various purposes such as web development, data analysis, artificial intelligence, machine learning, scientific computing, and more.",
+    "answer": "Python is primarily used for software development, data analysis, machine learning, artificial intelligence, web development, and scripting."
+  }
+]
+
+[Synalinks]
+Call ID: 9f172fea-015f-4a34-815d-05e8a7fe2164
+Parent call ID: None
+Module: Functional
+Module Name: traced_qa
+Module Description: A `Functional` program is a `Program` defined as a directed graph of modules.
+Data Model JSON:
+[
+  {
+    "thinking": "Python is a versatile programming language that can be used for various purposes such as web development, data analysis, artificial intelligence, machine learning, scientific computing, and more.",
+    "answer": "Python is primarily used for software development, data analysis, machine learning, artificial intelligence, web development, and scripting."
+  }
+]
+
+============================================================
+Step 1: Enable Observability
+============================================================
+
+MLflow tracing is left disabled in this guide; uncomment the
+enable_observability(...) call above to forward spans to MLflow.
+Per-module logging (below) prints span data to stdout regardless.
+
+============================================================
+Step 2: Enable Logging
+============================================================
+
+Logging enabled at INFO level
+
+============================================================
+Step 3: Create and Run Program (spans will be logged)
+============================================================
+
+Answer: Python is primarily used for software development, data analysis, machine learning, artificial intel...
+
+============================================================
+Step 4: Program Summary
+============================================================
+Program: traced_qa
+description: 'A `Functional` program is a `Program` defined as a directed graph 
+of modules.'
+┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━┓
+┃ Module (type)               ┃ Output Schema                    ┃  Vars # ┃
+┡━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━┩
+│ input_module (InputModule)  │ Query:                           │       0 │
+│                             │   query: str                     │         │
+├─────────────────────────────┼──────────────────────────────────┼─────────┤
+│ generator (Generator)       │ Answer:                          │       1 │
+│                             │   thinking: str                  │         │
+│                             │   answer: str                    │         │
+└─────────────────────────────┴──────────────────────────────────┴─────────┘
+[Synalinks]
+Call ID: d5705bf6-77b2-4dc1-b7cd-cb957a361c5c
+Parent call ID: None
+Module: Functional
+Module Name: traced_qa
+Module Description: A `Functional` program is a `Program` defined as a directed graph of modules.
+Data Model JSON:
+[
+  {
+    "query": "What is machine learning?"
+  }
+]
+
+[Synalinks]
+Call ID: 18edd180-557f-4f45-b2b8-ae8f17b591c0
+Parent call ID: d5705bf6-77b2-4dc1-b7cd-cb957a361c5c
+Module: Generator
+Module Name: generator
+Module Description: Use a `LanguageModel` to generate a data model from an arbitrary input data model.
+Data Model JSON:
+[
+  {
+    "query": "What is machine learning?"
+  }
+]
+
+[Synalinks]
+Call ID: 05232735-0190-46b8-b711-fa1966edd91c
+Parent call ID: 18edd180-557f-4f45-b2b8-ae8f17b591c0
+Module: LanguageModel
+Module Name: language_model
+Module Description: A language model API wrapper.
+Data Model JSON:
+[
+  {
+    "messages": [
+      {
+        "role": "system",
+        "content": "<instructions>\nYour task is to answer with a JSON containing the following keys: ['thinking', 'answer']\n</instructions>\n"
+      },
+      {
+        "role": "user",
+        "content": "<input>\n{'query': 'What is machine learning?'}\n</input>\n<output>\n"
+      }
+    ]
+  }
+]
+
+[Synalinks]
+Call ID: 05232735-0190-46b8-b711-fa1966edd91c
+Parent call ID: 18edd180-557f-4f45-b2b8-ae8f17b591c0
+Module: LanguageModel
+Module Name: language_model
+Module Description: A language model API wrapper.
+Data Model JSON:
+[
+  {
+    "thinking": "Machine Learning is a subset of artificial intelligence that provides systems the ability to automatically learn and improve from experience without being explicitly programmed.",
+    "answer": "Machine Learning"
+  }
+]
+
+[Synalinks]
+Call ID: 18edd180-557f-4f45-b2b8-ae8f17b591c0
+Parent call ID: d5705bf6-77b2-4dc1-b7cd-cb957a361c5c
+Module: Generator
+Module Name: generator
+Module Description: Use a `LanguageModel` to generate a data model from an arbitrary input data model.
+Data Model JSON:
+[
+  {
+    "thinking": "Machine Learning is a subset of artificial intelligence that provides systems the ability to automatically learn and improve from experience without being explicitly programmed.",
+    "answer": "Machine Learning"
+  }
+]
+
+[Synalinks]
+Call ID: d5705bf6-77b2-4dc1-b7cd-cb957a361c5c
+Parent call ID: None
+Module: Functional
+Module Name: traced_qa
+Module Description: A `Functional` program is a `Program` defined as a directed graph of modules.
+Data Model JSON:
+[
+  {
+    "thinking": "Machine Learning is a subset of artificial intelligence that provides systems the ability to automatically learn and improve from experience without being explicitly programmed.",
+    "answer": "Machine Learning"
+  }
+]
+
+[Synalinks]
+Call ID: 8d849024-c8af-4139-8f2b-22a139b6a5d2
+Parent call ID: None
+Module: Functional
+Module Name: traced_qa
+Module Description: A `Functional` program is a `Program` defined as a directed graph of modules.
+Data Model JSON:
+[
+  {
+    "query": "How do neural networks work?"
+  }
+]
+
+[Synalinks]
+Call ID: 87b6afe5-7cda-4f2d-8a0b-05e654e1b5c2
+Parent call ID: 8d849024-c8af-4139-8f2b-22a139b6a5d2
+Module: Generator
+Module Name: generator
+Module Description: Use a `LanguageModel` to generate a data model from an arbitrary input data model.
+Data Model JSON:
+[
+  {
+    "query": "How do neural networks work?"
+  }
+]
+
+[Synalinks]
+Call ID: 2bed852c-db80-4608-ad32-9bdb082413f5
+Parent call ID: 87b6afe5-7cda-4f2d-8a0b-05e654e1b5c2
+Module: LanguageModel
+Module Name: language_model
+Module Description: A language model API wrapper.
+Data Model JSON:
+[
+  {
+    "messages": [
+      {
+        "role": "system",
+        "content": "<instructions>\nYour task is to answer with a JSON containing the following keys: ['thinking', 'answer']\n</instructions>\n"
+      },
+      {
+        "role": "user",
+        "content": "<input>\n{'query': 'How do neural networks work?'}\n</input>\n<output>\n"
+      }
+    ]
+  }
+]
+
+[Synalinks]
+Call ID: 2bed852c-db80-4608-ad32-9bdb082413f5
+Parent call ID: 87b6afe5-7cda-4f2d-8a0b-05e654e1b5c2
+Module: LanguageModel
+Module Name: language_model
+Module Description: A language model API wrapper.
+Data Model JSON:
+[
+  {
+    "thinking": "Neural networks are a type of machine learning model inspired by the structure and function of the human brain. They consist of interconnected layers of nodes, or artificial neurons, which process information using mathematical functions to make predictions or decisions based on input data. The network learns from examples provided during training, adjusting the weights of connections between neurons to minimize error in its output.",
+    "answer": "Neural networks are a type of machine learning model inspired by the structure and function of the human brain. They consist of interconnected layers of nodes, or artificial neurons, which process information using mathematical functions to make predictions or decisions based on input data. The network learns from examples provided during training, adjusting the weights of connections between neurons to minimize error in its output."
+  }
+]
+
+[Synalinks]
+Call ID: 87b6afe5-7cda-4f2d-8a0b-05e654e1b5c2
+Parent call ID: 8d849024-c8af-4139-8f2b-22a139b6a5d2
+Module: Generator
+Module Name: generator
+Module Description: Use a `LanguageModel` to generate a data model from an arbitrary input data model.
+Data Model JSON:
+[
+  {
+    "thinking": "Neural networks are a type of machine learning model inspired by the structure and function of the human brain. They consist of interconnected layers of nodes, or artificial neurons, which process information using mathematical functions to make predictions or decisions based on input data. The network learns from examples provided during training, adjusting the weights of connections between neurons to minimize error in its output.",
+    "answer": "Neural networks are a type of machine learning model inspired by the structure and function of the human brain. They consist of interconnected layers of nodes, or artificial neurons, which process information using mathematical functions to make predictions or decisions based on input data. The network learns from examples provided during training, adjusting the weights of connections between neurons to minimize error in its output."
+  }
+]
+
+[Synalinks]
+Call ID: 8d849024-c8af-4139-8f2b-22a139b6a5d2
+Parent call ID: None
+Module: Functional
+Module Name: traced_qa
+Module Description: A `Functional` program is a `Program` defined as a directed graph of modules.
+Data Model JSON:
+[
+  {
+    "thinking": "Neural networks are a type of machine learning model inspired by the structure and function of the human brain. They consist of interconnected layers of nodes, or artificial neurons, which process information using mathematical functions to make predictions or decisions based on input data. The network learns from examples provided during training, adjusting the weights of connections between neurons to minimize error in its output.",
+    "answer": "Neural networks are a type of machine learning model inspired by the structure and function of the human brain. They consist of interconnected layers of nodes, or artificial neurons, which process information using mathematical functions to make predictions or decisions based on input data. The network learns from examples provided during training, adjusting the weights of connections between neurons to minimize error in its output."
+  }
+]
+
+[Synalinks]
+Call ID: 88cefc0a-9196-4df8-a97b-387361e4c559
+Parent call ID: None
+Module: Functional
+Module Name: traced_qa
+Module Description: A `Functional` program is a `Program` defined as a directed graph of modules.
+Data Model JSON:
+[
+  {
+    "query": "What is deep learning?"
+  }
+]
+
+[Synalinks]
+Call ID: b714b58c-29e7-432a-abab-8642e217ec96
+Parent call ID: 88cefc0a-9196-4df8-a97b-387361e4c559
+Module: Generator
+Module Name: generator
+Module Description: Use a `LanguageModel` to generate a data model from an arbitrary input data model.
+Data Model JSON:
+[
+  {
+    "query": "What is deep learning?"
+  }
+]
+
+[Synalinks]
+Call ID: 1dd40449-a7c4-4829-8ae2-1b645e220961
+Parent call ID: b714b58c-29e7-432a-abab-8642e217ec96
+Module: LanguageModel
+Module Name: language_model
+Module Description: A language model API wrapper.
+Data Model JSON:
+[
+  {
+    "messages": [
+      {
+        "role": "system",
+        "content": "<instructions>\nYour task is to answer with a JSON containing the following keys: ['thinking', 'answer']\n</instructions>\n"
+      },
+      {
+        "role": "user",
+        "content": "<input>\n{'query': 'What is deep learning?'}\n</input>\n<output>\n"
+      }
+    ]
+  }
+]
+
+[Synalinks]
+Call ID: 1dd40449-a7c4-4829-8ae2-1b645e220961
+Parent call ID: b714b58c-29e7-432a-abab-8642e217ec96
+Module: LanguageModel
+Module Name: language_model
+Module Description: A language model API wrapper.
+Data Model JSON:
+[
+  {
+    "thinking": "Deep learning is a subset of machine learning that uses artificial neural networks with multiple layers to learn and make decisions based on complex data.",
+    "answer": "Deep Learning"
+  }
+]
+
+[Synalinks]
+Call ID: b714b58c-29e7-432a-abab-8642e217ec96
+Parent call ID: 88cefc0a-9196-4df8-a97b-387361e4c559
+Module: Generator
+Module Name: generator
+Module Description: Use a `LanguageModel` to generate a data model from an arbitrary input data model.
+Data Model JSON:
+[
+  {
+    "thinking": "Deep learning is a subset of machine learning that uses artificial neural networks with multiple layers to learn and make decisions based on complex data.",
+    "answer": "Deep Learning"
+  }
+]
+
+[Synalinks]
+Call ID: 88cefc0a-9196-4df8-a97b-387361e4c559
+Parent call ID: None
+Module: Functional
+Module Name: traced_qa
+Module Description: A `Functional` program is a `Program` defined as a directed graph of modules.
+Data Model JSON:
+[
+  {
+    "thinking": "Deep learning is a subset of machine learning that uses artificial neural networks with multiple layers to learn and make decisions based on complex data.",
+    "answer": "Deep Learning"
+  }
+]
+
+
+============================================================
+Step 5: Inspect Trainable Variables
+============================================================
+
+Trainable variables:
+  - state_generator
+
+============================================================
+Step 6: Visualize Program
+============================================================
+
+Program visualization saved to guides/traced_qa.png
+
+============================================================
+Step 7: Multiple Traced Calls
+============================================================
+
+Running multiple queries (each emits its own span tree):
+  Q: What is machine learning?... -> A: Machine Learning...
+  Q: How do neural networks work?... -> A: Neural networks are a type of machine le...
+  Q: What is deep learning?... -> A: Deep Learning...
+
+============================================================
+Span Tree Shape
+============================================================
+
+Each program invocation produces a tree of spans of this shape:
+
+Program span (Functional: traced_qa)
+└── Generator span
+    └── LanguageModel span
+        └── (one HTTP call to the configured provider)
+
+Each span is logged twice: once on entry (with the input data model)
+and once on exit (with the output data model). The call_id and
+parent_call_id fields are sufficient to reconstruct the tree.
+

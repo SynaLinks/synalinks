@@ -1,0 +1,5 @@
+Example: Program Compilation
+Program compiled successfully!
+Reward: <RewardFunctionWrapper(<function cosine_similarity at 0x70cd5e668cc0>, kwargs={'axis': -1, 'embedding_model': <EmbeddingModel model=ollama/all-minilm api_base=http://localhost:11434>})>
+Optimizer: <Optimizer name=random_few_shot description=Sample among the best predictions to populate the LM's prompt.>
+Metrics: [<Mean name=reward>, <CompileMetrics name=compile_metrics>]

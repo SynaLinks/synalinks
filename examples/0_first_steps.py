@@ -85,7 +85,7 @@ async def main():
     synalinks.clear_session()
 
     # Initialize a language model
-    language_model = synalinks.LanguageModel(model="gemini/gemini-3.1-flash-lite-preview")
+    language_model = synalinks.LanguageModel(model="ollama/mistral:latest")
 
     # Build the program using the Functional API
     inputs = synalinks.Input(data_model=Query)
@@ -226,10 +226,10 @@ async def main():
     load_dotenv()
 
     # Enable observability for tracing (view traces at http://localhost:5000)
-    synalinks.enable_observability(
-        tracking_uri="http://localhost:5000",
-        experiment_name="lesson_0_first_steps",
-    )
+#     synalinks.enable_observability(
+#         tracking_uri="http://localhost:5000",
+#         experiment_name="lesson_0_first_steps",
+#     )
 
     # Setup
     setup()
@@ -239,7 +239,7 @@ async def main():
 
     # Initialize a language model
     language_model = synalinks.LanguageModel(
-        model="gemini/gemini-3.1-flash-lite-preview",
+        model="ollama/mistral:latest",
     )
 
     # -------------------------------------------------------------------------

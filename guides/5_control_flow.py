@@ -212,7 +212,7 @@ class Cons(synalinks.DataModel):
 async def main():
     load_dotenv()
     synalinks.clear_session()
-    lm = synalinks.LanguageModel(model="ollama/llama3.2:latest")
+    lm = synalinks.LanguageModel(model="ollama/mistral:latest")
 
     # Fan-out: both generators read `inputs`, run in parallel, merge with +.
     inputs = synalinks.Input(data_model=Question)
@@ -308,13 +308,14 @@ class AnswerWithThinking(synalinks.DataModel):
 async def main():
     load_dotenv()
     synalinks.clear_session()
+    synalinks.enable_logging()
 
     # synalinks.enable_observability(
     #     tracking_uri="http://localhost:5000",
     #     experiment_name="guide_5_control_flow",
     # )
 
-    lm = synalinks.LanguageModel(model="ollama/llama3.2:latest")
+    lm = synalinks.LanguageModel(model="ollama/mistral:latest")
 
     # -------------------------------------------------------------------------
     # Pattern 1: Fan-out (parallel branches) merged with + (Concat)
@@ -343,6 +344,7 @@ async def main():
         outputs=pros + cons,
         name="fan_out",
     )
+    fanout_program.summary()
 
     result = await fanout_program(
         Question(question="Should small teams adopt microservices?")
@@ -377,6 +379,7 @@ async def main():
         outputs=easy | hard,
         name="routing",
     )
+    routing_program.summary()
 
     result = await routing_program(Query(query="What is 2 + 2?"))
     print(f"\nEasy query -> {result['answer']}")

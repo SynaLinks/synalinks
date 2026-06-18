@@ -93,10 +93,10 @@ async def main():
     load_dotenv()
     synalinks.clear_session()
 
-    synalinks.enable_observability(
-        tracking_uri="http://localhost:5000",
-        experiment_name="cypher_agent",
-    )
+#     synalinks.enable_observability(
+#         tracking_uri="http://localhost:5000",
+#         experiment_name="cypher_agent",
+#     )
 
     # A graph KnowledgeBase needs `graph_uri=` (Ladybug here) plus the entity
     # and relation models. `:memory:` keeps it ephemeral; swap in a file path
@@ -107,7 +107,7 @@ async def main():
         relation_models=[LivesIn, Knows],
         # The graph store dedups entities by embedding on insert; the choice is
         # incidental to Cypher querying itself.
-        embedding_model=synalinks.EmbeddingModel(model="gemini/gemini-embedding-001"),
+        embedding_model=synalinks.EmbeddingModel(model="ollama/all-minilm"),
     )
 
     # Populate a tiny social graph.
@@ -122,7 +122,7 @@ async def main():
     )
 
     language_model = synalinks.LanguageModel(
-        model="gemini/gemini-3.1-flash-lite-preview",
+        model="ollama/qwen3:8b",
     )
 
     # `data_model=CypherAnswer` forces the agent to return both a natural-

@@ -236,7 +236,7 @@ async def main():
     #     experiment_name="observability_demo",
     # )
 
-    lm = synalinks.LanguageModel(model="ollama/llama3.2:latest")
+    lm = synalinks.LanguageModel(model="ollama/mistral:latest")
 
     inputs = synalinks.Input(data_model=Query)
     outputs = await synalinks.Generator(
@@ -351,7 +351,7 @@ async def main():
     print("Step 3: Create and Run Program (spans will be logged)")
     print("=" * 60)
 
-    lm = synalinks.LanguageModel(model="ollama/llama3.2:latest")
+    lm = synalinks.LanguageModel(model="ollama/mistral:latest")
 
     inputs = synalinks.Input(data_model=Query)
     outputs = await synalinks.Generator(

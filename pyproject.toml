@@ -2,12 +2,11 @@
 name = "synalinks"
 description = "Graph-Based Programmable Neuro-Symbolic LM Framework"
 readme = "README.md"
-requires-python = ">=3.11"
+requires-python = ">=3.12"
 dynamic = ["version"]
 classifiers = [
   "Development Status :: 4 - Beta",
   "Programming Language :: Python :: 3",
-  "Programming Language :: Python :: 3.11",
   "Programming Language :: Python :: 3.12",
   "Programming Language :: Python :: 3.13",
   "Programming Language :: Python :: 3.14",
@@ -21,6 +20,7 @@ classifiers = [
 dependencies = [
   "absl-py",
   "asyncio",
+  "click",
   "datasets",
   "docstring-parser",
   "duckdb",
@@ -39,12 +39,14 @@ dependencies = [
   "mlflow>=3.11.1",
   "namex",
   "numpy",
+  "dill",
+  "mirage-ai>=0.0.2",
   "optree",
   "orjson",
   "pydantic",
-  "pydantic-monty",
   "pydotplus",
   "rich",
+  "skills-ref>=0.1.1",
   "synaops>=0.2.1",
   "tenacity",
 ]
@@ -53,11 +55,18 @@ dependencies = [
 Homepage = "https://github.com/SynaLinks/synalinks"
 Issues = "https://github.com/SynaLinks/synalinks/issues"
 
+[project.scripts]
+synalinks = "synalinks.cli.main:cli"
+
 [tool.setuptools]
 include-package-data = true
 
 [tool.setuptools.package-data]
 "*" = ["*.json"]
+# Ship the project templates inside the wheel so `synalinks init` works
+# offline. The patterns cover regular files and dotfiles (e.g. .gitignore,
+# .python-version, .gitkeep) at every depth under cli/templates.
+"synalinks.cli" = ["templates/**/*", "templates/**/.*"]
 
 [tool.setuptools.dynamic]
 version = {attr = "synalinks.src.version.__version__"}
@@ -67,6 +76,8 @@ include = ["synalinks", "synalinks.*"]
 
 [tool.ruff]
 line-length = 90
+# Bundled project templates are scaffolding data, not linted source.
+extend-exclude = ["synalinks/cli/templates"]
 
 [tool.ruff.lint]
 select = [
@@ -132,9 +143,9 @@ omit = [
 
 [dependency-groups]
 dev = [
+    "pytest>=8.3",
+    "pytest-cov>=5.0",
     "keras-tuner>=1.4",
     "mkdocstrings[python]>=1.0.4",
-    "pytest",
-    "pytest-cov",
     "zensical>=0.0.43",
 ]

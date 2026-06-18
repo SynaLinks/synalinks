@@ -1,0 +1,15 @@
+============================================================
+Building a Program with Parallel Branches
+============================================================
+
+Running the program (both branches execute in parallel)...
+------------------------------------------------------------
+
+Got 2 results from parallel branches:
+
+Branch 1 Answer:
+  The meaning of life is a philosophical question that doesn't have one definitive...
+
+Branch 2 Answer:
+  The meaning of life is a philosophical question that doesn't have one definitive...
+

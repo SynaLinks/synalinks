@@ -18,6 +18,7 @@ from synalinks.src.backend import ChatMessages
 from synalinks.src.backend import ChatRole
 from synalinks.src.backend import JsonDataModel
 from synalinks.src.backend.common.op_scope import current_op_scope
+from synalinks.src.backend.pydantic.chat_completions import to_chat_completion_message
 from synalinks.src.modules.core.tool import Tool
 from synalinks.src.modules.module import Module
 from synalinks.src.saving import serialization_lib
@@ -136,52 +137,17 @@ def _message_to_wire(message):
     """Convert a synalinks ChatMessage to an OpenAI Chat Completions
     wire-format dict.
 
-    Adapts the assistant tool-call envelope (synalinks holds tool calls
-    flat; OpenAI wraps them as `{id, type, function: {name, arguments}}`
-    with `arguments` JSON-encoded), JSON-encodes dict content on tool
-    results, and emits `thinking` as `reasoning_content` plus any
-    `thinking_blocks` verbatim. `reasoning_content` is what DeepSeek-style
-    providers consume; `thinking_blocks` (with signature) is what LiteLLM's
-    Anthropic/Bedrock request transformer reads. Each side ignores the other,
-    so populating both is safe.
+    Delegates to `to_chat_completion_message`, the single source of truth
+    for the synalinks<->OpenAI mapping (tool-call envelope wrapping with
+    `arguments` JSON-encoded, dict content JSON-encoded on tool results,
+    and `thinking`/`thinking_blocks` mapped onto `reasoning_content`/
+    `thinking_blocks` for DeepSeek- and Anthropic-style providers). Unset
+    fields are dropped, but `content` is always emitted (as null when
+    empty) since some providers expect the key to be present.
     """
-    role = message.role.value if isinstance(message.role, ChatRole) else message.role
-    content = message.content
-    if type(content) is dict:
-        content = orjson.dumps(content).decode()
-
-    if role == "assistant":
-        out = {"role": "assistant", "content": content if content else None}
-        if message.thinking:
-            out["reasoning_content"] = message.thinking
-        if message.thinking_blocks:
-            out["thinking_blocks"] = message.thinking_blocks
-        if message.tool_calls:
-            out["tool_calls"] = [
-                {
-                    "id": tc.id,
-                    "type": "function",
-                    "function": {
-                        "name": tc.name,
-                        "arguments": orjson.dumps(tc.arguments).decode(),
-                    },
-                }
-                for tc in message.tool_calls
-            ]
-        return out
-    if role == "tool":
-        return {
-            "role": "tool",
-            "content": content,
-            "tool_call_id": message.tool_call_id,
-        }
-    if role == "function":
-        return {
-            "role": "function",
-            "content": content,
-            "name": message.tool_call_id or "",
-        }
-    return {"role": role, "content": content}  # user / system / developer
+    wire = to_chat_completion_message(message).model_dump(exclude_none=True)
+    wire.setdefault("content", None)
+    return wire
 
 
 def _tool_to_wire(tool):
@@ -963,19 +929,24 @@ class LanguageModel(Module):
                     if reasoning_content and schema_had_thinking:
                         json_instance["thinking"] = reasoning_content
                 else:
-                    # Unwrap OpenAI's nested tool-call envelope into the flat
-                    # synalinks shape (`ChatMessage.tool_calls`).
-                    flat_tool_calls = None
+                    # Parse OpenAI's nested tool-call envelope into the
+                    # synalinks `ToolCall` shape (`{id, type, function:
+                    # {name, arguments}}`), decoding the JSON `arguments`
+                    # string back into a dict.
+                    parsed_tool_calls = None
                     if wire_tool_calls:
-                        flat_tool_calls = []
+                        parsed_tool_calls = []
                         for tc in wire_tool_calls:
                             fn = _safe_get(tc, "function")
                             args = _safe_get(fn, "arguments", "")
-                            flat_tool_calls.append(
+                            parsed_tool_calls.append(
                                 {
                                     "id": _safe_get(tc, "id"),
-                                    "name": _safe_get(fn, "name"),
-                                    "arguments": orjson.loads(args) if args else {},
+                                    "type": "function",
+                                    "function": {
+                                        "name": _safe_get(fn, "name"),
+                                        "arguments": orjson.loads(args) if args else {},
+                                    },
                                 }
                             )
                     json_instance = {
@@ -983,11 +954,11 @@ class LanguageModel(Module):
                         "content": response_str,
                     }
                     if reasoning_content:
-                        json_instance["thinking"] = reasoning_content
+                        json_instance["reasoning_content"] = reasoning_content
                     if thinking_blocks:
                         json_instance["thinking_blocks"] = thinking_blocks
-                    if flat_tool_calls:
-                        json_instance["tool_calls"] = flat_tool_calls
+                    if parsed_tool_calls:
+                        json_instance["tool_calls"] = parsed_tool_calls
                 return JsonDataModel(
                     json=json_instance,
                     schema=schema if schema else ChatMessage.get_schema(),
@@ -1048,7 +1019,7 @@ class StreamingIterator:
 
     Wraps litellm's `CustomStreamWrapper` (which is async-iterable via
     `__aiter__`/`__anext__`) and yields one normalized dict per
-    non-empty chunk: `{"role": "assistant", "thinking": ..., "content": ...}`.
+    non-empty chunk: `{"role": "assistant", "reasoning_content": ..., "content": ...}`.
     Chunks containing only role/finish markers are skipped so reasoning-only
     deltas don't terminate the stream prematurely.
 
@@ -1080,7 +1051,7 @@ class StreamingIterator:
             if content or thinking:
                 out = {"role": ChatRole.ASSISTANT}
                 if thinking:
-                    out["thinking"] = thinking
+                    out["reasoning_content"] = thinking
                 if content:
                     out["content"] = content
                 return out

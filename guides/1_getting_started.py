@@ -95,7 +95,7 @@ already have. For this guide we use a local copy of Llama via Ollama, which
 runs on your laptop and needs no account or API key:
 
 ```bash
-ollama serve && ollama pull llama3.2:latest
+ollama serve && ollama pull mistral:latest
 ```
 
 If you would rather use a hosted model (Gemini, Claude, GPT, etc.), put the
@@ -251,7 +251,7 @@ async def main():
     load_dotenv()
     synalinks.clear_session()
 
-    language_model = synalinks.LanguageModel(model="ollama/llama3.2:latest")
+    language_model = synalinks.LanguageModel(model="ollama/mistral:latest")
 
     inputs = synalinks.Input(data_model=Question)
     outputs = await synalinks.Generator(
@@ -274,7 +274,7 @@ if __name__ == "__main__":
     asyncio.run(main())
 ```
 
-A representative run against `ollama/llama3.2:latest` might print:
+A representative run against `ollama/mistral:latest` might print:
 
 ```
 Thinking: France has multiple capitals depending on the region
@@ -365,13 +365,14 @@ class Answer(synalinks.DataModel):
 async def main():
     load_dotenv()
     synalinks.clear_session()
+    synalinks.enable_logging()
 
     # synalinks.enable_observability(
     #     tracking_uri="http://localhost:5000",
     #     experiment_name="guide_1_getting_started",
     # )
 
-    language_model = synalinks.LanguageModel(model="ollama/llama3.2:latest")
+    language_model = synalinks.LanguageModel(model="ollama/mistral:latest")
 
     inputs = synalinks.Input(data_model=Question)
     outputs = await synalinks.Generator(
@@ -385,6 +386,7 @@ async def main():
         name="qa_program",
         description="A simple question-answering program",
     )
+    program.summary()
 
     result = await program(Question(question="What is the capital of France?"))
 

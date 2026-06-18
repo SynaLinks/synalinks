@@ -218,7 +218,7 @@ class ChainOfThoughtModuleTest(testing.TestCase):
         self, mock_completion, mock_supports_reasoning
     ):
         """ChainOfThought with data_model=None returns a ChatMessage and
-        populates the thinking field from the LM's reasoning_content."""
+        populates the reasoning_content field from the LM's reasoning_content."""
         mock_supports_reasoning.return_value = True
 
         class Query(DataModel):
@@ -253,15 +253,15 @@ class ChainOfThoughtModuleTest(testing.TestCase):
 
         result_json = result.get_json()
         self.assertEqual(result_json["content"], "Paris")
-        self.assertEqual(result_json["thinking"], "France's capital is Paris.")
+        self.assertEqual(result_json["reasoning_content"], "France's capital is Paris.")
         self.assertEqual(result_json["role"], "assistant")
 
     @patch("litellm.acompletion")
     async def test_chain_of_thought_streaming_without_data_model(self, mock_completion):
         """ChainOfThought(data_model=None, streaming=True) streams the LM
         response as a StreamingIterator. Reasoning chunks (delta has
-        `reasoning_content` only, empty content) are exposed as `thinking`
-        chunks rather than ending the stream prematurely."""
+        `reasoning_content` only, empty content) are exposed as
+        `reasoning_content` chunks rather than ending the stream prematurely."""
 
         class Query(DataModel):
             query: str = Field(description="The user query")
@@ -290,8 +290,8 @@ class ChainOfThoughtModuleTest(testing.TestCase):
         thinking_parts = []
         content_parts = []
         async for chunk in stream:
-            if "thinking" in chunk:
-                thinking_parts.append(chunk["thinking"])
+            if "reasoning_content" in chunk:
+                thinking_parts.append(chunk["reasoning_content"])
             if "content" in chunk:
                 content_parts.append(chunk["content"])
 

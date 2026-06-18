@@ -1,0 +1,14 @@
+============================================================
+Building a Program with Conditional Branches
+============================================================
+
+Testing conditional branches...
+------------------------------------------------------------
+
+Query: 'What is 2 + 2?'
+Easy branch result: <JsonDataModel schema={'additionalProperties': False, 'properties': {'thinking': {'description': 'Your step by step thinking to choose the correct label.', 'title': 'Thinking', 'type': 'string'}, 'choice': {'enum': ['easy', 'difficult'], 'title': 'Choice', 'type': 'string'}, 'answer': {'description': 'The correct answer', 'title': 'Answer', 'type': 'string'}}, 'required': ['thinking', 'choice', 'answer'], 'title': 'DecisionAnswer', 'type': 'object'}, json={'thinking': 'The given query involves basic arithmetic operations, specifically addition. The operation itself and the numbers involved are simple.', 'choice': 'easy', 'answer': '4'}>
+Hard branch result: None
+
+Query: 'Explain quantum entanglement and its implications for computing'
+Easy branch result: None
+Hard branch result: Quantum entanglement is a phenomenon where two or more particles become linked a...

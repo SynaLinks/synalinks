@@ -1,0 +1,20 @@
+============================================================
+Building a Chain-of-Thought Program
+============================================================
+
+Running the program...
+------------------------------------------------------------
+
+Result:
+{
+  "thinking": "Okay, the user is asking about the key aspects of human cognition. Let me start by recalling what I know about cognitive science. Human cognition involves various processes like perception, memory, attention, problem-solving, language, and decision-making. I should make sure to cover the main areas without getting too detailed.\n\nFirst, perception is how we interpret sensory information. Then there's attention, which is about focusing on specific stimuli. Memory is crucial too, including different types like short-term, long-term, and working memory. Problem-solving and decision-making are higher-order processes that involve reasoning and judgment. Language is another key aspect, as it's central to communication and thought. \n\nWait, maybe I should also mention cognitive biases and heuristics, as they play a role in how we process information. Emotional cognition is important too, linking emotions to thought processes. Executive functions like planning and self-control are part of cognitive processes as well. \n\nI need to structure these points clearly. Let me check if there's anything I'm missing. Oh, maybe cognitive development stages, but the question is about aspects rather than development. Focus on the core components. Also, include things like learning and creativity. \n\nPutting it all together, the answer should list these aspects in a structured way. Make sure each key aspect is explained briefly but clearly. Avoid jargon so it's accessible. Alright, time to organize this into the JSON format as specified.\n",
+  "answer": "The key aspects of human cognition include: 1) Perception (interpreting sensory information), 2) Attention (focusing on relevant stimuli), 3) Memory (storing and retrieving information), 4) Language (processing and generating communication), 5) Problem-solving and Decision-making (reasoning and judgment), 6) Executive Functions (planning, self-control), 7) Emotional Cognition (linking emotions to thought), and 8) Cognitive Biases/Heuristics (mental shortcuts influencing judgment). These processes collectively enable learning, adaptation, and interaction with the environment."
+}
+
+============================================================
+Accessing individual fields:
+============================================================
+
+Thinking: Okay, the user is asking about the key aspects of human cognition. Let me start by recalling what I ...
+
+Answer: The key aspects of human cognition include: 1) Perception (interpreting sensory information), 2) Att...

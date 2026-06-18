@@ -188,18 +188,18 @@ async def main():
     load_dotenv()
 
     # Enable observability for tracing
-    synalinks.enable_observability(
-        tracking_uri="http://localhost:5000",
-        experiment_name="knowledge_extraction",
-    )
+#     synalinks.enable_observability(
+#         tracking_uri="http://localhost:5000",
+#         experiment_name="knowledge_extraction",
+#     )
 
     # Initialize models
     language_model = synalinks.LanguageModel(
-        model="gemini/gemini-3.1-flash-lite-preview",
+        model="ollama/mistral:latest",
     )
 
     embedding_model = synalinks.EmbeddingModel(
-        model="gemini/gemini-embedding-001",
+        model="ollama/mxbai-embed-large",
     )
 
     # Clean up any existing database

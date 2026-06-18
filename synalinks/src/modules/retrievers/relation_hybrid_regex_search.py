@@ -15,6 +15,8 @@ from synalinks.src.knowledge_bases import get as _get_kb
 from synalinks.src.modules.core.generator import Generator
 from synalinks.src.modules.language_models import get as _get_lm
 from synalinks.src.modules.module import Module
+from synalinks.src.modules.retrievers.infer_helpers import concat_infer_fields
+from synalinks.src.modules.retrievers.infer_helpers import kb_relation_labels
 from synalinks.src.saving import serialization_lib
 
 
@@ -67,11 +69,12 @@ class RelationHybridRegexSearch(Module):
             Mutually inferrable with ``relation_model``.
         relation_model (Relation | SymbolicDataModel): Relation model
             providing ``schema`` via ``.get_schema()`` when ``schema``
-            is not given. One of ``schema``, ``relation_model``, or
-            ``label`` must be provided.
+            is not given.
         label (str): Target relation label. Defaults to the schema's
-            ``title``. One of ``schema``, ``relation_model``, or
-            ``label`` must be provided.
+            ``title``. **Optional** — when neither ``label`` nor a
+            schema to derive it from is given, the language model infers
+            the target relation label per call (constrained to the
+            knowledge base's actual relation labels).
         k (int): Maximum number of results. Defaults to 10.
         k_rank (int): RRF smoothing constant. Defaults to 60.
         similarity_threshold (float): Optional vector-distance
@@ -124,18 +127,13 @@ class RelationHybridRegexSearch(Module):
 
         if schema is None and relation_model is not None:
             schema = relation_model.get_schema()
-        if schema is None and label is None:
-            raise ValueError("One of `schema`, `relation_model`, or `label` is required")
         self.schema = schema
         self.relation_model = relation_model
 
-        if label is None:
-            label = schema.get("title")
-            if not label:
-                raise ValueError(
-                    "Could not infer `label` from `schema` (no `title`); "
-                    "pass `label` explicitly."
-                )
+        # `label` is optional: when it (and a schema to infer it from) is absent,
+        # the LM picks the relation label per call (see query_generator).
+        if label is None and schema is not None:
+            label = schema.get("title") or None
         self.label = label
 
         if output_format not in ("json", "csv"):
@@ -162,8 +160,28 @@ class RelationHybridRegexSearch(Module):
         self.return_inputs = return_inputs
         self.return_query = return_query
 
+        # When the target label is fixed, the generator only produces the search
+        # queries. When it is not, concatenate an enum field (the KB's actual
+        # relation labels) onto the query schema so the LM also infers `label`.
+        if self.label is None:
+            gen_target = {
+                "schema": concat_infer_fields(
+                    RelationHybridRegexSearchInput.get_schema(),
+                    [
+                        (
+                            "relation_label",
+                            "The relation label to search, chosen to best "
+                            "answer the inputs.",
+                            kb_relation_labels(self.knowledge_base),
+                        )
+                    ],
+                )
+            }
+        else:
+            gen_target = {"data_model": RelationHybridRegexSearchInput}
+
         self.query_generator = Generator(
-            data_model=RelationHybridRegexSearchInput,
+            **gen_target,
             language_model=self.language_model,
             prompt_template=self.prompt_template,
             examples=self.examples,
@@ -183,17 +201,19 @@ class RelationHybridRegexSearch(Module):
         query = await self.query_generator(inputs, training=training)
         if not query:
             return None
-        payload = query.get_json()
-        queries = payload.get("similarity_search", [])
-        patterns = payload.get("regex_patterns")
-        # Need at least one signal — vector or regex — to look up.
-        if not queries and not patterns:
+        query_json = query.get_json()
+        queries = query_json.get("similarity_search", [])
+        patterns = query_json.get("regex_patterns")
+        # Fixed label, or the one the LM inferred this call.
+        label = self.label or query_json.get("relation_label")
+        # Need at least one signal — vector or regex — and a label to look up.
+        if (not queries and not patterns) or not label:
             return None
 
         rows = await self.knowledge_base.relation_hybrid_regex_search(
             text_or_texts=queries,
             pattern_or_patterns=patterns or None,
-            label=self.label,
+            label=label,
             fields=self.fields,
             case_sensitive=self.case_sensitive,
             k=self.k,

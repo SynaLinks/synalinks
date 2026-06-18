@@ -10,3 +10,14 @@
 ````python
 --8<-- "examples/5b_json_ops.py:121"
 ````
+
+## Run log
+
+The log below is the **unedited** combined output of running the example above
+with local models (ollama).
+
+??? example "Full run log — `examples/5b_json_ops.log`"
+
+    ```text
+    --8<-- "examples/5b_json_ops.log"
+    ```

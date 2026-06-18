@@ -8,7 +8,7 @@ from synalinks.src.modules.core.input_module import Input
 from synalinks.src.modules.core.tool import Tool
 from synalinks.src.modules.synthesis.python_synthesis import PythonSynthesis
 from synalinks.src.programs.program import Program
-from synalinks.src.sandboxes.monty_sandbox import MontySandbox
+from synalinks.src.sandboxes.mirage_sandbox import MirageSandbox
 
 
 class _IntIn(DataModel):
@@ -159,12 +159,12 @@ result = {"doubled": "not an int"}
 
     async def test_stdout_is_captured(self):
         script = """
-print("hello from monty")
+print("hello from sandbox")
 result = {"doubled": inputs.get("value") * 2}
 """
         result = await self._run_simple(script)
         self.assertEqual(result.get("doubled"), 6)
-        self.assertIn("hello from monty", result.get("stdout"))
+        self.assertIn("hello from sandbox", result.get("stdout"))
 
     async def test_return_python_script_true_includes_script(self):
         script = """
@@ -200,13 +200,8 @@ result = {"doubled": inputs.get("value") * 2}
         # Tool(triple) wraps the int return in `{"result": value}`, so the
         # script has to index that field before using it.
         script = """
-import asyncio
-
-async def main():
-    tripled = (await triple(x=inputs.get("value")))["result"]
-    return {"doubled": tripled}
-
-result = asyncio.run(main())
+tripled = triple(x=inputs.get("value"))["result"]
+result = {"doubled": tripled}
 """
         inputs = Input(data_model=_IntIn)
         outputs = await PythonSynthesis(
@@ -223,14 +218,9 @@ result = asyncio.run(main())
 
     async def test_multiple_tools_bound_by_name(self):
         script = """
-import asyncio
-
-async def main():
-    s = (await add(a=inputs.get("value"), b=inputs.get("value")))["result"]
-    t = (await triple(x=s))["result"]
-    return {"doubled": t}
-
-result = asyncio.run(main())
+s = add(a=inputs.get("value"), b=inputs.get("value"))["result"]
+t = triple(x=s)["result"]
+result = {"doubled": t}
 """
         inputs = Input(data_model=_IntIn)
         outputs = await PythonSynthesis(
@@ -247,8 +237,8 @@ result = asyncio.run(main())
 
     async def test_tool_called_without_await_is_a_runtime_error(self):
         # Forgetting to `await` an async tool yields a coroutine object, not
-        # the value — monty rejects it when marshalling, falling back to the
-        # default.
+        # the value — the sandbox can't marshal it back, falling back to
+        # the default.
         script = """
 result = {"doubled": triple(x=inputs.get("value"))}
 """
@@ -266,7 +256,7 @@ result = {"doubled": triple(x=inputs.get("value"))}
         self.assertNotEqual(result.get("stderr"), "")
 
     async def test_injected_sandbox_preserves_state_across_calls(self):
-        """When the caller hands in a ``MontySandbox``, variables defined
+        """When the caller hands in a ``MirageSandbox``, variables defined
         by one script are visible to the next. Default (no sandbox)
         behaviour is fresh state per call, exercised elsewhere."""
         # First script seeds `memo`; second script references it. Without
@@ -292,7 +282,7 @@ result = {"doubled": memo["count"] * 2}
             default_return_value={"doubled": -1},
         )
 
-        sandbox = MontySandbox()
+        sandbox = MirageSandbox()
         r1 = await agent_seed(_IntIn(value=3), sandbox=sandbox)
         self.assertEqual(r1.get("doubled"), 6)
         # Second agent sees `memo` because the sandbox persisted.
@@ -312,7 +302,7 @@ memo["count"] += inputs.get("value")
 result = {"doubled": memo["count"] * 2}
 """
 
-        sandbox = MontySandbox()
+        sandbox = MirageSandbox()
         agent_seed = PythonSynthesis(
             data_model=_IntOut,
             python_script=seed_script,
@@ -344,7 +334,7 @@ memo["count"] += inputs.get("value")
 result = {"doubled": memo["count"] * 2}
 """
 
-        ctor_sandbox = MontySandbox()
+        ctor_sandbox = MirageSandbox()
         agent_seed = PythonSynthesis(
             data_model=_IntOut,
             python_script=seed_script,
@@ -360,7 +350,7 @@ result = {"doubled": memo["count"] * 2}
 
         await agent_seed(_IntIn(value=3))
         # Per-call sandbox is fresh — `memo` is undefined inside it.
-        fresh = MontySandbox()
+        fresh = MirageSandbox()
         r = await agent_followup(_IntIn(value=4), sandbox=fresh)
         self.assertEqual(r.get("doubled"), -1)
         self.assertIn("Runtime Error", r.get("stderr"))

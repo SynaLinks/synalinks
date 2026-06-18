@@ -10,7 +10,7 @@ from synalinks.src.modules.core.input_module import Input
 from synalinks.src.modules.core.tool import Tool
 from synalinks.src.modules.language_models import LanguageModel
 from synalinks.src.programs import Program
-from synalinks.src.sandboxes.monty_sandbox import MontySandbox
+from synalinks.src.sandboxes.mirage_sandbox import MirageSandbox
 from synalinks.src.saving.object_registration import register_synalinks_serializable
 
 
@@ -175,21 +175,10 @@ class RecursiveLanguageModelAgentTest(testing.TestCase):
 
         turn1 = {
             "code": (
-                "import asyncio\n"
-                "async def main():\n"
-                "    out = await llm_query(prompt='summarize this')\n"
-                "    print(out['result'])\n"
-                "asyncio.run(main())"
+                "out = llm_query(prompt='summarize this')\n" "print(out['result'])"
             )
         }
-        turn2 = {
-            "code": (
-                "import asyncio\n"
-                "async def main():\n"
-                "    await submit(result={'answer': 'done'})\n"
-                "asyncio.run(main())"
-            )
-        }
+        turn2 = {"code": "submit(result={'answer': 'done'})"}
 
         # Order: code-generator (tool call), sub-LM (free-form),
         # code-generator (tool call).
@@ -222,21 +211,11 @@ class RecursiveLanguageModelAgentTest(testing.TestCase):
 
         turn1 = {
             "code": (
-                "import asyncio\n"
-                "async def main():\n"
-                "    out = await llm_query_batched(prompts=['a', 'b', 'c'])\n"
-                "    print(out['result'])\n"
-                "asyncio.run(main())"
+                "out = llm_query_batched(prompts=['a', 'b', 'c'])\n"
+                "print(out['result'])"
             )
         }
-        turn2 = {
-            "code": (
-                "import asyncio\n"
-                "async def main():\n"
-                "    await submit(result={'answer': 'merged'})\n"
-                "asyncio.run(main())"
-            )
-        }
+        turn2 = {"code": "submit(result={'answer': 'merged'})"}
 
         mock_completion.side_effect = [
             _exec_tool_call(turn1["code"], "call_1"),
@@ -273,22 +252,12 @@ class RecursiveLanguageModelAgentTest(testing.TestCase):
 
         turn1 = {
             "code": (
-                "import asyncio\n"
-                "async def main():\n"
-                "    a = await llm_query(prompt='first')\n"
-                "    b = await llm_query(prompt='second')\n"
-                "    print(a, b)\n"
-                "asyncio.run(main())"
+                "a = llm_query(prompt='first')\n"
+                "b = llm_query(prompt='second')\n"
+                "print(a, b)"
             )
         }
-        turn2 = {
-            "code": (
-                "import asyncio\n"
-                "async def main():\n"
-                "    await submit(result={'answer': 'capped'})\n"
-                "asyncio.run(main())"
-            )
-        }
+        turn2 = {"code": ("submit(result={'answer': 'capped'})")}
 
         mock_completion.side_effect = [
             _exec_tool_call(turn1["code"], "call_1"),
@@ -324,23 +293,8 @@ class RecursiveLanguageModelAgentTest(testing.TestCase):
         agent = Program(inputs=inputs, outputs=outputs)
 
         # Each agent call: one llm_query, then submit.
-        per_call_turn1 = {
-            "code": (
-                "import asyncio\n"
-                "async def main():\n"
-                "    out = await llm_query(prompt='x')\n"
-                "    print(out)\n"
-                "asyncio.run(main())"
-            )
-        }
-        per_call_turn2 = {
-            "code": (
-                "import asyncio\n"
-                "async def main():\n"
-                "    await submit(result={'answer': 'k'})\n"
-                "asyncio.run(main())"
-            )
-        }
+        per_call_turn1 = {"code": "out = llm_query(prompt='x')\nprint(out)"}
+        per_call_turn2 = {"code": "submit(result={'answer': 'k'})"}
 
         mock_completion.side_effect = [
             # Call 1
@@ -382,11 +336,8 @@ class RecursiveLanguageModelAgentTest(testing.TestCase):
 
         turn1 = {
             "code": (
-                "import asyncio\n"
-                "async def main():\n"
-                "    out = await llm_query(prompt='gist?')\n"
-                "    await submit(result={'answer': out['result']})\n"
-                "asyncio.run(main())"
+                "out = llm_query(prompt='gist?')\n"
+                "submit(result={'answer': out['result']})"
             )
         }
 
@@ -465,13 +416,15 @@ class RLMSubagentTest(testing.TestCase):
         self.assertEqual(restored.max_subagent_depth, 2)
         self.assertTrue(restored._subagents_enabled)
         # Guidance is appended idempotently — not doubled on round-trip.
-        self.assertEqual(restored.instructions.count("delegate to parallel subagents"), 1)
+        self.assertEqual(
+            restored.instructions.count("delegate to parallel subagents"), 1
+        )
 
     # -- merge / discard handlers (no LM, manual fork) -----------------------
 
     async def test_merge_subagent_files_and_repl(self):
         agent = self._agent(max_subagent_depth=1)
-        sandbox = MontySandbox()
+        sandbox = MirageSandbox()
         await sandbox.run("x = 1")
         await sandbox.write_file("/base.txt", "base")
         registry = {}
@@ -496,7 +449,7 @@ class RLMSubagentTest(testing.TestCase):
 
     async def test_merge_subagent_files_only_leaves_repl(self):
         agent = self._agent(max_subagent_depth=1)
-        sandbox = MontySandbox()
+        sandbox = MirageSandbox()
         await sandbox.run("x = 1")
         registry = {}
         tools = agent._build_subagent_tools(sandbox, registry, [0], {"adopted": False})
@@ -513,7 +466,7 @@ class RLMSubagentTest(testing.TestCase):
 
     async def test_only_one_repl_adoption_per_turn(self):
         agent = self._agent(max_subagent_depth=1)
-        sandbox = MontySandbox()
+        sandbox = MirageSandbox()
         registry = {}
         repl_state = {"adopted": False}
         tools = agent._build_subagent_tools(sandbox, registry, [0], repl_state)
@@ -539,16 +492,18 @@ class RLMSubagentTest(testing.TestCase):
 
     async def test_merge_and_discard_unknown_handle(self):
         agent = self._agent(max_subagent_depth=1)
-        sandbox = MontySandbox()
+        sandbox = MirageSandbox()
         tools = agent._build_subagent_tools(sandbox, {}, [0], {"adopted": False})
-        self.assertIn("error", (await tools["merge_subagent"](handle="nope")).get_json())
+        self.assertIn(
+            "error", (await tools["merge_subagent"](handle="nope")).get_json()
+        )
         self.assertIn(
             "error", (await tools["discard_subagent"](handle="nope")).get_json()
         )
 
     async def test_discard_subagent_drops_fork(self):
         agent = self._agent(max_subagent_depth=1)
-        sandbox = MontySandbox()
+        sandbox = MirageSandbox()
         registry = {"subagent_0": sandbox.fork(copy_repl=True)}
         tools = agent._build_subagent_tools(sandbox, registry, [0], {"adopted": False})
         out = (await tools["discard_subagent"](handle="subagent_0")).get_json()
@@ -559,20 +514,14 @@ class RLMSubagentTest(testing.TestCase):
 
     @patch("litellm.acompletion")
     async def test_spawn_runs_subagent_on_isolated_fork(self, mock_completion):
-        # The subagent's single snippet sets a REPL var, writes a file, submits.
-        snippet = (
-            "import asyncio\n"
-            "import pathlib\n"
-            "subvar = 7\n"
-            "pathlib.Path('/sub.txt').write_text('hi from sub')\n"
-            "async def main():\n"
-            "    await submit(result={'answer': 'computed subvar'})\n"
-            "asyncio.run(main())\n"
-        )
+        # The subagent's single snippet sets a REPL var and submits. (Its
+        # interpreter is an isolated subprocess, so it folds REPL state back to
+        # the parent on merge, not in-snippet host file writes.)
+        snippet = "subvar = 7\n" "submit(result={'answer': 'computed subvar'})\n"
         mock_completion.side_effect = lambda *a, **k: _exec_tool_call(snippet)
 
         agent = self._agent(max_subagent_depth=1)
-        sandbox = MontySandbox()
+        sandbox = MirageSandbox()
         await sandbox.run("parentvar = 1")
         registry = {}
         tools = agent._build_subagent_tools(sandbox, registry, [0], {"adopted": False})
@@ -583,10 +532,8 @@ class RLMSubagentTest(testing.TestCase):
         sub = subs[0]
         self.assertEqual(sub["handle"], "subagent_0")
         self.assertEqual(sub["result"], "computed subvar")
-        self.assertIn("/sub.txt", [w["path"] for w in sub["diff"]["written"]])
-        # Parent sandbox is untouched until merge.
-        self.assertIn("error", await sandbox.read_file("/sub.txt"))
+        # Parent REPL is untouched until merge: `subvar` is not defined there.
         self.assertFalse((await sandbox.run("print(subvar)")).ok)
-        # The fork carries the subagent's REPL var and files.
+        # The fork carries the subagent's REPL var.
         fork = registry["subagent_0"]
         self.assertIn("7", (await fork.run("print(subvar)")).stdout)
