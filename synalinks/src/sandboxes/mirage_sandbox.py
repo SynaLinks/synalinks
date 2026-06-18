@@ -606,7 +606,69 @@ def _confinement_available() -> "tuple[bool, str]":
                 return False, "unprivileged user namespaces are disabled"
     except OSError:
         pass  # absent on distros where userns is enabled by default
-    return True, ""
+    # The checks above are cheap capability probes; they pass on environments
+    # that still *forbid* the credential-map handshake the real confinement
+    # performs (notably GitHub Actions and many containers deny writing
+    # ``/proc/self/setgroups``). Settle it by actually attempting the setup.
+    return _confinement_smoke_test()
+
+
+_confine_smoke_cache: "Optional[tuple[bool, str]]" = None
+
+
+def _confinement_smoke_test() -> "tuple[bool, str]":
+    """Attempt the unprivileged user-namespace credential handshake for real.
+
+    Forks a throwaway child that runs the exact first steps of ``_confine``
+    (``unshare`` the namespaces, then write ``setgroups``/``uid_map``/``gid_map``)
+    and reports whether they succeeded. The fork keeps the ``unshare`` off the
+    host process; the child only ever ``os._exit``s. Without this, environments
+    that allow ``unshare`` but deny the map writes (GitHub Actions, some
+    containers) pass the cheap probes, so the documented graceful fallback to
+    unconfined never fires and every confined ``run`` dies with
+    ``confine-error: PermissionError(13) ... /proc/self/setgroups``. Cached:
+    the answer is constant for the process lifetime.
+    """
+    global _confine_smoke_cache
+    if _confine_smoke_cache is not None:
+        return _confine_smoke_cache
+    try:
+        pid = os.fork()
+    except OSError as exc:
+        _confine_smoke_cache = (False, f"cannot fork to probe confinement: {exc}")
+        return _confine_smoke_cache
+    if pid == 0:  # child: bare-minimum work, never returns to the caller
+        try:
+            NEWUSER, NEWNS, NEWNET, NEWIPC, NEWUTS, NEWPID = (
+                0x10000000,
+                0x20000,
+                0x40000000,
+                0x8000000,
+                0x4000000,
+                0x20000000,
+            )
+            uid, gid = os.getuid(), os.getgid()
+            os.unshare(NEWUSER | NEWNS | NEWNET | NEWIPC | NEWUTS | NEWPID)
+            with open("/proc/self/setgroups", "w") as fh:
+                fh.write("deny")
+            with open("/proc/self/uid_map", "w") as fh:
+                fh.write("0 %d 1" % uid)
+            with open("/proc/self/gid_map", "w") as fh:
+                fh.write("0 %d 1" % gid)
+        except BaseException:
+            os._exit(99)
+        os._exit(0)
+    _, status = os.waitpid(pid, 0)
+    if os.WIFEXITED(status) and os.WEXITSTATUS(status) == 0:
+        _confine_smoke_cache = (True, "")
+    else:
+        _confine_smoke_cache = (
+            False,
+            "the kernel/environment forbids unprivileged user-namespace setup "
+            "(e.g. writing /proc/self/setgroups is denied, as on GitHub Actions "
+            "and inside many containers)",
+        )
+    return _confine_smoke_cache
 
 
 # ``AUDIT_ARCH_*`` tokens (EM_* | 64-bit | little-endian) the seccomp filter
