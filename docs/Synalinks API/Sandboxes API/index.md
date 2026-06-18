@@ -9,7 +9,7 @@ import synalinks
 import asyncio
 
 async def main():
-    sandbox = synalinks.MontySandbox(timeout=5.0)
+    sandbox = synalinks.MirageSandbox(timeout=5.0)
 
     result = await sandbox.run("x = 21\nx * 2")
     print(result.result)  # 42
@@ -20,4 +20,4 @@ if __name__ == "__main__":
 
 ## Sandboxes API overview
 
-- [Monty Sandbox](Monty Sandbox.md)
+- [Mirage Sandbox](Mirage Sandbox.md)
