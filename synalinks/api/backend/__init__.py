@@ -88,5 +88,7 @@ from synalinks.src.backend.pydantic.knowledge import is_knowledge_graph as is_kn
 from synalinks.src.backend.pydantic.knowledge import is_knowledge_graphs as is_knowledge_graphs
 from synalinks.src.backend.pydantic.knowledge import is_relation as is_relation
 from synalinks.src.backend.pydantic.knowledge import is_relations as is_relations
+from synalinks.src.backend.pydantic.media import Audio as Audio
+from synalinks.src.backend.pydantic.media import Image as Image
 from synalinks.src.backend.pydantic.metrics import Score as Score
 from synalinks.src.utils.naming import get_uid as get_uid

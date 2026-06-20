@@ -4,6 +4,8 @@ from synalinks.src import testing
 from synalinks.src.backend import DataModel
 from synalinks.src.backend import SymbolicDataModel
 from synalinks.src.backend import standardize_schema
+from synalinks.src.modules import AudioInput
+from synalinks.src.modules import ImageInput
 from synalinks.src.modules import Input
 from synalinks.src.modules import InputModule
 
@@ -24,3 +26,21 @@ class InputLayerTest(testing.TestCase):
         inputs = Input(data_model=Query)
         self.assertIsInstance(inputs, SymbolicDataModel)
         self.assertEqual(inputs.get_schema(), standardize_schema(Query.get_schema()))
+
+    def test_image_input_is_a_chat_input(self):
+        from synalinks.src.backend import ChatMessages
+
+        inputs = ImageInput()
+        self.assertIsInstance(inputs, SymbolicDataModel)
+        self.assertEqual(
+            inputs.get_schema(), standardize_schema(ChatMessages.get_schema())
+        )
+
+    def test_audio_input_is_a_chat_input(self):
+        from synalinks.src.backend import ChatMessages
+
+        inputs = AudioInput()
+        self.assertIsInstance(inputs, SymbolicDataModel)
+        self.assertEqual(
+            inputs.get_schema(), standardize_schema(ChatMessages.get_schema())
+        )

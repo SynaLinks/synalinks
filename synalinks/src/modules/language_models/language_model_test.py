@@ -1,5 +1,7 @@
 # License Apache 2.0: (c) 2025-2026 Yoan Sallami (Synalinks Team)
 
+import base64
+import os
 from unittest.mock import patch
 
 from litellm.types.utils import Choices
@@ -11,12 +13,24 @@ from litellm.types.utils import ServerToolUse
 from litellm.types.utils import Usage
 
 from synalinks.src import testing
+from synalinks.src.backend import Audio
 from synalinks.src.backend import ChatMessage
 from synalinks.src.backend import ChatMessages
 from synalinks.src.backend import ChatRole
 from synalinks.src.backend import DataModel
+from synalinks.src.backend import Image
 from synalinks.src.backend.common.op_scope import _OP_SCOPE
 from synalinks.src.modules.language_models import LanguageModel
+
+_SAMPLE_IMAGE = os.path.join(
+    os.path.dirname(os.path.abspath(__file__)),
+    "..",
+    "..",
+    "..",
+    "..",
+    "guides",
+    "traced_qa.png",
+)
 
 
 class LanguageModelTest(testing.TestCase):
@@ -207,6 +221,101 @@ class LanguageModelTest(testing.TestCase):
         lm = LanguageModel(model="openai/gpt-4o-mini")
         await lm(messages, reasoning_effort="disable")
         self.assertNotIn("think", mock_completion.call_args.kwargs)
+
+
+class MultimodalWireTest(testing.TestCase):
+    """End-to-end per-modality check at the provider boundary.
+
+    Drives a multimodal `ChatMessages` through the full `LanguageModel` call
+    and inspects the exact `messages` payload handed to `litellm.acompletion`,
+    proving each modality's deferred reference is resolved to an inline payload
+    before it leaves synalinks. Covers both how content is authored:
+    constructed `Image`/`Audio` objects, and dataset-style raw JSON refs.
+    """
+
+    def _sent_content(self, mock_completion):
+        return mock_completion.call_args.kwargs["messages"][0]["content"]
+
+    @patch("litellm.acompletion")
+    async def test_image_constructed_object_reaches_provider_inlined(
+        self, mock_completion
+    ):
+        mock_completion.return_value = {"choices": [{"message": {"content": "ok"}}]}
+        lm = LanguageModel(model="openai/gpt-4o-mini")
+        # Constructed Image(data=...) -> already inline; must arrive as a data: URI.
+        messages = ChatMessages(
+            messages=[
+                ChatMessage(
+                    role=ChatRole.USER,
+                    content=["what is this?", Image(data="QUJD", mime_type="image/png")],
+                )
+            ]
+        )
+        await lm(messages)
+        part = self._sent_content(mock_completion)[1]
+        self.assertEqual(part["type"], "image_url")
+        self.assertEqual(part["image_url"]["url"], "data:image/png;base64,QUJD")
+
+    @patch("litellm.acompletion")
+    async def test_image_dataset_ref_is_resolved_before_send(self, mock_completion):
+        mock_completion.return_value = {"choices": [{"message": {"content": "ok"}}]}
+        lm = LanguageModel(model="openai/gpt-4o-mini")
+        # Dataset-style: raw image_url ref built via model_validate_json (no
+        # Image() constructor) -> must be fetched/inlined per batch at send.
+        rendered = (
+            '{"messages":[{"role":"user","content":['
+            '{"type":"text","text":"caption"},'
+            f'{{"type":"image_url","image_url":{{"url":"file://{_SAMPLE_IMAGE}"}}}}]}}]}}'
+        )
+        messages = ChatMessages.model_validate_json(rendered)
+        await lm(messages)
+        url = self._sent_content(mock_completion)[1]["image_url"]["url"]
+        self.assertTrue(url.startswith("data:image/png;base64,"))
+        with open(_SAMPLE_IMAGE, "rb") as f:
+            expected = base64.b64encode(f.read()).decode("ascii")
+        self.assertEqual(url.split(",", 1)[1], expected)
+
+    @patch("litellm.acompletion")
+    async def test_audio_constructed_object_reaches_provider_inlined(
+        self, mock_completion
+    ):
+        mock_completion.return_value = {"choices": [{"message": {"content": "ok"}}]}
+        lm = LanguageModel(model="gemini/gemini-2.0-flash")
+        messages = ChatMessages(
+            messages=[
+                ChatMessage(
+                    role=ChatRole.USER,
+                    content=["transcribe", Audio(data="QUJD", format="wav")],
+                )
+            ]
+        )
+        await lm(messages)
+        part = self._sent_content(mock_completion)[1]
+        self.assertEqual(part["type"], "input_audio")
+        self.assertEqual(part["input_audio"], {"data": "QUJD", "format": "wav"})
+
+    @patch("litellm.acompletion")
+    async def test_audio_dataset_ref_is_resolved_and_stripped_before_send(
+        self, mock_completion
+    ):
+        mock_completion.return_value = {"choices": [{"message": {"content": "ok"}}]}
+        lm = LanguageModel(model="gemini/gemini-2.0-flash")
+        # Dataset-style audio ref: input_audio carrying a file:// `url`.
+        rendered = (
+            '{"messages":[{"role":"user","content":['
+            '{"type":"text","text":"transcribe"},'
+            f'{{"type":"input_audio","input_audio":'
+            f'{{"format":"wav","url":"file://{_SAMPLE_IMAGE}"}}}}]}}]}}'
+        )
+        messages = ChatMessages.model_validate_json(rendered)
+        await lm(messages)
+        audio = self._sent_content(mock_completion)[1]["input_audio"]
+        # Source ref consumed; only inline data + format leave synalinks.
+        self.assertEqual(sorted(audio.keys()), ["data", "format"])
+        with open(_SAMPLE_IMAGE, "rb") as f:
+            expected = base64.b64encode(f.read()).decode("ascii")
+        self.assertEqual(audio["data"], expected)
+        self.assertEqual(audio["format"], "wav")
 
 
 def _lm_response(prompt_tokens, completion_tokens, total_tokens=None, cost=None):

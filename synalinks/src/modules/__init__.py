@@ -6,6 +6,8 @@ from synalinks.src.modules.core.generator import Generator
 from synalinks.src.modules.core.generator import default_instructions
 from synalinks.src.modules.core.generator import default_prompt_template
 from synalinks.src.modules.core.identity import Identity
+from synalinks.src.modules.core.input_module import AudioInput
+from synalinks.src.modules.core.input_module import ImageInput
 from synalinks.src.modules.core.input_module import Input
 from synalinks.src.modules.core.input_module import InputModule
 from synalinks.src.modules.core.not_module import Not

@@ -106,10 +106,13 @@ from synalinks.src.backend.pydantic.knowledge import is_knowledge_graph as is_kn
 from synalinks.src.backend.pydantic.knowledge import is_knowledge_graphs as is_knowledge_graphs
 from synalinks.src.backend.pydantic.knowledge import is_relation as is_relation
 from synalinks.src.backend.pydantic.knowledge import is_relations as is_relations
+from synalinks.src.backend.pydantic.media import Audio as Audio
+from synalinks.src.backend.pydantic.media import Image as Image
 from synalinks.src.backend.pydantic.metrics import Score as Score
 from synalinks.src.datasets.csv_dataset import CSVDataset as CSVDataset
 from synalinks.src.datasets.dataset import Dataset as Dataset
 from synalinks.src.datasets.huggingface_dataset import HuggingFaceDataset as HuggingFaceDataset
+from synalinks.src.datasets.image_folder_dataset import ImageFolderDataset as ImageFolderDataset
 from synalinks.src.datasets.json_dataset import JSONDataset as JSONDataset
 from synalinks.src.datasets.json_dataset import JSONLDataset as JSONLDataset
 from synalinks.src.datasets.markdown_dataset import MarkdownDataset as MarkdownDataset
@@ -142,6 +145,8 @@ from synalinks.src.modules.core.decision import Decision as Decision
 from synalinks.src.modules.core.generator import Generator as Generator
 from synalinks.src.modules.core.generator import default_prompt_template as default_prompt_template
 from synalinks.src.modules.core.identity import Identity as Identity
+from synalinks.src.modules.core.input_module import AudioInput as AudioInput
+from synalinks.src.modules.core.input_module import ImageInput as ImageInput
 from synalinks.src.modules.core.input_module import Input as Input
 from synalinks.src.modules.core.lambda_module import Lambda as Lambda
 from synalinks.src.modules.core.multi_decision import MultiDecision as MultiDecision

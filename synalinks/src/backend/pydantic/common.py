@@ -177,6 +177,22 @@ class ChatMessage(DataModel):
             )
         return data
 
+    @model_validator(mode="before")
+    @classmethod
+    def _normalize_content(cls, data):
+        """Normalize a multimodal `content` list to its chat-completion shape.
+
+        A `content` list may mix plain strings (text) and special media types
+        (`Image`/`Audio`); each is mapped to its content part so the stored
+        `content` is a strict list of chat-completion parts. Plain string or
+        already-shaped dict content is left untouched.
+        """
+        if isinstance(data, dict) and isinstance(data.get("content"), list):
+            from synalinks.src.backend.pydantic.media import normalize_content
+
+            data["content"] = normalize_content(data["content"])
+        return data
+
     @property
     def thinking(self) -> Optional[str]:
         """Deprecated read alias for `reasoning_content`."""

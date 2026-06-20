@@ -19,6 +19,8 @@ from synalinks.src.modules.core.branch import Branch as Branch
 from synalinks.src.modules.core.decision import Decision as Decision
 from synalinks.src.modules.core.generator import Generator as Generator
 from synalinks.src.modules.core.identity import Identity as Identity
+from synalinks.src.modules.core.input_module import AudioInput as AudioInput
+from synalinks.src.modules.core.input_module import ImageInput as ImageInput
 from synalinks.src.modules.core.input_module import Input as Input
 from synalinks.src.modules.core.input_module import InputModule as InputModule
 from synalinks.src.modules.core.lambda_module import Lambda as Lambda

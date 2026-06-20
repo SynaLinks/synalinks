@@ -100,10 +100,13 @@ from synalinks.api import is_knowledge_graph
 from synalinks.api import is_knowledge_graphs
 from synalinks.api import is_relation
 from synalinks.api import is_relations
+from synalinks.api import Audio
+from synalinks.api import Image
 from synalinks.api import Score
 from synalinks.api import CSVDataset
 from synalinks.api import Dataset
 from synalinks.api import HuggingFaceDataset
+from synalinks.api import ImageFolderDataset
 from synalinks.api import JSONDataset
 from synalinks.api import JSONLDataset
 from synalinks.api import MarkdownDataset
@@ -136,6 +139,8 @@ from synalinks.api import Decision
 from synalinks.api import Generator
 from synalinks.api import default_prompt_template
 from synalinks.api import Identity
+from synalinks.api import AudioInput
+from synalinks.api import ImageInput
 from synalinks.api import Input
 from synalinks.api import Lambda
 from synalinks.api import MultiDecision
