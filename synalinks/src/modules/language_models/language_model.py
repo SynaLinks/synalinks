@@ -19,6 +19,7 @@ from synalinks.src.backend import ChatRole
 from synalinks.src.backend import JsonDataModel
 from synalinks.src.backend.common.op_scope import current_op_scope
 from synalinks.src.backend.pydantic.chat_completions import to_chat_completion_message
+from synalinks.src.backend.pydantic.media import resolve_content_media
 from synalinks.src.modules.core.tool import Tool
 from synalinks.src.modules.module import Module
 from synalinks.src.saving import serialization_lib
@@ -465,9 +466,7 @@ class LanguageModel(Module):
         # JsonDataModel guard would otherwise reject it.
         self._allow_non_json_data_model_positional_args = True
         if model is None:
-            raise ValueError(
-                "You need to set the `model` argument for any LanguageModel"
-            )
+            raise ValueError("You need to set the `model` argument for any LanguageModel")
         model_provider = model.split("/")[0]
         if model_provider == "ollama":
             # Switch from `ollama` to `ollama_chat`
@@ -628,6 +627,10 @@ class LanguageModel(Module):
             else ChatMessages(messages=messages.get("messages", []))
         )
         formatted_messages = [_message_to_wire(m) for m in _typed_messages.messages]
+        # Inline any deferred multimodal references (a dataset's image_url/
+        # input_audio parts carrying a url/path) into base64 payloads, for this
+        # batch only. Content already inlined at construction is left untouched.
+        formatted_messages = await resolve_content_media(formatted_messages)
         if tools or tool_schemas:
             wire_tools = []
             if tools:
@@ -1029,9 +1032,7 @@ class StreamingIterator:
 
     def __init__(self, iterator):
         self._iterator = iterator
-        self._is_async = hasattr(iterator, "__anext__") or hasattr(
-            iterator, "__aiter__"
-        )
+        self._is_async = hasattr(iterator, "__anext__") or hasattr(iterator, "__aiter__")
 
     def __aiter__(self):
         return self

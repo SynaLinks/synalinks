@@ -63,6 +63,68 @@ class GeneratorModuleTest(testing.TestCase):
         print(msgs.prettify_json())
         self.assertTrue(len(msgs.messages) == 2)
 
+    def test_format_multimodal_chat_message(self):
+        import base64
+
+        from synalinks.src.backend import Image
+
+        class Answer(DataModel):
+            answer: str
+
+        png = b"\x89PNG\r\n\x1a\n"
+
+        class _Resp:
+            content = png
+            headers = {"content-type": "image/png"}
+
+            def raise_for_status(self):
+                pass
+
+        class _Client:
+            def __init__(self, *a, **k):
+                pass
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *a):
+                return False
+
+            def get(self, url):
+                return _Resp()
+
+        # The image is fetched and inlined at construction (see backend.media),
+        # so the content list reaching the chat path is already a base64
+        # `data:` URI alongside the text part.
+        with patch("httpx.Client", _Client):
+            image = Image(url="http://example.com/cat.png")
+
+        msgs = Generator(
+            data_model=Answer,
+            language_model=LanguageModel(model="ollama/mistral"),
+        ).format_messages(
+            inputs=ChatMessages(
+                messages=[
+                    ChatMessage(
+                        role="user",
+                        content=["What is in this picture?", image],
+                    ),
+                ]
+            )
+        )
+        user = msgs.messages[-1]
+        encoded = base64.b64encode(png).decode("ascii")
+        self.assertEqual(
+            user.content,
+            [
+                {"type": "text", "text": "What is in this picture?"},
+                {
+                    "type": "image_url",
+                    "image_url": {"url": f"data:image/png;base64,{encoded}"},
+                },
+            ],
+        )
+
     def test_format_chat_message_with_tools(self):
         class AnswerWithRationale(DataModel):
             rationale: str

@@ -86,6 +86,9 @@ if backend() == "pydantic":
     from synalinks.src.backend.pydantic.knowledge import is_knowledge_graphs
     from synalinks.src.backend.pydantic.knowledge import is_relation
     from synalinks.src.backend.pydantic.knowledge import is_relations
+    from synalinks.src.backend.pydantic.media import Audio
+    from synalinks.src.backend.pydantic.media import Image
+    from synalinks.src.backend.pydantic.media import resolve_content_media
     from synalinks.src.backend.pydantic.metrics import Score
     from synalinks.src.backend.pydantic.module import PydanticModule
 else:
