@@ -377,6 +377,43 @@ class GeneratorModuleTest(testing.TestCase):
         self.assertIn("just-a-question", rendered)
         self.assertNotIn("trailing-output", rendered)
 
+    async def test_format_messages_contained_chat_message_with_extra_fields(self):
+        """An input that only *contains* a chat message but carries extra sibling
+        fields (and no `messages` list) must not be splatted into a single strict
+        ChatMessage — that trips ChatMessage's `extra="forbid"`.
+
+        Mirrors `LMAsJudge`, which concatenates a `gold_`-prefixed reference with
+        the prediction: the merged model is `{gold_role, gold_content, role,
+        content}` — chat-message-shaped, but not strictly a chat message. It is
+        rendered as input data (system + user turn), not sent as a chat message.
+        """
+
+        language_model = LanguageModel(model="ollama/mistral")
+        generator = Generator(
+            language_model=language_model,
+            instructions="be helpful",
+        )
+
+        merged = await ops.concat(
+            await ops.prefix(
+                ChatMessage(role="assistant", content="gold-answer"),
+                prefix="gold",
+            ),
+            ChatMessage(role="assistant", content="predicted-answer"),
+        )
+
+        # Must not raise (previously: ValidationError — extra inputs forbidden).
+        msgs = generator.format_messages(merged).get("messages")
+        roles = [
+            m["role"].value if hasattr(m["role"], "value") else m["role"] for m in msgs
+        ]
+        rendered = " ".join(str(m["content"]) for m in msgs)
+
+        self.assertEqual(roles, ["system", "user"])
+        # Both the prediction and the gold reference survive into the prompt.
+        self.assertIn("predicted-answer", rendered)
+        self.assertIn("gold-answer", rendered)
+
     def test_format_message_with_instructions(self):
         class Query(DataModel):
             query: str

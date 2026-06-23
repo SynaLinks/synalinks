@@ -12,7 +12,6 @@ from synalinks.src.backend import ChatRole
 from synalinks.src.backend import Instructions
 from synalinks.src.backend import Prediction
 from synalinks.src.backend import SymbolicDataModel
-from synalinks.src.backend import is_chat_message
 from synalinks.src.backend import is_chat_messages
 from synalinks.src.backend import is_strictly_chat_message
 from synalinks.src.backend import is_strictly_chat_messages
@@ -398,8 +397,13 @@ class Generator(Module):
                 )
             messages.extend(msgs)
             return ChatMessages(messages=messages)
-        if is_chat_message(inputs):
-            return ChatMessages(messages=[system_message, inputs.get_json()])
+        # NB: a strictly-chat-message input is already handled by the
+        # is_strictly_chat_message early-return above. Anything that only
+        # *contains* a chat message here also carries extra fields (a reward's
+        # `gold_`-prefixed reference, inputs concatenated by an upstream
+        # generator, ...). Splatting the whole dict into a single ChatMessage
+        # would trip its `extra="forbid"`, so it falls through to be rendered as
+        # input data below.
         user_message = ChatMessage(
             role="user", 
             content=f"<input>\n{inputs.get_json()}\n</input>\n<output>\n",
