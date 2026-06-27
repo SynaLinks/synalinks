@@ -427,7 +427,7 @@ class GeneratorModuleTest(testing.TestCase):
         msgs = Generator(
             data_model=AnswerWithRationale,
             language_model=language_model,
-            instructions="You are an helpfull assistant",
+            instructions="You are an helpful assistant",
         ).format_messages(
             Query(query="What is the french city of aerospace and robotics?")
         )
@@ -486,7 +486,7 @@ class GeneratorModuleTest(testing.TestCase):
                     },
                 )
             ],
-            instructions="You are an helpfull assistant",
+            instructions="You are an helpful assistant",
         ).format_messages(
             Query(query="What is the french city of aerospace and robotics?")
         )
