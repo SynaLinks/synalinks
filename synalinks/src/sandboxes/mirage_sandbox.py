@@ -18,6 +18,7 @@ from typing import Callable
 from typing import Dict
 from typing import List
 from typing import Optional
+from typing import Tuple
 
 from synalinks.src.api_export import synalinks_export
 from synalinks.src.sandboxes.sandbox import ExecutionResult
@@ -570,7 +571,7 @@ def _maybe_warn_native_windows():
 _maybe_warn_native_windows()
 
 
-def _confinement_available() -> "tuple[bool, str]":
+def _confinement_available() -> tuple[bool, str]:
     """Whether in-process confinement (FUSE + user-namespace pivot) can run.
 
     Returns ``(ok, reason)``; ``reason`` explains why not when ``ok`` is False.
@@ -613,10 +614,10 @@ def _confinement_available() -> "tuple[bool, str]":
     return _confinement_smoke_test()
 
 
-_confine_smoke_cache: "Optional[tuple[bool, str]]" = None
+_confine_smoke_cache: Optional[Tuple[bool, str]] = None
 
 
-def _confinement_smoke_test() -> "tuple[bool, str]":
+def _confinement_smoke_test() -> "Tuple[bool, str]":
     """Attempt the unprivileged user-namespace credential handshake for real.
 
     Forks a throwaway child that runs the exact first steps of ``_confine``
@@ -999,7 +1000,7 @@ def _make_egress_tool(patterns: List[str], timeout: float, block_private: bool):
 # "not in a confined run_bash", so the patch is a no-op — every other code path,
 # including ``run`` (which confines via its own bootstrap) and unconfined
 # sandboxes, is unaffected.
-_active_confine: "contextvars.ContextVar[Optional[dict]]" = contextvars.ContextVar(
+_active_confine: contextvars.ContextVar[Optional[Dict[str, Any]]] = contextvars.ContextVar(
     "mirage_active_confine", default=None
 )
 _run_python_patched = False
