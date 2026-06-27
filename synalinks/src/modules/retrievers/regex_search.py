@@ -120,6 +120,12 @@ class RegexSearch(Module):
         seed_instructions (str): Seed instructions for variability.
         temperature (float): Temperature for the language model.
             Defaults to 0.0.
+        max_tokens (int): Optional cap on the generation length. Defaults
+            to None (the model's default).
+        top_p (float): Optional nucleus-sampling probability. Defaults to
+            None (the model's default).
+        top_k (int): Optional top-k sampling cutoff. Defaults to None
+            (the model's default).
         use_inputs_schema (bool): Whether to include the input schema
             in the prompt. Defaults to False.
         use_outputs_schema (bool): Whether to include the output schema
@@ -150,7 +156,10 @@ class RegexSearch(Module):
         examples: Optional[list] = None,
         instructions: Optional[str] = None,
         seed_instructions: Optional[str] = None,
-        temperature: float = 0.0,
+        temperature: float | None = None,
+        max_tokens: int | None = None,
+        top_p: float | None = None,
+        top_k: int | None = None,
         use_inputs_schema: bool = False,
         use_outputs_schema: bool = False,
         return_inputs: bool = True,
@@ -195,6 +204,9 @@ class RegexSearch(Module):
         self.instructions = instructions
         self.seed_instructions = seed_instructions
         self.temperature = temperature
+        self.max_tokens = max_tokens
+        self.top_p = top_p
+        self.top_k = top_k
         self.use_inputs_schema = use_inputs_schema
         self.use_outputs_schema = use_outputs_schema
         self.return_inputs = return_inputs
@@ -225,6 +237,9 @@ class RegexSearch(Module):
             instructions=self.instructions,
             seed_instructions=self.seed_instructions,
             temperature=self.temperature,
+            max_tokens=self.max_tokens,
+            top_p=self.top_p,
+            top_k=self.top_k,
             use_inputs_schema=self.use_inputs_schema,
             use_outputs_schema=self.use_outputs_schema,
             return_inputs=False,
@@ -305,6 +320,9 @@ class RegexSearch(Module):
             "instructions": self.instructions,
             "seed_instructions": self.seed_instructions,
             "temperature": self.temperature,
+            "max_tokens": self.max_tokens,
+            "top_p": self.top_p,
+            "top_k": self.top_k,
             "use_inputs_schema": self.use_inputs_schema,
             "use_outputs_schema": self.use_outputs_schema,
             "return_inputs": self.return_inputs,

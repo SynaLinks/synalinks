@@ -88,7 +88,7 @@ class EntityFullTextSearch(Module):
         examples: Optional[list] = None,
         instructions: Optional[str] = None,
         seed_instructions: Optional[str] = None,
-        temperature: float = 0.0,
+        temperature: float | None = None,
         use_inputs_schema: bool = False,
         use_outputs_schema: bool = False,
         return_inputs: bool = True,

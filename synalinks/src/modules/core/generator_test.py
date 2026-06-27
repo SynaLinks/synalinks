@@ -640,3 +640,46 @@ class GeneratorModuleTest(testing.TestCase):
             str(new_generator.language_model),
             str(generator.language_model),
         )
+
+    @patch("litellm.acompletion")
+    async def test_sampling_params_only_sent_when_set(self, mock_completion):
+        class Query(DataModel):
+            query: str
+
+        class Answer(DataModel):
+            answer: str
+
+        mock_completion.return_value = {
+            "choices": [{"message": {"content": '{"answer": "x"}'}}]
+        }
+        language_model = LanguageModel(model="ollama_chat/deepseek-r1")
+
+        # Default generator: temperature=None and the others unset -> NONE of
+        # the sampling params are sent, so the served model's own generation
+        # defaults (e.g. its generation_config.json) apply.
+        x0 = Input(data_model=Query)
+        x1 = await Generator(data_model=Answer, language_model=language_model)(x0)
+        program = Program(inputs=x0, outputs=x1, name="defaults")
+        await program(Query(query="q"))
+        kwargs = mock_completion.call_args.kwargs
+        for k in ("temperature", "max_tokens", "top_p", "top_k"):
+            self.assertNotIn(k, kwargs, f"{k} must not be sent when unset")
+
+        # Explicit values are forwarded verbatim to the LM call.
+        mock_completion.reset_mock()
+        y0 = Input(data_model=Query)
+        y1 = await Generator(
+            data_model=Answer,
+            language_model=language_model,
+            temperature=0.2,
+            max_tokens=128,
+            top_p=0.9,
+            top_k=20,
+        )(y0)
+        program2 = Program(inputs=y0, outputs=y1, name="explicit")
+        await program2(Query(query="q"))
+        kwargs = mock_completion.call_args.kwargs
+        self.assertEqual(kwargs.get("temperature"), 0.2)
+        self.assertEqual(kwargs.get("max_tokens"), 128)
+        self.assertEqual(kwargs.get("top_p"), 0.9)
+        self.assertEqual(kwargs.get("top_k"), 20)

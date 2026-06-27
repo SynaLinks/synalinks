@@ -355,6 +355,12 @@ class FunctionCallingAgent(Module):
             that produces the structured output. If not provided, use the same
             instructions as the tool calls generator.
         temperature (float): Optional. The temperature for the LM call.
+        max_tokens (int): Optional. Maximum number of tokens to generate. Default
+            None (the model's own default; caps generation length when set).
+        top_p (float): Optional. The nucleus sampling probability for the LM call.
+            Default None (the model's own default).
+        top_k (int): Optional. The top-k sampling cutoff for the LM call.
+            Default None (the model's own default).
         use_inputs_schema (bool): Optional. Whether or not use the inputs schema in
             the prompt (Default to False).
         use_outputs_schema (bool): Optional. Whether or not use the outputs schema in
@@ -404,7 +410,10 @@ class FunctionCallingAgent(Module):
         examples=None,
         instructions=None,
         final_instructions=None,
-        temperature=0.0,
+        temperature=None,
+        max_tokens=None,
+        top_p=None,
+        top_k=None,
         use_inputs_schema=False,
         use_outputs_schema=False,
         reasoning_effort=None,
@@ -451,6 +460,9 @@ class FunctionCallingAgent(Module):
         else:
             self.final_instructions = final_instructions
         self.temperature = temperature
+        self.max_tokens = max_tokens
+        self.top_p = top_p
+        self.top_k = top_k
 
         self.examples = examples
         self.use_inputs_schema = use_inputs_schema
@@ -500,6 +512,9 @@ class FunctionCallingAgent(Module):
             examples=self.examples,
             instructions=self.instructions,
             temperature=self.temperature,
+            max_tokens=self.max_tokens,
+            top_p=self.top_p,
+            top_k=self.top_k,
             use_inputs_schema=self.use_inputs_schema,
             use_outputs_schema=self.use_outputs_schema,
             reasoning_effort=self.reasoning_effort,
@@ -512,6 +527,9 @@ class FunctionCallingAgent(Module):
             language_model=self.language_model,
             instructions=self.final_instructions,
             temperature=self.temperature,
+            max_tokens=self.max_tokens,
+            top_p=self.top_p,
+            top_k=self.top_k,
             reasoning_effort=self.reasoning_effort,
             return_inputs=False,
             streaming=self.streaming,
@@ -953,6 +971,9 @@ class FunctionCallingAgent(Module):
             "instructions": self.instructions,
             "final_instructions": self.final_instructions,
             "temperature": self.temperature,
+            "max_tokens": self.max_tokens,
+            "top_p": self.top_p,
+            "top_k": self.top_k,
             "use_inputs_schema": self.use_inputs_schema,
             "use_outputs_schema": self.use_outputs_schema,
             "reasoning_effort": self.reasoning_effort,

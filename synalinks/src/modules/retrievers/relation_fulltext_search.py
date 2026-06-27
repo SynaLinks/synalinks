@@ -91,7 +91,10 @@ class RelationFullTextSearch(Module):
         examples: Optional[list] = None,
         instructions: Optional[str] = None,
         seed_instructions: Optional[str] = None,
-        temperature: float = 0.0,
+        temperature: float | None = None,
+        max_tokens: int | None = None,
+        top_p: float | None = None,
+        top_k: int | None = None,
         use_inputs_schema: bool = False,
         use_outputs_schema: bool = False,
         return_inputs: bool = True,
@@ -137,6 +140,9 @@ class RelationFullTextSearch(Module):
         self.instructions = instructions
         self.seed_instructions = seed_instructions
         self.temperature = temperature
+        self.max_tokens = max_tokens
+        self.top_p = top_p
+        self.top_k = top_k
         self.use_inputs_schema = use_inputs_schema
         self.use_outputs_schema = use_outputs_schema
         self.return_inputs = return_inputs
@@ -170,6 +176,9 @@ class RelationFullTextSearch(Module):
             instructions=self.instructions,
             seed_instructions=self.seed_instructions,
             temperature=self.temperature,
+            max_tokens=self.max_tokens,
+            top_p=self.top_p,
+            top_k=self.top_k,
             use_inputs_schema=self.use_inputs_schema,
             use_outputs_schema=self.use_outputs_schema,
             return_inputs=False,
@@ -252,6 +261,9 @@ class RelationFullTextSearch(Module):
             "instructions": self.instructions,
             "seed_instructions": self.seed_instructions,
             "temperature": self.temperature,
+            "max_tokens": self.max_tokens,
+            "top_p": self.top_p,
+            "top_k": self.top_k,
             "use_inputs_schema": self.use_inputs_schema,
             "use_outputs_schema": self.use_outputs_schema,
             "return_inputs": self.return_inputs,

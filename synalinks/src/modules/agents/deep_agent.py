@@ -215,7 +215,13 @@ class DeepAgent(FunctionCallingAgent):
             When omitted, the default is built from the workdir.
         final_instructions (str): Instructions for the final-answer
             generator. Defaults to ``instructions``.
-        temperature (float): LM sampling temperature. Defaults to 0.0.
+        temperature (float): LM sampling temperature. Defaults to None (the model's own default applies).
+        max_tokens (int): Optional. Maximum number of tokens to generate.
+            Default None (the model's own default; caps generation length).
+        top_p (float): Optional. Nucleus sampling probability. Default None
+            (the model's own default).
+        top_k (int): Optional. Top-k sampling cutoff. Default None (the
+            model's own default).
         use_inputs_schema (bool): Include the input schema in the prompt.
         use_outputs_schema (bool): Include the output schema in the prompt.
         reasoning_effort (str): Forwarded to the generators (for
@@ -286,7 +292,10 @@ class DeepAgent(FunctionCallingAgent):
         examples=None,
         instructions: Optional[str] = None,
         final_instructions: Optional[str] = None,
-        temperature: float = 0.0,
+        temperature: float | None = None,
+        max_tokens: int | None = None,
+        top_p: float | None = None,
+        top_k: int | None = None,
         use_inputs_schema: bool = False,
         use_outputs_schema: bool = False,
         reasoning_effort: Optional[str] = None,
@@ -368,6 +377,9 @@ class DeepAgent(FunctionCallingAgent):
             instructions=instructions,
             final_instructions=final_instructions,
             temperature=temperature,
+            max_tokens=max_tokens,
+            top_p=top_p,
+            top_k=top_k,
             use_inputs_schema=use_inputs_schema,
             use_outputs_schema=use_outputs_schema,
             reasoning_effort=reasoning_effort,
@@ -494,6 +506,9 @@ class DeepAgent(FunctionCallingAgent):
                 tools=self.extra_tools,
                 instructions=get_subagent_instructions(),
                 temperature=self.temperature,
+                max_tokens=self.max_tokens,
+                top_p=self.top_p,
+                top_k=self.top_k,
                 reasoning_effort=self.reasoning_effort,
                 use_chain_of_thought=self.use_chain_of_thought,
                 max_iterations=self.max_iterations,

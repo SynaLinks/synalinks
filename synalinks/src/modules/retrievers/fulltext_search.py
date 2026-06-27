@@ -119,6 +119,12 @@ class FullTextSearch(Module):
         seed_instructions (str): Seed instructions for variability.
         temperature (float): Temperature for the language model.
             Defaults to 0.0.
+        max_tokens (int): Optional cap on generation length. Defaults
+            to None (model default).
+        top_p (float): Optional nucleus-sampling threshold. Defaults to
+            None (model default).
+        top_k (int): Optional top-k sampling cutoff. Defaults to None
+            (model default).
         use_inputs_schema (bool): Whether to include the input schema
             in the prompt. Defaults to False.
         use_outputs_schema (bool): Whether to include the output schema
@@ -151,7 +157,7 @@ class FullTextSearch(Module):
         examples: Optional[list] = None,
         instructions: Optional[str] = None,
         seed_instructions: Optional[str] = None,
-        temperature: float = 0.0,
+        temperature: float | None = None,
         use_inputs_schema: bool = False,
         use_outputs_schema: bool = False,
         return_inputs: bool = True,

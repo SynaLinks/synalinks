@@ -176,8 +176,14 @@ class Text2SQL(Module):
             base's table titles.
         seed_instructions (list): Optional seed instructions for
             prompt optimization.
-        temperature (float): LM sampling temperature. Defaults to 0.0
+        temperature (float): LM sampling temperature. Defaults to None (the model's own default applies).
             for deterministic SQL generation.
+        max_tokens (int): Optional. Default None (model's own default). Caps the
+            generation length.
+        top_p (float): Optional. Default None (model's own default). Nucleus
+            sampling probability.
+        top_k (int): Optional. Default None (model's own default). Top-k sampling
+            cutoff.
         reasoning_effort (str): Forwarded to the generator (for
             reasoning-capable LMs).
         use_inputs_schema (bool): Include the (input + schema) schema
@@ -203,7 +209,10 @@ class Text2SQL(Module):
         examples=None,
         instructions: Optional[str] = None,
         seed_instructions=None,
-        temperature: float = 0.0,
+        temperature: float | None = None,
+        max_tokens: int | None = None,
+        top_p: float | None = None,
+        top_k: int | None = None,
         reasoning_effort: Optional[str] = None,
         use_inputs_schema: bool = False,
         use_outputs_schema: bool = False,
@@ -244,6 +253,9 @@ class Text2SQL(Module):
         self.prompt_template = prompt_template
         self.examples = examples
         self.temperature = temperature
+        self.max_tokens = max_tokens
+        self.top_p = top_p
+        self.top_k = top_k
         self.reasoning_effort = reasoning_effort
         self.use_inputs_schema = use_inputs_schema
         self.use_outputs_schema = use_outputs_schema
@@ -257,6 +269,9 @@ class Text2SQL(Module):
             instructions=self.instructions,
             seed_instructions=self.seed_instructions,
             temperature=self.temperature,
+            max_tokens=self.max_tokens,
+            top_p=self.top_p,
+            top_k=self.top_k,
             reasoning_effort=self.reasoning_effort,
             use_inputs_schema=self.use_inputs_schema,
             use_outputs_schema=self.use_outputs_schema,
@@ -358,6 +373,9 @@ class Text2SQL(Module):
             "instructions": self.instructions,
             "seed_instructions": self.seed_instructions,
             "temperature": self.temperature,
+            "max_tokens": self.max_tokens,
+            "top_p": self.top_p,
+            "top_k": self.top_k,
             "reasoning_effort": self.reasoning_effort,
             "use_inputs_schema": self.use_inputs_schema,
             "use_outputs_schema": self.use_outputs_schema,
