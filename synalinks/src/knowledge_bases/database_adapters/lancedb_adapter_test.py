@@ -243,6 +243,45 @@ class LanceDBAdapterTest(testing.TestCase):
             await a.similarity_search("q", table_name="Document", k=3)
 
     @patch("litellm.aembedding")
+    async def test_similarity_search_with_explicit_vector(self, mock_embedding):
+        em = EmbeddingModel(model="ollama/all-minilm")
+        a = self._adapter(embedding_model=em, vector_dim=3)
+        await a.update(
+            [
+                Document(
+                    id="D0", text="exact", embedding=[1.0, 0.0, 0.0]
+                ).to_json_data_model(),
+                Document(
+                    id="D1", text="orthogonal", embedding=[0.0, 1.0, 0.0]
+                ).to_json_data_model(),
+            ]
+        )
+        mock_embedding.reset_mock()
+        results = await a.similarity_search(
+            table_name="Document", vector_or_vectors=[1.0, 0.0, 0.0], k=2
+        )
+        self.assertEqual(results[0]["id"], "D0")
+        mock_embedding.assert_not_called()
+
+    @patch("litellm.aembedding")
+    async def test_similarity_search_vector_without_embedding_model(self, mock_embedding):
+        em = EmbeddingModel(model="ollama/all-minilm")
+        a = self._adapter(embedding_model=em, vector_dim=3)
+        await a.update(
+            Document(
+                id="D0", text="exact", embedding=[1.0, 0.0, 0.0]
+            ).to_json_data_model()
+        )
+        # Drop the model: an explicit vector still searches; text raises.
+        a.embedding_model = None
+        results = await a.similarity_search(
+            table_name="Document", vector_or_vectors=[1.0, 0.0, 0.0], k=1
+        )
+        self.assertEqual(results[0]["id"], "D0")
+        with self.assertRaises(ValueError):
+            await a.similarity_search("q", table_name="Document")
+
+    @patch("litellm.aembedding")
     async def test_hybrid_fts_search(self, mock_embedding):
         mock_embedding.return_value = {"data": [{"embedding": [1.0, 0.0, 0.0]}]}
         em = EmbeddingModel(model="ollama/all-minilm")

@@ -85,33 +85,22 @@ Think Keras for Language Models applications, a clean, declarative API where:
 
 ## Why Synalinks?
 
-Building robust LM apps is hard. Synalinks simplifies it with:
+Building robust LM apps is hard. Synalinks simplifies it with a few things most frameworks don't give you out of the box:
 
-- **[Prompt/Anything optimization](https://synalinks.github.io/synalinks/guides/Trainable%20Variables/)** per module via [In-Context RL](https://synalinks.github.io/synalinks/guides/Training/)
-- **Versionable**, JSON-serializable [pipelines](https://synalinks.github.io/synalinks/guides/Programs/)
+- **🔒 Embedded, container-free runtime** — agents run untrusted code and tools in a [safe, isolated runtime](https://synalinks.github.io/synalinks/guides/Agents/) that needs **no Docker or external sandbox service**. The whole stack is pure-Python and embeddable, so it just works for scripting, research, and serverless/cloud deployment (S3, Lambda, notebooks, etc.).
+- **🕸️ First-class Knowledge Graph support** — build [graph-based RAG and agentic memory](https://synalinks.github.io/synalinks/guides/Knowledge%20Base/) with **constrained KG extraction** and **automatic semantic deduplication**, on top of the embedded **Ladybug** graph database — no separate graph server to run. A fast embedded **SQL knowledge base** (DuckDB, LanceDB) is also available for relational/vector RAG.
+- **🎯 In-Context RL to optimize your prompts (and anything else)** — [train and optimize](https://synalinks.github.io/synalinks/guides/Training/) prompts, few-shot examples, and [any trainable variable](https://synalinks.github.io/synalinks/guides/Trainable%20Variables/) per module **without touching model weights**, using the familiar `.compile()` / `.fit()` / `.evaluate()` / `.predict()` API.
+- **🔄 Effortless model switching** — set a default once with `synalinks.set_default_language_model(...)` or pass a string identifier, and swap between Ollama, vLLM, OpenAI, Azure, Anthropic, Mistral, Groq, Gemini, xAI, Cohere, DeepSeek, Together AI, OpenRouter, AWS Bedrock and Doubleword via [LiteLLM](https://docs.litellm.ai/docs/) — including [multi-objective model selection](https://synalinks.github.io/synalinks/guides/Multi-Objective%20LM%20Selection/) to pick the best model for cost/quality.
+
+Plus everything you'd expect from a production-grade framework:
+
 - **[Constrained structured outputs](https://synalinks.github.io/synalinks/guides/Data%20Models/)** (JSON) for correctness
+- **Versionable**, JSON-serializable [pipelines](https://synalinks.github.io/synalinks/guides/Programs/)
 - **Automatic [async & parallel execution](https://synalinks.github.io/synalinks/guides/Programs/)** by default
 - **[Metrics](https://synalinks.github.io/synalinks/guides/Metrics/), [rewards](https://synalinks.github.io/synalinks/guides/Rewards/) & [datasets](https://synalinks.github.io/synalinks/guides/Datasets/)** built-in
-- **Native integrations** via [LiteLLM](https://docs.litellm.ai/docs/): Ollama, vLLM, OpenAI, Azure, Anthropic, Mistral, Groq, Gemini, xAI, Cohere, DeepSeek, Together AI, OpenRouter, AWS Bedrock, Doubleword
-- **[Embeddable fast knowledge base support](https://synalinks.github.io/synalinks/guides/Knowledge%20Base/)**: based on DuckDB
 - **API-ready**: Deploy with [FastAPI](https://synalinks.github.io/synalinks/guides/FastAPI%20Deployment/) or [FastMCP](https://synalinks.github.io/synalinks/guides/FastMCP%20Deployment/)
-- **[KerasTuner compatibility](https://synalinks.github.io/synalinks/guides/Hyperparameter%20Search/)** for hyperparameter search, with [multi-objective optimization](https://synalinks.github.io/synalinks/guides/Multi-Objective%20LM%20Selection/)
+- **[KerasTuner compatibility](https://synalinks.github.io/synalinks/guides/Hyperparameter%20Search/)** for hyperparameter search
 - **Built-in [callbacks](https://synalinks.github.io/synalinks/guides/Callbacks/) and hooks** for [observability](https://synalinks.github.io/synalinks/guides/Observability/) (including an MLflow `Monitor` callback)
-
-### Notable differences with DSPy
-
-Beyond the Keras programming style, Synalinks:
-- Can [optimize *anything*](https://synalinks.github.io/synalinks/guides/Trainable%20Variables/), not only prompts
-- Is [async by default](https://synalinks.github.io/synalinks/guides/Programs/)
-- Supports [parallel branches](https://synalinks.github.io/synalinks/guides/Control%20Flow/) detection with `asyncio` to ease async programming
-- Implement logic-based python operators to easily [manipulate data models and the app control flow](https://synalinks.github.io/synalinks/guides/Control%20Flow/)
-- Use [*constrained* JSON decoding](https://synalinks.github.io/synalinks/guides/Data%20Models/) to be robust in production
-- Is fully compatible with Pydantic BaseModel (via `schema=` in every [module](https://synalinks.github.io/synalinks/guides/Data%20Models/)) to ease integration with existing FastAPI/FastMCP services.
-- Have instrospection tools like `summary()` and `plot_program()` to write better documentation
-- Have a fully embeddable & safe runtime that doesn't require any container like Docker to run, easing scripting, research and deployment in modern cloud environments (S3 etc.).
-- Use the familiar `.predict(x=...)`, `.compile(optimizer=..., reward=..., metrics=...)`, `.evaluate(x=..,y=...)`, `.fit(x=..., y=...)` that ML people love.
-- Support Knowledge Graph based systems based on Ladybug db with automatic semantic deduplication and constrained KG extraction
-- Use KerasTuner for hyperparameter search and multi-objective optimization
 
 # Requirements
 

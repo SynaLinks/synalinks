@@ -895,6 +895,217 @@ class LadybugAdapterTest(testing.TestCase):
 
 
 # ----------------------------------------------------------------------
+# rename
+# ----------------------------------------------------------------------
+
+
+class RenameTest(testing.TestCase):
+    def _adapter(self, *, embedding_model=None, **kwargs):
+        with patch(
+            "synalinks.src.knowledge_bases.graph_database_adapters."
+            "ladybug_adapter._get_em",
+            side_effect=lambda x: x,
+        ):
+            return LadybugAdapter(
+                uri="ladybug://:memory:",
+                entity_models=[Person, City],
+                relation_models=[LivesIn],
+                embedding_model=embedding_model,
+                vector_dim=3,
+                **kwargs,
+            )
+
+    async def test_rename_requires_a_change(self):
+        adapter = self._adapter()
+        with self.assertRaisesRegex(ValueError, "at least one"):
+            await adapter.rename("Person")
+
+    async def test_rename_unknown_table_raises(self):
+        adapter = self._adapter()
+        with self.assertRaisesRegex(ValueError, "no node or relation table"):
+            await adapter.rename("Ghost", table_name="Spirit")
+
+    async def test_rename_to_existing_table_raises(self):
+        adapter = self._adapter()
+        with self.assertRaisesRegex(ValueError, "already exists"):
+            await adapter.rename("Person", table_name="City")
+
+    async def test_rename_node_table_moves_rows_and_registries(self):
+        adapter = self._adapter(embedding_model=_StubEmbeddingModel({}))
+        await adapter.update_entities(
+            Person(label="Person", name="Alice", embedding=[1.0, 0.0, 0.0])
+        )
+        model = await adapter.rename("Person", table_name="Human")
+
+        self.assertIn("Human", adapter._existing_tables("NODE"))
+        self.assertNotIn("Person", adapter._existing_tables("NODE"))
+        # Rows survived under the new label.
+        rows = adapter._con.execute("MATCH (h:Human) RETURN h.name").get_all()
+        self.assertEqual(rows, [["Alice"]])
+        # Registries migrated.
+        self.assertIn("Human", adapter._pk_keys)
+        self.assertNotIn("Person", adapter._pk_keys)
+        # Returned model reflects the new label.
+        self.assertEqual(model.get_schema()["title"], "Human")
+
+    async def test_rename_node_keeps_similarity_search_working(self):
+        adapter = self._adapter(
+            embedding_model=_StubEmbeddingModel({"alice": [1.0, 0.0, 0.0]})
+        )
+        await adapter.update_entities(
+            Person(label="Person", name="Alice", embedding=[1.0, 0.0, 0.0])
+        )
+        await adapter.rename("Person", table_name="Human")
+        # Vector index was rebuilt under the new label's naming convention.
+        results = await adapter.entity_similarity_search("alice", label="Human", k=1)
+        self.assertEqual(len(results), 1)
+        self.assertIn("distance", results[0])
+
+    async def test_rename_node_keeps_fulltext_search_working(self):
+        adapter = self._adapter(embedding_model=_StubEmbeddingModel({}))
+        await adapter.update_entities(
+            Person(label="Person", name="Bob Marley", embedding=[0.0, 1.0, 0.0])
+        )
+        await adapter.rename("Person", table_name="Human")
+        results = await adapter.entity_fulltext_search("Marley", label="Human", k=5)
+        self.assertEqual(len(results), 1)
+        self.assertGreater(results[0]["score"], 0)
+
+    async def test_rename_node_preserves_incident_edges(self):
+        adapter = self._adapter(embedding_model=_StubEmbeddingModel({}))
+        await adapter.update_entities(
+            [
+                Person(label="Person", name="Alice", embedding=[1.0, 0.0, 0.0]),
+                City(label="City", name="Paris", embedding=[0.0, 1.0, 0.0]),
+            ]
+        )
+        await adapter.update_relations(
+            LivesIn(
+                label="LivesIn",
+                subj=Person(label="Person", name="Alice", embedding=[1.0, 0.0, 0.0]),
+                obj=City(label="City", name="Paris", embedding=[0.0, 1.0, 0.0]),
+            )
+        )
+        await adapter.rename("Person", table_name="Human")
+        # The REL table's FROM endpoint auto-followed the rename.
+        rows = adapter._con.execute(
+            "MATCH (h:Human)-[:LivesIn]->(c:City) RETURN h.name, c.name"
+        ).get_all()
+        self.assertEqual(rows, [["Alice", "Paris"]])
+
+    async def test_rename_rel_table(self):
+        adapter = self._adapter(embedding_model=_StubEmbeddingModel({}))
+        await adapter.update_entities(
+            [
+                Person(label="Person", name="Alice", embedding=[1.0, 0.0, 0.0]),
+                City(label="City", name="Paris", embedding=[0.0, 1.0, 0.0]),
+            ]
+        )
+        await adapter.update_relations(
+            LivesIn(
+                label="LivesIn",
+                subj=Person(label="Person", name="Alice", embedding=[1.0, 0.0, 0.0]),
+                obj=City(label="City", name="Paris", embedding=[0.0, 1.0, 0.0]),
+            )
+        )
+        model = await adapter.rename("LivesIn", table_name="ResidesIn")
+        self.assertIn("ResidesIn", adapter._existing_tables("REL"))
+        self.assertNotIn("LivesIn", adapter._existing_tables("REL"))
+        rows = adapter._con.execute(
+            "MATCH (p:Person)-[:ResidesIn]->(c:City) RETURN p.name, c.name"
+        ).get_all()
+        self.assertEqual(rows, [["Alice", "Paris"]])
+        self.assertEqual(model.get_schema()["title"], "ResidesIn")
+
+    async def test_rename_description_only_no_ddl(self):
+        adapter = self._adapter()
+        model = await adapter.rename("Person", table_description="A human being")
+        # Label unchanged, description applied.
+        self.assertEqual(model.get_schema()["title"], "Person")
+        self.assertEqual(model.get_schema()["description"], "A human being")
+        self.assertIn("Person", adapter._existing_tables("NODE"))
+
+    async def test_rename_accepts_symbolic_model_source(self):
+        adapter = self._adapter()
+        person_model = next(
+            m
+            for m in adapter.get_symbolic_entities()
+            if m.get_schema()["title"] == "Person"
+        )
+        model = await adapter.rename(person_model, table_name="Human")
+        self.assertEqual(model.get_schema()["title"], "Human")
+        self.assertIn("Human", adapter._existing_tables("NODE"))
+
+
+# ----------------------------------------------------------------------
+# Vector-query search (pass embeddings directly instead of text)
+# ----------------------------------------------------------------------
+
+
+class VectorQuerySearchTest(testing.TestCase):
+    def _adapter(self, *, embedding_model=None, **kwargs):
+        with patch(
+            "synalinks.src.knowledge_bases.graph_database_adapters."
+            "ladybug_adapter._get_em",
+            side_effect=lambda x: x,
+        ):
+            return LadybugAdapter(
+                uri="ladybug://:memory:",
+                entity_models=[Person, City],
+                relation_models=[LivesIn],
+                embedding_model=embedding_model,
+                vector_dim=3,
+                **kwargs,
+            )
+
+    async def test_entity_similarity_search_with_vector(self):
+        adapter = self._adapter(embedding_model=_StubEmbeddingModel({}))
+        await adapter.update_entities(
+            [
+                Person(label="Person", name="Alice", embedding=[1.0, 0.0, 0.0]),
+                Person(label="Person", name="Bob", embedding=[0.0, 1.0, 0.0]),
+            ]
+        )
+        results = await adapter.entity_similarity_search(
+            vector_or_vectors=[1.0, 0.0, 0.0], label="Person", k=2
+        )
+        self.assertEqual(len(results), 2)
+        self.assertIn("distance", results[0])
+        # Alice (exact match) ranks first.
+        self.assertLessEqual(results[0]["distance"], results[1]["distance"])
+
+    async def test_entity_similarity_search_vector_without_embedding_model(self):
+        adapter = self._adapter(embedding_model=_StubEmbeddingModel({}))
+        await adapter.update_entities(
+            Person(label="Person", name="Alice", embedding=[1.0, 0.0, 0.0])
+        )
+        # A pre-computed vector searches without a model; text then raises.
+        adapter.embedding_model = None
+        results = await adapter.entity_similarity_search(
+            vector_or_vectors=[1.0, 0.0, 0.0], label="Person", k=1
+        )
+        self.assertEqual(len(results), 1)
+        with self.assertRaisesRegex(ValueError, "embedding_model"):
+            await adapter.entity_similarity_search("text", label="Person")
+
+    async def test_entity_similarity_search_with_multiple_vectors(self):
+        adapter = self._adapter(embedding_model=_StubEmbeddingModel({}))
+        await adapter.update_entities(
+            [
+                Person(label="Person", name="Alice", embedding=[1.0, 0.0, 0.0]),
+                Person(label="Person", name="Bob", embedding=[0.0, 1.0, 0.0]),
+            ]
+        )
+        results = await adapter.entity_similarity_search(
+            vector_or_vectors=[[1.0, 0.0, 0.0], [0.0, 1.0, 0.0]],
+            label="Person",
+            k=2,
+        )
+        names = {r["name"] for r in results}
+        self.assertEqual(names, {"Alice", "Bob"})
+
+
+# ----------------------------------------------------------------------
 # Reverse type mapper (Ladybug type string → JSON schema property)
 # ----------------------------------------------------------------------
 

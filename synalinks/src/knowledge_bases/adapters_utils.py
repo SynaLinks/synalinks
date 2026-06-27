@@ -196,6 +196,40 @@ def minmax_normalize_scores(records: List[dict], *, key: str = "score") -> List[
     return records
 
 
+def normalize_query_vectors(
+    vector_or_vectors: Optional[Union[List[float], List[List[float]]]],
+) -> Optional[List[List[float]]]:
+    """Normalize a query vector / list-of-vectors into ``list[list[float]]``.
+
+    The search adapters accept either a query *text* (which they embed)
+    or a pre-computed query *vector* passed directly via
+    ``vector_or_vectors``. This helper coerces that argument into the
+    same shape the embedding path produces — a list of vectors — so the
+    downstream search loop is identical regardless of where the vectors
+    came from.
+
+    A single vector (a flat sequence of numbers, ``[0.1, 0.2, ...]``)
+    becomes a one-element list of vectors; an already-nested list of
+    vectors is returned as a list of lists. ``None`` or an empty input
+    returns ``None`` so callers can treat "no vectors supplied" and
+    "nothing to search for" uniformly.
+
+    Args:
+        vector_or_vectors: A single embedding vector, a list of
+            embedding vectors, or ``None``.
+
+    Returns:
+        A list of vectors, or ``None`` when nothing usable was passed.
+    """
+    if not vector_or_vectors:
+        return None
+    first = vector_or_vectors[0]
+    # A flat vector has numeric elements; a batch has list/tuple elements.
+    if isinstance(first, (int, float)):
+        return [list(vector_or_vectors)]
+    return [list(v) for v in vector_or_vectors]
+
+
 def align_keywords(
     text_or_texts: Union[str, List[str]],
     keywords: Optional[Union[str, List[str]]],

@@ -13,10 +13,6 @@ from synalinks.src.modules.embedding_models import get as _get_em
 class GraphDatabaseAdapter:
     """Base class for graph database adapters.
 
-    !!! warning "Experimental"
-        The graph adapter API is experimental and may change in a
-        future release.
-
     GraphDatabaseAdapter provides a unified interface for storing and
     retrieving graph-structured data — entities, relations, and full
     knowledge graphs — with optional embedding-based similarity search
@@ -436,9 +432,10 @@ class GraphDatabaseAdapter:
 
     async def entity_similarity_search(
         self,
-        text_or_texts: Union[str, List[str]],
+        text_or_texts: Optional[Union[str, List[str]]] = None,
         *,
         label: str,
+        vector_or_vectors: Optional[Union[List[float], List[List[float]]]] = None,
         k: int = 10,
         threshold: Optional[float] = None,
         ef_search: Optional[int] = None,
@@ -446,12 +443,18 @@ class GraphDatabaseAdapter:
     ):
         """Vector similarity search over entities of a given label.
 
-        Requires an ``embedding_model`` to be configured. Returns the
-        ``k`` entities whose embedding is closest to the query.
+        Either ``text_or_texts`` (embedded) or ``vector_or_vectors`` (a
+        pre-computed query vector or list of vectors) selects what to
+        search for. When vectors are supplied no embedding model is
+        required. Returns the ``k`` entities whose embedding is closest
+        to the query.
 
         Args:
-            text_or_texts: Query text or list of query texts.
+            text_or_texts: Query text or list of query texts. Ignored
+                when ``vector_or_vectors`` is supplied.
             label: The entity label (node type) to search within.
+            vector_or_vectors: Pre-computed query vector or list of
+                vectors to search with directly.
             k: Maximum number of results.
             threshold: Optional vector-distance threshold.
             ef_search: Engine-specific search-time recall knob (HNSW
@@ -541,10 +544,11 @@ class GraphDatabaseAdapter:
 
     async def entity_hybrid_regex_search(
         self,
+        text_or_texts: Optional[Union[str, List[str]]] = None,
         *,
-        text_or_texts: Union[str, List[str]],
         pattern_or_patterns: Optional[Union[str, List[str]]] = None,
         label: str,
+        vector_or_vectors: Optional[Union[List[float], List[List[float]]]] = None,
         fields: Optional[List[str]] = None,
         case_sensitive: bool = True,
         k: int = 10,
@@ -558,14 +562,17 @@ class GraphDatabaseAdapter:
         carries the orthogonal "exact textual shape" signal that
         BM25 doesn't capture. Degenerates to plain similarity search
         when no patterns are supplied, or to plain regex search when
-        no embedding model is configured.
+        there are no vectors to search with.
 
         Args:
             text_or_texts: Query text or list of query texts for the
-                vector branch.
+                vector branch. Ignored when ``vector_or_vectors`` is
+                supplied.
             pattern_or_patterns: Regex pattern (or list) for the
                 regex branch. ``None`` skips the regex side.
             label: The entity label to search within.
+            vector_or_vectors: Pre-computed query vector(s) for the
+                vector branch, used directly instead of embedding text.
             fields: Forwarded to `entity_regex_search`.
             case_sensitive: Forwarded to `entity_regex_search`.
             k: Maximum number of results.
@@ -583,10 +590,11 @@ class GraphDatabaseAdapter:
 
     async def entity_hybrid_fts_search(
         self,
+        text_or_texts: Optional[Union[str, List[str]]] = None,
         *,
-        text_or_texts: Union[str, List[str]],
         keywords: Optional[Union[str, List[str]]] = None,
         label: str,
+        vector_or_vectors: Optional[Union[List[float], List[List[float]]]] = None,
         k: int = 10,
         k_rank: int = 60,
         similarity_threshold: Optional[float] = None,
@@ -599,16 +607,19 @@ class GraphDatabaseAdapter:
         """Reciprocal-Rank-Fusion of vector similarity + BM25 fulltext.
 
         Graph-side counterpart of `DatabaseAdapter.hybrid_fts_search`.
-        Falls back to fulltext-only when no embedding model is
-        configured.
+        Falls back to fulltext-only when there are no vectors to search
+        with.
 
         Args:
             text_or_texts: Query text or list of query texts for the
-                vector branch.
+                vector branch. Ignored when ``vector_or_vectors`` is
+                supplied.
             label: The entity label to search within.
             keywords: Query text or list of query texts for the BM25
-                branch. Aligns by position with ``text_or_texts``;
-                when omitted, the text is reused for both branches.
+                branch. Aligns by position with the vector-branch
+                queries; when omitted, the text is reused for both.
+            vector_or_vectors: Pre-computed query vector(s) for the
+                vector branch, used directly instead of embedding text.
             k: Maximum number of results.
             k_rank: RRF smoothing constant; lower emphasizes top
                 ranks more strongly (default: 60).
@@ -627,9 +638,10 @@ class GraphDatabaseAdapter:
 
     async def relation_similarity_search(
         self,
-        text_or_texts: Union[str, List[str]],
+        text_or_texts: Optional[Union[str, List[str]]] = None,
         *,
         label: str,
+        vector_or_vectors: Optional[Union[List[float], List[List[float]]]] = None,
         k: int = 10,
         threshold: Optional[float] = None,
         ef_search: Optional[int] = None,
@@ -637,7 +649,7 @@ class GraphDatabaseAdapter:
     ):
         """Vector similarity search over relations of a given label.
 
-        The query text matches against BOTH endpoints (subject and
+        The query matches against BOTH endpoints (subject and
         object); the union of subj-hits and obj-hits is taken, then
         deduplicated per ``(subj_pk, obj_pk)`` pair so each matched
         edge appears once with its best (lowest) distance. The
@@ -646,8 +658,12 @@ class GraphDatabaseAdapter:
         vectors surfaced the same edge).
 
         Args:
-            text_or_texts: Query text or list of query texts.
+            text_or_texts: Query text or list of query texts. Ignored
+                when ``vector_or_vectors`` is supplied.
             label: The relation label (edge type) to search within.
+            vector_or_vectors: Pre-computed query vector or list of
+                vectors to search with directly (matched against both
+                endpoints).
             k: Maximum number of results.
             threshold: Optional vector-distance threshold applied to
                 each endpoint search before the union.
@@ -664,10 +680,11 @@ class GraphDatabaseAdapter:
 
     async def relation_hybrid_fts_search(
         self,
+        text_or_texts: Optional[Union[str, List[str]]] = None,
         *,
-        text_or_texts: Union[str, List[str]],
         keywords: Optional[Union[str, List[str]]] = None,
         label: str,
+        vector_or_vectors: Optional[Union[List[float], List[List[float]]]] = None,
         k: int = 10,
         k_rank: int = 60,
         similarity_threshold: Optional[float] = None,
@@ -716,13 +733,15 @@ class GraphDatabaseAdapter:
 
     async def path_hybrid_fts_search(
         self,
+        subj_text_or_texts: Optional[Union[str, List[str]]] = None,
+        obj_text_or_texts: Optional[Union[str, List[str]]] = None,
         *,
-        subj_text_or_texts: Union[str, List[str]],
-        obj_text_or_texts: Union[str, List[str]],
         subj_keywords: Optional[Union[str, List[str]]] = None,
         obj_keywords: Optional[Union[str, List[str]]] = None,
         subj_label: str,
         obj_label: str,
+        subj_vector_or_vectors: Optional[Union[List[float], List[List[float]]]] = None,
+        obj_vector_or_vectors: Optional[Union[List[float], List[List[float]]]] = None,
         label: Optional[str] = None,
         min_hops: int = 1,
         max_hops: int = 3,
@@ -779,11 +798,13 @@ class GraphDatabaseAdapter:
 
     async def path_similarity_search(
         self,
-        subj_text_or_texts: Union[str, List[str]],
-        obj_text_or_texts: Union[str, List[str]],
+        subj_text_or_texts: Optional[Union[str, List[str]]] = None,
+        obj_text_or_texts: Optional[Union[str, List[str]]] = None,
         *,
         subj_label: str,
         obj_label: str,
+        subj_vector_or_vectors: Optional[Union[List[float], List[List[float]]]] = None,
+        obj_vector_or_vectors: Optional[Union[List[float], List[List[float]]]] = None,
         label: Optional[str] = None,
         min_hops: int = 1,
         max_hops: int = 3,
@@ -844,9 +865,10 @@ class GraphDatabaseAdapter:
 
     async def local_graph_search(
         self,
-        text_or_texts: Union[str, List[str]],
+        text_or_texts: Optional[Union[str, List[str]]] = None,
         *,
         label: str,
+        vector_or_vectors: Optional[Union[List[float], List[List[float]]]] = None,
         max_hops: int = 2,
         k: int = 10,
         threshold: Optional[float] = None,

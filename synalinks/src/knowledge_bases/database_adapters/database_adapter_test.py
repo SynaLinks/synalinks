@@ -1624,6 +1624,64 @@ class DuckDBAdapterVectorSearchTest(testing.TestCase):
         self.assertGreater(len(results), 0)
 
     @patch("litellm.aembedding")
+    async def test_similarity_search_with_explicit_vector(self, mock_embedding):
+        # Passing `vector_or_vectors` searches with the vector directly
+        # and never embeds anything.
+        vector_dim = 8
+        vec = np.random.rand(vector_dim).tolist()
+        mock_embedding.return_value = {"data": [{"embedding": vec}]}
+
+        embedding_model = EmbeddingModel(model="ollama/all-minilm")
+        adapter = DuckDBAdapter(
+            uri=self.db_path,
+            embedding_model=embedding_model,
+            vector_dim=vector_dim,
+        )
+        adapter._maybe_create_table(Document.to_symbolic_data_model())
+        with adapter._connect(read_only=False) as con:
+            con.execute(
+                f"INSERT INTO Document (id, text, embedding) "
+                f"VALUES ('doc1', 'hello', {vec}::FLOAT[{vector_dim}])"
+            )
+
+        mock_embedding.reset_mock()
+        results = await adapter.similarity_search(
+            table_name="Document", vector_or_vectors=vec, k=5
+        )
+        self.assertGreater(len(results), 0)
+        mock_embedding.assert_not_called()
+
+    @patch("litellm.aembedding")
+    async def test_similarity_search_vector_without_embedding_model(self, mock_embedding):
+        # A pre-computed vector lets you search even when the adapter has
+        # no embedding model; a text query then raises.
+        vector_dim = 8
+        vec = np.random.rand(vector_dim).tolist()
+        mock_embedding.return_value = {"data": [{"embedding": vec}]}
+
+        embedding_model = EmbeddingModel(model="ollama/all-minilm")
+        adapter = DuckDBAdapter(
+            uri=self.db_path,
+            embedding_model=embedding_model,
+            vector_dim=vector_dim,
+        )
+        adapter._maybe_create_table(Document.to_symbolic_data_model())
+        with adapter._connect(read_only=False) as con:
+            con.execute(
+                f"INSERT INTO Document (id, text, embedding) "
+                f"VALUES ('doc1', 'hello', {vec}::FLOAT[{vector_dim}])"
+            )
+
+        adapter.embedding_model = None
+        results = await adapter.similarity_search(
+            table_name="Document", vector_or_vectors=vec, k=5
+        )
+        self.assertGreater(len(results), 0)
+
+        with self.assertRaisesRegex(ValueError, "embedding model"):
+            await adapter.similarity_search("text query", table_name="Document")
+
+    @patch("litellm.aembedding")
     async def test_similarity_search_empty_query(self, mock_embedding):
         vector_dim = 384
         expected_value = np.random.rand(vector_dim).tolist()

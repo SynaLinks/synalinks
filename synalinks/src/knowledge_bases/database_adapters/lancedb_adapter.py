@@ -36,9 +36,9 @@ import pyarrow as pa
 from synalinks.src.backend import EmbeddingRequest
 from synalinks.src.backend import JsonDataModel
 from synalinks.src.backend import SymbolicDataModel
-from synalinks.src.knowledge_bases.adapters_utils import align_keywords
 from synalinks.src.knowledge_bases.adapters_utils import format_search_results
 from synalinks.src.knowledge_bases.adapters_utils import minmax_normalize_scores
+from synalinks.src.knowledge_bases.adapters_utils import normalize_query_vectors
 from synalinks.src.knowledge_bases.adapters_utils import resolve_db_path
 from synalinks.src.knowledge_bases.adapters_utils import to_pascal_identifier
 from synalinks.src.knowledge_bases.adapters_utils import to_snake_identifier
@@ -371,6 +371,43 @@ class LanceDBAdapter(DatabaseAdapter):
                 "Fix the embedding model, or pass an explicit `vector_dim=...`."
             )
         self.vector_dim = len(embeddings[0])
+
+    async def _query_vectors(self, text_or_texts, vector_or_vectors, *, what):
+        """Resolve query vectors from explicit vectors or by embedding text.
+
+        Search methods accept either a query text (embedded here) or a
+        pre-computed ``vector_or_vectors`` passed directly. When vectors
+        are supplied the embedding step — and the embedding model — are
+        skipped entirely; the vector dimension is learned from the first
+        vector if it isn't known yet. Returns a list of vectors, or
+        ``None`` when there is nothing to search for.
+
+        Args:
+            text_or_texts: Query text or list of texts to embed. Ignored
+                when ``vector_or_vectors`` is supplied.
+            vector_or_vectors: A pre-computed query vector or list of
+                vectors. Takes precedence over ``text_or_texts``.
+            what: Caller name, used in the "needs an embedding model"
+                error message.
+        """
+        provided = normalize_query_vectors(vector_or_vectors)
+        if provided is not None:
+            if self.vector_dim is None:
+                self.vector_dim = len(provided[0])
+            return provided
+        if not text_or_texts:
+            return None
+        if not self.embedding_model:
+            raise ValueError(
+                f"{what} requires an embedding model on the adapter, or pass "
+                f"`vector_or_vectors=` directly."
+            )
+        texts = [text_or_texts] if not isinstance(text_or_texts, list) else text_or_texts
+        result = await self.embedding_model(EmbeddingRequest(texts=texts))
+        vectors = result.get("embeddings") if result is not None else None
+        if vectors:
+            await self._ensure_vector_dim(vectors[0])
+        return vectors or None
 
     async def update(
         self,
@@ -792,9 +829,10 @@ class LanceDBAdapter(DatabaseAdapter):
 
     async def similarity_search(
         self,
-        text_or_texts: Union[str, List[str]],
+        text_or_texts: Optional[Union[str, List[str]]] = None,
         *,
         table_name: str,
+        vector_or_vectors: Optional[Union[List[float], List[List[float]]]] = None,
         k: int = 10,
         threshold: Optional[float] = None,
         ef_search: Optional[int] = None,
@@ -802,12 +840,18 @@ class LanceDBAdapter(DatabaseAdapter):
     ):
         """Vector similarity search against a single table.
 
-        Requires an embedding model on the adapter. Multiple queries are
-        merged into a single ranked result set (best score per id kept).
+        Multiple queries are merged into a single ranked result set
+        (best score per id kept).
 
         Args:
-            text_or_texts: Query text, or list of query texts.
+            text_or_texts: Query text, or list of query texts. Embedded
+                with the adapter's embedding model. Ignored when
+                ``vector_or_vectors`` is supplied.
             table_name: Target table.
+            vector_or_vectors: A pre-computed query vector, or a list of
+                vectors, to search with directly instead of embedding
+                ``text_or_texts``. When supplied, no embedding model is
+                required on the adapter.
             k: Maximum number of rows returned.
             threshold: Optional maximum vector distance — rows beyond this
                 distance are dropped.
@@ -817,20 +861,15 @@ class LanceDBAdapter(DatabaseAdapter):
             output_format: ``"json"`` (list of dicts, default) or ``"csv"``
                 (CSV string).
         """
-        if not text_or_texts:
+        vectors = await self._query_vectors(
+            text_or_texts, vector_or_vectors, what="similarity_search"
+        )
+        if not vectors:
             return format_search_results([], output_format)
-        if not self.embedding_model:
-            raise ValueError(
-                "similarity_search requires an embedding model on the adapter."
-            )
-        texts = [text_or_texts] if not isinstance(text_or_texts, list) else text_or_texts
         table = table_identifier(table_name)
         full_schema = self._table_json_schema(table, remove_embedding=False)
         id_key = self._get_id_key(full_schema)
         json_cols = self._json_columns(full_schema)
-
-        embeddings = await self.embedding_model(EmbeddingRequest(texts=texts))
-        vectors = embeddings.get("embeddings")
 
         offset = _SCORE_OFFSET[self.metric]
         tbl = self._db.open_table(table)
@@ -980,10 +1019,11 @@ class LanceDBAdapter(DatabaseAdapter):
 
     async def hybrid_fts_search(
         self,
-        text_or_texts: Union[str, List[str]],
+        text_or_texts: Optional[Union[str, List[str]]] = None,
         *,
         keywords: Optional[Union[str, List[str]]] = None,
         table_name: str,
+        vector_or_vectors: Optional[Union[List[float], List[List[float]]]] = None,
         k: int = 10,
         k_rank: int = 60,
         similarity_threshold: Optional[float] = None,
@@ -996,16 +1036,24 @@ class LanceDBAdapter(DatabaseAdapter):
 
         Runs `similarity_search` and `fulltext_search` against the same
         table, then fuses their rankings with the RRF formula
-        ``sum(1 / (k_rank + rank))``. Falls back to pure FTS when no
-        embedding model is configured.
+        ``sum(1 / (k_rank + rank))``. Falls back to pure FTS when there
+        are no vectors to search with (no embedding model and no
+        ``vector_or_vectors``).
+
+        The vector branch can be driven by pre-computed vectors via
+        ``vector_or_vectors`` instead of ``text_or_texts``; when vectors
+        are supplied the fulltext branch runs only if ``keywords`` are
+        also supplied, and no embedding model is required.
 
         Args:
             text_or_texts: Query text or list of query texts for the vector
-                branch.
+                branch. Ignored when ``vector_or_vectors`` is supplied.
             keywords: Query text or list for the fulltext branch. Aligns by
-                position with ``text_or_texts``; when omitted, the text is
-                reused for both branches.
+                position with the vector-branch queries; when omitted, the
+                text is reused for both branches.
             table_name: Target table.
+            vector_or_vectors: Pre-computed query vector(s) for the vector
+                branch, used directly instead of embedding ``text_or_texts``.
             k: Maximum number of rows returned.
             k_rank: RRF smoothing constant (default 60). Lower values weight
                 top-ranked rows more strongly.
@@ -1017,13 +1065,20 @@ class LanceDBAdapter(DatabaseAdapter):
                 (CSV string).
             **kwargs: Reserved for adapter-specific options.
         """
-        if not text_or_texts:
+        provided_vectors = normalize_query_vectors(vector_or_vectors)
+        if not text_or_texts and provided_vectors is None and not keywords:
             return format_search_results([], output_format)
         table = table_identifier(table_name)
         full_schema = self._table_json_schema(table, remove_embedding=False)
         id_key = self._get_id_key(full_schema)
 
-        if not self.embedding_model:
+        # The vector branch can run with explicit vectors, or with text
+        # plus a configured embedding model. Without either, degrade to
+        # a fulltext-only search.
+        can_vector = provided_vectors is not None or (
+            bool(text_or_texts) and bool(self.embedding_model)
+        )
+        if not can_vector:
             fts_rows = await self.fulltext_search(
                 keywords if keywords is not None else text_or_texts,
                 table_name=table,
@@ -1035,24 +1090,54 @@ class LanceDBAdapter(DatabaseAdapter):
                 row.setdefault("rrf_score", row.get("score", 0.0))
             return format_search_results(fts_rows, output_format)
 
-        queries, keyword_queries = align_keywords(text_or_texts, keywords)
+        # Build the per-slot vector-branch input — either pre-computed
+        # vectors or texts to embed — then align the keyword for each slot.
+        if provided_vectors is not None:
+            vec_texts: List[Optional[str]] = [None] * len(provided_vectors)
+            vec_vectors: List[Optional[List[float]]] = list(provided_vectors)
+        else:
+            vec_texts = (
+                [text_or_texts] if isinstance(text_or_texts, str) else list(text_or_texts)
+            )
+            vec_vectors = [None] * len(vec_texts)
+        n = len(vec_texts)
+
+        if keywords is not None:
+            keyword_queries: List[Optional[str]] = (
+                [keywords] if isinstance(keywords, str) else list(keywords)
+            )
+            if len(keyword_queries) != n:
+                raise ValueError(
+                    f"`keywords` must align with the vector-branch queries: "
+                    f"got {len(keyword_queries)} keyword(s) vs {n} quer(ies)."
+                )
+        elif provided_vectors is None:
+            keyword_queries = list(vec_texts)
+        else:
+            keyword_queries = [None] * n
 
         final: Dict[Any, Dict[str, Any]] = {}
-        for query_text, keyword_text in zip(queries, keyword_queries):
-            try:
-                fts_results = await self.fulltext_search(
-                    keyword_text,
-                    table_name=table,
-                    k=k * 5,
-                    threshold=fulltext_threshold,
-                    output_format="json",
-                )
-            except Exception:
+        for query_text, query_vector, keyword_text in zip(
+            vec_texts, vec_vectors, keyword_queries
+        ):
+            if keyword_text is not None:
+                try:
+                    fts_results = await self.fulltext_search(
+                        keyword_text,
+                        table_name=table,
+                        k=k * 5,
+                        threshold=fulltext_threshold,
+                        output_format="json",
+                    )
+                except Exception:
+                    fts_results = []
+            else:
                 fts_results = []
             try:
                 vss_results = await self.similarity_search(
                     query_text,
                     table_name=table,
+                    vector_or_vectors=query_vector,
                     k=k * 5,
                     threshold=similarity_threshold,
                     ef_search=ef_search,
@@ -1061,7 +1146,7 @@ class LanceDBAdapter(DatabaseAdapter):
             except Exception:
                 vss_results = []
             if not fts_results and not vss_results:
-                warnings.warn(f"No results for query='{query_text}'.")
+                warnings.warn(f"No results for query={query_text or '<vector>'!r}.")
                 continue
 
             fts_rank = {r[id_key]: i + 1 for i, r in enumerate(fts_results)}
@@ -1088,10 +1173,11 @@ class LanceDBAdapter(DatabaseAdapter):
 
     async def hybrid_regex_search(
         self,
-        text_or_texts: Union[str, List[str]],
+        text_or_texts: Optional[Union[str, List[str]]] = None,
         *,
         pattern_or_patterns: Union[str, List[str], None] = None,
         table_name: str,
+        vector_or_vectors: Optional[Union[List[float], List[List[float]]]] = None,
         k: int = 10,
         k_rank: int = 60,
         similarity_threshold: Optional[float] = None,
@@ -1104,15 +1190,21 @@ class LanceDBAdapter(DatabaseAdapter):
         """Reciprocal-Rank-Fusion of vector similarity + regex match.
 
         Sibling of `hybrid_fts_search`. The vector half embeds
-        ``text_or_texts``; the regex half matches ``pattern_or_patterns``
-        against the table's string columns. The two rankings are fused
-        with the RRF formula ``sum(1 / (k_rank + rank))``.
+        ``text_or_texts`` (or uses ``vector_or_vectors`` directly); the
+        regex half matches ``pattern_or_patterns`` against the table's
+        string columns. The two rankings are fused with the RRF formula
+        ``sum(1 / (k_rank + rank))``. Degrades to regex-only when there
+        are no vectors to search with (no embedding model and no
+        ``vector_or_vectors``).
 
         Args:
             text_or_texts: Query text (or list) for the vector half.
+                Ignored when ``vector_or_vectors`` is supplied.
             pattern_or_patterns: Regex pattern (or list) for the regex
                 half. ``None`` skips the regex half.
             table_name: Target table.
+            vector_or_vectors: Pre-computed query vector(s) for the vector
+                half, used directly instead of embedding ``text_or_texts``.
             k: Maximum number of rows returned.
             k_rank: RRF smoothing constant (default 60).
             similarity_threshold: Optional maximum vector distance.
@@ -1123,30 +1215,71 @@ class LanceDBAdapter(DatabaseAdapter):
                 (CSV string).
             **kwargs: Reserved for adapter-specific options.
         """
-        if not text_or_texts:
+        provided_vectors = normalize_query_vectors(vector_or_vectors)
+        if not text_or_texts and not pattern_or_patterns and provided_vectors is None:
             return format_search_results([], output_format)
         table = table_identifier(table_name)
         full_schema = self._table_json_schema(table, remove_embedding=False)
         id_key = self._get_id_key(full_schema)
 
-        queries = (
-            [text_or_texts] if isinstance(text_or_texts, str) else list(text_or_texts)
+        # The vector branch can run with explicit vectors, or with text
+        # plus a configured embedding model. Without either, degrade to
+        # a regex-only search.
+        can_vector = provided_vectors is not None or (
+            bool(text_or_texts) and bool(self.embedding_model)
         )
+        if not can_vector:
+            if not pattern_or_patterns:
+                return format_search_results([], output_format)
+            patterns_list = (
+                [pattern_or_patterns]
+                if isinstance(pattern_or_patterns, str)
+                else list(pattern_or_patterns)
+            )
+            merged: Dict[Any, Dict[str, Any]] = {}
+            for p in patterns_list:
+                rows = await self.regex_search(
+                    p,
+                    table_name=table,
+                    fields=fields,
+                    case_sensitive=case_sensitive,
+                    k=k,
+                    output_format="json",
+                )
+                for r in rows:
+                    merged[r[id_key]] = r
+            return format_search_results(list(merged.values())[:k], output_format)
+
+        # Build the per-slot vector-branch input — pre-computed vectors
+        # or texts to embed — then align a pattern to each slot.
+        if provided_vectors is not None:
+            vec_texts: List[Optional[str]] = [None] * len(provided_vectors)
+            vec_vectors: List[Optional[List[float]]] = list(provided_vectors)
+        else:
+            vec_texts = (
+                [text_or_texts] if isinstance(text_or_texts, str) else list(text_or_texts)
+            )
+            vec_vectors = [None] * len(vec_texts)
+        n = len(vec_texts)
+
         if pattern_or_patterns is None:
-            patterns: List[Optional[str]] = [None] * len(queries)
+            patterns: List[Optional[str]] = [None] * n
         elif isinstance(pattern_or_patterns, str):
-            patterns = [pattern_or_patterns] * len(queries)
+            patterns = [pattern_or_patterns] * n
         else:
             patterns = list(pattern_or_patterns)
-            if len(patterns) != len(queries):
-                raise ValueError("`pattern_or_patterns` must align with `text_or_texts`.")
+            if len(patterns) != n:
+                raise ValueError(
+                    "`pattern_or_patterns` must align with the vector-branch queries."
+                )
 
         final: Dict[Any, Dict[str, Any]] = {}
-        for query_text, pattern in zip(queries, patterns):
+        for query_text, query_vector, pattern in zip(vec_texts, vec_vectors, patterns):
             try:
                 vss_results = await self.similarity_search(
                     query_text,
                     table_name=table,
+                    vector_or_vectors=query_vector,
                     k=k * 5,
                     threshold=similarity_threshold,
                     ef_search=ef_search,

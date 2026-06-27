@@ -1668,9 +1668,10 @@ class _RecordingGraphAdapter(GraphDatabaseAdapter):
 
     async def entity_similarity_search(
         self,
-        text_or_texts,
+        text_or_texts=None,
         *,
         label,
+        vector_or_vectors=None,
         k=10,
         threshold=None,
         ef_search=None,
