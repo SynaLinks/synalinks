@@ -171,7 +171,13 @@ class RetrieveKnowledge(Module):
         examples (list): Example inputs/outputs for few-shot learning.
         instructions (str): Custom instructions for the search query generator.
         seed_instructions (str): Seed instructions for variability.
-        temperature (float): Temperature for the language model. Defaults to 0.0.
+        temperature (float): Temperature for the language model. Defaults to None (the model's own default applies).
+        max_tokens (int): Optional. Default None (model's own default). Caps the
+            generation length.
+        top_p (float): Optional. Default None (model's own default). Nucleus
+            sampling probability.
+        top_k (int): Optional. Default None (model's own default). Top-k sampling
+            cutoff.
         use_inputs_schema (bool): Whether to include input schema in the prompt.
         use_outputs_schema (bool): Whether to include output schema in the prompt.
         return_inputs (bool): Whether to include original inputs in the output.
@@ -199,7 +205,10 @@ class RetrieveKnowledge(Module):
         examples=None,
         instructions=None,
         seed_instructions=None,
-        temperature=0.0,
+        temperature=None,
+        max_tokens=None,
+        top_p=None,
+        top_k=None,
         use_inputs_schema=False,
         use_outputs_schema=False,
         return_inputs=True,
@@ -251,6 +260,9 @@ class RetrieveKnowledge(Module):
         self.instructions = instructions
         self.seed_instructions = seed_instructions
         self.temperature = temperature
+        self.max_tokens = max_tokens
+        self.top_p = top_p
+        self.top_k = top_k
         self.use_inputs_schema = use_inputs_schema
         self.use_outputs_schema = use_outputs_schema
         self.return_inputs = return_inputs
@@ -267,6 +279,9 @@ class RetrieveKnowledge(Module):
             instructions=self.instructions,
             seed_instructions=self.seed_instructions,
             temperature=self.temperature,
+            max_tokens=self.max_tokens,
+            top_p=self.top_p,
+            top_k=self.top_k,
             use_inputs_schema=self.use_inputs_schema,
             use_outputs_schema=self.use_outputs_schema,
             return_inputs=False,
@@ -473,6 +488,9 @@ class RetrieveKnowledge(Module):
             "instructions": self.instructions,
             "seed_instructions": self.seed_instructions,
             "temperature": self.temperature,
+            "max_tokens": self.max_tokens,
+            "top_p": self.top_p,
+            "top_k": self.top_k,
             "use_inputs_schema": self.use_inputs_schema,
             "use_outputs_schema": self.use_outputs_schema,
             "return_inputs": self.return_inputs,

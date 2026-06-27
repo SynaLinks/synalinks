@@ -96,6 +96,12 @@ class MultiDecision(Module):
             use as seed for the optimization. If not provided, use the
             default instructions as seed.
         temperature (float): Optional. The temperature for the LM call.
+        max_tokens (int): Optional. Default None (model's own default). Caps the
+            generation length.
+        top_p (float): Optional. Default None (model's own default). Nucleus
+            sampling probability.
+        top_k (int): Optional. Default None (model's own default). Top-k sampling
+            cutoff.
         reasoning_effort (string): Optional. The reasoning effort for the
             LM call between
             ['minimal', 'low', 'medium', 'high', 'disable', 'none', None].
@@ -121,7 +127,10 @@ class MultiDecision(Module):
         examples=None,
         instructions=None,
         seed_instructions=None,
-        temperature=0.0,
+        temperature=None,
+        max_tokens=None,
+        top_p=None,
+        top_k=None,
         reasoning_effort=None,
         use_inputs_schema=False,
         use_outputs_schema=False,
@@ -158,6 +167,9 @@ class MultiDecision(Module):
         self.instructions = instructions
         self.seed_instructions = seed_instructions
         self.temperature = temperature
+        self.max_tokens = max_tokens
+        self.top_p = top_p
+        self.top_k = top_k
         self.reasoning_effort = reasoning_effort
         self.use_inputs_schema = use_inputs_schema
         self.use_outputs_schema = use_outputs_schema
@@ -168,6 +180,9 @@ class MultiDecision(Module):
             examples=self.examples,
             instructions=self.instructions,
             temperature=self.temperature,
+            max_tokens=self.max_tokens,
+            top_p=self.top_p,
+            top_k=self.top_k,
             reasoning_effort=self.reasoning_effort,
             use_inputs_schema=self.use_inputs_schema,
             use_outputs_schema=self.use_outputs_schema,
@@ -195,6 +210,9 @@ class MultiDecision(Module):
             "instructions": self.instructions,
             "seed_instructions": self.seed_instructions,
             "temperature": self.temperature,
+            "max_tokens": self.max_tokens,
+            "top_p": self.top_p,
+            "top_k": self.top_k,
             "reasoning_effort": self.reasoning_effort,
             "use_inputs_schema": self.use_inputs_schema,
             "use_outputs_schema": self.use_outputs_schema,

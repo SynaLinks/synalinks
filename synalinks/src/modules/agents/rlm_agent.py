@@ -545,6 +545,12 @@ class RecursiveLanguageModelAgent(FunctionCallingAgent):
             answer generator. Defaults to ``instructions``.
         temperature (float): Optional. Sampling temperature
             (Default 0.0).
+        max_tokens (int): Optional. Maximum number of tokens to generate.
+            Default None (the model's own default; caps generation length).
+        top_p (float): Optional. Nucleus sampling probability. Default None
+            (the model's own default).
+        top_k (int): Optional. Top-k sampling cutoff. Default None (the
+            model's own default).
         use_inputs_schema (bool): Optional. Feed the input schema to
             the generator prompt (Default False).
         use_outputs_schema (bool): Optional. Feed the output schema to
@@ -660,7 +666,10 @@ class RecursiveLanguageModelAgent(FunctionCallingAgent):
         examples=None,
         instructions=None,
         final_instructions=None,
-        temperature=0.0,
+        temperature=None,
+        max_tokens=None,
+        top_p=None,
+        top_k=None,
         use_inputs_schema=False,
         use_outputs_schema=False,
         reasoning_effort=None,
@@ -753,6 +762,9 @@ class RecursiveLanguageModelAgent(FunctionCallingAgent):
             instructions=instructions,
             final_instructions=resolved_final_instructions,
             temperature=temperature,
+            max_tokens=max_tokens,
+            top_p=top_p,
+            top_k=top_k,
             use_inputs_schema=use_inputs_schema,
             use_outputs_schema=use_outputs_schema,
             reasoning_effort=reasoning_effort,
@@ -946,6 +958,9 @@ class RecursiveLanguageModelAgent(FunctionCallingAgent):
                     recursive=self.recursive,
                     instructions=get_subagent_instructions(),
                     temperature=self.temperature,
+                    max_tokens=self.max_tokens,
+                    top_p=self.top_p,
+                    top_k=self.top_k,
                     reasoning_effort=self.reasoning_effort,
                     use_chain_of_thought=self.use_chain_of_thought,
                     max_iterations=self.max_iterations,

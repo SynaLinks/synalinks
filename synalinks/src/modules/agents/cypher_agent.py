@@ -367,8 +367,14 @@ class CypherAgent(FunctionCallingAgent):
             available without an extra schema call.
         final_instructions (str): Instructions for the final-answer
             generator. Defaults to ``instructions``.
-        temperature (float): LM sampling temperature. Defaults to 0.0
+        temperature (float): LM sampling temperature. Defaults to None (the model's own default applies).
             for deterministic Cypher generation.
+        max_tokens (int): Optional. Maximum number of tokens to generate.
+            Default None (the model's own default; caps generation length).
+        top_p (float): Optional. Nucleus sampling probability. Default None
+            (the model's own default).
+        top_k (int): Optional. Top-k sampling cutoff. Default None (the
+            model's own default).
         use_inputs_schema (bool): Include the input schema in the
             prompt.
         use_outputs_schema (bool): Include the output schema in the
@@ -412,7 +418,10 @@ class CypherAgent(FunctionCallingAgent):
         examples=None,
         instructions: Optional[str] = None,
         final_instructions: Optional[str] = None,
-        temperature: float = 0.0,
+        temperature: float | None = None,
+        max_tokens: int | None = None,
+        top_p: float | None = None,
+        top_k: int | None = None,
         use_inputs_schema: bool = False,
         use_outputs_schema: bool = False,
         reasoning_effort: Optional[str] = None,
@@ -469,6 +478,9 @@ class CypherAgent(FunctionCallingAgent):
             instructions=instructions,
             final_instructions=final_instructions,
             temperature=temperature,
+            max_tokens=max_tokens,
+            top_p=top_p,
+            top_k=top_k,
             use_inputs_schema=use_inputs_schema,
             use_outputs_schema=use_outputs_schema,
             reasoning_effort=reasoning_effort,

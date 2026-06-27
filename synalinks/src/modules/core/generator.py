@@ -167,7 +167,17 @@ class Generator(Module):
             the prompt (Default to False).
         return_inputs (bool): Optional. Whether or not to concatenate the inputs to
             the outputs (Default to False).
-        temperature (float): Optional. The temperature for the LM call.
+        temperature (float): Optional. The sampling temperature for the LM call.
+            Default to None — when None it is NOT sent, so the model's own
+            generation defaults apply (e.g. a vLLM-served model uses its
+            `generation_config.json`). Set a float to override.
+        max_tokens (int): Optional. Cap on the number of tokens generated. Default
+            to None (not sent → the provider/model default). Set it to bound
+            runaway / looping generations.
+        top_p (float): Optional. Nucleus-sampling top-p. Default None (not sent →
+            model default).
+        top_k (int): Optional. Top-k sampling. Default None (not sent → model
+            default).
         reasoning_effort (string): Optional. The reasoning effort for the LM call
             between ['minimal', 'low', 'medium', 'high', 'disable', 'none', None].
             Default to None (no reasoning).
@@ -199,7 +209,10 @@ class Generator(Module):
         use_inputs_schema=False,
         use_outputs_schema=False,
         return_inputs=False,
-        temperature=0.0,
+        temperature=None,
+        max_tokens=None,
+        top_p=None,
+        top_k=None,
         reasoning_effort=None,
         streaming=False,
         tools=None,
@@ -229,6 +242,9 @@ class Generator(Module):
         self.instructions = instructions
         self.return_inputs = return_inputs
         self.temperature = temperature
+        self.max_tokens = max_tokens
+        self.top_p = top_p
+        self.top_k = top_k
         efforts = ["minimal", "low", "medium", "high", "disable", "none", None]
         if reasoning_effort not in efforts:
             raise ValueError(
@@ -291,14 +307,28 @@ class Generator(Module):
             streaming = True
         else:
             streaming = False
+        # Only forward sampling params that were explicitly set, so an unset
+        # (None) value falls through to the model's own generation defaults
+        # (e.g. a vLLM-served model applies its generation_config.json) instead
+        # of being sent as `null`. litellm.drop_params drops *unsupported* keys,
+        # not None-valued ones, so the filtering must happen here.
+        sampling = {}
+        if self.temperature is not None:
+            sampling["temperature"] = self.temperature
+        if self.max_tokens is not None:
+            sampling["max_tokens"] = self.max_tokens
+        if self.top_p is not None:
+            sampling["top_p"] = self.top_p
+        if self.top_k is not None:
+            sampling["top_k"] = self.top_k
         value = await self.language_model(
             msgs,
             schema=self.schema,
             tools=tools,
             tool_schemas=tool_schemas,
             streaming=streaming,
-            temperature=self.temperature,
             reasoning_effort=self.reasoning_effort,
+            **sampling,
         )
         if isinstance(value, StreamingIterator):
             result = value
@@ -434,6 +464,9 @@ class Generator(Module):
             "use_outputs_schema": self.use_outputs_schema,
             "return_inputs": self.return_inputs,
             "temperature": self.temperature,
+            "max_tokens": self.max_tokens,
+            "top_p": self.top_p,
+            "top_k": self.top_k,
             "reasoning_effort": self.reasoning_effort,
             "streaming": self.streaming,
             # Live `tools` are converted to their wire form and stored alongside
