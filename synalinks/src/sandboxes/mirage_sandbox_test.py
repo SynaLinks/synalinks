@@ -126,6 +126,12 @@ class MirageSandboxTest(testing.TestCase):
         self.assertEqual(out["exit_code"], 0)
         self.assertIn("hi", out["stdout"])
 
+    async def test_run_bash_failure_returns_error(self):
+        sandbox = MirageSandbox(timeout=_TIMEOUT)
+        out = await sandbox.run_bash("python3 -c 'import sys; sys.exit(7)'")
+        self.assertFalse(out["ok"])
+        self.assertEqual(out["exit_code"], 7)
+
     async def test_bash_session_state_persists(self):
         sandbox = MirageSandbox(timeout=_TIMEOUT)
         await sandbox.run_bash("mkdir -p /work && cd /work")
@@ -138,6 +144,13 @@ class MirageSandboxTest(testing.TestCase):
         self.assertTrue(out["ok"])
         self.assertIn("4", out["stdout"])
         self.assertIsNone(out["error"])
+
+    async def test_run_python_code_tool_invalid_code_reports_error(self):
+        sandbox = MirageSandbox(timeout=_TIMEOUT)
+        out = await sandbox.run_python_code("def broken(")
+        self.assertFalse(out["ok"])
+        self.assertIsNotNone(out["error"])
+        self.assertIn("SyntaxError", out["error"])
 
     async def test_history_records_runs(self):
         sandbox = MirageSandbox(timeout=_TIMEOUT)
@@ -434,6 +447,22 @@ class MirageSandboxTest(testing.TestCase):
         self.assertEqual(listing["files"], ["/src/a.py", "/src/sub/b.py"])
         self.assertEqual(listing["total"], 2)
 
+    async def test_list_files_glob_no_matches(self):
+        sandbox = MirageSandbox(timeout=_TIMEOUT)
+        await sandbox.write_file("/src/a.py", "1")
+        listing = await sandbox.list_files("**/*.md")
+        self.assertEqual(listing["files"], [])
+        self.assertEqual(listing["total"], 0)
+
+    async def test_list_files_glob_invalid_pattern(self):
+        sandbox = MirageSandbox(timeout=_TIMEOUT)
+        await sandbox.write_file("/src/a.py", "1")
+        listing = await sandbox.list_files("[")
+        self.assertIsInstance(listing, dict)
+        if "error" not in listing:
+            self.assertEqual(listing["files"], [])
+            self.assertEqual(listing["total"], 0)
+
     async def test_edit_file(self):
         sandbox = MirageSandbox(timeout=_TIMEOUT)
         await sandbox.write_file("/c.py", "value = 1\n")
@@ -459,12 +488,44 @@ class MirageSandboxTest(testing.TestCase):
         self.assertEqual(result["matches"][0]["path"], "/s/a.py")
         self.assertEqual(result["matches"][0]["line"], 2)
 
+    async def test_search_files_no_matches(self):
+        sandbox = MirageSandbox(timeout=_TIMEOUT)
+        await sandbox.write_file("/s/a.py", "import os\n")
+        result = await sandbox.search_files("print", glob="**/*.py")
+        self.assertEqual(result["total"], 0)
+        self.assertEqual(result["matches"], [])
+
+    async def test_search_files_invalid_glob(self):
+        sandbox = MirageSandbox(timeout=_TIMEOUT)
+        await sandbox.write_file("/s/a.py", "print('found')\n")
+        result = await sandbox.search_files("print", glob="[")
+        self.assertIsInstance(result, dict)
+        if "error" in result:
+            self.assertTrue(result["error"])
+        else:
+            self.assertEqual(result["total"], 0)
+            self.assertEqual(result["matches"], [])
+
     async def test_run_python_file(self):
         sandbox = MirageSandbox(timeout=_TIMEOUT)
         await sandbox.write_file("/script.py", "print(3 * 3)\n")
         out = await sandbox.run_python_file("/script.py")
         self.assertTrue(out["ok"])
         self.assertIn("9", out["stdout"])
+
+    async def test_run_python_file_syntax_error(self):
+        sandbox = MirageSandbox(timeout=_TIMEOUT)
+        await sandbox.write_file("/bad_syntax.py", "def broken(:\n    pass\n")
+        out = await sandbox.run_python_file("/bad_syntax.py")
+        self.assertFalse(out["ok"])
+        self.assertTrue("stderr" in out or "error" in out)
+
+    async def test_run_python_file_runtime_error(self):
+        sandbox = MirageSandbox(timeout=_TIMEOUT)
+        await sandbox.write_file("/runtime_error.py", "raise ValueError('boom')\n")
+        out = await sandbox.run_python_file("/runtime_error.py")
+        self.assertFalse(out["ok"])
+        self.assertTrue("stderr" in out or "error" in out)
 
     async def test_run_python_file_missing(self):
         sandbox = MirageSandbox(timeout=_TIMEOUT)
