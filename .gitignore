@@ -142,6 +142,13 @@ nosetests.xml
 
 # Claude Code
 .claude/
+.agents/
+
+# pytest-benchmark
+.benchmarks/
+
+# ruff
+.ruff_cache/
 
 # MLflow
 mlflow-data/

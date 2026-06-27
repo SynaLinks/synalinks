@@ -3,6 +3,7 @@
 from synalinks.src import ops
 from synalinks.src.api_export import synalinks_export
 from synalinks.src.modules import SelfCritique
+from synalinks.src.modules.ttc.self_critique import CritiqueWithReward
 from synalinks.src.programs import Program
 from synalinks.src.rewards.reward_wrappers import ProgramAsJudge
 from synalinks.src.saving import serialization_lib
@@ -58,7 +59,13 @@ class LMAsJudgeProgram(Program):
         y_true = inputs[0]
         y_pred = inputs[1]
         if not y_pred:
-            return 0.0
+            # No prediction to judge — return a reward-bearing data model
+            # (the `ProgramAsJudge` contract) rather than a bare float, which
+            # the wrapper would reject with `'float' has no attribute 'get'`.
+            return CritiqueWithReward(
+                critique="Empty prediction: nothing to evaluate.",
+                reward=0.0,
+            ).to_json_data_model()
         if y_true:
             y_true = await ops.prefix(
                 y_true,

@@ -2,12 +2,18 @@
 
 """LadybugDB graph adapter.
 
-First-cut implementation covering the methods needed for a working
-GraphRAG agent: ``update_entities`` and ``update_relations`` with
-embedding-based deduplication, raw ``cypher()`` execution with a
-read-only enforcement layer, and ``entity_similarity_search`` over the
-vector index. The remaining ``GraphDatabaseAdapter`` methods (get /
-delete / fulltext) fall through to the base's ``NotImplementedError``.
+Full implementation of the ``GraphDatabaseAdapter`` contract:
+
+  * writes — ``update_entities`` / ``update_relations`` /
+    ``update_knowledge_graph`` with embedding-based deduplication,
+    plus ``get_entity`` / ``delete_entity`` / ``delete_relation`` /
+    ``rename`` for CRUD;
+  * raw ``cypher()`` execution behind a read-only enforcement layer;
+  * search — entity / relation / path variants of similarity, BM25
+    full-text, regex, and their hybrid (RRF) fusions;
+  * graph analytics — ``pagerank``, ``detect_communities``, and the
+    GraphRAG ``local_graph_search`` / ``build_communities`` /
+    ``global_graph_search`` surfaces.
 
 Security model mirrors `DuckDBAdapter`:
 
@@ -67,6 +73,7 @@ from synalinks.src.backend.pydantic.knowledge import KnowledgeGraphs
 from synalinks.src.backend.pydantic.knowledge import Relation
 from synalinks.src.knowledge_bases.adapters_utils import align_keywords
 from synalinks.src.knowledge_bases.adapters_utils import format_search_results
+from synalinks.src.knowledge_bases.adapters_utils import normalize_query_vectors
 from synalinks.src.knowledge_bases.adapters_utils import resolve_db_path
 from synalinks.src.knowledge_bases.adapters_utils import to_pascal_identifier
 from synalinks.src.knowledge_bases.adapters_utils import to_snake_identifier
@@ -760,23 +767,34 @@ class LadybugAdapter(GraphDatabaseAdapter):
         self._con.execute(f"CREATE NODE TABLE {label}({', '.join(cols)})")
 
         if self.embedding_model and self.vector_dim:
-            # ``metric`` is fixed at construction time because it also
-            # drives downstream conversion helpers (e.g.
-            # `_max_distance_for_threshold`). HNSW build params
-            # (``mu`` / ``ml`` / ``pu`` / ``efc``) come from their
-            # matching ``self.<name>`` attributes and only get
-            # forwarded when set — ``None`` falls back to Ladybug's
-            # own defaults.
-            ddl_options: Dict[str, Any] = {"metric": self.metric}
-            for key in ("mu", "ml", "pu", "efc"):
-                value = getattr(self, key)
-                if value is not None:
-                    ddl_options[key] = value
-            options_fragment = self._render_ddl_options(ddl_options)
-            self._con.execute(
-                f"CALL CREATE_VECTOR_INDEX('{label}', "
-                f"'{label.lower()}_vec', 'embedding'{options_fragment})"
-            )
+            self._create_vector_index(label)
+
+    def _create_vector_index(self, label: str) -> None:
+        """Build the HNSW vector index over a label's ``embedding`` column.
+
+        Factored out of `_create_node_table` so `rename` can
+        rebuild the index under the new label (Ladybug keeps the old
+        index *name* across ``ALTER TABLE ... RENAME``, but the adapter
+        addresses indices by the ``{label.lower()}_vec`` convention, so
+        the index has to be recreated under the new name).
+
+        ``metric`` is fixed at construction time because it also drives
+        downstream conversion helpers (e.g.
+        `_max_distance_for_threshold`). HNSW build params
+        (``mu`` / ``ml`` / ``pu`` / ``efc``) come from their matching
+        ``self.<name>`` attributes and only get forwarded when set —
+        ``None`` falls back to Ladybug's own defaults.
+        """
+        ddl_options: Dict[str, Any] = {"metric": self.metric}
+        for key in ("mu", "ml", "pu", "efc"):
+            value = getattr(self, key)
+            if value is not None:
+                ddl_options[key] = value
+        options_fragment = self._render_ddl_options(ddl_options)
+        self._con.execute(
+            f"CALL CREATE_VECTOR_INDEX('{label}', "
+            f"'{label.lower()}_vec', 'embedding'{options_fragment})"
+        )
 
     def _create_rel_table(self, label: str, schema: Dict[str, Any]) -> None:
         """Issue ``CREATE REL TABLE``.
@@ -839,6 +857,44 @@ class LadybugAdapter(GraphDatabaseAdapter):
                 "`vector_dim=...`."
             )
         self.vector_dim = len(embeddings[0])
+
+    async def _query_vectors(self, text_or_texts, vector_or_vectors, *, what):
+        """Resolve query vectors from explicit vectors or by embedding text.
+
+        Search methods accept either a query text (embedded here) or a
+        pre-computed ``vector_or_vectors`` passed directly. When vectors
+        are supplied the embedding step — and the embedding model — are
+        skipped entirely; the vector dimension is learned from the first
+        vector if it isn't known yet (``0`` is the unresolved sentinel).
+        Returns a list of vectors, or ``None`` when there is nothing to
+        search for.
+
+        Args:
+            text_or_texts: Query text or list of texts to embed. Ignored
+                when ``vector_or_vectors`` is supplied.
+            vector_or_vectors: A pre-computed query vector or list of
+                vectors. Takes precedence over ``text_or_texts``.
+            what: Caller name, used in the "needs an embedding model"
+                error message.
+        """
+        provided = normalize_query_vectors(vector_or_vectors)
+        if provided is not None:
+            if not self.vector_dim:
+                self.vector_dim = len(provided[0])
+            return provided
+        if not text_or_texts:
+            return None
+        if not self.embedding_model:
+            raise ValueError(
+                f"{what} requires an embedding_model on the adapter, or pass "
+                f"`vector_or_vectors=` directly."
+            )
+        texts = [text_or_texts] if not isinstance(text_or_texts, list) else text_or_texts
+        result = await self.embedding_model(EmbeddingRequest(texts=texts))
+        vectors = result.get("embeddings") if result is not None else None
+        if vectors:
+            await self._ensure_vector_dim(vectors[0])
+        return vectors or None
 
     def _ensure_node_table(self, label: str, entity: Any) -> None:
         """Create the NODE table for ``label`` on demand if it's unknown.
@@ -1479,6 +1535,153 @@ class LadybugAdapter(GraphDatabaseAdapter):
         ent_ids = await self.update_entities(entities) if entities else []
         rel_ids = await self.update_relations(relations) if relations else []
         return {"entities": ent_ids, "relations": rel_ids}
+
+    # ------------------------------------------------------------------
+    # Rename
+    # ------------------------------------------------------------------
+
+    async def rename(
+        self,
+        source: Union[Any, str],
+        *,
+        table_name: Optional[str] = None,
+        table_description: Optional[str] = None,
+    ) -> SymbolicDataModel:
+        """Rename a node/relation label and/or update its description.
+
+        Graph counterpart of `DuckDBAdapter.rename`. The new label
+        is issued through ``ALTER TABLE <old> RENAME TO <new>`` — which
+        works for both NODE and REL tables and auto-updates any REL
+        table's ``FROM``/``TO`` endpoints when a node label changes, so
+        incident edges survive the rename.
+
+        Ladybug keeps an index's *name* across the rename (a vector
+        index ``person_vec`` stays ``person_vec`` even after the table
+        becomes ``Human``), but the adapter addresses indices by the
+        ``{label.lower()}_vec`` / ``{label.lower()}_fts`` convention. So
+        on a NODE rename the FTS and HNSW indices are dropped and
+        rebuilt under the new label, and the per-label registries
+        (``_pk_keys`` / ``_fts_columns`` / ``_synth_models``) are
+        migrated so subsequent reads and searches resolve the table at
+        its new name.
+
+        Args:
+            source: ``SymbolicDataModel`` for the table to rename, or
+                its label as a string. Either form is PascalCase-
+                normalized through `sanitize_label`.
+            table_name: New label. Optional — normalized to PascalCase.
+            table_description: New schema description. Optional. Lives
+                in the ``SymbolicDataModel`` layer (Ladybug doesn't
+                carry per-table descriptions natively).
+
+        Returns:
+            A fresh `SymbolicDataModel` for the (possibly renamed)
+            table, reflecting the post-rename shape and the supplied
+            description.
+        """
+        if table_name is None and table_description is None:
+            raise ValueError(
+                "rename(): pass at least one of `table_name=` or `table_description=`."
+            )
+
+        if isinstance(source, str):
+            raw_old = source
+        else:
+            raw_old = source.get_schema().get("title")
+            if not raw_old:
+                raise ValueError(
+                    "rename(): source SymbolicDataModel has no schema "
+                    "title; cannot determine the table to rename."
+                )
+        old_label = sanitize_label(raw_old)
+
+        node_tables = self._existing_tables("NODE")
+        rel_tables = self._existing_tables("REL")
+        if old_label in node_tables:
+            kind = "NODE"
+        elif old_label in rel_tables:
+            kind = "REL"
+        else:
+            raise ValueError(
+                f"rename(): no node or relation table named {old_label!r} "
+                f"found in the graph store."
+            )
+
+        new_label = old_label
+        if table_name is not None:
+            new_label = sanitize_label(table_name)
+
+        if new_label != old_label:
+            if new_label in node_tables or new_label in rel_tables:
+                raise ValueError(f"rename(): a table named {new_label!r} already exists.")
+
+            # Indices are name-bound to the old label; drop them first so
+            # we can rebuild under the new naming convention afterwards.
+            # (Only NODE tables carry FTS/HNSW indices in this adapter.)
+            if kind == "NODE":
+                for table, name, idx_type in self._existing_indices():
+                    if table != old_label:
+                        continue
+                    try:
+                        if idx_type == "FTS":
+                            self._con.execute(
+                                f"CALL DROP_FTS_INDEX('{old_label}', '{name}')"
+                            )
+                        elif idx_type == "HNSW":
+                            self._con.execute(
+                                f"CALL DROP_VECTOR_INDEX('{old_label}', '{name}')"
+                            )
+                    except Exception as e:  # noqa: BLE001
+                        warnings.warn(
+                            f"rename(): failed to drop {idx_type} index "
+                            f"{name!r} on {old_label!r}: {e}"
+                        )
+
+            self._con.execute(f"ALTER TABLE {old_label} RENAME TO {new_label}")
+
+            # Migrate the per-label registries.
+            if old_label in self._pk_keys:
+                self._pk_keys[new_label] = self._pk_keys.pop(old_label)
+            self._synth_models.pop(old_label, None)
+
+            if kind == "NODE":
+                # Rebuild indices under the new label so searches that
+                # address them by the {label}_vec / {label}_fts convention
+                # keep working.
+                fts_cols = self._fts_columns.pop(old_label, None)
+                if fts_cols:
+                    self._fts_columns[new_label] = fts_cols
+                    try:
+                        self._create_fts_index(new_label, fts_cols)
+                    except Exception as e:  # noqa: BLE001
+                        warnings.warn(
+                            f"rename(): FTS index rebuild failed for "
+                            f"{new_label!r}; entity_fulltext_search results "
+                            f"may be unavailable. ({e})"
+                        )
+                if self.embedding_model and self.vector_dim:
+                    try:
+                        self._create_vector_index(new_label)
+                    except Exception as e:  # noqa: BLE001
+                        warnings.warn(
+                            f"rename(): vector index rebuild failed for "
+                            f"{new_label!r}; entity_similarity_search will "
+                            f"be unavailable. ({e})"
+                        )
+
+        # Build the post-rename symbolic model.
+        if kind == "NODE":
+            schema = self._node_table_to_json_schema(new_label)
+        else:
+            schema = self._rel_table_to_json_schema(new_label)
+        schema["title"] = new_label
+        if table_description is not None:
+            schema["description"] = table_description
+        elif not isinstance(source, str):
+            old_schema = source.get_schema()
+            if "description" in old_schema:
+                schema["description"] = old_schema["description"]
+        return SymbolicDataModel(schema=schema, name=new_label)
 
     # ------------------------------------------------------------------
     # Get / delete
@@ -2250,9 +2453,10 @@ class LadybugAdapter(GraphDatabaseAdapter):
 
     async def local_graph_search(
         self,
-        text_or_texts: Union[str, List[str]],
+        text_or_texts: Optional[Union[str, List[str]]] = None,
         *,
         label: str,
+        vector_or_vectors: Optional[Union[List[float], List[List[float]]]] = None,
         max_hops: int = 2,
         k: int = 10,
         threshold: Optional[float] = None,
@@ -2282,7 +2486,11 @@ class LadybugAdapter(GraphDatabaseAdapter):
         Args:
             text_or_texts: Query text (or list). Each is embedded and
                 expanded; the neighbourhoods merge into one graph.
+                Ignored when ``vector_or_vectors`` is supplied.
             label: Entity label whose vector index seeds the search.
+            vector_or_vectors: Pre-computed seed vector(s), used directly
+                instead of embedding ``text_or_texts``. When supplied,
+                no embedding model is required.
             max_hops: Neighbourhood radius in edges (>= 1, default 2).
             k: Number of seed entities per query text.
             threshold: Optional seed vector-distance ceiling — seeds
@@ -2295,22 +2503,16 @@ class LadybugAdapter(GraphDatabaseAdapter):
             A `KnowledgeGraph` of the deduped neighbourhood
             entities and relations. Empty when no seed matches.
         """
-        if not self.embedding_model:
-            raise ValueError(
-                "local_graph_search requires an embedding_model on the LadybugAdapter."
-            )
         if max_hops < 1:
             raise ValueError(f"max_hops must be >= 1, got {max_hops}.")
 
         label = sanitize_label(label)
         rel = sanitize_label(rel_label) if rel_label is not None else None
-        if not text_or_texts:
+        vectors = await self._query_vectors(
+            text_or_texts, vector_or_vectors, what="local_graph_search"
+        )
+        if not vectors:
             return KnowledgeGraph(entities=[], relations=[])
-
-        texts = [text_or_texts] if not isinstance(text_or_texts, list) else text_or_texts
-        vectors = (await self.embedding_model(EmbeddingRequest(texts=texts)))[
-            "embeddings"
-        ]
 
         vec_index = f"{label.lower()}_vec"
         vec_kwargs_frag, vec_kwargs_bind = self._build_algo_kwargs(
@@ -2616,9 +2818,10 @@ class LadybugAdapter(GraphDatabaseAdapter):
 
     async def entity_similarity_search(
         self,
-        text_or_texts: Union[str, List[str]],
+        text_or_texts: Optional[Union[str, List[str]]] = None,
         *,
         label: str,
+        vector_or_vectors: Optional[Union[List[float], List[List[float]]]] = None,
         k: int = 10,
         threshold: Optional[float] = None,
         ef_search: Optional[int] = None,
@@ -2629,8 +2832,14 @@ class LadybugAdapter(GraphDatabaseAdapter):
         Args:
             text_or_texts: Query text or list of query texts. Multiple
                 queries are merged into a single ranked result set
-                (best score per id kept).
+                (best score per id kept). Embedded with the adapter's
+                embedding model. Ignored when ``vector_or_vectors`` is
+                supplied.
             label: The entity label to search within.
+            vector_or_vectors: A pre-computed query vector, or a list of
+                vectors, to search with directly instead of embedding
+                ``text_or_texts``. When supplied, no embedding model is
+                required on the adapter.
             k: Maximum number of results.
             threshold: Optional maximum vector distance — rows beyond
                 this are dropped.
@@ -2639,18 +2848,13 @@ class LadybugAdapter(GraphDatabaseAdapter):
                 ``None`` defers to Ladybug's default.
             output_format: ``"json"`` (default) or ``"csv"``.
         """
-        if not self.embedding_model:
-            raise ValueError(
-                "entity_similarity_search requires an embedding_model on the "
-                "LadybugAdapter."
-            )
         label = sanitize_label(label)
         pk_key = self._pk_keys.get(label, "id")
-        if not text_or_texts:
+        vectors = await self._query_vectors(
+            text_or_texts, vector_or_vectors, what="entity_similarity_search"
+        )
+        if not vectors:
             return format_search_results([], output_format)
-        texts = [text_or_texts] if not isinstance(text_or_texts, list) else text_or_texts
-        embeddings = await self.embedding_model(EmbeddingRequest(texts=texts))
-        vectors = embeddings["embeddings"]
 
         vec_kwargs_frag, vec_kwargs_bind = self._build_algo_kwargs(
             self._collect_vector_query_kwargs(ef_search),
@@ -2817,10 +3021,11 @@ class LadybugAdapter(GraphDatabaseAdapter):
 
     async def entity_hybrid_regex_search(
         self,
-        text_or_texts: Union[str, List[str]],
+        text_or_texts: Optional[Union[str, List[str]]] = None,
         *,
         pattern_or_patterns: Optional[Union[str, List[str]]] = None,
         label: str,
+        vector_or_vectors: Optional[Union[List[float], List[List[float]]]] = None,
         fields: Optional[List[str]] = None,
         case_sensitive: bool = True,
         k: int = 10,
@@ -2836,17 +3041,35 @@ class LadybugAdapter(GraphDatabaseAdapter):
         alone doesn't surface it. Composition is RRF over per-source
         ranks, identical math to the FTS hybrid.
 
-        Degenerates to plain `entity_regex_search` when no
-        embedding model is configured (the vector half can't run),
-        and to plain `entity_similarity_search` when no patterns
-        are passed in.
+        The vector half can be driven by pre-computed vectors via
+        ``vector_or_vectors`` instead of ``text_or_texts``. Degenerates
+        to plain `entity_regex_search` when there are no vectors to
+        search with (no embedding model and no ``vector_or_vectors``),
+        and to plain `entity_similarity_search` when no patterns are
+        passed in.
+
+        Args:
+            text_or_texts: Query text(s) for the vector half. Ignored
+                when ``vector_or_vectors`` is supplied.
+            pattern_or_patterns: Regex pattern(s) for the regex half.
+            label: The entity label to search within.
+            vector_or_vectors: Pre-computed query vector(s) for the
+                vector half, used directly instead of embedding text.
+            fields: Forwarded to `entity_regex_search`.
+            case_sensitive: Forwarded to `entity_regex_search`.
+            k: Maximum number of results.
+            k_rank: RRF smoothing constant.
+            similarity_threshold: Optional vector-distance threshold.
+            output_format: ``"json"`` (default) or ``"csv"``.
         """
         label = sanitize_label(label)
+        provided_vectors = normalize_query_vectors(vector_or_vectors)
 
         if not pattern_or_patterns:
             return await self.entity_similarity_search(
                 text_or_texts,
                 label=label,
+                vector_or_vectors=vector_or_vectors,
                 k=k,
                 threshold=similarity_threshold,
                 output_format=output_format,
@@ -2858,28 +3081,13 @@ class LadybugAdapter(GraphDatabaseAdapter):
             else list(pattern_or_patterns)
         )
 
-        # Fallback: no embedding model → regex-only union across patterns.
-        if not self.embedding_model:
-            merged: Dict[Any, Dict[str, Any]] = {}
-            for pattern in patterns:
-                rows = await self.entity_regex_search(
-                    pattern,
-                    label=label,
-                    fields=fields,
-                    case_sensitive=case_sensitive,
-                    k=k,
-                    output_format="json",
-                )
-                for row in rows:
-                    pk_value = row.get(self._pk_keys.get(label, "id"))
-                    merged.setdefault(pk_value, row)
-            results = list(merged.values())[:k]
-            return format_search_results(results, output_format)
-
-        if not text_or_texts:
-            # Vector side has nothing to embed — fall back to a
-            # union of regex matches across all patterns, same as
-            # the no-embedding-model branch above.
+        # The vector half can run with explicit vectors, or with text
+        # plus a configured embedding model. Without either, fall back
+        # to a regex-only union across patterns.
+        can_vector = provided_vectors is not None or (
+            bool(text_or_texts) and bool(self.embedding_model)
+        )
+        if not can_vector:
             merged: Dict[Any, Dict[str, Any]] = {}
             for pattern in patterns:
                 rows = await self.entity_regex_search(
@@ -2895,20 +3103,27 @@ class LadybugAdapter(GraphDatabaseAdapter):
                     merged.setdefault(pk_value, row)
             return format_search_results(list(merged.values())[:k], output_format)
 
-        texts: List[str] = (
-            [text_or_texts] if isinstance(text_or_texts, str) else list(text_or_texts)
-        )
         candidate_k = max(k * 5, k)
         pk_key = self._pk_keys.get(label, "id")
 
-        # Vector side — one similarity_search call per query text,
-        # widened to k*5 so the union has enough breadth for RRF.
+        # Vector side — one similarity_search call per slot (pre-computed
+        # vector or query text), widened to k*5 so the union has enough
+        # breadth for RRF.
+        if provided_vectors is not None:
+            vec_inputs: List[tuple] = [(None, v) for v in provided_vectors]
+        else:
+            texts: List[str] = (
+                [text_or_texts] if isinstance(text_or_texts, str) else list(text_or_texts)
+            )
+            vec_inputs = [(t, None) for t in texts]
+
         vec_best: Dict[Any, Dict[str, Any]] = {}
-        for query_text in texts:
+        for query_text, query_vector in vec_inputs:
             try:
                 rows = await self.entity_similarity_search(
                     query_text,
                     label=label,
+                    vector_or_vectors=query_vector,
                     k=candidate_k,
                     threshold=similarity_threshold,
                     output_format="json",
@@ -2917,7 +3132,7 @@ class LadybugAdapter(GraphDatabaseAdapter):
                 rows = []
             for row in rows:
                 pk_value = row[pk_key]
-                # Keep the closest distance per id across query texts.
+                # Keep the closest distance per id across query slots.
                 prev = vec_best.get(pk_value)
                 if prev is None or row["distance"] < prev["distance"]:
                     vec_best[pk_value] = row
@@ -2971,10 +3186,11 @@ class LadybugAdapter(GraphDatabaseAdapter):
 
     async def entity_hybrid_fts_search(
         self,
-        text_or_texts: Union[str, List[str]],
+        text_or_texts: Optional[Union[str, List[str]]] = None,
         *,
         keywords: Optional[Union[str, List[str]]] = None,
         label: str,
+        vector_or_vectors: Optional[Union[List[float], List[List[float]]]] = None,
         k: int = 10,
         k_rank: int = 60,
         similarity_threshold: Optional[float] = None,
@@ -3003,12 +3219,23 @@ class LadybugAdapter(GraphDatabaseAdapter):
         omitted, the text is reused for both branches so existing
         call sites keep working.
 
-        Falls back to fulltext-only when no embedding model is
-        configured (mirroring DuckDB). The fulltext branch in that
-        fallback uses ``keywords`` when provided, ``text_or_texts``
-        otherwise.
+        The vector branch can be driven by pre-computed vectors via
+        ``vector_or_vectors`` instead of ``text_or_texts``; when vectors
+        are supplied the BM25 branch runs only if ``keywords`` are also
+        supplied, and no embedding model is required.
+
+        Falls back to fulltext-only when there are no vectors to search
+        with (no embedding model and no ``vector_or_vectors``). The
+        fulltext branch in that fallback uses ``keywords`` when provided,
+        ``text_or_texts`` otherwise.
 
         Args:
+            text_or_texts: Query text(s) for the vector branch. Ignored
+                when ``vector_or_vectors`` is supplied.
+            keywords: Query text(s) for the BM25 branch; aligns by
+                position with the vector-branch queries.
+            vector_or_vectors: Pre-computed query vector(s) for the
+                vector branch, used directly instead of embedding text.
             ef_search: Optional HNSW ``efs`` for the vector branch
                 (search-time candidate depth — higher = better recall).
             conjunctive: AND vs OR mode for the BM25 branch.
@@ -3021,10 +3248,17 @@ class LadybugAdapter(GraphDatabaseAdapter):
                 f"declares no string-typed properties (or wasn't passed "
                 f"in entity_models)."
             )
-        if not text_or_texts:
+        provided_vectors = normalize_query_vectors(vector_or_vectors)
+        if not text_or_texts and provided_vectors is None and not keywords:
             return format_search_results([], output_format)
 
-        if not self.embedding_model:
+        # The vector branch can run with explicit vectors, or with text
+        # plus a configured embedding model. Without either, degrade to
+        # a fulltext-only search.
+        can_vector = provided_vectors is not None or (
+            bool(text_or_texts) and bool(self.embedding_model)
+        )
+        if not can_vector:
             # Fulltext-only fallback. Prefer explicit keywords when
             # the caller passed them — that's what the BM25 branch
             # would have used in the full hybrid path anyway. Tag
@@ -3045,9 +3279,27 @@ class LadybugAdapter(GraphDatabaseAdapter):
                 row.setdefault("fulltext_score", row.get("score", 0.0))
             return format_search_results(fts_rows, output_format)
 
-        texts, keyword_list = align_keywords(text_or_texts, keywords)
-        embeddings = await self.embedding_model(EmbeddingRequest(texts=texts))
-        vectors = embeddings["embeddings"]
+        # Build the per-slot vector-branch input — pre-computed vectors
+        # or embedded text — then align the BM25 keyword for each slot.
+        if provided_vectors is not None:
+            vectors = provided_vectors
+            if keywords is not None:
+                keyword_list: List[Optional[str]] = (
+                    [keywords] if isinstance(keywords, str) else list(keywords)
+                )
+                if len(keyword_list) != len(vectors):
+                    raise ValueError(
+                        f"`keywords` must align with the vector-branch queries: "
+                        f"got {len(keyword_list)} keyword(s) vs {len(vectors)} "
+                        f"vector(s)."
+                    )
+            else:
+                keyword_list = [None] * len(vectors)
+        else:
+            texts, keyword_list = align_keywords(text_or_texts, keywords)
+            embeddings = await self.embedding_model(EmbeddingRequest(texts=texts))
+            vectors = embeddings["embeddings"]
+            await self._ensure_vector_dim(vectors[0] if vectors else None)
 
         fts_best: Dict[str, float] = {}
         vec_best: Dict[str, float] = {}
@@ -3070,26 +3322,34 @@ class LadybugAdapter(GraphDatabaseAdapter):
             self._FTS_QUERY_SUPPORTED_PARAMS,
         )
         for keyword_text, vec in zip(keyword_list, vectors):
-            query = (
-                f"CALL QUERY_FTS_INDEX('{label}', '{fts_index}', $q, "
-                f"top := $candidate_k{fts_kwargs_frag}) "
-                f"RETURN node.{pk_key} AS {pk_key}, node AS node, "
-                f"score AS metric, 'fts' AS source "
-                f"UNION ALL "
+            vec_branch = (
                 f"CALL QUERY_VECTOR_INDEX('{label}', '{vec_index}', "
                 f"$vec, $candidate_k{vec_kwargs_frag}) "
                 f"RETURN node.{pk_key} AS {pk_key}, node AS node, "
                 f"distance AS metric, 'vec' AS source"
             )
+            bindings: Dict[str, Any] = {
+                "vec": vec,
+                "candidate_k": candidate_k,
+                **vec_kwargs_bind,
+            }
+            # The BM25 branch only runs when a keyword is available for
+            # this slot (a vectors-only call with no keywords skips it).
+            if keyword_text is not None:
+                query = (
+                    f"CALL QUERY_FTS_INDEX('{label}', '{fts_index}', $q, "
+                    f"top := $candidate_k{fts_kwargs_frag}) "
+                    f"RETURN node.{pk_key} AS {pk_key}, node AS node, "
+                    f"score AS metric, 'fts' AS source "
+                    f"UNION ALL " + vec_branch
+                )
+                bindings["q"] = keyword_text
+                bindings.update(fts_kwargs_bind)
+            else:
+                query = vec_branch
             with self._execute(
                 query,
-                {
-                    "q": keyword_text,
-                    "vec": vec,
-                    "candidate_k": candidate_k,
-                    **vec_kwargs_bind,
-                    **fts_kwargs_bind,
-                },
+                bindings,
             ) as r:
                 cols = r.get_column_names()
                 for row in r.get_all():
@@ -3209,9 +3469,10 @@ class LadybugAdapter(GraphDatabaseAdapter):
 
     async def relation_similarity_search(
         self,
-        text_or_texts: Union[str, List[str]],
+        text_or_texts: Optional[Union[str, List[str]]] = None,
         *,
         label: str,
+        vector_or_vectors: Optional[Union[List[float], List[List[float]]]] = None,
         k: int = 10,
         threshold: Optional[float] = None,
         ef_search: Optional[int] = None,
@@ -3232,8 +3493,13 @@ class LadybugAdapter(GraphDatabaseAdapter):
         most interesting).
 
         Args:
-            text_or_texts: Query text or list of query texts.
+            text_or_texts: Query text or list of query texts. Ignored
+                when ``vector_or_vectors`` is supplied.
             label: The relation label (edge type) to search within.
+            vector_or_vectors: A pre-computed query vector, or a list of
+                vectors, to search with directly instead of embedding
+                ``text_or_texts``. The vector is matched against both
+                endpoints. When supplied, no embedding model is required.
             k: Maximum number of results.
             threshold: Optional vector-distance threshold applied to
                 each endpoint search before the union.
@@ -3242,21 +3508,16 @@ class LadybugAdapter(GraphDatabaseAdapter):
             output_format: ``"json"`` (list of dicts, default) or
                 ``"csv"`` (CSV string).
         """
-        if not self.embedding_model:
-            raise ValueError(
-                "relation_similarity_search requires an embedding_model "
-                "on the LadybugAdapter."
-            )
         label = sanitize_label(label)
         subj_label, obj_label = self._resolve_endpoint_labels(label)
         subj_pk = self._pk_keys.get(subj_label, "id")
         obj_pk = self._pk_keys.get(obj_label, "id")
 
-        if not text_or_texts:
+        vectors = await self._query_vectors(
+            text_or_texts, vector_or_vectors, what="relation_similarity_search"
+        )
+        if not vectors:
             return format_search_results([], output_format)
-        texts = [text_or_texts] if not isinstance(text_or_texts, list) else text_or_texts
-        embeddings = await self.embedding_model(EmbeddingRequest(texts=texts))
-        vectors = embeddings["embeddings"]
 
         subj_vec_index = f"{subj_label.lower()}_vec"
         obj_vec_index = f"{obj_label.lower()}_vec"
@@ -3515,10 +3776,11 @@ class LadybugAdapter(GraphDatabaseAdapter):
 
     async def relation_hybrid_regex_search(
         self,
-        text_or_texts: Union[str, List[str]],
+        text_or_texts: Optional[Union[str, List[str]]] = None,
         *,
         pattern_or_patterns: Optional[Union[str, List[str]]] = None,
         label: str,
+        vector_or_vectors: Optional[Union[List[float], List[List[float]]]] = None,
         fields: Optional[List[str]] = None,
         case_sensitive: bool = True,
         k: int = 10,
@@ -3533,15 +3795,20 @@ class LadybugAdapter(GraphDatabaseAdapter):
         the sum of the subject's and the object's hybrid scores —
         same 4-source-RRF reduction as `relation_hybrid_fts_search`.
 
-        Falls through to `relation_similarity_search` when no
-        patterns are supplied.
+        The vector branch can be driven by pre-computed vectors via
+        ``vector_or_vectors`` instead of ``text_or_texts``. Falls
+        through to `relation_similarity_search` when no patterns are
+        supplied.
 
         Args:
             text_or_texts: Query text or list of query texts for the
-                vector branch.
+                vector branch. Ignored when ``vector_or_vectors`` is
+                supplied.
             pattern_or_patterns: Regex pattern (or list) for the
                 regex branch. ``None`` skips the regex side.
             label: The relation label (edge type).
+            vector_or_vectors: Pre-computed query vector(s) for the
+                vector branch, matched against both endpoints.
             fields: Forwarded to `entity_regex_search`.
             case_sensitive: Forwarded to `entity_regex_search`.
             k: Maximum number of results.
@@ -3555,6 +3822,7 @@ class LadybugAdapter(GraphDatabaseAdapter):
             return await self.relation_similarity_search(
                 text_or_texts,
                 label=label,
+                vector_or_vectors=vector_or_vectors,
                 k=k,
                 threshold=similarity_threshold,
                 output_format=output_format,
@@ -3568,6 +3836,7 @@ class LadybugAdapter(GraphDatabaseAdapter):
             text_or_texts=text_or_texts,
             pattern_or_patterns=pattern_or_patterns,
             label=subj_label,
+            vector_or_vectors=vector_or_vectors,
             fields=fields,
             case_sensitive=case_sensitive,
             k=k,
@@ -3578,6 +3847,7 @@ class LadybugAdapter(GraphDatabaseAdapter):
             text_or_texts=text_or_texts,
             pattern_or_patterns=pattern_or_patterns,
             label=obj_label,
+            vector_or_vectors=vector_or_vectors,
             fields=fields,
             case_sensitive=case_sensitive,
             k=k,
@@ -3632,11 +3902,13 @@ class LadybugAdapter(GraphDatabaseAdapter):
 
     async def path_similarity_search(
         self,
-        subj_text_or_texts: Union[str, List[str]],
-        obj_text_or_texts: Union[str, List[str]],
+        subj_text_or_texts: Optional[Union[str, List[str]]] = None,
+        obj_text_or_texts: Optional[Union[str, List[str]]] = None,
         *,
         subj_label: str,
         obj_label: str,
+        subj_vector_or_vectors: Optional[Union[List[float], List[List[float]]]] = None,
+        obj_vector_or_vectors: Optional[Union[List[float], List[List[float]]]] = None,
         label: Optional[str] = None,
         min_hops: int = 1,
         max_hops: int = 3,
@@ -3670,10 +3942,16 @@ class LadybugAdapter(GraphDatabaseAdapter):
 
         Args:
             subj_text_or_texts: Query text (or list) for the subject.
+                Ignored when ``subj_vector_or_vectors`` is supplied.
             obj_text_or_texts: Query text (or list) for the object.
+                Ignored when ``obj_vector_or_vectors`` is supplied.
             subj_label: Entity label for the subject endpoint
                 (selects its vector index).
             obj_label: Entity label for the object endpoint.
+            subj_vector_or_vectors: Pre-computed subject query vector(s),
+                used directly instead of embedding the subject text.
+            obj_vector_or_vectors: Pre-computed object query vector(s),
+                used directly instead of embedding the object text.
             label: Optional rel-label constraint applied to every
                 hop. ``None`` (default) accepts any edge type.
             min_hops: Minimum hop count, inclusive (default: 1).
@@ -3683,11 +3961,6 @@ class LadybugAdapter(GraphDatabaseAdapter):
             obj_threshold: Vector-distance ceiling for the object.
             output_format: ``"json"`` (default) or ``"csv"``.
         """
-        if not self.embedding_model:
-            raise ValueError(
-                "path_similarity_search requires an embedding_model "
-                "on the LadybugAdapter."
-            )
         if min_hops < 1 or max_hops < min_hops:
             raise ValueError(
                 f"Invalid hop range: min_hops={min_hops}, "
@@ -3700,33 +3973,24 @@ class LadybugAdapter(GraphDatabaseAdapter):
         subj_pk = self._pk_keys.get(subj_label, "id")
         obj_pk = self._pk_keys.get(obj_label, "id")
 
-        if not subj_text_or_texts or not obj_text_or_texts:
+        subj_emb = await self._query_vectors(
+            subj_text_or_texts,
+            subj_vector_or_vectors,
+            what="path_similarity_search",
+        )
+        obj_emb = await self._query_vectors(
+            obj_text_or_texts,
+            obj_vector_or_vectors,
+            what="path_similarity_search",
+        )
+        if not subj_emb or not obj_emb:
             return format_search_results([], output_format)
-
-        subj_texts = (
-            [subj_text_or_texts]
-            if not isinstance(subj_text_or_texts, list)
-            else subj_text_or_texts
-        )
-        obj_texts = (
-            [obj_text_or_texts]
-            if not isinstance(obj_text_or_texts, list)
-            else obj_text_or_texts
-        )
-        if len(subj_texts) != len(obj_texts):
+        if len(subj_emb) != len(obj_emb):
             raise ValueError(
-                f"`subj_text_or_texts` and `obj_text_or_texts` must be "
-                f"the same length (got {len(subj_texts)} vs "
-                f"{len(obj_texts)}). Each pair represents one "
-                f"(subj, obj) query."
+                f"subject and object queries must be the same length "
+                f"(got {len(subj_emb)} vs {len(obj_emb)}). Each pair "
+                f"represents one (subj, obj) query."
             )
-
-        subj_emb = (await self.embedding_model(EmbeddingRequest(texts=subj_texts)))[
-            "embeddings"
-        ]
-        obj_emb = (await self.embedding_model(EmbeddingRequest(texts=obj_texts)))[
-            "embeddings"
-        ]
 
         subj_vec_index = f"{subj_label.lower()}_vec"
         obj_vec_index = f"{obj_label.lower()}_vec"
@@ -3842,10 +4106,11 @@ class LadybugAdapter(GraphDatabaseAdapter):
 
     async def relation_hybrid_fts_search(
         self,
-        text_or_texts: Union[str, List[str]],
+        text_or_texts: Optional[Union[str, List[str]]] = None,
         *,
         keywords: Optional[Union[str, List[str]]] = None,
         label: str,
+        vector_or_vectors: Optional[Union[List[float], List[List[float]]]] = None,
         k: int = 10,
         k_rank: int = 60,
         similarity_threshold: Optional[float] = None,
@@ -3867,18 +4132,25 @@ class LadybugAdapter(GraphDatabaseAdapter):
         ``text_or_texts`` drives the vector branch; ``keywords``
         (when provided) drives the BM25 branch on both endpoints.
         When ``keywords`` is omitted, the text is reused for both.
+        The vector branch can be driven by pre-computed vectors via
+        ``vector_or_vectors`` instead of ``text_or_texts``; the same
+        vector is matched against both endpoints.
 
         Endpoint resolution uses `_resolve_endpoint_labels` so
         a single ``label`` argument suffices, mirroring
         `relation_similarity_search`. Falls back to fulltext-
-        only when no embedding model is configured.
+        only when there are no vectors to search with.
         """
         label = sanitize_label(label)
         subj_label, obj_label = self._resolve_endpoint_labels(label)
         subj_pk = self._pk_keys.get(subj_label, "id")
         obj_pk = self._pk_keys.get(obj_label, "id")
 
-        if not text_or_texts:
+        if (
+            not text_or_texts
+            and not keywords
+            and normalize_query_vectors(vector_or_vectors) is None
+        ):
             return format_search_results([], output_format)
 
         # Composed hybrid on each side. ``entity_hybrid_fts_search``
@@ -3888,6 +4160,7 @@ class LadybugAdapter(GraphDatabaseAdapter):
             text_or_texts=text_or_texts,
             keywords=keywords,
             label=subj_label,
+            vector_or_vectors=vector_or_vectors,
             k=k,
             k_rank=k_rank,
             similarity_threshold=similarity_threshold,
@@ -3900,6 +4173,7 @@ class LadybugAdapter(GraphDatabaseAdapter):
             text_or_texts=text_or_texts,
             keywords=keywords,
             label=obj_label,
+            vector_or_vectors=vector_or_vectors,
             k=k,
             k_rank=k_rank,
             similarity_threshold=similarity_threshold,
@@ -3965,13 +4239,15 @@ class LadybugAdapter(GraphDatabaseAdapter):
 
     async def path_hybrid_fts_search(
         self,
-        subj_text_or_texts: Union[str, List[str]],
-        obj_text_or_texts: Union[str, List[str]],
+        subj_text_or_texts: Optional[Union[str, List[str]]] = None,
+        obj_text_or_texts: Optional[Union[str, List[str]]] = None,
         *,
         subj_keywords: Optional[Union[str, List[str]]] = None,
         obj_keywords: Optional[Union[str, List[str]]] = None,
         subj_label: str,
         obj_label: str,
+        subj_vector_or_vectors: Optional[Union[List[float], List[List[float]]]] = None,
+        obj_vector_or_vectors: Optional[Union[List[float], List[List[float]]]] = None,
         label: Optional[str] = None,
         min_hops: int = 1,
         max_hops: int = 3,
@@ -3990,15 +4266,17 @@ class LadybugAdapter(GraphDatabaseAdapter):
         ``rrf_score`` is ``subj_rrf_score + obj_rrf_score`` (the
         4-source RRF identity). Paths are scoped by ``min_hops`` /
         ``max_hops`` and optionally constrained to a single rel
-        label per hop. Falls back to fulltext-only when no
-        embedding model is configured.
+        label per hop. Falls back to fulltext-only when there are no
+        vectors to search with on a side.
 
         ``subj_text_or_texts`` / ``obj_text_or_texts`` drive the
         vector branches; ``subj_keywords`` / ``obj_keywords`` (when
         provided) drive the BM25 branches on their respective
         endpoints. Per-side keyword inputs are paired with their
         corresponding text input by position; when omitted, the
-        text is reused for both branches on that side.
+        text is reused for both branches on that side. Each side's
+        vector branch can instead be driven by pre-computed vectors
+        via ``subj_vector_or_vectors`` / ``obj_vector_or_vectors``.
         """
         if min_hops < 1 or max_hops < min_hops:
             raise ValueError(
@@ -4011,13 +4289,24 @@ class LadybugAdapter(GraphDatabaseAdapter):
         subj_pk = self._pk_keys.get(subj_label, "id")
         obj_pk = self._pk_keys.get(obj_label, "id")
 
-        if not subj_text_or_texts or not obj_text_or_texts:
+        subj_has_query = bool(
+            subj_text_or_texts
+            or subj_keywords
+            or normalize_query_vectors(subj_vector_or_vectors) is not None
+        )
+        obj_has_query = bool(
+            obj_text_or_texts
+            or obj_keywords
+            or normalize_query_vectors(obj_vector_or_vectors) is not None
+        )
+        if not subj_has_query or not obj_has_query:
             return format_search_results([], output_format)
 
         subj_hits = await self.entity_hybrid_fts_search(
             text_or_texts=subj_text_or_texts,
             keywords=subj_keywords,
             label=subj_label,
+            vector_or_vectors=subj_vector_or_vectors,
             k=k,
             k_rank=k_rank,
             similarity_threshold=similarity_threshold,
@@ -4030,6 +4319,7 @@ class LadybugAdapter(GraphDatabaseAdapter):
             text_or_texts=obj_text_or_texts,
             keywords=obj_keywords,
             label=obj_label,
+            vector_or_vectors=obj_vector_or_vectors,
             k=k,
             k_rank=k_rank,
             similarity_threshold=similarity_threshold,
@@ -4368,13 +4658,15 @@ class LadybugAdapter(GraphDatabaseAdapter):
 
     async def path_hybrid_regex_search(
         self,
-        subj_text_or_texts: Union[str, List[str]],
-        obj_text_or_texts: Union[str, List[str]],
+        subj_text_or_texts: Optional[Union[str, List[str]]] = None,
+        obj_text_or_texts: Optional[Union[str, List[str]]] = None,
         *,
         subj_pattern_or_patterns: Optional[Union[str, List[str]]] = None,
         obj_pattern_or_patterns: Optional[Union[str, List[str]]] = None,
         subj_label: str,
         obj_label: str,
+        subj_vector_or_vectors: Optional[Union[List[float], List[List[float]]]] = None,
+        obj_vector_or_vectors: Optional[Union[List[float], List[List[float]]]] = None,
         label: Optional[str] = None,
         min_hops: int = 1,
         max_hops: int = 3,
@@ -4391,19 +4683,25 @@ class LadybugAdapter(GraphDatabaseAdapter):
         the path's combined ``rrf_score`` is the sum of the two
         endpoint hybrid scores — the 4-source RRF identity. Falls
         through to `path_similarity_search` when no patterns
-        are supplied.
+        are supplied. Each side's vector branch can be driven by
+        pre-computed vectors via ``subj_vector_or_vectors`` /
+        ``obj_vector_or_vectors`` instead of text.
 
         Args:
             subj_text_or_texts: Query text (or list) for the subject
-                vector branch.
+                vector branch. Ignored when ``subj_vector_or_vectors``
+                is supplied.
             obj_text_or_texts: Query text (or list) for the object
-                vector branch.
+                vector branch. Ignored when ``obj_vector_or_vectors``
+                is supplied.
             subj_pattern_or_patterns: Regex pattern (or list) for the
                 subject regex branch.
             obj_pattern_or_patterns: Regex pattern (or list) for the
                 object regex branch.
             subj_label: Entity label of the subject endpoint.
             obj_label: Entity label of the object endpoint.
+            subj_vector_or_vectors: Pre-computed subject query vector(s).
+            obj_vector_or_vectors: Pre-computed object query vector(s).
             label: Optional rel-label constraint applied to every hop.
             min_hops: Minimum hop count, inclusive (default: 1).
             max_hops: Maximum hop count, inclusive (default: 3).
@@ -4420,6 +4718,8 @@ class LadybugAdapter(GraphDatabaseAdapter):
                 obj_text_or_texts,
                 subj_label=subj_label,
                 obj_label=obj_label,
+                subj_vector_or_vectors=subj_vector_or_vectors,
+                obj_vector_or_vectors=obj_vector_or_vectors,
                 label=label,
                 min_hops=min_hops,
                 max_hops=max_hops,
@@ -4440,13 +4740,22 @@ class LadybugAdapter(GraphDatabaseAdapter):
         subj_pk = self._pk_keys.get(subj_label, "id")
         obj_pk = self._pk_keys.get(obj_label, "id")
 
-        if not subj_text_or_texts or not obj_text_or_texts:
+        subj_has_query = bool(
+            subj_text_or_texts
+            or normalize_query_vectors(subj_vector_or_vectors) is not None
+        )
+        obj_has_query = bool(
+            obj_text_or_texts
+            or normalize_query_vectors(obj_vector_or_vectors) is not None
+        )
+        if not subj_has_query or not obj_has_query:
             return format_search_results([], output_format)
 
         subj_hits = await self.entity_hybrid_regex_search(
             text_or_texts=subj_text_or_texts,
             pattern_or_patterns=subj_pattern_or_patterns,
             label=subj_label,
+            vector_or_vectors=subj_vector_or_vectors,
             fields=fields,
             case_sensitive=case_sensitive,
             k=k,
@@ -4457,6 +4766,7 @@ class LadybugAdapter(GraphDatabaseAdapter):
             text_or_texts=obj_text_or_texts,
             pattern_or_patterns=obj_pattern_or_patterns,
             label=obj_label,
+            vector_or_vectors=obj_vector_or_vectors,
             fields=fields,
             case_sensitive=case_sensitive,
             k=k,

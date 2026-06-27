@@ -354,20 +354,27 @@ class DatabaseAdapter:
 
     async def similarity_search(
         self,
-        text_or_texts: Union[str, List[str]],
+        text_or_texts: Optional[Union[str, List[str]]] = None,
         *,
         table_name: str,
+        vector_or_vectors: Optional[Union[List[float], List[List[float]]]] = None,
         k: int = 10,
         threshold: Optional[float] = None,
         output_format: str = "json",
     ):
         """Perform vector similarity search using embeddings.
 
-        Requires an embedding_model to be configured.
+        Either ``text_or_texts`` (embedded with the adapter's embedding
+        model) or ``vector_or_vectors`` (a pre-computed query vector or
+        list of vectors) selects what to search for. When vectors are
+        supplied no embedding model is required.
 
         Args:
-            text_or_texts: Query text or list of query texts.
+            text_or_texts: Query text or list of query texts. Ignored
+                when ``vector_or_vectors`` is supplied.
             table_name: Target table.
+            vector_or_vectors: Pre-computed query vector or list of
+                vectors to search with directly.
             k: Maximum number of results.
             threshold: Optional vector distance threshold.
             output_format: ``"json"`` (list of dicts, default) or
@@ -411,10 +418,11 @@ class DatabaseAdapter:
 
     async def hybrid_fts_search(
         self,
+        text_or_texts: Optional[Union[str, List[str]]] = None,
         *,
-        text_or_texts: Union[str, List[str]],
         keywords: Optional[Union[str, List[str]]] = None,
         table_name: str,
+        vector_or_vectors: Optional[Union[List[float], List[List[float]]]] = None,
         k: int = 10,
         similarity_threshold: Optional[float] = None,
         fulltext_threshold: Optional[float] = None,
@@ -429,11 +437,14 @@ class DatabaseAdapter:
 
         Args:
             text_or_texts: Query text or list of query texts for the
-                vector branch.
+                vector branch. Ignored when ``vector_or_vectors`` is
+                supplied.
             table_name: Target table.
             keywords: Query text or list of query texts for the BM25
-                branch. Aligns by position with ``text_or_texts``;
-                when omitted, the text is reused for both branches.
+                branch. Aligns by position with the vector-branch
+                queries; when omitted, the text is reused for both.
+            vector_or_vectors: Pre-computed query vector(s) for the
+                vector branch, used directly instead of embedding text.
             k: Maximum number of results.
             similarity_threshold: Optional vector-distance threshold.
             fulltext_threshold: Optional minimum fulltext relevance on
@@ -477,10 +488,11 @@ class DatabaseAdapter:
 
     async def hybrid_regex_search(
         self,
+        text_or_texts: Optional[Union[str, List[str]]] = None,
         *,
-        text_or_texts: Union[str, List[str]],
         pattern_or_patterns: Union[str, List[str], None] = None,
         table_name: str,
+        vector_or_vectors: Optional[Union[List[float], List[List[float]]]] = None,
         k: int = 10,
         similarity_threshold: Optional[float] = None,
         fields: Optional[List[str]] = None,
@@ -496,10 +508,13 @@ class DatabaseAdapter:
 
         Args:
             text_or_texts: Query text or list of query texts for the
-                vector half.
+                vector half. Ignored when ``vector_or_vectors`` is
+                supplied.
             pattern_or_patterns: Regex pattern or list of patterns for
                 the regex half. ``None`` skips the regex half.
             table_name: Target table.
+            vector_or_vectors: Pre-computed query vector(s) for the
+                vector half, used directly instead of embedding text.
             k: Maximum number of results.
             similarity_threshold: Optional vector-distance threshold.
             fields: Forwarded to `regex_search`.

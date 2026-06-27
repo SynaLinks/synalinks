@@ -636,9 +636,10 @@ class KnowledgeBase(SynalinksSaveable):
 
     async def similarity_search(
         self,
-        text_or_texts: Union[str, List[str]],
+        text_or_texts: Optional[Union[str, List[str]]] = None,
         *,
         table_name: str,
+        vector_or_vectors: Optional[Union[List[float], List[List[float]]]] = None,
         k: int = 10,
         threshold: Optional[float] = None,
         ef_search: Optional[int] = None,
@@ -647,8 +648,13 @@ class KnowledgeBase(SynalinksSaveable):
         """Vector similarity search against a single table.
 
         Args:
-            text_or_texts: Query text or list of query texts.
+            text_or_texts: Query text or list of query texts. Ignored
+                when ``vector_or_vectors`` is supplied.
             table_name: Target table (single-table search).
+            vector_or_vectors: A pre-computed query vector, or a list of
+                vectors, to search with directly instead of embedding
+                ``text_or_texts``. When supplied, no embedding model is
+                required on the knowledge base.
             k: Maximum number of results to return.
             threshold: Optional maximum vector-distance threshold.
             ef_search: HNSW search-time candidate-list depth.
@@ -662,6 +668,7 @@ class KnowledgeBase(SynalinksSaveable):
         return await self.sql_adapter.similarity_search(
             text_or_texts,
             table_name=table_name,
+            vector_or_vectors=vector_or_vectors,
             k=k,
             threshold=threshold,
             ef_search=ef_search,
@@ -742,10 +749,11 @@ class KnowledgeBase(SynalinksSaveable):
 
     async def hybrid_fts_search(
         self,
-        text_or_texts: Union[str, List[str]],
+        text_or_texts: Optional[Union[str, List[str]]] = None,
         *,
         keywords: Optional[Union[str, List[str]]] = None,
         table_name: str,
+        vector_or_vectors: Optional[Union[List[float], List[List[float]]]] = None,
         k: int = 10,
         k_rank: int = 60,
         similarity_threshold: Optional[float] = None,
@@ -758,13 +766,16 @@ class KnowledgeBase(SynalinksSaveable):
     ):
         """Reciprocal-Rank-Fusion of vector similarity + BM25 fulltext.
 
-        Falls back to full-text-only when no embedding model is
-        configured. The regex-side sibling is
-        `hybrid_regex_search`.
+        Falls back to full-text-only when there are no vectors to search
+        with. The regex-side sibling is `hybrid_regex_search`.
 
         Args:
-            text_or_texts: Query text or list of query texts.
+            text_or_texts: Query text or list of query texts. Ignored
+                when ``vector_or_vectors`` is supplied.
+            keywords: Query text(s) for the BM25 branch.
             table_name: Target table.
+            vector_or_vectors: Pre-computed query vector(s) for the
+                vector branch, used directly instead of embedding text.
             k: Maximum results.
             k_rank: RRF smoothing constant. Lower emphasizes top
                 ranks more strongly (default: 60).
@@ -783,6 +794,7 @@ class KnowledgeBase(SynalinksSaveable):
             text_or_texts=text_or_texts,
             table_name=table_name,
             keywords=keywords,
+            vector_or_vectors=vector_or_vectors,
             k=k,
             k_rank=k_rank,
             similarity_threshold=similarity_threshold,
@@ -804,10 +816,11 @@ class KnowledgeBase(SynalinksSaveable):
 
     async def hybrid_regex_search(
         self,
-        text_or_texts: Union[str, List[str]],
+        text_or_texts: Optional[Union[str, List[str]]] = None,
         *,
         pattern_or_patterns: Union[str, List[str], None] = None,
         table_name: str,
+        vector_or_vectors: Optional[Union[List[float], List[List[float]]]] = None,
         k: int = 10,
         k_rank: int = 60,
         similarity_threshold: Optional[float] = None,
@@ -826,10 +839,13 @@ class KnowledgeBase(SynalinksSaveable):
 
         Args:
             text_or_texts: Natural-language query (or list) for the
-                vector side.
+                vector side. Ignored when ``vector_or_vectors`` is
+                supplied.
             pattern_or_patterns: RE2 pattern (or list) for the regex
                 side. ``None`` falls back to plain similarity search.
             table_name: Target table.
+            vector_or_vectors: Pre-computed query vector(s) for the
+                vector side, used directly instead of embedding text.
             k: Maximum results.
             k_rank: RRF smoothing constant.
             similarity_threshold: Vector-distance threshold.
@@ -843,6 +859,7 @@ class KnowledgeBase(SynalinksSaveable):
             text_or_texts=text_or_texts,
             pattern_or_patterns=pattern_or_patterns,
             table_name=table_name,
+            vector_or_vectors=vector_or_vectors,
             k=k,
             k_rank=k_rank,
             similarity_threshold=similarity_threshold,
@@ -1028,9 +1045,10 @@ class KnowledgeBase(SynalinksSaveable):
 
     async def entity_similarity_search(
         self,
-        text_or_texts: Union[str, List[str]],
+        text_or_texts: Optional[Union[str, List[str]]] = None,
         *,
         label: str,
+        vector_or_vectors: Optional[Union[List[float], List[List[float]]]] = None,
         k: int = 10,
         threshold: Optional[float] = None,
         ef_search: Optional[int] = None,
@@ -1039,8 +1057,12 @@ class KnowledgeBase(SynalinksSaveable):
         """Vector similarity search over entities of a given label.
 
         Args:
-            text_or_texts: Query text or list of query texts.
+            text_or_texts: Query text or list of query texts. Ignored
+                when ``vector_or_vectors`` is supplied.
             label: The entity label to search within.
+            vector_or_vectors: Pre-computed query vector or list of
+                vectors to search with directly (no embedding model
+                required).
             k: Maximum number of results.
             threshold: Optional vector-distance threshold.
             ef_search: Engine-specific search-time recall knob (HNSW
@@ -1051,6 +1073,7 @@ class KnowledgeBase(SynalinksSaveable):
         return await self.graph_adapter.entity_similarity_search(
             text_or_texts,
             label=label,
+            vector_or_vectors=vector_or_vectors,
             k=k,
             threshold=threshold,
             ef_search=ef_search,
@@ -1127,10 +1150,11 @@ class KnowledgeBase(SynalinksSaveable):
 
     async def entity_hybrid_regex_search(
         self,
-        text_or_texts: Union[str, List[str]],
+        text_or_texts: Optional[Union[str, List[str]]] = None,
         *,
         pattern_or_patterns: Optional[Union[str, List[str]]] = None,
         label: str,
+        vector_or_vectors: Optional[Union[List[float], List[List[float]]]] = None,
         fields: Optional[List[str]] = None,
         case_sensitive: bool = True,
         k: int = 10,
@@ -1143,14 +1167,17 @@ class KnowledgeBase(SynalinksSaveable):
         Sibling of `entity_hybrid_fts_search`. Falls through
         to `entity_similarity_search` when no patterns are
         supplied; falls through to `entity_regex_search` when
-        no embedding model is configured.
+        there are no vectors to search with.
 
         Args:
             text_or_texts: Query text or list of query texts for the
-                vector branch.
+                vector branch. Ignored when ``vector_or_vectors`` is
+                supplied.
             pattern_or_patterns: Regex pattern (or list) for the
                 regex branch. ``None`` skips the regex side.
             label: The entity label.
+            vector_or_vectors: Pre-computed query vector(s) for the
+                vector branch, used directly instead of embedding text.
             fields: Forwarded to `entity_regex_search`.
             case_sensitive: Forwarded to `entity_regex_search`.
             k: Maximum number of results.
@@ -1163,6 +1190,7 @@ class KnowledgeBase(SynalinksSaveable):
             text_or_texts=text_or_texts,
             pattern_or_patterns=pattern_or_patterns,
             label=label,
+            vector_or_vectors=vector_or_vectors,
             fields=fields,
             case_sensitive=case_sensitive,
             k=k,
@@ -1173,10 +1201,11 @@ class KnowledgeBase(SynalinksSaveable):
 
     async def entity_hybrid_fts_search(
         self,
-        text_or_texts: Union[str, List[str]],
+        text_or_texts: Optional[Union[str, List[str]]] = None,
         *,
         keywords: Optional[Union[str, List[str]]] = None,
         label: str,
+        vector_or_vectors: Optional[Union[List[float], List[List[float]]]] = None,
         k: int = 10,
         k_rank: int = 60,
         similarity_threshold: Optional[float] = None,
@@ -1191,8 +1220,12 @@ class KnowledgeBase(SynalinksSaveable):
         Graph-side counterpart of `hybrid_fts_search`.
 
         Args:
-            text_or_texts: Query text or list of query texts.
+            text_or_texts: Query text or list of query texts. Ignored
+                when ``vector_or_vectors`` is supplied.
+            keywords: Query text(s) for the BM25 branch.
             label: The entity label to search within.
+            vector_or_vectors: Pre-computed query vector(s) for the
+                vector branch, used directly instead of embedding text.
             k: Maximum number of results.
             k_rank: RRF smoothing constant.
             similarity_threshold: Optional vector-distance threshold.
@@ -1207,6 +1240,7 @@ class KnowledgeBase(SynalinksSaveable):
             text_or_texts=text_or_texts,
             label=label,
             keywords=keywords,
+            vector_or_vectors=vector_or_vectors,
             k=k,
             k_rank=k_rank,
             similarity_threshold=similarity_threshold,
@@ -1219,9 +1253,10 @@ class KnowledgeBase(SynalinksSaveable):
 
     async def relation_similarity_search(
         self,
-        text_or_texts: Union[str, List[str]],
+        text_or_texts: Optional[Union[str, List[str]]] = None,
         *,
         label: str,
+        vector_or_vectors: Optional[Union[List[float], List[List[float]]]] = None,
         k: int = 10,
         threshold: Optional[float] = None,
         ef_search: Optional[int] = None,
@@ -1229,14 +1264,18 @@ class KnowledgeBase(SynalinksSaveable):
     ):
         """Vector similarity search over relations of a given label.
 
-        The query text matches against BOTH endpoints (subject and
+        The query matches against BOTH endpoints (subject and
         object); the adapter returns one row per matched edge with
         its best (lowest) distance and a ``matched_on`` tag
         (``"subj"``, ``"obj"``, or ``"both"``).
 
         Args:
-            text_or_texts: Query text or list of query texts.
+            text_or_texts: Query text or list of query texts. Ignored
+                when ``vector_or_vectors`` is supplied.
             label: The relation label to search within.
+            vector_or_vectors: Pre-computed query vector or list of
+                vectors to search with directly (matched against both
+                endpoints).
             k: Maximum number of results.
             threshold: Optional vector-distance threshold per endpoint.
             ef_search: HNSW ``efs`` knob applied to both endpoint
@@ -1247,6 +1286,7 @@ class KnowledgeBase(SynalinksSaveable):
         return await self.graph_adapter.relation_similarity_search(
             text_or_texts,
             label=label,
+            vector_or_vectors=vector_or_vectors,
             k=k,
             threshold=threshold,
             ef_search=ef_search,
@@ -1327,10 +1367,11 @@ class KnowledgeBase(SynalinksSaveable):
 
     async def relation_hybrid_regex_search(
         self,
-        text_or_texts: Union[str, List[str]],
+        text_or_texts: Optional[Union[str, List[str]]] = None,
         *,
         pattern_or_patterns: Optional[Union[str, List[str]]] = None,
         label: str,
+        vector_or_vectors: Optional[Union[List[float], List[List[float]]]] = None,
         fields: Optional[List[str]] = None,
         case_sensitive: bool = True,
         k: int = 10,
@@ -1347,9 +1388,13 @@ class KnowledgeBase(SynalinksSaveable):
         supplied.
 
         Args:
-            text_or_texts: Query text or list of query texts for the vector branch.
+            text_or_texts: Query text or list of query texts for the
+                vector branch. Ignored when ``vector_or_vectors`` is
+                supplied.
             pattern_or_patterns: Regex pattern (or list) for the regex branch.
             label: The relation label.
+            vector_or_vectors: Pre-computed query vector(s) for the
+                vector branch, matched against both endpoints.
             fields: Forwarded to `entity_regex_search`.
             case_sensitive: Forwarded to `entity_regex_search`.
             k: Maximum number of results.
@@ -1362,6 +1407,7 @@ class KnowledgeBase(SynalinksSaveable):
             text_or_texts=text_or_texts,
             pattern_or_patterns=pattern_or_patterns,
             label=label,
+            vector_or_vectors=vector_or_vectors,
             fields=fields,
             case_sensitive=case_sensitive,
             k=k,
@@ -1372,10 +1418,11 @@ class KnowledgeBase(SynalinksSaveable):
 
     async def relation_hybrid_fts_search(
         self,
-        text_or_texts: Union[str, List[str]],
+        text_or_texts: Optional[Union[str, List[str]]] = None,
         *,
         keywords: Optional[Union[str, List[str]]] = None,
         label: str,
+        vector_or_vectors: Optional[Union[List[float], List[List[float]]]] = None,
         k: int = 10,
         k_rank: int = 60,
         similarity_threshold: Optional[float] = None,
@@ -1390,12 +1437,16 @@ class KnowledgeBase(SynalinksSaveable):
         Either-endpoint union: per matched edge, the final
         ``rrf_score`` is the sum of the subject-side and
         object-side hybrid scores — equivalent to a 4-source RRF.
-        Falls back to fulltext-only when no embedding model is
-        configured.
+        Falls back to fulltext-only when there are no vectors to
+        search with.
 
         Args:
-            text_or_texts: Query text or list of query texts.
+            text_or_texts: Query text or list of query texts. Ignored
+                when ``vector_or_vectors`` is supplied.
+            keywords: Query text(s) for the BM25 branch.
             label: The relation label to search within.
+            vector_or_vectors: Pre-computed query vector(s) for the
+                vector branch, matched against both endpoints.
             k: Maximum number of results.
             k_rank: RRF smoothing constant.
             similarity_threshold: Optional vector-distance threshold.
@@ -1410,6 +1461,7 @@ class KnowledgeBase(SynalinksSaveable):
             text_or_texts=text_or_texts,
             label=label,
             keywords=keywords,
+            vector_or_vectors=vector_or_vectors,
             k=k,
             k_rank=k_rank,
             similarity_threshold=similarity_threshold,
@@ -1422,13 +1474,15 @@ class KnowledgeBase(SynalinksSaveable):
 
     async def path_hybrid_fts_search(
         self,
-        subj_text_or_texts: Union[str, List[str]],
-        obj_text_or_texts: Union[str, List[str]],
+        subj_text_or_texts: Optional[Union[str, List[str]]] = None,
+        obj_text_or_texts: Optional[Union[str, List[str]]] = None,
         *,
         subj_keywords: Optional[Union[str, List[str]]] = None,
         obj_keywords: Optional[Union[str, List[str]]] = None,
         subj_label: str,
         obj_label: str,
+        subj_vector_or_vectors: Optional[Union[List[float], List[List[float]]]] = None,
+        obj_vector_or_vectors: Optional[Union[List[float], List[List[float]]]] = None,
         label: Optional[str] = None,
         min_hops: int = 1,
         max_hops: int = 3,
@@ -1446,14 +1500,18 @@ class KnowledgeBase(SynalinksSaveable):
         AND-semantics. Each side is hybrid-searched (vec + fts)
         independently; per matching path the ``rrf_score`` is the
         sum of the subject-side and object-side hybrid scores.
-        Falls back to fulltext-only when no embedding model is
-        configured.
+        Falls back to fulltext-only when there are no vectors to
+        search with on a side.
 
         Args:
             subj_text_or_texts: Query text (or list) for the subject.
+                Ignored when ``subj_vector_or_vectors`` is supplied.
             obj_text_or_texts: Query text (or list) for the object.
+                Ignored when ``obj_vector_or_vectors`` is supplied.
             subj_label: Entity label of the subject endpoint.
             obj_label: Entity label of the object endpoint.
+            subj_vector_or_vectors: Pre-computed subject query vector(s).
+            obj_vector_or_vectors: Pre-computed object query vector(s).
             label: Optional rel-label constraint for every hop.
             min_hops: Minimum hop count, inclusive (default: 1).
             max_hops: Maximum hop count, inclusive (default: 3).
@@ -1474,6 +1532,8 @@ class KnowledgeBase(SynalinksSaveable):
             obj_label=obj_label,
             subj_keywords=subj_keywords,
             obj_keywords=obj_keywords,
+            subj_vector_or_vectors=subj_vector_or_vectors,
+            obj_vector_or_vectors=obj_vector_or_vectors,
             label=label,
             min_hops=min_hops,
             max_hops=max_hops,
@@ -1489,11 +1549,13 @@ class KnowledgeBase(SynalinksSaveable):
 
     async def path_similarity_search(
         self,
-        subj_text_or_texts: Union[str, List[str]],
-        obj_text_or_texts: Union[str, List[str]],
+        subj_text_or_texts: Optional[Union[str, List[str]]] = None,
+        obj_text_or_texts: Optional[Union[str, List[str]]] = None,
         *,
         subj_label: str,
         obj_label: str,
+        subj_vector_or_vectors: Optional[Union[List[float], List[List[float]]]] = None,
+        obj_vector_or_vectors: Optional[Union[List[float], List[List[float]]]] = None,
         label: Optional[str] = None,
         min_hops: int = 1,
         max_hops: int = 3,
@@ -1506,10 +1568,10 @@ class KnowledgeBase(SynalinksSaveable):
         """Variable-length path search where BOTH endpoints match.
 
         Returns paths of ``min_hops..max_hops`` edges whose start
-        node is vector-close to ``subj_text_or_texts`` AND whose
-        end node is vector-close to ``obj_text_or_texts``. ``label``
-        is an optional rel-label constraint applied to every hop;
-        when omitted, any edge type is allowed.
+        node is vector-close to the subject query AND whose end node
+        is vector-close to the object query. ``label`` is an optional
+        rel-label constraint applied to every hop; when omitted, any
+        edge type is allowed.
 
         Each row carries the full path: ``nodes`` (every node along
         the way, endpoints included), ``rels`` (every edge), and
@@ -1518,9 +1580,13 @@ class KnowledgeBase(SynalinksSaveable):
 
         Args:
             subj_text_or_texts: Query text (or list) for the subject.
+                Ignored when ``subj_vector_or_vectors`` is supplied.
             obj_text_or_texts: Query text (or list) for the object.
+                Ignored when ``obj_vector_or_vectors`` is supplied.
             subj_label: Entity label of the subject endpoint.
             obj_label: Entity label of the object endpoint.
+            subj_vector_or_vectors: Pre-computed subject query vector(s).
+            obj_vector_or_vectors: Pre-computed object query vector(s).
             label: Optional rel-label constraint for every hop.
             min_hops: Minimum hop count, inclusive (default: 1).
             max_hops: Maximum hop count, inclusive (default: 3).
@@ -1535,6 +1601,8 @@ class KnowledgeBase(SynalinksSaveable):
             obj_text_or_texts,
             subj_label=subj_label,
             obj_label=obj_label,
+            subj_vector_or_vectors=subj_vector_or_vectors,
+            obj_vector_or_vectors=obj_vector_or_vectors,
             label=label,
             min_hops=min_hops,
             max_hops=max_hops,
@@ -1647,13 +1715,15 @@ class KnowledgeBase(SynalinksSaveable):
 
     async def path_hybrid_regex_search(
         self,
-        subj_text_or_texts: Union[str, List[str]],
-        obj_text_or_texts: Union[str, List[str]],
+        subj_text_or_texts: Optional[Union[str, List[str]]] = None,
+        obj_text_or_texts: Optional[Union[str, List[str]]] = None,
         *,
         subj_pattern_or_patterns: Optional[Union[str, List[str]]] = None,
         obj_pattern_or_patterns: Optional[Union[str, List[str]]] = None,
         subj_label: str,
         obj_label: str,
+        subj_vector_or_vectors: Optional[Union[List[float], List[List[float]]]] = None,
+        obj_vector_or_vectors: Optional[Union[List[float], List[List[float]]]] = None,
         label: Optional[str] = None,
         min_hops: int = 1,
         max_hops: int = 3,
@@ -1669,15 +1739,22 @@ class KnowledgeBase(SynalinksSaveable):
         Each side is hybrid-searched (vec + regex) independently; the
         path's ``rrf_score`` is the sum of the two endpoint hybrid
         scores. Falls through to `path_similarity_search` when
-        no patterns are supplied.
+        no patterns are supplied. Each side's vector branch can be
+        driven by pre-computed vectors instead of text.
 
         Args:
-            subj_text_or_texts: Query text (or list) for the subject vector branch.
-            obj_text_or_texts: Query text (or list) for the object vector branch.
+            subj_text_or_texts: Query text (or list) for the subject
+                vector branch. Ignored when ``subj_vector_or_vectors``
+                is supplied.
+            obj_text_or_texts: Query text (or list) for the object
+                vector branch. Ignored when ``obj_vector_or_vectors``
+                is supplied.
             subj_pattern_or_patterns: Regex pattern (or list) for the subject.
             obj_pattern_or_patterns: Regex pattern (or list) for the object.
             subj_label: Entity label of the subject endpoint.
             obj_label: Entity label of the object endpoint.
+            subj_vector_or_vectors: Pre-computed subject query vector(s).
+            obj_vector_or_vectors: Pre-computed object query vector(s).
             label: Optional rel-label constraint for every hop.
             min_hops: Minimum hop count, inclusive (default: 1).
             max_hops: Maximum hop count, inclusive (default: 3).
@@ -1696,6 +1773,8 @@ class KnowledgeBase(SynalinksSaveable):
             obj_pattern_or_patterns=obj_pattern_or_patterns,
             subj_label=subj_label,
             obj_label=obj_label,
+            subj_vector_or_vectors=subj_vector_or_vectors,
+            obj_vector_or_vectors=obj_vector_or_vectors,
             label=label,
             min_hops=min_hops,
             max_hops=max_hops,
@@ -1844,9 +1923,10 @@ class KnowledgeBase(SynalinksSaveable):
 
     async def local_graph_search(
         self,
-        text_or_texts: Union[str, List[str]],
+        text_or_texts: Optional[Union[str, List[str]]] = None,
         *,
         label: str,
+        vector_or_vectors: Optional[Union[List[float], List[List[float]]]] = None,
         max_hops: int = 2,
         k: int = 10,
         threshold: Optional[float] = None,
@@ -1864,7 +1944,10 @@ class KnowledgeBase(SynalinksSaveable):
 
         Args:
             text_or_texts: Query text (or list); neighbourhoods merge.
+                Ignored when ``vector_or_vectors`` is supplied.
             label: Entity label whose vector index seeds the search.
+            vector_or_vectors: Pre-computed seed vector(s), used directly
+                instead of embedding ``text_or_texts``.
             max_hops: Neighbourhood radius in edges (>= 1, default 2).
             k: Number of seed entities per query text.
             threshold: Optional seed vector-distance ceiling.
@@ -1875,6 +1958,7 @@ class KnowledgeBase(SynalinksSaveable):
         return await self.graph_adapter.local_graph_search(
             text_or_texts,
             label=label,
+            vector_or_vectors=vector_or_vectors,
             max_hops=max_hops,
             k=k,
             threshold=threshold,

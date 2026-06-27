@@ -48,3 +48,25 @@ class LMAsJudgeTest(testing.TestCase):
 
         score = await reward(y_true=y_true, y_pred=y_pred)
         self.assertEqual(score, 1.0)
+
+    @patch("litellm.acompletion")
+    async def test_lm_as_judge_empty_prediction(self, mock_completion):
+        # Regression: an empty prediction (e.g. the LM returned no content)
+        # must score 0.0 without calling the judge LM and without crashing
+        # the `ProgramAsJudge` wrapper with
+        # `AttributeError: 'float' object has no attribute 'get'`.
+        class AnswerWithThinking(DataModel):
+            thinking: str = Field(description="The step by step thinking process")
+            answer: str = Field(description="The correct answer")
+
+        language_model = LanguageModel(model="ollama/mistral")
+        reward = LMAsJudge(language_model=language_model)
+
+        y_true = AnswerWithThinking(
+            thinking="The French capital is Paris",
+            answer="Paris",
+        )
+
+        score = await reward(y_true=y_true, y_pred=None)
+        self.assertEqual(score, 0.0)
+        mock_completion.assert_not_called()
