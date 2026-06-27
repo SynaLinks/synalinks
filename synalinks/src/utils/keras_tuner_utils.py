@@ -66,11 +66,38 @@ instantiation of `RandomSearch` / `BayesianOptimization` / `Hyperband` /
 raised pointing the user at the fix.
 """
 
+import asyncio
 import functools
 import inspect
 
 from synalinks.src.api_export import synalinks_export
+from synalinks.src.utils.async_utils import _LoopCoroRunner
+from synalinks.src.utils.async_utils import _close_loop
 from synalinks.src.utils.async_utils import run_maybe_nested
+
+
+def _close_litellm_async_clients(loop):
+    """Best-effort: close litellm's cached async HTTP client(s) on ``loop``.
+
+    litellm caches a module-level async httpx client bound to the first event
+    loop it touches. Closing it ON the search loop, before that loop is torn
+    down, prevents an httpx pool being left bound to a dead loop — which GC would
+    otherwise try to close on a closed loop, emitting a final "Event loop is
+    closed" and occasionally wedging interpreter exit. litellm is a hard
+    dependency, but its teardown API varies by version, so every step is guarded
+    and failure is non-fatal (the loop still closes cleanly without it).
+    """
+    try:
+        import litellm
+
+        closer = getattr(litellm, "close_litellm_async_clients", None)
+        if closer is None:
+            return
+        result = closer()
+        if inspect.isawaitable(result):
+            loop.run_until_complete(result)
+    except Exception:
+        pass
 
 _TUNER_CLASS_NAMES = (
     "RandomSearch",
@@ -261,13 +288,53 @@ def _resolve_kt_tuner(name):
                 args = (_sync_driving_hypermodel(args[0]),) + args[1:]
             super().__init__(*args, **kwargs)
 
+        def search(self, *fit_args, **fit_kwargs):
+            # Run EVERY trial on ONE event loop — created here, closed once at
+            # the end — instead of letting `run_maybe_nested` spin up and tear
+            # down a fresh loop per trial (see `run_trial`).
+            #
+            # Why: litellm caches a *module-level* async httpx client bound to
+            # the first event loop it touches. With a per-trial loop that client
+            # is stranded on a closed loop every trial, which (a) floods stderr
+            # with "Event loop is closed" / "Task exception was never retrieved"
+            # and (b) leaves unclosed clients/connections that can wedge process
+            # exit. A single persistent loop keeps the client valid for the whole
+            # search and tears everything down cleanly once.
+            #
+            # If a loop is already running (notebook / IPython / async harness)
+            # we cannot install our own, so leave `_synalinks_search_loop` unset
+            # and let `run_trial` fall back to the per-trial `run_maybe_nested`.
+            try:
+                asyncio.get_running_loop()
+                return super().search(*fit_args, **fit_kwargs)
+            except RuntimeError:
+                pass
+            loop = asyncio.new_event_loop()
+            self._synalinks_search_loop = loop
+            try:
+                return super().search(*fit_args, **fit_kwargs)
+            finally:
+                self._synalinks_search_loop = None
+                # Close litellm's async client ON this loop before tearing it
+                # down, so nothing httpx-related is left bound to a dead loop.
+                _close_litellm_async_clients(loop)
+                _close_loop(loop)
+
         def run_trial(self, trial, *fit_args, **fit_kwargs):
-            # `run_maybe_nested` works whether or not an event loop is
-            # already running (notebooks, IPython, async test harnesses),
-            # unlike `asyncio.run` which crashes inside a live loop.
-            return run_maybe_nested(
-                _run_trial_async(self, trial, *fit_args, **fit_kwargs)
-            )
+            # Reuse the search-wide loop set up by `search` when present;
+            # otherwise `run_maybe_nested` makes a per-call loop (correct, but it
+            # is exactly the per-trial churn that strands litellm's client).
+            # Both paths work whether or not an outer loop is already running
+            # (notebooks, IPython, async test harnesses), unlike `asyncio.run`.
+            coro = _run_trial_async(self, trial, *fit_args, **fit_kwargs)
+            loop = getattr(self, "_synalinks_search_loop", None)
+            if loop is None:
+                return run_maybe_nested(coro)
+            # _LoopCoroRunner(loop) runs ON the given loop without closing it (it
+            # only closes loops it created) and applies the same nested-run +
+            # contextvar propagation that `run_maybe_nested` does.
+            with _LoopCoroRunner(loop) as runner:
+                return runner.run(coro)
 
     _SynalinksAwareTuner.__name__ = name
     _SynalinksAwareTuner.__qualname__ = name

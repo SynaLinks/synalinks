@@ -1,5 +1,6 @@
 # License Apache 2.0: (c) 2025-2026 Yoan Sallami (Synalinks Team)
 
+import asyncio
 import importlib.util
 import shutil
 import sys
@@ -292,6 +293,44 @@ class TunerEndToEndTest(testing.TestCase):
         best = tuner.get_best_hyperparameters(num_trials=1)[0]
         # 10 random samples in [0, 1] — best x should land near 0.3.
         self.assertLess(abs(best.get("x") - 0.3), 0.3)
+
+    def test_search_runs_all_trials_on_one_event_loop(self):
+        # Regression: each trial used to run via `run_maybe_nested`, which
+        # creates AND closes a fresh event loop per trial. That stranded
+        # litellm's module-level async client on a closed loop every trial
+        # (the "Event loop is closed" flood + wedged process exit). `search()`
+        # now runs the whole search on a single loop.
+        disable_keras_backend()
+        build, _ = self._build_fake_program_factory()
+        tuner = RandomSearch(
+            hypermodel=build,
+            objective=Objective("val_reward", direction="max"),
+            max_trials=5,
+            directory=self._tmpdir,
+            project_name="one_loop",
+            overwrite=True,
+            seed=42,
+        )
+        real_new = asyncio.new_event_loop
+        created = []
+
+        def counting():
+            loop = real_new()
+            created.append(loop)
+            return loop
+
+        asyncio.new_event_loop = counting
+        try:
+            tuner.search(epochs=1)
+        finally:
+            asyncio.new_event_loop = real_new
+
+        self.assertEqual(
+            len(created),
+            1,
+            f"search() should create exactly one event loop for all trials, "
+            f"got {len(created)}",
+        )
 
     def test_async_hypermodel_populates_space_at_construction(self):
         """An `async def build` must have its body run during the synchronous
