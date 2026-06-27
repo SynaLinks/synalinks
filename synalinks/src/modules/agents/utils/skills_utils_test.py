@@ -146,7 +146,7 @@ class ValidateSkillTest(testing.TestCase):
         self.assertTrue(any("must match" in p for p in problems))
 
     def test_flags_unexpected_frontmatter_field(self):
-        d = self._write("hello", _MINIMAL.replace("---\nBody", "extra: nope\n---\nBody"))
+        d = self._write("hello", _MINIMAL.replace("---\n", "---\nextra: nope\n", 1))
         problems = validate_skill(d)
         self.assertTrue(any("Unexpected" in p for p in problems))
 
