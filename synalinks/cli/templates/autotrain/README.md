@@ -19,10 +19,11 @@ Clone it, open your agent, and start building. The template is deliberately tiny
 # 1. Install (this is a uv project)
 uv sync
 
-# 2. Point at a model. Default is local Ollama — no API key needed:
-ollama serve
-ollama pull llama3.2:latest
-#    (or `cp .env.template .env`, add a hosted key, and set MODEL in train.py)
+# 2. Serve a model with vLLM (the default), on its OpenAI endpoint (:8000):
+vllm serve Qwen/Qwen3-4B
+#    (no GPU? set MODEL=ollama/mistral:latest in train.py and run `ollama serve`)
+#    (hosted model? `cp .env.template .env`, add a key, and set MODEL in train.py)
+#    (optional: set MLFLOW_TRACKING_URI in .env to trace runs to MLflow)
 
 # 3. Train against GSM8K (small subset by default, runs locally)
 uv run python train.py          # iterate: reports val_reward

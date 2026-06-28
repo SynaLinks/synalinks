@@ -5,6 +5,7 @@ Exposes the ``synalinks`` console script (see ``[project.scripts]`` in
 the bundled templates, which ship inside the wheel so it works fully offline.
 """
 
+import importlib.metadata
 import importlib.resources
 import shutil
 import sys
@@ -13,6 +14,14 @@ from pathlib import Path
 
 import click
 import inquirer
+from rich.console import Console
+from rich.panel import Panel
+from rich.text import Text
+
+# Synalinks brand amber (matches the logo gradient #92400E → #D97706).
+_BRAND_COLOR = "#D97706"
+# Terminal stand-in for the Möbius-strip logo.
+_BRAND_ICON = "∞"
 
 # Templates live next to this module (``synalinks/cli/templates``) and are
 # packaged with the wheel so ``synalinks init`` works without network access.
@@ -51,11 +60,47 @@ def _available_templates() -> list[str]:
     return names
 
 
-@click.group()
-@click.version_option(package_name="synalinks", message="%(version)s")
-def cli():
-    """Synalinks command line interface."""
+def _synalinks_version() -> str:
+    """Read the installed version without importing the (heavy) package."""
+    try:
+        return importlib.metadata.version("synalinks")
+    except importlib.metadata.PackageNotFoundError:
+        return "unknown"
 
+
+def _print_banner() -> None:
+    """Print an amber icon + wordmark + version banner."""
+    console = Console()
+    logo = Text()
+    logo.append(f"{_BRAND_ICON} ", style=f"bold {_BRAND_COLOR}")
+    logo.append("synalinks", style=f"bold {_BRAND_COLOR}")
+    console.print(logo)
+    console.print(Text(f"  v{_synalinks_version()}", style="dim"))
+
+
+def _version_callback(ctx: click.Context, param: click.Parameter, value: bool) -> None:
+    if not value or ctx.resilient_parsing:
+        return
+    _print_banner()
+    ctx.exit()
+
+
+@click.group(invoke_without_command=True)
+@click.option(
+    "--version",
+    is_flag=True,
+    is_eager=True,
+    expose_value=False,
+    callback=_version_callback,
+    help="Show the version and exit.",
+)
+@click.pass_context
+def cli(ctx: click.Context):
+    """Synalinks command line interface."""
+    if ctx.invoked_subcommand is None:
+        _print_banner()
+        click.echo()
+        click.echo(ctx.get_help())
 
 @cli.command()
 @click.argument("project_name", required=False)
@@ -106,10 +151,15 @@ def init(project_name, name, description, template, list_templates, force):
         synalinks init -n my-agent -t autotrain -d "My research agent"
         synalinks init --list
     """
+    _print_banner()
+    click.echo()
     templates = _available_templates()
     if not templates:
-        raise click.ClickException(
-            "No templates are bundled with this Synalinks installation."
+        _fail(
+            Text(
+                "No templates are bundled with this Synalinks installation.",
+                style="default",
+            )
         )
 
     if list_templates:
@@ -124,8 +174,13 @@ def init(project_name, name, description, template, list_templates, force):
         if sys.stdin.isatty():
             project_name = click.prompt("Project name", type=str).strip()
         if not project_name:
-            raise click.ClickException(
-                "A project name is required (pass it positionally or with -n)."
+            _fail(
+                Text.assemble(
+                    ("A project name is required ", "default"),
+                    ("(pass it positionally or with ", "default"),
+                    ("-n", "bold cyan"),
+                    (").", "default"),
+                )
             )
 
     default = _DEFAULT_TEMPLATE if _DEFAULT_TEMPLATE in templates else templates[0]
@@ -140,27 +195,121 @@ def init(project_name, name, description, template, list_templates, force):
         else:
             template = default
     if template not in templates:
-        raise click.ClickException(
-            f"Unknown template {template!r}. " f"Available: {', '.join(templates)}."
+        _fail(
+            Text.assemble(
+                ("Unknown template ", "default"),
+                (f"{template!r}", "bold yellow"),
+                (".\nAvailable: ", "default"),
+                (", ".join(templates), "bold cyan"),
+                (".", "default"),
+            )
         )
 
     target = Path(project_name).resolve()
     if target.exists() and any(target.iterdir()) and not force:
-        raise click.ClickException(
-            f"Directory '{target}' already exists and is not empty. "
-            "Use --force to scaffold into it anyway."
+        _fail(
+            Text.assemble(
+                ("Directory ", "default"),
+                (f"{target}", "bold yellow"),
+                (" already exists and is not empty.", "default"),
+                ("\nPass ", "default"),
+                ("--force", "bold cyan"),
+                (" to scaffold into it anyway.", "default"),
+            )
         )
 
     with ExitStack() as stack:
         source = _templates_root(stack) / template
-        shutil.copytree(source, target, dirs_exist_ok=True, ignore=_COPY_IGNORE)
+        # ``symlinks=True`` keeps CLAUDE.md as a symlink to AGENTS.md rather
+        # than dereferencing it into a duplicate file.
+        shutil.copytree(
+            source, target, dirs_exist_ok=True, ignore=_COPY_IGNORE, symlinks=True
+        )
 
     _rewrite_pyproject(target, project_name, description)
+    _link_claude_md(target)
 
-    click.echo(f"\n✨ Created '{project_name}' from the '{template}' template.")
-    click.echo("\nNext steps:")
-    click.echo(f"  cd {project_name}")
-    click.echo("  uv sync")
+    console = Console()
+    console.print(
+        f"\n✨ Created '{project_name}' from the '{template}' template."
+    )
+    _print_next_steps(
+        console,
+        [
+            f"cd {project_name}",
+            "uv sync",
+            "npx skills add -y SynaLinks/synalinks-skills --skill synalinks",
+        ],
+    )
+    hint = Text("\n")
+    hint.append("Then start your coding agent ", style="default")
+    hint.append("(Claude Code, Cursor, Copilot, …)", style="dim")
+    hint.append(" in the project folder to get started.", style="default")
+    console.print(hint)
+
+
+def _fail(message: Text) -> None:
+    """Print a colored error to stderr and exit with a non-zero status."""
+    console = Console(stderr=True)
+    body = Text.assemble(("✗ ", "bold red"), ("Error  ", "bold red"))
+    body.append(message)
+    console.print(
+        Panel(
+            body,
+            border_style="red",
+            padding=(0, 1),
+            expand=False,
+        )
+    )
+    raise SystemExit(1)
+
+
+def _print_next_steps(console: Console, commands: list[str]) -> None:
+    """Render the next-step commands inside a faux terminal window."""
+    body = Text()
+    for i, command in enumerate(commands):
+        if i:
+            body.append("\n")
+        # A dim prompt sign followed by the command, mimicking a shell.
+        body.append("$ ", style=f"bold {_BRAND_COLOR}")
+        body.append(command, style="bold white")
+    # macOS-style "traffic light" dots make the panel read as a terminal.
+    title = Text()
+    title.append("● ", style="#FF5F56")
+    title.append("● ", style="#FFBD2E")
+    title.append("●", style="#27C93F")
+    title.append("  Next steps", style="dim")
+    console.print(
+        Panel(
+            body,
+            title=title,
+            title_align="left",
+            border_style=_BRAND_COLOR,
+            padding=(1, 2),
+            expand=False,
+        )
+    )
+
+
+def _link_claude_md(target: Path) -> None:
+    """Make CLAUDE.md a symlink to AGENTS.md in the generated project.
+
+    The template ships CLAUDE.md as a symlink, but ``importlib.resources``
+    extracts packaged templates to a temp dir (and wheels store plain files),
+    which dereferences the link — so we recreate it on the generated project.
+    """
+    agents = target / "AGENTS.md"
+    claude = target / "CLAUDE.md"
+    if not agents.is_file():
+        return
+    try:
+        if claude.is_symlink() or claude.exists():
+            claude.unlink()
+        claude.symlink_to("AGENTS.md")
+    except OSError:
+        # Symlinks may be unavailable (e.g. Windows without privileges);
+        # leave whatever was copied so CLAUDE.md still exists.
+        pass
 
 
 def _rewrite_pyproject(target: Path, project_name: str, description: str | None) -> None:

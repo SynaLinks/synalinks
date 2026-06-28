@@ -5,8 +5,26 @@
 
 ## Install
 
+### Quickstart in 3s with `uv` (recommended)
+
+If you don't know `uv`, install it [here](https://docs.astral.sh/uv/getting-started/installation/).
+
+`synalinks init` scaffolds a ready-to-run project from a template — a script, a
+REST API, a full-stack app, an MCP server, or a self-improving training/agent
+harness. Start a new Synalinks project in 3 seconds:
+
 ```shell
-uv pip install synalinks
+uvx synalinks init
+```
+
+See [Project Templates](Project Templates.md) for what each template gives you.
+
+---
+
+You can also add the library to an existing project:
+
+```shell
+uv add synalinks
 ```
 
 ## Set up a language model

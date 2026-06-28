@@ -1,0 +1,12 @@
+[project]
+name = "synalinks-api"
+version = "0.1.0"
+description = "A Synalinks program served as a REST API with FastAPI."
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "synalinks",
+    "python-dotenv",
+    "fastapi[standard]",
+    "uvicorn",
+]
