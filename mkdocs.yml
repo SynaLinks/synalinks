@@ -5,10 +5,12 @@ repo_url: https://github.com/SynaLinks/synalinks
 repo_name: SynaLinks/synalinks
 theme:
   name: material
+  custom_dir: overrides
   logo: assets/synalinks-light.svg
   favicon: assets/synalinks_favicon.png
   features:
     - content.code.copy
+    - announce.dismiss
   icon:
     repo: fontawesome/brands/github
   palette:
