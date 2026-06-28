@@ -15,6 +15,7 @@ from synalinks.src.backend import SymbolicDataModel
 from synalinks.src.backend import is_chat_messages
 from synalinks.src.backend import is_strictly_chat_message
 from synalinks.src.backend import is_strictly_chat_messages
+from synalinks.src.backend.common.op_scope import current_op_scope
 from synalinks.src.modules.language_models import get as _get_lm
 from synalinks.src.modules.language_models.language_model import StreamingIterator
 from synalinks.src.modules.language_models.language_model import _tool_to_wire
@@ -182,7 +183,13 @@ class Generator(Module):
             between ['minimal', 'low', 'medium', 'high', 'disable', 'none', None].
             Default to None (no reasoning).
         streaming (str): Optional. If true stream the LM response, enabled only if
-            `schema` is `None` and only during inference (not during training).
+            `schema` is `None`. Honored in every phase (inference, reward,
+            optimizer) and in training: in a batched loop (predict / evaluate /
+            the optimizer forward pass) or during training the stream is drained
+            into a concrete prediction so it stays scorable while still recording
+            time-to-first / time-to-last token (the optimizer phase included, so
+            its TTFT is measured). Only an interactive single call (no active
+            op_scope and not training) hands the live stream back to the caller.
         tools (list): Optional. Live `synalinks.modules.Tool` objects (or a
             `{name: Tool}` mapping) the generator always exposes, merged with any
             `tools` passed to `call`. Serialized as `tool_schemas` (their wire
@@ -303,10 +310,14 @@ class Generator(Module):
         tools = self.tools + _as_tool_list(tools) or None
         tool_schemas = list(self.tool_schemas or []) + list(tool_schemas or []) or None
         msgs = self.format_messages(inputs)
-        if self.streaming and not training:
-            streaming = True
-        else:
-            streaming = False
+        # Streaming is honored in every phase (inference, reward, optimizer) and
+        # in training. When it is drained below (any batched loop or training
+        # pass) the prediction stays concrete and scorable while still recording
+        # TTFT / TTLT, so there is no reason to disable it -- including during
+        # training and single-sample (batch=1) runs. Keeping it on in the
+        # optimizer phase is deliberate: its time-to-first-token must be measured
+        # too.
+        streaming = bool(self.streaming)
         # Only forward sampling params that were explicitly set, so an unset
         # (None) value falls through to the model's own generation defaults
         # (e.g. a vLLM-served model applies its generation_config.json) instead
@@ -331,13 +342,22 @@ class Generator(Module):
             **sampling,
         )
         if isinstance(value, StreamingIterator):
-            result = value
-        elif not value:
+            # A purely interactive call (no op_scope, not training) hands the
+            # lazy stream to the caller to consume. Inside a batched loop
+            # (predict / evaluate run under op_scope) or during training the
+            # prediction must be concrete -- to be scored and recorded into the
+            # optimizer's prediction state -- so drain the stream into a
+            # ChatMessage; time-to-first / time-to-last token are still recorded
+            # as it is consumed.
+            if current_op_scope() is None and not training:
+                return value
+            value = await value.aconsume(
+                name=f"{self.language_model.name}_response"
+            )
+        if not value:
             result = None
         else:
             result = value.clone(name="prediction_" + self.name)
-        if streaming:
-            return result
         if result:
             if training:
                 predictions = self.state.get("current_predictions")

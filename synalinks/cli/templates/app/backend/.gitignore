@@ -1,0 +1,17 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+
+# Environment
+.env
+
+# Local synalinks checkout for framework debugging / PRs (see ../AGENTS.md)
+synalinks/
+
+# Synalinks artifacts (built/saved/trained programs, plots)
+program.json
+trained_*.json
+*.png

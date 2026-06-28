@@ -10,9 +10,11 @@ from synalinks.src import testing
 from synalinks.src.backend import ChatMessage
 from synalinks.src.backend import ChatMessages
 from synalinks.src.backend import DataModel
+from synalinks.src.backend.common.op_scope import op_scope
 from synalinks.src.modules import Generator
 from synalinks.src.modules import Input
 from synalinks.src.modules.language_models import LanguageModel
+from synalinks.src.modules.language_models.language_model import StreamingIterator
 from synalinks.src.programs import Program
 
 
@@ -683,3 +685,85 @@ class GeneratorModuleTest(testing.TestCase):
         self.assertEqual(kwargs.get("max_tokens"), 128)
         self.assertEqual(kwargs.get("top_p"), 0.9)
         self.assertEqual(kwargs.get("top_k"), 20)
+
+    @patch("litellm.acompletion")
+    async def test_streaming_interactive_vs_batched_loop(self, mock_completion):
+        class Query(DataModel):
+            query: str
+
+        def _chunks():
+            return iter(
+                [
+                    {"choices": [{"delta": {"content": "Hel"}}]},
+                    {"choices": [{"delta": {"content": "lo"}}]},
+                    {"choices": [{"delta": {"content": " world"}}]},
+                ]
+            )
+
+        language_model = LanguageModel(model="ollama_chat/deepseek-r1")
+        # Streaming generator -> no data_model, so schema is None.
+        generator = Generator(language_model=language_model, streaming=True)
+
+        # Interactive call (no op_scope): the lazy iterator is handed back for
+        # the caller to consume, and consuming it records one streamed call
+        # onto the all-time counters.
+        mock_completion.return_value = _chunks()
+        stream = await generator(Query(query="hi"))
+        self.assertIsInstance(stream, StreamingIterator)
+        text = ""
+        async for msg in stream:
+            text += msg.get("content") or ""
+        self.assertEqual(text, "Hello world")
+        self.assertEqual(language_model.cumulated_streaming_calls, 1)
+
+        # Batched loop (op_scope("inference"), as predict/evaluate run): the
+        # stream is drained into a concrete assistant ChatMessage so it can be
+        # scored, and the inference-phase streaming counters are recorded.
+        mock_completion.return_value = _chunks()
+        with op_scope("inference"):
+            result = await generator(Query(query="hi"))
+        self.assertNotIsInstance(result, StreamingIterator)
+        self.assertEqual(result.get_json().get("content"), "Hello world")
+        self.assertEqual(language_model.inference_cumulated_streaming_calls, 1)
+
+    @patch("litellm.acompletion")
+    async def test_streaming_drained_during_training(self, mock_completion):
+        """Training (incl. batch=1, no op_scope) must still drain the stream so
+        the prediction is concrete -- scorable and recorded into the optimizer's
+        prediction state -- while time-to-first/last token are captured."""
+
+        class Query(DataModel):
+            query: str
+
+        def _chunks():
+            return iter(
+                [
+                    {"choices": [{"delta": {"content": "Hel"}}]},
+                    {"choices": [{"delta": {"content": "lo"}}]},
+                ]
+            )
+
+        language_model = LanguageModel(model="ollama_chat/deepseek-r1")
+        generator = Generator(language_model=language_model, streaming=True)
+
+        # Training pass, batch=1, no active op_scope: previously this disabled
+        # streaming entirely; now the stream is drained to a concrete message.
+        mock_completion.return_value = _chunks()
+        result = await generator(Query(query="hi"), training=True)
+        self.assertNotIsInstance(result, StreamingIterator)
+        self.assertEqual(result.get_json().get("content"), "Hello")
+        # Streaming metrics recorded even though we are training.
+        self.assertEqual(language_model.cumulated_streaming_calls, 1)
+        # The drained prediction is recorded so the optimizer can score it.
+        predictions = generator.state.get("current_predictions")
+        self.assertEqual(len(predictions), 1)
+        self.assertEqual(predictions[-1]["outputs"].get("content"), "Hello")
+
+        # The optimizer phase streams and drains too, so its time-to-first-token
+        # is measured -- the streamed call is attributed to that phase.
+        mock_completion.return_value = _chunks()
+        with op_scope("optimizer"):
+            result = await generator(Query(query="hi"), training=True)
+        self.assertNotIsInstance(result, StreamingIterator)
+        self.assertEqual(result.get_json().get("content"), "Hello")
+        self.assertEqual(language_model.optimizer_cumulated_streaming_calls, 1)

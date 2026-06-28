@@ -35,7 +35,7 @@
 
 <div align="center">
 
-⭐ If you find Synalinks useful, please star the repo! Help us reach more AI/ML engineers and grow the community. ⭐
+If you find Synalinks useful, please star the repo! Help us reach more AI/ML engineers and grow the community.
 
 ![Beta](https://img.shields.io/badge/Release-Beta-blue.svg)
 [![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
@@ -60,9 +60,9 @@ Synalinks is an open-source neuro-symbolic framework that makes it simple to cre
 
 Think Keras for Language Models applications, a clean, declarative API where:
 
-- 🧩 You **compose** [`Module`s](https://synalinks.github.io/synalinks/guides/Modules/) like you would with deep learning `Layer`s.
-- ⚙️ You **[train & optimize](https://synalinks.github.io/synalinks/guides/Training/)** with in-context reinforcement learning.
-- 🌐 You **deploy** as [REST APIs](https://synalinks.github.io/synalinks/guides/FastAPI%20Deployment/) or [MCP servers](https://synalinks.github.io/synalinks/guides/FastMCP%20Deployment/).
+- You **compose** [`Module`s](https://synalinks.github.io/synalinks/guides/Modules/) like you would with deep learning `Layer`s.
+- You **[train & optimize](https://synalinks.github.io/synalinks/guides/Training/)** with in-context reinforcement learning.
+- You **deploy** as [REST APIs](https://synalinks.github.io/synalinks/guides/FastAPI%20Deployment/) or [MCP servers](https://synalinks.github.io/synalinks/guides/FastMCP%20Deployment/).
 
 ### Key Principles
 
@@ -76,21 +76,22 @@ Think Keras for Language Models applications, a clean, declarative API where:
 
 | Role                      | Why Synalinks Helps                                         |
 | ------------------------- | ----------------------------------------------------------- |
-| 🧑‍💻 **AI Developers**      | Build complex production grade LM apps without boilerplate. |
-| 🧠 **AI Researchers**     | Prototype neuro-symbolic and RL-in-context systems fast.    |
-| 🏢 **Data Scientists**    | Integrate LM workflows with APIs & databases.               |
-| 🎓 **Students/Hobbyists** | Learn AI composition in a clean, intuitive framework.       |
+| **AI Developers**      | Build complex production grade LM apps without boilerplate. |
+| **AI Researchers**     | Prototype neuro-symbolic and RL-in-context systems fast.    |
+| **Data Scientists**    | Integrate LM workflows with APIs & databases.               |
+| **Students/Hobbyists** | Learn AI composition in a clean, intuitive framework.       |
 
 </div>
 
 ## Why Synalinks?
 
-Building robust LM apps is hard. Synalinks simplifies it with a few things most frameworks don't give you out of the box:
+Many frameworks exist today — here is what Synalinks does differently:
 
-- **🔒 Embedded, container-free runtime** — agents run untrusted code and tools in a [safe, isolated runtime](https://synalinks.github.io/synalinks/guides/Agents/) that needs **no Docker or external sandbox service**. The whole stack is pure-Python and embeddable, so it just works for scripting, research, and serverless/cloud deployment (S3, Lambda, notebooks, etc.).
-- **🕸️ First-class Knowledge Graph support** — build [graph-based RAG and agentic memory](https://synalinks.github.io/synalinks/guides/Knowledge%20Base/) with **constrained KG extraction** and **automatic semantic deduplication**, on top of the embedded **Ladybug** graph database — no separate graph server to run. A fast embedded **SQL knowledge base** (DuckDB, LanceDB) is also available for relational/vector RAG.
-- **🎯 In-Context RL to optimize your prompts (and anything else)** — [train and optimize](https://synalinks.github.io/synalinks/guides/Training/) prompts, few-shot examples, and [any trainable variable](https://synalinks.github.io/synalinks/guides/Trainable%20Variables/) per module **without touching model weights**, using the familiar `.compile()` / `.fit()` / `.evaluate()` / `.predict()` API.
-- **🔄 Effortless model switching** — set a default once with `synalinks.set_default_language_model(...)` or pass a string identifier, and swap between Ollama, vLLM, OpenAI, Azure, Anthropic, Mistral, Groq, Gemini, xAI, Cohere, DeepSeek, Together AI, OpenRouter, AWS Bedrock and Doubleword via [LiteLLM](https://docs.litellm.ai/docs/) — including [multi-objective model selection](https://synalinks.github.io/synalinks/guides/Multi-Objective%20LM%20Selection/) to pick the best model for cost/quality.
+- **Embedded, container-free sandbox** : agents run untrusted code and tools in a [safe, isolated runtime](https://synalinks.github.io/synalinks/guides/Agents/) that needs **no Docker or external sandbox service**. The whole stack is pure-Python and embeddable, so it is great for scripting, research, serverless/cloud deployment (S3, Lambda, notebooks, etc.) or even for creating CLI harnesses!
+- **Embedded database support** : build [graph-based RAG and agentic memories](https://synalinks.github.io/synalinks/guides/Knowledge%20Base/) with **constrained Knowledge Graph extraction** and **automatic semantic deduplication**, on top of an embedded graph database — no separate graph server to run. Additionally, a fast embedded **SQL knowledge base** is available to store relational data and build vector/SQL RAGs.
+- **In-Context RL to optimize your prompts (and anything else)** : [train and optimize](https://synalinks.github.io/synalinks/guides/Training/) prompts, few-shot examples, and [any trainable variable](https://synalinks.github.io/synalinks/guides/Trainable%20Variables/) per module **without touching model weights**, using the familiar `.compile()` / `.fit()` / `.evaluate()` / `.predict()` API.
+- **Effortless model switching** : set a default once with `synalinks.set_default_language_model(...)` or pass a string identifier, and swap between Ollama, vLLM, OpenAI, Azure, Anthropic, Mistral, Groq, Gemini, xAI, Cohere, DeepSeek, Together AI, OpenRouter, AWS Bedrock and Doubleword via [LiteLLM](https://docs.litellm.ai/docs/) — including [multi-objective model selection](https://synalinks.github.io/synalinks/guides/Multi-Objective%20LM%20Selection/) to pick the best model for cost/quality.
+- **Scaffold in one command, bring your own coding agent** : bootstrap a production-ready project with `synalinks init` (batteries-included templates for scripts, agents, and training), then drop in the official [Synalinks skills](https://github.com/SynaLinks/synalinks-skills) so Claude Code, Cursor, Copilot and friends write idiomatic Synalinks code from the start.
 
 Plus everything you'd expect from a production-grade framework:
 
@@ -107,10 +108,22 @@ Plus everything you'd expect from a production-grade framework:
 - Python 3.12 or more
 - WL2 for windows users
 
-## Installation
+## Quickstart in 3s with `uv` (recommended)
+
+If you don't know `uv`, install it [here](https://docs.astral.sh/uv/getting-started/installation/).
+
+Follow the instructions to start a new synalinks project in 3s:
 
 ```shell
-uv pip install synalinks
+uvx synalinks init
+```
+
+---
+
+You can also install the library in a new project with:
+
+```shell
+uv add synalinks
 ```
 
 ## Example

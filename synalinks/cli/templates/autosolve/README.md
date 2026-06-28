@@ -32,10 +32,11 @@ The template is deliberately tiny:
 # 1. Install (this is a uv project)
 uv sync
 
-# 2. Point at a model. Default is local Ollama — no API key needed:
-ollama serve
-ollama pull llama3.2:latest
-#    (or `cp .env.template .env`, add a hosted key, and set MODEL in evaluate.py)
+# 2. Serve a model with vLLM (the default), on its OpenAI endpoint (:8000):
+vllm serve Qwen/Qwen3-4B
+#    (no GPU? set MODEL=ollama/mistral:latest in evaluate.py and run `ollama serve`)
+#    (hosted model? `cp .env.template .env`, add a key, set MODEL in evaluate.py)
+#    (optional: set MLFLOW_TRACKING_URI in .env to trace runs to MLflow)
 
 # 3. Solve GSM8K (small subset by default, runs locally)
 uv run python evaluate.py          # iterate: scores dev_reward, dumps failures

@@ -328,8 +328,9 @@ class Trainer:
         """
         del x  # The default implementation does not use `x`.
         if self._compile_metrics is not None:
-            for y_t, y_p in zip(y, y_pred):
-                await self._compile_metrics.update_state(y_t, y_p)
+            # Feed the whole batch: `BatchMetric`s (e.g. `PassAtK`) consume it
+            # at once, ordinary metrics are still updated per-sample.
+            await self._compile_metrics.update_state_batch(y, y_pred)
         return self.get_metrics_result()
 
     def get_metrics_result(self):

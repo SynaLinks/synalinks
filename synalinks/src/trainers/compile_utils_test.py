@@ -2,6 +2,8 @@
 
 from synalinks.src import testing
 from synalinks.src.backend import DataModel
+from synalinks.src.metrics.accuracy_metrics import Accuracy
+from synalinks.src.metrics.agents_metrics import PassAtK
 from synalinks.src.metrics.reduction_metrics import Mean
 from synalinks.src.rewards.exact_match import ExactMatch
 from synalinks.src.trainers.compile_utils import CompileMetrics
@@ -12,6 +14,25 @@ from synalinks.src.trainers.compile_utils import is_function_like
 
 class Answer(DataModel):
     answer: str
+
+
+class BatchMetricRoutingTest(testing.TestCase):
+    """`update_state_batch` must feed a `BatchMetric` the whole batch while
+    ordinary metrics keep their per-sample updates."""
+
+    async def test_batch_and_per_sample_metrics_coexist(self):
+        # One problem's 4 samples, 1 correct.
+        y_true = [Answer(answer="correct") for _ in range(4)]
+        y_pred = [Answer(answer="correct")] + [Answer(answer="wrong") for _ in range(3)]
+
+        cm = CompileMetrics(metrics=[PassAtK(k=1), Accuracy(name="acc")])
+        await cm.update_state_batch(y_true, y_pred)
+        results = cm.result()
+
+        # pass@1 over (n=4, c=1) = 1 - C(3,1)/C(4,1) = 0.25 (the whole batch).
+        self.assertAlmostEqual(results["pass_at_k"], 0.25, places=6)
+        # The per-sample metric still ran on all 4 samples (1 exact match).
+        self.assertIn("acc", results)
 
 
 class IsFunctionLikeTest(testing.TestCase):

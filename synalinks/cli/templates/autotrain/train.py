@@ -26,6 +26,7 @@ optimizer below), then run. See ``AUTOTRAIN.md`` for the loop around it.
 
 import argparse
 import asyncio
+import os
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -35,12 +36,24 @@ import synalinks
 ROOT = Path(__file__).resolve().parent  # results/checkpoints live next to this file
 
 
+def _enable_observability():
+    """Enable MLflow tracing when MLFLOW_TRACKING_URI is set (no-op otherwise)."""
+    if os.environ.get("MLFLOW_TRACKING_URI"):
+        synalinks.enable_observability(
+            experiment_name=os.environ.get("MLFLOW_EXPERIMENT_NAME", "synalinks_traces"),
+        )
+
+
 # ---------------------------------------------------------------------------
 # CONFIG — the levers. Edit in place; the autotrain loop commits this file.
 # ---------------------------------------------------------------------------
 
-MODEL = "ollama/llama3.2:latest"
-EMBEDDING_MODEL = "ollama/mxbai-embed-large"  # used only by the OMEGA optimizer
+MODEL = "vllm/Qwen/Qwen3-4B"
+# Used only by the OMEGA optimizer. vLLM serves embeddings too, but from a
+# separate model/endpoint — run a second vLLM (e.g. `vllm serve
+# Qwen/Qwen3-Embedding-0.6B --port 8002`) and pass its api_base explicitly, or
+# just use Ollama here (ollama/mxbai-embed-large).
+EMBEDDING_MODEL = "vllm/Qwen/Qwen3-Embedding-0.6B"
 
 EPOCHS = 4
 TRAIN_SIZE = 50  # examples used for training (0 = all)
@@ -119,6 +132,10 @@ async def main():
     args = parser.parse_args()
 
     load_dotenv()
+    # vLLM's OpenAI endpoint lives at /v1; set a correct default (overridable
+    # via .env / real env). Synalinks' own fallback omits /v1, which 404s.
+    os.environ.setdefault("HOSTED_VLLM_API_BASE", "http://localhost:8000/v1")
+    _enable_observability()
     synalinks.clear_session()
 
     lm = synalinks.LanguageModel(model=MODEL)

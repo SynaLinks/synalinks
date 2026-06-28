@@ -41,6 +41,7 @@ experiment is fully captured by the diff and reproducible from the code alone
 import argparse
 import asyncio
 import json
+import os
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -50,11 +51,19 @@ import synalinks
 ROOT = Path(__file__).resolve().parent  # results/predictions live next to this file
 
 
+def _enable_observability():
+    """Enable MLflow tracing when MLFLOW_TRACKING_URI is set (no-op otherwise)."""
+    if os.environ.get("MLFLOW_TRACKING_URI"):
+        synalinks.enable_observability(
+            experiment_name=os.environ.get("MLFLOW_EXPERIMENT_NAME", "synalinks_traces"),
+        )
+
+
 # ---------------------------------------------------------------------------
 # CONFIG — the levers. Edit in place; the autosolve loop commits this file.
 # ---------------------------------------------------------------------------
 
-MODEL = "ollama/llama3.2:latest"
+MODEL = "vllm/Qwen/Qwen3-4B"
 
 # How much Synalinks logs while the program runs. `enable_logging` attaches a
 # Logger hook that prints every module's inputs/outputs as JSON during the run —
@@ -169,9 +178,7 @@ async def solve(program, reward, x, y, split):
             }
         )
 
-    mean_reward = (
-        sum(rec["reward"] for rec in records) / len(records) if records else 0.0
-    )
+    mean_reward = sum(rec["reward"] for rec in records) / len(records) if records else 0.0
 
     out = ROOT / f"predictions_{split}.jsonl"
     with out.open("w") as f:
@@ -205,6 +212,10 @@ async def main():
     args = parser.parse_args()
 
     load_dotenv()
+    # vLLM's OpenAI endpoint lives at /v1; set a correct default (overridable
+    # via .env / real env). Synalinks' own fallback omits /v1, which 404s.
+    os.environ.setdefault("HOSTED_VLLM_API_BASE", "http://localhost:8000/v1")
+    _enable_observability()
     synalinks.clear_session()
 
     # Turn on Synalinks logging so the program's behavior is observable: the

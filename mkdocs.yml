@@ -45,6 +45,7 @@ plugins:
 nav:
   - index.md
   - Introduction.md
+  - Project Templates.md
   - Guides:
     - guides/Getting Started.md
     - guides/Data Models.md

@@ -124,6 +124,10 @@ from synalinks.src.datasets.text_dataset import TextDataset as TextDataset
 from synalinks.src.datasets.text_dataset import TextDocument as TextDocument
 from synalinks.src.initializers.initializer import Initializer as Initializer
 from synalinks.src.knowledge_bases.knowledge_base import KnowledgeBase as KnowledgeBase
+from synalinks.src.metrics.agents_metrics import GapK as GapK
+from synalinks.src.metrics.agents_metrics import PassAtK as PassAtK
+from synalinks.src.metrics.agents_metrics import PassHatK as PassHatK
+from synalinks.src.metrics.batch_metric import BatchMetric as BatchMetric
 from synalinks.src.metrics.em_metrics import EmbeddingModelOperationalMetric as EmbeddingModelOperationalMetric
 from synalinks.src.metrics.em_metrics import EmbeddingModelOptimizersOperationalMetric as EmbeddingModelOptimizersOperationalMetric
 from synalinks.src.metrics.em_metrics import EmbeddingModelRewardsOperationalMetric as EmbeddingModelRewardsOperationalMetric
