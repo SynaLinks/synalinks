@@ -87,6 +87,7 @@ def _version_callback(ctx: click.Context, param: click.Parameter, value: bool) -
 
 @click.group(invoke_without_command=True)
 @click.option(
+    "-v",
     "--version",
     is_flag=True,
     is_eager=True,
