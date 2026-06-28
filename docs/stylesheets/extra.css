@@ -1,3 +1,70 @@
+/* Announcement bar ("bandeau") — dark GitHub-style strip with a star CTA. */
+.md-banner {
+    background: #1f2328;
+    color: #e6edf3;
+}
+
+/* Center the message. Use text-align (not flex) so the dismiss button's
+   `float: right` keeps working and the ✕ stays at the far right. */
+.md-banner__inner {
+    text-align: center;
+}
+
+.md-banner .md-banner__button {
+    color: #e6edf3;
+    opacity: 0.7;
+}
+
+.sl-announce {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.6rem;
+    flex-wrap: wrap;
+    justify-content: center;
+    font-size: 0.72rem;
+    font-weight: 500;
+}
+
+/* Beat `.md-typeset a` (blue + underline) so the CTA reads as a button. */
+.md-banner .sl-announce__btn,
+.md-banner .md-typeset a.sl-announce__btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.25rem 0.7rem;
+    border: 1px solid rgba(255, 255, 255, 0.25);
+    border-radius: 2rem;
+    background: rgba(255, 255, 255, 0.08);
+    color: #e6edf3;
+    font-weight: 600;
+    line-height: 1;
+    text-decoration: none;
+    transition: background 0.2s, border-color 0.2s, color 0.2s;
+}
+
+.md-banner .sl-announce__btn:hover,
+.md-banner .sl-announce__btn:focus-visible {
+    background: #e6edf3;
+    border-color: #e6edf3;
+    color: #1f2328;
+    outline: none;
+}
+
+.sl-announce__btn svg {
+    width: 15px;
+    height: 15px;
+    flex-shrink: 0;
+}
+
+.sl-announce__star {
+    color: #f1c40f;
+}
+
+.md-banner .sl-announce__btn:hover .sl-announce__star,
+.md-banner .sl-announce__btn:focus-visible .sl-announce__star {
+    color: #e3a008;
+}
+
 /* Summarize with AI button (lives in the header, right after the search) */
 .summarize-ai-container {
     position: relative;
