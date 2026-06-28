@@ -11,10 +11,12 @@ from synalinks.src.backend import ChatMessages
 from synalinks.src.backend import DataModel
 from synalinks.src.backend import Field
 from synalinks.src.backend import is_chat_messages
+from synalinks.src.backend.common.op_scope import op_scope
 from synalinks.src.modules.agents.function_calling_agent import FunctionCallingAgent
 from synalinks.src.modules.core.input_module import Input
 from synalinks.src.modules.core.tool import Tool
 from synalinks.src.modules.language_models import LanguageModel
+from synalinks.src.modules.language_models.language_model import StreamingIterator
 from synalinks.src.programs import Program
 from synalinks.src.saving.object_registration import register_synalinks_serializable
 
@@ -522,6 +524,57 @@ class FunctionCallingAgentTest(testing.TestCase):
         self.assertEqual(collected, "Hello world.")
 
     @patch("litellm.acompletion")
+    async def test_streaming_drained_to_chat_messages_in_batched_loop(
+        self, mock_completion
+    ):
+        """Inside a batched loop (op_scope("inference"), as predict/evaluate
+        run), a streaming agent drains its final answer into a concrete wrapped
+        ChatMessages so the prediction stays scorable, and records the
+        time-to-first-token latency onto the inference-phase counters."""
+        language_model = LanguageModel(model="ollama/mistral")
+        tools = [Tool(calculate)]
+        inputs = Input(data_model=ChatMessages)
+        outputs = await FunctionCallingAgent(
+            language_model=language_model,
+            tools=tools,
+            autonomous=True,
+            max_iterations=2,
+            streaming=True,
+        )(inputs)
+        agent = Program(
+            inputs=inputs,
+            outputs=outputs,
+            name="autonomous_streaming_batched_test",
+        )
+
+        no_more_tools = {"thinking": "done.", "tool_calls": []}
+        stream_chunks = iter(
+            [
+                {"choices": [{"delta": {"content": "Hello "}}]},
+                {"choices": [{"delta": {"content": "world."}}]},
+            ]
+        )
+        mock_completion.side_effect = [
+            {"choices": [{"message": {"content": json.dumps(no_more_tools)}}]},
+            stream_chunks,
+        ]
+
+        input_messages = ChatMessages(
+            messages=[ChatMessage(role="user", content="say hi")]
+        )
+        with op_scope("inference"):
+            result = await agent(input_messages)
+
+        # Concrete, scorable prediction — not a raw StreamingIterator.
+        self.assertNotIsInstance(result, StreamingIterator)
+        self.assertTrue(is_chat_messages(result))
+        # The drained final answer is appended to the trajectory.
+        contents = [m.get("content") for m in result.get_json()["messages"]]
+        self.assertIn("Hello world.", contents)
+        # Draining the stream recorded one inference-phase streamed call.
+        self.assertEqual(language_model.inference_cumulated_streaming_calls, 1)
+
+    @patch("litellm.acompletion")
     async def test_streaming_disabled_when_schema_provided(self, _mock_completion):
         """`streaming=True` alongside a structured `data_model` is silently
         downgraded, since structured output needs the full response."""
@@ -904,6 +957,9 @@ class FunctionCallingAgentTest(testing.TestCase):
             workdir=workdir,
         )
 
+        # Two interactive turns: the first makes three LM calls (tool call ->
+        # post-tool reply -> final), the second makes two. All five are scripted
+        # so no call falls into the (mocked) retry path.
         mock_completion.side_effect = [
             _lm_response(
                 content="Calculating.",
@@ -911,6 +967,8 @@ class FunctionCallingAgentTest(testing.TestCase):
             ),
             _lm_response(content="No more tools."),
             _lm_response(content="Done: 1 + 1 = 2."),
+            _lm_response(content="Following up."),
+            _lm_response(content="Done again."),
         ]
 
         input_messages = ChatMessages(
@@ -920,6 +978,7 @@ class FunctionCallingAgentTest(testing.TestCase):
         # Two interactive turns, feeding the trajectory back into the agent.
         result = await agent(input_messages)
         result = await agent(result)
+        self.assertEqual(mock_completion.call_count, 5)
 
         messages = result.get("messages", [])
         agents_md_count = sum(
@@ -988,6 +1047,9 @@ class FunctionCallingAgentTest(testing.TestCase):
             skills=[root],
         )
 
+        # Two interactive turns: the first turn makes three LM calls (tool
+        # call -> post-tool reply -> final), the second makes two. All five are
+        # scripted so no call falls into the (mocked) retry path.
         mock_completion.side_effect = [
             _lm_response(
                 content="Calculating.",
@@ -995,6 +1057,8 @@ class FunctionCallingAgentTest(testing.TestCase):
             ),
             _lm_response(content="No more tools."),
             _lm_response(content="Done."),
+            _lm_response(content="Following up."),
+            _lm_response(content="Done again."),
         ]
 
         input_messages = ChatMessages(
@@ -1002,6 +1066,7 @@ class FunctionCallingAgentTest(testing.TestCase):
         )
         result = await agent(input_messages)
         result = await agent(result)
+        self.assertEqual(mock_completion.call_count, 5)
 
         messages = result.get("messages", [])
         skills_count = sum(

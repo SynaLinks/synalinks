@@ -1,0 +1,74 @@
+# App backend stack: the Synalinks + FastAPI backend, a local vLLM model server,
+# and an MLflow tracking server. `docker compose up` works with no API keys.
+#
+#   docker compose up --build
+#
+# vLLM requires an NVIDIA GPU + the NVIDIA Container Toolkit. The first start
+# downloads the model, so it can take a while.
+#
+# UIs once up:
+#   - Backend docs : http://localhost:8000/docs
+#   - MLflow       : http://localhost:5000
+#   - vLLM         : http://localhost:8001/v1
+#
+# No GPU? Set MODEL=ollama/mistral:latest and point HOSTED_VLLM_API_BASE at an
+# Ollama service instead (see backend/.env.template). Add your own `frontend`
+# service when you build one — see frontend/README.md.
+
+services:
+  vllm:
+    image: vllm/vllm-openai:latest
+    command: ["--model", "Qwen/Qwen3-4B"]
+    ports:
+      - "8001:8000"
+    volumes:
+      - hf-cache:/root/.cache/huggingface
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 60
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+
+  mlflow:
+    image: ghcr.io/mlflow/mlflow:latest
+    command: >
+      mlflow server --host 0.0.0.0 --port 5000
+      --backend-store-uri sqlite:////mlflow/mlflow.db
+      --artifacts-destination /mlflow/artifacts
+    ports:
+      - "5000:5000"
+    volumes:
+      - mlflow:/mlflow
+
+  backend:
+    build:
+      context: ./backend
+      args:
+        # MODEL is baked into the program at build time (see backend/main.py).
+        MODEL: ${MODEL:-vllm/Qwen/Qwen3-4B}
+    ports:
+      - "8000:8000"
+    environment:
+      # vLLM endpoint (reached by compose service name) + MLflow tracing.
+      HOSTED_VLLM_API_BASE: http://vllm:8000/v1
+      MLFLOW_TRACKING_URI: http://mlflow:5000
+      MLFLOW_EXPERIMENT_NAME: synalinks_traces
+    env_file:
+      - path: backend/.env
+        required: false
+    depends_on:
+      vllm:
+        condition: service_healthy
+      mlflow:
+        condition: service_started
+
+volumes:
+  hf-cache:
+  mlflow:

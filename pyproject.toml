@@ -147,5 +147,5 @@ dev = [
     "pytest-cov>=5.0",
     "keras-tuner>=1.4",
     "mkdocstrings[python]>=1.0.4",
-    "zensical>=0.0.43",
+    "zensical>=0.0.46",
 ]

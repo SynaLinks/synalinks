@@ -10,8 +10,11 @@ A minimal **Synalinks** project. Everything is in `main.py`: structured I/O
   compose modules (`Generator`, `ChainOfThought`, agents, …) between them.
 - **`call()` is async.** Run programs with `await program(...)` or
   `await program.predict(...)`.
-- The default `MODEL` is local Ollama (no key). For a hosted model,
-  `cp .env.template .env`, add the key, and edit `MODEL` in `main.py`.
+- The default `MODEL` is vLLM (`vllm/Qwen/Qwen3-4B`); start it with
+  `vllm serve Qwen/Qwen3-4B`. No GPU? Set `MODEL=ollama/mistral:latest`. For a
+  hosted model, `cp .env.template .env`, add the key, and edit `MODEL`.
+- **MLflow tracing** turns on when `MLFLOW_TRACKING_URI` is set
+  (`_enable_observability()` runs before the program is built).
 
 ## Commands
 

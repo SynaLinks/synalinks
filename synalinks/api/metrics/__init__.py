@@ -11,6 +11,10 @@ from synalinks.src.metrics import serialize as serialize
 from synalinks.src.metrics.accuracy_metrics import Accuracy as Accuracy
 from synalinks.src.metrics.accuracy_metrics import BinaryAccuracy as BinaryAccuracy
 from synalinks.src.metrics.accuracy_metrics import CategoricalAccuracy as CategoricalAccuracy
+from synalinks.src.metrics.agents_metrics import GapK as GapK
+from synalinks.src.metrics.agents_metrics import PassAtK as PassAtK
+from synalinks.src.metrics.agents_metrics import PassHatK as PassHatK
+from synalinks.src.metrics.batch_metric import BatchMetric as BatchMetric
 from synalinks.src.metrics.em_metrics import AvgEmbeddingCachedTokensPerCall as AvgEmbeddingCachedTokensPerCall
 from synalinks.src.metrics.em_metrics import AvgEmbeddingCostPerCall as AvgEmbeddingCostPerCall
 from synalinks.src.metrics.em_metrics import AvgEmbeddingLatency as AvgEmbeddingLatency
@@ -93,7 +97,10 @@ from synalinks.src.metrics.lm_metrics import AvgRewardLatency as AvgRewardLatenc
 from synalinks.src.metrics.lm_metrics import AvgRewardOutputTokensPerCall as AvgRewardOutputTokensPerCall
 from synalinks.src.metrics.lm_metrics import AvgRewardReasoningTokensPerCall as AvgRewardReasoningTokensPerCall
 from synalinks.src.metrics.lm_metrics import AvgRewardTotalTokensPerCall as AvgRewardTotalTokensPerCall
+from synalinks.src.metrics.lm_metrics import AvgTimeToFirstToken as AvgTimeToFirstToken
+from synalinks.src.metrics.lm_metrics import AvgTimeToLastToken as AvgTimeToLastToken
 from synalinks.src.metrics.lm_metrics import AvgTotalTokensPerCall as AvgTotalTokensPerCall
+from synalinks.src.metrics.lm_metrics import AvgTrajectoryTimeToFirstToken as AvgTrajectoryTimeToFirstToken
 from synalinks.src.metrics.lm_metrics import CacheCreationTokens as CacheCreationTokens
 from synalinks.src.metrics.lm_metrics import CacheHitRate as CacheHitRate
 from synalinks.src.metrics.lm_metrics import CachedTokens as CachedTokens

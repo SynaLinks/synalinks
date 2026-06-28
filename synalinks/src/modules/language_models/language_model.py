@@ -18,6 +18,7 @@ from synalinks.src.backend import ChatMessages
 from synalinks.src.backend import ChatRole
 from synalinks.src.backend import JsonDataModel
 from synalinks.src.backend.common.op_scope import current_op_scope
+from synalinks.src.backend.common.op_scope import current_trajectory_start
 from synalinks.src.backend.pydantic.chat_completions import to_chat_completion_message
 from synalinks.src.backend.pydantic.media import resolve_content_media
 from synalinks.src.modules.core.tool import Tool
@@ -515,6 +516,20 @@ class LanguageModel(Module):
         self.cumulated_cached_tokens = 0
         self.cumulated_cache_creation_tokens = 0
         self.cumulated_reasoning_tokens = 0
+        # Streaming latency counters: number of streamed calls and the summed
+        # time-to-first-token / time-to-last-token (seconds, measured from the
+        # provider request start). Averaged by the streaming metrics. Only
+        # populated for `streaming=True` calls.
+        self.cumulated_streaming_calls = 0
+        self.cumulated_streaming_ttft_s = 0.0
+        self.cumulated_streaming_ttlt_s = 0.0
+        # Whole-trajectory time-to-first-token: for a streamed call made inside
+        # an agent trajectory, the wall-clock from the (outermost) agent's start
+        # to the first token of the final answer -- includes every tool-calling
+        # round, unlike `streaming_ttft_s` which times the final LM call only.
+        # Only populated when a `trajectory_scope` is active (see op_scope).
+        self.cumulated_trajectory_calls = 0
+        self.cumulated_trajectory_ttft_s = 0.0
         # Failure counters: a call that exhausts all retries (`failed_calls`)
         # and each time the `fallback` chain is invoked because of it
         # (`fallback_activations`). Successful calls bump `cumulated_calls`;
@@ -548,6 +563,11 @@ class LanguageModel(Module):
             setattr(self, f"{_phase}_cumulated_reasoning_tokens", 0)
             setattr(self, f"{_phase}_cumulated_failed_calls", 0)
             setattr(self, f"{_phase}_cumulated_fallback_activations", 0)
+            setattr(self, f"{_phase}_cumulated_streaming_calls", 0)
+            setattr(self, f"{_phase}_cumulated_streaming_ttft_s", 0.0)
+            setattr(self, f"{_phase}_cumulated_streaming_ttlt_s", 0.0)
+            setattr(self, f"{_phase}_cumulated_trajectory_calls", 0)
+            setattr(self, f"{_phase}_cumulated_trajectory_ttft_s", 0.0)
             setattr(self, f"{_phase}_cumulated_details", {})
         # No state depends on the input shape, so mark built up-front and
         # skip Module's auto-build path (which would try to trace `call`).
@@ -903,7 +923,13 @@ class LanguageModel(Module):
                     if op_scope is not None:
                         _accumulate(self, f"{op_scope}_", flat_increments, extras)
                 if streaming:
-                    return StreamingIterator(response)
+                    return StreamingIterator(
+                        response,
+                        language_model=self,
+                        op_scope=op_scope,
+                        request_start=t0,
+                        trajectory_start=current_trajectory_start(),
+                    )
                 if not response.get("choices"):
                     raise ValueError(
                         "Empty response from the language model: no choices returned."
@@ -1028,14 +1054,71 @@ class StreamingIterator:
 
     Also accepts a plain sync iterator — useful for tests that mock
     `litellm.acompletion`.
+
+    When `language_model` and `request_start` are provided, the iterator times
+    each consumed stream and, once exhausted, records two latencies onto the
+    LM's operational counters (all-time + the phase captured at request time):
+    time-to-first-token (request start -> first non-empty chunk) and
+    time-to-last-token (request start -> final non-empty chunk). These drive
+    the `AvgTimeToFirstToken` / `AvgTimeToLastToken` metrics. A stream that the
+    caller abandons before exhaustion is not recorded (no terminal timing).
+
+    When `trajectory_start` is also provided (an agent set a `trajectory_scope`),
+    a third latency is recorded: whole-trajectory time-to-first-token, measured
+    from the outermost agent's start (so it includes every tool-calling round)
+    to the first token of the final answer. This drives
+    `AvgTrajectoryTimeToFirstToken`.
     """
 
-    def __init__(self, iterator):
+    def __init__(
+        self,
+        iterator,
+        *,
+        language_model=None,
+        op_scope=None,
+        request_start=None,
+        trajectory_start=None,
+    ):
         self._iterator = iterator
         self._is_async = hasattr(iterator, "__anext__") or hasattr(iterator, "__aiter__")
+        self._language_model = language_model
+        self._op_scope = op_scope
+        self._request_start = request_start
+        self._trajectory_start = trajectory_start
+        self._first_token_time = None
+        self._last_token_time = None
+        self._recorded = False
 
     def __aiter__(self):
         return self
+
+    def _record_latencies(self):
+        """Accumulate time-to-first / time-to-last token onto the LM counters.
+
+        Idempotent and a no-op when no token was ever yielded or no timing
+        context was supplied (e.g. the test-only sync-iterator path).
+        """
+        if self._recorded:
+            return
+        self._recorded = True
+        lm = self._language_model
+        if lm is None or self._request_start is None or self._first_token_time is None:
+            return
+        increments = {
+            "streaming_calls": 1,
+            "streaming_ttft_s": self._first_token_time - self._request_start,
+            "streaming_ttlt_s": self._last_token_time - self._request_start,
+        }
+        # Whole-trajectory TTFT, only when this streamed call ran inside an agent
+        # trajectory: time from the (outermost) agent's start to the first token.
+        if self._trajectory_start is not None:
+            increments["trajectory_calls"] = 1
+            increments["trajectory_ttft_s"] = (
+                self._first_token_time - self._trajectory_start
+            )
+        _accumulate(lm, "", increments, None)
+        if self._op_scope is not None:
+            _accumulate(lm, f"{self._op_scope}_", increments, None)
 
     async def __anext__(self):
         while True:
@@ -1045,14 +1128,51 @@ class StreamingIterator:
                 else:
                     chunk = next(self._iterator)
             except (StopAsyncIteration, StopIteration):
+                self._record_latencies()
                 raise StopAsyncIteration
             delta = chunk["choices"][0].get("delta") or {}
             content = delta.get("content")
             thinking = delta.get("reasoning_content")
             if content or thinking:
+                now = time.perf_counter()
+                if self._first_token_time is None:
+                    self._first_token_time = now
+                self._last_token_time = now
                 out = {"role": ChatRole.ASSISTANT}
                 if thinking:
                     out["reasoning_content"] = thinking
                 if content:
                     out["content"] = content
                 return out
+
+    async def aconsume(self, name=None):
+        """Drain the stream to exhaustion and return a concrete assistant
+        `ChatMessage` `JsonDataModel`.
+
+        The result is the same shape a non-streamed schema-less LM call
+        returns (role `assistant`, joined `content`, joined `reasoning_content`
+        when present), so a drained stream is indistinguishable downstream from
+        an ordinary prediction -- which is what lets the batched predict /
+        evaluate loops stream and still score the output. Exhausting the stream
+        here also records the time-to-first / time-to-last token latencies.
+        """
+        content_parts = []
+        reasoning_parts = []
+        async for chunk in self:
+            content = chunk.get("content")
+            reasoning = chunk.get("reasoning_content")
+            if content:
+                content_parts.append(content)
+            if reasoning:
+                reasoning_parts.append(reasoning)
+        json_instance = {
+            "role": ChatRole.ASSISTANT,
+            "content": "".join(content_parts),
+        }
+        if reasoning_parts:
+            json_instance["reasoning_content"] = "".join(reasoning_parts)
+        return JsonDataModel(
+            json=json_instance,
+            schema=ChatMessage.get_schema(),
+            name=name,
+        )

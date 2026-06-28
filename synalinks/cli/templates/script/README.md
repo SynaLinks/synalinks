@@ -9,12 +9,16 @@ single `main.py` with one program you can run and grow from.
 # 1. Install (this is a uv project)
 uv sync
 
-# 2. Point at a model. Default is local Ollama — no API key needed:
-ollama serve
-ollama pull llama3.2:latest
-#    (or `cp .env.template .env`, add a hosted key, and set MODEL in main.py)
+# 2. Serve a model with vLLM (the default), on its OpenAI endpoint (:8000):
+vllm serve Qwen/Qwen3-4B
+#    (no GPU? set MODEL=ollama/mistral:latest in main.py and run `ollama serve`)
+#    (hosted model? `cp .env.template .env`, add a key, and set MODEL in main.py)
 
-# 3. Run it
+# 3. (optional) trace runs to MLflow:
+#    mlflow server --host 127.0.0.1 --port 5000
+#    then set MLFLOW_TRACKING_URI=http://localhost:5000 in .env
+
+# 4. Run it
 uv run python main.py
 ```
 
@@ -23,7 +27,7 @@ uv run python main.py
 ```
 main.py          # a one-module program (Question -> Answer) and how to run it
 pyproject.toml   # uv project metadata
-.env.template    # copy to .env and fill in a key if you use a hosted model
+.env.template    # copy to .env for the vLLM endpoint, MLflow URI, or hosted keys
 ```
 
 ## Next steps

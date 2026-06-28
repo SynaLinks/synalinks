@@ -10,6 +10,7 @@ from synalinks.src.backend import ChatRole
 from synalinks.src.backend import JsonDataModel
 from synalinks.src.backend import SymbolicDataModel
 from synalinks.src.backend import is_chat_messages
+from synalinks.src.backend.common.op_scope import trajectory_scope
 from synalinks.src.modules.agents.utils.agents_utils import agents_md_prompt
 from synalinks.src.modules.agents.utils.agents_utils import discover_agents_md
 from synalinks.src.modules.agents.utils.agents_utils import merge_tools
@@ -20,6 +21,7 @@ from synalinks.src.modules.agents.utils.skills_utils import resolve_skills_paths
 from synalinks.src.modules.agents.utils.skills_utils import skills_prompt
 from synalinks.src.modules.core.generator import Generator
 from synalinks.src.modules.language_models import get as _get_lm
+from synalinks.src.modules.language_models.language_model import StreamingIterator
 from synalinks.src.modules.module import Module
 from synalinks.src.modules.ttc.chain_of_thought import ChainOfThought
 from synalinks.src.saving import serialization_lib
@@ -616,23 +618,33 @@ class FunctionCallingAgent(Module):
         # `_final_result`, ...) rather than reimplementing `call`. Extra
         # keyword arguments (e.g. RLM's per-call `sandbox=`) are forwarded to
         # `_begin_call`.
-        trajectory, ctx = await self._begin_call(inputs, training, **kwargs)
-        agent_messages = trajectory.get("messages")
+        #
+        # Anchor whole-trajectory time-to-first-token here: `trajectory_scope`
+        # is set-once, so a nested sub-agent inherits this (outermost) agent's
+        # start. The streamed final answer's TTFT is then measured from this
+        # point -- including every tool-calling round below.
+        with trajectory_scope():
+            trajectory, ctx = await self._begin_call(inputs, training, **kwargs)
+            agent_messages = trajectory.get("messages")
 
-        # Inject context messages at the front of the trajectory, read once at
-        # construction. Skills are prepended first so that AGENTS.md (prepended
-        # after) ends up as the very first message — keeping declared project
-        # conventions at the top. Both are guarded against re-injection so
-        # feeding a returned trajectory back in (e.g. in interactive mode)
-        # doesn't stack duplicate copies each turn.
-        if prepend_context_message(agent_messages, self.skills_message):
-            trajectory.update({"messages": agent_messages})
-        if prepend_context_message(agent_messages, self.agents_md_message):
-            trajectory.update({"messages": agent_messages})
+            # Inject context messages at the front of the trajectory, read once
+            # at construction. Skills are prepended first so that AGENTS.md
+            # (prepended after) ends up as the very first message — keeping
+            # declared project conventions at the top. Both are guarded against
+            # re-injection so feeding a returned trajectory back in (e.g. in
+            # interactive mode) doesn't stack duplicate copies each turn.
+            if prepend_context_message(agent_messages, self.skills_message):
+                trajectory.update({"messages": agent_messages})
+            if prepend_context_message(agent_messages, self.agents_md_message):
+                trajectory.update({"messages": agent_messages})
 
-        if self.autonomous:
-            return await self._run_autonomous(trajectory, agent_messages, ctx, training)
-        return await self._run_interactive(trajectory, agent_messages, ctx, training)
+            if self.autonomous:
+                return await self._run_autonomous(
+                    trajectory, agent_messages, ctx, training
+                )
+            return await self._run_interactive(
+                trajectory, agent_messages, ctx, training
+            )
 
     async def _begin_call(self, inputs, training, **kwargs):
         """Build the working trajectory and an opaque per-call context (hook).
@@ -738,10 +750,12 @@ class FunctionCallingAgent(Module):
                     name=self.name,
                 )
             return final_result
-        # Without schema: append the final ChatMessage to the trajectory
-        if self.streaming and not training:
-            # Streaming bypasses trajectory wrapping — caller iterates the
-            # StreamingIterator directly to consume the final answer.
+        # Without schema: append the final ChatMessage to the trajectory.
+        # Interactive streaming returns the lazy StreamingIterator for the
+        # caller to consume; inside a batched loop the final generator has
+        # already drained it to a concrete ChatMessage, so fall through to the
+        # normal trajectory wrapping below (keeping the prediction scorable).
+        if isinstance(final_result, StreamingIterator):
             return final_result
         if final_result:
             agent_messages.append(final_result.get_json())
@@ -850,7 +864,10 @@ class FunctionCallingAgent(Module):
         # without appending the empty tool calls message
         if not tool_calls or not tool_calls.get("tool_calls"):
             final_result = await self.final_generator(trajectory)
-            if self.streaming and not training and not self.schema:
+            # Interactive streaming hands the lazy iterator back; in a batched
+            # loop the final generator has already drained it to a concrete
+            # result, so fall through to the normal wrapping below.
+            if isinstance(final_result, StreamingIterator):
                 return final_result
             if self.schema:
                 # Combine messages with structured output

@@ -130,6 +130,79 @@ class LanguageModelTest(testing.TestCase):
             result += msg.get("content")
 
         self.assertEqual(result, expected)
+        # Consuming the stream to exhaustion records one streamed call and its
+        # time-to-first / time-to-last token latencies (all-time counters; no
+        # op_scope is active here).
+        self.assertEqual(language_model.cumulated_streaming_calls, 1)
+        self.assertGreaterEqual(language_model.cumulated_streaming_ttft_s, 0.0)
+        self.assertGreaterEqual(
+            language_model.cumulated_streaming_ttlt_s,
+            language_model.cumulated_streaming_ttft_s,
+        )
+        # No trajectory_scope active -> whole-trajectory TTFT is not recorded.
+        self.assertEqual(language_model.cumulated_trajectory_calls, 0)
+        self.assertEqual(language_model.cumulated_trajectory_ttft_s, 0.0)
+
+    @patch("litellm.acompletion")
+    async def test_streaming_records_trajectory_ttft(self, mock_completion):
+        """Inside a `trajectory_scope` (set by an agent), a streamed call also
+        records whole-trajectory time-to-first-token, anchored at the scope's
+        start -- so it is >= the per-call streaming TTFT (same first token, an
+        earlier anchor)."""
+        from synalinks.src.backend.common.op_scope import trajectory_scope
+
+        language_model = LanguageModel(model="ollama/deepseek-r1")
+        messages = ChatMessages(
+            messages=[ChatMessage(role=ChatRole.USER, content="Hello")]
+        )
+        mock_completion.return_value = iter(
+            [
+                {"choices": [{"delta": {"content": "Hel"}}]},
+                {"choices": [{"delta": {"content": "lo"}}]},
+            ]
+        )
+
+        with trajectory_scope():
+            response = await language_model(messages, streaming=True)
+            async for _ in response:
+                pass
+
+        self.assertEqual(language_model.cumulated_trajectory_calls, 1)
+        self.assertGreaterEqual(language_model.cumulated_trajectory_ttft_s, 0.0)
+        self.assertGreaterEqual(
+            language_model.cumulated_trajectory_ttft_s,
+            language_model.cumulated_streaming_ttft_s,
+        )
+
+    @patch("litellm.acompletion")
+    async def test_streaming_abandoned_before_exhaustion_records_nothing(
+        self, mock_completion
+    ):
+        """A caller that stops iterating before the stream is exhausted leaves
+        no terminal timing, so no streamed call is recorded (a partial
+        consumption can't yield a meaningful time-to-last-token)."""
+        language_model = LanguageModel(model="ollama/deepseek-r1")
+        messages = ChatMessages(
+            messages=[ChatMessage(role=ChatRole.USER, content="Hello")]
+        )
+        mock_completion.return_value = iter(
+            [
+                {"choices": [{"delta": {"content": "Hel"}}]},
+                {"choices": [{"delta": {"content": "lo,"}}]},
+                {"choices": [{"delta": {"content": " how"}}]},
+            ]
+        )
+
+        response = await language_model(messages, streaming=True)
+
+        # Consume only the first chunk, then abandon the iterator.
+        first = await response.__anext__()
+        self.assertEqual(first.get("content"), "Hel")
+
+        # StopAsyncIteration never fires, so the latencies are never recorded.
+        self.assertEqual(language_model.cumulated_streaming_calls, 0)
+        self.assertEqual(language_model.cumulated_streaming_ttft_s, 0.0)
+        self.assertEqual(language_model.cumulated_streaming_ttlt_s, 0.0)
 
     @patch("litellm.acompletion")
     async def test_call_api_ignores_none_response_cost(self, mock_completion):

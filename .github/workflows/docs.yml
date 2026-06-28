@@ -48,5 +48,9 @@ jobs:
           uv pip install zensical mkdocs mkdocs-material mkdocstrings[python] mkdocs-glightbox ghp-import
       - name: Build the site
         run: uv run zensical build --clean
+      # Correct the asset-link depths Zensical miscomputes for docstring-injected
+      # images; without this they 404 under the `/synalinks/` Pages sub-path.
+      - name: Fix docstring image paths
+        run: uv run python shell/fix_doc_image_paths.py site
       - name: Publish to gh-pages
         run: uv run ghp-import --no-jekyll --push --force --message "Deployed ${{ github.sha }} with Zensical" site

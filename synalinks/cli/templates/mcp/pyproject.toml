@@ -1,0 +1,11 @@
+[project]
+name = "synalinks-mcp"
+version = "0.1.0"
+description = "A Synalinks agent exposed as an MCP server with FastMCP."
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "synalinks",
+    "python-dotenv",
+    "fastmcp",
+]

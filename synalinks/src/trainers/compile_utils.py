@@ -11,6 +11,7 @@ from synalinks.src import rewards as rewards_module
 from synalinks.src import tree
 from synalinks.src.backend.common import numpy
 from synalinks.src.backend.common.symbolic_data_model import SymbolicDataModel
+from synalinks.src.metrics.batch_metric import BatchMetric
 from synalinks.src.rewards.batch_reward import BatchReward
 from synalinks.src.utils.naming import get_object_name
 from synalinks.src.utils.tracking import Tracker
@@ -25,6 +26,15 @@ class MetricsList(metrics_module.Metric):
     async def update_state(self, y_true, y_pred):
         for m in self.metrics:
             await m.update_state(y_true, y_pred)
+
+    async def update_state_batch(self, y_true_batch, y_pred_batch):
+        """Update over a whole batch: batch metrics once, others per-sample."""
+        for m in self.metrics:
+            if isinstance(m, BatchMetric):
+                await m.update_state(y_true_batch, y_pred_batch)
+            else:
+                for y_t, y_p in zip(y_true_batch, y_pred_batch):
+                    await m.update_state(y_t, y_p)
 
     def reset_state(self):
         for m in self.metrics:
@@ -280,6 +290,26 @@ class CompileMetrics(metrics_module.Metric):
         for m, y_t, y_p in zip(self._flat_metrics, y_true, y_pred):
             if m is not None:
                 await m.update_state(y_t, y_p)
+
+    async def update_state_batch(self, y_true_batch, y_pred_batch):
+        """Update every metric over a whole batch.
+
+        `BatchMetric` instances (e.g. `PassAtK`) receive the full per-output
+        batch at once; ordinary metrics are updated sample-by-sample. This is
+        the metric-side counterpart of `CompileReward.compute_batch`.
+        """
+        if not self.built:
+            self.build(y_true_batch[0], y_pred_batch[0])
+        # Flatten each sample to its per-output list, then transpose so each
+        # output gets the batch of its values across samples.
+        y_true_flat = [self._flatten_y(y_t) for y_t in y_true_batch]
+        y_pred_flat = [self._flatten_y(y_p) for y_p in y_pred_batch]
+        for i, m in enumerate(self._flat_metrics):
+            if m is None:
+                continue
+            y_t_batch = [sample[i] for sample in y_true_flat]
+            y_p_batch = [sample[i] for sample in y_pred_flat]
+            await m.update_state_batch(y_t_batch, y_p_batch)
 
     def reset_state(self):
         if not self.built:

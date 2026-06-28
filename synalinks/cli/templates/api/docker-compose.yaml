@@ -1,0 +1,76 @@
+# Runs the API with a local vLLM (OpenAI-compatible LM server) and an MLflow
+# tracking server.
+#
+#   docker compose up --build
+#
+# vLLM requires an NVIDIA GPU + the NVIDIA Container Toolkit. The first start
+# downloads the model, so it can take a while; the API waits for vLLM to be
+# healthy before building the agent.
+#
+# UIs once up:
+#   - API docs : http://localhost:8000/docs
+#   - MLflow   : http://localhost:5000
+#   - vLLM     : http://localhost:8001/v1
+#
+# No GPU? Set MODEL=ollama/mistral:latest and point HOSTED_VLLM_API_BASE at an
+# Ollama service instead (see .env.template).
+
+services:
+  vllm:
+    image: vllm/vllm-openai:latest
+    command: ["--model", "Qwen/Qwen3-4B"]
+    ports:
+      - "8001:8000"
+    volumes:
+      - hf-cache:/root/.cache/huggingface
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 60
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+
+  mlflow:
+    image: ghcr.io/mlflow/mlflow:latest
+    command: >
+      mlflow server --host 0.0.0.0 --port 5000
+      --backend-store-uri sqlite:////mlflow/mlflow.db
+      --artifacts-destination /mlflow/artifacts
+    ports:
+      - "5000:5000"
+    volumes:
+      - mlflow:/mlflow
+
+  api:
+    build:
+      context: .
+      args:
+        # Baked into the agent at build time (offline — no LM call).
+        MODEL: ${MODEL:-vllm/Qwen/Qwen3-4B}
+    ports:
+      - "8000:8000"
+    environment:
+      # Used for the response `model` field + vLLM endpoint at request time.
+      MODEL: ${MODEL:-vllm/Qwen/Qwen3-4B}
+      HOSTED_VLLM_API_BASE: http://vllm:8000/v1
+      # MLflow tracing (enable_observability picks these up).
+      MLFLOW_TRACKING_URI: http://mlflow:5000
+      MLFLOW_EXPERIMENT_NAME: synalinks_traces
+    env_file:
+      - path: .env
+        required: false
+    depends_on:
+      vllm:
+        condition: service_healthy
+      mlflow:
+        condition: service_started
+
+volumes:
+  hf-cache:
+  mlflow:

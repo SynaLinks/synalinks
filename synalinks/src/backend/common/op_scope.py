@@ -107,3 +107,49 @@ def _add_phase_wall_clock_s(phase, seconds):
     """Test helper: add to a phase's wall-clock accumulator without timing a
     real region."""
     _wall_state()["wall"][phase] = _wall_state()["wall"].get(phase, 0.0) + seconds
+
+
+# ---------------------------------------------------------------------------
+# Trajectory start (for whole-trajectory time-to-first-token of agents)
+# ---------------------------------------------------------------------------
+
+_TRAJECTORY_START = contextvars.ContextVar("synalinks_trajectory_start", default=None)
+
+
+def current_trajectory_start():
+    """Return the ``time.perf_counter()`` stamp marking the start of the
+    outermost in-flight agent trajectory, or ``None`` when no trajectory scope
+    is active.
+
+    Used to measure *whole-trajectory* time-to-first-token: the wall-clock from
+    when an agent begins (including every tool-calling round) to the first token
+    of its streamed final answer -- distinct from the per-call TTFT, which only
+    times the final LM call.
+    """
+    return _TRAJECTORY_START.get()
+
+
+class trajectory_scope:
+    """Mark the start of an agent trajectory for whole-trajectory TTFT.
+
+    **Set-once**: if a trajectory start is already active in the current context
+    a nested (sub-)agent leaves it untouched, so the timestamp always reflects
+    the *outermost* agent's start. Like `op_scope`, the start is held in a
+    ContextVar, so it is copied into the concurrent tasks/greenlets the agent
+    spawns and the final LM call reads the value active when it was spawned.
+    """
+
+    def __init__(self):
+        self._token = None
+
+    def __enter__(self):
+        if _TRAJECTORY_START.get() is None:
+            self._token = _TRAJECTORY_START.set(time.perf_counter())
+        return self
+
+    def __exit__(self, *exc_info):
+        # Only the scope that actually set the start resets it; nested scopes
+        # (which found one already active) are no-ops, preserving the outermost.
+        if self._token is not None:
+            _TRAJECTORY_START.reset(self._token)
+        return False
