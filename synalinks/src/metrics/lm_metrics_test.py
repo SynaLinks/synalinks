@@ -32,7 +32,10 @@ from synalinks.src.metrics.lm_metrics import AvgRewardLatency
 from synalinks.src.metrics.lm_metrics import AvgRewardOutputTokensPerCall
 from synalinks.src.metrics.lm_metrics import AvgRewardReasoningTokensPerCall
 from synalinks.src.metrics.lm_metrics import AvgRewardTotalTokensPerCall
+from synalinks.src.metrics.lm_metrics import AvgTimeToFirstToken
+from synalinks.src.metrics.lm_metrics import AvgTimeToLastToken
 from synalinks.src.metrics.lm_metrics import AvgTotalTokensPerCall
+from synalinks.src.metrics.lm_metrics import AvgTrajectoryTimeToFirstToken
 from synalinks.src.metrics.lm_metrics import CacheCreationTokens
 from synalinks.src.metrics.lm_metrics import CachedTokens
 from synalinks.src.metrics.lm_metrics import CacheHitRate
@@ -256,6 +259,54 @@ class OperationalMetricsResultTest(testing.TestCase):
         self.assertEqual(TotalTokens().result(), 0)
         self.assertEqual(Cost().result(), 0.0)
         self.assertEqual(Throughput().result(), 0.0)
+
+
+class StreamingLatencyMetricsTest(testing.TestCase):
+    """`AvgTimeToFirstToken` / `AvgTimeToLastToken` average the per-call TTFT /
+    TTLT the `StreamingIterator` records onto the inference-phase counters."""
+
+    def _record_stream(self, lm, ttft, ttlt, phase="inference"):
+        _bump(lm, "streaming_calls", 1, phase=phase)
+        _bump(lm, "streaming_ttft_s", ttft, phase=phase)
+        _bump(lm, "streaming_ttlt_s", ttlt, phase=phase)
+
+    def test_zero_before_any_stream(self):
+        lm = _stub_lm()
+        m_ttft = _bind(AvgTimeToFirstToken(), [lm])
+        m_ttlt = _bind(AvgTimeToLastToken(), [lm])
+        self.assertEqual(m_ttft.result(), 0.0)
+        self.assertEqual(m_ttlt.result(), 0.0)
+
+    def test_averages_over_streamed_calls(self):
+        lm = _stub_lm()
+        m_ttft = _bind(AvgTimeToFirstToken(), [lm])
+        m_ttlt = _bind(AvgTimeToLastToken(), [lm])
+        # Two streamed calls: TTFT 0.2s / 0.4s, TTLT 1.0s / 2.0s.
+        self._record_stream(lm, ttft=0.2, ttlt=1.0)
+        self._record_stream(lm, ttft=0.4, ttlt=2.0)
+        self.assertAlmostEqual(m_ttft.result(), 0.3)  # (0.2 + 0.4) / 2
+        self.assertAlmostEqual(m_ttlt.result(), 1.5)  # (1.0 + 2.0) / 2
+
+    def test_only_inference_phase_counts(self):
+        # Streaming is inference-only; counters recorded under another phase
+        # must not bleed into the inference-scoped streaming metrics.
+        lm = _stub_lm()
+        m_ttft = _bind(AvgTimeToFirstToken(), [lm])
+        self._record_stream(lm, ttft=9.0, ttlt=9.0, phase="reward")
+        self.assertEqual(m_ttft.result(), 0.0)
+
+    def test_trajectory_ttft_averages_over_trajectory_calls(self):
+        # Whole-trajectory TTFT uses its own (trajectory_calls) denominator and
+        # ignores streamed calls that ran outside an agent trajectory.
+        lm = _stub_lm()
+        m_traj = _bind(AvgTrajectoryTimeToFirstToken(), [lm])
+        self.assertEqual(m_traj.result(), 0.0)
+        # Two agent trajectories: whole-trajectory TTFT 1.5s / 2.5s.
+        _bump(lm, "trajectory_calls", 1, phase="inference")
+        _bump(lm, "trajectory_ttft_s", 1.5, phase="inference")
+        _bump(lm, "trajectory_calls", 1, phase="inference")
+        _bump(lm, "trajectory_ttft_s", 2.5, phase="inference")
+        self.assertAlmostEqual(m_traj.result(), 2.0)  # (1.5 + 2.5) / 2
 
 
 class OperationalMetricsAutoBindTest(testing.TestCase):

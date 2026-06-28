@@ -4,6 +4,10 @@ from synalinks.src.api_export import synalinks_export
 from synalinks.src.metrics.accuracy_metrics import Accuracy
 from synalinks.src.metrics.accuracy_metrics import BinaryAccuracy
 from synalinks.src.metrics.accuracy_metrics import CategoricalAccuracy
+from synalinks.src.metrics.agents_metrics import GapK
+from synalinks.src.metrics.agents_metrics import PassAtK
+from synalinks.src.metrics.agents_metrics import PassHatK
+from synalinks.src.metrics.batch_metric import BatchMetric
 from synalinks.src.metrics.em_metrics import AvgEmbeddingCachedTokensPerCall
 
 # Note: `accuracy_metrics` is imported below (after `metric`) to avoid a
@@ -302,6 +306,11 @@ ALL_OBJECTS = {
     OptimizerEmbeddingFailedCalls,
     OptimizerEmbeddingFallbackActivations,
     OptimizerEmbeddingErrorRate,
+    # Agents (sampling-based: pass@k and friends)
+    BatchMetric,
+    PassAtK,
+    PassHatK,
+    GapK,
     # Operational (program-wide)
     ProgramOperationalMetric,
     ProgramCalls,

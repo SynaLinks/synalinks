@@ -30,6 +30,11 @@ _TRACKED_SUFFIXES = (
     "reasoning_tokens",
     "failed_calls",
     "fallback_activations",
+    "streaming_calls",
+    "streaming_ttft_s",
+    "streaming_ttlt_s",
+    "trajectory_calls",
+    "trajectory_ttft_s",
 )
 
 
@@ -445,6 +450,75 @@ class ErrorRate(LMOperationalMetric):
         if total <= 0:
             return 0.0
         return failed / total
+
+
+@synalinks_export("synalinks.metrics.AvgTimeToFirstToken")
+class AvgTimeToFirstToken(LMOperationalMetric):
+    """Average time-to-first-token (TTFT) in seconds over streamed LM calls.
+
+    Measured per streamed call as the wall-clock from the provider request
+    start to the first non-empty chunk (content or reasoning), then averaged
+    over the streamed calls in this run. The headline interactivity signal:
+    how long a user waits before output begins appearing. Only `streaming=True`
+    calls contribute -- which the generator restricts to inference -- so this
+    reads 0.0 on runs that never stream.
+    """
+
+    def __init__(self, name="avg_time_to_first_token"):
+        super().__init__(name=name)
+
+    def result(self):
+        calls = self._delta("streaming_calls")
+        if calls <= 0:
+            return 0.0
+        return self._delta("streaming_ttft_s") / calls
+
+
+@synalinks_export("synalinks.metrics.AvgTimeToLastToken")
+class AvgTimeToLastToken(LMOperationalMetric):
+    """Average time-to-last-token (TTLT) in seconds over streamed LM calls.
+
+    Measured per streamed call as the wall-clock from the provider request
+    start to the final non-empty chunk, then averaged over the streamed calls
+    in this run -- i.e. the mean end-to-end duration of a streamed response.
+    Always greater than or equal to `AvgTimeToFirstToken`; the gap between the
+    two is the generation span. Only `streaming=True` calls contribute, so this
+    reads 0.0 on runs that never stream.
+    """
+
+    def __init__(self, name="avg_time_to_last_token"):
+        super().__init__(name=name)
+
+    def result(self):
+        calls = self._delta("streaming_calls")
+        if calls <= 0:
+            return 0.0
+        return self._delta("streaming_ttlt_s") / calls
+
+
+@synalinks_export("synalinks.metrics.AvgTrajectoryTimeToFirstToken")
+class AvgTrajectoryTimeToFirstToken(LMOperationalMetric):
+    """Average *whole-trajectory* time-to-first-token (s) for streamed agents.
+
+    Like `AvgTimeToFirstToken`, but the clock starts at the outermost agent's
+    trajectory start rather than at the final LM request -- so it includes every
+    tool-calling round before the final answer, capturing the user-perceived
+    "how long until the agent starts answering". Measured per streamed call that
+    runs inside an agent `trajectory_scope`, then averaged over those calls.
+
+    Only streamed final answers produced inside an agent contribute, so this
+    reads 0.0 for runs without a streaming agent. For a streamed call with no
+    tool-calling rounds it coincides with `AvgTimeToFirstToken`.
+    """
+
+    def __init__(self, name="avg_trajectory_time_to_first_token"):
+        super().__init__(name=name)
+
+    def result(self):
+        calls = self._delta("trajectory_calls")
+        if calls <= 0:
+            return 0.0
+        return self._delta("trajectory_ttft_s") / calls
 
 
 # ---------------------------------------------------------------------------

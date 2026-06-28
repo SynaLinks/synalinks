@@ -118,6 +118,10 @@ from synalinks.api import TextDataset
 from synalinks.api import TextDocument
 from synalinks.api import Initializer
 from synalinks.api import KnowledgeBase
+from synalinks.api import GapK
+from synalinks.api import PassAtK
+from synalinks.api import PassHatK
+from synalinks.api import BatchMetric
 from synalinks.api import EmbeddingModelOperationalMetric
 from synalinks.api import EmbeddingModelOptimizersOperationalMetric
 from synalinks.api import EmbeddingModelRewardsOperationalMetric
