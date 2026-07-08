@@ -277,6 +277,8 @@ async def calculate(expression: str):
     Args:
         expression (str): A math expression such as '2 + 2'.
     \"\"\"
+    if not all(char in "0123456789+-*/(). " for char in expression):
+        return {"error": "Invalid characters in expression"}
     return {"result": eval(expression, {"__builtins__": None}, {})}
 
 outputs = await synalinks.Action(

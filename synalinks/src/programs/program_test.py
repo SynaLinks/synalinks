@@ -4,6 +4,8 @@ import os
 import tempfile
 from unittest.mock import patch
 
+import orjson
+
 from synalinks.src import optimizers
 from synalinks.src import rewards
 from synalinks.src import testing
@@ -14,6 +16,7 @@ from synalinks.src.modules import default_instructions
 from synalinks.src.modules.language_models import LanguageModel
 from synalinks.src.programs import Program
 from synalinks.src.utils.nlp_utils import remove_numerical_suffix
+from synalinks.src.version import __version__
 
 
 class ProgramTest(testing.TestCase):
@@ -333,6 +336,13 @@ class ProgramTest(testing.TestCase):
 
         filepath = os.path.join(tempfile.gettempdir(), "program.json")
         program.save(filepath)
+
+        with open(filepath, "r") as f:
+            saved_config = orjson.loads(f.read())
+        # The Synalinks version is the first key of the saved program.
+        self.assertEqual(next(iter(saved_config)), "synalinks_version")
+        self.assertEqual(saved_config["synalinks_version"], __version__)
+
         cloned_program = Program.load(filepath)
 
         for var1 in program.variables:

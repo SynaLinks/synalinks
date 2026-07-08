@@ -7,7 +7,7 @@
 ## Source
 
 ````python
---8<-- "guides/24_vector_rag_agent.py:244"
+--8<-- "guides/24_vector_rag_agent.py:246"
 ````
 
 ## Run log

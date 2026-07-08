@@ -13,6 +13,7 @@ import shlex
 import struct
 import sys
 import tempfile
+import zipfile
 from typing import Any
 from typing import Callable
 from typing import Dict
@@ -2335,6 +2336,34 @@ class MirageSandbox(Sandbox):
             "written": [entry["path"] for entry in summary["written"]],
             "deleted": summary["deleted"],
         }
+
+    def save(self, path: str) -> dict:
+        """Save the sandbox filesystem to a ``.zip`` archive on the host.
+
+        Snapshots the same merged text-file view as `diff` / `patch`
+        (internal ``/.sessions`` and ``/dev`` paths excluded) and writes each
+        file into a zip at ``path``. Archive members are the virtual paths with
+        the leading ``/`` removed, so unzipping reproduces the workdir tree. A
+        missing ``.zip`` suffix is appended and parent directories are created.
+
+        Args:
+            path (str): Host path of the archive to write.
+
+        Returns:
+            dict: ``path`` (the resolved archive path) and ``files`` (the
+            number of files written).
+        """
+        tree = run_async_from_sync(self._read_tree())
+        if not path.endswith(".zip"):
+            path = path + ".zip"
+        path = os.path.abspath(path)
+        parent = os.path.dirname(path)
+        if parent:
+            os.makedirs(parent, exist_ok=True)
+        with zipfile.ZipFile(path, "w", zipfile.ZIP_DEFLATED) as archive:
+            for vpath in sorted(tree):
+                archive.writestr(vpath.lstrip("/"), tree[vpath])
+        return {"path": path, "files": len(tree)}
 
     def patch(self, *, paths: Optional[List[str]] = None) -> str:
         """Git-style unified diff of changes since this sandbox's branch base.

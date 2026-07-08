@@ -71,7 +71,9 @@ async def calculate(expression: str):
     Args:
         expression (str): A safe expression like '100 * 0.85'.
     \"\"\"
-    return {"result": eval(expression, {"__builtins__": {}}, {})}
+    if not all(char in "0123456789+-*/(). " for char in expression):
+        return {"error": "Invalid characters in expression"}
+    return {"result": eval(expression, {"__builtins__": None}, {})}
 
 inputs = synalinks.Input(data_model=synalinks.ChatMessages)
 outputs = await synalinks.VectorRAGAgent(

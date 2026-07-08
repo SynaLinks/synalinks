@@ -37,6 +37,13 @@ _MLFLOW_TRACKING_URI = None
 # MLflow experiment name for observability
 _MLFLOW_EXPERIMENT_NAME = "synalinks_traces"
 
+# Enable trace recording (LM calls written to JSONL files)
+_ENABLE_TRACE_RECORDING = False
+
+# Root folder where the trace records are written.
+# None means `synalinks_home()` (resolved at call time).
+_TRACE_RECORDING_DIR = None
+
 # Default language model (cached instance) and the identifier to persist.
 # The instance is materialized lazily because language_models depends on
 # modules which depends on backend.
@@ -377,6 +384,82 @@ def enable_observability(tracking_uri=None, experiment_name=None):
     if experiment_name:
         _MLFLOW_EXPERIMENT_NAME = experiment_name
     _ENABLE_OBSERVABILITY = True
+
+
+@synalinks_export(
+    [
+        "synalinks.config.is_trace_recording_enabled",
+        "synalinks.backend.is_trace_recording_enabled",
+        "synalinks.is_trace_recording_enabled",
+    ]
+)
+def is_trace_recording_enabled():
+    """Check if the trace recording is enabled
+
+    Returns:
+        (bool): True if the trace recording is enabled.
+    """
+    return _ENABLE_TRACE_RECORDING
+
+
+@synalinks_export(
+    [
+        "synalinks.config.record_traces",
+        "synalinks.backend.record_traces",
+        "synalinks.record_traces",
+    ]
+)
+def record_traces(base_dir=None):
+    """Enables trace recording of `LanguageModel` calls.
+
+    This function enables the `Recorder` hook for every module, recording
+    each LM call (chat messages, completion, token usage, cost ...) as one
+    JSON line under `base_dir`, organized as one folder per program and one
+    subfolder per originating module. Useful to collect training data.
+
+    Call it at the beginning of your scripts, before creating your modules.
+
+    Args:
+        base_dir (str): Optional. The root folder where the records are
+            written. If not provided, uses `synalinks_home()`
+            (`$SYNALINKS_HOME` or `~/.synalinks`).
+
+    Example:
+
+    ```python
+    import synalinks
+
+    # Basic usage: records under ~/.synalinks
+    synalinks.record_traces()
+
+    # With a custom folder
+    synalinks.record_traces(base_dir="./traces")
+    ```
+    """
+    global _ENABLE_TRACE_RECORDING
+    global _TRACE_RECORDING_DIR
+
+    if base_dir:
+        _TRACE_RECORDING_DIR = base_dir
+    _ENABLE_TRACE_RECORDING = True
+
+
+@synalinks_export(
+    [
+        "synalinks.config.trace_recording_dir",
+        "synalinks.backend.trace_recording_dir",
+    ]
+)
+def trace_recording_dir():
+    """Returns the root folder where the trace records are written.
+
+    Returns:
+        (str): The folder set via `record_traces()`, or
+            `synalinks_home()` if none was set.
+    """
+    if _TRACE_RECORDING_DIR:
+        return _TRACE_RECORDING_DIR
+    return synalinks_home()
 
 
 @synalinks_export(

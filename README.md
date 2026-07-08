@@ -95,6 +95,7 @@ Many frameworks exist today — here is what Synalinks does differently:
 
 Plus everything you'd expect from a production-grade framework:
 
+- **NEW**: Now all agents support [Agent Skills](https://agentskills.io/home) and `AGENTS.md`.
 - **[Constrained structured outputs](https://synalinks.github.io/synalinks/guides/Data%20Models/)** (JSON) for correctness
 - **Versionable**, JSON-serializable [pipelines](https://synalinks.github.io/synalinks/guides/Programs/)
 - **Automatic [async & parallel execution](https://synalinks.github.io/synalinks/guides/Programs/)** by default
@@ -106,7 +107,7 @@ Plus everything you'd expect from a production-grade framework:
 # Requirements
 
 - Python 3.12 or more
-- WL2 for windows users
+- WSL2 for windows users
 
 ## Quickstart in 3s with `uv` (recommended)
 
@@ -126,70 +127,104 @@ You can also install the library in a new project with:
 uv add synalinks
 ```
 
+To transform your coding agent into an AI engineer, do this at the root of your project:
+
+```shell
+npx skills add SynaLinks/synalinks-skills --skill synalinks
+```
+
 ## Example
+
+Synalinks agents can now read your project's [`AGENTS.md`](https://agents.md)
+conventions and use [Agent Skills](https://agentskills.io/home). The example
+below wires the official [Synalinks skills](https://github.com/SynaLinks/synalinks-skills)
+into a [`DeepAgent`](https://synalinks.github.io/synalinks/guides/Agents/) — a
+sandboxed coding agent — and asks it to design the input/output data models for a
+task, writing them into a `workspace/` folder.
+
+First set up the workspace. Install the official Synalinks skill with the
+[`skills`](https://skills.sh) CLI and add an `AGENTS.md`. The skill lands under
+the workdir, so the sandboxed agent can read its body on demand:
+
+```shell
+mkdir -p workspace && cd workspace
+# Installs the `synalinks` skill into ./.agents/skills/ and writes skills-lock.json.
+npx skills add SynaLinks/synalinks-skills --skill synalinks
+# Optional: project conventions, injected into the agent verbatim.
+printf '# Conventions\n- Write idiomatic Synalinks; consult the skills first.\n- Put data models in `models.py`.\n' > AGENTS.md
+cd ..
+```
+
+This gives the layout below — `.agents/skills` is the skills *root* (one
+sub-folder per skill, each holding a `SKILL.md`):
+
+```text
+workspace/
+├── AGENTS.md                     # injected as the agent's conventions
+├── skills-lock.json              # pins the skill to a source repo + content hash
+└── .agents/
+    └── skills/                   # the skills root
+        └── synalinks/
+            └── SKILL.md          # name + description surfaced; body read on demand
+```
+
+`main.py`:
 
 ```python
 import synalinks
 import asyncio
 
-class Query(synalinks.DataModel):
-    query: str = synalinks.Field(
-        description="The user query",
-    )
-
-class NumericalAnswer(synalinks.DataModel):
-    answer: float = synalinks.Field(
-        description="The correct final numerical answer",
-    )
-
-# Set the defaults once — modules and string-form optimizers/rewards
-# pick them up automatically.
+# Set the default once — modules pick it up automatically.
 synalinks.set_default_language_model("gemini/gemini-3.1-flash-lite-preview")
-synalinks.set_default_embedding_model("gemini/text-embedding-004")
 
-@synalinks.saving.register_synalinks_serializable()
-async def calculate(expression: str):
-    """Calculate the result of a mathematical expression.
-
-    Args:
-        expression (str): The mathematical expression to calculate, such as
-            '2 + 2'. The expression can contain numbers, operators (+, -, *, /),
-            parentheses, and spaces.
-    """
-    if not all(char in "0123456789+-*/(). " for char in expression):
-        return {
-            "result": None,
-            "log": "Error: invalid characters in expression",
-        }
-    try:
-        # Evaluate the mathematical expression safely
-        result = round(float(eval(expression, {"__builtins__": None}, {})), 2)
-        return {
-            "result": result,
-            "log": "Successfully executed",
-        }
-    except Exception as e:
-        return {
-            "result": None,
-            "log": f"Error: {e}",
-        }
+# The agent's structured final answer.
+class Deliverable(synalinks.DataModel):
+    summary: str = synalinks.Field(
+        description="What was created and where",
+    )
+    files: list[str] = synalinks.Field(
+        description="Paths of the files written into the workspace",
+    )
 
 async def main():
-    inputs = synalinks.Input(data_model=Query)
+    # A DeepAgent converses in ChatMessages (it is a coding agent).
+    inputs = synalinks.Input(data_model=synalinks.ChatMessages)
 
-    outputs = await synalinks.FunctionCallingAgent(
-        data_model=NumericalAnswer,
-        tools=[
-            synalinks.Tool(calculate),
-        ],
-    )(inputs)
+    agent = synalinks.DeepAgent(
+        data_model=Deliverable,
+        # The sandbox is seeded from this directory (host-safe: the agent's
+        # writes land in the sandbox copy, never on your disk). Its `AGENTS.md` is
+        # injected so the agent follows your conventions.
+        workdir="workspace",
+        # The skills root (installed by `skills add`). Listed to the agent as
+        # `<available_skills>`; it reads each `SKILL.md` on demand from the
+        # sandbox — which is why the skills live under `workdir`.
+        skills=["workspace/.agents/skills"],
+    )
+    outputs = await agent(inputs)
 
     program = synalinks.Program(
         inputs=inputs,
         outputs=outputs,
-        name="math_agent",
-        description="A math agent",
+        name="datamodel_designer",
+        description="Designs Synalinks data models for a given task",
     )
+
+    task = (
+        "Define the input and output Synalinks DataModels for a support-ticket "
+        "triage task: the input is a raw customer message; the output is the "
+        "predicted category, a priority, and a short suggested reply. Write them "
+        "to `models.py` using idiomatic Synalinks — consult the skills first."
+    )
+    result = await program(
+        synalinks.ChatMessages(
+            messages=[synalinks.ChatMessage(role="user", content=task)],
+        )
+    )
+    print(result.prettify_json())
+
+if __name__ == "__main__":
+    asyncio.run(main())
 
 ```
 

@@ -304,11 +304,18 @@ def _resolve_kt_tuner(name):
             # If a loop is already running (notebook / IPython / async harness)
             # we cannot install our own, so leave `_synalinks_search_loop` unset
             # and let `run_trial` fall back to the per-trial `run_maybe_nested`.
+            # NB: keep `super().search()` OUT of this try. It raises
+            # RuntimeError of its own (e.g. keras_tuner's consecutive-failure
+            # abort); catching that here would swallow the real error and
+            # wrongly fall through to spin up our own loop on top of the
+            # already-running one — which then dies with "Cannot run the event
+            # loop while another loop is running".
             try:
                 asyncio.get_running_loop()
-                return super().search(*fit_args, **fit_kwargs)
             except RuntimeError:
                 pass
+            else:
+                return super().search(*fit_args, **fit_kwargs)
             loop = asyncio.new_event_loop()
             self._synalinks_search_loop = loop
             try:
