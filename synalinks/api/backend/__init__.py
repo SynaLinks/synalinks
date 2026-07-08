@@ -14,10 +14,12 @@ from synalinks.src.backend.config import api_key as api_key
 from synalinks.src.backend.config import backend as backend
 from synalinks.src.backend.config import enable_logging as enable_logging
 from synalinks.src.backend.config import enable_observability as enable_observability
+from synalinks.src.backend.config import record_traces as record_traces
 from synalinks.src.backend.config import epsilon as epsilon
 from synalinks.src.backend.config import floatx as floatx
 from synalinks.src.backend.config import get_seed as get_seed
 from synalinks.src.backend.config import is_observability_enabled as is_observability_enabled
+from synalinks.src.backend.config import is_trace_recording_enabled as is_trace_recording_enabled
 from synalinks.src.backend.config import mlflow_experiment_name as mlflow_experiment_name
 from synalinks.src.backend.config import mlflow_tracking_uri as mlflow_tracking_uri
 from synalinks.src.backend.config import set_api_base as set_api_base
@@ -26,6 +28,7 @@ from synalinks.src.backend.config import set_backend as set_backend
 from synalinks.src.backend.config import set_epsilon as set_epsilon
 from synalinks.src.backend.config import set_floatx as set_floatx
 from synalinks.src.backend.config import set_seed as set_seed
+from synalinks.src.backend.config import trace_recording_dir as trace_recording_dir
 from synalinks.src.backend.pydantic.base import Embedding as Embedding
 from synalinks.src.backend.pydantic.base import EmbeddingRequest as EmbeddingRequest
 from synalinks.src.backend.pydantic.base import Embeddings as Embeddings

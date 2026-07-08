@@ -15,6 +15,7 @@ from synalinks.src.trainers.trainer import Trainer
 from synalinks.src.utils import file_utils
 from synalinks.src.utils import io_utils
 from synalinks.src.utils import summary_utils
+from synalinks.src.version import __version__
 
 
 @synalinks_export(["synalinks.Program", "synalinks.programs.Program"])
@@ -448,6 +449,7 @@ class Program(Trainer, Module):
 
         The saved `.json` file contains:
 
+        - The Synalinks version used to save it
         - The program's configuration (architecture)
         - The program's variables
         - The program's optimizer's state (if any)
@@ -470,6 +472,7 @@ class Program(Trainer, Module):
                 f"The filepath should ends with '.json', received filepath={filepath}"
             )
         program_config = serialization_lib.serialize_synalinks_object(self)
+        program_config = {"synalinks_version": __version__, **program_config}
         variables_config = self.get_state_tree()
         program_config.update({"variables": variables_config})
         program_config_string = orjson.dumps(
@@ -544,6 +547,7 @@ class Program(Trainer, Module):
         from synalinks.src.saving import serialization_lib
 
         program_config = serialization_lib.serialize_synalinks_object(self)
+        program_config = {"synalinks_version": __version__, **program_config}
         return orjson.dumps(program_config, **kwargs).decode()
 
     @classmethod

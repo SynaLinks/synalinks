@@ -332,6 +332,76 @@ class TunerEndToEndTest(testing.TestCase):
             f"got {len(created)}",
         )
 
+    def _build_failing_program_factory(self):
+        """Hypermodel whose `fit` always raises — so every trial fails and
+        keras_tuner aborts with its consecutive-failure RuntimeError."""
+
+        async def build(hp):
+            hp.Float("x", 0.0, 1.0)
+
+            class _FailingProgram:
+                optimizer = object()  # truthy → dispatch to fit() branch
+
+                async def fit(self_inner, *args, **kwargs):
+                    raise ValueError("trial-boom")
+
+            return _FailingProgram()
+
+        return build
+
+    def test_search_under_running_loop_surfaces_real_error_not_loop_crash(self):
+        # Regression for the open-arena crash: callers drive `search()` from
+        # inside their own `asyncio.run(...)` (open-arena's `run_sweep`). When
+        # trials fail, keras_tuner raises its consecutive-failure RuntimeError
+        # out of `super().search()`. That call used to sit INSIDE a
+        # `try/except RuntimeError: pass`, so the real error was swallowed and
+        # `search()` fell through to build its OWN event loop and re-run the
+        # search on top of the already-running one — dying with "Cannot run
+        # the event loop while another loop is running", further masked as
+        # "AttributeError: 'NoneType' object has no attribute 'items'".
+        #
+        # With the fix, under a running loop `search()` delegates and lets the
+        # honest failure propagate; it never installs a loop of its own.
+        disable_keras_backend()
+        build = self._build_failing_program_factory()
+        tuner = RandomSearch(
+            hypermodel=build,
+            objective=Objective("val_reward", direction="max"),
+            max_trials=5,
+            directory=self._tmpdir,
+            project_name="under_running_loop_failing",
+            overwrite=True,
+            seed=42,
+        )
+
+        async def _driver():
+            tuner.search(epochs=1)
+
+        with self.assertRaises(Exception) as cm:
+            asyncio.run(_driver())
+
+        # Walk the full __cause__/__context__ chain to a single string.
+        chain, exc = [], cm.exception
+        seen_ids = set()
+        while exc is not None and id(exc) not in seen_ids:
+            seen_ids.add(id(exc))
+            chain.append(f"{type(exc).__name__}: {exc}")
+            exc = exc.__cause__ or exc.__context__
+        chain_text = " || ".join(chain)
+
+        self.assertNotIn(
+            "Cannot run the event loop while another loop is running",
+            chain_text,
+            f"search() spun up a second loop under a running loop: {chain_text}",
+        )
+        self.assertNotIn(
+            "'NoneType' object has no attribute 'items'",
+            chain_text,
+            f"real error was masked by the None-context bug: {chain_text}",
+        )
+        # search() must not have installed its own search-wide loop.
+        self.assertIsNone(getattr(tuner, "_synalinks_search_loop", None))
+
     def test_async_hypermodel_populates_space_at_construction(self):
         """An `async def build` must have its body run during the synchronous
         space exploration in `BaseTuner.__init__`.

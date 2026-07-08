@@ -220,6 +220,7 @@ nav:
       - Synalinks API/Hooks API/Base Hook class.md
       - Synalinks API/Hooks API/Logger.md
       - Synalinks API/Hooks API/Monitor.md
+      - Synalinks API/Hooks API/Recorder.md
     - Ops API:
       - Synalinks API/Ops API/index.md
       - Synalinks API/Ops API/JSON Ops.md

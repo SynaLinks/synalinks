@@ -158,8 +158,10 @@ async def calculator(expression: str):
     Args:
         expression (str): A mathematical expression like '2 + 2' or '15 * 23'.
     \"\"\"
+    if not all(char in "0123456789+-*/(). " for char in expression):
+        return {"error": "Invalid characters in expression"}
     try:
-        result = eval(expression)
+        result = eval(expression, {"__builtins__": None}, {})
         return {"result": str(result)}
     except Exception as e:
         return {"error": str(e)}
@@ -312,8 +314,10 @@ async def calculator(expression: str):
     Args:
         expression (str): A mathematical expression like '2 + 2' or '15 * 23'.
     \"\"\"
+    if not all(char in "0123456789+-*/(). " for char in expression):
+        return {"error": "Invalid characters in expression"}
     try:
-        result = eval(expression)
+        result = eval(expression, {"__builtins__": None}, {})
         return {"result": str(result)}
     except Exception as e:
         return {"error": str(e)}
@@ -473,8 +477,10 @@ async def calculator(expression: str):
     Args:
         expression (str): A mathematical expression like '2 + 2' or '15 * 23'.
     """
+    if not all(char in "0123456789+-*/(). " for char in expression):
+        return {"error": "Invalid characters in expression"}
     try:
-        result = eval(expression)
+        result = eval(expression, {"__builtins__": None}, {})
         return {"result": str(result)}
     except Exception as e:
         return {"error": str(e)}

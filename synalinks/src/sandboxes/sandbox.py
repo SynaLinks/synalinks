@@ -256,6 +256,26 @@ class Sandbox(SynalinksSaveable):
         """
         raise NotImplementedError("This sandbox does not support `merge`.")
 
+    def save(self, path: str) -> dict:
+        """Save the sandbox's current filesystem to a ``.zip`` on the host.
+
+        Exports the virtual files the sandbox exposes (the merged view an
+        agent sees — e.g. after mutating a ``workdir``) into a zip archive at
+        ``path`` on the real filesystem, so a caller can persist what an agent
+        produced. Archive members are the virtual paths with the leading
+        ``/`` removed, so unzipping reproduces the tree. Backends without a
+        filesystem do not implement this.
+
+        Args:
+            path (str): Host path of the archive to write. A ``.zip`` suffix
+                is appended when missing.
+
+        Returns:
+            dict: ``path`` (the resolved archive path) and ``files`` (the
+            number of files written).
+        """
+        raise NotImplementedError("This sandbox does not support `save`.")
+
     # -- run history (provided) -----------------------------------------
 
     def history(self) -> List[Dict[str, Any]]:

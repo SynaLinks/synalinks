@@ -32,8 +32,10 @@ from synalinks.api import default_knowledge_base
 from synalinks.api import default_language_model
 from synalinks.api import enable_logging
 from synalinks.api import enable_observability
+from synalinks.api import record_traces
 from synalinks.api import get_seed
 from synalinks.api import is_observability_enabled
+from synalinks.api import is_trace_recording_enabled
 from synalinks.api import set_api_base
 from synalinks.api import set_default_embedding_model
 from synalinks.api import set_default_knowledge_base

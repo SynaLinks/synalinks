@@ -59,8 +59,8 @@ exactly what Synalinks records.
 
 ## What Synalinks Emits
 
-Synalinks provides two cooperating mechanisms. You can use either,
-or both.
+Synalinks provides three cooperating mechanisms. You can use any of
+them, or all three.
 
 1. **`synalinks.enable_logging(log_level=...)`** installs a logger.
    Every time a `Module` is called, the logger prints a small block
@@ -84,9 +84,17 @@ or both.
    the trace as an interactive tree in a web UI, and it also
    captures training metrics and saved artifacts.
 
-The two mechanisms are independent. Logging needs no server; MLflow
-gives you a nicer interface but needs one running. The runnable
-example below uses logging only, so you can run it offline.
+3. **`synalinks.record_traces(base_dir=...)`** writes every
+   `LanguageModel` call to JSONL files on disk — the chat messages
+   sent to the model, the completion it returned, token usage, and
+   cost. Where logging and MLflow are aimed at *debugging*, trace
+   recording is aimed at *harvesting*: the files are formatted as
+   fine-tuning datasets (see the dedicated section below).
+
+The mechanisms are independent. Logging needs no server; MLflow
+gives you a nicer interface but needs one running; trace recording
+needs neither. The runnable example below uses logging only, so you
+can run it offline.
 
 ## Running with MLflow
 
@@ -97,6 +105,94 @@ UI, start one in another terminal and uncomment the call:
 ```bash
 mlflow ui --port 5000
 ```
+
+## Recording LM Calls as Training Data: `record_traces()`
+
+The third mechanism answers a different question. Logging and MLflow
+help you understand a program; `record_traces()` helps you *improve
+the model behind it*. Every real interaction your program handles is
+a potential fine-tuning example: the exact prompt the `LanguageModel`
+received, and the completion it produced. Trace recording captures
+those pairs as they happen, so that after a program has been running
+for a while you have a dataset — for distilling a large model into a
+smaller one, or for fine-tuning on your domain.
+
+```python
+import synalinks
+
+# Call it once, at the top of your script, BEFORE creating modules.
+synalinks.record_traces()                      # ~/.synalinks (synalinks_home())
+# synalinks.record_traces(base_dir="./traces") # or a custom folder
+```
+
+Under the hood this installs a `synalinks.hooks.Recorder` hook on
+every module (you can also attach one manually via
+`LanguageModel(..., hooks=[synalinks.hooks.Recorder()])`). The hook
+only reacts to `LanguageModel` calls; symbolic calls made while
+building the graph are ignored.
+
+Because one `LanguageModel` instance is typically shared by several
+modules (a `Generator` here, a `ChainOfThought` there), each record
+is attributed to the **originating module** — the module whose
+`call()` invoked the LM — and the files are organized accordingly:
+
+```
+~/.synalinks/
+└── program_name/                    # the entry Program
+    ├── answer_generator/
+    │   └── answer_generator_20260703-205001.jsonl
+    └── critique_generator/
+        └── critique_generator_20260703-205012.jsonl
+```
+
+Each line is one LM call. The `messages` field holds the full
+conversation in **OpenAI chat format**, completion included as the
+final assistant message — which is the chat dataset schema expected
+by OpenAI-compatible fine-tuning stacks such as **NVIDIA NeMo**
+(NeMo Customizer chat datasets, NeMo AutoModel's `ChatDataset`).
+For reasoning models, the assistant's `reasoning_content` is kept in
+the messages: NeMo trains on reasoning traces by default and offers
+`mask_reasoning_content` to exclude them from the loss.
+
+```json
+{
+  "synalinks_version": "0.9.005",
+  "call_id": "…", "parent_call_id": "…",
+  "program": "qa_with_critique", "module": "answer_generator",
+  "timestamp": 1751567401.5, "duration": 8.3,
+  "usage": {"prompt_tokens": 178, "completion_tokens": 141,
+            "total_tokens": 319, "cached_tokens": 0,
+            "cache_creation_tokens": 0, "reasoning_tokens": 0},
+  "cost": 0.0,
+  "messages": [{"role": "system", "content": "…"},
+               {"role": "user", "content": "…"},
+               {"role": "assistant", "content": "…"}],
+  "inputs_hash": "…", "outputs": {"…": "…"},
+  "config": {"…": "…"}, "config_hash": "…"
+}
+```
+
+The metadata around `messages` is there for dataset curation:
+
+- `inputs_hash` (SHA-256 of the input messages) deduplicates repeated
+  prompts across runs.
+- `config` / `config_hash` (the serialized `LanguageModel`) group
+  records by the exact model configuration that produced them, so you
+  can filter out records from an older model version.
+- `program` / `module` let you build one dataset per module — the
+  answer generator and the critique generator learn different jobs.
+- `usage` / `cost` / `duration` let you weigh or filter examples
+  (e.g. drop truncated completions).
+
+Consumers that reject unknown top-level keys get a pristine file with
+one projection: `jq -c '{messages}' *.jsonl`.
+
+Two caveats. First, like `enable_observability()`, the flag is read
+when a module is *constructed* — call `record_traces()` before
+creating your modules. Second, streamed responses (`streaming=True`)
+are recorded without `outputs`, an appended completion, or token
+usage: the record is written when the call returns the stream, before
+the tokens exist.
 
 ## The Anatomy of One Trace
 
@@ -264,10 +360,12 @@ if __name__ == "__main__":
   did from the data it emitted while running. For LM programs this
   takes the form of **span trees**: nested records of every module
   call and every call out to a provider.
-- **Synalinks gives you two ways to capture spans.**
+- **Synalinks gives you three ways to capture what happened.**
   `enable_logging` prints structured per-call text to stdout.
   `enable_observability` forwards spans to an MLflow server for an
-  interactive UI.
+  interactive UI. `record_traces` writes every `LanguageModel` call
+  to JSONL files formatted as fine-tuning datasets (OpenAI chat
+  format, NVIDIA NeMo compatible).
 - **Static** inspection (`program.summary`, `plot_program`)
   describes the shape of the program *before* running it.
   **Runtime** tracing records what *actually* happened during
@@ -280,6 +378,8 @@ if __name__ == "__main__":
 
 - [enable_observability](https://synalinks.github.io/synalinks/Synalinks%20API/Observability%20API/)
 - [enable_logging](https://synalinks.github.io/synalinks/Synalinks%20API/Observability%20API/)
+- [record_traces](https://synalinks.github.io/synalinks/Synalinks%20API/Observability%20API/)
+- [Recorder hook](https://synalinks.github.io/synalinks/Synalinks%20API/Hooks%20API/Recorder/)
 - [plot_program](https://synalinks.github.io/synalinks/Synalinks%20API/Utils%20API/)
 - [Program.summary](https://synalinks.github.io/synalinks/Synalinks%20API/Programs%20API/The%20Program%20class/)
 """

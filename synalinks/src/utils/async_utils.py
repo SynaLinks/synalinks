@@ -699,7 +699,13 @@ class _LoopCoroRunner(_CoroRunner):
         try:
             return loop.run_until_complete(capture_ctx())
         finally:
-            _set_current_context(ctx)
+            # `ctx` stays None if run_until_complete raises before
+            # capture_ctx's own finally runs (e.g. the loop refuses to start
+            # because another loop is already running). Don't mask that real
+            # error with `AttributeError: 'NoneType' object has no attribute
+            # 'items'`.
+            if ctx is not None:
+                _set_current_context(ctx)
 
     def __enter__(self):
         loop = self.loop

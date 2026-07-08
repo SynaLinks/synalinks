@@ -541,6 +541,9 @@ class LanguageModel(Module):
         self.last_call_completion_tokens = 0
         self.last_call_tokens = 0
         self.last_call_elapsed_s = 0.0
+        self.last_call_cached_tokens = 0
+        self.last_call_cache_creation_tokens = 0
+        self.last_call_reasoning_tokens = 0
         # Phase-scoped counters — populated based on `synalinks_op_scope` set
         # by the trainer: "inference" inside `predict_on_batch`, "reward"
         # inside `compute_reward`, "optimizer" inside `optimizer.optimize`.
@@ -907,6 +910,9 @@ class LanguageModel(Module):
                     self.last_call_completion_tokens = completion_tokens
                     self.last_call_tokens = total_tokens
                     self.last_call_elapsed_s = elapsed_s
+                    self.last_call_cached_tokens = cached
+                    self.last_call_cache_creation_tokens = cache_creation
+                    self.last_call_reasoning_tokens = reasoning
                     flat_increments = {
                         "calls": 1,
                         "prompt_tokens": prompt_tokens,

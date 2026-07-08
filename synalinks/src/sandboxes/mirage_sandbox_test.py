@@ -588,6 +588,32 @@ class MirageSandboxTest(testing.TestCase):
         changes = sandbox.changes()
         self.assertEqual(changes["written"], ["/created.txt"])
 
+    async def test_save_writes_workdir_as_zip(self):
+        import os
+        import tempfile
+        import zipfile
+
+        sandbox = MirageSandbox(timeout=_TIMEOUT)
+        await sandbox.write_file("/models.py", "class A:\n    pass\n")
+        await sandbox.write_file("/pkg/util.py", "x = 1\n")
+        with tempfile.TemporaryDirectory() as tmp:
+            # Suffix is appended when missing.
+            result = sandbox.save(os.path.join(tmp, "out"))
+            self.assertTrue(result["path"].endswith("out.zip"))
+            self.assertTrue(os.path.exists(result["path"]))
+            self.assertEqual(result["files"], 2)
+            with zipfile.ZipFile(result["path"]) as archive:
+                names = set(archive.namelist())
+                # Members are virtual paths without the leading slash.
+                self.assertEqual(names, {"models.py", "pkg/util.py"})
+                self.assertEqual(
+                    archive.read("models.py").decode(), "class A:\n    pass\n"
+                )
+
+    async def test_save_unsupported_on_base_sandbox(self):
+        with self.assertRaises(NotImplementedError):
+            Sandbox().save("out.zip")
+
     async def test_patch_renders_git_style_unified_diff(self):
         sandbox = MirageSandbox(timeout=_TIMEOUT)
         await sandbox.write_file("/app/main.py", "def f():\n    return 1\n")

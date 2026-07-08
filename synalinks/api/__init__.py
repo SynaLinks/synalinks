@@ -38,8 +38,10 @@ from synalinks.src.backend.config import default_knowledge_base as default_knowl
 from synalinks.src.backend.config import default_language_model as default_language_model
 from synalinks.src.backend.config import enable_logging as enable_logging
 from synalinks.src.backend.config import enable_observability as enable_observability
+from synalinks.src.backend.config import record_traces as record_traces
 from synalinks.src.backend.config import get_seed as get_seed
 from synalinks.src.backend.config import is_observability_enabled as is_observability_enabled
+from synalinks.src.backend.config import is_trace_recording_enabled as is_trace_recording_enabled
 from synalinks.src.backend.config import set_api_base as set_api_base
 from synalinks.src.backend.config import set_default_embedding_model as set_default_embedding_model
 from synalinks.src.backend.config import set_default_knowledge_base as set_default_knowledge_base

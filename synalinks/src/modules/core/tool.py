@@ -125,7 +125,9 @@ class Tool(Module):
         Args:
             expression (str): The mathematical expression to calculate.
         \"\"\"
-        result = eval(expression)
+        if not all(char in "0123456789+-*/(). " for char in expression):
+            return {"result": None, "log": "Error: invalid characters"}
+        result = eval(expression, {"__builtins__": None}, {})
         return {"result": result}
 
     tool = synalinks.Tool(calculate)
