@@ -459,4 +459,4 @@ Synalinks would not be possible without the great work of the following open-sou
 - [Pydantic](https://docs.pydantic.dev/latest/) for the backend data layer.
 - [LiteLLM](https://docs.litellm.ai/docs/) for the LMs integrations.
 - [DuckDB](https://duckdb.org/), [Ladybug](https://ladybugdb.com/), [LanceDB](https://www.lancedb.com/) for their amazing embedded databases.
-- [MirageAI]() for their sandbox.
+- [MirageAI](https://www.strukto.ai/mirage) for their amazing sandbox!
