@@ -41,8 +41,11 @@ class ChatCompletionFunctionCall(DataModel):
     name: str = Field(
         description="The name of the function to call",
     )
-    arguments: str = Field(
-        description="JSON-encoded arguments for the function call",
+    arguments: Union[str, Dict[str, Any]] = Field(
+        description=(
+            "JSON-encoded arguments for the function call (a parsed dict "
+            "is also accepted and kept as-is by the converters)"
+        ),
     )
 
 
@@ -523,10 +526,13 @@ def to_chat_completion_message(message):
     requires string content. The synalinks `reasoning_content` /
     `thinking_blocks` fields map onto the wire `reasoning_content` /
     `thinking_blocks` (litellm provider extensions) so reasoning survives a
-    round-trip.
+    round-trip, and `name`/`refusal`/`audio` are carried through verbatim.
+    A tool call whose `arguments` is already a JSON-encoded string (the
+    optional wire form) is passed through without re-encoding.
     Role handling mirrors the language-model wire path: an assistant
     message with empty content emits `content=null`, and the legacy
-    `function` role carries its name in `name`.
+    `function` role carries its name in `name` (falling back to
+    `tool_call_id` for messages built before `name` existed).
 
     Args:
         message (ChatMessage): The synalinks message to convert.
@@ -549,7 +555,11 @@ def to_chat_completion_message(message):
                 type="function",
                 function=ChatCompletionFunctionCall(
                     name=tc.function.name,
-                    arguments=json.dumps(tc.function.arguments),
+                    arguments=(
+                        tc.function.arguments
+                        if isinstance(tc.function.arguments, str)
+                        else json.dumps(tc.function.arguments)
+                    ),
                 ),
             )
             for tc in message.tool_calls
@@ -559,16 +569,19 @@ def to_chat_completion_message(message):
         return ChatCompletionMessage(
             role="assistant",
             content=content if content else None,
+            name=message.name or None,
             reasoning_content=message.reasoning_content or None,
             thinking_blocks=message.thinking_blocks or None,
             tool_calls=tool_calls,
+            refusal=message.refusal or None,
+            audio=message.audio or None,
         )
     if role == "function":
         # Legacy function role: OpenAI carries the function name in `name`.
         return ChatCompletionMessage(
             role="function",
             content=content,
-            name=message.tool_call_id or "",
+            name=message.name or message.tool_call_id or "",
         )
     if role == "tool":
         return ChatCompletionMessage(
@@ -577,7 +590,7 @@ def to_chat_completion_message(message):
             tool_call_id=message.tool_call_id,
         )
     # user / system / developer
-    return ChatCompletionMessage(role=role, content=content)
+    return ChatCompletionMessage(role=role, content=content, name=message.name)
 
 
 @synalinks_export(
@@ -607,13 +620,15 @@ def to_chat_completion_messages(messages):
 def from_chat_completion_message(message):
     """Convert a `ChatCompletionMessage` to a synalinks `ChatMessage`.
 
-    Parses each tool call's `function.arguments` from its JSON-encoded
-    string back into a dict (the `{id, type, function}` envelope is
-    preserved). The legacy `function` role is mapped to `tool`. The
-    `reasoning_content` / `thinking_blocks` provider extensions are mapped
-    back onto the synalinks `reasoning_content` / `thinking_blocks` fields.
-    Fields with no synalinks equivalent (`name`, `refusal`, `audio`) are
-    dropped.
+    Each tool call's `function.arguments` conversion is type-driven: a
+    string is the wire encoding and is parsed back into a dict, while an
+    already-parsed dict is kept as-is (the `{id, type, function}` envelope
+    is preserved either way). The legacy `function` role is mapped to
+    `tool` (its `name` doubles as the `tool_call_id` fallback so the
+    result stays linked to its call). The `reasoning_content` /
+    `thinking_blocks` provider extensions are mapped back onto the
+    synalinks `reasoning_content` / `thinking_blocks` fields, and `name` /
+    `refusal` / `audio` onto their `ChatMessage` equivalents.
 
     Args:
         message (ChatCompletionMessage): The OpenAI-shaped message.
@@ -626,30 +641,37 @@ def from_chat_completion_message(message):
             non-empty and not valid JSON.
     """
     role = message.role
+    tool_call_id = message.tool_call_id
     if role == "function":
         role = "tool"
+        tool_call_id = tool_call_id or message.name
     tool_calls = None
     if message.tool_calls:
-        tool_calls = [
-            ToolCall(
-                id=tc.id,
-                type="function",
-                function=ToolCallFunction(
-                    name=tc.function.name,
-                    arguments=(
-                        json.loads(tc.function.arguments) if tc.function.arguments else {}
+        tool_calls = []
+        for tc in message.tool_calls:
+            arguments = tc.function.arguments
+            if isinstance(arguments, str):
+                arguments = json.loads(arguments) if arguments else {}
+            tool_calls.append(
+                ToolCall(
+                    id=tc.id,
+                    type="function",
+                    function=ToolCallFunction(
+                        name=tc.function.name,
+                        arguments=arguments,
                     ),
-                ),
+                )
             )
-            for tc in message.tool_calls
-        ]
     return ChatMessage(
         role=role,
         content=message.content,
+        name=message.name,
         reasoning_content=message.reasoning_content,
         thinking_blocks=message.thinking_blocks,
-        tool_call_id=message.tool_call_id,
+        tool_call_id=tool_call_id,
         tool_calls=tool_calls,
+        refusal=message.refusal,
+        audio=message.audio,
     )
 
 

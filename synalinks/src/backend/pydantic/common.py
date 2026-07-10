@@ -50,13 +50,24 @@ class ChatRole(str, Enum):
     ]
 )
 class ToolCallFunction(DataModel):
-    """The `function` payload of a tool call (name + parsed arguments)."""
+    """The `function` payload of a tool call (name + arguments).
+
+    `arguments` is a parsed dict by default, but the raw JSON-encoded
+    string used on the Chat Completions wire is also accepted, for users
+    who prefer to keep the wire encoding. The converters in
+    `backend.pydantic.chat_completions` are type-driven: a dict is
+    JSON-encoded at the wire edge while a string passes through verbatim,
+    and a wire string is parsed back into a dict.
+    """
 
     name: str = Field(
         description="The name of the function called",
     )
-    arguments: Dict[str, Any] = Field(
-        description="The arguments of the tool call",
+    arguments: Union[Dict[str, Any], str] = Field(
+        description=(
+            "The arguments of the tool call, as a parsed dict or as the "
+            "raw JSON-encoded string (chat-completion wire form)"
+        ),
     )
 
 
@@ -72,9 +83,10 @@ class ToolCall(DataModel):
     """A tool call, shaped like an OpenAI Chat Completions tool call.
 
     Mirrors the wire envelope (`{id, type, function: {name, arguments}}`)
-    except that `arguments` stays a parsed dict rather than a JSON-encoded
-    string, so modules and agents can read it directly. The string encoding
-    is applied only at the wire edge (see `backend.pydantic.chat_completions`).
+    except that `arguments` is a parsed dict by default rather than a
+    JSON-encoded string, so modules and agents can read it directly. The
+    string form is also accepted; the wire converters in
+    `backend.pydantic.chat_completions` handle either by type.
     """
 
     id: str = Field(
@@ -117,7 +129,15 @@ def is_tool_call(x):
     ]
 )
 class ChatMessage(DataModel):
-    """A chat message"""
+    """A chat message.
+
+    Its keys are in exact parity with the litellm-extended Chat Completions
+    message (`backend.pydantic.chat_completions.ChatCompletionMessage`) —
+    same names on both sides, enforced by test. Only value types may differ
+    where synalinks is deliberately richer (e.g. parsed-dict tool-call
+    arguments, dict tool-result content). When adding a field, add its wire
+    twin in `chat_completions.py` too.
+    """
 
     role: ChatRole = Field(
         description="The chat message role",
@@ -127,8 +147,8 @@ class ChatMessage(DataModel):
             "The reasoning/thinking content of the message. Keyed to match the "
             "litellm/DeepSeek `reasoning_content` chat-completion field (a "
             "provider extension, not part of the base OpenAI spec), so the "
-            "message API stays a subset of the litellm-extended chat-completion "
-            "message."
+            "message API stays in exact key parity with the litellm-extended "
+            "chat-completion message."
         ),
         default=None,
     )
@@ -154,6 +174,29 @@ class ChatMessage(DataModel):
         description="The tool calls of the agent",
         default=None,
     )
+    name: Optional[str] = Field(
+        description=(
+            "Optional author name for the message (chat-completion `name`). "
+            "On the legacy `function` role it carries the function name."
+        ),
+        default=None,
+    )
+    refusal: Optional[str] = Field(
+        description=(
+            "The refusal message returned when the model declines to fulfill "
+            "a structured-output request (chat-completion `refusal`)."
+        ),
+        default=None,
+    )
+    audio: Optional[Dict[str, Any]] = Field(
+        description=(
+            "Audio response payload when the audio output modality is used "
+            "(chat-completion `audio`: id, data, transcript, expires_at). "
+            "Distinct from audio *input*, which travels as an `input_audio` "
+            "content part."
+        ),
+        default=None,
+    )
 
     @model_validator(mode="before")
     @classmethod
@@ -161,7 +204,7 @@ class ChatMessage(DataModel):
         """Accept the deprecated `thinking` key as an alias for `reasoning_content`.
 
         `thinking` was renamed to `reasoning_content` so `ChatMessage`'s keys
-        stay a subset of the chat-completion message. Legacy construction
+        stay in exact parity with the chat-completion message. Legacy construction
         (``ChatMessage(thinking=...)`` / ``ChatMessage(**{"thinking": ...})``)
         keeps working, mapping onto `reasoning_content`.
         """
