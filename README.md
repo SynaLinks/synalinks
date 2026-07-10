@@ -283,9 +283,9 @@ synalinks.utils.plot_program(
 ```
 
 <div align="center">
-<img src="docs/assets/examples/math_agent.png" alt="Math Agent Program" width="600">
+<img src="docs/assets/examples/datamodel_designer.png" alt="Data Model Designer Program" width="600">
 
-<em>The math agent program visualized with plot_program: Input → FunctionCallingAgent. Trainable modules are marked in green.</em>
+<em>The data model designer program visualized with plot_program: Input → DeepAgent. Trainable modules are marked in green.</em>
 </div>
 
 ## Running your program
