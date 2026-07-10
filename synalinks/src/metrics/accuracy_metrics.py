@@ -1,5 +1,6 @@
 # License Apache 2.0: (c) 2025-2026 Yoan Sallami (Synalinks Team)
 
+from itertools import zip_longest
 from typing import List
 from typing import Optional
 
@@ -10,6 +11,7 @@ from synalinks.src.api_export import synalinks_export
 from synalinks.src.backend import DataModel
 from synalinks.src.backend.common import numpy as np
 from synalinks.src.metrics.metric import Metric
+from synalinks.src.metrics.metric import ragged_add
 from synalinks.src.utils import nlp_utils
 
 
@@ -141,7 +143,11 @@ class Accuracy(Metric):
         correct = []
         total = []
         intermediate_weights = []
-        for yt, yp in zip(y_true, y_pred):
+        # zip_longest, not zip: a prediction with fewer/more leaves than the
+        # gold must be scored against every leaf — plain zip would silently
+        # drop the unmatched ones and inflate the score. The "" fill has no
+        # tokens, so an unmatched leaf scores 0 over the other side's tokens.
+        for yt, yp in zip_longest(y_true, y_pred, fillvalue=""):
             y_true_tokens = nlp_utils.normalize_and_tokenize(str(yt))
             y_pred_tokens = nlp_utils.normalize_and_tokenize(str(yp))
             common_tokens = set(y_true_tokens) & set(y_pred_tokens)
@@ -156,15 +162,15 @@ class Accuracy(Metric):
 
         current_correct = self.state.get("correct")
         if current_correct:
-            correct = np.add(current_correct, correct)
+            correct = ragged_add(current_correct, correct)
 
         current_total = self.state.get("total")
         if current_total:
-            total = np.add(current_total, total)
+            total = ragged_add(current_total, total)
 
         current_intermediate_weights = self.state.get("intermediate_weights")
         if current_intermediate_weights:
-            intermediate_weights = np.add(
+            intermediate_weights = ragged_add(
                 current_intermediate_weights, intermediate_weights
             )
 
@@ -392,26 +398,34 @@ class BinaryAccuracy(Accuracy):
         y_true = np.convert_to_tensor(y_true)
         y_pred = np.convert_to_tensor(y_pred)
 
+        # zip_longest, not zip: a structure mismatch between pred and gold
+        # (variable-length arrays) must count the unmatched leaves as wrong,
+        # not silently drop them. The None fill never equals a 0.0/1.0 leaf.
+        y_true_leaves = y_true.tolist()
+        y_pred_leaves = y_pred.tolist()
+        size = max(len(y_true_leaves), len(y_pred_leaves))
         correct = np.convert_to_tensor(
             [
                 1.0 if yt == yp else 0.0
-                for yt, yp in zip(y_true.tolist(), y_pred.tolist())
+                for yt, yp in zip_longest(y_true_leaves, y_pred_leaves)
             ]
         )
-        total = np.convert_to_tensor([1.0] * len(y_true.tolist()))
-        intermediate_weights = y_true
+        total = np.convert_to_tensor([1.0] * size)
+        intermediate_weights = np.convert_to_tensor(
+            y_true_leaves + [0.0] * (size - len(y_true_leaves))
+        )
 
         current_correct = self.state.get("correct")
         if current_correct:
-            correct = np.add(current_correct, correct)
+            correct = ragged_add(current_correct, correct)
 
         current_total = self.state.get("total")
         if current_total:
-            total = np.add(current_total, total)
+            total = ragged_add(current_total, total)
 
         current_intermediate_weights = self.state.get("intermediate_weights")
         if current_intermediate_weights:
-            intermediate_weights = np.add(
+            intermediate_weights = ragged_add(
                 current_intermediate_weights, intermediate_weights
             )
 
@@ -612,15 +626,15 @@ class CategoricalAccuracy(Accuracy):
 
         current_correct = self.state.get("correct")
         if current_correct:
-            correct = np.add(current_correct, correct)
+            correct = ragged_add(current_correct, correct)
 
         current_total = self.state.get("total")
         if current_total:
-            total = np.add(current_total, total)
+            total = ragged_add(current_total, total)
 
         current_intermediate_weights = self.state.get("intermediate_weights")
         if current_intermediate_weights:
-            intermediate_weights = np.add(
+            intermediate_weights = ragged_add(
                 current_intermediate_weights, intermediate_weights
             )
 

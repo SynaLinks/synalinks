@@ -198,3 +198,24 @@ class Metric(SynalinksSaveable):
 
     def __str__(self):
         return self.__repr__()
+
+
+def ragged_add(current, fresh):
+    """Element-wise add of two per-leaf state vectors that may differ in length.
+
+    Metric state is positional (leaf ``i`` of the flattened JSON). Samples
+    with variable-length structures — e.g. an extraction gold whose array
+    holds N items — produce a different leaf count per update, so a plain
+    ``np.add`` raises a broadcast error the moment two updates disagree on
+    length. The shorter vector is zero-padded instead: aggregate sums
+    ("micro") stay exact, and per-position reductions simply see no
+    contribution at positions a sample doesn't have.
+    """
+    from synalinks.src.backend.common import numpy as np
+
+    current = list(current)
+    fresh = list(fresh)
+    size = max(len(current), len(fresh))
+    current = current + [0.0] * (size - len(current))
+    fresh = fresh + [0.0] * (size - len(fresh))
+    return np.add(np.convert_to_numpy(current), np.convert_to_numpy(fresh))

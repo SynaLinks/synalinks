@@ -479,3 +479,44 @@ class ListAliasTest(testing.TestCase):
         # Backward-compatibility: the legacy names import as the new classes.
         self.assertIs(ListFBetaScore, CategoricalFBetaScore)
         self.assertIs(ListF1Score, CategoricalF1Score)
+
+
+class RaggedStructureFScoreTest(testing.TestCase):
+    """Variable-length structures: the extraction-bench regression (F1 side).
+
+    Same shape bug as the accuracy family: per-update leaf counts vary with
+    the number of items the model extracted, so the positional TP/FP/FN state
+    must zero-pad across updates instead of crashing."""
+
+    async def test_accumulates_across_different_leaf_counts(self):
+        from typing import List
+
+        class Extraction(DataModel):
+            relations: List[str]
+
+        metric = F1Score(average="micro")
+        await metric(
+            Extraction(relations=["alpha beta", "gamma delta", "epsilon zeta"]),
+            Extraction(relations=["alpha beta", "gamma delta", "epsilon zeta"]),
+        )
+        # Pre-fix this raised "operands could not be broadcast together"
+        await metric(
+            Extraction(relations=["alpha beta"]),
+            Extraction(relations=["alpha beta"]),
+        )
+        self.assertAlmostEqual(metric.result(), 1.0, delta=3 * backend.epsilon())
+
+    async def test_unmatched_leaves_are_penalized_not_dropped(self):
+        from typing import List
+
+        class Extraction(DataModel):
+            relations: List[str]
+
+        metric = F1Score(average="micro")
+        # Gold has 2 relations, model extracted 1 perfectly: the missed one
+        # is pure false negatives -> micro F1 = 2/3, not a truncated 1.0.
+        await metric(
+            Extraction(relations=["alpha beta", "gamma delta"]),
+            Extraction(relations=["alpha beta"]),
+        )
+        self.assertAlmostEqual(metric.result(), 2.0 / 3.0, delta=3 * backend.epsilon())

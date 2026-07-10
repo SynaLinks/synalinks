@@ -3,6 +3,7 @@
 # License Apache 2.0: (c) 2025-2026 Yoan Sallami (Synalinks Team)
 
 from collections import Counter
+from itertools import zip_longest
 from typing import List
 from typing import Optional
 
@@ -13,6 +14,7 @@ from synalinks.src.api_export import synalinks_export
 from synalinks.src.backend import DataModel
 from synalinks.src.backend.common import numpy as np
 from synalinks.src.metrics.metric import Metric
+from synalinks.src.metrics.metric import ragged_add
 from synalinks.src.utils import nlp_utils
 
 
@@ -169,7 +171,10 @@ class FBetaScore(Metric):
         # For each field of y_true and y_pred. SQuAD-style multiset (Counter)
         # intersection — needed so identical strings with repeated tokens
         # score 1.0.
-        for yt, yp in zip(y_true, y_pred):
+        # zip_longest, not zip: unmatched leaves (pred and gold structures can
+        # disagree on variable-length arrays) must be scored — the "" fill has
+        # no tokens, so they land entirely in false positives/negatives.
+        for yt, yp in zip_longest(y_true, y_pred, fillvalue=""):
             y_true_tokens = nlp_utils.normalize_and_tokenize(str(yt))
             y_pred_tokens = nlp_utils.normalize_and_tokenize(str(yp))
             num_common = sum((Counter(y_true_tokens) & Counter(y_pred_tokens)).values())
@@ -185,19 +190,19 @@ class FBetaScore(Metric):
 
         current_true_positives = self.state.get("true_positives")
         if current_true_positives:
-            true_positives = np.add(current_true_positives, true_positives)
+            true_positives = ragged_add(current_true_positives, true_positives)
 
         current_false_positives = self.state.get("false_positives")
         if current_false_positives:
-            false_positives = np.add(current_false_positives, false_positives)
+            false_positives = ragged_add(current_false_positives, false_positives)
 
         current_false_negatives = self.state.get("false_negatives")
         if current_false_negatives:
-            false_negatives = np.add(current_false_negatives, false_negatives)
+            false_negatives = ragged_add(current_false_negatives, false_negatives)
 
         current_intermediate_weights = self.state.get("intermediate_weights")
         if current_intermediate_weights:
-            intermediate_weights = np.add(
+            intermediate_weights = ragged_add(
                 current_intermediate_weights, intermediate_weights
             )
 
@@ -532,8 +537,14 @@ class BinaryFBetaScore(FBetaScore):
         y_pred = tree.flatten(
             tree.map_structure(lambda x: convert_to_binary(x), y_pred.get_json())
         )
-        y_true = np.convert_to_tensor(y_true)
-        y_pred = np.convert_to_tensor(y_pred)
+        # Pred and gold structures can disagree on variable-length arrays;
+        # zero-pad to the longer leaf list so the element-wise products below
+        # never hit a broadcast error. A padded gold 0 makes an extra pred
+        # leaf a false positive; a padded pred 0 makes a missing leaf a false
+        # negative — unmatched leaves are penalized, not dropped.
+        size = max(len(y_true), len(y_pred))
+        y_true = np.convert_to_tensor(y_true + [0.0] * (size - len(y_true)))
+        y_pred = np.convert_to_tensor(y_pred + [0.0] * (size - len(y_pred)))
 
         true_positives = y_pred * y_true
         false_positives = y_pred * (1 - y_true)
@@ -542,19 +553,19 @@ class BinaryFBetaScore(FBetaScore):
 
         current_true_positives = self.state.get("true_positives")
         if current_true_positives:
-            true_positives = np.add(current_true_positives, true_positives)
+            true_positives = ragged_add(current_true_positives, true_positives)
 
         current_false_positives = self.state.get("false_positives")
         if current_false_positives:
-            false_positives = np.add(current_false_positives, false_positives)
+            false_positives = ragged_add(current_false_positives, false_positives)
 
         current_false_negatives = self.state.get("false_negatives")
         if current_false_negatives:
-            false_negatives = np.add(current_false_negatives, false_negatives)
+            false_negatives = ragged_add(current_false_negatives, false_negatives)
 
         current_intermediate_weights = self.state.get("intermediate_weights")
         if current_intermediate_weights:
-            intermediate_weights = np.add(
+            intermediate_weights = ragged_add(
                 current_intermediate_weights, intermediate_weights
             )
 
@@ -856,19 +867,19 @@ class CategoricalFBetaScore(FBetaScore):
 
         current_true_positives = self.state.get("true_positives")
         if current_true_positives:
-            true_positives = np.add(current_true_positives, true_positives)
+            true_positives = ragged_add(current_true_positives, true_positives)
 
         current_false_positives = self.state.get("false_positives")
         if current_false_positives:
-            false_positives = np.add(current_false_positives, false_positives)
+            false_positives = ragged_add(current_false_positives, false_positives)
 
         current_false_negatives = self.state.get("false_negatives")
         if current_false_negatives:
-            false_negatives = np.add(current_false_negatives, false_negatives)
+            false_negatives = ragged_add(current_false_negatives, false_negatives)
 
         current_intermediate_weights = self.state.get("intermediate_weights")
         if current_intermediate_weights:
-            intermediate_weights = np.add(
+            intermediate_weights = ragged_add(
                 current_intermediate_weights, intermediate_weights
             )
 
