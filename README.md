@@ -95,8 +95,9 @@ Many frameworks exist today — here is what Synalinks does differently:
 
 Plus everything you'd expect from a production-grade framework:
 
-- **NEW**: Now all agents support [Agent Skills](https://agentskills.io/home) and `AGENTS.md`.
+- **NEW**: Now all agents support [Agent Skills](https://agentskills.io/home), `AGENTS.md` and sub-agents.
 - **[Constrained structured outputs](https://synalinks.github.io/synalinks/guides/Data%20Models/)** (JSON) for correctness
+- **Chat Completions-compatible message API**: messages mirror the OpenAI Chat Completions format key-for-key + litellm-extended with `reasoning_content` and `thinking_blocks` so provider reasoning survives multi-turn round-trips.Also handle **[multimodal inputs](https://synalinks.github.io/synalinks/guides/Multimodal%20Inputs/)** (images & audio as standard content parts)
 - **Versionable**, JSON-serializable [pipelines](https://synalinks.github.io/synalinks/guides/Programs/)
 - **Automatic [async & parallel execution](https://synalinks.github.io/synalinks/guides/Programs/)** by default
 - **[Metrics](https://synalinks.github.io/synalinks/guides/Metrics/), [rewards](https://synalinks.github.io/synalinks/guides/Rewards/) & [datasets](https://synalinks.github.io/synalinks/guides/Datasets/)** built-in
@@ -249,14 +250,16 @@ Synalinks provides Python operators for combining and manipulating data models, 
 # Parallel branches with concatenation
 x1 = await generator1(inputs)
 x2 = await generator2(inputs)
-combined = x1 & x2  # Merge both outputs
-
+# combined = x1 *and* x2
+combined = x1 & x2  # Merge both outputs (add _{i} suffix if key collision)
+# [...]
 # Conditional branches with logical or
 (easy, hard) = await synalinks.Branch(
     question="Is this query complex?",
     labels=["easy", "hard"],
     branches=[simple_generator, complex_generator],
 )(inputs)
+# result = easy *or* hard
 result = easy | hard  # Get whichever branch was selected
 ```
 
@@ -453,6 +456,7 @@ Synalinks would not be possible without the great work of the following open-sou
 
 - [Keras](https://keras.io/) for the graph-based computation backbone, API and overall code, design and philosophy.
 - [DSPy](https://dspy.ai/) for the modules/optimizers inspiration.
-- [Pydantic](https://docs.pydantic.dev/latest/) for the backend data layer & their [Monthy](https://pydantic.dev/articles/pydantic-monty) embedded REPL sandbox.
+- [Pydantic](https://docs.pydantic.dev/latest/) for the backend data layer.
 - [LiteLLM](https://docs.litellm.ai/docs/) for the LMs integrations.
 - [DuckDB](https://duckdb.org/), [Ladybug](https://ladybugdb.com/), [LanceDB](https://www.lancedb.com/) for their amazing embedded databases.
+- [MirageAI](https://www.strukto.ai/mirage) for their amazing sandbox!

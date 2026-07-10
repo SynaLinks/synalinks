@@ -52,5 +52,9 @@ jobs:
       # images; without this they 404 under the `/synalinks/` Pages sub-path.
       - name: Fix docstring image paths
         run: uv run python shell/fix_doc_image_paths.py site
+      # Zensical copies every docs/ file into the site, including the theme
+      # custom_dir (docs/.overrides) — drop that template fragment.
+      - name: Remove copied theme overrides
+        run: rm -rf site/.overrides
       - name: Publish to gh-pages
         run: uv run ghp-import --no-jekyll --push --force --message "Deployed ${{ github.sha }} with Zensical" site

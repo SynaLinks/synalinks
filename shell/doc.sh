@@ -16,4 +16,7 @@ uv run python shell/gen_notebooks.py
 # exactly what ships to the `/synalinks/` GitHub Pages sub-path.
 uv run zensical build --clean
 uv run python shell/fix_doc_image_paths.py site
+# Zensical copies every docs/ file into the site, including the theme
+# custom_dir (docs/.overrides) — drop that template fragment from the output.
+rm -rf site/.overrides
 uv run python -m http.server --directory site 8000

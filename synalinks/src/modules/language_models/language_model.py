@@ -1013,6 +1013,10 @@ class LanguageModel(Module):
                     )
                 response_message = response["choices"][0]["message"]
                 wire_tool_calls = _safe_get(response_message, "tool_calls", None)
+                refusal = _safe_get(response_message, "refusal")
+                audio = _safe_get(response_message, "audio")
+                if audio is not None and hasattr(audio, "model_dump"):
+                    audio = audio.model_dump()
                 if self.model.startswith("groq") and schema:
                     # Groq uses tool_calls for structured output
                     response_str = response_message["tool_calls"][0]["function"][
@@ -1022,7 +1026,11 @@ class LanguageModel(Module):
                     # Anthropic and other providers use response_format,
                     # which returns content in message["content"]
                     response_str = response_message["content"]
-                    if not response_str and not wire_tool_calls:
+                    if not response_str and not wire_tool_calls and not audio:
+                        if refusal:
+                            raise ValueError(
+                                "The language model refused to answer: " + refusal
+                            )
                         raise ValueError(
                             "Empty response from the language model: no content "
                             "or tool_calls returned."
@@ -1031,6 +1039,11 @@ class LanguageModel(Module):
                 reasoning_content = response_message.get("reasoning_content")
                 thinking_blocks = response_message.get("thinking_blocks")
                 if schema:
+                    if not response_str and refusal:
+                        raise ValueError(
+                            "The language model refused to produce the "
+                            "structured output: " + refusal
+                        )
                     json_instance = orjson.loads(response_str)
                     if reasoning_content and schema_had_thinking:
                         json_instance["thinking"] = reasoning_content
@@ -1065,6 +1078,10 @@ class LanguageModel(Module):
                         json_instance["thinking_blocks"] = thinking_blocks
                     if parsed_tool_calls:
                         json_instance["tool_calls"] = parsed_tool_calls
+                    if refusal:
+                        json_instance["refusal"] = refusal
+                    if audio:
+                        json_instance["audio"] = audio
                 return JsonDataModel(
                     json=json_instance,
                     schema=schema if schema else ChatMessage.get_schema(),
