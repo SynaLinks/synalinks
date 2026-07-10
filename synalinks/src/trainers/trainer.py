@@ -27,6 +27,72 @@ from synalinks.src.utils import tracking
 from synalinks.src.utils.async_utils import run_maybe_nested
 
 
+def _clone_metric(metric):
+    """Return a fresh instance of `metric` with independent state.
+
+    Reconstructs the metric from its own config so a brand-new backend
+    ``Variable`` set (and, for operational metrics, an unbound model list) is
+    created -- true per-program isolation, not a shared-state view. Config
+    values that reference objects (e.g. a wrapped callable in
+    ``MeanMetricWrapper``) are carried over BY REFERENCE, never deep-copied, so
+    a metric wrapping a reward that holds a `LanguageModel` doesn't duplicate
+    that model.
+
+    Most metrics round-trip cleanly through ``from_config(get_config())``. The
+    one gap is a metric wrapping a *bare* callable the serialization registry
+    can't locate (e.g. a user's plain function passed to
+    ``MeanMetricWrapper``); that case is rebuilt directly, preserving the
+    callable by reference.
+    """
+    try:
+        return type(metric).from_config(metric.get_config())
+    except Exception:
+        if isinstance(metric, metrics_module.MeanMetricWrapper):
+            return type(metric)(
+                fn=metric._fn,
+                name=metric.name,
+                in_mask=metric.in_mask,
+                out_mask=metric.out_mask,
+                in_mask_pattern=metric.in_mask_pattern,
+                out_mask_pattern=metric.out_mask_pattern,
+                **metric._fn_kwargs,
+            )
+        raise
+
+
+def _own_metrics(metrics):
+    """Return `metrics` with every metric instance replaced by a fresh clone.
+
+    `compile()` takes ownership of its metrics (as Keras does): each program
+    gets its OWN metric instances so nothing is shared across programs. This
+    matters whenever one metrics list is reused across several programs -- the
+    natural thing to do for every trial of a tuner sweep -- where two distinct
+    kinds of leakage would otherwise occur:
+
+      * operational metrics (`TotalTokens`, `Cost`, ...) bind to a program's
+        `LanguageModel`/`EmbeddingModel` on compile; a shared instance ends up
+        bound to whichever program compiled LAST, so every earlier program
+        reads the wrong model's counters;
+      * ordinary metrics (`MeanMetricWrapper`, `Accuracy`, ...) accumulate
+        state; a shared instance is reset per program only via its own
+        lazily-built `CompileMetrics`, so state from one program leaks into the
+        next.
+
+    Cloning per compile removes both at the root. String / callable identifiers
+    are left untouched -- they're resolved into a fresh metric per program by
+    `CompileMetrics` anyway, so they're already isolated.
+    """
+    if metrics is None:
+        return None
+
+    def clone(m):
+        if isinstance(m, metrics_module.Metric):
+            return _clone_metric(m)
+        return m
+
+    return tree.map_structure(clone, metrics)
+
+
 class Trainer:
     def __init__(self):
         self._lock = False
@@ -128,6 +194,11 @@ class Trainer:
             )
             self.reward = reward
         if metrics is not None:
+            # Take ownership: clone every metric instance so each program has
+            # its own (see `_own_metrics`). The same clones flow into
+            # `CompileMetrics` and the bind loop below, so results are read from
+            # exactly the instances bound here.
+            metrics = _own_metrics(metrics)
             self._compile_metrics = CompileMetrics(metrics, output_names=output_names)
             # Operational metrics (e.g. TotalTokens, Throughput) accept
             # `language_model=None`; bind them to every LM reachable from
