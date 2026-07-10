@@ -151,9 +151,6 @@ the workdir, so the sandboxed agent can read its body on demand:
 mkdir -p workspace && cd workspace
 # Installs the `synalinks` skill into ./.agents/skills/ and writes skills-lock.json.
 npx skills add SynaLinks/synalinks-skills --skill synalinks
-# Optional: project conventions, injected into the agent verbatim.
-printf '# Conventions\n- Write idiomatic Synalinks; consult the skills first.\n- Put data models in `models.py`.\n' > AGENTS.md
-cd ..
 ```
 
 This gives the layout below — `.agents/skills` is the skills *root* (one
