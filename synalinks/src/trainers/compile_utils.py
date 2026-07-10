@@ -313,6 +313,16 @@ class CompileMetrics(metrics_module.Metric):
 
     def reset_state(self):
         if not self.built:
+            # Building is lazy (first `update_state`), but a reset can arrive
+            # first -- `evaluate`/`fit` call `reset_metrics()` before any
+            # update. If the user-supplied metric instances are shared across
+            # programs (e.g. one metrics list reused for every trial of a
+            # tuner sweep), skipping the reset here lets one program's
+            # accumulated state leak into the next program's run. Reset the
+            # raw user metrics directly so shared instances start clean.
+            for m in tree.flatten(self._user_metrics):
+                if isinstance(m, metrics_module.Metric):
+                    m.reset_state()
             return
         for m in self._flat_metrics:
             if m:

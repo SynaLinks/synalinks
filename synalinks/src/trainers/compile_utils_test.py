@@ -60,10 +60,21 @@ class CompileMetricsValidationTest(testing.TestCase):
         self.assertEqual(cm.variables, [])
         self.assertEqual(cm.metrics, [])
 
-    def test_unbuilt_reset_state_is_no_op(self):
-        cm = CompileMetrics(metrics=[Mean(name="m")])
-        # Should not raise even though _flat_metrics doesn't exist yet.
-        cm.reset_state()
+    async def test_unbuilt_reset_state_resets_user_metrics(self):
+        # `build()` is lazy, but `evaluate`/`fit` call `reset_metrics()` BEFORE
+        # the first `update_state`. When the metric instance is shared across
+        # programs (e.g. one metrics list reused for every trial of a sweep),
+        # an unbuilt reset that no-op'd would let a previous program's state
+        # leak into the next one. So reset must clear the raw user metrics too.
+        m = Mean(name="m")
+        await m.update_state(4.0)
+        self.assertEqual(m.result(), 4.0)
+
+        cm = CompileMetrics(metrics=[m])  # unbuilt: build() not called yet
+        cm.reset_state()  # must not raise, and must clear the shared metric
+
+        self.assertFalse(cm.built)
+        self.assertEqual(m.result(), 0.0)
 
     def test_result_before_build_raises(self):
         cm = CompileMetrics(metrics=[Mean(name="m")])

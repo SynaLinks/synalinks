@@ -13,6 +13,7 @@ import shlex
 import struct
 import sys
 import tempfile
+import weakref
 import zipfile
 from typing import Any
 from typing import Callable
@@ -526,6 +527,64 @@ def _rmtree(path: str) -> None:
         pass
 
 
+def _sync_close_workspace(ws) -> None:
+    """Release a Mirage workspace's FUSE mount, from any context, never raising.
+
+    ``Workspace.close`` is a coroutine, but the actual ``fusermount -u`` lives in
+    its *synchronous* ``_close_parts`` (the awaited part only drains cache
+    tasks). So:
+
+    * with **no running loop** (a finalizer, ``gc.collect``, interpreter exit, or
+      a plain sync caller) we drive the full coroutine via ``asyncio.run`` —
+      unmount *and* cache drain;
+    * with a **loop already running** (called from inside async code) we can't
+      block on it, so we release the mount synchronously via ``_close_parts``
+      and skip the best-effort cache drain.
+
+    Either way the FUSE mount is dropped, which is what prevents the leak that
+    exhausts ``mount_max``.
+    """
+    if ws is None:
+        return
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        loop = None
+    if loop is None:
+        try:
+            result = ws.close()
+            if inspect.isawaitable(result):
+                asyncio.run(result)
+            return
+        except Exception:  # noqa: BLE001 - fall through to a forced unmount
+            pass
+    # A loop is running, or the coroutine could not be driven: unmount now.
+    try:
+        parts = getattr(ws, "_close_parts", None)
+        if callable(parts):
+            parts()
+        else:
+            result = ws.close()
+            if inspect.isawaitable(result):
+                result.close()  # avoid "coroutine was never awaited"
+    except Exception:  # noqa: BLE001 - teardown must not raise
+        pass
+
+
+def _finalize_workspace(state: dict) -> None:
+    """``weakref.finalize`` callback: release a dropped sandbox's mount + hostdir.
+
+    Runs when a :class:`MirageSandbox` is garbage-collected without an explicit
+    ``close()`` (and, because ``weakref.finalize`` also fires pending callbacks
+    at interpreter exit, on process shutdown too). ``state`` is a plain dict that
+    never references the sandbox, so it does not keep it alive; ``reset`` /
+    ``_rebuild_workspace`` mutate it in place so this always releases the
+    *current* workspace.
+    """
+    _sync_close_workspace(state.get("ws"))
+    _rmtree(state.get("hostdir") or "")
+
+
 def _is_wsl() -> bool:
     """Whether this process runs inside the Windows Subsystem for Linux."""
     try:
@@ -1001,8 +1060,8 @@ def _make_egress_tool(patterns: List[str], timeout: float, block_private: bool):
 # "not in a confined run_bash", so the patch is a no-op — every other code path,
 # including ``run`` (which confines via its own bootstrap) and unconfined
 # sandboxes, is unaffected.
-_active_confine: contextvars.ContextVar[Optional[Dict[str, Any]]] = contextvars.ContextVar(
-    "mirage_active_confine", default=None
+_active_confine: contextvars.ContextVar[Optional[Dict[str, Any]]] = (
+    contextvars.ContextVar("mirage_active_confine", default=None)
 )
 _run_python_patched = False
 
@@ -1549,6 +1608,7 @@ class MirageSandbox(Sandbox):
         self._fork_base: Dict[str, str] = {}
         if workdir:
             self._fork_base = self._seed_from_workdir(workdir)
+        self._arm_finalizer()
 
     @property
     def workdir(self) -> Optional[str]:
@@ -1997,7 +2057,14 @@ class MirageSandbox(Sandbox):
     def reset(self) -> None:
         self._discard_state()
         self.clear_history()
+        # Release the current workspace's FUSE mount before replacing it —
+        # otherwise every ``reset`` leaks a mount until ``mount_max`` is hit.
+        _sync_close_workspace(getattr(self, "_ws", None))
         self._ws = Workspace(self._resources, mode=self._mode, **self._workspace_kwargs)
+        # Point the GC/exit finalizer at the new workspace so it releases the
+        # live mount (not the one we just closed) if the sandbox is dropped.
+        if getattr(self, "_ws_state", None) is not None:
+            self._ws_state["ws"] = self._ws
         # The new workspace gets a fresh FUSE mount; refresh the cached
         # mountpoint so a confined sandbox pivots into the live mount (and
         # ``require_confinement`` still holds) after a reset.
@@ -2029,6 +2096,8 @@ class MirageSandbox(Sandbox):
             except Exception:  # noqa: BLE001 - the old mount is already broken
                 pass
         self._ws = Workspace(self._resources, mode=self._mode, **self._workspace_kwargs)
+        if getattr(self, "_ws_state", None) is not None:
+            self._ws_state["ws"] = self._ws
         self._fuse_mountpoint = getattr(self._ws, "fuse_mountpoint", None)
         if self._require_confinement and not self._fuse_mountpoint:
             raise RuntimeError(
@@ -2036,6 +2105,31 @@ class MirageSandbox(Sandbox):
                 "not be re-established after an infrastructure failure; cannot "
                 "confine."
             )
+
+    def _arm_finalizer(self) -> None:
+        """Register a GC/exit finalizer that releases this sandbox's FUSE mount.
+
+        Called from every construction path (``__init__``, `fork`, `load`) so a
+        sandbox that is dropped without an explicit ``close()`` still releases
+        its mount — otherwise leaked mounts accumulate until ``mount_max`` is hit
+        and new mounts fail silently. The finalizer closes over a plain-dict
+        holder (``_ws_state``), never ``self``, so it does not keep the sandbox
+        alive; `reset` / `_rebuild_workspace` update the holder in place.
+        """
+        self._ws_state = {
+            "ws": getattr(self, "_ws", None),
+            "hostdir": getattr(self, "_hostdir", None),
+        }
+        self._finalizer = weakref.finalize(self, _finalize_workspace, self._ws_state)
+
+    def _disarm_finalizer(self) -> None:
+        """Cancel the GC/exit finalizer after an explicit close, and forget the
+        workspace so it can't be released a second time."""
+        fin = getattr(self, "_finalizer", None)
+        if fin is not None:
+            fin.detach()
+        if getattr(self, "_ws_state", None) is not None:
+            self._ws_state["ws"] = None
 
     async def aclose(self) -> None:
         """Async release of the workspace and host state directory."""
@@ -2046,31 +2140,20 @@ class MirageSandbox(Sandbox):
             if inspect.isawaitable(result):
                 await result
         _rmtree(getattr(self, "_hostdir", "") or "")
+        self._disarm_finalizer()
 
     def close(self) -> None:
         """Best-effort, synchronous release of the workspace and state dir.
 
-        Safe to call outside an event loop. When a loop is already running the
-        workspace close is scheduled fire-and-forget; otherwise it runs to
-        completion. Teardown never raises.
+        Safe to call from any context (with or without a running event loop):
+        the FUSE mount is released synchronously via the workspace's
+        ``_close_parts`` when a loop is already running, and via the full async
+        ``close`` otherwise. Teardown never raises.
         """
         self._discard_state()
-        ws = getattr(self, "_ws", None)
-        try:
-            if ws is not None:
-                result = ws.close()
-                if inspect.isawaitable(result):
-                    try:
-                        loop = asyncio.get_running_loop()
-                    except RuntimeError:
-                        loop = None
-                    if loop is not None and loop.is_running():
-                        loop.create_task(result)
-                    else:
-                        asyncio.run(result)
-        except Exception:  # noqa: BLE001 - teardown must not raise
-            pass
+        _sync_close_workspace(getattr(self, "_ws", None))
         _rmtree(getattr(self, "_hostdir", "") or "")
+        self._disarm_finalizer()
 
     def _discard_state(self) -> None:
         if self._state_path and os.path.exists(self._state_path):
@@ -2177,6 +2260,7 @@ class MirageSandbox(Sandbox):
         if payload.get("state"):
             instance._write_state_bytes(base64.b64decode(payload["state"]))
         instance._history = [dict(entry) for entry in (payload.get("history") or [])]
+        instance._arm_finalizer()
         return instance
 
     def _obj_type(self):
@@ -2291,6 +2375,7 @@ class MirageSandbox(Sandbox):
         child._fork_base = run_async_from_sync(self._read_tree())
         if copy_repl:
             child._write_state_bytes(self._read_state_bytes())
+        child._arm_finalizer()
         return child
 
     def diff(self) -> dict:

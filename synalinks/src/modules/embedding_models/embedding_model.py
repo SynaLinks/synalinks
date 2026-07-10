@@ -16,6 +16,7 @@ from synalinks.src.backend import JsonDataModel
 from synalinks.src.backend.common.op_scope import current_op_scope
 from synalinks.src.modules.module import Module
 from synalinks.src.saving import serialization_lib
+from synalinks.src.utils.file_cache import FileCache
 from synalinks.src.utils.retry_utils import rate_limit_aware_wait
 
 litellm.disable_aiohttp_transport = True
@@ -168,6 +169,12 @@ class EmbeddingModel(Module):
         fallback (EmbeddingModel): Optional. The embedding model to fallback
             if anything is wrong.
         caching (bool): Enables caching (Default to True).
+        cache_dir (str): Optional. Directory for a persistent on-disk
+            embeddings cache. When set, every successful response is saved
+            as a JSON file keyed by the full request (model, input texts and
+            parameters), and identical requests are answered from disk
+            without calling the provider — including across runs and
+            processes. (Default to None, disabled).
         name (str): Optional. The name of the module.
         description (str): Optional. The description of the module.
         hooks (list): Optional. Hooks to attach to this module's calls.
@@ -185,6 +192,7 @@ class EmbeddingModel(Module):
         retry_max_wait=60,
         fallback=None,
         caching=True,
+        cache_dir=None,
         name=None,
         description=None,
         hooks=None,
@@ -215,6 +223,8 @@ class EmbeddingModel(Module):
             fallback = _get_em(fallback)
         self.fallback = fallback
         self.caching = caching
+        self.cache_dir = cache_dir
+        self._file_cache = FileCache(cache_dir) if cache_dir else None
         self.default_kwargs = default_kwargs
         # All-time counters across every embedding call (training + inference).
         # Operational metrics use the inference-scoped counters below instead.
@@ -229,6 +239,9 @@ class EmbeddingModel(Module):
         # and each `fallback` invocation it triggers (`fallback_activations`).
         self.cumulated_failed_calls = 0
         self.cumulated_fallback_activations = 0
+        # Number of calls answered from the on-disk `cache_dir` cache
+        # (no provider request, no token counters bumped).
+        self.cumulated_cache_hits = 0
         self.cumulated_details = {}
         self.last_call_prompt_tokens = 0
         self.last_call_tokens = 0
@@ -250,6 +263,7 @@ class EmbeddingModel(Module):
             setattr(self, f"{_phase}_cumulated_cached_tokens", 0)
             setattr(self, f"{_phase}_cumulated_failed_calls", 0)
             setattr(self, f"{_phase}_cumulated_fallback_activations", 0)
+            setattr(self, f"{_phase}_cumulated_cache_hits", 0)
             setattr(self, f"{_phase}_cumulated_details", {})
         # No state depends on the input shape, so mark built up-front and
         # skip Module's auto-build path (which would try to trace `call`).
@@ -283,8 +297,32 @@ class EmbeddingModel(Module):
         input_kwargs = copy.deepcopy(kwargs)
         # Merge instance-level defaults; per-call kwargs win.
         kwargs = {**self.default_kwargs, **kwargs}
+        # Persistent on-disk cache: keyed by the full request (model, input
+        # texts, endpoint and parameters), so any change yields a new entry.
+        cache_key = None
+        if self._file_cache is not None:
+            cache_key = self._file_cache.make_key(
+                {
+                    "model": self.model,
+                    "input": texts,
+                    "api_base": self.api_base,
+                    "kwargs": kwargs,
+                }
+            )
+            if cache_key is not None:
+                cached_json = self._file_cache.get(cache_key)
+                if cached_json is not None:
+                    self._record_event("cache_hits")
+                    return JsonDataModel(
+                        json=cached_json,
+                        schema=Embeddings.get_schema(),
+                        name=f"{self.name}_response",
+                    )
         try:
-            return await self._call_with_retry(texts, **kwargs)
+            response = await self._call_with_retry(texts, **kwargs)
+            if cache_key is not None and response is not None:
+                self._file_cache.set(cache_key, response.get_json())
+            return response
         except Exception as e:
             warnings.warn(f"All retries failed for {self}: {e}")
             self._record_event("failed_calls")
@@ -380,6 +418,8 @@ class EmbeddingModel(Module):
             "api_base": self.api_base,
             "retry": self.retry,
             "retry_max_wait": self.retry_max_wait,
+            "caching": self.caching,
+            "cache_dir": self.cache_dir,
             "name": self.name,
             "description": self.description,
             **self.default_kwargs,

@@ -176,6 +176,115 @@ class TestTrainer(testing.TestCase):
         self.assertIsInstance(y_data[1], JsonDataModel)
 
 
+class TestCompiledMetricIsolation(testing.TestCase):
+    """`compile()` takes ownership of its metrics: each program gets its OWN
+    metric instances, so sharing one metrics list across the per-model
+    programs of a sweep never lets state leak between programs. Covers both
+    operational metrics (which bind to a program's LanguageModel and would
+    otherwise all end up bound to the last program compiled) and ordinary
+    metrics (whose accumulated state would otherwise carry across programs).
+    """
+
+    async def _program(self, model):
+        x0 = modules.Input(data_model=Query)
+        x1 = await modules.Generator(
+            data_model=AnswerWithRationale,
+            language_model=LanguageModel(model=model),
+        )(x0)
+        return programs.Program(inputs=x0, outputs=x1)
+
+    def _bound_op_metric(self, program):
+        """The operational metric `compile()` bound to this program."""
+        from synalinks.src import tree
+
+        for m in tree.flatten(program._compile_metrics._user_metrics):
+            if hasattr(m, "bind_program"):
+                return m
+        raise AssertionError("no bound operational metric found")
+
+    async def test_shared_operational_metric_binds_per_program(self):
+        from synalinks.src.metrics.lm_metrics import Cost
+        from synalinks.src.metrics.lm_metrics import _collect_language_models
+
+        model_names = ["ollama/model-a", "ollama/model-b", "ollama/model-c"]
+        costs = [0.01, 0.02, 0.03]
+
+        # ONE metric instance reused across every program in the sweep.
+        shared = Cost()
+        progs = []
+        for name in model_names:
+            program = await self._program(name)
+            program.compile(reward=rewards.ExactMatch(), metrics=[shared])
+            progs.append(program)
+
+        # Each model runs and accumulates its OWN provider cost.
+        for program, cost in zip(progs, costs):
+            _collect_language_models(program)[0].inference_cumulated_cost += cost
+
+        bound = [self._bound_op_metric(p) for p in progs]
+
+        # Each program must own a distinct bound metric...
+        self.assertEqual(len({id(m) for m in bound}), len(progs))
+        # ...reading only its own model's counters.
+        for program, metric, cost in zip(progs, bound, costs):
+            self.assertEqual(
+                _collect_language_models(program),
+                metric.language_models,
+            )
+            self.assertAlmostEqual(metric.result(), cost)
+
+    async def test_compile_clones_metrics_so_programs_never_share(self):
+        """A metric instance passed to `compile()` is cloned, not adopted:
+        the caller's instance is never wired into any program, and each
+        program owns a distinct clone -- for both ordinary and operational
+        metrics."""
+        from synalinks.src import metrics as metrics_module
+        from synalinks.src import tree
+        from synalinks.src.metrics.lm_metrics import Cost
+
+        async def custom_metric(y_true, y_pred):
+            return 0.0
+
+        shared_ordinary = metrics_module.MeanMetricWrapper(
+            custom_metric, name="custom"
+        )
+        shared_ops = Cost()
+
+        progs = []
+        for name in ["ollama/model-a", "ollama/model-b"]:
+            program = await self._program(name)
+            program.compile(
+                reward=rewards.ExactMatch(),
+                metrics=[shared_ordinary, shared_ops],
+            )
+            progs.append(program)
+
+        def owned(program):
+            return list(tree.flatten(program._compile_metrics._user_metrics))
+
+        for program in progs:
+            instances = owned(program)
+            # The caller's instances were cloned away, never adopted.
+            self.assertNotIn(shared_ordinary, instances)
+            self.assertNotIn(shared_ops, instances)
+            # Clones keep the type, name, and (for the wrapper) the fn BY
+            # REFERENCE -- the wrapped callable is shared, never deep-copied.
+            by_name = {m.name: m for m in instances}
+            self.assertIsInstance(
+                by_name["custom"], metrics_module.MeanMetricWrapper
+            )
+            self.assertIs(by_name["custom"]._fn, custom_metric)
+
+        # The two programs own distinct clones (nothing shared between them).
+        a = {m.name: id(m) for m in owned(progs[0])}
+        b = {m.name: id(m) for m in owned(progs[1])}
+        for name in ("custom", "cost"):
+            self.assertNotEqual(a[name], b[name])
+
+        # The caller's shared instances stay pristine (never bound / built).
+        self.assertEqual(shared_ops.language_models, [])
+
+
 class TestCompileStringIdentifiers(testing.TestCase):
     """Keras-style: pass lowercase strings to `compile(...)` instead of
     instances. Lookup is case-insensitive — CamelCase still works but

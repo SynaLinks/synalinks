@@ -562,6 +562,159 @@ class TunerEndToEndTest(testing.TestCase):
         best = tuner.get_best_hyperparameters(num_trials=1)[0]
         self.assertLess(abs(best.get("x") - 0.8), 0.3)
 
+    def test_sweep_records_each_models_own_metrics(self):
+        """End-to-end guard for BOTH tuner-sweep metric-sharing bugs.
+
+        A model sweep = one `GridSearch` over `Choice("language_model", ...)`,
+        one real `synalinks.Program` per model built and compiled up front, all
+        sharing ONE metrics list (as reusing a list across trials naturally
+        does). Two distinct bugs make that list leak across trials:
+
+        1. Operational metrics (`TotalTokens`) bind to a program's
+           `LanguageModel` on `compile()`. A shared instance ends up bound to
+           whichever program was compiled LAST, so every earlier trial reads
+           the last model's counters (symptom: only the last model reports
+           non-zero ops).
+        2. Ordinary metrics (`MeanMetricWrapper`) accumulate state that is only
+           reset per program via its own lazily-built `CompileMetrics`; a
+           shared instance is never reset between trials, so trial N reads the
+           running mean over trials 1..N instead of its own value.
+
+        Both are driven through the real `tuner.search()` loop and read back as
+        `open-arena/evaluate.py` does, via `trial.metrics.get_best_value(...)`.
+        Each model returns a distinct, deterministic token count AND a distinct
+        answer value so both metrics are per-model identifiable.
+        """
+        import json
+        from unittest.mock import patch
+
+        from litellm.types.utils import Choices
+        from litellm.types.utils import Message
+        from litellm.types.utils import ModelResponse
+        from litellm.types.utils import Usage
+
+        from synalinks.src import metrics as metrics_module
+        from synalinks.src import modules
+        from synalinks.src import programs
+        from synalinks.src import rewards
+        from synalinks.src.metrics.lm_metrics import TotalTokens
+        from synalinks.src.modules.language_models import LanguageModel
+        from synalinks.src.testing.test_utils import AnswerWithRationale
+        from synalinks.src.testing.test_utils import Query
+        from synalinks.src.testing.test_utils import load_test_data
+
+        disable_keras_backend()
+
+        model_ids = ["ollama/model-a", "ollama/model-b", "ollama/model-c"]
+        per_call_tokens = {"ollama/model-a": 10, "ollama/model-b": 20, "ollama/model-c": 30}
+        # Distinct predicted answer value per model -> distinct ordinary metric.
+        answer_value_of = {"ollama/model-a": 1.0, "ollama/model-b": 2.0, "ollama/model-c": 3.0}
+
+        def canon(model_str):
+            # synalinks rewrites "ollama/x" -> "ollama_chat/x"; match by suffix.
+            for m in model_ids:
+                if model_str.endswith(m.split("/", 1)[1]):
+                    return m
+            raise AssertionError(f"unexpected model {model_str!r}")
+
+        calls = {m: 0 for m in model_ids}
+
+        async def fake_acompletion(*args, **kwargs):
+            model = canon(kwargs.get("model") or args[0])
+            calls[model] += 1
+            tok = per_call_tokens[model]
+            answer = AnswerWithRationale(
+                rationale="because", answer=str(answer_value_of[model])
+            )
+            return ModelResponse(
+                id="x",
+                model=model,
+                choices=[
+                    Choices(
+                        message=Message(
+                            content=json.dumps(answer.get_json()), role="assistant"
+                        ),
+                        index=0,
+                        finish_reason="stop",
+                    )
+                ],
+                usage=Usage(prompt_tokens=tok, completion_tokens=0, total_tokens=tok),
+            )
+
+        async def answer_value(y_true, y_pred):
+            try:
+                return float(y_pred.get("answer"))
+            except (TypeError, ValueError):
+                return 0.0
+
+        async def build(model):
+            x0 = modules.Input(data_model=Query)
+            x1 = await modules.Generator(
+                data_model=AnswerWithRationale,
+                language_model=LanguageModel(model=model),
+            )(x0)
+            return programs.Program(inputs=x0, outputs=x1, name=model.replace("/", "_"))
+
+        # Build + compile every program up front (as the sweep does), all
+        # sharing ONE operational AND one ordinary metric instance. No
+        # optimizer -> the tuner dispatches to `program.evaluate(...)`.
+        loop = asyncio.new_event_loop()
+        try:
+            programs_by_id = {m: loop.run_until_complete(build(m)) for m in model_ids}
+        finally:
+            loop.close()
+        shared_ops = TotalTokens()
+        shared_ordinary = metrics_module.MeanMetricWrapper(
+            answer_value, name="answer_value"
+        )
+        for m in model_ids:
+            programs_by_id[m].compile(
+                reward=rewards.ExactMatch(in_mask=["answer"]),
+                metrics=[shared_ordinary, shared_ops],
+            )
+
+        def hypermodel(hp):
+            return programs_by_id[hp.Choice("language_model", values=model_ids)]
+
+        tuner = GridSearch(
+            hypermodel,
+            objective=Objective("reward", direction="max"),
+            max_trials=len(model_ids),
+            directory=self._tmpdir,
+            project_name="ops_sweep",
+            overwrite=True,
+        )
+
+        (_, _), (x_test, y_test) = load_test_data()
+        with patch("litellm.acompletion", side_effect=fake_acompletion):
+            tuner.search(validation_data=(x_test, y_test), verbose=0)
+
+        tokens, ordinary = {}, {}
+        for trial in tuner.oracle.trials.values():
+            model = trial.hyperparameters.get("language_model")
+            tokens[model] = trial.metrics.get_best_value("total_tokens")
+            ordinary[model] = trial.metrics.get_best_value("answer_value")
+
+        self.assertEqual(set(tokens), set(model_ids))
+        for m in model_ids:
+            # Operational: each model's own token count (not the last model's).
+            self.assertEqual(
+                tokens[m],
+                per_call_tokens[m] * calls[m],
+                f"{m} recorded {tokens[m]} tokens; a shared-binding leak would "
+                f"make every non-last model read 0 / the last model's count",
+            )
+            # Ordinary: each model's own value (not the running mean over trials).
+            self.assertAlmostEqual(
+                ordinary[m],
+                answer_value_of[m],
+                msg=f"{m} recorded answer_value={ordinary[m]}; un-reset shared "
+                f"state would leak the mean over earlier trials",
+            )
+        # Distinct per-model values (guards against a degenerate all-equal pass).
+        self.assertEqual(len(set(tokens.values())), len(model_ids))
+        self.assertEqual(len(set(ordinary.values())), len(model_ids))
+
 
 class ObjectiveDirectionInferenceTest(testing.TestCase):
     """When `direction` is omitted on `synalinks.tuners.Objective` or when a
