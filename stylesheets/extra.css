@@ -1,0 +1,159 @@
+/* Announcement bar ("bandeau") — dark GitHub-style strip with a star CTA. */
+.md-banner {
+    background: #1f2328;
+    color: #e6edf3;
+}
+
+/* Center the message. Use text-align (not flex) so the dismiss button's
+   `float: right` keeps working and the ✕ stays at the far right. */
+.md-banner__inner {
+    text-align: center;
+}
+
+.md-banner .md-banner__button {
+    color: #e6edf3;
+    opacity: 0.7;
+}
+
+.sl-announce {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.6rem;
+    flex-wrap: wrap;
+    justify-content: center;
+    font-size: 0.72rem;
+    font-weight: 500;
+}
+
+/* Beat `.md-typeset a` (blue + underline) so the CTA reads as a button. */
+.md-banner .sl-announce__btn,
+.md-banner .md-typeset a.sl-announce__btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.25rem 0.7rem;
+    border: 1px solid rgba(255, 255, 255, 0.25);
+    border-radius: 2rem;
+    background: rgba(255, 255, 255, 0.08);
+    color: #e6edf3;
+    font-weight: 600;
+    line-height: 1;
+    text-decoration: none;
+    transition: background 0.2s, border-color 0.2s, color 0.2s;
+}
+
+.md-banner .sl-announce__btn:hover,
+.md-banner .sl-announce__btn:focus-visible {
+    background: #e6edf3;
+    border-color: #e6edf3;
+    color: #1f2328;
+    outline: none;
+}
+
+.sl-announce__btn svg {
+    width: 15px;
+    height: 15px;
+    flex-shrink: 0;
+}
+
+.sl-announce__star {
+    color: #f1c40f;
+}
+
+.md-banner .sl-announce__btn:hover .sl-announce__star,
+.md-banner .sl-announce__btn:focus-visible .sl-announce__star {
+    color: #e3a008;
+}
+
+/* Summarize with AI button (lives in the header, right after the search) */
+.summarize-ai-container {
+    position: relative;
+    display: flex;
+    align-items: center;
+    margin-left: 0.2rem;
+}
+
+/* Fallback floating placement when the header layout isn't available */
+.summarize-ai-container--floating {
+    position: fixed;
+    bottom: 1.5rem;
+    right: 1.5rem;
+    margin-left: 0;
+    z-index: 200;
+}
+
+.summarize-ai-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.4rem 0.75rem;
+    border: 1px solid var(--md-default-fg-color--lightest);
+    border-radius: 2rem;
+    background: transparent;
+    color: var(--md-default-fg-color);
+    font-size: 0.72rem;
+    font-weight: 500;
+    font-family: inherit;
+    line-height: 1;
+    white-space: nowrap;
+    cursor: pointer;
+    transition: background 0.2s, border-color 0.2s;
+}
+
+.summarize-ai-btn:hover,
+.summarize-ai-btn:focus,
+.summarize-ai-btn:focus-visible {
+    background: var(--md-default-fg-color--lightest);
+    border-color: var(--md-default-fg-color);
+    outline: none;
+}
+
+.summarize-ai-btn svg {
+    flex-shrink: 0;
+    width: 18px;
+    height: 18px;
+}
+
+.summarize-ai-dropdown {
+    position: absolute;
+    top: calc(100% + 0.4rem);
+    right: 0;
+    flex-direction: column;
+    min-width: 150px;
+    background: var(--md-default-bg-color);
+    border: 1px solid var(--md-default-fg-color--lightest);
+    border-radius: 0.5rem;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
+    z-index: 201;
+    overflow: hidden;
+}
+
+.summarize-ai-option {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.55rem 0.85rem;
+    color: var(--md-default-fg-color);
+    text-decoration: none;
+    font-size: 0.8rem;
+    transition: background 0.15s;
+}
+
+.summarize-ai-option:hover {
+    background: var(--md-code-bg-color);
+}
+
+.summarize-ai-option img {
+    border-radius: 3px;
+}
+
+/* Collapse to an icon-only button when the header gets tight */
+@media screen and (max-width: 76.1875em) {
+    .summarize-ai-container:not(.summarize-ai-container--floating) .summarize-ai-btn span {
+        display: none;
+    }
+
+    .summarize-ai-container:not(.summarize-ai-container--floating) .summarize-ai-btn {
+        padding: 0.4rem;
+    }
+}
