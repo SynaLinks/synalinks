@@ -329,3 +329,48 @@ class CategoricalAccuracyWithLabelsTest(testing.TestCase):
         score = await metric(y_true, y_pred)
         self.assertAlmostEqual(score, 1.0, delta=3 * backend.epsilon())
         _ = json.dumps(metric.variables[0].get_json())
+
+
+class RaggedStructureAccuracyTest(testing.TestCase):
+    """Variable-length structures: the extraction-bench regression.
+
+    Golds whose arrays hold a different number of items per sample produce a
+    different leaf count per update; the positional state must zero-pad, not
+    crash (np broadcast error), and unmatched leaves within one sample must
+    be scored, not silently dropped by zip truncation."""
+
+    async def test_accumulates_across_different_leaf_counts(self):
+        from typing import List
+
+        class Extraction(DataModel):
+            relations: List[str]
+
+        metric = Accuracy(average="micro")
+        # 3 leaves, all perfect
+        await metric(
+            Extraction(relations=["alpha beta", "gamma delta", "epsilon zeta"]),
+            Extraction(relations=["alpha beta", "gamma delta", "epsilon zeta"]),
+        )
+        # 1 leaf, perfect — pre-fix this raised
+        # "operands could not be broadcast together"
+        await metric(
+            Extraction(relations=["alpha beta"]),
+            Extraction(relations=["alpha beta"]),
+        )
+        self.assertAlmostEqual(metric.result(), 1.0, delta=3 * backend.epsilon())
+
+    async def test_unmatched_leaves_are_penalized_not_dropped(self):
+        from typing import List
+
+        class Extraction(DataModel):
+            relations: List[str]
+
+        metric = Accuracy(average="micro")
+        # Gold has 2 relations, the model only extracted 1 (perfectly):
+        # the missing one must count against the score (0.5), not be
+        # zip-truncated away (1.0).
+        await metric(
+            Extraction(relations=["alpha beta", "gamma delta"]),
+            Extraction(relations=["alpha beta"]),
+        )
+        self.assertAlmostEqual(metric.result(), 0.5, delta=3 * backend.epsilon())
