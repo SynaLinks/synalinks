@@ -1,5 +1,6 @@
 # License Apache 2.0: (c) 2025-2026 Yoan Sallami (Synalinks Team)
 
+import gc
 import unittest
 
 from synalinks.src import testing
@@ -12,7 +13,23 @@ _TIMEOUT = 30.0
 _CONFINE_OK, _CONFINE_REASON = _confinement_available()
 
 
-class MirageSandboxTest(testing.TestCase):
+class _SandboxTestCase(testing.TestCase):
+    """Base for sandbox tests.
+
+    Most tests build a ``MirageSandbox`` (and forks) as locals and never call
+    ``close()``. Each live sandbox holds a FUSE mount, so without cleanup the
+    suite accumulates mounts until ``mount_max`` (default 1000) is hit and new
+    mounts fail *silently* — the confinement tests then read empty output and
+    fail. Forcing a GC pass after every test runs each dropped sandbox's
+    finalizer, which releases its mount deterministically between tests.
+    """
+
+    def tearDown(self):
+        super().tearDown()
+        gc.collect()
+
+
+class MirageSandboxTest(_SandboxTestCase):
     async def test_is_sandbox_subclass(self):
         sandbox = MirageSandbox(timeout=_TIMEOUT)
         self.assertIsInstance(sandbox, Sandbox)
@@ -693,7 +710,7 @@ class MirageSandboxTest(testing.TestCase):
 
 
 @unittest.skipUnless(_CONFINE_OK, f"confinement unavailable: {_CONFINE_REASON}")
-class MirageSandboxConfineTest(testing.TestCase):
+class MirageSandboxConfineTest(_SandboxTestCase):
     """In-process confinement (FUSE + user-namespace pivot), Linux-only."""
 
     async def test_confine_extra_binds_imports_host_dir(self):
@@ -1020,7 +1037,7 @@ class MirageSandboxConfineTest(testing.TestCase):
                 child.close()
 
 
-class RunPythonPatchTest(testing.TestCase):
+class RunPythonPatchTest(_SandboxTestCase):
     """`_install_run_python_patch` must locate Mirage's python runner across
     versions (it moved modules in mirage-ai 0.0.2) so `run_bash`'s `python3`
     can be confined rather than silently left unconfined."""
@@ -1065,7 +1082,7 @@ class RunPythonPatchTest(testing.TestCase):
             ms._run_python_patched = was_patched
 
 
-class InfraSelfHealTest(testing.TestCase):
+class InfraSelfHealTest(_SandboxTestCase):
     """A dead FUSE mount / confinement-bootstrap failure makes every `run`
     repeat the same infra error; an agent would loop on it until timeout. `run`
     must detect this, rebuild the workspace, and retry once instead."""
