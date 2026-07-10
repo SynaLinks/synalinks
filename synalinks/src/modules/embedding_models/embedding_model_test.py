@@ -1,5 +1,6 @@
 # License Apache 2.0: (c) 2025-2026 Yoan Sallami (Synalinks Team)
 
+import os
 from unittest.mock import patch
 
 from litellm.types.utils import Embedding
@@ -199,3 +200,57 @@ class EMCounterPopulationTest(testing.TestCase):
         self.assertEqual(em.cumulated_tokens, 0)
         self.assertEqual(em.cumulated_vectors, 2)
         self.assertEqual(em.inference_cumulated_vectors, 2)
+
+
+class EMFileCacheTest(testing.TestCase):
+    @patch("litellm.aembedding")
+    async def test_identical_call_served_from_disk(self, mock_embedding):
+        cache_dir = os.path.join(self.get_temp_dir(), "em_cache")
+        expected_value = [0.0, 0.1, 0.2, 0.3]
+        mock_embedding.return_value = {"data": [{"embedding": expected_value}]}
+        em = EmbeddingModel(model="ollama/all-minilm", cache_dir=cache_dir)
+
+        first = await em(EmbeddingRequest(texts=["What is the capital of France?"]))
+        second = await em(EmbeddingRequest(texts=["What is the capital of France?"]))
+
+        self.assertEqual(mock_embedding.call_count, 1)
+        self.assertEqual(first.get_json(), {"embeddings": [expected_value]})
+        self.assertEqual(second.get_json(), {"embeddings": [expected_value]})
+        self.assertEqual(em.cumulated_calls, 1)
+        self.assertEqual(em.cumulated_cache_hits, 1)
+
+    @patch("litellm.aembedding")
+    async def test_cache_persists_across_instances(self, mock_embedding):
+        cache_dir = os.path.join(self.get_temp_dir(), "em_cache")
+        expected_value = [0.0, 0.1]
+        mock_embedding.return_value = {"data": [{"embedding": expected_value}]}
+        em = EmbeddingModel(model="ollama/all-minilm", cache_dir=cache_dir)
+        await em(EmbeddingRequest(texts=["hello"]))
+
+        em2 = EmbeddingModel(model="ollama/all-minilm", cache_dir=cache_dir)
+        result = await em2(EmbeddingRequest(texts=["hello"]))
+
+        self.assertEqual(mock_embedding.call_count, 1)
+        self.assertEqual(result.get_json(), {"embeddings": [expected_value]})
+        self.assertEqual(em2.cumulated_cache_hits, 1)
+
+    @patch("litellm.aembedding")
+    async def test_different_texts_are_a_miss(self, mock_embedding):
+        cache_dir = os.path.join(self.get_temp_dir(), "em_cache")
+        mock_embedding.return_value = {"data": [{"embedding": [0.0, 0.1]}]}
+        em = EmbeddingModel(model="ollama/all-minilm", cache_dir=cache_dir)
+
+        await em(EmbeddingRequest(texts=["hello"]))
+        await em(EmbeddingRequest(texts=["bye"]))
+
+        self.assertEqual(mock_embedding.call_count, 2)
+        self.assertEqual(em.cumulated_cache_hits, 0)
+
+    def test_cache_dir_in_config_roundtrip(self):
+        cache_dir = os.path.join(self.get_temp_dir(), "em_cache")
+        em = EmbeddingModel(model="ollama/all-minilm", cache_dir=cache_dir)
+        config = em.get_config()
+        self.assertEqual(config["cache_dir"], cache_dir)
+        restored = EmbeddingModel.from_config(config)
+        self.assertEqual(restored.cache_dir, cache_dir)
+        self.assertIsNotNone(restored._file_cache)

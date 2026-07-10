@@ -24,6 +24,7 @@ from synalinks.src.backend.pydantic.media import resolve_content_media
 from synalinks.src.modules.core.tool import Tool
 from synalinks.src.modules.module import Module
 from synalinks.src.saving import serialization_lib
+from synalinks.src.utils.file_cache import FileCache
 from synalinks.src.utils.nlp_utils import shorten_text
 from synalinks.src.utils.retry_utils import rate_limit_aware_wait
 
@@ -161,6 +162,19 @@ def _tool_to_wire(tool):
     if tool.description:
         function["description"] = tool.description
     return {"type": "function", "function": function}
+
+
+def _cached_message_to_chunks(json_instance):
+    """Turn a cached assistant ChatMessage back into wire-shaped stream
+    chunks, so a `cache_dir` hit on a `streaming=True` call can be replayed
+    through a `StreamingIterator` (as a single chunk carrying the full
+    content and reasoning)."""
+    delta = {}
+    if json_instance.get("reasoning_content"):
+        delta["reasoning_content"] = json_instance["reasoning_content"]
+    if json_instance.get("content"):
+        delta["content"] = json_instance["content"]
+    return iter([{"choices": [{"delta": delta}]}])
 
 
 @synalinks_export(
@@ -433,6 +447,15 @@ class LanguageModel(Module):
         fallback (LanguageModel): Optional. The language model to fallback
             if anything is wrong.
         caching (bool): Optional. Enable caching of LM calls (Default to False).
+        cache_dir (str): Optional. Directory for a persistent on-disk response
+            cache. When set, every successful response is saved as a JSON
+            file keyed by the full request (model, messages, schema and
+            generation parameters), and identical requests are answered from
+            disk without calling the provider — including across runs and
+            processes. Streamed responses are cached once the stream is fully
+            consumed (an abandoned stream is not cached) and a cache hit on a
+            streaming call is replayed as a stream. (Default to None,
+            disabled).
         name (str): Optional. The name of the module.
         description (str): Optional. The description of the module.
         hooks (list): Optional. Hooks to attach to this module's calls.
@@ -452,6 +475,7 @@ class LanguageModel(Module):
         retry_max_wait=60,
         fallback=None,
         caching=False,
+        cache_dir=None,
         name=None,
         description=None,
         hooks=None,
@@ -467,7 +491,9 @@ class LanguageModel(Module):
         # JsonDataModel guard would otherwise reject it.
         self._allow_non_json_data_model_positional_args = True
         if model is None:
-            raise ValueError("You need to set the `model` argument for any LanguageModel")
+            raise ValueError(
+                "You need to set the `model` argument for any LanguageModel"
+            )
         model_provider = model.split("/")[0]
         if model_provider == "ollama":
             # Switch from `ollama` to `ollama_chat`
@@ -502,6 +528,8 @@ class LanguageModel(Module):
         self.retry = retry
         self.retry_max_wait = retry_max_wait
         self.caching = caching
+        self.cache_dir = cache_dir
+        self._file_cache = FileCache(cache_dir) if cache_dir else None
         self.default_kwargs = default_kwargs
         self.cumulated_cost = 0.0
         self.last_call_cost = 0.0
@@ -536,6 +564,9 @@ class LanguageModel(Module):
         # these are tracked separately so error rate is observable.
         self.cumulated_failed_calls = 0
         self.cumulated_fallback_activations = 0
+        # Number of calls answered from the on-disk `cache_dir` cache
+        # (no provider request, no token counters bumped).
+        self.cumulated_cache_hits = 0
         self.cumulated_details = {}
         self.last_call_prompt_tokens = 0
         self.last_call_completion_tokens = 0
@@ -566,6 +597,7 @@ class LanguageModel(Module):
             setattr(self, f"{_phase}_cumulated_reasoning_tokens", 0)
             setattr(self, f"{_phase}_cumulated_failed_calls", 0)
             setattr(self, f"{_phase}_cumulated_fallback_activations", 0)
+            setattr(self, f"{_phase}_cumulated_cache_hits", 0)
             setattr(self, f"{_phase}_cumulated_streaming_calls", 0)
             setattr(self, f"{_phase}_cumulated_streaming_ttft_s", 0.0)
             setattr(self, f"{_phase}_cumulated_streaming_ttlt_s", 0.0)
@@ -839,14 +871,53 @@ class LanguageModel(Module):
                 "cache_control": {"type": "ephemeral"},
             }
             formatted_messages[0] = system_message_with_cache_control
+        # Persistent on-disk cache: keyed by the fully-formatted request
+        # (model, wire messages, schema and final kwargs), so any change to
+        # prompts, tools or generation parameters yields a different entry.
+        # The `stream` flag is excluded from the key: a streamed call stores
+        # the same assistant ChatMessage a non-streamed schema-less call does
+        # (streaming forces schema=None), so both share one entry — a hit is
+        # replayed as a single-chunk stream when `streaming=True`.
+        cache_key = None
+        if self._file_cache is not None:
+            cache_key = self._file_cache.make_key(
+                {
+                    "model": self.model,
+                    "messages": formatted_messages,
+                    "schema": schema,
+                    "kwargs": {k: v for k, v in kwargs.items() if k != "stream"},
+                }
+            )
+            if cache_key is not None:
+                cached_json = self._file_cache.get(cache_key)
+                if cached_json is not None:
+                    self._record_event("cache_hits")
+                    if streaming:
+                        return StreamingIterator(_cached_message_to_chunks(cached_json))
+                    return JsonDataModel(
+                        json=cached_json,
+                        schema=schema if schema else ChatMessage.get_schema(),
+                        name=f"{self.name}_response",
+                    )
         try:
-            return await self._call_with_retry(
+            response = await self._call_with_retry(
                 formatted_messages,
                 schema,
                 streaming,
                 schema_had_thinking,
                 **kwargs,
             )
+            if cache_key is not None and response is not None:
+                if streaming:
+                    # Cache once the caller drains the stream; an abandoned
+                    # stream is incomplete and is not cached.
+                    file_cache = self._file_cache
+                    response._on_complete = lambda json_instance: file_cache.set(
+                        cache_key, json_instance
+                    )
+                else:
+                    self._file_cache.set(cache_key, response.get_json())
+            return response
         except Exception as e:
             warnings.warn(f"All retries failed for {self}: {e}")
             self._record_event("failed_calls")
@@ -1020,6 +1091,7 @@ class LanguageModel(Module):
             "retry": self.retry,
             "retry_max_wait": self.retry_max_wait,
             "caching": self.caching,
+            "cache_dir": self.cache_dir,
             "name": self.name,
             "description": self.description,
             **self.default_kwargs,
@@ -1086,7 +1158,9 @@ class StreamingIterator:
         trajectory_start=None,
     ):
         self._iterator = iterator
-        self._is_async = hasattr(iterator, "__anext__") or hasattr(iterator, "__aiter__")
+        self._is_async = hasattr(iterator, "__anext__") or hasattr(
+            iterator, "__aiter__"
+        )
         self._language_model = language_model
         self._op_scope = op_scope
         self._request_start = request_start
@@ -1094,9 +1168,30 @@ class StreamingIterator:
         self._first_token_time = None
         self._last_token_time = None
         self._recorded = False
+        # Accumulates every yielded token so the full assistant message can
+        # be handed to `_on_complete` (the on-disk cache writer) once the
+        # stream is drained. An abandoned stream never fires the callback.
+        self._content_parts = []
+        self._reasoning_parts = []
+        self._on_complete = None
 
     def __aiter__(self):
         return self
+
+    def _fire_on_complete(self):
+        """Hand the fully-accumulated assistant message to `_on_complete`
+        (at most once, and only when the stream actually yielded tokens)."""
+        callback = self._on_complete
+        if callback is None or not (self._content_parts or self._reasoning_parts):
+            return
+        self._on_complete = None
+        json_instance = {
+            "role": ChatRole.ASSISTANT,
+            "content": "".join(self._content_parts),
+        }
+        if self._reasoning_parts:
+            json_instance["reasoning_content"] = "".join(self._reasoning_parts)
+        callback(json_instance)
 
     def _record_latencies(self):
         """Accumulate time-to-first / time-to-last token onto the LM counters.
@@ -1135,6 +1230,7 @@ class StreamingIterator:
                     chunk = next(self._iterator)
             except (StopAsyncIteration, StopIteration):
                 self._record_latencies()
+                self._fire_on_complete()
                 raise StopAsyncIteration
             delta = chunk["choices"][0].get("delta") or {}
             content = delta.get("content")
@@ -1147,8 +1243,10 @@ class StreamingIterator:
                 out = {"role": ChatRole.ASSISTANT}
                 if thinking:
                     out["reasoning_content"] = thinking
+                    self._reasoning_parts.append(thinking)
                 if content:
                     out["content"] = content
+                    self._content_parts.append(content)
                 return out
 
     async def aconsume(self, name=None):

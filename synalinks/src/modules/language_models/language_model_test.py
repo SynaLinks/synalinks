@@ -215,7 +215,11 @@ class LanguageModelTest(testing.TestCase):
         class MockResponse(dict):
             def __init__(self):
                 super().__init__(
-                    {"choices": [{"message": {"content": "Hello, how can I help you?"}}]}
+                    {
+                        "choices": [
+                            {"message": {"content": "Hello, how can I help you?"}}
+                        ]
+                    }
                 )
                 self._hidden_params = {"response_cost": None}
 
@@ -265,9 +269,7 @@ class LanguageModelTest(testing.TestCase):
         (which reasons by default) by sending `think=False`; `"none"` leaves the
         model at its default and sends nothing.
         """
-        mock_completion.return_value = {
-            "choices": [{"message": {"content": "ok"}}]
-        }
+        mock_completion.return_value = {"choices": [{"message": {"content": "ok"}}]}
         messages = ChatMessages(
             messages=[ChatMessage(role=ChatRole.USER, content="Hello")]
         )
@@ -284,9 +286,7 @@ class LanguageModelTest(testing.TestCase):
         """Opt-in providers reason only when enabled, so "disable" sends no
         `think` flag (it is ollama-specific and would be rejected elsewhere).
         """
-        mock_completion.return_value = {
-            "choices": [{"message": {"content": "ok"}}]
-        }
+        mock_completion.return_value = {"choices": [{"message": {"content": "ok"}}]}
         messages = ChatMessages(
             messages=[ChatMessage(role=ChatRole.USER, content="Hello")]
         )
@@ -320,7 +320,10 @@ class MultimodalWireTest(testing.TestCase):
             messages=[
                 ChatMessage(
                     role=ChatRole.USER,
-                    content=["what is this?", Image(data="QUJD", mime_type="image/png")],
+                    content=[
+                        "what is this?",
+                        Image(data="QUJD", mime_type="image/png"),
+                    ],
                 )
             ]
         )
@@ -497,7 +500,9 @@ class LMCounterPopulationTest(testing.TestCase):
 
     @patch("litellm.acompletion")
     async def test_lm_no_scope_only_updates_alltime(self, mock_completion):
-        mock_completion.return_value = _lm_response(prompt_tokens=8, completion_tokens=2)
+        mock_completion.return_value = _lm_response(
+            prompt_tokens=8, completion_tokens=2
+        )
         lm = LanguageModel(model="ollama/mistral")
         _set_scope(None)
         await lm(_chat_messages())
@@ -652,3 +657,141 @@ class LMTier1CounterTest(testing.TestCase):
         finally:
             _set_scope(None)
         self.assertEqual(lm.inference_cumulated_details["prompt_audio_tokens"], 12)
+
+
+class LMFileCacheTest(testing.TestCase):
+    @patch("litellm.acompletion")
+    async def test_identical_call_served_from_disk(self, mock_completion):
+        cache_dir = os.path.join(self.get_temp_dir(), "lm_cache")
+        mock_completion.return_value = _lm_response(
+            prompt_tokens=10, completion_tokens=5
+        )
+        lm = LanguageModel(model="openai/gpt-4o", cache_dir=cache_dir)
+
+        first = await lm(_chat_messages())
+        second = await lm(_chat_messages())
+
+        self.assertEqual(mock_completion.call_count, 1)
+        self.assertEqual(first.get_json(), second.get_json())
+        self.assertEqual(lm.cumulated_calls, 1)
+        self.assertEqual(lm.cumulated_cache_hits, 1)
+
+    @patch("litellm.acompletion")
+    async def test_cache_persists_across_instances(self, mock_completion):
+        cache_dir = os.path.join(self.get_temp_dir(), "lm_cache")
+        mock_completion.return_value = _lm_response(
+            prompt_tokens=10, completion_tokens=5
+        )
+        lm = LanguageModel(model="openai/gpt-4o", cache_dir=cache_dir)
+        first = await lm(_chat_messages())
+
+        # A fresh instance (as in a new process) reuses the same files.
+        lm2 = LanguageModel(model="openai/gpt-4o", cache_dir=cache_dir)
+        second = await lm2(_chat_messages())
+
+        self.assertEqual(mock_completion.call_count, 1)
+        self.assertEqual(first.get_json(), second.get_json())
+        self.assertEqual(lm2.cumulated_cache_hits, 1)
+
+    @patch("litellm.acompletion")
+    async def test_different_prompt_is_a_miss(self, mock_completion):
+        cache_dir = os.path.join(self.get_temp_dir(), "lm_cache")
+        mock_completion.return_value = _lm_response(
+            prompt_tokens=10, completion_tokens=5
+        )
+        lm = LanguageModel(model="openai/gpt-4o", cache_dir=cache_dir)
+
+        await lm(_chat_messages())
+        await lm(
+            ChatMessages(messages=[ChatMessage(role=ChatRole.USER, content="Bye")])
+        )
+
+        self.assertEqual(mock_completion.call_count, 2)
+        self.assertEqual(lm.cumulated_cache_hits, 0)
+
+    @patch("litellm.acompletion")
+    async def test_structured_output_is_cached(self, mock_completion):
+        cache_dir = os.path.join(self.get_temp_dir(), "lm_cache")
+
+        class Answer(DataModel):
+            answer: str
+
+        mock_completion.return_value = {
+            "choices": [{"message": {"content": '{"answer": "Toulouse"}'}}]
+        }
+        lm = LanguageModel(model="openai/gpt-4o", cache_dir=cache_dir)
+
+        first = await lm(_chat_messages(), schema=Answer.get_schema())
+        second = await lm(_chat_messages(), schema=Answer.get_schema())
+
+        self.assertEqual(mock_completion.call_count, 1)
+        self.assertEqual(first.get_json(), {"answer": "Toulouse"})
+        self.assertEqual(second.get_json(), {"answer": "Toulouse"})
+        self.assertEqual(second.get_schema(), first.get_schema())
+
+    @patch("litellm.acompletion")
+    async def test_drained_stream_is_cached_and_replayed(self, mock_completion):
+        cache_dir = os.path.join(self.get_temp_dir(), "lm_cache")
+        lm = LanguageModel(model="openai/gpt-4o", cache_dir=cache_dir)
+        mock_completion.return_value = iter(
+            [
+                {"choices": [{"delta": {"reasoning_content": "hmm"}}]},
+                {"choices": [{"delta": {"content": "Hel"}}]},
+                {"choices": [{"delta": {"content": "lo"}}]},
+            ]
+        )
+        stream = await lm(_chat_messages(), streaming=True)
+        first = await stream.aconsume()
+        self.assertEqual(first.get_json()["content"], "Hello")
+
+        # Second identical call replays the drained stream from disk.
+        replay = await lm(_chat_messages(), streaming=True)
+        second = await replay.aconsume()
+
+        self.assertEqual(mock_completion.call_count, 1)
+        self.assertEqual(second.get_json()["content"], "Hello")
+        self.assertEqual(second.get_json()["reasoning_content"], "hmm")
+        self.assertEqual(lm.cumulated_cache_hits, 1)
+
+    @patch("litellm.acompletion")
+    async def test_abandoned_stream_is_not_cached(self, mock_completion):
+        cache_dir = os.path.join(self.get_temp_dir(), "lm_cache")
+        lm = LanguageModel(model="openai/gpt-4o", cache_dir=cache_dir)
+        for _ in range(2):
+            mock_completion.return_value = iter(
+                [
+                    {"choices": [{"delta": {"content": "Hel"}}]},
+                    {"choices": [{"delta": {"content": "lo"}}]},
+                ]
+            )
+            stream = await lm(_chat_messages(), streaming=True)
+            # Consume only the first chunk, then abandon the stream.
+            await stream.__anext__()
+        self.assertEqual(mock_completion.call_count, 2)
+        self.assertEqual(lm.cumulated_cache_hits, 0)
+
+    @patch("litellm.acompletion")
+    async def test_streamed_and_non_streamed_calls_share_entries(self, mock_completion):
+        cache_dir = os.path.join(self.get_temp_dir(), "lm_cache")
+        lm = LanguageModel(model="openai/gpt-4o", cache_dir=cache_dir)
+        mock_completion.return_value = _lm_response(
+            prompt_tokens=10, completion_tokens=5
+        )
+        first = await lm(_chat_messages())
+
+        # The same request with streaming=True replays the cached message.
+        replay = await lm(_chat_messages(), streaming=True)
+        second = await replay.aconsume()
+
+        self.assertEqual(mock_completion.call_count, 1)
+        self.assertEqual(second.get_json()["content"], first.get_json()["content"])
+        self.assertEqual(lm.cumulated_cache_hits, 1)
+
+    def test_cache_dir_in_config_roundtrip(self):
+        cache_dir = os.path.join(self.get_temp_dir(), "lm_cache")
+        lm = LanguageModel(model="openai/gpt-4o", cache_dir=cache_dir)
+        config = lm.get_config()
+        self.assertEqual(config["cache_dir"], cache_dir)
+        restored = LanguageModel.from_config(config)
+        self.assertEqual(restored.cache_dir, cache_dir)
+        self.assertIsNotNone(restored._file_cache)
