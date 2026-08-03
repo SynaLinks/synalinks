@@ -28,13 +28,51 @@ from synalinks.src.sandboxes.sandbox import ExecutionResult
 from synalinks.src.sandboxes.sandbox import Sandbox
 from synalinks.src.saving.object_registration import register_synalinks_serializable
 
+# FUSE is optional to mirage: both of its mfusepy import sites fall back to
+# `fuse = None`, and the only consumer, FuseManager, is reached exclusively
+# through `Workspace.add_fuse_mount`. Nothing in MirageSandbox needs it except
+# the Linux-only confinement pivot.
+#
+# mirage guards those imports with `except ImportError`, but mfusepy resolves
+# libfuse at *import* time and raises `OSError("Unable to find libfuse")` when
+# there is none. OSError is not ImportError, so the guard misses it and the
+# error escapes `import mirage` entirely. Since synalinks/api reaches
+# DeepAgent -> sandboxes -> mirage, that took down plain `import synalinks` on
+# every host without libfuse, stock macOS included.
+#
+# Probe mfusepy ourselves and, when libfuse is genuinely absent, poison the
+# module slot: `sys.modules[name] = None` makes a later `import name` raise
+# ImportError, which is exactly the error mirage already handles. mirage then
+# takes its own supported no-FUSE path and the sandbox works normally, minus
+# FUSE mounts. Upstream should widen its own guard; this keeps us working on
+# every mirage 0.0.4 install until it does.
+#
+# Recovering the import must NOT quietly cost isolation, so the result is
+# recorded and fed into `_confinement_available` below. On Linux a missing
+# libfuse means confinement is genuinely broken, and the existing `/dev/fuse`
+# probe cannot see that: `/dev/fuse` is the kernel device, while libfuse is the
+# user-space library the mount needs. Without the extra check a host with the
+# device but no library passed the probe, failed to establish the mount, and
+# then ran *unconfined* with nothing said unless `require_confinement` was set.
+try:
+    import mfusepy as _mfusepy  # noqa: F401
+
+    _LIBFUSE_AVAILABLE = True
+except OSError:  # pragma: no cover - only hit where libfuse is missing
+    sys.modules["mfusepy"] = None
+    _LIBFUSE_AVAILABLE = False
+except ImportError:  # pragma: no cover - mfusepy not installed at all
+    _LIBFUSE_AVAILABLE = False
+
 try:
     import mirage
     from mirage import MountMode
     from mirage import RAMResource
     from mirage import Workspace
     from mirage.bridge.sync import run_async_from_sync
-except ImportError:  # pragma: no cover - exercised only without mirage installed
+except (ImportError, OSError):  # pragma: no cover - mirage genuinely unusable
+    # Kept as a backstop so an unusable mirage degrades to a clear error at
+    # construction time rather than breaking `import synalinks`.
     mirage = None
     MountMode = None
     RAMResource = None
@@ -662,6 +700,18 @@ def _confinement_available() -> tuple[bool, str]:
             # WSL1 has no real kernel / FUSE; WSL2 does. Point the user there.
             reason += "; on WSL use WSL2 (WSL1 cannot confine)"
         return False, reason
+    if not _LIBFUSE_AVAILABLE:
+        # `/dev/fuse` above is the kernel device; the mount also needs the
+        # libfuse user-space library, which mfusepy loads at import. A host can
+        # easily have the first and not the second (slim containers, or the
+        # mirage-ai[fuse] extra left uninstalled). Report it here so confinement
+        # fails closed with a usable reason, instead of passing this probe and
+        # then silently running unconfined when the mount does not come up.
+        return False, (
+            "confinement requires the libfuse user-space library, which could "
+            "not be loaded; install libfuse (Debian/Ubuntu: libfuse3-3 or "
+            "libfuse2) and the mirage-ai[fuse] extra"
+        )
     try:
         with open("/proc/sys/kernel/unprivileged_userns_clone") as fh:
             if fh.read().strip() == "0":
