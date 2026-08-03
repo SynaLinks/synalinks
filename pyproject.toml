@@ -45,9 +45,14 @@ dependencies = [
   # constructor, dropped `native`, made `load` async and stopped
   # auto-creating sessions). An open `>=` let that land silently.
   # The [fuse] extra is required, not optional: MirageSandbox's confinement
-  # pivots into the FUSE-mounted virtual filesystem, and 0.0.4 moved mfusepy
-  # behind that extra. Without it the mount silently fails and every confined
-  # sandbox falls back to running unconfined.
+  # pivots into the FUSE-mounted virtual filesystem, mfusepy is what brings
+  # that mount up, and 0.0.4 moved it behind this extra. Without it there is
+  # no mount and therefore no confinement, on Linux where confinement is
+  # otherwise available. It is inert on macOS and Windows, which cannot
+  # confine regardless. Missing libfuse no longer degrades quietly:
+  # `_confinement_available` in synalinks/src/sandboxes/mirage_sandbox.py
+  # probes for it and fails closed, so keep this extra to make confinement
+  # work, not to keep it honest.
   "mirage-ai[fuse]>=0.0.4,<0.0.5",
   "optree",
   "orjson",
