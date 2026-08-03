@@ -8,5 +8,5 @@
 ## Source
 
 ````python
---8<-- "guides/16_callbacks.py:401"
+--8 < --"guides/16_callbacks.py:401"
 ````

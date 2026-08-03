@@ -105,7 +105,7 @@ def iterable_dataset(repeat=1, batch_size=1, limit=None, split="validation"):
     """
     Streaming dataset for RL-style training.
 
-    Default split is ``"validation"`` (1.5k rows) — the conventional
+    Default split is ``"validation"`` (1.5k rows), the conventional
     training pool for MMLU. Pass ``split="auxiliary_train"`` for the
     larger 99k auxiliary corpus, or ``split="test"`` for evaluation.
 

@@ -1,4 +1,4 @@
-# Agent guide — api
+# Agent guide: api
 
 An **OpenAI chat-completions-compatible** endpoint backed by a Synalinks
 `FunctionCallingAgent`, served with **FastAPI**. Everything is in `main.py`:
@@ -14,7 +14,7 @@ the tool, the agent, the OpenAI-compatible schemas, and the app.
   result's `messages`; the **last** message is the assistant's answer.
 - **Build once, serve forever.** `build_and_save_program` writes `program.json`;
   the lifespan only *loads* it (fail fast if missing). Building does **not** call
-  the LM — even for an agent — so it runs offline (CI, Docker image-build). Never
+  the LM, even for an agent, so it runs offline (CI, Docker image-build). Never
   build inside a request handler.
 - **DataModels are Pydantic models**, so FastAPI uses the request/response
   schemas directly and publishes them at `/docs`.
@@ -36,12 +36,12 @@ docker compose up --build     # API + vLLM + MLflow
 ```
 
 Swap `calculate` for your own tools, or replace the `FunctionCallingAgent` with
-an RLM / RAG / DeepAgent — the OpenAI-compatible layer is unchanged. Custom
+an RLM / RAG / DeepAgent; the OpenAI-compatible layer is unchanged. Custom
 Agent Skills can live under `.agents/skills/`.
 
 ## Troubleshooting a framework bug
 
-Most failures are in *your* program — fix those here. But if you trace a problem
+Most failures are in *your* program; fix those here. But if you trace a problem
 to **Synalinks itself** (a stack trace inside the `synalinks` package, or a
 missing/broken framework feature), fix it at the source and upstream it:
 

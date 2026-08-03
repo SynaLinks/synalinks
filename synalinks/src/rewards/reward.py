@@ -108,7 +108,7 @@ def apply_masks(
     """Convert ``y_true``/``y_pred`` to ``JsonDataModel`` and apply field masks.
 
     Works on both a single sample (a leaf ``JsonDataModel``) and a list/tree
-    of samples — ``tree.map_structure`` handles either uniformly.
+    of samples; ``tree.map_structure`` handles either uniformly.
     """
     y_pred = tree.map_structure(lambda x: ops.convert_to_json_data_model(x), y_pred)
     y_true = tree.map_structure(lambda x: ops.convert_to_json_data_model(x), y_true)

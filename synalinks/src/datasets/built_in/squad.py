@@ -20,7 +20,7 @@ class SQuADAnswer(DataModel):
 
 
 _INPUT_TEMPLATE = r'{"question": {{ (context ~ "\n\nQuestion: " ~ question) | tojson }}}'
-# SQuAD answers are a list of equivalent gold spans — pick the first.
+# SQuAD answers are a list of equivalent gold spans; pick the first.
 _OUTPUT_TEMPLATE = r'{"answer": {{ answers.text[0] | tojson }}}'
 
 

@@ -47,7 +47,7 @@ class RegexSearch(Module):
     matching log lines, SKU codes, or any other structured text).
 
     Regex uses RE2 (DuckDB's engine), so patterns are linear-time and
-    not vulnerable to catastrophic backtracking — safe even when the
+    not vulnerable to catastrophic backtracking, safe even when the
     pattern comes from an untrusted source.
 
     Single-table only: to retrieve from multiple tables, compose
@@ -100,7 +100,7 @@ class RegexSearch(Module):
             providing ``schema`` via ``.get_schema()`` when ``schema``
             is not given.
         table_name (str): Target table. Defaults to the schema's
-            ``title``. **Optional** — when neither ``table_name`` nor a
+            ``title``. **Optional**: when neither ``table_name`` nor a
             schema to derive it from is given, the language model infers
             the target table per call (constrained to the knowledge
             base's actual tables).

@@ -8,7 +8,7 @@
 ## Source
 
 ````python
---8<-- "examples/3_decisions.py:120"
+--8 < --"examples/3_decisions.py:120"
 ````
 
 ## Run log
@@ -16,7 +16,7 @@
 The log below is the **unedited** combined output of running the example above
 with local models (ollama).
 
-??? example "Full run log — `examples/3_decisions.log`"
+??? example "Full run log: `examples/3_decisions.log`"
 
     ```text
     --8<-- "examples/3_decisions.log"

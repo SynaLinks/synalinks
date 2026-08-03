@@ -43,10 +43,10 @@ query against the labels described in the `graph_schema` field.
 Constraints:
 - Emit exactly one read query. `CREATE`, `MERGE`, `SET`, `DELETE`,
   `REMOVE`, `DROP`, `LOAD`, `CALL` to write procedures, `COPY`, and any
-  schema mutation are rejected by the engine — don't waste turns trying
+  schema mutation are rejected by the engine; don't waste turns trying
   them.
 - Node and relation labels are case-sensitive and match exactly the
-  spellings shown in the `graph_schema` field — do not invent labels
+  spellings shown in the `graph_schema` field; do not invent labels
   or properties.
 - Always end with a `RETURN` clause naming the columns you want.{limit_hint}
 """.strip()
@@ -302,7 +302,7 @@ class Text2Cypher(Module):
             raise ValueError(f"`k` must be a positive integer or None, got {k!r}")
         self.k = k
 
-        # Schema text is fetched at call time, not here — the graph
+        # Schema text is fetched at call time, not here; the graph
         # can gain labels between construction and use, and a Program
         # built once but called many times must not freeze a stale
         # schema. Default instructions are schema-agnostic for the

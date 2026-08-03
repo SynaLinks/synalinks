@@ -25,7 +25,7 @@ class KnowledgeBase(SynalinksSaveable):
 
     The KnowledgeBase provides a unified interface over two complementary
     stores: a SQL row/table store (DuckDB by default) and a property-graph
-    store (LadybugDB by default). The two are orthogonal — SQL methods
+    store (LadybugDB by default). The two are orthogonal: SQL methods
     (``update``, ``sql``, ``similarity_search``, ...) route to the SQL
     adapter; graph methods (``update_entities``, ``cypher``,
     ``entity_similarity_search``, ...) route to the graph adapter.
@@ -56,7 +56,7 @@ class KnowledgeBase(SynalinksSaveable):
     doc = Document(id="1", title="Hello", content="Hello World!")
     await knowledge_base.update(doc.to_json_data_model())
 
-    # Retrieve by ID (the first field, here 'id', is the primary key — see
+    # Retrieve by ID (the first field, here 'id', is the primary key; see
     # the "Primary Key Convention" section below).
     result = await knowledge_base.get("1", table_name="Document")
 
@@ -74,7 +74,7 @@ class KnowledgeBase(SynalinksSaveable):
     * For graph entities (Ladybug nodes): the first property after
       ``label``. ``label`` is the node-table name, not a column.
     * For graph relations (Ladybug edges): the first property after
-      ``subj`` / ``label`` / ``obj``. Those three are reserved — the
+      ``subj`` / ``label`` / ``obj``. Those three are reserved: the
       endpoints are resolved against the node tables, and the label is
       the edge-table name.
 
@@ -85,7 +85,7 @@ class KnowledgeBase(SynalinksSaveable):
     treat as the identifier (``id``, ``ticker``, ``isbn``, ``email``,
     whatever it happens to be) and the adapters will use it. If you
     *want* a UUID-style key, declare it explicitly as the first field
-    and populate it yourself — generating identifiers is the caller's
+    and populate it yourself: generating identifiers is the caller's
     job, not the framework's.
 
     ### With Vector Similarity Search
@@ -162,9 +162,9 @@ class KnowledgeBase(SynalinksSaveable):
         **kwargs,
     ):
         # Two adapters can coexist on a single KnowledgeBase:
-        #   * `sql_adapter` — row/table store, selected by `uri`
+        #   * `sql_adapter`: row/table store, selected by `uri`
         #     (e.g. duckdb://...). Default backend is DuckDB.
-        #   * `graph_adapter` — property-graph store, selected by
+        #   * `graph_adapter`: property-graph store, selected by
         #     `graph_uri` (e.g. ladybug://...). Default backend is
         #     LadybugDB.
         # The two stores are complementary, so a no-args
@@ -172,7 +172,7 @@ class KnowledgeBase(SynalinksSaveable):
         # ``synalinks_home()`` directory (``database.db`` for SQL,
         # ``database.lb`` for the graph). Passing only ``uri=`` keeps
         # the call SQL-only; passing only ``graph_uri=`` keeps it
-        # graph-only — explicit URIs opt out of auto-pairing so a
+        # graph-only; explicit URIs opt out of auto-pairing so a
         # caller targeting one engine isn't surprised by a second
         # file appearing on disk.
         self.sql_adapter = None
@@ -223,7 +223,7 @@ class KnowledgeBase(SynalinksSaveable):
             self.name = auto_name("knowledge_base")
         else:
             self.name = name
-        # `encryption_key` is deliberately NOT stored on `self` — it
+        # `encryption_key` is deliberately NOT stored on `self`: it
         # lives only inside the adapter, and only as long as the
         # adapter does. This keeps the secret out of `get_config()`,
         # off-screen during repr/print, and unreferenced by any
@@ -245,12 +245,12 @@ class KnowledgeBase(SynalinksSaveable):
                 The ``Dataset`` form streams the source batch-by-batch
                 (one ``adapter.update`` call per yielded batch) so memory
                 stays bounded for large CSV / Parquet / HuggingFace
-                sources. The dataset must be inputs-only — no
-                ``output_template`` — because the knowledge base stores
+                sources. The dataset must be inputs-only (no
+                ``output_template``) because the knowledge base stores
                 records, not ``(input, target)`` pairs; pass a
                 labeled dataset and you'll get a ``ValueError``.
 
-                Upserts key off the first declared field of the model —
+                Upserts key off the first declared field of the model;
                 see the "Primary Key Convention" section on the class
                 docstring for how that's resolved (and why no UUID is
                 injected).
@@ -258,7 +258,7 @@ class KnowledgeBase(SynalinksSaveable):
                 Verbosity for the ``Dataset`` path; matches the
                 trainer's ``fit()`` semantics. ``"auto"`` (default)
                 resolves to ``1`` when a ``Dataset`` is passed (a
-                per-batch progress bar — same widget ``fit()`` uses,
+                per-batch progress bar, the same widget ``fit()`` uses,
                 with ETA when ``len(dataset)`` is known) and is a
                 no-op for the scalar / list forms, which finish in a
                 single adapter call.
@@ -282,14 +282,14 @@ class KnowledgeBase(SynalinksSaveable):
         Each batch yielded by the dataset is converted to a list of
         DataModel / JsonDataModel instances and handed to
         ``adapter.update``. The returned ids from every batch are
-        accumulated into one flat list — same order as the dataset
+        accumulated into one flat list, in the same order as the dataset
         produced them.
 
         Inputs-only is enforced: a dataset configured with an
         ``output_template`` represents ``(input, target)`` training
         data, which isn't what the knowledge base stores. The check is
         the dataset's public ``output_template`` attribute, not the
-        per-batch tuple length — so the rejection happens upfront,
+        per-batch tuple length, so the rejection happens upfront,
         before any rows are consumed.
         """
         if dataset.output_template is not None:
@@ -345,13 +345,13 @@ class KnowledgeBase(SynalinksSaveable):
         Skips the Python row pipeline entirely (no Pydantic, no Jinja,
         no per-row INSERT) and instead delegates to the database's
         native CSV reader. Roughly two orders of magnitude faster than
-        ``update(CSVDataset(...))`` for non-trivial files — see
+        ``update(CSVDataset(...))`` for non-trivial files; see
         ``benchmarks/bench_kb_ingest.py``.
 
         The target table's schema is inferred directly from the
         file's columns, with the first column promoted to PRIMARY
         KEY. The returned `SymbolicDataModel` is the handle
-        you pass to subsequent search / get calls — you don't need
+        you pass to subsequent search / get calls; you don't need
         to pre-declare a ``DataModel`` for this table.
 
         Use the streaming ``update(<...>Dataset(...))`` path instead
@@ -391,7 +391,7 @@ class KnowledgeBase(SynalinksSaveable):
     ) -> Any:
         """Bulk-load a Parquet file directly into the knowledge base.
 
-        Same trade-offs as `from_csv` — bypasses the Python row
+        Same trade-offs as `from_csv`: bypasses the Python row
         pipeline for native database ingestion. Parquet's schema is
         explicit in the file footer so there is no type-inference
         guesswork to worry about.
@@ -418,7 +418,7 @@ class KnowledgeBase(SynalinksSaveable):
     ) -> Any:
         """Bulk-load a JSON file (top-level array of objects).
 
-        Same trade-offs as `from_csv` / `from_parquet` —
+        Same trade-offs as `from_csv` / `from_parquet`:
         bypasses the Python row pipeline. The file must contain a
         top-level JSON array. Use `from_jsonl` for the
         one-object-per-line NDJSON format.
@@ -586,14 +586,14 @@ class KnowledgeBase(SynalinksSaveable):
     ) -> Union[List[Dict[str, Any]], str]:
         """Execute a raw SQL query against the knowledge base.
 
-        Counterpart of `cypher` — the method is named after the
+        Counterpart of `cypher`: the method is named after the
         query language so a dual-adapter KnowledgeBase has a clear
         per-language entry point.
 
         Args:
             sql (str): The SQL string to execute.
             params (dict): Optional list of parameters for parameterized queries.
-            output_format: ``"json"`` (default, list of dicts —
+            output_format: ``"json"`` (default, list of dicts,
                 JSON-shaped Python data) or ``"csv"`` (CSV string,
                 useful when handing the result to an LM).
             **kwargs (Any): Additional options. The most important one is
@@ -605,15 +605,15 @@ class KnowledgeBase(SynalinksSaveable):
                    multi-statement injection (e.g. ``SELECT 1; DROP TABLE x``),
                    ``COPY ... TO 'file'`` exfiltration, ``ATTACH``, ``EXPORT``,
                    and other side-effecting statements. This is the only
-                   layer that blocks writes — the adapter's underlying
+                   layer that blocks writes: the adapter's underlying
                    connection is read-write (one connection per adapter,
                    reused across operations), so the parser check is what
                    keeps untrusted SQL read-only.
                 2. ``enable_external_access`` is disabled on that connection
                    at construction time, so ``SELECT`` table functions that
-                   touch the host filesystem or network — ``read_csv``,
+                   touch the host filesystem or network (``read_csv``,
                    ``read_parquet``, ``read_json``, ``read_blob``,
-                   ``read_text``, ``glob`` and the httpfs/S3 variants —
+                   ``read_text``, ``glob`` and the httpfs/S3 variants)
                    return a permission error instead of leaking files.
                    Without this layer,
                    ``SELECT * FROM read_csv('/etc/passwd', ...)`` would pass
@@ -622,7 +622,7 @@ class KnowledgeBase(SynalinksSaveable):
                 Pass ``read_only=False`` only from trusted call sites that
                 genuinely need to mutate state. Those paths still run on
                 the same sandboxed connection (no external I/O), but they
-                bypass the parser check, so any SQL is accepted — keep them
+                bypass the parser check, so any SQL is accepted; keep them
                 out of the LM-tool-call surface.
 
         Returns:
@@ -660,7 +660,7 @@ class KnowledgeBase(SynalinksSaveable):
             ef_search: HNSW search-time candidate-list depth.
                 ``None`` keeps the index-time value (or the engine
                 default). Higher = better recall, slower query.
-            output_format: ``"json"`` (default, list of dicts —
+            output_format: ``"json"`` (default, list of dicts,
                 JSON-shaped Python data) or ``"csv"`` (CSV string,
                 useful for handing results to an LM since CSV is
                 ~30-50% fewer tokens than equivalent JSON).
@@ -870,7 +870,7 @@ class KnowledgeBase(SynalinksSaveable):
         )
 
     # ---------------------------------------------------------------------
-    # Graph store API — orthogonal to the SQL store above.
+    # Graph store API, orthogonal to the SQL store above.
     #
     # These methods require the underlying adapter to be a
     # ``GraphDatabaseAdapter`` (selected by the URI scheme, e.g.
@@ -901,7 +901,7 @@ class KnowledgeBase(SynalinksSaveable):
 
         Graph-side counterpart of the SQL `update`. The name
         mirrors the `Entities` data model; pass either a single
-        ``Entity`` or a list — the return shape matches the input.
+        ``Entity`` or a list; the return shape matches the input.
 
         Args:
             entity_or_entities: An ``Entity`` instance, or a list of
@@ -1307,7 +1307,7 @@ class KnowledgeBase(SynalinksSaveable):
         """BM25 fulltext search over relations of a given label.
 
         Per matched edge, the final ``score`` is the sum of the
-        subject-side and object-side BM25 scores — either-endpoint
+        subject-side and object-side BM25 scores: either-endpoint
         union (edge surfaces if either endpoint matched).
 
         Args:
@@ -1382,7 +1382,7 @@ class KnowledgeBase(SynalinksSaveable):
         """RRF of vector similarity + regex match over relations.
 
         Per matched edge, the final ``rrf_score`` is the sum of the
-        subject's and the object's hybrid scores — same 4-source-RRF
+        subject's and the object's hybrid scores, the same 4-source-RRF
         reduction as `relation_hybrid_fts_search`. Falls through
         to `relation_similarity_search` when no patterns are
         supplied.
@@ -1436,7 +1436,7 @@ class KnowledgeBase(SynalinksSaveable):
 
         Either-endpoint union: per matched edge, the final
         ``rrf_score`` is the sum of the subject-side and
-        object-side hybrid scores — equivalent to a 4-source RRF.
+        object-side hybrid scores, equivalent to a 4-source RRF.
         Falls back to fulltext-only when there are no vectors to
         search with.
 
@@ -1826,7 +1826,7 @@ class KnowledgeBase(SynalinksSaveable):
 
         Each returned schema includes its endpoint node schemas under
         ``$defs`` and references them as ``subj`` / ``obj`` via
-        ``$ref`` — same shape Pydantic v2 emits for a hand-written
+        ``$ref``, the same shape Pydantic v2 emits for a hand-written
         `synalinks.Relation` subclass.
 
         Returns:
@@ -1845,7 +1845,7 @@ class KnowledgeBase(SynalinksSaveable):
     ) -> Any:
         """Run a community-detection algorithm on the graph store.
 
-        Returns a `KnowledgeGraphs` — one
+        Returns a `KnowledgeGraphs`: one
         `KnowledgeGraph` per detected community. Edges that
         straddle communities are dropped. See the adapter's
         documentation for algorithm-specific constraints (Louvain
@@ -1937,7 +1937,7 @@ class KnowledgeBase(SynalinksSaveable):
 
         Vector-matches ``k`` seed entities of ``label``, expands their
         ``max_hops`` undirected neighbourhood, and returns the deduped
-        union as a `KnowledgeGraph` — the local context subgraph
+        union as a `KnowledgeGraph`, the local context subgraph
         for entity-centric questions ("what does the graph say around
         *these* entities"). See
         `GraphDatabaseAdapter.local_graph_search`.
@@ -2019,7 +2019,7 @@ class KnowledgeBase(SynalinksSaveable):
         Rolls up the community / rank properties
         `build_communities` stamped into one aggregate row per
         community (size, total rank, representative members), ordered
-        by importance — the theme-centric counterpart to
+        by importance: the theme-centric counterpart to
         `local_graph_search` ("what are the overall patterns
         across the *whole* graph"). Requires `build_communities`
         to have run first. See
@@ -2038,6 +2038,40 @@ class KnowledgeBase(SynalinksSaveable):
             k=k,
             members_per_community=members_per_community,
             output_format=output_format,
+        )
+
+    async def community_graph_search(
+        self,
+        *,
+        node_labels: Optional[List[str]] = None,
+        rel_labels: Optional[List[str]] = None,
+        k: int = 10,
+        members_per_community: Optional[int] = None,
+    ):
+        """GraphRAG-style *global* search returning communities as graphs.
+
+        The graph-shaped counterpart to `global_graph_search`: rebuilds each
+        community `build_communities` stamped as a `KnowledgeGraph` (member
+        entities plus their internal relations), ordered by aggregate
+        importance and capped at ``k``. These subgraphs are what the
+        `GlobalGraphSearch` retriever returns and what an LM map-reduce
+        step summarises then combines. Requires `build_communities` first.
+        See `GraphDatabaseAdapter.community_graph_search`.
+
+        Args:
+            node_labels: Optional NODE-table whitelist (``None`` = every
+                stamped table).
+            rel_labels: Optional REL-table whitelist (``None`` = all).
+            k: Maximum number of communities (subgraphs) to return.
+            members_per_community: Optional cap on member entities per
+                community, best first by rank.
+        """
+        self._require_graph_adapter()
+        return await self.graph_adapter.community_graph_search(
+            node_labels=node_labels,
+            rel_labels=rel_labels,
+            k=k,
+            members_per_community=members_per_community,
         )
 
     def _serialize_models(self, models, key):

@@ -2,8 +2,8 @@
 
 Business logic and integrations live here, separate from the HTTP layer. Keep
 `main.py`'s route handlers thin: parse the request, call a service, shape the
-response. Everything else — databases, external APIs, and orchestrating the
-Synalinks program — belongs in a service module.
+response. Everything else (databases, external APIs, and orchestrating the
+Synalinks program) belongs in a service module.
 
 ## What goes here
 
@@ -41,4 +41,4 @@ from services import qa
 ```
 
 Keeping services framework-agnostic (no FastAPI imports here) makes them easy to
-test and reuse — e.g. from a CLI, a worker, or a notebook.
+test and reuse, e.g. from a CLI, a worker, or a notebook.

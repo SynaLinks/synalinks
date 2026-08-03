@@ -76,7 +76,7 @@ class Recorder(Hook):
         string). Nothing is appended if the call failed or the response
         was streamed. Messages carry the chat-completion keys (`role`,
         `content`, `reasoning_content`, `tool_calls`, `tool_call_id`,
-        `name`) — `reasoning_content` is kept because fine-tuning stacks
+        `name`). `reasoning_content` is kept because fine-tuning stacks
         with reasoning support (e.g. NeMo) train on it. When a provider
         emits reasoning only as opaque `thinking_blocks` (e.g.
         Anthropic), their text is folded into `reasoning_content`; the
@@ -161,7 +161,7 @@ class Recorder(Hook):
     # default; `mask_reasoning_content` excludes it from the loss).
     # Provider-native `thinking_blocks` are not carried as-is (opaque,
     # signed, non-standard) but their text is folded into
-    # `reasoning_content` when the provider emitted no reasoning text —
+    # `reasoning_content` when the provider emitted no reasoning text;
     # the full-fidelity message stays in `outputs`.
     _MESSAGE_KEYS = (
         "role",

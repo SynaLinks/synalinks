@@ -7,11 +7,11 @@ instructions) and optional ``scripts/`` / ``references/`` / ``assets/``. The
 model follows **progressive disclosure**: only each skill's ``name`` +
 ``description`` are surfaced up front (the ``<available_skills>`` prompt block);
 the full ``SKILL.md`` body and bundled files are read on demand through the
-agent's own file / bash tools — so a code agent (Deep Agent / RLM) consumes
+agent's own file / bash tools, so a code agent (Deep Agent / RLM) consumes
 skills with no extra machinery.
 
-All spec-governed logic — YAML frontmatter parsing, the naming / length /
-allowed-field validation rules, and the ``<available_skills>`` XML — is
+All spec-governed logic (YAML frontmatter parsing, the naming / length /
+allowed-field validation rules, and the ``<available_skills>`` XML) is
 delegated to Anthropic's official reference library ``skills-ref``
 (https://github.com/agentskills/agentskills); this module only adds the layer
 ``skills-ref`` does not provide: a `Skill` `Entity` DataModel (the spec
@@ -20,7 +20,7 @@ frontmatter as a synalinks data model), multi-root directory discovery
 (`resolve_skills_paths`), and a `skills_prompt` that adds a sandbox ``root``
 override on top of ``skills_ref.to_prompt``. Like ``skills-ref``, discovery and
 the prompt work in terms of skill *directories*; a skill's Markdown body and
-bundled files are not modelled here — they are read on demand. The general
+bundled files are not modelled here; they are read on demand. The general
 agent helpers (workdir, AGENTS.md, tool merging, input summaries) live in
 ``agents_utils``.
 """
@@ -75,14 +75,14 @@ class Skill(Entity):
     """A parsed Agent Skill's frontmatter properties.
 
     A knowledge-graph `Entity` (``label`` pinned to ``"Skill"``) so skills are
-    first-class synalinks data models — schema-bearing, JSON-serializable
-    (``get_json``) and storable in a `KnowledgeBase` — rather than opaque
+    first-class synalinks data models (schema-bearing, JSON-serializable via
+    ``get_json``, and storable in a `KnowledgeBase`) rather than opaque
     dataclasses. The fields are exactly the spec frontmatter (the six fields in
     https://agentskills.io/specification, mirroring ``skills-ref``'s
     ``SkillProperties``); ``label`` is the only addition, required structurally
     by `Entity`. Locations (the skill directory / ``SKILL.md`` path) and the
     Markdown body are *not* spec frontmatter and are deliberately not stored
-    here — discovery works in terms of directories and the body is read on
+    here: discovery works in terms of directories and the body is read on
     demand (progressive disclosure). Per the spec model ``allowed_tools`` is the
     raw space-separated string; use `allowed_tools_list` to split it.
     """
@@ -115,11 +115,11 @@ def find_skill_md(skill_dir) -> Optional[Path]:
 
 
 def parse_skill(content: str) -> Skill:
-    """Parse ``SKILL.md`` text into a `Skill` (lenient — required fields only).
+    """Parse ``SKILL.md`` text into a `Skill` (lenient: required fields only).
 
     Frontmatter is parsed by ``skills_ref.parser.parse_frontmatter`` (the
     official strictyaml-backed parser); this only checks that ``name`` and
-    ``description`` are present and non-empty — use `validate_skill` for the full
+    ``description`` are present and non-empty; use `validate_skill` for the full
     naming / length / allowed-field rules. The Markdown body is discarded (it is
     not spec frontmatter; agents read it on demand). Raises `SkillParseError`
     (bad frontmatter) / `SkillValidationError` (missing required field).
@@ -172,7 +172,7 @@ def validate_skill_metadata(metadata: dict, *, dir_name=None) -> List[str]:
 def validate_skill(directory) -> List[str]:
     """Validate a skill ``directory`` against the spec; return a list of problems.
 
-    ``[]`` means valid. Never raises for spec violations — delegates directly to
+    ``[]`` means valid. Never raises for spec violations: delegates directly to
     ``skills_ref.validate`` (a parse failure comes back as a single-item list).
     """
     return _validate_skill_dir(Path(directory))
@@ -183,7 +183,7 @@ def discover_skills(root, *, strict: bool = False) -> List[Path]:
 
     Returns the skill directories (those holding a parseable ``SKILL.md``) sorted
     by name. Directories are the unit of work, mirroring ``skills-ref`` (whose
-    ``validate`` / ``read_properties`` / ``to_prompt`` all take paths) — call
+    ``validate`` / ``read_properties`` / ``to_prompt`` all take paths); call
     `load_skill` on one for its `Skill` metadata, or read its files directly
     (progressive disclosure). A directory whose ``SKILL.md`` fails to parse is
     skipped by default; with ``strict=True`` the first `SkillError` propagates.
@@ -211,7 +211,7 @@ def resolve_skills_paths(skills) -> List[str]:
 
     ``skills`` is an iterable of folder paths, each a *root* under which skills
     live as ``<root>/<name>/SKILL.md`` (the layout `discover_skills` expects).
-    Each path must exist and be a directory — a typo'd root that silently
+    Each path must exist and be a directory: a typo'd root that silently
     yielded no skills would be a poor UX, so this raises instead (matching
     ``resolve_workdir``).
 
@@ -238,7 +238,7 @@ def discover_skills_in_roots(roots, *, strict: bool = False) -> List[Path]:
     """Discover Agent Skill directories across multiple root directories.
 
     Runs `discover_skills` on each root in ``roots`` and merges the results,
-    deduped by directory name (**first root wins** — earlier roots take
+    deduped by directory name (**first root wins**: earlier roots take
     precedence over later ones for a shared name; the spec requires a skill's
     ``name`` to equal its directory name). Returns the directories sorted by
     name. With ``strict=True`` a malformed skill propagates its `SkillError`.
@@ -256,11 +256,11 @@ def skills_prompt(skill_dirs, *, root: Optional[str] = None) -> str:
 
     ``skill_dirs`` is an iterable of skill directories (as from `discover_skills`
     / `discover_skills_in_roots`). Without ``root`` this delegates to
-    ``skills_ref.to_prompt`` — the exact XML Anthropic recommends, one
+    ``skills_ref.to_prompt``: the exact XML Anthropic recommends, one
     ``<skill>`` per entry with ``<name>`` / ``<description>`` / ``<location>``
     (the absolute path to ``SKILL.md``). ``root`` overrides the ``<location>``
     prefix (e.g. the skills directory as the *sandbox* sees it, when the host
-    path differs) — a remap ``skills_ref.to_prompt`` cannot do, so that case is
+    path differs), a remap ``skills_ref.to_prompt`` cannot do, so that case is
     rendered locally to byte-identical XML using ``skills_ref.read_properties``
     for each skill's name / description.
     """

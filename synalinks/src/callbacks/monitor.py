@@ -498,7 +498,7 @@ class Monitor(Callback):
         Guarded by a run-id check: ``mlflow.end_run()`` always ends whatever run
         is *globally* active, so a finalizer firing at GC time must not end an
         unrelated run (this also keeps a leaked finalizer from polluting other
-        code's — or another test's — active run).
+        code's, or another test's, active run).
         """
         run = getattr(self, "_run", None)
         if run is None:

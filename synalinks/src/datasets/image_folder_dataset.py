@@ -8,13 +8,13 @@ from synalinks.src.api_export import synalinks_export
 from synalinks.src.datasets.dataset import Dataset
 
 # Image file extensions recognized by default (lower-cased, case-insensitive
-# match). A superset of what every provider accepts — the resolver inlines
+# match). A superset of what every provider accepts; the resolver inlines
 # whatever bytes it finds and lets the model decide.
 _DEFAULT_EXTENSIONS = (".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp")
 
 # Default Jinja2 template: a single user turn pairing a text prompt with the
-# image. The image is referenced by its `file://` URI — a lightweight pointer,
-# NOT the bytes — so the dataset stays cheap to iterate over. The actual file
+# image. The image is referenced by its `file://` URI (a lightweight pointer,
+# NOT the bytes), so the dataset stays cheap to iterate over. The actual file
 # is read and inlined as base64 only when the batch is sent to the model (see
 # `synalinks.backend.resolve_content_media`).
 _DEFAULT_INPUT_TEMPLATE = (
@@ -36,11 +36,11 @@ class ImageFolderDataset(Dataset):
 
     Walks ``root`` (optionally recursively), matches every file whose
     extension is in ``extensions`` (default common image types,
-    case-insensitive), and yields one row per image — shaped, by default,
+    case-insensitive), and yields one row per image, shaped, by default,
     as a `ChatMessages` with a text ``prompt`` next to the image.
 
     Crucially, an image is carried as a **reference** (a ``file://`` URI),
-    never as bytes: iterating the dataset — even materializing it — does
+    never as bytes: iterating the dataset (even materializing it) does
     not load a single pixel into memory. The file is read and inlined as a
     base64 ``data:`` URI only when its batch is actually sent to the model,
     one batch at a time. A folder of a million photos therefore costs a list
@@ -61,11 +61,11 @@ class ImageFolderDataset(Dataset):
     ``input_template`` / ``output_template`` can reshape freely:
 
     - ``file_uri``: the image as ``file:///abs/path`` (drop into an
-      ``image_url`` part — the resolver reads it per batch).
+      ``image_url`` part; the resolver reads it per batch).
     - ``image_path``: the path relative to ``root``.
     - ``name``: the filename without extension.
     - ``label``: the immediate parent directory name (``""`` for images
-      directly under ``root``) — the torchvision ``ImageFolder`` convention,
+      directly under ``root``), the torchvision ``ImageFolder`` convention,
       handy as a classification target.
 
     For a supervised ``(image, label)`` dataset, pass an ``output_template``:
@@ -144,7 +144,7 @@ class ImageFolderDataset(Dataset):
 
     def _iter_files(self) -> Iterator[str]:
         if self.recursive:
-            # os.walk's order is filesystem-dependent — sort within each
+            # os.walk's order is filesystem-dependent; sort within each
             # directory so the dataset is deterministic across reruns.
             for dirpath, _, filenames in os.walk(self.root):
                 for name in sorted(filenames):

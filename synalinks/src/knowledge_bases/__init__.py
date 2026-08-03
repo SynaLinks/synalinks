@@ -91,7 +91,7 @@ def get(identifier):
 
         identifier = default_knowledge_base()
         if identifier is None:
-            # No explicit default — fall back to the auto-paired
+            # No explicit default; fall back to the auto-paired
             # DuckDB + LadybugDB instance under `synalinks_home()`.
             return KnowledgeBase()
 
@@ -103,7 +103,7 @@ def get(identifier):
         elif _is_sql_uri(identifier):
             obj = KnowledgeBase(uri=identifier)
         else:
-            # Schemeless location (e.g. ":memory:") — mirror it to
+            # Schemeless location (e.g. ":memory:"); mirror it to
             # both default adapters so the dual store is reachable.
             obj = KnowledgeBase(
                 uri=f"duckdb://{identifier}",

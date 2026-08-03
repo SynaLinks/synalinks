@@ -474,7 +474,7 @@ class JsonDataModel:
         Handles a direct ``$ref`` and an ``anyOf`` / ``oneOf`` union with a
         single ``$ref`` variant (the common "Optional[X]" / single-type
         list shapes). Returns ``None`` when the spec doesn't point at a
-        single resolvable def — callers fall back to skipping the item.
+        single resolvable def; callers fall back to skipping the item.
         """
         if not isinstance(spec, dict):
             return None
@@ -504,8 +504,8 @@ class JsonDataModel:
 
         The entity's `label` field is used as the discriminator to look up
         its schema in the parent's `$defs`. When the label value isn't a
-        `$defs` key — the free-form case, where `label` is open data rather
-        than a `Literal` matching the class name — the field's *declared*
+        `$defs` key (the free-form case, where `label` is open data rather
+        than a `Literal` matching the class name), the field's *declared*
         schema (its `$ref`) is used as a fallback. Returns ``None`` when the
         value at ``key`` has no ``label`` or when no schema resolves.
 
@@ -537,8 +537,8 @@ class JsonDataModel:
 
         Each item is resolved against the parent's `$defs` using its
         ``label`` field as discriminator. When the label value isn't a
-        `$defs` key — the free-form case, where `label` is open data rather
-        than a `Literal` matching the class name — the list's *declared*
+        `$defs` key (the free-form case, where `label` is open data rather
+        than a `Literal` matching the class name), the list's *declared*
         item schema (`items.$ref`) is used as a fallback. Items without a
         ``label`` field or with no resolvable schema are skipped.
 

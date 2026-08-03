@@ -70,33 +70,33 @@ class Sandbox(SynalinksSaveable):
     A backend (Mirage, Pyodide, Docker, subprocess) is defined by
     overriding these primitives:
 
-    - `run` — execute a snippet, return an `ExecutionResult`.
-    - `reset` — wipe execution state back to empty.
-    - `dump` / `load` — serialize / restore the namespace as
+    - `run`: execute a snippet, return an `ExecutionResult`.
+    - `reset`: wipe execution state back to empty.
+    - `dump` / `load`: serialize / restore the namespace as
       an opaque byte string.
-    - `get_config` / `from_config` / `_obj_type` — the
+    - `get_config` / `from_config` / `_obj_type`: the
       JSON-safe round-trip for Synalinks' saving pipeline.
 
     Everything else here is **provided** machinery that every backend
     shares, so subclasses neither reimplement nor diverge on it:
 
-    - **Run history** (`history`) — an ordered, JSON-safe log of the
+    - **Run history** (`history`): an ordered, JSON-safe log of the
       code each `run` executed and its outcome. Implementations
       record an entry by routing their result through `_record_run`,
       and drop it on `reset` via `clear_history`.
-    - **Bound functions** (`bind_functions`, `bound_functions`)
-      — host callables exposed inside the sandbox, set once and reused on
+    - **Bound functions** (`bind_functions`, `bound_functions`):
+      host callables exposed inside the sandbox, set once and reused on
       every run. Implementations read `_functions` when dispatching.
     - **Tool methods** (`run_python_code`, `run_python_file`,
       `list_files`, `read_file`, `write_file`,
-      `edit_file`, `search_files`) — async, dict-returning
+      `edit_file`, `search_files`): async, dict-returning
       methods with public names a caller can wrap with ``synalinks.Tool``
       to give an agent. ``run_python_code`` works on any backend; the
       filesystem methods (including ``run_python_file``, which runs a script
       file) default to a "no filesystem" error and are overridden by
       backends that mount one.
       Listing / reading / searching are paginated with a 1-based ``offset``
-      and a ``limit`` (grep convention — line numbers are 1-based too) so
+      and a ``limit`` (grep convention; line numbers are 1-based too) so
       large results stay bounded for a language model.
 
     ## Ownership
@@ -228,7 +228,7 @@ class Sandbox(SynalinksSaveable):
         """Summarize the filesystem changes this sandbox made since its base.
 
         For a sandbox produced by `fork`, this is exactly what the
-        child changed relative to the fork point — the patch `merge`
+        child changed relative to the fork point: the patch `merge`
         would apply. Returns a JSON-safe summary (written paths with a
         ``kind`` / ``size``, and deleted paths).
         """
@@ -245,8 +245,8 @@ class Sandbox(SynalinksSaveable):
         """Apply another (typically forked) sandbox's changes onto this one.
 
         Replays ``other``'s writes and deletions into this sandbox as if
-        they were performed here. A *conflicting* path — one this sandbox
-        also changed since the fork — is **refused** (left untouched and
+        they were performed here. A *conflicting* path, one this sandbox
+        also changed since the fork, is **refused** (left untouched and
         reported) unless ``force`` is set, in which case ``other``'s version
         is applied (last writer wins). ``paths`` optionally restricts the
         merge to a chosen subset of virtual paths. With ``repl=True`` the
@@ -260,7 +260,7 @@ class Sandbox(SynalinksSaveable):
         """Save the sandbox's current filesystem to a ``.zip`` on the host.
 
         Exports the virtual files the sandbox exposes (the merged view an
-        agent sees — e.g. after mutating a ``workdir``) into a zip archive at
+        agent sees, e.g. after mutating a ``workdir``) into a zip archive at
         ``path`` on the real filesystem, so a caller can persist what an agent
         produced. Archive members are the virtual paths with the leading
         ``/`` removed, so unzipping reproduces the tree. Backends without a
@@ -296,7 +296,7 @@ class Sandbox(SynalinksSaveable):
         """Append a standard history entry for a finished run; returns ``result``.
 
         The raw last-expression ``result.result`` is intentionally not
-        stored — it may not be JSON-safe and would break ``get_config``.
+        stored: it may not be JSON-safe and would break ``get_config``.
         Subclasses call this from `run` and return its value.
         """
         self._history.append(
@@ -330,7 +330,7 @@ class Sandbox(SynalinksSaveable):
 
     # -- tool methods ---------------------------------------------------
     #
-    # Async, fully-documented, dict-returning methods with public names —
+    # Async, fully-documented, dict-returning methods with public names,
     # shaped so a caller can hand one straight to ``synalinks.Tool`` (and
     # then a ``FunctionCallingAgent``). The sandbox does not wrap them
     # itself; it just exposes capabilities an agent can be given. The file
@@ -363,7 +363,7 @@ class Sandbox(SynalinksSaveable):
 
         Reads ``path`` (a script written with `write_file`) and
         executes its contents in the sandbox. Use this to run a
-        self-contained script you built — the sandbox cannot ``import``
+        self-contained script you built: the sandbox cannot ``import``
         other files from the filesystem, so the script must stand alone.
 
         Args:
@@ -371,8 +371,8 @@ class Sandbox(SynalinksSaveable):
 
         Returns:
             dict: ``ok`` (bool), ``stdout`` and ``stderr`` (captured
-            output), and ``error`` (a message string, or null on success)
-            — or ``error`` if the file is missing / this sandbox has no
+            output), and ``error`` (a message string, or null on success);
+            or ``error`` if the file is missing / this sandbox has no
             filesystem.
         """
         return {"error": "this sandbox has no filesystem"}
@@ -388,7 +388,7 @@ class Sandbox(SynalinksSaveable):
             command (str): The shell command line to execute.
 
         Returns:
-            dict: ``ok`` (bool), ``stdout``, ``stderr`` and ``exit_code`` — or
+            dict: ``ok`` (bool), ``stdout``, ``stderr`` and ``exit_code``, or
             ``error`` when this sandbox has no shell.
         """
         return {"error": "this sandbox has no shell"}
@@ -409,7 +409,7 @@ class Sandbox(SynalinksSaveable):
         Returns:
             dict: ``files`` (the matching path strings for this page),
             ``total`` (full match count), ``offset`` and ``truncated``
-            (whether more remain) — or ``error`` when this sandbox has no
+            (whether more remain), or ``error`` when this sandbox has no
             filesystem.
         """
         return {"error": "this sandbox has no filesystem"}
@@ -427,7 +427,7 @@ class Sandbox(SynalinksSaveable):
         Returns:
             dict: ``content`` (the requested lines), ``start_line`` and
             ``end_line`` (1-based, inclusive), ``total_lines`` and
-            ``truncated`` — or ``error`` if the file is missing / this
+            ``truncated``, or ``error`` if the file is missing / this
             sandbox has no filesystem.
         """
         return {"error": "this sandbox has no filesystem"}
@@ -495,7 +495,7 @@ class Sandbox(SynalinksSaveable):
         Returns:
             dict: ``matches`` (a page of ``{path, line, text}`` records with
             1-based line numbers), ``total`` (full match count), ``offset``
-            and ``truncated`` — or ``error`` on a bad regex / when this
+            and ``truncated``, or ``error`` on a bad regex / when this
             sandbox has no filesystem.
         """
         return {"error": "this sandbox has no filesystem"}

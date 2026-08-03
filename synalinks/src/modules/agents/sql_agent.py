@@ -38,7 +38,7 @@ Plan:
 Constraints:
 - Only `SELECT` statements are accepted. `INSERT`, `UPDATE`, `DELETE`,
   `DROP`, `ALTER`, `COPY ... TO`, and multi-statement queries are
-  rejected by the engine — don't waste turns trying them.
+  rejected by the engine; don't waste turns trying them.
 - Table and column names are case-sensitive: tables are PascalCase
   (e.g. ``Customer``), columns are snake_case (e.g. ``customer_id``).
 - Result sets are automatically capped server-side. If the result
@@ -71,7 +71,7 @@ def _build_tools(knowledge_base, output_format: str = "csv", k: int = 50):
     ``run_sql_query`` and fixed per-agent at construction time:
     ``"csv"`` (default) compacts result sets so the LM spends fewer
     input tokens reading them; ``"json"`` returns a list of dicts.
-    The ``get_database_schema`` tool ignores the format — its output
+    The ``get_database_schema`` tool ignores the format: its output
     is always a small textual summary.
 
     ``k`` caps the page size the LM can pull through
@@ -209,7 +209,7 @@ class SQLAgent(FunctionCallingAgent):
     - ``run_sql_query``: executes a ``SELECT`` query via
       `KnowledgeBase.query` with ``read_only=True``.
 
-    The constructor mirrors `FunctionCallingAgent` — every
+    The constructor mirrors `FunctionCallingAgent`: every
     parameter on that class is accepted here with identical
     semantics. The only additions are ``knowledge_base`` (required)
     and ``output_format`` (controls the SQL tools' result rendering).
@@ -282,7 +282,7 @@ class SQLAgent(FunctionCallingAgent):
             ``get_table_sample`` and ``run_sql_query``.
         tools (list): Additional `Tool` instances (or plain
             async functions) to expose alongside the three built-in
-            SQL tools — for example a calculator, a datetime helper,
+            SQL tools: for example a calculator, a datetime helper,
             a web-search tool. Tool names must not collide with the
             built-ins (``get_database_schema``, ``get_table_sample``,
             ``run_sql_query``) or a ``ValueError`` is raised.

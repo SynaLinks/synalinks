@@ -8,10 +8,12 @@ A module instance is a callable, much like a function:
 import synalinks
 import asyncio
 
+
 class Query(synalinks.DataModel):
     query: str = synalinks.Field(
         description="The user query",
     )
+
 
 class AnswerWithThinking(synalinks.DataModel):
     thinking: str = synalinks.Field(
@@ -21,10 +23,9 @@ class AnswerWithThinking(synalinks.DataModel):
         description="The correct answer",
     )
 
+
 async def main():
-    language_model = LanguageModel(
-        model="ollama/deepseek-r1"
-    )
+    language_model = LanguageModel(model="ollama/deepseek-r1")
 
     generator = synalinks.Generator(
         data_model=AnswerWithThinking,

@@ -2,7 +2,7 @@
 # Programs
 
 So far you have seen `Generator` calls one at a time. Real applications
-chain several of them together — answer the question, then summarize the
+chain several of them together: answer the question, then summarize the
 answer, then translate the summary. In this guide we meet `Program`, the
 object that bundles many modules into one thing you can call, save,
 load, and (later on) train.
@@ -10,32 +10,32 @@ load, and (later on) train.
 The mental picture to start with is a **flowchart**: each box is a
 `Module`, the arrows show how data flows between boxes, and the whole
 flowchart is itself a `Module` you can drop inside an even bigger
-flowchart. The framework keeps this flowchart as inspectable data — not
-just as a hidden chain of Python function calls — and that distinction
+flowchart. The framework keeps this flowchart as inspectable data, not
+just as a hidden chain of Python function calls, and that distinction
 is what makes saving and training possible.
 
-A **Module**, recall, is the smallest reusable building block — one
+A **Module**, recall, is the smallest reusable building block: one
 input, one output, maybe some internal state. A **Program** is simply a
 `Module` built out of other `Module`s, wired together.
 
 If you like a slightly more formal description: a `Program` is a pair
 `(G, θ)`.
 
-- `G = (V, E)` is a **directed acyclic graph** ("DAG" — a flowchart
+- `G = (V, E)` is a **directed acyclic graph** ("DAG", a flowchart
   where you can't loop back to a box you've already visited). The
   vertices `V` are modules; the edges `E` carry typed placeholders
-  (`SymbolicDataModel`s — they describe the *shape* of the data that
+  (`SymbolicDataModel`s: they describe the *shape* of the data that
   will flow, not the data itself).
 - `θ` (the Greek letter "theta") is the bag of **trainable
   variables** attached to the modules. In a neural network these
   would be floating-point weights. Here each variable is a
-  **JSON object** with a fixed schema — an *interpretable* data
+  **JSON object** with a fixed schema, an *interpretable* data
   structure the optimizer is allowed to rewrite. The most common
   cases are a `Generator`'s system instruction (a JSON variable
   whose main field is a string of natural-language guidance) and
   its few-shot examples (a JSON variable whose main field is a
   list of input/output pairs), but in general a trainable variable
-  can hold any structured state — see [Guide 12](https://synalinks.github.io/synalinks/guides/Trainable%20Variables/).
+  can hold any structured state; see [Guide 12](https://synalinks.github.io/synalinks/guides/Trainable%20Variables/).
 
 In one sentence: a `Program` is a flowchart of modules plus the knobs
 the framework is allowed to tune.
@@ -58,8 +58,8 @@ reasons:
 
 `Program` inherits from two classes you will see in API docs:
 
-- `Trainer` — provides `compile()` and `fit()`, the training loop.
-- `Module` — provides `__call__`, `build`, `call`, `get_config`, and
+- `Trainer`: provides `compile()` and `fit()`, the training loop.
+- `Module`: provides `__call__`, `build`, `call`, `get_config`, and
   the variable-tracking machinery.
 
 A `Program` is itself a `Module`, so you can drop one inside another
@@ -71,7 +71,7 @@ assembled.
 A `Program` is **declarative**: you describe the flowchart once, as
 data, and the runtime walks it every time you call the program. This is
 not how a normal Python script works. A normal script is
-**procedural** — the framework only sees a sequence of opaque function
+**procedural**: the framework only sees a sequence of opaque function
 calls, and cannot reason about their structure or improve them.
 
 ```mermaid
@@ -96,7 +96,7 @@ graph LR
     S -.-> C
 ```
 
-The solid arrows are the **forward pass** — the flow of data when you
+The solid arrows are the **forward pass**: the flow of data when you
 run the program. The dashed arrows are *not* part of execution; they
 represent extra things the framework can do *to* each module (train it,
 save it) precisely because it knows the module is there. A plain Python
@@ -138,12 +138,12 @@ Concretely, you create an `Input` placeholder, call modules on
 arrive here at runtime"), and pass the resulting endpoints to
 `Program(inputs=..., outputs=...)`.
 
-Because every wire is a `SymbolicDataModel` — a typed placeholder
-rather than real data — the framework can do three useful things
+Because every wire is a `SymbolicDataModel`, a typed placeholder
+rather than real data, the framework can do three useful things
 *before* the program ever runs:
 
 - Sort the modules into the right execution order (a **topological
-  sort** — picking an order in which every box runs only after its
+  sort**, picking an order in which every box runs only after its
   inputs are ready).
 - Check that the output type of one module matches the input type of
   the next.
@@ -195,7 +195,7 @@ if __name__ == "__main__":
 ```
 
 A very common trap: the line `await Generator(...)(inputs)` returns a
-`SymbolicDataModel` — still a placeholder, *not* real data. If you try
+`SymbolicDataModel`, still a placeholder, *not* real data. If you try
 to read `outputs.answer` at this point you get back the placeholder's
 metadata, not an actual answer. Real data only appears once you call
 `program(concrete_input)`. (This is the same construction-vs-execution
@@ -209,7 +209,7 @@ into one), and content-dependent routing using normal Python syntax.
 
 ### Strategy 2: Subclassing API
 
-Sometimes the flowchart is not fixed in advance — which module runs
+Sometimes the flowchart is not fixed in advance: which module runs
 next depends on the actual data. You might want to keep calling an LM
 until its answer passes a check (a `while` loop), branch on what the
 user asked (an `if`), or retry on failure. No single static graph can
@@ -256,7 +256,7 @@ Three rules to remember when subclassing:
   framework "this is mine, track its variables." A module created as a
   *local variable* inside `call` is invisible to the optimizer, and its
   knobs will never get trained.
-- `call` receives **concrete** `JsonDataModel` values — real data —
+- `call` receives **concrete** `JsonDataModel` values (real data),
   not symbolic placeholders.
 - The framework cannot peek inside your `call`, so `program.summary()`
   shows a subclassed program as a single opaque box rather than
@@ -264,8 +264,8 @@ Three rules to remember when subclassing:
 
 ### Strategy 3: Sequential API
 
-If your flowchart is a straight line — one input, one output, no
-branches — writing out the Functional API by hand is just repetitive.
+If your flowchart is a straight line, one input, one output, no
+branches, writing out the Functional API by hand is just repetitive.
 `Sequential` is a shorthand for the case where step *i+1* takes
 whatever step *i* produced. Mathematically, you are computing
 `f_n(... f_2(f_1(x)) ...)`:
@@ -307,8 +307,8 @@ input or output, switch to the Functional API.
 
 ### Strategy 4: Mixing strategy (deferred build)
 
-Suppose you want to write a *reusable component* — say, a generic
-"Chain of Thought" wrapper — whose internal flowchart depends on the
+Suppose you want to write a *reusable component*, say, a generic
+"Chain of Thought" wrapper, whose internal flowchart depends on the
 type of input it receives. You cannot build the flowchart in
 `__init__` because at that point you do not yet know the input shape.
 
@@ -369,7 +369,7 @@ do not have to write yourself.
 A `Program` saves to a single JSON file. The file contains the
 flowchart structure, the configuration of every module, and the
 current values of every trainable variable. Loading reconstructs an
-equivalent program with all training progress intact — no separate
+equivalent program with all training progress intact: no separate
 checkpoint format, no per-module surgery.
 
 ```python
@@ -390,11 +390,11 @@ single opaque box.
 ### Batch inference
 
 `program.predict(xs)` runs the program on every element of the list
-`xs` concurrently — in parallel — and returns the list of results.
+`xs` concurrently (in parallel) and returns the list of results.
 Use it when you have many independent inputs and want the total wall
 time to be roughly that of a single call instead of the sum. If the
-inputs are *not* independent — say the output of one feeds the next
-— call them one at a time instead.
+inputs are *not* independent, say the output of one feeds the next,
+call them one at a time instead.
 
 ```python
 results = await program.predict([query1, query2, query3])
@@ -455,7 +455,7 @@ A quick decision guide:
 - **The flowchart is fixed up front, with branches allowed.** Use the
   **Functional API**. It is the only strategy where `summary()` and
   most graph-level optimizations can see the full structure.
-- **The forward pass needs Python control flow** — `if`, `while`,
+- **The forward pass needs Python control flow**: `if`, `while`,
   recursion, retry-on-failure. Use **Subclassing**, and accept that
   the framework sees your `call` as a black box.
 - **The flowchart is a strict linear chain, no branches.** Use
@@ -467,12 +467,12 @@ A quick decision guide:
 
 ## Take-Home Summary
 
-- A **`Program`** is the pair `(G, θ)` — a DAG of modules plus
+- A **`Program`** is the pair `(G, θ)`, a DAG of modules plus
   the trainable JSON variables attached to them.
 - **Construction is not execution.** Building a Program draws
   the flowchart; calling it runs the flowchart. Confusing the
   two is the single most common Functional-API confusion.
-- Four ways to build: **Functional** (the default — explicit
+- Four ways to build: **Functional** (the default, explicit
   DAG), **Subclassing** (when the forward pass needs Python
   control flow), **Sequential** (linear chains, sugar over
   Functional), and the **Mixing strategy** (deferred-build

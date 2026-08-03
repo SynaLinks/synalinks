@@ -3,34 +3,34 @@
 """
 # Deep Agent
 
-[Guide 6](https://synalinks.github.io/synalinks/guides/Agents/) introduced the agent loop — decide, act, observe, repeat.
+[Guide 6](https://synalinks.github.io/synalinks/guides/Agents/) introduced the agent loop: decide, act, observe, repeat.
 That loop is general: as long as you give it a set of typed tools,
 the model can reason about *anything*. This guide picks a specific
 useful shape for those tools: a workspace on disk. The result is a
-**deep agent** — an agent that treats a directory as its environment,
+**deep agent**: an agent that treats a directory as its environment,
 reading and editing files and running Python inside a sandboxed,
 copy-on-write copy of it.
 
 In other words: where `FunctionCallingAgent` calls a few narrow
 helpers (a calculator, a clock), a deep agent has a small but
-complete toolbox for *working on code* — the same shape of tools
+complete toolbox for *working on code*: the same shape of tools
 that drive AI coding assistants like Claude Code, Devin, Aider.
 
 ## When Do You Want One?
 
-The agent loop has the same four phases everywhere — think, decide,
-act, observe — but the *act* phase looks very different depending on
+The agent loop has the same four phases everywhere (think, decide,
+act, observe) but the *act* phase looks very different depending on
 what tools you give it:
 
 - A RAG agent acts by searching documents.
 - An SQL agent acts by writing SELECT queries.
-- A deep agent acts by **changing the filesystem** — reading source
+- A deep agent acts by **changing the filesystem**: reading source
   files, patching them, running them, looking at the output.
 
 That makes deep agents a fit for tasks where the answer cannot be
 expressed in a single output: it has to *exist* somewhere in a
 workspace by the time the loop ends. Bug fixes, refactors, scaffolds,
-data-wrangling pipelines, exploratory code reviews — anything where
+data-wrangling pipelines, exploratory code reviews, anything where
 "the result is some new state in the workspace" is the right ending.
 
 ## The Six Tools
@@ -45,12 +45,12 @@ six tools, all bound to a single working directory you supply:
 | `read_file(path, offset, limit)` | Line-paginated file read. Output carries 1-based `start_line` / `end_line`, so the LM can cite line numbers later without re-reading. |
 | `write_file(path, content)` | Create or overwrite a file (in the sandbox filesystem). |
 | `edit_file(path, old, new)` | Replace an exact substring; rejects 0 or 2+ occurrences so the LM has to add surrounding context to disambiguate (pass `replace_all=True` to override). |
-| `run_bash(command)` | Run a shell command against the sandbox filesystem — pipes, redirects, globs, `&&`, loops, and `python3` (a real interpreter with the full standard library, third-party packages, and network). Write a script with `write_file`, then run it with `python3 script.py`. |
+| `run_bash(command)` | Run a shell command against the sandbox filesystem: pipes, redirects, globs, `&&`, loops, and `python3` (a real interpreter with the full standard library, third-party packages, and network). Write a script with `write_file`, then run it with `python3 script.py`. |
 
 Two design choices are worth highlighting:
 
 1. **Line-paginated reads, line-numbered output.** `read_file` does
-   not return character-offset slices. It returns lines — with 1-based
+   not return character-offset slices. It returns lines, with 1-based
    `start_line` / `end_line` markers. The model thinks in terms of
    lines, edits are usually targeted at a line, so the read tool's
    output should match. The line numbers also mean a model can
@@ -60,7 +60,7 @@ Two design choices are worth highlighting:
 
 2. **`list_files` globs, `search_files` greps.** `list_files` answers
    "what files are there?" (a glob over paths); `search_files` answers
-   "where does this pattern appear?" — a regex over file *contents*,
+   "where does this pattern appear?": a regex over file *contents*,
    restricted to a glob, returning `(path, line_number, line)` matches.
    Two narrow tools instead of one overloaded one keeps the LM's choice
    shallow: it picks by intent, not by guessing what an empty argument
@@ -75,8 +75,8 @@ copy of the workdir, never the workdir itself.**
 ### A copy-on-write filesystem, seeded from your workdir
 
 `DeepAgent` mounts the workdir in a `MirageSandbox`. The agent sees your
-project as it is — `read_file`, `list_files`, `search_files` resolve
-against the mounted copy — but every mutation (`write_file`, `edit_file`,
+project as it is (`read_file`, `list_files`, `search_files` resolve
+against the mounted copy) but every mutation (`write_file`, `edit_file`,
 and anything `run_bash` writes) lands in the sandbox's **copy-on-write
 filesystem**, never on the real disk. The host workspace is never
 modified. (Paths are rooted at the workdir, so the agent stays inside
@@ -88,17 +88,17 @@ All six tools are therefore always available.
 
 ### Code runs in an isolated subprocess, not on the host
 
-`run_bash` does not shell out to your machine. It runs in **Mirage** —
+`run_bash` does not shell out to your machine. It runs in **Mirage**:
 an isolated, confined CPython subprocess with the workdir mounted as the
 copy-on-write filesystem. The `python3` it exposes is a *real*
 interpreter (full standard library, third-party packages, even network),
-so the agent can write and run ordinary scripts — but its writes stay in
+so the agent can write and run ordinary scripts, but its writes stay in
 the sandbox filesystem, and confinement (seccomp, read-only host binds,
 an egress allowlist) bounds what it can reach. `timeout` (default 30s)
 bounds each execution.
 
-The containment is structural — a sandboxed filesystem plus a confined
-subprocess — rather than a set of `allow_write` / `allow_bash` gates you
+The containment is structural (a sandboxed filesystem plus a confined
+subprocess) rather than a set of `allow_write` / `allow_bash` gates you
 could forget to turn on.
 
 ### Inspecting and persisting what the agent did
@@ -119,13 +119,13 @@ If you want any of it on disk, persist it yourself from those reads.
 
 ## Building the Agent
 
-The constructor signature mirrors `FunctionCallingAgent` exactly —
+The constructor signature mirrors `FunctionCallingAgent` exactly:
 every parameter on that class is accepted with identical semantics.
 The additions are workspace-specific:
 
 | Param | Required | Default | Notes |
 |-------|----------|---------|-------|
-| `workdir` | yes | — | Must exist and be a directory. Mounted read-through in the sandbox; the agent's writes/edits stay in the overlay and never touch it. (Omit it for an empty in-memory workspace.) |
+| `workdir` | yes | (none) | Must exist and be a directory. Mounted read-through in the sandbox; the agent's writes/edits stay in the overlay and never touch it. (Omit it for an empty in-memory workspace.) |
 | `timeout` | no | `30.0` | Per-execution budget in seconds for `run_bash`. |
 | `tools` | no | `None` | Extra `Tool` instances or async functions to append to the built-ins. Same name-collision and no-leading-underscore rules as `FunctionCallingAgent`. |
 
@@ -153,7 +153,7 @@ run.
 
 A small end-to-end task: scaffold a Python file, ask the agent to
 extend it, and verify the agent's change actually runs. Keep a
-reference to the `DeepAgent` instance — its `sandbox` is where the
+reference to the `DeepAgent` instance; its `sandbox` is where the
 overlay changes live, so that is where you read the result (the file
 on disk is never touched).
 
@@ -186,20 +186,20 @@ task = synalinks.ChatMessages(messages=[synalinks.ChatMessage(
 )])
 result = await agent(task)
 
-# Changes live in the sandbox filesystem, not on disk — inspect via the sandbox:
+# Changes live in the sandbox filesystem, not on disk; inspect via the sandbox:
 print(deep.sandbox.changes())                       # {'written': ['/calculator.py'], ...}
 print((await deep.sandbox.read_file("calculator.py"))["content"])
 ```
 
 What the agent will typically do:
 
-1. `read_file("calculator.py")` — see the current source, with line
+1. `read_file("calculator.py")`: see the current source, with line
    markers.
-2. `edit_file("calculator.py", "def add(a, b):\n    return a + b\n", "def add(a, b):\n    return a + b\n\ndef multiply(a, b):\n    return a * b\n")`
-   — or write the whole file with `write_file`. The model picks.
-3. `run_bash("python3 calculator.py")` — run the file in the sandbox to
+2. `edit_file("calculator.py", "def add(a, b):\n    return a + b\n", "def add(a, b):\n    return a + b\n\ndef multiply(a, b):\n    return a * b\n")`,
+   or write the whole file with `write_file`. The model picks.
+3. `run_bash("python3 calculator.py")`: run the file in the sandbox to
    verify it prints 42. (Run a script *file*: a `python3 -c` snippet
-   can't import the overlay's modules — only file execution sees them.)
+   can't import the overlay's modules; only file execution sees them.)
 4. Stop calling tools; produce the final assistant message.
 
 If the verify step fails (syntax error, wrong number printed), the
@@ -297,7 +297,7 @@ async def main():
         agent.summary()
 
         # The task: read the file, add a function, verify by running the file.
-        # (Run a script *file* with `python3 calculator.py` — that executes in
+        # (Run a script *file* with `python3 calculator.py`; that executes in
         # the sandbox filesystem. A `python3 -c` snippet cannot import the
         # overlay's modules, so the self-check lives inside the file itself.)
         task = synalinks.ChatMessages(

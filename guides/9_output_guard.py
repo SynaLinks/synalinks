@@ -15,7 +15,7 @@ Let `g : A -> A | None` be the guard, where `A` is the answer schema
 and `A | None` means "either a value of type `A`, or nothing." The
 contract is:
 
-- **`g(a) = None`** when `a` is **admissible** (safe — nothing to
+- **`g(a) = None`** when `a` is **admissible** (safe: nothing to
   do).
 - **`g(a) = a'`** when `a` is **inadmissible** (unsafe), where `a'`
   is a safe substitute that obeys the *same* schema `A`.
@@ -135,7 +135,7 @@ graph LR
 
 Concretely, a guard is a small Synalinks `Module` that receives the
 generator's answer and decides what to do with it. It has two
-responsibilities — one at runtime, one at build time:
+responsibilities, one at runtime, one at build time:
 
 1. **`call(inputs)`** runs on real data. Decide admissibility.
    Return `None` for admissible (safe) inputs; return a DataModel
@@ -143,7 +143,7 @@ responsibilities — one at runtime, one at build time:
    ones. This is the per-example decision.
 2. **`compute_output_spec(inputs)`** runs at build time. Declare
    the static schema of the node. Synalinks uses this declaration
-   to type-check the graph *before* any data flows through — it is
+   to type-check the graph *before* any data flows through; it is
    how you tell the framework "here is the shape of what I will
    produce."
 
@@ -250,7 +250,7 @@ guard returns `None` and the original answer passes through):
 ## Properties That Always Hold, and Failure Modes
 
 The composition `warning | (warning ^ answer)` enforces three
-**invariants** — properties guaranteed to hold for every input, in
+**invariants**, properties guaranteed to hold for every input, in
 both branches:
 
 - **Totality.** If `answer` is not `None`, the output is not
@@ -258,10 +258,10 @@ both branches:
 - **Schema closure.** The output is always in `A`, the answer
   schema. No surprise types reach downstream code.
 - **Priority.** When the guard triggers, the replacement strictly
-  supersedes the original. A "refusal" — the canned safe reply —
+  supersedes the original. A "refusal" (the canned safe reply)
   always wins over the model's unsafe answer.
 
-Failure modes worth anticipating — places where a real-world guard
+Failure modes worth anticipating, places where a real-world guard
 can still let you down:
 
 - **Lexical evasion.** Substring-matching blacklists are trivially
@@ -279,7 +279,7 @@ can still let you down:
 
 ## Take-Home Summary
 
-- An **output guard** is a post-generation filter — the mirror
+- An **output guard** is a post-generation filter, the mirror
   image of the input guards from [Guide 8](https://synalinks.github.io/synalinks/guides/Input%20Guard/). Together they bracket
   the LM call on both sides.
 - **Contract:** the guard returns `None` to *admit* (no
@@ -288,7 +288,7 @@ can still let you down:
   output, or the operator algebra below will not type-check.
 - The composition **`warning | (warning ^ answer)`** expresses
   "if the guard objected, use the replacement, otherwise use
-  the answer" as pure dataflow — no `if` statements in the
+  the answer" as pure dataflow: no `if` statements in the
   program graph.
 - The composition guarantees three invariants: **totality**
   (output is never dropped), **schema closure** (output is

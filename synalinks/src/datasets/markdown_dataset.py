@@ -69,7 +69,7 @@ class MarkdownSection(DataModel):
     ]
 )
 class MarkdownDocument(DataModel):
-    """The nested view of a Markdown file — one object per source file.
+    """The nested view of a Markdown file: one object per source file.
 
     ``filepath`` is the first declared field so it serves as the PK
     when stored directly. In practice you usually want to store the
@@ -92,7 +92,7 @@ class MarkdownDocument(DataModel):
     )
 
 
-# YAML front matter strip — ``markdown-it-py`` itself doesn't strip it
+# YAML front matter strip: ``markdown-it-py`` itself doesn't strip it
 # (a plugin is required, ``mdit-py-plugins``). Rather than pull a second
 # dep, we strip the leading ``---\n...\n---\n`` block ourselves before
 # parsing. Front matter is metadata, not document content, so dropping
@@ -101,7 +101,7 @@ _FRONT_MATTER_RE = re.compile(r"\A---\s*\n.*?\n---\s*(?:\n|$)", re.DOTALL)
 
 
 # Instantiate the parser once, module-level. ``commonmark`` is the strict
-# CommonMark spec preset (no GFM tables, no autolinks) — sufficient for
+# CommonMark spec preset (no GFM tables, no autolinks), sufficient for
 # splitting on headings, which is all we use this for. The ``html``
 # option doesn't change heading detection either way; we leave it on the
 # default.
@@ -118,19 +118,19 @@ def parse_markdown_sections(text: str) -> List[Dict[str, Any]]:
     """Split a Markdown document into heading-delimited sections.
 
     Uses `markdown_it` under the hood, so all CommonMark heading
-    forms are honored — ATX (``# ... ######``), setext (``===`` /
+    forms are honored: ATX (``# ... ######``), setext (``===`` /
     ``---``), and (importantly) ``#`` characters inside fenced code
     blocks are NOT treated as headings. A leading YAML front-matter
     block (``---\\n...\\n---``) is stripped before parsing.
 
     Returns a list of dicts in document order, each with:
 
-    - ``section_name`` — heading text, ``""`` for the preamble.
-    - ``level`` — heading depth (1–6), or ``0`` for the preamble.
-    - ``path`` — breadcrumb of ancestor heading names joined with
+    - ``section_name``: heading text, ``""`` for the preamble.
+    - ``level``: heading depth (1 to 6), or ``0`` for the preamble.
+    - ``path``: breadcrumb of ancestor heading names joined with
       ``" / "``, ending with the section's own name. ``""`` for the
       preamble.
-    - ``text`` — body of the section, between this heading and the
+    - ``text``: body of the section, between this heading and the
       next (or EOF).
 
     A "preamble" entry is emitted only when there's non-empty content
@@ -143,7 +143,7 @@ def parse_markdown_sections(text: str) -> List[Dict[str, Any]]:
 
     # Walk tokens, collect (level, name, line range) for every heading.
     # ``markdown-it-py`` annotates block-level tokens with ``map =
-    # [start, end]`` — 0-indexed source line numbers, end-exclusive.
+    # [start, end]``: 0-indexed source line numbers, end-exclusive.
     # For ``heading_open`` that range covers BOTH the heading text and
     # any setext underline, so ``end`` is the right place to start the
     # body of the section.
@@ -164,7 +164,7 @@ def parse_markdown_sections(text: str) -> List[Dict[str, Any]]:
                     "end": end_line,
                 }
             )
-            # heading_open / inline / heading_close — skip all three.
+            # heading_open / inline / heading_close; skip all three.
             i += 3
             continue
         i += 1
@@ -180,7 +180,7 @@ def parse_markdown_sections(text: str) -> List[Dict[str, Any]]:
                 {"section_name": "", "level": 0, "path": "", "text": preamble}
             )
     else:
-        # No headings — treat the whole file as a single preamble-shaped
+        # No headings: treat the whole file as a single preamble-shaped
         # section. Keeps the caller's loop uniform (always at least one
         # section per non-empty file).
         whole = "\n".join(lines).strip("\n")
@@ -193,7 +193,7 @@ def parse_markdown_sections(text: str) -> List[Dict[str, Any]]:
         body_end = headings[idx + 1]["start"] if idx + 1 < len(headings) else len(lines)
         body = "\n".join(lines[body_start:body_end]).strip("\n")
 
-        # Pop ancestors at the same or deeper level — a new h2 closes
+        # Pop ancestors at the same or deeper level: a new h2 closes
         # any open h2 / h3 / h4 / ... sibling, but leaves the parent h1.
         while len(stack) >= h["level"]:
             stack.pop()
@@ -240,7 +240,7 @@ class MarkdownDataset(Dataset):
     Each file is parsed via `parse_markdown_sections` into a list
     of heading-delimited `MarkdownSection` objects, wrapped in a
     `MarkdownDocument` and yielded one per source file. Rows
-    accumulate into batches of size ``batch_size`` — the same contract
+    accumulate into batches of size ``batch_size``, the same contract
     as `CSVDataset` and the other loaders.
 
     The yielded shape is inputs-only (no ``output_template``), so the
@@ -315,7 +315,7 @@ class MarkdownDataset(Dataset):
 
     def _iter_files(self) -> Iterator[str]:
         if self.recursive:
-            # os.walk's order is filesystem-dependent — sort filenames
+            # os.walk's order is filesystem-dependent; sort filenames
             # within each directory so the dataset is deterministic
             # across reruns on the same corpus.
             for dirpath, _, filenames in os.walk(self.root):

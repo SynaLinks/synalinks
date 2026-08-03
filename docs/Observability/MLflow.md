@@ -25,8 +25,7 @@ import synalinks
 
 # Enable FIRST, before creating any modules
 synalinks.enable_observability(
-    tracking_uri="http://localhost:5000",
-    experiment_name="my_experiment"
+    tracking_uri="http://localhost:5000", experiment_name="my_experiment"
 )
 
 # Now create your modules - they will be automatically traced
@@ -44,8 +43,7 @@ import synalinks
 
 # Enable observability before creating your program
 synalinks.enable_observability(
-    tracking_uri="http://localhost:5000",
-    experiment_name="question_answering"
+    tracking_uri="http://localhost:5000", experiment_name="question_answering"
 )
 
 
@@ -78,6 +76,7 @@ async def main():
     result = await program(Question(question="What is the capital of France?"))
     if result:
         print(result.prettify_json())
+
 
 if __name__ == "__main__":
     asyncio.run(main())
@@ -116,8 +115,7 @@ Then configure Synalinks to use it:
 import synalinks
 
 synalinks.enable_observability(
-    tracking_uri="http://localhost:5000",
-    experiment_name="synalinks_traces"
+    tracking_uri="http://localhost:5000", experiment_name="synalinks_traces"
 )
 ```
 
@@ -274,15 +272,11 @@ For fine-grained control, you can create a Monitor hook directly:
 import synalinks
 
 monitor = synalinks.hooks.Monitor(
-    tracking_uri="http://localhost:5000",
-    experiment_name="custom_experiment"
+    tracking_uri="http://localhost:5000", experiment_name="custom_experiment"
 )
 
 # Add to a specific module
-generator = synalinks.Generator(
-    data_model=Answer,
-    hooks=[monitor]
-)
+generator = synalinks.Generator(data_model=Answer, hooks=[monitor])
 ```
 
 ## Training Metrics and Artifacts
@@ -303,12 +297,7 @@ monitor = synalinks.callbacks.Monitor(
 )
 
 # Use during training
-program.fit(
-    x=train_inputs,
-    y=train_labels,
-    epochs=10,
-    callbacks=[monitor]
-)
+program.fit(x=train_inputs, y=train_labels, epochs=10, callbacks=[monitor])
 ```
 
 ### Program Plot Artifact
@@ -363,19 +352,10 @@ monitor = synalinks.callbacks.Monitor(
     log_batch_metrics=True,
     log_epoch_metrics=True,
     log_program_plot=True,
-    tags={
-        "model": "gpt-4o-mini",
-        "optimizer": "RandomFewShot",
-        "dataset": "gsm8k"
-    }
+    tags={"model": "gpt-4o-mini", "optimizer": "RandomFewShot", "dataset": "gsm8k"},
 )
 
-program.fit(
-    x=train_questions,
-    y=train_answers,
-    epochs=5,
-    callbacks=[monitor]
-)
+program.fit(x=train_questions, y=train_answers, epochs=5, callbacks=[monitor])
 ```
 
 ## Combining Tracing with Training
@@ -397,7 +377,7 @@ import synalinks
 # Enable tracing for all module calls
 synalinks.enable_observability(
     tracking_uri="http://localhost:5000",
-    experiment_name="synalinks_traces"  # Traces during setup go here
+    experiment_name="synalinks_traces",  # Traces during setup go here
 )
 
 # Create your program (symbolic traces created here)

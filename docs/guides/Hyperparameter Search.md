@@ -8,5 +8,5 @@
 ## Source
 
 ````python
---8<-- "guides/17_hyperparameter_search.py:351"
+--8 < --"guides/17_hyperparameter_search.py:351"
 ````

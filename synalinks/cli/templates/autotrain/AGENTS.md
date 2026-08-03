@@ -1,4 +1,4 @@
-# Agent guide — autotrain
+# Agent guide: autotrain
 
 This is a **Synalinks autotrain** project: a single program + training harness
 in `train.py` that you improve by editing levers and letting `program.fit()` +
@@ -6,16 +6,16 @@ an in-context optimizer do the learning.
 
 ## Start here
 
-- **`AUTOTRAIN.md`** is the playbook — the disciplined experiment loop you run to
+- **`AUTOTRAIN.md`** is the playbook: the disciplined experiment loop you run to
   raise `val_reward`. Read it before changing anything and follow it.
 - **`README.md`** explains the layout and quickstart.
-- **`NOTES.md`** is the running log — record every experiment's hypothesis and
+- **`NOTES.md`** is the running log: record every experiment's hypothesis and
   verdict there; record the numbers in `results.tsv`.
 
 ## Prime directives
 
 1. **Levers are constants in `train.py`, never CLI flags.** Change a lever by
-   editing the file, then re-run — each experiment is captured by the git diff
+   editing the file, then re-run; each experiment is captured by the git diff
    and reverted with `git reset --hard`.
 2. **Never touch the held-out test set during the loop.** Iterate on
    `val_reward`. Run `uv run python train.py --test` only to *confirm* a result
@@ -36,7 +36,7 @@ Custom Agent Skills can live under `.agents/skills/`.
 
 ## Troubleshooting a framework bug
 
-Most failures are in *your* program — fix those here. But if you trace a problem
+Most failures are in *your* program; fix those here. But if you trace a problem
 to **Synalinks itself** (a stack trace inside the `synalinks` package, or a
 missing/broken framework feature), fix it at the source and upstream it:
 

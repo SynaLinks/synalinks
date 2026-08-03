@@ -80,7 +80,7 @@ def to_pascal_case(text: str) -> str:
     - ``"docs"`` → ``"Docs"``
 
     Used to coerce free-form names (filenames, user-supplied table
-    titles) into a shape acceptable to SQL-identifier validators —
+    titles) into a shape acceptable to SQL-identifier validators;
     note that this does *not* validate identifier rules itself (a
     leading digit, for example, survives this step and must be
     rejected downstream).

@@ -23,7 +23,7 @@ from synalinks.src.saving import serialization_lib
 class HybridRegexSearchInput(DataModel):
     """Input shape for `HybridRegexSearch`.
 
-    The ``regex_patterns`` list is optional — when omitted, the
+    The ``regex_patterns`` list is optional: when omitted, the
     adapter falls back to plain vector similarity over
     ``similarity_search``.
     """
@@ -54,7 +54,7 @@ class HybridRegexSearch(Module):
     vector similarity.
 
     Vectors capture semantic similarity; regex captures exact textual
-    shape. The two signals are orthogonal — give the same intent in
+    shape. The two signals are orthogonal: give the same intent in
     both forms and the fused ranking surfaces rows that match on
     either axis. Regex uses RE2 (DuckDB's engine), so patterns are
     linear-time and not vulnerable to catastrophic backtracking.
@@ -114,7 +114,7 @@ class HybridRegexSearch(Module):
             providing ``schema`` via ``.get_schema()`` when ``schema``
             is not given.
         table_name (str): Target table. Defaults to the schema's
-            ``title``. **Optional** — when neither ``table_name`` nor a
+            ``title``. **Optional**: when neither ``table_name`` nor a
             schema to derive it from is given, the language model infers
             the target table per call (constrained to the knowledge
             base's actual tables).
@@ -261,7 +261,7 @@ class HybridRegexSearch(Module):
         patterns = payload.get("regex_patterns")
         # Fixed table, or the one the LM inferred this call.
         table_name = self.table_name or payload.get("table_name")
-        # Need at least one signal — vector or regex — and a table to look up.
+        # Need at least one signal (vector or regex) and a table to look up.
         if (not queries and not patterns) or not table_name:
             return None
 

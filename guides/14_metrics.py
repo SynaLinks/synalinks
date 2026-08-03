@@ -3,7 +3,7 @@
 """
 # Metrics
 
-[Guide 13](https://synalinks.github.io/synalinks/guides/Rewards/) covered **rewards** — the single number the *optimizer*
+[Guide 13](https://synalinks.github.io/synalinks/guides/Rewards/) covered **rewards**: the single number the *optimizer*
 uses to decide whether one program is better than another. This
 guide is about **metrics**, the other half of the scoring story.
 A metric is what *you* watch. Some of them you would write down
@@ -50,7 +50,7 @@ flowchart LR
 ```
 
 Solid arrows show the optimization loop you have known since
-[Guide 15](https://synalinks.github.io/synalinks/guides/Training/). The dashed arrows are metrics — the same prediction and
+[Guide 15](https://synalinks.github.io/synalinks/guides/Training/). The dashed arrows are metrics: the same prediction and
 ground truth flow into them, but nothing they say loops back
 into the optimizer. They exist for you, not for the algorithm.
 
@@ -73,7 +73,7 @@ program.compile(
 ```
 
 The `metrics=` argument is a **list**. The order matters only
-for display — the framework will compute every metric on every
+for display; the framework will compute every metric on every
 batch and reduce it over the epoch.
 
 Every metric, like every reward, accepts the masking arguments
@@ -94,25 +94,25 @@ graph TD
     A --> D["Operational metrics<br/>(cost, tokens, throughput, cache)"]
 ```
 
-### Family 1 — Quality Metrics
+### Family 1: Quality Metrics
 
 These tell you how well the program is performing the task.
 The right one depends on what your output looks like.
 
-**Free-text or QA-style answers.** Use word-level metrics —
+**Free-text or QA-style answers.** Use word-level metrics:
 they tokenize both `y_true` and `y_pred` and compare the token
 sets.
 
-- **`Accuracy`** — per-field token Jaccard index:
+- **`Accuracy`**: per-field token Jaccard index:
   `|truth ∩ pred| / |truth ∪ pred|`. Tolerant of extra or
   missing words; the closest token-level analogue of "how
   much of the right answer did we get."
-- **`F1Score` / `FBetaScore`** — the harmonic mean of
+- **`F1Score` / `FBetaScore`**: the harmonic mean of
   token-level precision and recall. The standard QA metric.
   `F1` weights precision and recall equally; `FBeta` lets you
   tilt toward one (`beta > 1` favors recall, `beta < 1`
   favors precision).
-- **`Precision` / `Recall`** — if you want to inspect the
+- **`Precision` / `Recall`**: if you want to inspect the
   components of F1 directly.
 
 All four accept an `average=` argument (`None`, `"micro"`,
@@ -127,12 +127,12 @@ independent 0/1 prediction.
 
 - **`BinaryAccuracy`**, **`BinaryF1Score`**,
   **`BinaryFBetaScore`**, **`BinaryPrecision`**,
-  **`BinaryRecall`** — same recipe as the QA-level ones, but
+  **`BinaryRecall`**: same recipe as the QA-level ones, but
   scored field-by-field on booleans. This is the metric
   family [Guide 18](https://synalinks.github.io/synalinks/guides/Multi-Objective%20LM%20Selection/) used for emotion classification.
 
 **Multi-class classification with one list of labels.** Use the
-**Categorical*** variants — they aggregate over a single list-
+**Categorical*** variants: they aggregate over a single list-
 valued field.
 
 - **`CategoricalAccuracy`**, **`CategoricalF1Score`**
@@ -143,7 +143,7 @@ valued field.
 **Free-text where paraphrases should earn credit.** The
 **regression** flavor:
 
-- **`CosineSimilarity`** — same idea as the reward of the
+- **`CosineSimilarity`**: same idea as the reward of the
   same name ([Guide 13](https://synalinks.github.io/synalinks/guides/Rewards/)), but used as an observed metric. Needs
   an `embedding_model`.
 
@@ -153,14 +153,14 @@ A quick rule of thumb to navigate the prefixes:
 - **`Binary`** → one boolean per class.
 - **`Categorical`** → one list of labels.
 
-### Family 2 — Reduction Wrappers
+### Family 2: Reduction Wrappers
 
 These are bookkeeping helpers that combine many per-step
 values into one number.
 
-- **`Mean`** — running average of the values fed in.
-- **`Sum`** — running sum.
-- **`MeanMetricWrapper(fn=..., name=...)`** — wrap any
+- **`Mean`**: running average of the values fed in.
+- **`Sum`**: running sum.
+- **`MeanMetricWrapper(fn=..., name=...)`**: wrap any
   reward-shaped function `(y_true, y_pred) -> float` into a
   metric, tracking its running mean.
 
@@ -170,7 +170,7 @@ observed mean metric called `mean_reward`. That is the
 canonical use of this wrapper: "I want to see the reward as a
 metric too, averaged across the epoch."
 
-### Family 3 — Operational Metrics
+### Family 3: Operational Metrics
 
 These tell you how *expensive* the program was. They are the
 metrics you would put on a billing dashboard, not in a paper.
@@ -188,22 +188,22 @@ source.
 
 #### LM-call metrics
 
-- **`Cost`**, **`OptimizerCost`**, **`RewardCost`** — dollars
+- **`Cost`**, **`OptimizerCost`**, **`RewardCost`**: dollars
   per epoch.
 - **`AvgCostPerCall`**, **`AvgOptimizerCostPerCall`**,
-  **`AvgRewardCostPerCall`** — dollars per LM call.
-- **`InputTokens`**, **`OutputTokens`**, **`TotalTokens`** —
+  **`AvgRewardCostPerCall`**: dollars per LM call.
+- **`InputTokens`**, **`OutputTokens`**, **`TotalTokens`**:
   cumulative token counts; same `Optimizer*` / `Reward*`
   variants.
-- **`AvgInputTokensPerCall`**, **`AvgOutputTokensPerCall`** —
+- **`AvgInputTokensPerCall`**, **`AvgOutputTokensPerCall`**:
   per-call averages.
-- **`ReasoningTokens`**, **`ReasoningTokenShare`** — for
+- **`ReasoningTokens`**, **`ReasoningTokenShare`**: for
   reasoning models, how many tokens were spent on hidden
   reasoning vs. visible output.
 - **`CachedTokens`**, **`CacheCreationTokens`**,
-  **`CacheHitRate`** — for providers that support prompt
+  **`CacheHitRate`**: for providers that support prompt
   caching, how often the cache is hitting.
-- **`Throughput`**, **`TokensPerSecond`** — speed of the
+- **`Throughput`**, **`TokensPerSecond`**: speed of the
   pipeline.
 
 #### Embedding-model metrics
@@ -213,7 +213,7 @@ that calls an embedding model, the same family exists for
 embeddings:
 **`EmbeddingCost`**, **`EmbeddingTokens`**,
 **`EmbeddingVectors`**, **`EmbeddingCacheHitRate`**,
-**`EmbeddingThroughput`**, and so on — with `Optimizer*` /
+**`EmbeddingThroughput`**, and so on, with `Optimizer*` /
 `Reward*` variants when applicable.
 
 #### Program-level metrics
@@ -221,12 +221,12 @@ embeddings:
 These describe the program's invocation pattern, independent
 of which LMs it called:
 
-- **`ProgramCalls`** — how many times the program was
+- **`ProgramCalls`**: how many times the program was
   invoked.
-- **`ProgramCallsPerSecond`** — call rate.
-- **`ProgramCost`** — total cost across every nested LM.
-- **`ProgramElapsedTime`** — wall-clock time spent.
-- **`ProgramAvgCostPerInvocation`** — cost / call.
+- **`ProgramCallsPerSecond`**: call rate.
+- **`ProgramCost`**: total cost across every nested LM.
+- **`ProgramElapsedTime`**: wall-clock time spent.
+- **`ProgramAvgCostPerInvocation`**: cost / call.
 
 A practical starter set for any real training run:
 
@@ -240,7 +240,7 @@ metrics=[
 ```
 
 If you also use an `LMAsJudge` reward, add
-`RewardCost()` and `AvgRewardCostPerCall()` — that is usually
+`RewardCost()` and `AvgRewardCostPerCall()`; that is usually
 where the surprise bills hide.
 
 ## Reading `history` and the Progress Bar
@@ -256,7 +256,7 @@ print(list(history.history.keys()))
 # ['mean_reward', 'reward', 'val_mean_reward', 'val_reward']
 ```
 
-`reward` is always present — it is the reward driving training.
+`reward` is always present: it is the reward driving training.
 The rest is whatever you put in `metrics=[...]`. Plot them
 with any library you like; they are plain lists of floats.
 
@@ -265,14 +265,14 @@ with any library you like; they are plain lists of floats.
 For anything Synalinks does not ship out of the box, subclass
 `synalinks.Metric`. The contract is three methods:
 
-- **`update_state(y_true, y_pred)`** — called once per
+- **`update_state(y_true, y_pred)`**: called once per
   sample; mutate the metric's internal variables.
-- **`result()`** — called at the end of each batch / epoch;
+- **`result()`**: called at the end of each batch / epoch;
   return the current scalar value.
-- **`reset_state()`** — called at the start of each epoch.
+- **`reset_state()`**: called at the start of each epoch.
 
 For the common case where your metric is just a running mean
-of some scalar function, do *not* subclass — use
+of some scalar function, do *not* subclass; use
 `MeanMetricWrapper`:
 
 ```python
@@ -297,7 +297,7 @@ A pragmatic default for a non-trivial training run:
 1. **The reward, exposed as a metric** so you can watch its
    running mean across the epoch:
    `MeanMetricWrapper(fn=reward, name="mean_reward")`.
-2. **A quality metric in the right family** — `F1Score`,
+2. **A quality metric in the right family**: `F1Score`,
    `BinaryF1Score`, or `CategoricalF1Score` depending on the
    shape of your output. F1 is more informative than plain
    accuracy on most tasks.
@@ -307,7 +307,7 @@ A pragmatic default for a non-trivial training run:
    half your bill; the reward's calls were the other half).
 4. **One thing you care about that no built-in covers**,
    wrapped via `MeanMetricWrapper`. Format compliance, output
-   length, refusal rate — anything that would make you
+   length, refusal rate: anything that would make you
    nervous if it changed without telling you.
 
 ## Take-Home Summary

@@ -8,7 +8,7 @@
 ## Source
 
 ````python
---8<-- "examples/6_conversational_applications.py:83"
+--8 < --"examples/6_conversational_applications.py:83"
 ````
 
 ## Run log
@@ -16,7 +16,7 @@
 The log below is the **unedited** combined output of running the example above
 with local models (ollama).
 
-??? example "Full run log — `examples/6_conversational_applications.log`"
+??? example "Full run log: `examples/6_conversational_applications.log`"
 
     ```text
     --8<-- "examples/6_conversational_applications.log"

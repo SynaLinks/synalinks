@@ -118,7 +118,7 @@ class KnowledgeBaseTest(testing.TestCase):
         self.assertIn("doc2", body)
 
     async def test_search_output_format_json_is_python_list(self):
-        # ``"json"`` returns JSON-shaped Python data — a list of
+        # ``"json"`` returns JSON-shaped Python data: a list of
         # dicts, not a serialized string. (Callers serialize via
         # orjson/json themselves if they need bytes on the wire.)
         kb = KnowledgeBase(uri=self.db_path, data_models=[Document])
@@ -191,7 +191,7 @@ class KnowledgeBaseTest(testing.TestCase):
         self.assertEqual(json_out, [])
 
     def test_knowledge_base_encryption_key_not_serialized(self):
-        # The encryption key is a secret — it must never appear in
+        # The encryption key is a secret: it must never appear in
         # `get_config()` output, in `vars(kb)`, or in `repr(kb)`. The
         # only place it should live is inside the adapter's private
         # `_encryption_key` attribute.
@@ -204,7 +204,7 @@ class KnowledgeBaseTest(testing.TestCase):
         try:
             config = knowledge_base.get_config()
             self.assertNotIn("encryption_key", config)
-            # And — defensively — the secret string itself must not
+            # And, defensively, the secret string itself must not
             # appear anywhere in the serialised representation.
             self.assertNotIn("s3cret-passphrase", str(config))
             self.assertNotIn("s3cret-passphrase", repr(knowledge_base))
@@ -215,7 +215,7 @@ class KnowledgeBaseTest(testing.TestCase):
         # End-to-end: ingest a CSV file via CSVDataset into the KB.
         # Verify every row landed AND that the adapter saw one call per
         # batch (i.e. we didn't materialize the whole dataset into a
-        # single update — the streaming guarantee is what makes this
+        # single update; the streaming guarantee is what makes this
         # feature useful for files bigger than RAM).
         from synalinks.src.datasets.csv_dataset import CSVDataset
 
@@ -251,7 +251,7 @@ class KnowledgeBaseTest(testing.TestCase):
 
         # All seven rows ingested, ids returned flat in source order.
         self.assertEqual(ids, [f"doc{i}" for i in range(7)])
-        # One adapter call per dataset batch — proves the streaming.
+        # One adapter call per dataset batch; proves the streaming.
         self.assertEqual(call_count["n"], 3)
         self.assertEqual(call_count["batch_sizes"], [3, 3, 1])
 
@@ -264,7 +264,7 @@ class KnowledgeBaseTest(testing.TestCase):
     async def test_update_from_empty_dataset_returns_empty_list(self):
         # Empty source (header-only CSV) is a real "the producer
         # didn't write anything" failure mode. KB.update should
-        # return [] without calling the adapter at all — there's
+        # return [] without calling the adapter at all: there's
         # nothing to insert and no transaction to open.
         from synalinks.src.datasets.csv_dataset import CSVDataset
 
@@ -300,7 +300,7 @@ class KnowledgeBaseTest(testing.TestCase):
     async def test_update_rejects_dataset_with_output_template(self):
         # The KB stores records, not (input, target) pairs. A dataset
         # with an output_template was configured for training, not for
-        # ingestion — reject it eagerly so the user gets a clear
+        # ingestion; reject it eagerly so the user gets a clear
         # message instead of silently dropping the targets.
         from synalinks.src.datasets.csv_dataset import CSVDataset
 
@@ -328,7 +328,7 @@ class KnowledgeBaseTest(testing.TestCase):
         self.assertIn("inputs-only", str(cm.exception))
 
     async def test_update_preserves_existing_paths_for_non_dataset_inputs(self):
-        # The Dataset branch is additive — single-instance and list
+        # The Dataset branch is additive: single-instance and list
         # inputs still go straight to adapter.update unchanged. Guards
         # against regressions in the pre-existing API shape.
         kb = KnowledgeBase(uri=self.db_path, data_models=[Document])
@@ -376,7 +376,7 @@ class KnowledgeBaseTest(testing.TestCase):
 
     async def test_update_from_dataset_verbose_modes(self):
         # `verbose="auto"` (the default) resolves to 1 when a Dataset
-        # is passed — same as the trainer's `fit()` convention — so an
+        # is passed (same as the trainer's `fit()` convention), so an
         # un-annotated `kb.update(ds)` call still shows a progress bar.
         # `verbose=0` must stay silent. The unit_name "batch" is the
         # safest substring to assert on because it appears regardless
@@ -403,7 +403,7 @@ class KnowledgeBaseTest(testing.TestCase):
 
         kb = KnowledgeBase(uri=self.db_path, data_models=[Document])
 
-        # Default ("auto") — should emit progbar for a Dataset.
+        # Default ("auto"): should emit progbar for a Dataset.
         buf_auto = io.StringIO()
         old_stdout = sys.stdout
         sys.stdout = buf_auto
@@ -416,7 +416,7 @@ class KnowledgeBaseTest(testing.TestCase):
         self.assertIn("batch", out_auto)
         self.assertIn("rows", out_auto)
 
-        # Explicit `verbose=0` — must stay silent even for a Dataset.
+        # Explicit `verbose=0`: must stay silent even for a Dataset.
         buf_silent = io.StringIO()
         old_stdout = sys.stdout
         sys.stdout = buf_silent
@@ -445,7 +445,7 @@ class KnowledgeBaseTest(testing.TestCase):
         try:
             model = await kb.from_csv(csv_path, table_name="Document")
             # The fast path returns the SymbolicDataModel for the
-            # loaded table — its title matches the requested name.
+            # loaded table; its title matches the requested name.
             self.assertEqual(model.get_schema()["title"], "Document")
 
             rows = await kb.getall(
@@ -531,7 +531,7 @@ class KnowledgeBaseTest(testing.TestCase):
         # The fast path tears the sandboxed connection down to let a
         # loose connection run read_csv (which needs external access),
         # then reopens the sandboxed one. Verify the sandbox is back
-        # afterwards by trying to do exactly what the sandbox blocks —
+        # afterwards by trying to do exactly what the sandbox blocks:
         # a SELECT from read_csv via query() should fail because the
         # post-load persistent connection has enable_external_access
         # disabled again.
@@ -548,7 +548,7 @@ class KnowledgeBaseTest(testing.TestCase):
             await kb.from_csv(csv_path, table_name="Document")
 
             # The post-load persistent connection must still refuse
-            # read_csv via query(read_only=False) — the sandbox is
+            # read_csv via query(read_only=False); the sandbox is
             # connection-level, so re-attaching means the new
             # connection was re-sandboxed in __init__'s path.
             import duckdb
@@ -575,7 +575,7 @@ class KnowledgeBaseTest(testing.TestCase):
         # CSV bulk-load now relies on DuckDB's native type
         # auto-detection (no ``all_varchar`` override) so a column of
         # plain integers ends up as ``BIGINT``, a column of decimals
-        # as ``DOUBLE``, and a column of text as ``VARCHAR`` — same
+        # as ``DOUBLE``, and a column of text as ``VARCHAR``, same
         # contract Parquet / JSON / JSONL already had.
         import csv
 
@@ -595,7 +595,7 @@ class KnowledgeBaseTest(testing.TestCase):
             self.assertEqual(schema["properties"]["score"]["type"], "number")
             self.assertEqual(schema["properties"]["label"]["type"], "string")
 
-            # Lookup uses the actual inferred type — pass an int.
+            # Lookup uses the actual inferred type; pass an int.
             r = await kb.get(3, table_name=model.get_schema()["title"])
             self.assertIsNotNone(r)
             self.assertEqual(r.get_json()["label"], "row 2")
@@ -605,7 +605,7 @@ class KnowledgeBaseTest(testing.TestCase):
 
     async def test_from_csv_preserves_leading_zeros(self):
         # DuckDB's CSV auto-detect is conservative about strings that
-        # look numeric — values with leading zeros like ``"00123"``
+        # look numeric: values with leading zeros like ``"00123"``
         # are kept as ``VARCHAR`` rather than promoted to ``INTEGER``.
         # This means id columns formatted with leading zeros survive
         # the round-trip without losing them, even though we no
@@ -751,7 +751,7 @@ class KnowledgeBaseTest(testing.TestCase):
             kb.sql_adapter.close()
 
     async def test_from_json_fts_index_built_so_search_works(self):
-        # Same FTS-rebuild-after-load contract as CSV/Parquet — search
+        # Same FTS-rebuild-after-load contract as CSV/Parquet: search
         # works against the rows just loaded.
         import json as _json
 
@@ -778,7 +778,7 @@ class KnowledgeBaseTest(testing.TestCase):
             kb.sql_adapter.close()
 
     async def test_from_json_restores_sandbox_after_load(self):
-        # Mirrors the CSV sandbox test for the from_json code path —
+        # Mirrors the CSV sandbox test for the from_json code path;
         # the tear-down + reopen logic lives in _bulk_load and is
         # shared, but verifying each fast path independently catches
         # any future regression that special-cases JSON.
@@ -900,7 +900,7 @@ class KnowledgeBaseTest(testing.TestCase):
 
     async def test_from_csv_without_preregistered_data_model(self):
         # The headline use case for the new signature: no Pydantic
-        # DataModel pre-declared on the KB, no data_model= kwarg —
+        # DataModel pre-declared on the KB, no data_model= kwarg:
         # the file's columns are enough. The returned SymbolicDataModel
         # is the handle the caller uses for subsequent queries, and it
         # gets registered on the adapter so default-table searches
@@ -943,7 +943,7 @@ class KnowledgeBaseTest(testing.TestCase):
         # ``name`` is normalized to PascalCase before being used as a
         # SQL identifier. PascalCase normalization strips the
         # separators in "bad name; DROP TABLE x;" but leaves the
-        # alphanumeric core ("BadNameDropTableX") — that's a valid
+        # alphanumeric core ("BadNameDropTableX"); that's a valid
         # identifier, so the call SHOULDN'T raise here. Verify the
         # SQL-injection attempt is *neutralized*, not just rejected.
         import csv
@@ -957,7 +957,7 @@ class KnowledgeBaseTest(testing.TestCase):
         kb = KnowledgeBase(uri=self.db_path)
         try:
             model = await kb.from_csv(csv_path, table_name="bad name; DROP TABLE x;")
-            # The malicious tokens are gone — only the alphanumeric
+            # The malicious tokens are gone; only the alphanumeric
             # PascalCase residue survives as the table name.
             self.assertEqual(model.get_schema()["title"], "BadNameDropTableX")
         finally:
@@ -965,7 +965,7 @@ class KnowledgeBaseTest(testing.TestCase):
 
     async def test_from_csv_name_defaults_to_filename_stem(self):
         # When `name` is omitted, the file's stem becomes the table
-        # name — kebab-case and snake-case filenames both normalize to
+        # name; kebab-case and snake-case filenames both normalize to
         # PascalCase.
         import csv
 
@@ -987,7 +987,7 @@ class KnowledgeBaseTest(testing.TestCase):
             kb.sql_adapter.close()
 
     async def test_from_csv_name_is_pascal_cased(self):
-        # Explicit names also get coerced — callers can use whatever
+        # Explicit names also get coerced; callers can use whatever
         # casing convention they want, the stored table is consistent.
         import csv
 
@@ -1018,7 +1018,7 @@ class KnowledgeBaseTest(testing.TestCase):
             kb.sql_adapter.close()
 
     async def test_from_csv_normalizes_columns_to_snake_case(self):
-        # File headers can be anything — mixedCase, spaced, kebab.
+        # File headers can be anything: mixedCase, spaced, kebab.
         # The adapter snake-cases every header before it lands in the
         # table, so the resulting schema's properties are uniformly
         # snake_case regardless of the source convention.
@@ -1087,7 +1087,7 @@ class KnowledgeBaseTest(testing.TestCase):
             kb.sql_adapter.close()
 
     async def test_from_json_normalizes_columns_to_snake_case(self):
-        # JSON object keys can be anything — same canonicalization
+        # JSON object keys can be anything; same canonicalization
         # applies at the column boundary.
         import json as _json
 
@@ -1126,7 +1126,7 @@ class KnowledgeBaseTest(testing.TestCase):
             kb.sql_adapter.close()
 
     async def test_from_jsonl_normalizes_columns_to_snake_case(self):
-        # JSONL is the streaming sibling of JSON — keys can still be
+        # JSONL is the streaming sibling of JSON; keys can still be
         # anything per line, and the same column-name canonicalization
         # applies.
         import json as _json
@@ -1421,7 +1421,7 @@ class KnowledgeBaseTest(testing.TestCase):
     async def test_rename_preserves_existing_description_when_only_renaming(self):
         # If the caller renames without touching description, the
         # description from the source model is carried over to the
-        # renamed model — saves the caller from re-passing it.
+        # renamed model; saves the caller from re-passing it.
         import csv
 
         csv_path = os.path.join(self.temp_dir, "src.csv")
@@ -1444,7 +1444,7 @@ class KnowledgeBaseTest(testing.TestCase):
 
     async def test_rename_accepts_string_source(self):
         # Convenience: caller doesn't need to keep the original
-        # SymbolicDataModel around — passing the table name string
+        # SymbolicDataModel around; passing the table name string
         # works too, including pre-normalized variants.
         import csv
 
@@ -1495,7 +1495,7 @@ class KnowledgeBaseTest(testing.TestCase):
 
     async def test_rename_keeps_fts_search_working(self):
         # After rename, fulltext_search through the new SymbolicDataModel
-        # must keep returning hits — the FTS index is rebuilt under
+        # must keep returning hits; the FTS index is rebuilt under
         # the new table name as part of the rename.
         import csv
 
@@ -1557,7 +1557,7 @@ class KnowledgeBaseTest(testing.TestCase):
         self.assertEqual(kb.entity_models, [Doc])
         self.assertEqual(kb.relation_models, [Knows])
         # The SQL bucket stays empty when only the graph buckets are
-        # filled — they really are three separate buckets.
+        # filled; they really are three separate buckets.
         self.assertEqual(kb.data_models, [])
 
     def test_knowledge_base_serialization_roundtrips_entity_relation_models(self):
@@ -1849,8 +1849,8 @@ class KnowledgeBaseGraphDelegationTest(testing.TestCase):
 
     def test_default_kb_auto_pairs_sql_and_graph(self):
         """Constructing KnowledgeBase without either URI auto-pairs
-        both stores under synalinks_home() — DuckDB on the SQL side
-        and Ladybug on the graph side — so callers can use either
+        both stores under synalinks_home() (DuckDB on the SQL side
+        and Ladybug on the graph side) so callers can use either
         surface without setup."""
         from synalinks.src.knowledge_bases.database_adapters import DatabaseAdapter
         from synalinks.src.knowledge_bases.graph_database_adapters import (

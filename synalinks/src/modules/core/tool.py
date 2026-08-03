@@ -139,7 +139,7 @@ class Tool(Module):
         supported. A defaulted parameter is left out of the schema's
         `required` list and its default is emitted in the schema, so the
         language model may omit it and the function's default applies.
-        (`Optional[T]` is treated as `T` — the `None` member is dropped.)
+        (`Optional[T]` is treated as `T`; the `None` member is dropped.)
         The "every property must be required" rule that some providers
         enforce only applies to *strict structured output*, which is a
         separate code path from tool calling.

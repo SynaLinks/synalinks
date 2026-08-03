@@ -215,7 +215,7 @@ class ProgramCheckpoint(Callback):
         """Resolve auto-mode by introspecting metric ``direction``.
 
         Falls back to ``np.greater`` (max) so existing behavior is preserved
-        when the monitored metric carries no direction — synalinks's bias is
+        when the monitored metric carries no direction: synalinks's bias is
         toward maximizing (rewards, accuracy, F-scores) and `monitor`
         defaults to ``"val_reward"``.
         """

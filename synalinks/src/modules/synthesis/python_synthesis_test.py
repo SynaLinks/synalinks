@@ -237,7 +237,7 @@ result = {"doubled": t}
 
     async def test_tool_called_without_await_is_a_runtime_error(self):
         # Forgetting to `await` an async tool yields a coroutine object, not
-        # the value — the sandbox can't marshal it back, falling back to
+        # the value; the sandbox can't marshal it back, falling back to
         # the default.
         script = """
 result = {"doubled": triple(x=inputs.get("value"))}
@@ -349,7 +349,7 @@ result = {"doubled": memo["count"] * 2}
         )
 
         await agent_seed(_IntIn(value=3))
-        # Per-call sandbox is fresh — `memo` is undefined inside it.
+        # Per-call sandbox is fresh; `memo` is undefined inside it.
         fresh = MirageSandbox()
         r = await agent_followup(_IntIn(value=4), sandbox=fresh)
         self.assertEqual(r.get("doubled"), -1)
@@ -381,7 +381,7 @@ result = {"doubled": memo["count"] * 2}
         r1 = await agent_seed(_IntIn(value=3))
         self.assertEqual(r1.get("doubled"), 6)
         # No shared sandbox: the second call builds a fresh one and the
-        # reference to `memo` errors — the module falls back to default.
+        # reference to `memo` errors; the module falls back to default.
         r2 = await agent_followup(_IntIn(value=4))
         self.assertEqual(r2.get("doubled"), -1)
         self.assertIn("Runtime Error", r2.get("stderr"))

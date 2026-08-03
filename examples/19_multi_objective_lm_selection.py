@@ -7,7 +7,7 @@ Companion to `examples/18_hyperparameter_search_with_keras_tuner.py`. Here
 the goal is **model selection**: given several candidate language models
 plus a couple of prompting knobs, pick the configuration that maximizes
 both `ExactMatch` reward (strict accuracy across all class fields) **and**
-macro `BinaryF1Score` on a 6-class emotion classification task — the
+macro `BinaryF1Score` on a 6-class emotion classification task: the
 classic trade-off when the label distribution is imbalanced.
 
 We feed `synalinks.tuners.RandomSearch` a **list** of objectives. Internally
@@ -17,15 +17,15 @@ remains recorded on the trial so you can inspect the Pareto trade-off.
 
 ## Why `BinaryF1Score` instead of `F1Score`
 
-`synalinks.metrics.F1Score` is token-level (QA-oriented) — for a
+`synalinks.metrics.F1Score` is token-level (QA-oriented); for a
 single-token categorical label it collapses to accuracy and gives no
 extra signal. `synalinks.metrics.BinaryF1Score` operates **per class
 field**, computing per-class precision and recall and averaging across
 classes. With `average="macro"`, a model that always predicts the
-majority class scores high on accuracy but low on F1 — exactly the
+majority class scores high on accuracy but low on F1, exactly the
 trade-off we want to surface during search.
 
-That means the output data model needs **one boolean field per class** —
+That means the output data model needs **one boolean field per class**:
 the per-class layout `BinaryF1Score` expects. Each class is an
 independent boolean, so this layout naturally supports multi-label
 classification; the LM can in principle set zero, one, or several
@@ -34,28 +34,28 @@ fields to `True`. For *strict* single-label enforcement, use a single
 
 ## Dataset
 
-[`dair-ai/emotion`](https://huggingface.co/datasets/dair-ai/emotion) — 6
+[`dair-ai/emotion`](https://huggingface.co/datasets/dair-ai/emotion): 6
 imbalanced classes (`sadness`, `joy`, `love`, `anger`, `fear`, `surprise`).
 We use a tiny slice (24 train / 12 val / 12 test) so a full search fits
-in a few minutes. Loaded via `synalinks.HuggingFaceDataset` — a Jinja2
+in a few minutes. Loaded via `synalinks.HuggingFaceDataset`: a Jinja2
 output template maps the dataset's integer `label` (0-5) into a boolean
-record (one `True`, five `False` — since this source is single-label)
+record (one `True`, five `False`, since this source is single-label)
 that the `Emotion` schema and `BinaryF1Score` consume.
 
 The dataset-helpers idiom we use here is worth a callout:
 
-- `synalinks.datasets.load_split(...)` — one-call shortcut that builds
+- `synalinks.datasets.load_split(...)`: one-call shortcut that builds
   a non-streaming `HuggingFaceDataset` and `.materialize()`s it into
   `(x, y)` numpy object arrays.
-- `synalinks.datasets.split_train_test(x, y, validation_split=...)` —
+- `synalinks.datasets.split_train_test(x, y, validation_split=...)`:
   deterministic head/tail slicer returning
   `((x_train, y_train), (x_val, y_val))`. Works on any `(x, y)` pair,
-  not just HF — handy when the source only ships a single labeled
+  not just HF; handy when the source only ships a single labeled
   split (HumanEval, IFEval, BBH, ...).
 
 ## Search space
 
-A single Choice: `model` — which language model to use. Since this is a
+A single Choice: `model`, which language model to use. Since this is a
 small discrete sweep, we use `synalinks.tuners.GridSearch` to enumerate
 every candidate exactly once instead of `RandomSearch` (which would
 re-sample with replacement).
@@ -97,7 +97,7 @@ FOLDER = "examples"
 PROJECT_NAME = "emotion_lm_selection"
 
 # Output-schema toggle. False = per-class booleans (one independent
-# `bool` per class; multi-label-friendly — the schema does not enforce
+# `bool` per class; multi-label-friendly: the schema does not enforce
 # "exactly one True"); True = per-class `synalinks.Score` confidences
 # (same independence, but the LM can express graded uncertainty). The
 # rest of the file branches on this single flag.
@@ -132,7 +132,7 @@ class Tweet(synalinks.DataModel):
 class Emotion(synalinks.DataModel):
     """Per-class boolean labels.
 
-    One independent `bool` per class — the layout `BinaryF1Score`
+    One independent `bool` per class, the layout `BinaryF1Score`
     expects. The schema does not enforce "exactly one True":
     six independent booleans can take any of 2⁶ combinations, so
     this same layout naturally generalizes to multi-label tasks
@@ -142,7 +142,7 @@ class Emotion(synalinks.DataModel):
 
     On `dair-ai/emotion` each row happens to have exactly one
     `True` field in the ground truth, but the LM is technically
-    free to predict any combination — the field descriptions are
+    free to predict any combination; the field descriptions are
     a soft hint, not a hard constraint.
     """
 
@@ -169,7 +169,7 @@ class Emotion(synalinks.DataModel):
 class EmotionScore(synalinks.DataModel):
     """Per-class confidence scores.
 
-    One `synalinks.Score` per class — a discretized `[0, 1]` enum
+    One `synalinks.Score` per class, a discretized `[0, 1]` enum
     the LM is constrained to emit one of eleven values from (`0.0`,
     `0.1`, ..., `1.0`). Like the boolean layout, each class is an
     independent field; the schema does not enforce that exactly one
@@ -307,8 +307,8 @@ async def main():
     print("Loading dair-ai/emotion via synalinks.HuggingFaceDataset...")
     # Demo the dataset helpers: load one labeled chunk from `train` and
     # slice a validation tail off with `split_train_test`. (We could
-    # also pass `split="validation"` directly — this dataset ships a
-    # native validation split — but the split helper is the general
+    # also pass `split="validation"` directly; this dataset ships a
+    # native validation split. But the split helper is the general
     # recipe for sources that only ship a single labeled split.)
     x_trainval, y_trainval = load_emotion_split("train", NB_TRAINVAL_SAMPLES)
     (x_train, y_train), (x_val, y_val) = synalinks.datasets.split_train_test(
@@ -327,7 +327,7 @@ async def main():
     # into a `MultiObjective` automatically. Both metrics are maximized
     # here, but you could mix directions (e.g. add a min-latency proxy).
     #
-    # `GridSearch` enumerates every value of every `Choice` — here that
+    # `GridSearch` enumerates every value of every `Choice`: here that
     # means every candidate model exactly once. `max_trials` has to be at
     # least the number of combinations, hence `len(CANDIDATE_MODELS)`.
     tuner = synalinks.tuners.GridSearch(

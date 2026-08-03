@@ -8,7 +8,7 @@
 ## Source
 
 ````python
---8<-- "examples/1d_mixing_strategy.py:159"
+--8 < --"examples/1d_mixing_strategy.py:159"
 ````
 
 ## Run log
@@ -16,7 +16,7 @@
 The log below is the **unedited** combined output of running the example above
 with local models (ollama).
 
-??? example "Full run log — `examples/1d_mixing_strategy.log`"
+??? example "Full run log: `examples/1d_mixing_strategy.log`"
 
     ```text
     --8<-- "examples/1d_mixing_strategy.log"

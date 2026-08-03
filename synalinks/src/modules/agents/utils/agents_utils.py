@@ -4,7 +4,7 @@
 
 Covers workdir resolution, AGENTS.md (the agents.md standard) discovery +
 injection, tool merging, and the metadata-only input summary the agents show the
-LM — field previews and sizes, never the full values. The full payload is made
+LM: field previews and sizes, never the full values. The full payload is made
 reachable to the agent's code another way: bound as the ``inputs`` REPL variable
 (RLM), or written as a JSON file in the sandbox's copy-on-write overlay (Deep
 Agent); the summary's ``inputs_file`` field names that file when the file route
@@ -51,7 +51,7 @@ def prepend_context_message(agent_messages: List, context_message) -> bool:
 
     Idempotent: when a message with the same ``role`` and ``content`` is already
     present, nothing is inserted. This matters in interactive mode and whenever a
-    returned trajectory is fed back into the agent — otherwise a fresh copy would
+    returned trajectory is fed back into the agent; otherwise a fresh copy would
     stack at the front of the messages on every turn.
 
     Args:
@@ -78,9 +78,9 @@ def prepend_context_message(agent_messages: List, context_message) -> bool:
 #
 # Support for the open AGENTS.md standard (https://agents.md): a project's
 # ``AGENTS.md`` is plain Markdown (no frontmatter) holding the conventions an
-# agent should follow — "a README for agents". Per the spec a monorepo may carry
+# agent should follow: "a README for agents". Per the spec a monorepo may carry
 # nested ``AGENTS.md`` files and the **nearest one wins** for a given path. These
-# helpers — structured like the Agent Skills ones in ``skills_utils`` — discover
+# helpers (structured like the Agent Skills ones in ``skills_utils``) discover
 # the root + nested files; the prompt renderer emits the root file's content
 # verbatim. The spec does not prescribe any prompt wording, so no framing is
 # added.
@@ -220,7 +220,7 @@ class InputsSummary(DataModel):
     when the input contains long documents or large collections. The **full**
     untruncated values are reachable from the agent's code: read them via
     ``inputs[field_name]`` (REPL agents) or by reading the JSON file named in
-    ``inputs_file`` (filesystem agents) — never retype them from the preview.
+    ``inputs_file`` (filesystem agents); never retype them from the preview.
     """
 
     fields: list[dict] = Field(
@@ -236,7 +236,7 @@ class InputsSummary(DataModel):
         default=None,
         description=(
             "When set, the full untruncated inputs are stored as this JSON file "
-            "in the sandbox filesystem — read it instead of retyping previews: "
+            "in the sandbox filesystem; read it instead of retyping previews: "
             "the `read_file` tool, or in a `run_python_code` snippet "
             "`json.loads(pathlib.Path(inputs_file).read_text())` (the sandbox "
             "has no `open()`, and `json` provides only `loads` / `dumps`). "

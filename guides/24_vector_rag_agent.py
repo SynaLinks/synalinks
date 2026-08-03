@@ -23,9 +23,9 @@ That works when retrieval is *always* needed, the right phrasing
 It struggles when:
 
 - The user asks something the model already knows ("what day is
-  today?") — the retrieval step is pure overhead.
+  today?"): the retrieval step is pure overhead.
 - The user's phrasing doesn't match the corpus phrasing ("PTO
-  policy" vs "vacation days") — one search misses; a reformulation
+  policy" vs "vacation days"): one search misses; a reformulation
   might land.
 - One topic is enough; another needs two searches against different
   tables.
@@ -73,7 +73,7 @@ LM receives (so it phrases queries the right way).
 |---------------|--------------|----------|
 | `"similarity"` | Pure vector search over embeddings. Requires an embedding model. | The corpus and the question use *different* words for the same concept (paraphrase-heavy). |
 | `"fulltext"` | BM25 keyword search. No embedding model needed. | The words in the question are likely to appear verbatim in the documents (technical terms, named entities). |
-| `"hybrid_fts"` (default) | Vector + BM25 fused with Reciprocal Rank Fusion (RRF). Requires an embedding model. | You don't want to choose — RRF combines both signals and is the safest default. |
+| `"hybrid_fts"` (default) | Vector + BM25 fused with Reciprocal Rank Fusion (RRF). Requires an embedding model. | You don't want to choose: RRF combines both signals and is the safest default. |
 
 For each mode, the agent's default instructions tell the LM how to
 phrase its queries: natural-language paraphrases for similarity,
@@ -83,22 +83,22 @@ keyword-rich strings for fulltext, both for hybrid.
 
 Search results are returned as **CSV** by default (`output_format="csv"`),
 which is dramatically more token-efficient than JSON for tabular
-hits — no key names repeated per row. The LM reads CSV well, and on
+hits: no key names repeated per row. The LM reads CSV well, and on
 modern providers it parses faster too. Switch to `"json"` if you
 need list-of-dicts results for downstream code, but for purely
 LM-facing flows CSV is the better default.
 
 ## Building the Agent
 
-The constructor signature mirrors `FunctionCallingAgent` exactly —
+The constructor signature mirrors `FunctionCallingAgent` exactly:
 every parameter on that class is accepted with identical semantics.
 The additions are retrieval-specific:
 
 | Param | Required | Default | Notes |
 |-------|----------|---------|-------|
-| `knowledge_base` | yes | — | The `KnowledgeBase` to retrieve from. |
+| `knowledge_base` | yes | (none) | The `KnowledgeBase` to retrieve from. |
 | `search_type` | no | `"hybrid_fts"` | `"similarity"`, `"fulltext"`, or `"hybrid_fts"`. |
-| `k` | no | `5` | Top-k for searches. Fixed per-agent — not exposed to the LM. |
+| `k` | no | `5` | Top-k for searches. Fixed per-agent, not exposed to the LM. |
 | `similarity_threshold` | no | `None` | Max vector distance for similarity / hybrid modes. |
 | `fulltext_threshold` | no | `None` | Min BM25 score for fulltext / hybrid modes. |
 | `output_format` | no | `"csv"` | `"csv"` (compact) or `"json"` (list of dicts). |
@@ -176,10 +176,10 @@ result = await agent(synalinks.ChatMessages(messages=[synalinks.ChatMessage(
 
 What the agent typically does:
 
-1. `search_knowledge_base("Document", "enterprise plan pricing volume discount")`
-   — pulls the pricing-policy document.
+1. `search_knowledge_base("Document", "enterprise plan pricing volume discount")`:
+   pulls the pricing-policy document.
 2. The LM reads the discount tiers from the snippet.
-3. `calculate("99 * (1 - 0.15)")` — applies the 15% discount.
+3. `calculate("99 * (1 - 0.15)")`: applies the 15% discount.
 4. Stops, produces the final natural-language answer.
 
 If the first search doesn't return what the LM expected, it
@@ -198,7 +198,7 @@ messages = []
 for user_msg in [
     "What's the daily meal allowance?",
     "What about international?",
-    "I'm going for 3 days — what's my total budget?",
+    "I'm going for 3 days, what's my total budget?",
 ]:
     messages.append(synalinks.ChatMessage(role="user", content=user_msg))
     chat = synalinks.ChatMessages(messages=messages)
@@ -228,7 +228,7 @@ relevant to X" rather than "compute Y from rows of Z". When the
 data is structured (typed columns) and the answer needs joins or
 aggregations, reach for `SQLAgent`.
 
-You can also use both — give an agent a `KnowledgeBase` with both
+You can also use both: give an agent a `KnowledgeBase` with both
 document tables and structured tables, layer SQL tools on top of
 retrieval, and let the LM mix them. But for a single workload, the
 specialized agent is the simpler call.

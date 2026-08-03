@@ -117,7 +117,7 @@ class RetrieveKnowledgeTest(testing.TestCase):
 
     def test_retrieve_knowledge_regex_instructions_differ(self):
         # Regex mode must instruct the LM to produce patterns, not
-        # natural-language phrases — wrong guidance here silently
+        # natural-language phrases; wrong guidance here silently
         # degrades retrieval quality.
         knowledge_base = KnowledgeBase(
             uri=self.db_path,
@@ -239,7 +239,7 @@ class RetrieveKnowledgeTest(testing.TestCase):
 
     def test_retrieve_knowledge_hybrid_regex_instructions(self):
         # The hybrid_regex mode must mention BOTH the search list (vector)
-        # and the patterns list (regex) in the LM instructions — otherwise
+        # and the patterns list (regex) in the LM instructions; otherwise
         # the LM has no idea it needs to populate both.
         knowledge_base = KnowledgeBase(
             uri=self.db_path,

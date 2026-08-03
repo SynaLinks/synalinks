@@ -347,14 +347,19 @@ class DataModel(pydantic.BaseModel, SynalinksSaveable, metaclass=MetaDataModel):
     def get_json(self):
         """Gets the JSON value of the data model.
 
-        Optional fields whose value is `None` are omitted from the output —
+        Optional fields whose value is `None` are omitted from the output;
         the schema still declares them, so consumers should treat a missing
         key as `None`.
+
+        Serialization is duck-typed (``serialize_as_any``): a field declared
+        with a parent type (e.g. ``List[Entity]``) dumps each item with the
+        *instance's* fields, so `Entity`/`Relation` subclasses keep their
+        properties inside a generic `KnowledgeGraph`.
 
         Returns:
             (dict): The JSON value.
         """
-        return self.model_dump(mode="json", exclude_none=True)
+        return self.model_dump(mode="json", exclude_none=True, serialize_as_any=True)
 
     def prettify_json(self):
         """Get a pretty version of the JSON object for display.

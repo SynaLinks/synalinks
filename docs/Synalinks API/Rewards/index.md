@@ -15,7 +15,7 @@ Synalinks ships two flavors of reward base class:
   rewards (`ExactMatch`, `CosineSimilarity`, `LMAsJudge`, `ProgramAsJudge`) use.
 - `BatchReward`: receives the **whole batch** at once and returns a
   `list[float]` of length `batch_size`, one reward per sample. Use this when
-  the score for sample *i* depends on the rest of the batch — group-relative
+  the score for sample *i* depends on the rest of the batch: group-relative
   rewards (e.g. GRPO-style normalization), pairwise/listwise comparisons, or
   any case where you want a single batched call instead of N parallel calls.
 

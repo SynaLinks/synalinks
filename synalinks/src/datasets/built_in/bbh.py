@@ -21,7 +21,7 @@ class BBHBooleanAnswer(DataModel):
 
 
 _INPUT_TEMPLATE = r'{"question": {{ input | tojson }}}'
-# BBH ships ``target`` as the literal string "True" / "False" — coerce to bool.
+# BBH ships ``target`` as the literal string "True" / "False"; coerce to bool.
 _OUTPUT_TEMPLATE = r'{"answer": {{ (target == "True") | tojson }}}'
 
 
@@ -70,7 +70,7 @@ def iterable_dataset(repeat=1, batch_size=1, limit=None, split="test"):
     Streaming dataset for RL-style training.
 
     Args:
-        repeat (int): Number of consecutive copies of each row — set
+        repeat (int): Number of consecutive copies of each row; set
             equal to ``batch_size`` for GRPO-style rollouts.
         batch_size (int): Examples per yielded batch.
         limit (int): Optional cap on raw rows (useful for smoke tests).

@@ -34,7 +34,7 @@ async def square(x: int) -> int:
 
 def _exec_tool_call(code, call_id="call_1"):
     """A litellm response where the LM calls `run_python_code` with the
-    given `code` — the native tool-call transport the RLM uses each turn.
+    given `code`, the native tool-call transport the RLM uses each turn.
     """
     return {
         "choices": [
@@ -145,7 +145,7 @@ class RecursiveLanguageModelAgentTest(testing.TestCase):
         )(inputs)
         agent = Program(inputs=inputs, outputs=outputs)
 
-        # Single empty turn — enough to inspect the prompt.
+        # Single empty turn, enough to inspect the prompt.
         mock_completion.side_effect = [
             _exec_tool_call(""),
             {"choices": [{"message": {"content": json.dumps({"answer": "x"})}}]},
@@ -174,9 +174,7 @@ class RecursiveLanguageModelAgentTest(testing.TestCase):
         agent = Program(inputs=inputs, outputs=outputs)
 
         turn1 = {
-            "code": (
-                "out = llm_query(prompt='summarize this')\n" "print(out['result'])"
-            )
+            "code": ("out = llm_query(prompt='summarize this')\nprint(out['result'])")
         }
         turn2 = {"code": "submit(result={'answer': 'done'})"}
 
@@ -211,8 +209,7 @@ class RecursiveLanguageModelAgentTest(testing.TestCase):
 
         turn1 = {
             "code": (
-                "out = llm_query_batched(prompts=['a', 'b', 'c'])\n"
-                "print(out['result'])"
+                "out = llm_query_batched(prompts=['a', 'b', 'c'])\nprint(out['result'])"
             )
         }
         turn2 = {"code": "submit(result={'answer': 'merged'})"}
@@ -261,7 +258,7 @@ class RecursiveLanguageModelAgentTest(testing.TestCase):
 
         mock_completion.side_effect = [
             _exec_tool_call(turn1["code"], "call_1"),
-            # Only ONE sub-LM call should fire — the second is rejected.
+            # Only ONE sub-LM call should fire; the second is rejected.
             {"choices": [{"message": {"content": "first response"}}]},
             _exec_tool_call(turn2["code"], "call_2"),
         ]
@@ -301,7 +298,7 @@ class RecursiveLanguageModelAgentTest(testing.TestCase):
             _exec_tool_call(per_call_turn1["code"], "call_1"),
             {"choices": [{"message": {"content": "first"}}]},
             _exec_tool_call(per_call_turn2["code"], "call_2"),
-            # Call 2 — quota should be reset, so the sub-LM fires again.
+            # Call 2: quota should be reset, so the sub-LM fires again.
             _exec_tool_call(per_call_turn1["code"], "call_3"),
             {"choices": [{"message": {"content": "second"}}]},
             _exec_tool_call(per_call_turn2["code"], "call_4"),
@@ -415,10 +412,8 @@ class RLMSubagentTest(testing.TestCase):
         restored = RecursiveLanguageModelAgent.from_config(config)
         self.assertEqual(restored.max_subagent_depth, 2)
         self.assertTrue(restored._subagents_enabled)
-        # Guidance is appended idempotently — not doubled on round-trip.
-        self.assertEqual(
-            restored.instructions.count("delegate to parallel subagents"), 1
-        )
+        # Guidance is appended idempotently, not doubled on round-trip.
+        self.assertEqual(restored.instructions.count("delegate to parallel subagents"), 1)
 
     # -- merge / discard handlers (no LM, manual fork) -----------------------
 
@@ -494,9 +489,7 @@ class RLMSubagentTest(testing.TestCase):
         agent = self._agent(max_subagent_depth=1)
         sandbox = MirageSandbox()
         tools = agent._build_subagent_tools(sandbox, {}, [0], {"adopted": False})
-        self.assertIn(
-            "error", (await tools["merge_subagent"](handle="nope")).get_json()
-        )
+        self.assertIn("error", (await tools["merge_subagent"](handle="nope")).get_json())
         self.assertIn(
             "error", (await tools["discard_subagent"](handle="nope")).get_json()
         )
@@ -517,7 +510,7 @@ class RLMSubagentTest(testing.TestCase):
         # The subagent's single snippet sets a REPL var and submits. (Its
         # interpreter is an isolated subprocess, so it folds REPL state back to
         # the parent on merge, not in-snippet host file writes.)
-        snippet = "subvar = 7\n" "submit(result={'answer': 'computed subvar'})\n"
+        snippet = "subvar = 7\nsubmit(result={'answer': 'computed subvar'})\n"
         mock_completion.side_effect = lambda *a, **k: _exec_tool_call(snippet)
 
         agent = self._agent(max_subagent_depth=1)

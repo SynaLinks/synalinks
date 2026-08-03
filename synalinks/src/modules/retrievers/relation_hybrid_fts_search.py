@@ -23,7 +23,7 @@ from synalinks.src.saving import serialization_lib
 class RelationHybridFTSSearchInput(DataModel):
     """Input shape for `RelationHybridFTSSearch`.
 
-    The ``keywords`` list is optional — when omitted, the adapter
+    The ``keywords`` list is optional: when omitted, the adapter
     re-uses the vector side's text for BM25 scoring as well.
     """
 
@@ -49,7 +49,7 @@ class RelationHybridFTSSearch(Module):
     edges. LM-driven wrapper around
     `KnowledgeBase.relation_hybrid_fts_search`. Either-endpoint
     union: per matched edge, the final ``rrf_score`` is the sum of
-    the subject-side and object-side hybrid scores — equivalent to a
+    the subject-side and object-side hybrid scores, equivalent to a
     4-source RRF. Falls back to fulltext-only when no embedding model
     is configured.
 
@@ -67,7 +67,7 @@ class RelationHybridFTSSearch(Module):
             providing ``schema`` via ``.get_schema()`` when ``schema``
             is not given.
         label (str): Target relation label. Defaults to the schema's
-            ``title``. **Optional** — when neither ``label`` nor a
+            ``title``. **Optional**: when neither ``label`` nor a
             schema to derive it from is given, the language model infers
             the target relation label per call (constrained to the
             knowledge base's actual relation labels).

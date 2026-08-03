@@ -5,7 +5,7 @@
 
 [Guide 6](https://synalinks.github.io/synalinks/guides/Agents/) showed the agent loop in the abstract: a model that
 decides, acts, observes, and repeats. [Guide 7](https://synalinks.github.io/synalinks/guides/Knowledge%20Base/) introduced
-the `KnowledgeBase` — a typed, queryable store backed by DuckDB. This
+the `KnowledgeBase`, a typed, queryable store backed by DuckDB. This
 guide combines the two. An **SQL Agent** is an agent whose tool set is
 pre-wired for working with a knowledge base via SQL: it can discover
 the schema, sample rows, and run read-only SELECT queries. The user
@@ -25,7 +25,7 @@ answer requires:
 
 an SQL agent is the right shape. The model writes one `SELECT`, the
 engine computes the answer, and the model summarizes it. No
-embedding similarity, no chunking, no recall problem — just the
+embedding similarity, no chunking, no recall problem: just the
 right tuples.
 
 ## The Three Tools
@@ -52,7 +52,7 @@ three-tool split lets the LM:
 
 1. Discover the schema once.
 2. Optionally peek at sample values when a column's type isn't
-   enough to know what's in it ("status" — is it `pending`/`paid`,
+   enough to know what's in it ("status": is it `pending`/`paid`,
    or `0`/`1`?).
 3. Then write its query.
 
@@ -62,8 +62,8 @@ Each tool returns just what's needed for the next step.
 
 Safety is the **knowledge base's** responsibility, not the agent's.
 The `run_sql_query` tool always passes `read_only=True` to
-`kb.sql(...)`. The DuckDB adapter enforces that flag in two layers
-— both using DuckDB's own machinery, so there are no hand-rolled
+`kb.sql(...)`. The DuckDB adapter enforces that flag in two layers,
+both using DuckDB's own machinery, so there are no hand-rolled
 keyword blocklists (which leak false negatives through comments,
 string literals, casing, and stacked statements like `SELECT 1;
 DROP TABLE x`):
@@ -75,8 +75,8 @@ DROP TABLE x`):
 2. **Connection sandbox.** The persistent connection had
    `enable_external_access=false` applied at construction time, so
    `SELECT` table functions that touch the host filesystem or
-   network — `read_csv`, `read_parquet`, `read_json`, `read_blob`,
-   `glob`, httpfs/S3 variants — return a permission error.
+   network (`read_csv`, `read_parquet`, `read_json`, `read_blob`,
+   `glob`, httpfs/S3 variants) return a permission error.
 
 That means the `run_sql_query` tool body is trivial: pass the SQL
 through and surface any error so the agent can read it and retry
@@ -100,13 +100,13 @@ LIMIT n`) rather than asking for more rows.
 
 ## Building the Agent
 
-The constructor signature mirrors `FunctionCallingAgent` exactly —
+The constructor signature mirrors `FunctionCallingAgent` exactly:
 every parameter on that class is accepted with identical semantics.
 The additions are SQL-specific:
 
 | Param | Required | Default | Notes |
 |-------|----------|---------|-------|
-| `knowledge_base` | yes | — | The `KnowledgeBase` to query. |
+| `knowledge_base` | yes | (none) | The `KnowledgeBase` to query. |
 | `k` | no | `50` | Max rows per call (samples and queries). |
 | `output_format` | no | `"csv"` | How result sets render to the LM. `"csv"` is compact; `"json"` returns a list of dicts. |
 | `tools` | no | `None` | Extra `Tool` instances or async functions to append to the three built-ins. Same name-collision and no-leading-underscore rules as `FunctionCallingAgent`. |
@@ -258,7 +258,7 @@ async def main():
         name="sql_agent_guide_kb",
     )
 
-    # Sample data — enough to make a top-N query non-trivial.
+    # Sample data: enough to make a top-N query non-trivial.
     customers = [
         Customer(id="C1", name="Alice", country="USA"),
         Customer(id="C2", name="Bob", country="UK"),
@@ -278,7 +278,7 @@ async def main():
     language_model = synalinks.LanguageModel(model="ollama/qwen3:8b")
 
     # Build the agent. The data_model param sets the schema of the
-    # final answer — the LM is required to produce both a natural-
+    # final answer; the LM is required to produce both a natural-
     # language explanation and the SQL it used.
     inputs = synalinks.Input(data_model=Query)
     outputs = await synalinks.SQLAgent(

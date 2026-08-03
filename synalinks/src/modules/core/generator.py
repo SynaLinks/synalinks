@@ -169,7 +169,7 @@ class Generator(Module):
         return_inputs (bool): Optional. Whether or not to concatenate the inputs to
             the outputs (Default to False).
         temperature (float): Optional. The sampling temperature for the LM call.
-            Default to None — when None it is NOT sent, so the model's own
+            Default to None: when None it is NOT sent, so the model's own
             generation defaults apply (e.g. a vLLM-served model uses its
             `generation_config.json`). Set a float to override.
         max_tokens (int): Optional. Cap on the number of tokens generated. Default
@@ -351,9 +351,7 @@ class Generator(Module):
             # as it is consumed.
             if current_op_scope() is None and not training:
                 return value
-            value = await value.aconsume(
-                name=f"{self.language_model.name}_response"
-            )
+            value = await value.aconsume(name=f"{self.language_model.name}_response")
         if not value:
             result = None
         else:
@@ -455,7 +453,7 @@ class Generator(Module):
         # would trip its `extra="forbid"`, so it falls through to be rendered as
         # input data below.
         user_message = ChatMessage(
-            role="user", 
+            role="user",
             content=f"<input>\n{inputs.get_json()}\n</input>\n<output>\n",
         )
         return ChatMessages(messages=[system_message, user_message])

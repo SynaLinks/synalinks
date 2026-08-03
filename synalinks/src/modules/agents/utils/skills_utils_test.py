@@ -62,7 +62,7 @@ class ParseSkillTest(testing.TestCase):
         )
         # metadata coerced to a str->str map
         self.assertEqual(skill.metadata, {"author": "example-org", "version": "1.0"})
-        # only spec frontmatter is modelled — the Markdown body is not stored
+        # only spec frontmatter is modelled; the Markdown body is not stored
         self.assertFalse(hasattr(skill, "instructions"))
 
     def test_minimal_skill(self):
@@ -86,13 +86,13 @@ class ParseSkillTest(testing.TestCase):
 
     def test_parse_is_lenient_about_name_format(self):
         # parse_skill is lenient (required fields only); a non-conforming but
-        # present name still loads — validate_skill is the strict checker.
+        # present name still loads; validate_skill is the strict checker.
         skill = parse_skill("---\nname: NotKebab\ndescription: d\n---\n")
         self.assertEqual(skill.name, "NotKebab")
 
     def test_skill_is_spec_only_entity(self):
         # Skill is an `Entity` DataModel whose fields are exactly the spec
-        # frontmatter (plus `label`, the Entity type pin) — no body / locators.
+        # frontmatter (plus `label`, the Entity type pin); no body / locators.
         from synalinks.src.backend import is_entity
 
         skill = parse_skill(_FULL)
@@ -185,7 +185,7 @@ class FindAndDiscoverTest(testing.TestCase):
         d = self._write("low", _MINIMAL.replace("hello", "low"), filename="skill.md")
         # On a case-insensitive filesystem (the default on macOS and Windows)
         # "SKILL.md" and "skill.md" are the same file, so the uppercase
-        # preference cannot be observed — skip rather than assert a name the
+        # preference cannot be observed; skip rather than assert a name the
         # filesystem folds away.
         if os.path.exists(os.path.join(d, "SKILL.md")):
             self.skipTest("filesystem is case-insensitive")

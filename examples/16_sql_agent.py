@@ -98,7 +98,7 @@ answer and the SQL used, providing transparency into the agent's reasoning.
 ## Building the Agent
 
 `SQLAgent` takes a `KnowledgeBase` + `LanguageModel` + output data model
-and handles tool wiring internally — no manual `Tool` definitions needed.
+and handles tool wiring internally: no manual `Tool` definitions needed.
 
 ```python
 # Create Knowledge Base with your data models
@@ -130,7 +130,7 @@ sql_agent = synalinks.Program(
 
 Safety is the **Knowledge Base's** responsibility, not the agent's. The
 DuckDB adapter treats `read_only=True` (which `run_sql_query` passes by
-default) as the whole safety contract, enforced at two layers — both
+default) as the whole safety contract, enforced at two layers, both
 using DuckDB's own machinery, so there are no hand-rolled keyword
 blocklists (which leak false negatives via comments, string literals,
 casing, or stacked statements like `SELECT 1; DROP TABLE x`):
@@ -141,9 +141,9 @@ casing, or stacked statements like `SELECT 1; DROP TABLE x`):
    `ATTACH`, `EXPORT`, and every other side-effecting statement.
 2. **Sandbox (blocks external I/O).** The persistent connection has
    `enable_external_access=false` applied at construction time, so
-   `SELECT` table functions that touch the host filesystem or network —
+   `SELECT` table functions that touch the host filesystem or network (
    `read_csv`, `read_parquet`, `read_json`, `read_blob`, `read_text`,
-   `glob`, the httpfs/S3 variants — return a permission error.
+   `glob`, the httpfs/S3 variants) return a permission error.
 
 ## Example Usage
 
@@ -518,9 +518,7 @@ async def main():
                             except (ValueError, TypeError):
                                 args = {"_raw": args}
                         args_str = ", ".join(f"{k}={repr(v)}" for k, v in args.items())
-                        print(
-                            f"Tool Call {tool_calls_count}: {name}({args_str})"
-                        )
+                        print(f"Tool Call {tool_calls_count}: {name}({args_str})")
                 elif msg.get("role") == "tool":
                     content = msg.get("content", "")
                     # Truncate long results for readability

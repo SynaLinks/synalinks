@@ -1,24 +1,24 @@
-# Agent guide — autosolve
+# Agent guide: autosolve
 
 This is a **Synalinks autosolve** project: a single program + evaluation harness
-in `evaluate.py`. There is **no training loop** — *you, the coding agent, are the
+in `evaluate.py`. There is **no training loop**: *you, the coding agent, are the
 optimizer*. You read the program's actual failures and rewrite the program
 itself (instructions, field descriptions, modules, architecture), then re-run to
 measure whether the reward went up.
 
 ## Start here
 
-- **`AUTOSOLVE.md`** is the playbook — the disciplined loop you run to raise
+- **`AUTOSOLVE.md`** is the playbook: the disciplined loop you run to raise
   `dev_reward`. Read it before changing anything and follow it.
 - **`README.md`** explains the layout and how this differs from autotrain.
-- **`NOTES.md`** is the running log — record every experiment's hypothesis and
+- **`NOTES.md`** is the running log: record every experiment's hypothesis and
   verdict there; record the numbers in `results.tsv`.
 
 ## Prime directives
 
 1. **Observability is the whole game.** Each run writes a full module-by-module
    trace to `eval.log` and per-example results to `predictions_dev.jsonl`. Read
-   them — they are how you find the next thing to fix. Set `DEV_SIZE = 1` to
+   them; they are how you find the next thing to fix. Set `DEV_SIZE = 1` to
    study one problem in complete detail.
 2. **You improve the program by editing code**, not by tuning an optimizer
    (there isn't one). Levers are constants/functions in `evaluate.py`; each
@@ -41,7 +41,7 @@ Custom Agent Skills can live under `.agents/skills/`.
 
 ## Troubleshooting a framework bug
 
-Most failures are in *your* program — fix those here. But if you trace a problem
+Most failures are in *your* program; fix those here. But if you trace a problem
 to **Synalinks itself** (a stack trace inside the `synalinks` package, or a
 missing/broken framework feature), fix it at the source and upstream it:
 

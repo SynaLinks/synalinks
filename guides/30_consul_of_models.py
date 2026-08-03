@@ -17,13 +17,13 @@ before speaking again. A model that started out wrong can change its
 mind after seeing a stronger argument. At the end, a **chair**
 (itself a model) reads the whole transcript and delivers the
 council's verdict. This is the **multi-agent debate** setup of
-[Improving Factuality and Reasoning through Multiagent Debate (Du, Li, Torralba, Tenenbaum, Mordatch — 2024)](https://arxiv.org/abs/2305.14325),
+[Improving Factuality and Reasoning through Multiagent Debate (Du, Li, Torralba, Tenenbaum, Mordatch, 2024)](https://arxiv.org/abs/2305.14325),
 with the chair playing the role of the judge in
-[Multi-Agent Debate (Liang, He, Jiao, Wang, Wang, Wang, Yang, Tu, Shi — 2023)](https://arxiv.org/abs/2305.19118).
+[Multi-Agent Debate (Liang, He, Jiao, Wang, Wang, Wang, Yang, Tu, Shi, 2023)](https://arxiv.org/abs/2305.19118).
 
 The mental model is a jury, not a survey. A survey (mixture of models)
 collects independent opinions once. A jury (a consul) lets jurors
-argue, concede, and converge — the discussion itself is where the
+argue, concede, and converge; the discussion itself is where the
 value is.
 
 ## Consul vs. Mixture of Models
@@ -38,16 +38,16 @@ Both are multi-model. The difference is **interaction over time**:
 | Best for | Decorrelating one-shot errors | Questions where an *argument* changes the answer |
 | Final step | Aggregator | Chair (reads the debate) |
 
-Use a consul when the question has a **persuadable** quality — a
+Use a consul when the question has a **persuadable** quality: a
 reasoning trap, an ambiguous spec, a trade-off with no single right
-answer — where *seeing the case made* is what flips a wrong intuition.
+answer, where *seeing the case made* is what flips a wrong intuition.
 The classic example is a cognitive-reflection question: the intuitive
 answer is wrong, and one member spelling out the algebra is enough to
 pull the others off the wrong answer.
 
 The cost is a real risk: deliberation can produce **groupthink**. If a
 confident member states a wrong answer early, the others may anchor to
-it instead of correcting it. Two rounds is usually the sweet spot —
+it instead of correcting it. Two rounds is usually the sweet spot:
 enough for a correction to propagate, not so many that the council
 just keeps agreeing with itself.
 
@@ -76,7 +76,7 @@ running text log of who said what. It is just a string. Each member
 gets the question plus the transcript-so-far as input; its answer is
 appended to the transcript; the next member sees the longer version.
 A plain string (rather than a structured list) is the right choice
-here because the *only* consumer is another language model — text is
+here because the *only* consumer is another language model; text is
 exactly what it reads best, and it keeps the data model trivial.
 
 ## The Data Models
@@ -100,7 +100,7 @@ class Position(synalinks.DataModel):
 
 The chair reuses `DebateState` as input and emits a final `Answer`.
 Members are `ChainOfThought` modules, so each also produces an internal
-`thinking` field — useful to inspect, but we only append the public
+`thinking` field, useful to inspect, but we only append the public
 `position` to the transcript to keep it readable.
 
 ## Building the Members
@@ -130,13 +130,13 @@ The instruction does the deliberative heavy lifting. The two phrases
 that matter are *"if you disagree, say why"* (keeps the debate from
 collapsing into instant agreement) and *"if an argument convinced you,
 update your view"* (gives members explicit permission to change their
-mind — without it, models tend to stubbornly defend their first
+mind; without it, models tend to stubbornly defend their first
 answer).
 
 ## The Consul Program
 
 The council itself is a **subclassed `Program`** ([Guide 1b / Code
-Examples → Subclassing](https://synalinks.github.io/synalinks/Code%20Examples/Subclassing/)). Its `call` method holds the round loop —
+Examples → Subclassing](https://synalinks.github.io/synalinks/Code%20Examples/Subclassing/)). Its `call` method holds the round loop:
 ordinary Python `for` loops over rounds and members, which is exactly
 why we subclass rather than use the functional API: the control flow
 is dynamic and data-dependent.
@@ -156,7 +156,7 @@ class Consul(synalinks.Program):
             for name, member in self.members.items():
                 state = DebateState(question=question, transcript=transcript)
                 opinion = await member(state)
-                line = f"Round {r + 1} — {name}: {opinion['position']}"
+                line = f"Round {r + 1}, {name}: {opinion['position']}"
                 transcript = (
                     line if transcript.startswith("(no")
                     else transcript + "\\n" + line
@@ -170,15 +170,15 @@ Two design decisions are worth naming:
 
 1. **Members speak in turn, not simultaneously.** Within a round we
    append each member's position immediately, so later speakers in the
-   *same* round already see the earlier ones — a roundtable, not a
+   *same* round already see the earlier ones: a roundtable, not a
    sealed-ballot vote. This propagates a good correction faster (it can
    take effect the same round). If you would rather avoid early speakers
    biasing later ones, run a round's members in parallel (share one
    `inputs`, as in [Guide 29](https://synalinks.github.io/synalinks/guides/Mixture%20of%20Models/)) and append all positions only at the
    round boundary.
 2. **A fixed round count, not convergence detection.** We stop after
-   `rounds` passes. You *could* stop early once positions stop changing
-   — but detecting genuine consensus (rather than parroting) is its own
+   `rounds` passes. You *could* stop early once positions stop changing,
+   but detecting genuine consensus (rather than parroting) is its own
    hard problem, and a small fixed budget is the robust default.
 
 For serialization, a subclassed program implements `get_config` /
@@ -210,7 +210,7 @@ def from_config(cls, config):
 
 ## Complete Example
 
-We put a **cognitive-reflection** question to the council — the
+We put a **cognitive-reflection** question to the council: the
 bat-and-ball problem, whose intuitive answer (10¢) is wrong and whose
 correct answer (5¢) needs one line of algebra. Watch the transcript:
 typically a member blurts the intuitive 10¢, another lays out
@@ -282,7 +282,7 @@ class Consul(synalinks.Program):
             for name, member in self.members.items():
                 state = DebateState(question=question, transcript=transcript)
                 opinion = await member(state)
-                line = f"Round {r + 1} — {name}: {opinion['position']}"
+                line = f"Round {r + 1}, {name}: {opinion['position']}"
                 transcript = (
                     line if transcript.startswith("(no")
                     else transcript + "\\n" + line
@@ -326,7 +326,7 @@ Council verdict: The ball costs $0.05.
 (Since `bat = ball + 1.00` and `ball + bat = 1.10`, we get
 `2*ball + 1.00 = 1.10`, so `ball = 0.05` and `bat = 1.05`.)
 
-The headline result — 5¢, not the tempting 10¢ — is what a single
+The headline result (5¢, not the tempting 10¢) is what a single
 small model often gets *wrong* on this question. The council gets it
 right not because any one member is reliable, but because once one
 member writes down the algebra, the others can read it and concede.
@@ -340,14 +340,14 @@ wrong first answer is **recoverable** mid-run.
   statements before speaking again, and a **chair** delivers the final
   verdict.
 - It differs from a **mixture of models** ([Guide 29](https://synalinks.github.io/synalinks/guides/Mixture%20of%20Models/)) by adding
-  *interaction over time* — members can be argued out of a mistake.
+  *interaction over time*: members can be argued out of a mistake.
   Use it for **persuadable** questions (reasoning traps, ambiguous
   specs), not for decorrelating one-shot errors.
 - The **transcript is a plain string** every member reads and appends
   to; it is the only shared state.
 - Members are **functional `Program`s** with deliberative instructions;
   the **`Consul` is a subclassed `Program`** whose `call` holds the
-  round loop — dynamic control flow is exactly what subclassing is for.
+  round loop; dynamic control flow is exactly what subclassing is for.
 - **Two rounds is the usual sweet spot.** More rounds risk
   **groupthink**: the council agreeing with itself rather than
   improving.
@@ -456,7 +456,7 @@ class Consul(synalinks.Program):
             for name, member in self.members.items():
                 state = DebateState(question=question, transcript=transcript)
                 opinion = await member(state)
-                line = f"Round {r + 1} — {name}: {opinion['position']}"
+                line = f"Round {r + 1}, {name}: {opinion['position']}"
                 transcript = (
                     line if transcript.startswith("(no") else transcript + "\n" + line
                 )
@@ -510,7 +510,8 @@ async def main():
             "mistral", synalinks.LanguageModel(model="ollama/mistral:latest")
         ),
         "qwen": await build_member(
-            "qwen", synalinks.LanguageModel(model="ollama/qwen3:8b", reasoning_effort="disable")
+            "qwen",
+            synalinks.LanguageModel(model="ollama/qwen3:8b", reasoning_effort="disable"),
         ),
     }
     chair = await build_chair(synalinks.LanguageModel(model="ollama/mistral:latest"))

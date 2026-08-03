@@ -3,6 +3,7 @@
 import asyncio
 import base64
 import contextvars
+import dataclasses
 import difflib
 import inspect
 import io
@@ -52,7 +53,7 @@ _LAUNCHER = "import base64,sys;exec(base64.b64decode(sys.argv[1]))"
 # The bootstrap runs inside Mirage's real CPython subprocess. Mirage spawns a
 # fresh ``python3`` per command, so to make variables/imports/functions persist
 # across ``run`` calls we serialize the user namespace with ``dill`` after each
-# snippet and restore it before the next — true REPL state without replaying
+# snippet and restore it before the next: true REPL state without replaying
 # earlier snippets (and their side effects). The namespace lives in a dedicated
 # dict (``ns``) the snippet runs in, pickled with explicit file I/O:
 # ``dill.dump_module`` is deliberately avoided because it embeds its origin path
@@ -115,7 +116,7 @@ def _confine(cfg):
     def _bind(d, readonly):
         # Bind ``d`` at the same path under the new root. A bind mount inherits
         # the source's writability, so making it read-only needs a *second*
-        # remount (MS_BIND | MS_REMOUNT | MS_RDONLY) — a single mount() cannot
+        # remount (MS_BIND | MS_REMOUNT | MS_RDONLY); a single mount() cannot
         # express a read-only bind. Read-only binds (the Python runtime: venv,
         # stdlib, system lib/bin) stop confined code from poisoning files the
         # *host* later imports outside the sandbox; ``_hostdir`` is bound
@@ -126,11 +127,11 @@ def _confine(cfg):
             os.makedirs(mp + d, exist_ok=True)
             _mount(d, mp + d, None, MS_BIND | MS_REC)
         except OSError:
-            return  # cannot bind this dir at all — skip it
+            return  # cannot bind this dir at all; skip it
         if readonly:
             # Lock it read-only and FAIL CLOSED if that can't be done: swallowing
             # the failure would leave the runtime writable while we still claim
-            # (and ``granted_capabilities`` reports) read-only — a fail-open that
+            # (and ``granted_capabilities`` reports) read-only, a fail-open that
             # re-opens the venv-poisoning escape. This remount is deliberately
             # OUTSIDE the try/except so an error propagates to ``_confine`` →
             # ``sys.exit(99)``. ``nosuid``/``nodev`` are re-specified so the
@@ -160,7 +161,7 @@ def _confine(cfg):
     # old PID namespace, so we must fork. The child is PID 1 of the new namespace
     # and does the rest of the confinement (mount /proc, pivot_root, seccomp) and
     # runs the snippet; because it mounts a fresh procfs while inside the new
-    # PID namespace, that /proc shows ONLY namespaced PIDs — host processes are
+    # PID namespace, that /proc shows ONLY namespaced PIDs; host processes are
     # no longer visible, removing any reliance on the userns credential check to
     # keep /proc/<host-pid>/root and /environ unreadable. The parent waits and
     # propagates the child's exit status (so the host still sees the real code).
@@ -209,8 +210,8 @@ def _confine(cfg):
     # Seccomp goes LAST: it denies mount/unshare/pivot_root, which the steps
     # above still need. The filter (a prebuilt classic-BPF ``sock_filter[]``
     # blob, base64'd by the host) shrinks the kernel attack surface a confined
-    # process can reach — eBPF, ptrace, userfaultfd, perf, keyrings, module
-    # loading, kexec, namespace ops, open_by_handle_at, etc. — returning EPERM.
+    # process can reach (eBPF, ptrace, userfaultfd, perf, keyrings, module
+    # loading, kexec, namespace ops, open_by_handle_at, etc.), returning EPERM.
     sec = cfg.get("seccomp")
     if sec:
         import base64 as _b64
@@ -367,7 +368,7 @@ def _unified_body(
     Wraps ``difflib.unified_diff`` and appends git's ``\\ No newline at end of
     file`` marker after any hunk line whose source lacked a trailing newline,
     so the output applies cleanly. Once inside a hunk we never re-classify
-    lines by prefix — a deleted line like ``--foo`` becomes ``---foo`` and must
+    lines by prefix: a deleted line like ``--foo`` becomes ``---foo`` and must
     not be mistaken for a header.
     """
     parts: List[str] = []
@@ -535,7 +536,7 @@ def _sync_close_workspace(ws) -> None:
     tasks). So:
 
     * with **no running loop** (a finalizer, ``gc.collect``, interpreter exit, or
-      a plain sync caller) we drive the full coroutine via ``asyncio.run`` —
+      a plain sync caller) we drive the full coroutine via ``asyncio.run``:
       unmount *and* cache drain;
     * with a **loop already running** (called from inside async code) we can't
       block on it, so we release the mount synchronously via ``_close_parts``
@@ -639,7 +640,7 @@ def _confinement_available() -> tuple[bool, str]:
     unprivileged user namespaces. The confinement is Linux-only by
     construction (``unshare`` / ``pivot_root`` / FUSE / seccomp have no Windows
     equivalent), so on Windows the intended path is to run inside **WSL2**,
-    where it works unchanged — the reason string says so, and
+    where it works unchanged; the reason string says so, and
     ``require_confinement=True`` turns that into a hard error rather than a
     silent unconfined run.
     """
@@ -739,14 +740,14 @@ def _confinement_smoke_test() -> "Tuple[bool, str]":
 _AUDIT_ARCH = {"x86_64": 0xC000003E, "aarch64": 0xC00000B7}
 
 # Syscalls a confined process is denied (returned EPERM). Not an attempt at a
-# minimal allowlist — sandboxed code runs arbitrary Python + packages, so this
+# minimal allowlist: sandboxed code runs arbitrary Python + packages, so this
 # is a denylist of high-risk calls a normal workload never needs: kernel attack
 # surface (bpf, userfaultfd, perf_event_open, ptrace, process_vm_*), privilege /
 # namespace manipulation (mount, umount2, pivot_root, chroot, unshare, setns),
 # module loading + kexec, keyrings (keyctl/add_key/request_key), the
 # open_by_handle_at container-escape vector, and host-management calls
 # (reboot, swapon/off, acct, quotactl, iopl/ioperm). ``clone``/``clone3`` are
-# deliberately *not* denied — modern glibc routes threading/fork through them.
+# deliberately *not* denied: modern glibc routes threading/fork through them.
 _SECCOMP_DENY = {
     "x86_64": [
         101,
@@ -876,7 +877,7 @@ def _host_allowed(host: str, patterns: List[str]) -> bool:
 
     Case-insensitive, trailing dot ignored. A bare entry matches that host
     exactly; a ``*.example.com`` entry matches any subdomain **and** the apex
-    ``example.com``. No entry matches everything — an empty allowlist denies all.
+    ``example.com``. No entry matches everything; an empty allowlist denies all.
     """
     host = (host or "").lower().rstrip(".")
     for pat in patterns:
@@ -897,7 +898,7 @@ def _reject_private(host: str, port: Optional[int], scheme: str) -> str:
     (RFC 1918), link-local (incl. the ``169.254.169.254`` cloud-metadata IP),
     reserved, multicast and unspecified addresses (``PermissionError`` if any
     resolved address is non-public). Returns the first validated IP so the
-    caller can **pin** the connection to it — closing the DNS-rebinding window
+    caller can **pin** the connection to it, closing the DNS-rebinding window
     where the host could re-resolve to an internal address between this check
     and the connect.
     """
@@ -938,7 +939,7 @@ def _do_fetch(url, method, headers, data, patterns, timeout, max_bytes, block_pr
     allowlist is enforced where the model cannot reach around it. Redirects are
     re-checked, so an allowlisted host cannot bounce the request off-list, and
     (unless ``block_private`` is False) every hop's resolved address must be
-    public **and the connection is pinned to that validated IP** — so a host
+    public **and the connection is pinned to that validated IP**, so a host
     cannot re-resolve to an internal address after the check (no DNS-rebinding
     TOCTOU). TLS still validates the cert against the original hostname (SNI).
     """
@@ -1057,7 +1058,7 @@ def _make_egress_tool(patterns: List[str], timeout: float, block_private: bool):
 
 # Confinement config for the *currently executing* ``run_bash`` of a confined
 # sandbox, read by the ``_run_python`` patch below. ``None`` (the default) means
-# "not in a confined run_bash", so the patch is a no-op — every other code path,
+# "not in a confined run_bash", so the patch is a no-op; every other code path,
 # including ``run`` (which confines via its own bootstrap) and unconfined
 # sandboxes, is unaffected.
 _active_confine: contextvars.ContextVar[Optional[Dict[str, Any]]] = (
@@ -1067,11 +1068,15 @@ _run_python_patched = False
 
 # Mirage's internal python runner, by layout, newest first. It moved from
 # ``workspace.executor.builtins._run_python`` (older Mirage) to
-# ``commands.builtin.general.python._run_python_subprocess`` (mirage-ai 0.0.2+).
-# Both are ``async def f(code, stdin_data, args, env)``; we patch whichever the
-# installed Mirage actually exposes. Add new locations to the *front* as Mirage
-# evolves so the current layout is preferred.
+# ``commands.builtin.general.python._run_python_subprocess`` (mirage-ai 0.0.2)
+# and, in 0.0.4, into the pluggable runtime table as
+# ``runtime.python.local.LocalRuntime.run`` (``async def run(self, RunArgs)``).
+# Each entry is ``(module, qualname)`` resolved attribute-by-attribute, so a
+# class method and a module-level function are both addressable. We patch
+# whichever the installed Mirage exposes; add new locations to the *front* as
+# Mirage evolves so the current layout is preferred.
 _RUN_PYTHON_TARGETS = (
+    ("mirage.runtime.python.local", "LocalRuntime.run"),
     ("mirage.commands.builtin.general.python", "_run_python_subprocess"),
     ("mirage.workspace.executor.builtins", "_run_python"),
 )
@@ -1094,16 +1099,25 @@ def _install_run_python_patch() -> bool:
 
     import importlib
 
-    module = original = None
+    owner = original = None
     attr = ""
-    for mod_name, attr_name in _RUN_PYTHON_TARGETS:
+    for mod_name, qualname in _RUN_PYTHON_TARGETS:
         try:
-            candidate_mod = importlib.import_module(mod_name)
+            candidate_owner = importlib.import_module(mod_name)
         except Exception:  # noqa: BLE001 - mirage layout changed / unavailable
             continue
-        candidate = getattr(candidate_mod, attr_name, None)
+        # Walk the qualname so ``LocalRuntime.run`` (a method) resolves the same
+        # way a bare module-level function does; the last hop is what we patch.
+        *parents, attr_name = qualname.split(".")
+        for parent in parents:
+            candidate_owner = getattr(candidate_owner, parent, None)
+            if candidate_owner is None:
+                break
+        if candidate_owner is None:
+            continue
+        candidate = getattr(candidate_owner, attr_name, None)
         if candidate is not None and inspect.iscoroutinefunction(candidate):
-            module, attr, original = candidate_mod, attr_name, candidate
+            owner, attr, original = candidate_owner, attr_name, candidate
             break
 
     if original is None:
@@ -1119,37 +1133,135 @@ def _install_run_python_patch() -> bool:
         )
         return False
 
-    async def _patched_run_python(code, stdin_data=None, args=None, env=None):
+    def _confined(code: str) -> str:
+        # ``repr`` (not ``json.dumps``) so the embedded config is valid Python
+        # source (True/False/None, not JSON true/false/null).
         cfg = _active_confine.get()
-        if cfg is not None:
-            # ``repr`` (not ``json.dumps``) so the embedded config is valid
-            # Python source (True/False/None, not JSON true/false/null).
-            prologue = "import os\n" + _CONFINE_SRC + "\n_confine(" + repr(cfg) + ")\n"
-            code = prologue + code
-        return await original(code, stdin_data, args=args, env=env)
+        if cfg is None:
+            return code
+        return "import os\n" + _CONFINE_SRC + "\n_confine(" + repr(cfg) + ")\n" + code
+
+    if inspect.isclass(owner):
+        # 0.0.4+ runtime-table layout: ``async def run(self, RunArgs)``. RunArgs
+        # is a frozen dataclass, so the prologue goes on via ``replace``.
+        async def _patched_run_python(self, args):
+            patched = dataclasses.replace(args, code=_confined(args.code))
+            return await original(self, patched)
+
+    else:
+        # Pre-0.0.4 layout: ``async def f(code, stdin_data, args, env)``.
+        async def _patched_run_python(code, stdin_data=None, args=None, env=None):
+            return await original(_confined(code), stdin_data, args=args, env=env)
 
     _patched_run_python._mirage_sandbox_original = original  # for introspection
-    setattr(module, attr, _patched_run_python)
+    setattr(owner, attr, _patched_run_python)
     _run_python_patched = True
     return True
+
+
+# Which Mirage runtime serves ``python3``. This sandbox needs a *real* CPython:
+# the snippet bootstrap dill-loads the persisted namespace, imports third-party
+# packages and talks to the host over a unix socket for tool RPC. Mirage's own
+# default world binds ``python3`` to ``monty`` (a Rust Python subset) and would
+# serve none of that, so ``local`` (host CPython subprocess) is selected here
+# and *this* module supplies the isolation: `_install_run_python_patch` prepends
+# the namespace/seccomp prologue to every ``python3`` the shell spawns, exactly
+# as ``run``'s own bootstrap self-confines.
+_DEFAULT_RUNTIMES = ("local",)
+
+# Runtimes that keep execution inside a sandbox of Mirage's own: ``monty`` (a
+# Rust interpreter with "no host filesystem, environment, or network access"),
+# ``wasi`` and ``quickjs`` (CPython / quickjs-ng under wasmtime, whose file I/O
+# is routed through the workspace dispatch), and ``vfs`` (the workspace's own
+# command engine). ``local`` is deliberately absent: it reaches the host, and is
+# only safe under confinement once the run-python patch is installed, which the
+# call site checks. Deliberately an allowlist: an unrecognized runtime counts as
+# host-escaping rather than being trusted by default.
+_SANDBOXED_RUNTIMES = frozenset({"monty", "wasi", "quickjs", "vfs"})
+_SANDBOXED_RUNTIMES_HINT = ", ".join(sorted(_SANDBOXED_RUNTIMES))
+
+
+def _runtime_name(entry) -> str:
+    """Name of a Mirage runtime entry, given either a name or an instance."""
+    if isinstance(entry, str):
+        return entry
+    return str(getattr(entry, "name", "") or entry.__class__.__name__)
+
+
+def _host_escaping_runtimes(runtimes, patched: bool = False) -> List[str]:
+    """Names of ``runtimes`` entries that can execute code on the host.
+
+    Keeps an explicit ``workspace_kwargs={"runtimes": ...}`` from quietly
+    defeating confinement; see the call site for the policy. ``local`` is
+    excused only when ``patched`` says `_install_run_python_patch` succeeded, so
+    every ``python3`` it spawns carries the confinement prologue. ``None``
+    (meaning this sandbox's own default world) is resolved first, so the default
+    is judged by the same rule as anything a caller passes.
+    """
+    allowed = set(_SANDBOXED_RUNTIMES)
+    if patched:
+        allowed.add("local")
+    entries = runtimes if runtimes else _DEFAULT_RUNTIMES
+    return [
+        name
+        for name in (_runtime_name(entry) for entry in entries)
+        if name not in allowed
+    ]
+
+
+def _adopt_runtimes(ws, runtimes=_DEFAULT_RUNTIMES) -> None:
+    """Re-apply this sandbox's runtime world to a copied/loaded workspace.
+
+    ``Workspace.copy()`` and ``Workspace.load()`` both rebuild through Mirage's
+    ``_from_state``, which does not carry ``runtimes`` over: the new workspace
+    silently reverts to Mirage's default world, where ``python3`` is ``monty``
+    rather than the host CPython this sandbox's bootstrap needs. Re-adding the
+    entry restores it.
+
+    ``add_runtime`` appends, and the first capturer of a command wins, so this
+    only takes effect while nothing ahead of it claims ``python3`` (the usual
+    case: Mirage skips ``monty`` when its optional extra is absent). If
+    something does, the fork would quietly stop being able to run Python, so
+    say so rather than degrade in silence.
+    """
+    for name in runtimes:
+        try:
+            ws.add_runtime(name)
+        except Exception:  # noqa: BLE001 - already present / unknown to Mirage
+            continue
+    bindings = getattr(getattr(ws, "_registry", None), "runtime_bindings", None)
+    if bindings is None:
+        return
+    bound = _runtime_name(bindings.get("python3")) if bindings.get("python3") else ""
+    if bound not in runtimes:
+        import warnings
+
+        warnings.warn(
+            f"MirageSandbox: 'python3' is served by {bound or 'no runtime'} in "
+            f"this workspace, not {'/'.join(runtimes)}; the sandbox bootstrap "
+            "needs a real CPython, so Python execution will fail. Pass "
+            "workspace_kwargs={'runtimes': [...]} to choose explicitly.",
+            RuntimeWarning,
+            stacklevel=2,
+        )
 
 
 def _ensure_fuse_mounted(ws) -> bool:
     """Mount ``ws``'s virtual filesystem via FUSE if not already; return success.
 
-    ``Workspace.copy()`` (used by `fork`) does not carry over the FUSE mount,
-    so a confined fork sets one up here by replaying what ``fuse=True`` does in
-    Mirage's ``Workspace.__init__`` (``self._fuse.setup(self)``). Uses a private
-    Mirage attribute; returns False (so the caller falls back to unconfined) if
-    the layout changed or the mount fails.
+    Both construction and `fork` need this: mirage-ai 0.0.4 dropped the
+    ``Workspace(fuse=True)`` constructor flag (FUSE is now declared per mount,
+    or requested afterwards), and ``Workspace.copy()`` does not carry a mount
+    over to the child either. Returns False (so the caller falls back to
+    unconfined) when FUSE is unavailable or the mount fails.
     """
     if getattr(ws, "fuse_mountpoint", None):
         return True
-    fuse = getattr(ws, "_fuse", None)
-    if fuse is None or not hasattr(fuse, "setup"):
+    add_mount = getattr(ws, "add_fuse_mount", None)
+    if add_mount is None:
         return False
     try:
-        fuse.setup(ws)
+        add_mount(_DEFAULT_MOUNT)
     except Exception:  # noqa: BLE001 - FUSE unavailable / layout changed
         return False
     return bool(getattr(ws, "fuse_mountpoint", None))
@@ -1211,7 +1323,7 @@ class MirageSandbox(Sandbox):
         The sandbox API is experimental and may change in a future
         release.
 
-    Wraps a Mirage ``Workspace`` — a virtual filesystem that mounts resources
+    Wraps a Mirage ``Workspace``: a virtual filesystem that mounts resources
     (RAM, disk, S3, Postgres, SSH, ...) under virtual paths and runs shell
     commands against them. ``run`` executes Python through Mirage's ``python3``
     builtin, and the file tools (`read_file`, `write_file`, ...) operate
@@ -1239,7 +1351,7 @@ class MirageSandbox(Sandbox):
     bridges this by serializing the interpreter namespace (variables, imports,
     user-defined functions and classes) with ``dill`` after each snippet and
     restoring it before the next. State therefore persists across ``run`` calls
-    just like a REPL — without replaying earlier snippets — and a snippet that
+    just like a REPL (without replaying earlier snippets), and a snippet that
     raises does not wipe the accumulated namespace.
 
     ## Confinement (the default; `confine=True`, Linux)
@@ -1248,7 +1360,7 @@ class MirageSandbox(Sandbox):
     **confined**: it enters a fresh user / mount / PID / network namespace and
     ``pivot_root``s into the FUSE-mounted virtual filesystem, so the snippet
     sees **only** the virtual sandbox at ``/`` (and, via the PID namespace, only
-    its own processes in ``/proc`` — no host PIDs). Its own ``open(...)`` /
+    its own processes in ``/proc``: no host PIDs). Its own ``open(...)`` /
     ``pathlib`` land on the mount (one filesystem, shared with the file tools),
     the host filesystem is hidden, and the network is cut. A seccomp denylist
     (``seccomp=True``) shrinks the reachable kernel syscall surface, and the
@@ -1263,7 +1375,7 @@ class MirageSandbox(Sandbox):
 
     ## Windows (run under WSL2)
 
-    Confinement is Linux-only by construction — ``unshare`` / ``pivot_root`` /
+    Confinement is Linux-only by construction: ``unshare`` / ``pivot_root`` /
     FUSE / seccomp have no native-Windows equivalent. The supported way to get
     it on Windows is to run synalinks **inside WSL2** (Windows Subsystem for
     Linux 2): it is a real Linux kernel, so confinement works unchanged, and
@@ -1272,7 +1384,7 @@ class MirageSandbox(Sandbox):
     confinement is unavailable: a default ``MirageSandbox()`` falls back to
     unconfined with a ``RuntimeWarning`` pointing at WSL2, and
     ``require_confinement=True`` raises rather than running an LM's code
-    unconfined. (WSL1 also cannot confine — it has no ``/dev/fuse``; use WSL2.)
+    unconfined. (WSL1 also cannot confine: it has no ``/dev/fuse``; use WSL2.)
 
     ## Unconfined (`confine=False`)
 
@@ -1284,7 +1396,7 @@ class MirageSandbox(Sandbox):
     - The Mirage **virtual** filesystem (the mounted resources) is reached
       through the shell and the sandbox's file tools (`read_file`,
       `write_file`, `list_files`, `search_files`, `edit_file`,
-      `run_python_file`) — where mounted S3 buckets, disks, etc. live.
+      `run_python_file`), where mounted S3 buckets, disks, etc. live.
 
     They are separate spaces, so use the file tools / shell for the mounts and
     ``run`` for computation. Choose this only for trusted code that must reach
@@ -1293,7 +1405,7 @@ class MirageSandbox(Sandbox):
     ## Bound tools and mounts are the real boundary
 
     Confinement hides the host and cuts the network, but **bound functions and
-    mounted resources are capabilities you hand in** — a prompt-injected model
+    mounted resources are capabilities you hand in**: a prompt-injected model
     will use whatever you expose. Bind only the tools the task needs, mount only
     what it needs (read-only where possible), prefer ``allowed_hosts`` over
     ``confine_network`` for egress, and call `granted_capabilities` to audit
@@ -1339,7 +1451,7 @@ class MirageSandbox(Sandbox):
             pivoted into the FUSE-mounted virtual filesystem: the snippet sees
             **only** the virtual sandbox at ``/`` (its ``open()`` lands on the
             mount, unifying it with the file tools), the host filesystem is
-            hidden, and the network is cut. Rootless, in-process — no container
+            hidden, and the network is cut. Rootless, in-process: no container
             runtime. Requires ``/dev/fuse`` and unprivileged user namespaces;
             on an unsupported host it is disabled with a ``RuntimeWarning``
             (graceful fallback). **Defaults to ``True``** (secure by default): a
@@ -1349,9 +1461,9 @@ class MirageSandbox(Sandbox):
             ``require_confinement=True`` to make the fallback a hard error.
         require_confinement (bool): Optional. Make confinement **fail closed**.
             When ``True`` (implies ``confine=True``), any condition that would
-            otherwise silently fall back to *unconfined* execution — confinement
+            otherwise silently fall back to *unconfined* execution (confinement
             unavailable on the host, the FUSE mount failing to come up, or a
-            ``fork(confine=True)`` that cannot confine — raises instead of
+            ``fork(confine=True)`` that cannot confine) raises instead of
             warning, and a `run` / `run_bash` whose confinement is not active is
             refused. Use this for untrusted (e.g. LM-generated) code, where a
             missing isolation boundary must be a hard error rather than a warning
@@ -1364,21 +1476,21 @@ class MirageSandbox(Sandbox):
             elsewhere it is a no-op. Defaults to ``True``.
         confine_network (bool): Optional. Keep **full** network access inside a
             confined run (skip the network namespace). All-or-nothing and not
-            filtered — prefer ``allowed_hosts`` for restricted egress. Defaults
+            filtered; prefer ``allowed_hosts`` for restricted egress. Defaults
             to ``False`` (no network).
         allowed_hosts (list): Optional. Egress allowlist. When set, a host-
             mediated ``http_fetch`` tool is bound that reaches only these hosts
             (exact, or ``*.example.com`` for subdomains + apex; redirects are
             re-checked). Under confinement the network is cut, so this tool is
             the *only* egress path and the model cannot open raw sockets around
-            it — enforced host-side. Without ``confine=True`` it is advisory
+            it (enforced host-side). Without ``confine=True`` it is advisory
             (raw sockets still work) and a ``RuntimeWarning`` is emitted.
             ``None`` (default) binds no egress tool.
         block_private_egress (bool): Optional. When ``True`` (default), the
             ``http_fetch`` egress tool additionally refuses hosts that resolve
-            to non-public addresses — loopback, private (RFC 1918), link-local
-            (including the ``169.254.169.254`` cloud-metadata IP), reserved or
-            multicast — re-checked on each redirect, and **pins the connection
+            to non-public addresses (loopback, private RFC 1918, link-local
+            including the ``169.254.169.254`` cloud-metadata IP, reserved or
+            multicast), re-checked on each redirect, and **pins the connection
             to the validated IP** so a host cannot re-resolve to an internal
             address after the check (no DNS-rebinding window; TLS still verifies
             the cert against the hostname). An SSRF guard so an allowlisted name
@@ -1401,10 +1513,14 @@ class MirageSandbox(Sandbox):
             (there the whole host filesystem is already visible). Read-only.
         workspace_kwargs (dict): Optional. Extra keyword arguments forwarded to
             the Mirage ``Workspace`` constructor (e.g. ``consistency``,
-            ``cache_limit``, ``fuse``). ``native=True`` (which runs ``run_bash``
-            on the **host** shell, bypassing the virtual-filesystem sandbox and
-            confinement) is rejected under ``require_confinement`` and stripped
-            with a warning whenever ``confine`` is active.
+            ``cache_limit``, ``runtimes``). Under confinement the ``runtimes``
+            list is restricted to known-sandboxed engines
+            (``monty``, ``quickjs``, ``vfs``, ``wasi``); any other entry (such
+            as ``local``, which runs code on the **host** interpreter and so
+            bypasses confinement) is rejected under ``require_confinement`` and
+            stripped with a warning whenever ``confine`` is active. Mirage's
+            default runtime world is already sandboxed, so leaving ``runtimes``
+            unset needs no such handling.
         external_functions (dict): Optional. ``name -> callable`` mapping bound
             persistently and exposed inside the sandbox on every run (see
             above).
@@ -1416,14 +1532,14 @@ class MirageSandbox(Sandbox):
         "across runs: variables, imports, functions and classes defined in "
         "earlier runs remain available, and an error does not reset the "
         "namespace. Use `print(...)` to emit results to stdout; the value of the "
-        "snippet's last expression is also captured (the `result` convention — "
+        "snippet's last expression is also captured (the `result` convention: "
         "end with a `result` expression to return it). Any tools bound to the "
         "sandbox are exposed as global functions; call them directly, "
         "`result = tool_name(...)`. By default the sandbox is "
         "confined: `open(...)` / `pathlib` and the file tools (`read_file`, "
         "`write_file`, `list_files`, ...) operate on one shared virtual "
         "filesystem (use absolute paths like `/work/out.txt`), the host "
-        "filesystem is hidden, and outbound network is disabled — reach the "
+        "filesystem is hidden, and outbound network is disabled; reach the "
         "network only through a bound tool such as `http_fetch` when one is "
         "provided."
     )
@@ -1478,6 +1594,10 @@ class MirageSandbox(Sandbox):
         # filesystem (no host fs, no network). Gated on platform support; on an
         # unsupported host it is disabled with a warning (graceful fallback).
         self._confine = bool(confine)
+        # Whether ``run_bash``'s ``python3`` carries the confinement prologue.
+        # False until the patch actually installs, so the runtime guard below
+        # judges the boundary by what is in place, not by what was requested.
+        self._run_python_patched = False
         # Fail-closed: when ``require_confinement`` is set, every path that would
         # otherwise silently fall back to *unconfined* execution raises instead.
         # Use this when the sandbox runs untrusted (e.g. LM-generated) code and a
@@ -1508,7 +1628,7 @@ class MirageSandbox(Sandbox):
             )
         # Egress allowlist: when set, a host-mediated ``http_fetch`` tool is bound
         # that only reaches allowlisted hosts. Combined with a cut network
-        # (confined, default), that is the *only* path out — the model cannot
+        # (confined, default), that is the *only* path out; the model cannot
         # open raw sockets around it. ``None`` leaves egress unrestricted-by-tool.
         self._allowed_hosts = list(allowed_hosts) if allowed_hosts is not None else None
         self._block_private_egress = bool(block_private_egress)
@@ -1524,7 +1644,7 @@ class MirageSandbox(Sandbox):
 
                 warnings.warn(
                     "MirageSandbox(allowed_hosts=...) without confine=True: the "
-                    "allowlist is advisory — unconfined code can open raw sockets "
+                    "allowlist is advisory: unconfined code can open raw sockets "
                     "to any host. Set confine=True to enforce it.",
                     RuntimeWarning,
                     stacklevel=2,
@@ -1554,40 +1674,56 @@ class MirageSandbox(Sandbox):
                 )
                 self._confine = False
             else:
-                # Confinement needs the virtual filesystem exposed via FUSE so
-                # the snippet's own ``open()`` lands on the mount.
-                self._workspace_kwargs.setdefault("fuse", True)
-                # Also confine ``python3`` spawned via ``run_bash`` (Mirage's
-                # builtin), not just ``run``'s bootstrap.
-                _install_run_python_patch()
+                # Confine ``python3`` spawned via ``run_bash`` (Mirage's
+                # builtin), not just ``run``'s bootstrap. The FUSE mount the
+                # snippet pivots into is set up by ``_new_workspace``.
+                self._run_python_patched = _install_run_python_patch()
 
-        # ``native=True`` routes ``run_bash`` through a REAL host shell (Mirage's
-        # ``native_exec`` → ``/bin/sh -c``), bypassing both the builtin
-        # virtual-filesystem sandbox AND the ``run_bash`` confinement patch
-        # (``run`` still self-confines in its bootstrap, but ``run_bash`` would
-        # execute host commands directly). It is therefore incompatible with
-        # confinement: hard-error under ``require_confinement``, and strip it
-        # (with a warning) whenever confinement is active.
-        if self._workspace_kwargs.get("native"):
+        # A runtime decides where a command's code actually executes, so under
+        # confinement it is part of the boundary. ``local`` (this sandbox's
+        # default, and what ``python3`` needs to be real CPython) spawns a host
+        # subprocess that "sees the host filesystem and environment, not the
+        # workspace mounts" -- safe here only because the patch above prepends
+        # the confinement prologue to every snippet it runs. If that patch could
+        # not be installed, or a caller swaps in a runtime we cannot vouch for,
+        # the boundary has a hole: hard-error under ``require_confinement``,
+        # strip (with a warning) whenever ``confine`` is active. Fail-closed on
+        # purpose: anything unrecognized counts as host-escaping, so a runtime
+        # added by a future Mirage release cannot silently inherit trust it was
+        # never audited for.
+        escaping = _host_escaping_runtimes(
+            self._workspace_kwargs.get("runtimes"),
+            patched=self._run_python_patched,
+        )
+        if escaping and (self._confine or self._require_confinement):
+            listed = ", ".join(repr(name) for name in escaping)
             if self._require_confinement:
                 raise ValueError(
-                    "MirageSandbox(require_confinement=True) is incompatible with "
-                    "workspace_kwargs={'native': True}: native mode runs run_bash "
-                    "on the host shell, bypassing confinement."
+                    "MirageSandbox(require_confinement=True): runtime "
+                    f"{listed} can execute code on the host, bypassing "
+                    "confinement. Use only sandboxed runtimes "
+                    f"({_SANDBOXED_RUNTIMES_HINT}), or 'local' on a host where "
+                    "the run-python confinement patch applies."
                 )
-            if self._confine:
-                import warnings
+            import warnings
 
-                warnings.warn(
-                    "MirageSandbox: workspace_kwargs={'native': True} runs "
-                    "run_bash on the host shell and bypasses confinement; "
-                    "disabling it because confine=True.",
-                    RuntimeWarning,
-                    stacklevel=2,
-                )
-                self._workspace_kwargs.pop("native", None)
+            warnings.warn(
+                f"MirageSandbox: runtime {listed} executes code on the host "
+                "and bypasses confinement; dropping it because confine=True.",
+                RuntimeWarning,
+                stacklevel=2,
+            )
+            kept = [
+                entry
+                for entry in (self._workspace_kwargs.get("runtimes") or _DEFAULT_RUNTIMES)
+                if _runtime_name(entry) in _SANDBOXED_RUNTIMES
+            ]
+            # Pin the survivors explicitly (even when empty): dropping the key
+            # would fall back to this sandbox's ``local`` default, which is the
+            # very thing being removed. An empty list leaves Mirage's bare vfs.
+            self._workspace_kwargs["runtimes"] = kept
 
-        self._ws = Workspace(self._resources, mode=self._mode, **self._workspace_kwargs)
+        self._ws = self._new_workspace()
         self._fuse_mountpoint = getattr(self._ws, "fuse_mountpoint", None)
         if self._require_confinement and not self._fuse_mountpoint:
             raise RuntimeError(
@@ -1623,7 +1759,7 @@ class MirageSandbox(Sandbox):
 
         Honors a per-mount ``(resource, mode)`` tuple as given. For a bare
         resource: uses ``explicit_mode`` when the caller passed ``mode=``;
-        otherwise applies the least-privilege default — ``EXEC`` for the root
+        otherwise applies the least-privilege default: ``EXEC`` for the root
         scratch mount (it must be writable and run ``python3``) and ``READ``
         (read-only) for any other mount, so external resources are not writable
         unless opted in.
@@ -1631,13 +1767,35 @@ class MirageSandbox(Sandbox):
         resolved: dict = {}
         for prefix, value in resources.items():
             if isinstance(value, tuple):
-                resolved[prefix] = value  # explicit per-mount mode — honor it
+                resolved[prefix] = value  # explicit per-mount mode; honor it
             elif explicit_mode is not None:
                 resolved[prefix] = (value, explicit_mode)
             else:
                 default = MountMode.EXEC if prefix == _DEFAULT_MOUNT else MountMode.READ
                 resolved[prefix] = (value, default)
         return resolved
+
+    def _new_workspace(self):
+        """Build a Mirage ``Workspace`` for this sandbox's mounts and session.
+
+        The single place a ``Workspace`` is constructed, so construction,
+        `reset` and `_rebuild_workspace` cannot drift apart. Two details Mirage
+        will not infer for us:
+
+        * ``session_id`` names the workspace's default session. Mirage seeds
+          exactly that one id and ``execute`` raises ``KeyError`` for any other,
+          so the sandbox's session name has to be declared up front.
+        * The FUSE mount is requested after construction (mirage-ai 0.0.4 moved
+          ``fuse`` off the constructor); a confined sandbox needs it so the
+          snippet's own ``open()`` lands on the mount.
+        """
+        kwargs = dict(self._workspace_kwargs)
+        kwargs.setdefault("session_id", self._session)
+        kwargs.setdefault("runtimes", list(_DEFAULT_RUNTIMES))
+        ws = Workspace(self._resources, mode=self._mode, **kwargs)
+        if self._confine:
+            _ensure_fuse_mounted(ws)
+        return ws
 
     def _seed_from_workdir(self, workdir: str) -> Dict[str, str]:
         """Copy a host directory's files into the mount; return the snapshot.
@@ -1679,7 +1837,7 @@ class MirageSandbox(Sandbox):
 
         The interpreter's own install + venv + system lib/bin dirs, plus the
         host's installed-package locations (user site-packages, ``PYTHONPATH``
-        dirs) and any caller-supplied ``extra_binds`` — each bind-mounted
+        dirs) and any caller-supplied ``extra_binds``, each bind-mounted
         read-only at its original absolute path so ``sys.path`` keeps resolving
         after the pivot and **host libraries import inside the sandbox just as
         they do on the host**, while confined code still cannot write them. The
@@ -1753,7 +1911,7 @@ class MirageSandbox(Sandbox):
     def granted_capabilities(self) -> Dict[str, Any]:
         """Audit the privilege surface this sandbox actually grants.
 
-        Bound tools and mounts — not the namespace — are the real boundary for
+        Bound tools and mounts, not the namespace, are the real boundary for
         confined code, so this returns a single JSON-safe view an operator can
         assert on before trusting a sandbox with untrusted (e.g. LM-generated)
         code: whether it is confined / fail-closed / syscall-filtered, the
@@ -1762,12 +1920,13 @@ class MirageSandbox(Sandbox):
 
         Returns:
             dict: ``confined``, ``require_confinement``, ``seccomp`` (filter
-            active), ``read_only_runtime``, ``network`` (``{"mode": ...}`` —
+            active), ``read_only_runtime``, ``network`` (``{"mode": ...}``:
             ``host`` unconfined, else ``cut`` / ``full`` / ``allowlist``),
-            ``native_shell`` (``run_bash`` runs on the host shell — should be
-            ``False`` when confined), ``tools`` (sorted bound-callable names, the
-            egress + capability surface) and ``mounts`` (``prefix -> mode``, the
-            actual per-mount access mode).
+            ``host_runtimes`` (names of configured runtimes that execute code on
+            the host rather than in a sandbox; should be empty when confined),
+            ``tools`` (sorted bound-callable names, the egress + capability
+            surface) and ``mounts`` (``prefix -> mode``, the actual per-mount
+            access mode).
         """
         if not self._confine:
             network = {"mode": "host"}  # unconfined: shares the host network
@@ -1790,7 +1949,10 @@ class MirageSandbox(Sandbox):
             "seccomp": bool(self._seccomp_blob) and self._confine,
             "read_only_runtime": self._confine,
             "network": network,
-            "native_shell": bool(self._workspace_kwargs.get("native")),
+            "host_runtimes": _host_escaping_runtimes(
+                self._workspace_kwargs.get("runtimes"),
+                patched=self._run_python_patched,
+            ),
             "tools": sorted(self._functions),
             "mounts": {p: _mode_name(v) for p, v in self._resources.items()},
         }
@@ -1807,7 +1969,7 @@ class MirageSandbox(Sandbox):
         ``stdout_str`` / ``stderr_str`` are awaited (Mirage returns them as
         coroutines). A ``timeout`` (seconds) bounds the whole command and, on
         expiry, surfaces as ``exit_code = 124`` with a ``TimeoutError`` on
-        stderr — mirroring the shell ``timeout`` convention.
+        stderr, mirroring the shell ``timeout`` convention.
         """
         coro = self._ws.execute(command, session_id=self._session, stdin=stdin)
         try:
@@ -1982,13 +2144,13 @@ class MirageSandbox(Sandbox):
     async def run_bash(self, command: str) -> dict:
         """Run a shell command in the sandbox's isolated Mirage shell.
 
-        Reach for this for shell work — running programs, pipelines and
+        Reach for this for shell work: running programs, pipelines and
         process control; prefer the dedicated ``read_file`` / ``list_files`` /
         ``search_files`` / ``write_file`` / ``edit_file`` tools for plain file
         operations. The command executes against the mounted virtual
         filesystem in the sandbox's persistent session (so ``cd`` / ``export``
-        carry across calls). Standard bash is supported — pipes, redirects,
-        globs, ``&&`` / ``||``, loops — plus ``python3``.
+        carry across calls). Standard bash is supported (pipes, redirects,
+        globs, ``&&`` / ``||``, loops), plus ``python3``.
 
         Args:
             command (str): The shell command line to execute.
@@ -1998,7 +2160,7 @@ class MirageSandbox(Sandbox):
             ``exit_code``.
         """
         # Heal-and-retry on an infrastructure failure (dead FUSE mount /
-        # confinement abort), same as ``run`` — otherwise every shell call would
+        # confinement abort), same as ``run``; otherwise every shell call would
         # repeat the error and an agent would loop on it. The confinement config
         # (with the mount point) is recomputed each attempt since a rebuild
         # creates a fresh mount; when confined we advertise it via
@@ -2057,10 +2219,10 @@ class MirageSandbox(Sandbox):
     def reset(self) -> None:
         self._discard_state()
         self.clear_history()
-        # Release the current workspace's FUSE mount before replacing it —
+        # Release the current workspace's FUSE mount before replacing it;
         # otherwise every ``reset`` leaks a mount until ``mount_max`` is hit.
         _sync_close_workspace(getattr(self, "_ws", None))
-        self._ws = Workspace(self._resources, mode=self._mode, **self._workspace_kwargs)
+        self._ws = self._new_workspace()
         # Point the GC/exit finalizer at the new workspace so it releases the
         # live mount (not the one we just closed) if the sandbox is dropped.
         if getattr(self, "_ws_state", None) is not None:
@@ -2083,7 +2245,7 @@ class MirageSandbox(Sandbox):
         connected``) or a confinement bootstrap that could not pivot into it.
         The interpreter namespace lives in the host state file (reloaded by the
         bootstrap on the next run) and run history / bound functions are kept,
-        so — unlike `reset` — only the workspace and its mount are rebuilt. The
+        so, unlike `reset`, only the workspace and its mount are rebuilt. The
         virtual filesystem's live contents are lost, but the dead mount had
         already made them unreachable.
         """
@@ -2095,7 +2257,7 @@ class MirageSandbox(Sandbox):
                     run_async_from_sync(result)
             except Exception:  # noqa: BLE001 - the old mount is already broken
                 pass
-        self._ws = Workspace(self._resources, mode=self._mode, **self._workspace_kwargs)
+        self._ws = self._new_workspace()
         if getattr(self, "_ws_state", None) is not None:
             self._ws_state["ws"] = self._ws
         self._fuse_mountpoint = getattr(self._ws, "fuse_mountpoint", None)
@@ -2111,7 +2273,7 @@ class MirageSandbox(Sandbox):
 
         Called from every construction path (``__init__``, `fork`, `load`) so a
         sandbox that is dropped without an explicit ``close()`` still releases
-        its mount — otherwise leaked mounts accumulate until ``mount_max`` is hit
+        its mount; otherwise leaked mounts accumulate until ``mount_max`` is hit
         and new mounts fail silently. The finalizer closes over a plain-dict
         holder (``_ws_state``), never ``self``, so it does not keep the sandbox
         alive; `reset` / `_rebuild_workspace` update the holder in place.
@@ -2230,9 +2392,17 @@ class MirageSandbox(Sandbox):
             )
         payload = json.loads(data.decode("utf-8"))
         mounts = resources if resources is not None else {_DEFAULT_MOUNT: RAMResource()}
+        # ``Workspace.load`` became a coroutine in mirage-ai 0.0.4; drive it from
+        # this sync classmethod the same way `fork` drives ``copy`` (older
+        # versions return a ``Workspace`` directly).
         ws = Workspace.load(
             io.BytesIO(base64.b64decode(payload["workspace"])), resources=mounts
         )
+        if inspect.isawaitable(ws):
+            ws = run_async_from_sync(ws)
+        # Same as `fork`: a loaded workspace comes back without the runtime
+        # world, so ``python3`` would not be the CPython the bootstrap needs.
+        _adopt_runtimes(ws, (workspace_kwargs or {}).get("runtimes") or _DEFAULT_RUNTIMES)
         instance = cls.__new__(cls)
         Sandbox.__init__(
             instance,
@@ -2246,6 +2416,7 @@ class MirageSandbox(Sandbox):
         instance._workdir = None
         instance._confine = False
         instance._require_confinement = False
+        instance._run_python_patched = False
         instance._confine_network = False
         instance._seccomp_blob = None
         instance._allowed_hosts = None
@@ -2307,7 +2478,7 @@ class MirageSandbox(Sandbox):
             copy_repl (bool): Also inherit this sandbox's Python namespace.
             confine (bool): Whether the child is confined to **its own fork**
                 (its ``run`` / ``run_bash`` python sees only the child's virtual
-                filesystem, host hidden, network cut — see ``confine`` on the
+                filesystem, host hidden, network cut; see ``confine`` on the
                 constructor). ``None`` (default) inherits this sandbox's
                 setting; ``True`` / ``False`` override. A confined child gets
                 its own FUSE mount; if confinement can't be set up it falls back
@@ -2340,18 +2511,24 @@ class MirageSandbox(Sandbox):
         child._ws = self._ws.copy()
         if inspect.isawaitable(child._ws):
             child._ws = run_async_from_sync(child._ws)
+        # ``copy`` rebuilds through Mirage's ``_from_state``, which drops the
+        # runtime world; without this the child's ``python3`` is not CPython.
+        _adopt_runtimes(
+            child._ws, self._workspace_kwargs.get("runtimes") or _DEFAULT_RUNTIMES
+        )
         # Confine the child to its *own* fork: it needs its own FUSE mount
         # (``copy()`` does not carry one over) so the child's snippet pivots
         # into the child's filesystem, not the parent's.
         want = self._confine if confine is None else bool(confine)
         # A child only requires confinement (fail-closed) when it is asked to
-        # confine at all — an explicit ``confine=False`` fork opts out cleanly.
+        # confine at all; an explicit ``confine=False`` fork opts out cleanly.
         child._require_confinement = self._require_confinement and want
         child._confine = False
+        child._run_python_patched = False
         if want:
             ok, reason = _confinement_available()
             if ok and _ensure_fuse_mounted(child._ws):
-                _install_run_python_patch()
+                child._run_python_patched = _install_run_python_patch()
                 child._confine = True
             elif child._require_confinement:
                 raise RuntimeError(
@@ -2454,9 +2631,9 @@ class MirageSandbox(Sandbox):
         """Git-style unified diff of changes since this sandbox's branch base.
 
         Unlike `diff` (a structured, whole-file change set), this returns the
-        actual line-level hunks as a single ``git diff``-format string — with
+        actual line-level hunks as a single ``git diff``-format string (with
         ``diff --git`` headers, ``/dev/null`` for creates/deletes, ``@@`` hunks
-        and ``\\ No newline at end of file`` markers — suitable for
+        and ``\\ No newline at end of file`` markers), suitable for
         ``git apply`` / ``patch -p1``. Binary (NUL-containing) files collapse to
         a ``Binary files ... differ`` line. ``paths`` restricts output to a
         subset of virtual paths.
@@ -2498,7 +2675,7 @@ class MirageSandbox(Sandbox):
             if selected is not None and path not in selected:
                 continue
             if path in base and other_current[path] == base[path]:
-                continue  # unchanged in `other` — nothing to merge
+                continue  # unchanged in `other`; nothing to merge
             # Conflict iff this sandbox diverged from the fork point for `path`.
             if self_current.get(path) != base.get(path):
                 conflicts.add(path)
@@ -2625,7 +2802,7 @@ class MirageSandbox(Sandbox):
 
         Returns:
             dict: ``content``, ``start_line`` / ``end_line`` (1-based,
-            inclusive), ``total_lines`` and ``truncated`` — or ``error`` if the
+            inclusive), ``total_lines`` and ``truncated``, or ``error`` if the
             file is missing.
         """
         content = await self._read_text(path)
@@ -2730,7 +2907,7 @@ class MirageSandbox(Sandbox):
 
         Returns:
             dict: ``matches`` (a page of ``{path, line, text}`` records with
-            1-based line numbers), ``total``, ``offset`` and ``truncated`` — or
+            1-based line numbers), ``total``, ``offset`` and ``truncated``, or
             ``error`` on a bad regex.
         """
         try:
@@ -2767,7 +2944,7 @@ class MirageSandbox(Sandbox):
 
         Returns:
             dict: ``ok`` (bool), ``stdout`` and ``stderr`` (captured output),
-            and ``error`` (a message string, or null on success) — or ``error``
+            and ``error`` (a message string, or null on success), or ``error``
             if the file is missing.
         """
         content = await self._read_text(path)

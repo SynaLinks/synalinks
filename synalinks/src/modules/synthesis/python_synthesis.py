@@ -21,7 +21,7 @@ class PythonScript(Trainable):
     """The python code to transform a JSON object into another JSON object.
 
     The script is executed inside the active sandbox (by default a
-    ``MirageSandbox`` — a real Python 3 interpreter). Scripts must observe the
+    ``MirageSandbox``, a real Python 3 interpreter). Scripts must observe the
     following constraints:
 
     - The input JSON object is exposed as a dict named ``inputs``; the script
@@ -29,7 +29,7 @@ class PythonScript(Trainable):
       it ends.
     - The full standard library is importable, along with any third-party
       packages installed in the environment, and ``class`` / ``match``
-      statements are supported — write ordinary Python.
+      statements are supported: write ordinary Python.
     - Tools bound to the module are exposed as **global functions** under
       their tool name: call them directly. Every tool call returns a
       **dict**: a tool wrapping ``def f(x) -> int`` yields
@@ -38,7 +38,7 @@ class PythonScript(Trainable):
 
       ```python
       hits = web_search(query=inputs.get("q"))
-      # hits is a dict — index the field you need
+      # hits is a dict: index the field you need
       result = {"answer": hits["results"][0]["title"]}
       ```
     - Execution is bounded by the module's ``timeout``; long-running scripts
@@ -110,7 +110,7 @@ async def _run_script(
     no ``await``).
 
     ``sandbox`` is optional. When ``None``, a fresh ``MirageSandbox`` is
-    built for just this call — the normal case, giving every input an
+    built for just this call (the normal case), giving every input an
     independent namespace. When supplied, the caller owns the sandbox
     and state persists across calls (useful at training time to explore
     scripts that build on each other).
@@ -132,7 +132,7 @@ async def _run_script(
 
     if execution.error:
         relabelled = _relabel_error(execution.error)
-        # Syntax errors happen at compile time — no script output precedes them.
+        # Syntax errors happen at compile time; no script output precedes them.
         if execution.error.startswith("SyntaxError"):
             return None, "", f"{relabelled}\n"
         return (
@@ -228,7 +228,7 @@ class PythonSynthesis(Module):
             evaluation. (Default to False).
         timeout (int): Maximum execution time in seconds. (Default 5 seconds).
         tools (list): Optional. A list of `Tool` (or MCP tools) exposed to the
-            script as global functions — scripts call them directly (see the
+            script as global functions; scripts call them directly (see the
             ``PythonScript`` docs). Passing `None` or an empty list means no
             tools are bound.
 
@@ -237,14 +237,14 @@ class PythonSynthesis(Module):
             ``Tool(_my_helper)`` registers as ``_my_helper`` (underscore
             preserved) and the script must call ``_my_helper(...)``.
             Name your tool functions exactly as you want them to appear
-            inside the generated script — rename the function, don't rely
+            inside the generated script: rename the function, don't rely
             on an alias.
         sandbox (Sandbox): Optional. A pre-built ``Sandbox`` instance to
             reuse across calls. When supplied, the module will not build
             its own sandbox at ``call()`` time and ``sandbox_type`` is
             derived from ``type(sandbox)``. Pass this when the caller
             owns the sandbox lifecycle and state (variables, imports,
-            function defs) must persist across successive calls — useful
+            function defs) must persist across successive calls, useful
             at training time when candidate scripts share cached state.
             When omitted, a fresh sandbox of ``sandbox_type`` is built
             per call.

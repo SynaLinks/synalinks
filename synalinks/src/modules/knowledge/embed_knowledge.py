@@ -178,7 +178,7 @@ class EmbedKnowledge(Module):
     def _text_for(self, entity_json):
         """Mask an entity dict and flatten the kept fields into one string.
 
-        Masking is field-name selection on the top-level keys — the same
+        Masking is field-name selection on the top-level keys, the same
         effect as `ops.in_mask` / `ops.out_mask` with ``recursive=False``,
         done directly on the dict so it works on any nested entity without
         depending on a resolvable per-entity schema.
@@ -210,7 +210,7 @@ class EmbedKnowledge(Module):
     def _gather(self, json, data_model):
         """Return the mutable entity dicts to embed, in batch order.
 
-        Each returned dict is a sub-dict of ``json`` — writing
+        Each returned dict is a sub-dict of ``json``: writing
         ``["embedding"]`` onto it lands in the output. Dispatch order
         mirrors `UpdateKnowledge._update` (graphs before lists, relation
         before entity). `KnowledgeGraph(s)` are walked structurally: a

@@ -840,7 +840,7 @@ class LMOptimizersOperationalMetric(LMOperationalMetric):
 
     Reads from each bound LM's `optimizer_cumulated_*` counters, which
     the LM populates while `Optimizer.optimize` is running (but not
-    while nested reward computation is in progress — those go to the
+    while nested reward computation is in progress; those go to the
     rewards bucket).
     """
 

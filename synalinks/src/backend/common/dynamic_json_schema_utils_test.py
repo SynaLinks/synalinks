@@ -165,7 +165,7 @@ class DynamicEnumArrayTest(testing.TestCase):
         self.assertEqual(schema["properties"]["choices"]["items"]["enum"], [])
 
     def test_property_in_defs(self):
-        """Pydantic puts nested models in `$defs` — the helper must
+        """Pydantic puts nested models in `$defs`; the helper must
         traverse them when matching the property name."""
 
         class Inner(DataModel):
@@ -205,7 +205,7 @@ class DynamicToolCallsSchemaTest(testing.TestCase):
     def test_dynamic_tool_call_schema(self):
         """Default (inline=True) embeds per-tool sub-schemas directly in
         `anyOf` and pins `tool_name` with both an items-level enum and a
-        per-branch const — strict enough for backends that don't honor
+        per-branch const, strict enough for backends that don't honor
         `const` inside `anyOf` (e.g. Gemini)."""
         tools = [
             Tool(calculate),

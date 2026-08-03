@@ -163,7 +163,7 @@ class DuckDBAdapter(DatabaseAdapter):
         # table is created (see `_ensure_vector_dim`), never via a probe here.
         # The old probe used `run_maybe_nested`, running the embedding on a
         # transient thread-loop and binding litellm's process-global httpx
-        # client to a loop closed moments later — poisoning it for every later
+        # client to a loop closed moments later, poisoning it for every later
         # main-loop embedding ("Event loop is closed"). `vector_dim=` short-
         # circuits.
         self.vector_dim = vector_dim
@@ -184,7 +184,7 @@ class DuckDBAdapter(DatabaseAdapter):
         # FTS-index build params (forwarded to ``PRAGMA create_fts_index``).
         # ``None`` defers to the DuckDB default for that arg so we don't
         # have to track upstream defaults (``stopwords='english'``,
-        # ``strip_accents=1``, ``lower=1``, etc.) — only user-supplied
+        # ``strip_accents=1``, ``lower=1``, etc.); only user-supplied
         # values get serialized into the pragma.
         self.stopwords = stopwords
         self.ignore = ignore
@@ -201,7 +201,7 @@ class DuckDBAdapter(DatabaseAdapter):
 
         self.vss_key = vss_key
 
-        # Single persistent RW connection — DuckDB holds an exclusive file
+        # Single persistent RW connection: DuckDB holds an exclusive file
         # lock for its lifetime, so this process is the only writer.
         self._con: Optional[duckdb.DuckDBPyConnection] = None
 
@@ -242,7 +242,7 @@ class DuckDBAdapter(DatabaseAdapter):
         """ATTACH the configured database file onto ``con``.
 
         The path is interpolated as a SQL string literal (with single-
-        quote escaping as defence in depth — ``uri`` is documented as
+        quote escaping as defence in depth; ``uri`` is documented as
         caller-trusted). The encryption key, if any, is bound as a
         ``?`` parameter so arbitrary key bytes can't break the SQL or
         end up in logs.
@@ -319,7 +319,7 @@ class DuckDBAdapter(DatabaseAdapter):
         Without ``enable_external_access=false``, a query like
         ``SELECT * FROM read_csv('/etc/passwd', ...)`` passes parser-level
         SELECT-only checks and exfiltrates host files. Extensions must be
-        LOAD-ed before the switch flips — LOAD itself needs external access.
+        LOAD-ed before the switch flips: LOAD itself needs external access.
         """
         try:
             con.execute("LOAD fts;")
@@ -672,7 +672,7 @@ class DuckDBAdapter(DatabaseAdapter):
 
         Search methods accept either a query text (embedded here) or a
         pre-computed ``vector_or_vectors`` passed directly. When vectors
-        are supplied the embedding step — and the embedding model — are
+        are supplied the embedding step (and the embedding model) are
         skipped entirely; the vector dimension is learned from the first
         vector if it isn't known yet. Returns a list of vectors, or
         ``None`` when there is nothing to search for.
@@ -750,7 +750,7 @@ class DuckDBAdapter(DatabaseAdapter):
         """Render the optional kwargs for ``PRAGMA create_fts_index``.
 
         Only adapter init values that were explicitly supplied (i.e.
-        not ``None``) get serialized — DuckDB picks its own defaults
+        not ``None``) get serialized; DuckDB picks its own defaults
         otherwise, so this avoids hard-coding upstream defaults
         (``stopwords='english'``, ``strip_accents=1`` etc.) into the
         adapter. ``overwrite`` is always emitted because callers pass
@@ -929,7 +929,7 @@ class DuckDBAdapter(DatabaseAdapter):
                 raise
             con.execute("COMMIT;")
 
-        # FTS/HNSW rebuilds are best-effort — data is already committed.
+        # FTS/HNSW rebuilds are best-effort; data is already committed.
         for data_model in tables_seen:
             try:
                 self._maybe_create_fulltext_index(data_model)
@@ -970,8 +970,8 @@ class DuckDBAdapter(DatabaseAdapter):
         column is promoted to ``PRIMARY KEY``. Column names are
         normalized to ``snake_case``; the table name to ``PascalCase``.
 
-        Use this over ``update(CSVDataset(...))`` for non-trivial files
-        — the bulk path is orders of magnitude faster because it
+        Use this over ``update(CSVDataset(...))`` for non-trivial files:
+        the bulk path is orders of magnitude faster because it
         bypasses the per-row Pydantic / Python pipeline. Prefer
         ``update`` when source rows need transformation before storage.
 
@@ -1015,7 +1015,7 @@ class DuckDBAdapter(DatabaseAdapter):
     ) -> SymbolicDataModel:
         """Bulk-load a Parquet file directly into a new (or existing) table.
 
-        Same fast-path trade-offs as `from_csv` — bypasses the
+        Same fast-path trade-offs as `from_csv`: bypasses the
         Python row pipeline for native DuckDB ingestion. Parquet's
         schema is explicit in the file's footer, so types are
         preserved end-to-end without auto-detection guesswork.
@@ -1637,14 +1637,14 @@ class DuckDBAdapter(DatabaseAdapter):
                 ``text_or_texts``. When supplied, no embedding model is
                 required on the adapter.
             k: Maximum number of rows returned.
-            threshold: Optional maximum vector distance — rows beyond
+            threshold: Optional maximum vector distance; rows beyond
                 this distance are dropped.
             ef_search: Optional override for HNSW's search-time
                 candidate-list depth. ``None`` keeps the index-time
                 value (or DuckDB's default of 64); higher = better
                 recall at slower query time. Mirrors Ladybug's
                 ``ef_search``.
-            output_format: ``"json"`` (list of dicts, default — Python
+            output_format: ``"json"`` (list of dicts, default; Python
                 data) or ``"csv"`` (CSV string, more compact for LM
                 input).
         """
@@ -1865,7 +1865,7 @@ class DuckDBAdapter(DatabaseAdapter):
         """Find rows whose string fields match a regular expression.
 
         Uses DuckDB's ``regexp_matches`` under the hood. DuckDB ships
-        RE2 (Google's regex library) so evaluation is linear-time — no
+        RE2 (Google's regex library) so evaluation is linear-time: no
         catastrophic-backtracking exposure even if ``pattern`` comes
         from an untrusted source.
 
@@ -1922,7 +1922,7 @@ class DuckDBAdapter(DatabaseAdapter):
         """Deprecated alias of `hybrid_fts_search`.
 
         Kept so call sites pre-dating the rename keep working. Prefer
-        the new name in new code — it's symmetric with
+        the new name in new code; it's symmetric with
         `hybrid_regex_search`.
         """
         return await self.hybrid_fts_search(*args, **kwargs)
@@ -1954,7 +1954,7 @@ class DuckDBAdapter(DatabaseAdapter):
         ``vector_or_vectors``).
 
         ``text_or_texts`` feeds the vector branch; ``keywords`` (when
-        provided) feeds the BM25 branch instead — the two signals
+        provided) feeds the BM25 branch instead: the two signals
         look for different things (semantic vs lexical) and the
         natural-language query that drives the vectors is usually
         not the keyword set you'd hand to BM25. When ``keywords`` is
@@ -2009,7 +2009,7 @@ class DuckDBAdapter(DatabaseAdapter):
         )
         if not can_vector:
             # Fulltext-only fallback. Prefer explicit keywords when
-            # the caller passed them — that's what the BM25 branch
+            # the caller passed them; that's what the BM25 branch
             # would have used in the full hybrid path anyway. Tag
             # each row with ``rrf_score`` (set to the BM25 score) so
             # the result shape matches the full-hybrid path; callers
@@ -2029,8 +2029,8 @@ class DuckDBAdapter(DatabaseAdapter):
                 row.setdefault("fulltext_score", row.get("score", 0.0))
             return format_search_results(fts_rows, output_format)
 
-        # Build the per-slot vector-branch input — either pre-computed
-        # vectors or texts to embed — then align the BM25 keyword for
+        # Build the per-slot vector-branch input (either pre-computed
+        # vectors or texts to embed), then align the BM25 keyword for
         # each slot.
         if provided_vectors is not None:
             vec_texts: List[Optional[str]] = [None] * len(provided_vectors)
@@ -2222,7 +2222,7 @@ class DuckDBAdapter(DatabaseAdapter):
                     merged[sig] = r
             return format_search_results(list(merged.values())[:k], output_format)
 
-        # Build the per-slot vector-branch input — pre-computed vectors
+        # Build the per-slot vector-branch input: pre-computed vectors
         # or texts to embed.
         if provided_vectors is not None:
             vec_texts: List[Optional[str]] = [None] * len(provided_vectors)

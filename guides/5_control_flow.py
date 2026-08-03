@@ -4,7 +4,7 @@
 A `Program` is a **static graph**: you wire every module together once,
 at construction time, and the framework runs the same flowchart on every
 input ([Guide 3](https://synalinks.github.io/synalinks/guides/Programs/)). That sounds like it leaves no room to *react* to the
-data — to skip a step, take a different path, or do several things at
+data: to skip a step, take a different path, or do several things at
 once. This guide is about exactly that room. It shows how to express
 branching, parallelism, and recombination **without leaving the
 declarative graph**, so the result stays inspectable, serializable, and
@@ -20,7 +20,7 @@ handful of **patterns** you will reach for again and again.
 
 Here is the single idea the whole guide rests on. In an ordinary Python
 program, control flow is about *which lines execute*. In a Synalinks
-graph, every wired module is always *present* — but a module on an
+graph, every wired module is always *present*, but a module on an
 inactive path produces `None` instead of a value. So control flow
 becomes a question about **values, not lines**:
 
@@ -28,7 +28,7 @@ becomes a question about **values, not lines**:
 - the **operators** decide what happens when a value might be `None`.
 
 That is why the operators from Guide 2 are not just a convenience for
-gluing schemas together — they are the *language of control flow*. `|`
+gluing schemas together: they are the *language of control flow*. `|`
 means "whichever path actually ran." `&` means "only if this prerequisite
 is present." `^` means "exactly one of these, never both." Reading them
 as boolean logic over "is there a value here?" is the right mental model.
@@ -53,12 +53,12 @@ which one you pick.
   the graph*, using `Decision`/`Branch` to route and the operators to
   recombine. The structure stays visible: `program.summary()` shows it,
   the optimizer can train through it, and `program.save()` serializes
-  it. The cost is that the *shape* of the flow is fixed — a `Branch`
+  it. The cost is that the *shape* of the flow is fixed: a `Branch`
   always has the same, finite set of arms.
 - **Imperative** (the Subclassing API from [Guide 3](https://synalinks.github.io/synalinks/guides/Programs/)). You write the
   forward pass as ordinary `async` Python and use real `if`/`while`/
-  recursion. This handles flows a static graph cannot — "keep calling
-  the LM until the answer passes a check," for instance — but the
+  recursion. This handles flows a static graph cannot, "keep calling
+  the LM until the answer passes a check," for instance, but the
   framework sees your `call` as an opaque box.
 
 The rule of thumb: **reach for declarative control flow first.** Drop to
@@ -69,7 +69,7 @@ routing, fan-out, and fallback logic is declarative.
 ## Pattern 1: Fan-Out (Parallel Branches)
 
 The simplest non-linear shape is *fan-out*: send the same input to
-several modules at once. In Synalinks this is automatic — **whenever two
+several modules at once. In Synalinks this is automatic: **whenever two
 modules read the same input, they run concurrently.** There is no
 special "parallel" construct; the framework infers it from the graph.
 
@@ -110,8 +110,8 @@ shave wall-clock time off independent steps.
 ## Pattern 2: Routing (Decision and Branch)
 
 The other fundamental shape is *routing*: pick **one** path based on
-what the input looks like. The primitive is `Decision` — single-label
-classification over a closed set of labels — and `Branch` is `Decision`
+what the input looks like. The primitive is `Decision`, single-label
+classification over a closed set of labels, and `Branch` is `Decision`
 wired directly to a list of modules.
 
 A `Branch` returns a **tuple with one slot per label**. At runtime the
@@ -178,14 +178,14 @@ Two patterns built straight out of this table:
   right and yields the first path that produced a value. A cheap model
   with an expensive backup is just `cheap | expensive`.
 - **Safe gating.** `inputs & branch_output` attaches the original input
-  to a branch's result *only when that branch ran* — if the branch was
+  to a branch's result *only when that branch ran*; if the branch was
   skipped (`None`), the `&` short-circuits to `None` and nothing
   downstream crashes trying to read a missing field. This is the
   difference between `&` and `+`: `+` would raise on the `None`.
 
 When you need to keep only part of a model before merging (to hide a
-scratch `thinking` field, say), use the masking helpers from Guide 2 —
-`in_mask`/`out_mask` — in the same pipeline.
+scratch `thinking` field, say), use the masking helpers from Guide 2,
+`in_mask`/`out_mask`, in the same pipeline.
 
 ## Putting It All Together
 
@@ -237,7 +237,7 @@ if __name__ == "__main__":
   with one live slot and the rest `None`; `a | b | ...` hands you the
   live one. The same `|` builds fallback chains.
 - **`&` is the safe join.** `inputs & maybe_none` attaches context only
-  when the path ran, short-circuiting to `None` otherwise — where `+`
+  when the path ran, short-circuiting to `None` otherwise, where `+`
   would raise.
 - **Prefer declarative control flow** (this guide) so the structure
   stays visible and trainable; drop to the Subclassing API only for

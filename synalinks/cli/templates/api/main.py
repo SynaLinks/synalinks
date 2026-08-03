@@ -14,13 +14,13 @@ pointing their base URL at this server:
 Under the hood the messages are fed to a Synalinks `FunctionCallingAgent` that
 can call tools (here, a calculator) before answering.
 
-Build once, serve forever — two steps, never one:
+Build once, serve forever (two steps, never one):
 
     uv run python main.py build   # 1. build the agent, save it to disk
     uv run python main.py         # 2. serve the saved artifact
 
 Building does not call the LM (it just composes modules and records schemas), so
-the build step runs fully offline — no model needed until request time. The
+the build step runs fully offline: no model needed until request time. The
 model is read from the MODEL env var (see `.env`); it defaults to vLLM.
 
 See the guide:
@@ -95,7 +95,7 @@ async def build_and_save_program(path: Path) -> "synalinks.Program":
     """Build the chat agent and persist it to ``path``.
 
     Run this as a *separate* step (CLI verb, CI job, REPL). It builds a
-    FunctionCallingAgent over ``ChatMessages`` and saves it — no LM call
+    FunctionCallingAgent over ``ChatMessages`` and saves it; no LM call
     happens here, so it works offline (e.g. at Docker image-build time).
     """
     synalinks.clear_session()
@@ -179,7 +179,7 @@ app = FastAPI(title="synalinks-chat-api", version="0.1.0", lifespan=lifespan)
 
 @app.get("/healthz")
 async def healthz() -> dict:
-    """Liveness probe — cheap and credential-free."""
+    """Liveness probe: cheap and credential-free."""
     return {"status": "ok"}
 
 
@@ -197,7 +197,7 @@ async def chat_completions(request: Request, body: ChatCompletionRequest):
     )
     result = await request.app.state.agent(chat_messages)
     if result is None:
-        # A Synalinks guard refused the call — application-level "no" (422).
+        # A Synalinks guard refused the call: application-level "no" (422).
         raise HTTPException(status_code=422, detail="Guard rejected input or output")
 
     # The agent returns its full trajectory; the last message is the answer.

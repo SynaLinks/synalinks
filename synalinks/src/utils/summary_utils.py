@@ -112,7 +112,7 @@ def beautify_schema(schema):
 
     Models referenced through `$ref` are rendered as their own blocks *above*
     the model that uses them, so each block appears after the ones it depends
-    on — the order you'd define them in code, root last. Field defaults are
+    on: the order you'd define them in code, root last. Field defaults are
     shown Pydantic-style
     as `name: type = <default>`; optional fields with no explicit default in
     the schema (e.g. a `default_factory`) are suffixed with `?` instead.
@@ -145,7 +145,7 @@ def beautify_schema(schema):
             type_str = _schema_type_str(field_schema)
             has_default = isinstance(field_schema, dict) and "default" in field_schema
             if has_default:
-                # `name: type = <default>` — the value carries the optionality.
+                # `name: type = <default>`; the value carries the optionality.
                 default = _format_default(field_schema["default"])
                 annotation = f"{field_name}: {type_str} = {default}"
             elif field_name not in required:
@@ -157,7 +157,7 @@ def beautify_schema(schema):
             lines.append(f"  {annotation}")
             _collect_def_refs(field_schema, nested)
         # Emit referenced models *first* so a block always appears after the
-        # ones it depends on — the order you'd define them in code. `title` is
+        # ones it depends on, the order you'd define them in code. `title` is
         # already marked `rendered`, so cycles can't recurse forever.
         for ref in nested:
             if ref in defs:
@@ -334,9 +334,7 @@ def print_summary(
         alignment.append("center")
 
     # Compute columns widths
-    default_line_length = min(
-        default_line_length, shutil.get_terminal_size().columns - 4
-    )
+    default_line_length = min(default_line_length, shutil.get_terminal_size().columns - 4)
     line_length = line_length or default_line_length
     column_widths = []
     current = 0
@@ -373,9 +371,7 @@ def print_summary(
                 data_model_index = highlight_number(synalinks_history.data_model_index)
                 if connections:
                     connections += ", "
-                connections += (
-                    f"{inbound_module.name}[{node_index}][{data_model_index}]"
-                )
+                connections += f"{inbound_module.name}[{node_index}][{data_model_index}]"
         if not connections:
             connections = "-"
         return connections

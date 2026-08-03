@@ -144,7 +144,7 @@ class Accuracy(Metric):
         total = []
         intermediate_weights = []
         # zip_longest, not zip: a prediction with fewer/more leaves than the
-        # gold must be scored against every leaf — plain zip would silently
+        # gold must be scored against every leaf; plain zip would silently
         # drop the unmatched ones and inflate the score. The "" fill has no
         # tokens, so an unmatched leaf scores 0 over the other side's tokens.
         for yt, yp in zip_longest(y_true, y_pred, fillvalue=""):

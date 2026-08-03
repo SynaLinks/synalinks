@@ -6,7 +6,7 @@ These are **batched** metrics: each batch handed to the metric is treated as
 the ``k`` samples drawn for a *single* problem (so the caller sets
 ``batch_size = k``). Each sample is scored for correctness against its target
 with a pluggable reward (default `ExactMatch`); the per-problem ``(n, c)``
-pair — ``n`` samples, ``c`` correct — is reduced through the standard unbiased
+pair (``n`` samples, ``c`` correct) is reduced through the standard unbiased
 estimators, and the per-problem values are averaged over the dataset.
 
 Because a regular `Metric` only ever sees one sample at a time, these subclass
@@ -16,9 +16,9 @@ counterpart of `BatchReward`).
 Class hierarchy:
 
     SampledRewardMetric        (base; scores the batch, counts (n, c))
-    ├── PassAtK                 1 - C(n-c, k) / C(n, k)   — optimistic
-    ├── PassHatK                C(c, k)   / C(n, k)        — consistency
-    └── GapK                    PassAtK - PassHatK         — reliability gap
+    ├── PassAtK                 1 - C(n-c, k) / C(n, k)   (optimistic)
+    ├── PassHatK                C(c, k)   / C(n, k)        (consistency)
+    └── GapK                    PassAtK - PassHatK         (reliability gap)
 
 The ``pass@k`` / ``pass^k`` / ``gap-k`` triplet separates capability from
 reliability: ``pass@k`` is optimistic (solved in *at least one* of k tries),
@@ -151,7 +151,7 @@ class SampledRewardMetric(BatchMetric):
     ]
 )
 class PassAtK(SampledRewardMetric):
-    """``pass@k`` — fraction of problems solved in *at least one* of k samples.
+    """``pass@k``: fraction of problems solved in *at least one* of k samples.
 
     A batched metric: each batch is the ``k`` samples of one problem (set
     ``batch_size = k``). Uses the unbiased HumanEval estimator over the ``n``
@@ -234,7 +234,7 @@ class PassAtK(SampledRewardMetric):
     ]
 )
 class PassHatK(SampledRewardMetric):
-    """``pass^k`` — fraction of problems solved in *all* k samples (consistency).
+    """``pass^k``: fraction of problems solved in *all* k samples (consistency).
 
     A batched metric (each batch is one problem's ``k`` samples). Unbiased
     estimator of the probability that ``k`` samples drawn (without replacement)
@@ -315,7 +315,7 @@ class PassHatK(SampledRewardMetric):
     ]
 )
 class GapK(SampledRewardMetric):
-    """``gap-k`` — the reliability gap ``pass@k - pass^k``.
+    """``gap-k``: the reliability gap ``pass@k - pass^k``.
 
     A batched metric (each batch is one problem's ``k`` samples). The flakiness
     between optimistic and consistent performance: ``0`` means a problem is

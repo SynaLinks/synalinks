@@ -100,7 +100,7 @@ class ModuleTest(testing.TestCase):
         # Regression test for GH#63: the per-call `CallContext` used to live in
         # `threading.local` global state. An asyncio event loop runs many
         # coroutines on one thread, so two modules awaited concurrently
-        # (`asyncio.gather`) shared — and corrupted — a single context between
+        # (`asyncio.gather`) shared (and corrupted) a single context between
         # `await` points: `call_id`/`parent_call_id` were overwritten and the
         # first call to return detached the other's still-running context.
         # The context now lives in a `contextvars.ContextVar`, so each

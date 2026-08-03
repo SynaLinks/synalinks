@@ -300,7 +300,7 @@ class ChainOfThoughtModuleTest(testing.TestCase):
 
     async def test_streaming_disabled_when_schema_provided(self):
         """Setting streaming=True alongside a structured schema is silently
-        downgraded — structured output requires the full response."""
+        downgraded: structured output requires the full response."""
 
         class Answer(DataModel):
             answer: str = Field(description="The correct answer")

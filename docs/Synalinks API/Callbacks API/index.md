@@ -11,6 +11,7 @@ You can pass a list of callbacks to the `.fit()` method of a program.
 import synalinks
 import asyncio
 
+
 async def main():
     # ... you program declaration here
 
@@ -27,6 +28,7 @@ async def main():
         epochs=10,
         callbacks=callbacks,
     )
+
 
 if __name__ == "__main__":
     asyncio.run(main())

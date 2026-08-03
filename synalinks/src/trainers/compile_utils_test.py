@@ -159,7 +159,7 @@ class CompileMetricsResultDedupeTest(testing.TestCase):
         # set it; both metrics share the bare name "reward" → second one is
         # renamed "reward_1".
         # Note: with output_names provided, both get output-prefixed names
-        # like "a_reward" / "b_reward" — distinct, so no dedupe triggers.
+        # like "a_reward" / "b_reward": distinct, so no dedupe triggers.
         # Force collision by stripping output_name from one MetricsList.
         cm._flat_metrics[1].output_name = None
         cm._flat_metrics[0].output_name = None

@@ -20,7 +20,7 @@ class Answer(DataModel):
 
 
 class _RowDataset(Dataset):
-    """Minimal subclass for testing — rows come from the constructor."""
+    """Minimal subclass for testing: rows come from the constructor."""
 
     def __init__(self, rows, **kwargs):
         super().__init__(**kwargs)
@@ -76,7 +76,7 @@ class DatasetCoreTest(testing.TestCase):
             repeat=2,
         )
         (x,) = next(iter(ds))
-        # Repeats are consecutive — needed for GRPO grouping semantics.
+        # Repeats are consecutive, needed for GRPO grouping semantics.
         self.assertEqual([item.question for item in x], ["a", "a", "b", "b"])
 
     def test_limit_caps_raw_rows_before_repeat(self):
@@ -128,7 +128,7 @@ class DatasetCoreTest(testing.TestCase):
         )
         first = list(ds())
         second = list(ds())
-        # Same content on repeat iteration — generator is fresh each call.
+        # Same content on repeat iteration; generator is fresh each call.
         self.assertEqual(len(first), len(second))
         self.assertEqual(first[0][0][0].question, second[0][0][0].question)
 
@@ -162,7 +162,7 @@ class DatasetSchemaTest(testing.TestCase):
             batch_size=1,
         )
         (x,) = next(iter(ds))
-        # JsonDataModel exposes .get_json() / .get_schema() — see
+        # JsonDataModel exposes .get_json() / .get_schema(); see
         # synalinks/src/backend/common/json_data_model.py.
         self.assertEqual(x[0].get_json(), {"question": "hello"})
         self.assertEqual(x[0].get_schema()["properties"]["question"]["type"], "string")

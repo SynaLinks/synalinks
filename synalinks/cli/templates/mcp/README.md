@@ -46,7 +46,7 @@ The client then sees one tool, `solve`, that answers arithmetic word problems.
 
 ### Remote (HTTP) instead of stdio
 
-For a client on another machine, serve over HTTP — in `main.py` swap
+For a client on another machine, serve over HTTP. In `main.py` swap
 `mcp.run()` for:
 
 ```python
@@ -65,12 +65,12 @@ pyproject.toml      # uv project metadata
 
 - **Build at a separate step.** `build` constructs and saves the agent; the
   server only *loads* it. Building doesn't call the LM (it just composes modules
-  and records schemas), so it runs offline — no model needed until a tool call.
-- **Tool errors are part of the protocol** — `solve` raises (it does not swallow
+  and records schemas), so it runs offline: no model needed until a tool call.
+- **Tool errors are part of the protocol**: `solve` raises (it does not swallow
   exceptions) so the calling LM gets a structured error and can react. In
   production, consider `FastMCP(..., mask_error_details=True)`.
 - Swap `calculate` for your own tools, or replace the `FunctionCallingAgent`
-  with any Synalinks program — the MCP layer stays the same.
+  with any Synalinks program; the MCP layer stays the same.
 
 For production posture and transports beyond stdio, read the
 [deployment guide](https://synalinks.github.io/synalinks/guides/FastMCP%20Deployment/).

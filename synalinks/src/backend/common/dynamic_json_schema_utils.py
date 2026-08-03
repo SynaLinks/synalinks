@@ -56,7 +56,7 @@ def dynamic_enum_array(schema, prop_to_update, labels, description=None, inline=
     nested models out to ``$defs``). The first match is patched.
 
     Args:
-        schema (dict): The schema to update (not mutated — deep-copied).
+        schema (dict): The schema to update (not mutated, deep-copied).
         prop_to_update (str): The array property to update.
         labels (list): The list of labels (strings) allowed as items.
         description (str, optional): An optional description for the

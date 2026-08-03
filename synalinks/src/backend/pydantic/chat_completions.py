@@ -198,7 +198,7 @@ class ChatCompletionJsonSchema(DataModel):
         description="The schema identifier (≤64 chars, [a-zA-Z0-9_-])",
     )
     description: Optional[str] = Field(
-        description="What the schema represents — guides model selection",
+        description="What the schema represents; guides model selection",
         default=None,
     )
     schema_: Optional[Dict[str, Any]] = Field(

@@ -59,6 +59,7 @@ nav:
     - guides/Knowledge Base.md
     - guides/Knowledge Graph Extraction.md
     - guides/Free-form Knowledge Graph Extraction.md
+    - guides/GraphRAG.md
     - guides/Input Guard.md
     - guides/Output Guard.md
     - guides/Observability.md
@@ -205,6 +206,9 @@ nav:
         - Synalinks API/Modules API/Retrievers Modules/PathRegexSearch module.md
         - Synalinks API/Modules API/Retrievers Modules/PathHybridFTSSearch module.md
         - Synalinks API/Modules API/Retrievers Modules/PathHybridRegexSearch module.md
+        - Synalinks API/Modules API/Retrievers Modules/LocalGraphSearch module.md
+        - Synalinks API/Modules API/Retrievers Modules/GlobalGraphSearch module.md
+        - Synalinks API/Modules API/Retrievers Modules/GlobalGraphMapReduce module.md
       - Rerankers Modules:
         - Synalinks API/Modules API/Rerankers Modules/index.md
         - Synalinks API/Modules API/Rerankers Modules/RRFReranker module.md

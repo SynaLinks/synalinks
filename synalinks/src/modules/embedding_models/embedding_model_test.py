@@ -103,7 +103,7 @@ def _set_scope(value):
 
 class EMCounterPopulationTest(testing.TestCase):
     """End-to-end checks that LiteLLM-shaped responses populate operational
-    counters correctly. Guards against drift in LiteLLM's response schema —
+    counters correctly. Guards against drift in LiteLLM's response schema,
     in particular `response["usage"]["prompt_tokens"]`,
     `response._hidden_params["response_cost"]`, and `response["data"]`.
     """

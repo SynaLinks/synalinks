@@ -20,7 +20,7 @@ class CSVDataset(Dataset):
     """Streaming dataset backed by one or more CSV files.
 
     Rows are read with Python's ``csv.DictReader`` so memory usage stays
-    bounded — one row is materialized at a time. Every field comes back
+    bounded: one row is materialized at a time. Every field comes back
     as a string (no type inference); the Jinja2 templates can then
     coerce as needed via filters like ``int``, ``float``, or ``tojson``.
     This matches how most LM-training CSV pipelines treat their data
@@ -30,13 +30,13 @@ class CSVDataset(Dataset):
     Each row is rendered through the Jinja2 ``input_template`` /
     ``output_template`` to JSON, validated against the corresponding
     ``DataModel`` (or ``synalinks.ChatMessages`` when ``None``), and
-    accumulated into batches of size ``batch_size`` — the same
+    accumulated into batches of size ``batch_size``, the same
     contract as `HuggingFaceDataset`.
 
     Templates receive each CSV row as a dict keyed by column name, so
     column names must be valid Python identifiers (or you can alias
     them via the ``column_names`` argument when the source CSV has
-    inconvenient headers — or no header at all).
+    inconvenient headers, or no header at all).
 
     Example:
 
@@ -61,7 +61,7 @@ class CSVDataset(Dataset):
         encoding (str): Source encoding. Defaults to ``"utf-8"``.
         column_names (list): Optional explicit column names. When
             given, the first row of each file is treated as data
-            (not a header) — useful for headerless CSVs and to alias
+            (not a header), useful for headerless CSVs and to alias
             non-identifier-shaped headers into identifier-shaped names.
             When ``None`` (default), the first row of each file is
             used as the header.
@@ -76,7 +76,7 @@ class CSVDataset(Dataset):
         output_template (str): See ``Dataset``.
         batch_size (int): Examples per yielded batch. Defaults to ``1``.
         limit (int): Optional. Caps how many rows are consumed across
-            all input files. Also makes ``__len__`` available — without
+            all input files. Also makes ``__len__`` available; without
             a limit, streaming CSVs have unknown length.
         repeat (int): See ``Dataset``.
     """
@@ -130,7 +130,7 @@ class CSVDataset(Dataset):
         self.columns = list(columns) if columns is not None else None
 
     def _iter_rows(self):
-        # ``newline=""`` lets ``csv`` handle the line discipline itself —
+        # ``newline=""`` lets ``csv`` handle the line discipline itself;
         # mandatory per the stdlib docs to avoid splitting embedded newlines
         # inside quoted fields.
         columns = self.columns
@@ -147,7 +147,7 @@ class CSVDataset(Dataset):
                     # DictReader puts the surplus values under the
                     # ``None`` key. That key would crash Jinja's
                     # ``**row`` expansion ("keywords must be strings"),
-                    # and we'd rather just ignore the surplus —
+                    # and we'd rather just ignore the surplus,
                     # consistent with "the loader doesn't fail on
                     # ragged rows; the user's template decides what's
                     # required". Drop the None key before yielding.

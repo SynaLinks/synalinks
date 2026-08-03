@@ -43,7 +43,7 @@ async def cosine_similarity(y_true, y_pred, embedding_model=None, axis=-1):
     if y_pred is not None and y_true is not None:
         em = _get_em(embedding_model)
         # Flatten each data model's fields to strings, embed, and pull
-        # the vectors out — same logic the old `ops.embedding` did.
+        # the vectors out, same logic the old `ops.embedding` did.
         y_true_texts = tree.flatten(
             tree.map_structure(lambda f: str(f), y_true.get_json())
         )

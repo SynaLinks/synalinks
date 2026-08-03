@@ -77,7 +77,7 @@ class StubExportTest(testing.TestCase):
                 sys.modules,
                 "Importing `keras_tuner_utils` must not import keras_tuner.",
             )
-            # Touching the symbol on the module is still lazy — only
+            # Touching the symbol on the module is still lazy: only
             # instantiation triggers the kt import.
             _ = mod.RandomSearch
             self.assertNotIn("keras_tuner", sys.modules)
@@ -98,7 +98,7 @@ class StubExportTest(testing.TestCase):
 
 
 class HistoryReductionTest(testing.TestCase):
-    """`_history_to_metrics_dict` is the bit we own — keras-tuner doesn't
+    """`_history_to_metrics_dict` is the bit we own; keras-tuner doesn't
     know how to unwrap a synalinks History on its own."""
 
     def _make_history(self, history_dict):
@@ -185,7 +185,7 @@ class ResolveErrorTest(testing.TestCase):
         wrapped error must mention `disable_keras_backend` so the user
         knows the remediation. Either `RuntimeError` (keras/keras_tuner
         missing after a clean import attempt) or `ImportError` (kt itself
-        not installed) is acceptable here — both bodies point the user at
+        not installed) is acceptable here: both bodies point the user at
         the same fix path."""
         with self.assertRaises((RuntimeError, ImportError)) as ctx:
             RandomSearch()  # triggers _resolve_kt_tuner
@@ -254,7 +254,7 @@ class TunerEndToEndTest(testing.TestCase):
                 optimizer = object()  # truthy → dispatch to fit() branch
 
                 async def fit(self_inner, *args, **kwargs):
-                    # Reward peaks at x=0.3 — RandomSearch with enough trials
+                    # Reward peaks at x=0.3; RandomSearch with enough trials
                     # should converge near that.
                     score = 1.0 - abs(x - 0.3)
                     h = SynalinksHistory()
@@ -291,7 +291,7 @@ class TunerEndToEndTest(testing.TestCase):
             len(seen), 11, "hypermodel should run once per trial after the init build"
         )
         best = tuner.get_best_hyperparameters(num_trials=1)[0]
-        # 10 random samples in [0, 1] — best x should land near 0.3.
+        # 10 random samples in [0, 1]; best x should land near 0.3.
         self.assertLess(abs(best.get("x") - 0.3), 0.3)
 
     def test_search_runs_all_trials_on_one_event_loop(self):
@@ -333,7 +333,7 @@ class TunerEndToEndTest(testing.TestCase):
         )
 
     def _build_failing_program_factory(self):
-        """Hypermodel whose `fit` always raises — so every trial fails and
+        """Hypermodel whose `fit` always raises, so every trial fails and
         keras_tuner aborts with its consecutive-failure RuntimeError."""
 
         async def build(hp):
@@ -356,7 +356,7 @@ class TunerEndToEndTest(testing.TestCase):
         # out of `super().search()`. That call used to sit INSIDE a
         # `try/except RuntimeError: pass`, so the real error was swallowed and
         # `search()` fell through to build its OWN event loop and re-run the
-        # search on top of the already-running one — dying with "Cannot run
+        # search on top of the already-running one, dying with "Cannot run
         # the event loop while another loop is running", further masked as
         # "AttributeError: 'NoneType' object has no attribute 'items'".
         #
@@ -449,7 +449,7 @@ class TunerEndToEndTest(testing.TestCase):
 
     def test_sync_hypermodel_is_also_accepted(self):
         """Hypermodels that return a Program directly (no `async def`) must
-        work — `inspect.isawaitable` falls through to the program as-is."""
+        work: `inspect.isawaitable` falls through to the program as-is."""
         disable_keras_backend()
 
         def build(hp):
@@ -526,7 +526,7 @@ class TunerEndToEndTest(testing.TestCase):
         self.assertLess(abs(best.get("x") - 0.3), 0.3)
 
         # Each completed trial must carry both metric values (not just the
-        # objective name) — confirms we don't drop non-aggregated metrics
+        # objective name); confirms we don't drop non-aggregated metrics
         # when the objective is a MultiObjective.
         for trial in tuner.oracle.trials.values():
             self.assertEqual(trial.status, "COMPLETED")
@@ -606,9 +606,17 @@ class TunerEndToEndTest(testing.TestCase):
         disable_keras_backend()
 
         model_ids = ["ollama/model-a", "ollama/model-b", "ollama/model-c"]
-        per_call_tokens = {"ollama/model-a": 10, "ollama/model-b": 20, "ollama/model-c": 30}
+        per_call_tokens = {
+            "ollama/model-a": 10,
+            "ollama/model-b": 20,
+            "ollama/model-c": 30,
+        }
         # Distinct predicted answer value per model -> distinct ordinary metric.
-        answer_value_of = {"ollama/model-a": 1.0, "ollama/model-b": 2.0, "ollama/model-c": 3.0}
+        answer_value_of = {
+            "ollama/model-a": 1.0,
+            "ollama/model-b": 2.0,
+            "ollama/model-c": 3.0,
+        }
 
         def canon(model_str):
             # synalinks rewrites "ollama/x" -> "ollama_chat/x"; match by suffix.
@@ -756,7 +764,7 @@ class ObjectiveDirectionInferenceTest(testing.TestCase):
 
     def test_reward_infers_as_max(self):
         """`"reward"` is the conventional name for a `Mean`/wrapper around a
-        synalinks `Reward` and is not a class name in the registry — it's
+        synalinks `Reward` and is not a class name in the registry; it's
         special-cased to `"max"` in `_synalinks_name_direction_map`."""
         obj = Objective("val_reward")
         self.assertEqual(obj.direction, "max")
@@ -779,7 +787,7 @@ class ObjectiveDirectionInferenceTest(testing.TestCase):
     def test_loss_falls_through_to_kt_inference(self):
         """kt's original `infer_metric_direction` handles `"loss"` as a
         special case. The synalinks patch falls through for names not in
-        its table — verifying compatibility is preserved."""
+        its table, verifying compatibility is preserved."""
         obj = Objective("val_loss")
         self.assertEqual(obj.direction, "min")
 
@@ -790,7 +798,7 @@ class ObjectiveDirectionInferenceTest(testing.TestCase):
         self.assertIn("direction=", str(ctx.exception))
 
     def test_explicit_direction_bypasses_inference(self):
-        """A user-supplied direction overrides registry lookup — useful for
+        """A user-supplied direction overrides registry lookup, useful for
         custom metrics with no `direction` set."""
         obj = Objective("any_unknown_metric", direction="min")
         self.assertEqual(obj.direction, "min")

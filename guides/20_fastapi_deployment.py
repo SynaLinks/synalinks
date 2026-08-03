@@ -6,7 +6,7 @@
 Every guide so far has ended at the same line: `await program(...)`.
 That line lives inside *your* Python script, and the caller of that
 line is *you*. Real applications are different: the caller is
-usually someone — or something — that cannot reach into your
+usually someone (or something) that cannot reach into your
 process. It might be:
 
 - a web page open in your friend's browser,
@@ -27,7 +27,7 @@ FastAPI server.
 
 The sibling guide,
 [FastMCP Deployment](https://synalinks.github.io/synalinks/guides/FastMCP%20Deployment/), wraps the same kind
-of program for a *different* kind of caller — a language model
+of program for a *different* kind of caller: a language model
 client. The two adapters look strikingly similar; pick by who's
 calling.
 
@@ -43,13 +43,13 @@ result = await program(Query(query="..."))
 
 Two things to read past, in case they are new:
 
-- **`await f(...)`** — read it as `f(...)` — same idea as calling
+- **`await f(...)`**: read it as `f(...)`, same idea as calling
   a normal function, except that Python may pause internally and
   let other work run before the result comes back. The
   `async`/`await` keywords mark the call as possibly-interrupted.
   We use them throughout because the LM provider talks to us over
   the network, and that network call is what gets paused.
-- **`Query(query="...")`** — `Query` is the class (defined later
+- **`Query(query="...")`**: `Query` is the class (defined later
   in the file) and `query` is its single field. The outer and
   inner names are the same on purpose: a request body labelled
   `query` is the most natural REST shape. The repeated word is a
@@ -61,7 +61,7 @@ instance, run that `await`, serialise the answer back to JSON.
 Holding this picture in your head will keep the rest of the guide
 simple.
 
-(Code snippets in this guide are illustrative — they may omit
+(Code snippets in this guide are illustrative; they may omit
 imports for brevity. The complete file lives under `## Source` at
 the bottom.)
 
@@ -76,8 +76,8 @@ expects an `Animal` accepts a `Dog`. Here, any place that expects a
 What you get for free because of that inheritance:
 
 - FastAPI **already** parses JSON request bodies into Pydantic
-  models — so your `Query` class is a valid request body.
-- FastAPI **already** turns Pydantic models back into JSON — so
+  models, so your `Query` class is a valid request body.
+- FastAPI **already** turns Pydantic models back into JSON, so
   `NumericalAnswer` is a valid response body.
 - FastAPI **already** publishes interactive docs at `/docs` with
   the JSON shape of each endpoint. Your input and output schemas
@@ -91,7 +91,7 @@ are reused on the wire.
 It's tempting to write a server that builds the program the first
 time it starts. *Don't.* Building a Synalinks program means setting
 a default language model, instantiating an agent, calling an LM
-provider during construction — all of which are operations a
+provider during construction, all of which are operations a
 production server has no business doing. If the agent build fails
 halfway through your first request, you have a half-initialised
 server that confidently returns wrong answers.
@@ -101,7 +101,7 @@ The right pattern is **two steps**:
 1. **Build the program once**, in a separate preparation step.
    This file exposes a regular `build_and_save_program(path)`
    function and a `build` CLI verb that calls it. Run it from a
-   shell, a CI job, or a Python REPL — wherever you prepare other
+   shell, a CI job, or a Python REPL, wherever you prepare other
    ML artifacts:
 
    ```bash
@@ -142,7 +142,7 @@ them in order:
 
 - A **generator** is a function whose body contains the keyword
   `yield`. When you call it, it does *not* run all the way
-  through — it runs up to the first `yield`, pauses there, and
+  through; it runs up to the first `yield`, pauses there, and
   resumes from that point the next time it's asked to.
 - A **context manager** is an object with a "setup" half and a
   "teardown" half, used with `with`: do setup, hand control to the
@@ -180,7 +180,7 @@ Two things to remember:
 
 The handler is short. Its job is: receive a parsed input, await the
 program, project the answer out of the agent's full output, return
-a typed response. We'll meet `out_mask` for the first time — keep
+a typed response. We'll meet `out_mask` for the first time; keep
 reading, it's explained right below the snippet:
 
 ```python
@@ -204,27 +204,27 @@ async def solve(request: Request, query: Query) -> NumericalAnswer:
 
 A sentence each on the moving parts:
 
-- **`async def`** — the handler is async because the program is
+- **`async def`**: the handler is async because the program is
   async. FastAPI awaits it directly. No thread pool, no
   `asyncio.run`, no `nest_asyncio`. If those terms mean nothing to
-  you yet, ignore them — the point is: it just works.
-- **`query: Query`** — because `query` is typed as a Pydantic
+  you yet, ignore them; the point is: it just works.
+- **`query: Query`**: because `query` is typed as a Pydantic
   model, FastAPI knows to read the request body, parse it as JSON,
   and validate it against `Query`. If the body is malformed, the
   handler never runs; FastAPI sends back `422 Unprocessable
   Entity` automatically.
-- **`-> NumericalAnswer`** — modern FastAPI uses the return
+- **`-> NumericalAnswer`**: modern FastAPI uses the return
   annotation as the response schema. (Older tutorials show
   `response_model=NumericalAnswer` as an extra decorator argument;
   it still works, but it's redundant when you have the annotation.)
-- **`if result is None`** — a Synalinks guard (see
+- **`if result is None`**: a Synalinks guard (see
   [Input Guard](https://synalinks.github.io/synalinks/guides/Input%20Guard/) /
   [Output Guard](https://synalinks.github.io/synalinks/guides/Output%20Guard/)) returns `None` when it refuses
   the call. We translate that into HTTP `422 Unprocessable Entity`,
   which means "I understood the request, my own rules just won't
   let me process it." (Why not `502 Bad Gateway`? `502` means an
   *upstream service* failed. The guard didn't fail; *we* declined.)
-- **`result.out_mask(mask=["messages"]).get_json()`** — the line
+- **`result.out_mask(mask=["messages"]).get_json()`**: the line
   that needs two sentences. Two independent facts conspire here:
 
     1. `await program(...)` always returns a generic JSON
@@ -232,15 +232,15 @@ A sentence each on the moving parts:
        Synalinks does this on purpose so internal modules can
        reshape data freely without breaking the rest of the graph.
     2. An *agent* in particular also includes a **trajectory** in
-       its output — the running list of `messages` it exchanged
-       with the LM — because that trajectory is essential for
+       its output, the running list of `messages` it exchanged
+       with the LM, because that trajectory is essential for
        training, debugging, and observability.
 
     Together, the result has more fields than `NumericalAnswer`
     wants. `out_mask(mask=["messages"])` returns a *view* of the
     result with the trajectory dropped; `.get_json()` hands back
     the raw dict for the next step.
-- **`NumericalAnswer.model_validate(answer_json)`** — now that the
+- **`NumericalAnswer.model_validate(answer_json)`**: now that the
   payload has only the fields the response model knows about,
   `model_validate` turns it into a `NumericalAnswer` instance. The
   `try/except` is defensive: in theory constrained decoding stops
@@ -255,7 +255,7 @@ Prerequisites:
 - An LM you have access to. The build function defaults to
   `gemini/gemini-3.1-flash-lite-preview`, which expects a
   `GEMINI_API_KEY` env var. If you don't have one, edit
-  `build_and_save_program` and change the model string — a free
+  `build_and_save_program` and change the model string; a free
   local option is `"ollama/mistral:latest"` (see
   [Getting Started](https://synalinks.github.io/synalinks/guides/Getting%20Started/) for setup).
 - The FastAPI toolkit installed:
@@ -296,7 +296,7 @@ curl -X POST http://127.0.0.1:8000/solve \\
 
 If you're new to FastAPI, read the
 [official tutorial][fastapi-first-steps] alongside this guide. The
-*shape* of the module — `app`, decorators, lifespan, `__main__` —
+*shape* of the module (`app`, decorators, lifespan, `__main__`)
 is copied verbatim from there; only the *body* of the handler is
 Synalinks-specific.
 
@@ -306,7 +306,7 @@ Synalinks-specific.
 
 `uvicorn --reload` is great while you're developing. For real
 deployments you'll want a few extras. None of them are specific to
-Synalinks — they apply to any Python web service — so don't worry
+Synalinks (they apply to any Python web service), so don't worry
 about understanding them now. Just know they're the next things to
 read about:
 
@@ -319,7 +319,7 @@ read about:
 - **Timeouts.** Set one on the LM call inside the program *and* one
   on the HTTP server. Without them, a stuck upstream pinned by one
   request can stall every other request.
-- **CORS** — if a browser is the caller. Without it, the browser
+- **CORS**: if a browser is the caller. Without it, the browser
   blocks the request before it even leaves the page. Wrap the app
   with `fastapi.middleware.cors.CORSMiddleware`.
 - **Authentication.** FastAPI ships [security helpers][security]
@@ -334,13 +334,13 @@ read about:
 
 ## Concurrency Note
 
-(Safe to skip on a first read — only matters once you train.)
+(Safe to skip on a first read; only matters once you train.)
 
 `request.state.program` is *one* Program instance shared across
 every concurrent request. The reason it is safe to share is that
 serving requests only *reads* the program's **trainable
 variables** (the configurable knobs an optimiser tunes during
-training — see the [Training](https://synalinks.github.io/synalinks/guides/Training/) guide). The optimiser
+training; see the [Training](https://synalinks.github.io/synalinks/guides/Training/) guide). The optimiser
 is the only thing that ever *writes* to them, and the optimiser
 doesn't run at request time. If you ever expose training itself as
 an endpoint, give each training job its own program copy so they
@@ -355,7 +355,7 @@ don't fight over the same knobs.
   for request bodies, response bodies, and the `/docs` schemas.
   You don't write them twice.
 - **Build once, serve forever.** Build the program in a *separate*
-  step; the server's only startup job is to load the saved file —
+  step; the server's only startup job is to load the saved file,
   and to fail fast if the file isn't there.
 - **Load the program inside the lifespan, never inside a handler.**
   `yield`ing a `dict` from the lifespan puts the program on
@@ -366,9 +366,9 @@ don't fight over the same knobs.
 
 ## What To Learn Next
 
-- [FastMCP Deployment](https://synalinks.github.io/synalinks/guides/FastMCP%20Deployment/) — same shape, but
+- [FastMCP Deployment](https://synalinks.github.io/synalinks/guides/FastMCP%20Deployment/): same shape, but
   the caller is a language model rather than an HTTP client.
-- [Observability](https://synalinks.github.io/synalinks/guides/Observability/) — production without tracing
+- [Observability](https://synalinks.github.io/synalinks/guides/Observability/): production without tracing
   is debugging in the dark.
 - FastAPI's [tutorial][fastapi] for query params, dependencies,
   background tasks, and the wider surface area. (It's good. Use it.)
@@ -427,7 +427,7 @@ async def calculate(expression: str):
     """
     # Whitelist the allowed characters first; this is what makes the
     # `eval` on the next-to-last line safe. NEVER `eval` arbitrary user
-    # input — `eval(some_string)` is a remote-code-execution hazard in
+    # input: `eval(some_string)` is a remote-code-execution hazard in
     # the general case.
     if not all(char in "0123456789+-*/(). " for char in expression):
         return {"result": None, "log": "Error: invalid characters in expression"}
@@ -452,7 +452,7 @@ PROGRAM_PATH = Path(os.environ.get("MATH_AGENT_PATH", "math_agent.json"))
 
 async def build_and_save_program(path: Path) -> "synalinks.Program":
     """Build the math agent and persist it to ``path``."""
-    # Reset Synalinks's global registry — useful when re-running the
+    # Reset Synalinks's global registry, useful when re-running the
     # build in a long-lived REPL or notebook so state from a previous
     # build doesn't leak in.
     synalinks.clear_session()

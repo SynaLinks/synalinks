@@ -173,7 +173,7 @@ class BeautifySchemaTest(testing.TestCase):
         out = summary_utils.beautify_schema(schema)
         self.assertIn("Answer:\n  doc: Document", out)
         self.assertIn("Document:\n  text: str", out)
-        # A dependency is defined *before* the model that uses it — the order
+        # A dependency is defined *before* the model that uses it, the order
         # you'd write it in code, root last.
         self.assertLess(out.index("Document:"), out.index("Answer:"))
         # `$defs` plumbing never leaks into the rendered output.
@@ -207,7 +207,7 @@ class FormatModuleSchemaTest(testing.TestCase):
         inputs = Input(data_model=Query)
         outputs = await Identity()(inputs)
         program = Program(inputs=inputs, outputs=outputs)
-        # Inspect Identity inside the program — it has an inbound node.
+        # Inspect Identity inside the program; it has an inbound node.
         ident = program.modules[-1]
         schema = summary_utils.format_module_schema(ident)
         # Rendered as a compact Pydantic-like block, no raw JSON-schema keys.
@@ -273,9 +273,7 @@ class GetModuleIndexBoundsTest(testing.TestCase):
         mods = self._modules()
         # When the lower bound appears after the upper bound, the function
         # returns the reversed span so the caller gets a non-empty slice.
-        idx = summary_utils.get_module_index_bound_by_module_name(
-            mods, ("out", "input")
-        )
+        idx = summary_utils.get_module_index_bound_by_module_name(mods, ("out", "input"))
         self.assertEqual(idx, [0, 4])
 
 

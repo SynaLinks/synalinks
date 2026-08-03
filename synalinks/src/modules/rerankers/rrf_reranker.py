@@ -23,8 +23,8 @@ from synalinks.src.modules.module import Module
 class RRFReranker(Module):
     """Merge multiple search results with Reciprocal Rank Fusion (RRF).
 
-    Takes a list of result data models — each a `GenericResult` whose
-    ``result`` field is a ranked list of rows — and fuses their rankings
+    Takes a list of result data models (each a `GenericResult` whose
+    ``result`` field is a ranked list of rows) and fuses their rankings
     into a single ranked list. A row's fused score is
 
         ``score(row) = sum over lists of 1 / (k_rank + rank)``

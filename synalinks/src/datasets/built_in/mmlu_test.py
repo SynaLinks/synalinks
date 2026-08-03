@@ -71,7 +71,7 @@ class MMLUTest(testing.TestCase):
         self.assertEqual(x_train[0].subject, "elementary_mathematics")
 
     def test_answer_index_mapped_to_letter(self):
-        # 1 → "B", 2 → "C", 1 → "B" — verifies the [A,B,C,D][answer]
+        # 1 → "B", 2 → "C", 1 → "B"; verifies the [A,B,C,D][answer]
         # template indexing.
         with patch.object(hf_module, "load_dataset", side_effect=_fake_load_dataset):
             (_, y_train), (_, y_test) = load_data()
@@ -79,7 +79,7 @@ class MMLUTest(testing.TestCase):
         self.assertEqual(y_test[0].answer, "B")
 
     def test_answer_literal_rejects_invalid_letter(self):
-        # The DataModel uses Literal["A","B","C","D"] — pydantic must
+        # The DataModel uses Literal["A","B","C","D"]; pydantic must
         # refuse anything else.
         with pytest.raises(Exception):
             MMLUAnswer(answer="E")

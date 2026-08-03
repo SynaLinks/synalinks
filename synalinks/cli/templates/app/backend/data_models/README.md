@@ -1,6 +1,6 @@
 # data_models/
 
-The Synalinks `DataModel`s that define your structured I/O live here — the typed
+The Synalinks `DataModel`s that define your structured I/O live here: the typed
 schemas modules read and write, and that FastAPI reuses as request/response
 bodies (they're Pydantic models, so the schema is written once and shows up at
 `/docs` for free).
@@ -8,7 +8,7 @@ bodies (they're Pydantic models, so the schema is written once and shows up at
 ## What goes here
 
 - Input/output schemas (e.g. `Question`, `Answer`) and any nested models.
-- Field descriptions — these are part of the prompt the LM sees, so write them
+- Field descriptions: these are part of the prompt the LM sees, so write them
   well.
 
 ## Sketch
@@ -27,5 +27,5 @@ class Answer(synalinks.DataModel):
 ```
 
 Import them from `programs/` (to build the pipeline) and `routes/` (as request /
-response types). Starting out, the bundled `main.py` defines these inline — move
+response types). Starting out, the bundled `main.py` defines these inline; move
 them here as the project grows.

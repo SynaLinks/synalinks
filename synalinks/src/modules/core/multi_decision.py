@@ -41,7 +41,7 @@ class MultiDecision(Module):
     the given labels and uses it to generate a structured answer.
 
     This ensures that the LM answer **always** contains only values
-    from the provided labels — no hallucinated entries.
+    from the provided labels: no hallucinated entries.
 
     Mirrors `Decision` but allows **multiple** choices instead
     of exactly one.

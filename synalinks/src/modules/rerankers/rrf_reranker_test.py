@@ -70,7 +70,7 @@ class RRFRerankerIntegrationTest(testing.TestCase):
     """End-to-end: merge two real searches over a real DuckDB store.
 
     Only the LM (query generation) is mocked; DuckDB BM25 + regex are
-    real. This is the canonical use case — fusing heterogeneous
+    real. This is the canonical use case: fusing heterogeneous
     retrievers into one ranked list.
     """
 

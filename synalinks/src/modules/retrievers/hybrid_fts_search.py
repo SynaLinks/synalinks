@@ -23,7 +23,7 @@ from synalinks.src.saving import serialization_lib
 class HybridFTSSearchInput(DataModel):
     """Input shape for `HybridFTSSearch`.
 
-    The ``keywords`` list is optional — when omitted, the adapter
+    The ``keywords`` list is optional: when omitted, the adapter
     re-uses the vector side's text for BM25 scoring as well.
     """
 
@@ -106,7 +106,7 @@ class HybridFTSSearch(Module):
             providing ``schema`` via ``.get_schema()`` when ``schema``
             is not given.
         table_name (str): Target table. Defaults to the schema's
-            ``title``. **Optional** — when neither ``table_name`` nor a
+            ``title``. **Optional**: when neither ``table_name`` nor a
             schema to derive it from is given, the language model infers
             the target table per call (constrained to the knowledge
             base's actual tables).

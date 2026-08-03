@@ -103,6 +103,7 @@ def cli(ctx: click.Context):
         click.echo()
         click.echo(ctx.get_help())
 
+
 @cli.command()
 @click.argument("project_name", required=False)
 @click.option(
@@ -231,9 +232,7 @@ def init(project_name, name, description, template, list_templates, force):
     _link_claude_md(target)
 
     console = Console()
-    console.print(
-        f"\n✨ Created '{project_name}' from the '{template}' template."
-    )
+    console.print(f"\n✨ Created '{project_name}' from the '{template}' template.")
     _print_next_steps(
         console,
         [
@@ -297,7 +296,7 @@ def _link_claude_md(target: Path) -> None:
 
     The template ships CLAUDE.md as a symlink, but ``importlib.resources``
     extracts packaged templates to a temp dir (and wheels store plain files),
-    which dereferences the link — so we recreate it on the generated project.
+    which dereferences the link, so we recreate it on the generated project.
     """
     agents = target / "AGENTS.md"
     claude = target / "CLAUDE.md"

@@ -8,7 +8,7 @@
 ## Source
 
 ````python
---8<-- "examples/5a_data_model_operators.py:168"
+--8 < --"examples/5a_data_model_operators.py:168"
 ````
 
 ## Run log
@@ -16,7 +16,7 @@
 The log below is the **unedited** combined output of running the example above
 with local models (ollama).
 
-??? example "Full run log — `examples/5a_data_model_operators.log`"
+??? example "Full run log: `examples/5a_data_model_operators.log`"
 
     ```text
     --8<-- "examples/5a_data_model_operators.log"

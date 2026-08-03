@@ -46,7 +46,7 @@ class NamingTest(testing.TestCase):
         self.assertEqual(to_pascal_case(""), "")
         self.assertEqual(to_pascal_case("   "), "")
         self.assertEqual(to_pascal_case("---"), "")
-        # Digits stay where they are — note this means a leading digit
+        # Digits stay where they are; note this means a leading digit
         # survives, so callers that need SQL-identifier safety must
         # still validate afterwards.
         self.assertEqual(to_pascal_case("2024_articles"), "2024Articles")

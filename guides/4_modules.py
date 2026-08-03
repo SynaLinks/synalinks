@@ -3,7 +3,7 @@
 
 In [Guide 3](https://synalinks.github.io/synalinks/guides/Programs/) we treated a `Program` as a flowchart made of `Module`s. So
 far the only module you have seen up close is `Generator`. This guide
-introduces the rest of the catalogue — the bricks you snap together to
+introduces the rest of the catalogue: the bricks you snap together to
 build interesting programs.
 
 The mental picture is, once again, **Lego**. Every module is a single
@@ -18,19 +18,19 @@ operations like an LM call without freezing the rest of the program. A
 `DataModel` (you met it in [Guide 2](https://synalinks.github.io/synalinks/guides/Data%20Models/)) is a Pydantic-based class that
 pins down which fields exist and what type each one is.
 
-Some modules carry **trainable state** — JSON objects that the
+Some modules carry **trainable state**: JSON objects that the
 optimizer is allowed to rewrite during training. Each trainable
-variable obeys a fixed schema (a subclass of `synalinks.Trainable`
-— [Guide 12](https://synalinks.github.io/synalinks/guides/Trainable%20Variables/) shows you how to write your own). The two most common
+variable obeys a fixed schema (a subclass of `synalinks.Trainable`;
+[Guide 12](https://synalinks.github.io/synalinks/guides/Trainable%20Variables/) shows you how to write your own). The two most common
 shapes for that JSON object are:
 
-- `instructions` — a variable whose primary field is the system
+- `instructions`: a variable whose primary field is the system
   prompt the module sends to the LM, and
-- `examples` — a variable whose primary field is a list of
+- `examples`: a variable whose primary field is a list of
   few-shot examples demonstrating the task.
 
 These are special cases. A trainable variable can in general hold
-*any* structured data its schema describes — a persona, a
+*any* structured data its schema describes: a persona, a
 configuration record, a small knowledge base, anything you can
 express as a Pydantic class. The important thing to internalize is
 that these variables are **parameters of the module**, not
@@ -38,14 +38,14 @@ constants you hard-code. In a neural network, the parameters are
 floating-point weights; here, they are JSON objects. The
 optimizer's job is to improve them. Treat them accordingly.
 
-A `Program`, recall, is a DAG (a directed acyclic graph — a flowchart
+A `Program`, recall, is a DAG (a directed acyclic graph, a flowchart
 with no cycles) whose nodes are modules and whose arrows carry
 DataModels. Synalinks checks types twice: once when you *wire* the
 graph (using `SymbolicDataModel`, the schema-only stand-in for a real
 value), and again at runtime when a real value flows through (using
 ordinary Pydantic validation).
 
-The split between **schema** (the static type — known at construction
+The split between **schema** (the static type, known at construction
 time) and **value** (the actual runtime instance) is the central idea.
 Everything below follows from it.
 
@@ -82,7 +82,7 @@ to fill in the output DataModel, and returns a validated instance.
 Two terms used below, worth pinning down:
 
 - **JSON schema**: a JSON document that describes the shape of *other*
-  JSON — which fields exist, what type each one is, which are
+  JSON: which fields exist, what type each one is, which are
   required. Every Synalinks DataModel comes with one automatically.
 - **Constrained decoding**: when the LM produces output, it is
   restricted token by token to choices that keep the output valid
@@ -170,7 +170,7 @@ Two rules to remember; these come from the LM providers
 - **Every parameter must be required.** Tool-calling providers treat
   every declared parameter as required, so Python default values are
   rejected. If a parameter is *conceptually* optional, model that
-  explicitly — for example, have callers pass `""` or `None` and
+  explicitly: for example, have callers pass `""` or `None` and
   treat that value as "absent" inside the function.
 - **Every parameter needs an entry under `Args:` in the docstring.**
   That text becomes the parameter's `description` in the JSON schema.
@@ -266,7 +266,7 @@ the framework actually runs the tool. The output bundles together
 the arguments the LM produced *and* the value the tool returned.
 
 Think of `Action` as a single-tool, single-shot version of a
-function-calling agent: there is no loop, no choice between tools —
+function-calling agent: there is no loop, no choice between tools:
 just "given this input, fill in this tool's arguments and run it."
 
 ```python
@@ -387,7 +387,7 @@ Why narrowing fields matters:
 ## Test-Time Compute Modules
 
 These modules spend *extra* LM work when you run the program, in
-exchange for better accuracy — trading speed for quality.
+exchange for better accuracy, trading speed for quality.
 "Test-time" is a term borrowed from machine learning: it means "at the
 time the model is being used," as opposed to "training-time," when
 weights or prompts are being adjusted.
@@ -395,15 +395,15 @@ weights or prompts are being adjusted.
 ### ChainOfThought
 
 A **chain of thought** is a sequence of reasoning steps the model
-writes out before committing to an answer — the LM equivalent of
+writes out before committing to an answer, the LM equivalent of
 "showing your work" on a math problem.
 
 `ChainOfThought` adds a `thinking` field to the output schema, placed
 *before* the fields you defined. Constrained decoders emit fields in
 the order they appear in the schema, so the model writes the
 reasoning first and the answer second. And because LMs generate one
-token at a time — each token conditioned on the ones already written
-— putting the reasoning *before* the answer means the answer ends up
+token at a time, each token conditioned on the ones already written,
+putting the reasoning *before* the answer means the answer ends up
 *conditioned on* the reasoning. That tiny ordering trick is the entire
 mechanism behind chain-of-thought prompting.
 
@@ -419,7 +419,7 @@ print(result['answer'])
 
 You do *not* add `thinking` to your DataModel yourself. The
 `ChainOfThought` module inserts it for you. This is the main reason
-field order matters in Synalinks — order changes *behavior*, not just
+field order matters in Synalinks: order changes *behavior*, not just
 appearance.
 
 ### SelfCritique
@@ -613,7 +613,7 @@ Answer: 2
   object whose primary field is the system-prompt text).
 - **`Decision`** and **`Branch`** give you safe, fixed-size control
   flow. Because the labels are a closed set, the choice is always one
-  you named — the model cannot invent a new category at runtime.
+  you named; the model cannot invent a new category at runtime.
 - **`Concat`, `And`, `Or`, `Xor`** are four ways to merge DataModels.
   Pick one by deciding how it should treat missing inputs.
 - **`InMask`** and **`OutMask`** narrow a schema without changing the

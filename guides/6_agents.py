@@ -5,7 +5,7 @@ Picture a language model as a person sitting at a desk. A plain
 `Generator` (which you have seen since [Guide 1](https://synalinks.github.io/synalinks/guides/Getting%20Started/)) lets that person read
 one question and write one answer, then stop. An **agent** gives them
 more freedom: the person may also pick up the phone and call a
-helper — a calculator, a search engine, a clock — read the helper's
+helper (a calculator, a search engine, a clock), read the helper's
 reply, think again, and repeat until they decide they have enough
 information to write a final answer.
 
@@ -13,7 +13,7 @@ A `Generator` maps one input to one structured output in a single LM
 call. An agent generalizes that into a small **control loop**. At each
 step:
 
-1. The model proposes an *action* — usually one or more **tool calls**,
+1. The model proposes an *action*, usually one or more **tool calls**,
    meaning "please run this helper function with these arguments."
 2. The framework runs the tools and collects the results
    (**observations**).
@@ -21,8 +21,8 @@ step:
    into the next prompt.
 
 We keep iterating until the model declines to act (it returns an
-empty list of tool calls), at which point a final LM call — the
-**terminal generator** — looks at the accumulated log and produces
+empty list of tool calls), at which point a final LM call, the
+**terminal generator**, looks at the accumulated log and produces
 the output object the caller asked for.
 
 In principle, an agent could loop forever. To guarantee termination we
@@ -49,8 +49,8 @@ calls.
 
 Synalinks' `FunctionCallingAgent` wraps a `ChainOfThought` module (the
 one you met in [Guide 4](https://synalinks.github.io/synalinks/guides/Modules/)). At each step that module must produce two
-things: a free-form `thinking` field (so we — and downstream optimizers
-— can see the model's intermediate reasoning), and a `tool_calls`
+things: a free-form `thinking` field (so we, and downstream optimizers,
+can see the model's intermediate reasoning), and a `tool_calls`
 array (the list of helper calls it wants to make this turn). An empty
 `tool_calls` array is the agent's only way to stop early; otherwise the
 loop runs until the iteration cap.
@@ -69,7 +69,7 @@ flowchart TD
     I -->|"no"| E
 ```
 
-Each iteration has four phases — **think → decide → act → observe**:
+Each iteration has four phases, **think → decide → act → observe**:
 
 1. **Think.** The decision module reads the current trajectory and
    produces a structured object containing `thinking` and
@@ -80,7 +80,7 @@ Each iteration has four phases — **think → decide → act → observe**:
 3. **Act.** All requested calls are scheduled at the same time using
    `asyncio.gather` (Python's standard way to run several `async`
    tasks concurrently). Doing them in parallel is correct only when
-   the tools in a single batch are *independent* — that is, the order
+   the tools in a single batch are *independent*, that is, the order
    in which they finish does not change the answer.
 4. **Observe.** Each tool's return value is appended to the
    trajectory. Because the prompt on the next *think* step includes
@@ -93,8 +93,8 @@ them when you see them:
   `tool_calls`, the loop runs all the way to `max_iterations`. The
   terminal generator still runs and produces *some* output, but it
   may be incomplete.
-- **Hallucinated calls.** The model may "hallucinate" — confidently
-  invent — a tool that does not exist, or pass arguments of the wrong
+- **Hallucinated calls.** The model may "hallucinate", confidently
+  invent, a tool that does not exist, or pass arguments of the wrong
   type. Whether this raises depends on the tool; we will talk about
   error handling below.
 - **Skipped tools.** A weaker model may answer from its **priors**
@@ -120,14 +120,14 @@ Note that `data_model` only constrains the **final** output. The
 intermediate think-decide steps use a different, fixed schema with
 `thinking` and `tool_calls` fields. Keeping the two schemas separate
 is what lets you reuse the same generic agent for many different
-output shapes — you only need to change `data_model`.
+output shapes: you only need to change `data_model`.
 
 ## Defining Tools
 
 A tool is just an `async` Python function with typed parameters and a
 JSON-serializable return value (typically a `dict`). The
-`synalinks.Tool(fn)` wrapper **introspects** the function — that is,
-it reads the function's type hints and docstring at runtime — and
+`synalinks.Tool(fn)` wrapper **introspects** the function, that is,
+it reads the function's type hints and docstring at runtime, and
 builds a JSON schema describing the tool. That schema is what the LM
 sees when deciding whether to call this tool.
 
@@ -194,7 +194,7 @@ graph LR
 1. **Names are part of the prompt.** The LM sees the function name
    when choosing tools. `search_pubmed` beats `search`; `search`
    beats `do_query`.
-2. **Docstrings are sent verbatim** — copied as-is into the prompt.
+2. **Docstrings are sent verbatim**: copied as-is into the prompt.
    Specify units, formats, and edge cases.
 3. **Type hints are non-negotiable.** Without them, schema generation
    fails.
@@ -221,7 +221,7 @@ outputs = await synalinks.FunctionCallingAgent(
 
 Use autonomous mode when you do not know in advance how many steps
 will be needed and you trust the model to stop on its own. The agent
-owns the control flow — it decides itself when to keep looping and
+owns the control flow: it decides itself when to keep looping and
 when to stop.
 
 ### Non-Autonomous (Single Step)
@@ -264,8 +264,8 @@ graph LR
 Running calls in parallel only gives the right answer when the calls
 do not depend on each other. The agent has no way to check this; it
 is the model's responsibility to put dependent calls on *separate*
-turns. This is a **soft contract** — something the framework requests
-but cannot enforce — and small models often break it. For example, a
+turns. This is a **soft contract**, something the framework requests
+but cannot enforce, and small models often break it. For example, a
 weak model may ask the calculator to multiply two numbers in parallel
 that should have been computed sequentially.
 

@@ -19,7 +19,7 @@ class _SandboxTestCase(testing.TestCase):
     Most tests build a ``MirageSandbox`` (and forks) as locals and never call
     ``close()``. Each live sandbox holds a FUSE mount, so without cleanup the
     suite accumulates mounts until ``mount_max`` (default 1000) is hit and new
-    mounts fail *silently* — the confinement tests then read empty output and
+    mounts fail *silently*; the confinement tests then read empty output and
     fail. Forcing a GC pass after every test runs each dropped sandbox's
     finalizer, which releases its mount deterministically between tests.
     """
@@ -98,7 +98,7 @@ class MirageSandboxTest(_SandboxTestCase):
         async def adder(x, y):
             return {"sum": x + y}
 
-        # Bound tools are called *synchronously* inside the sandbox — no
+        # Bound tools are called *synchronously* inside the sandbox: no
         # `await` / `asyncio.run(...)` ceremony.
         code = "out = adder(x=3, y=4)\nprint(out['sum'])\n"
         result = await sandbox.run(code, external_functions={"adder": adder})
@@ -107,7 +107,7 @@ class MirageSandboxTest(_SandboxTestCase):
 
     async def test_sync_tool_call_returns_value_directly(self):
         # A bare synchronous call returns the host tool's value directly, usable
-        # in the same expression — and it actually invokes the host callable.
+        # in the same expression, and it actually invokes the host callable.
         called = {"n": 0}
 
         async def adder(x, y):
@@ -366,7 +366,9 @@ class MirageSandboxTest(_SandboxTestCase):
         self.assertFalse(caps["seccomp"])
         self.assertEqual(caps["network"], {"mode": "host"})
         self.assertEqual(caps["tools"], [])
-        self.assertFalse(caps["native_shell"])
+        # Unconfined, the default 'local' runtime is host-reaching by design and
+        # is reported as such rather than hidden.
+        self.assertEqual(caps["host_runtimes"], ["local"])
 
     async def test_non_root_mounts_default_to_read_only(self):
         from mirage import RAMResource
@@ -393,26 +395,59 @@ class MirageSandboxTest(_SandboxTestCase):
         self.assertEqual(sandbox.granted_capabilities()["mounts"]["/rw"], "WRITE")
 
     @unittest.skipUnless(_CONFINE_OK, f"confinement unavailable: {_CONFINE_REASON}")
-    async def test_native_true_stripped_under_confine(self):
-        # native=True (host shell, bypasses confinement) is stripped when
-        # confinement is active, with a warning. Requires real confinement: where
-        # it is unavailable, confine=True falls back to unconfined and native is
+    async def test_unvouched_runtime_stripped_under_confine(self):
+        # A runtime the sandbox cannot vouch for could execute code on the host
+        # outside the confinement prologue, so it is dropped (with a warning)
+        # when confinement is active. Requires real confinement: where it is
+        # unavailable, confine=True falls back to unconfined and the entry is
         # left intact, so this assertion only holds on a confine-capable host.
         with self.assertWarns(RuntimeWarning):
             sandbox = MirageSandbox(
-                timeout=_TIMEOUT, confine=True, workspace_kwargs={"native": True}
+                timeout=_TIMEOUT,
+                confine=True,
+                workspace_kwargs={"runtimes": ["vfs", "not-a-vouched-runtime"]},
             )
-        self.assertFalse(sandbox.granted_capabilities()["native_shell"])
+        self.assertEqual(sandbox.granted_capabilities()["host_runtimes"], [])
+        # The vouched entry survives; only the unknown one is removed.
+        self.assertEqual(sandbox._workspace_kwargs["runtimes"], ["vfs"])
+        sandbox.close()
 
     @unittest.skipUnless(_CONFINE_OK, f"confinement unavailable: {_CONFINE_REASON}")
-    async def test_native_true_rejected_under_require_confinement(self):
+    async def test_unvouched_runtime_rejected_under_require_confinement(self):
         with self.assertRaises(ValueError):
             MirageSandbox(
                 timeout=_TIMEOUT,
                 confine=True,
                 require_confinement=True,
-                workspace_kwargs={"native": True},
+                workspace_kwargs={"runtimes": ["not-a-vouched-runtime"]},
             )
+
+    @unittest.skipUnless(_CONFINE_OK, f"confinement unavailable: {_CONFINE_REASON}")
+    async def test_local_runtime_allowed_under_confinement_when_patched(self):
+        # 'local' reaches the host, but the run-python patch prepends the
+        # confinement prologue to everything it runs, so it is the one
+        # host-reaching runtime the sandbox vouches for. This is the default,
+        # and it must not trip the guard.
+        sandbox = MirageSandbox(timeout=_TIMEOUT, confine=True)
+        try:
+            self.assertTrue(sandbox._run_python_patched)
+            self.assertEqual(sandbox.granted_capabilities()["host_runtimes"], [])
+        finally:
+            sandbox.close()
+
+    @unittest.skipUnless(_CONFINE_OK, f"confinement unavailable: {_CONFINE_REASON}")
+    async def test_local_runtime_rejected_when_patch_unavailable(self):
+        # Fail-closed: if the confinement prologue cannot be installed, 'local'
+        # is an unguarded hole and require_confinement must refuse to build.
+        from unittest import mock
+
+        from synalinks.src.sandboxes import mirage_sandbox
+
+        with mock.patch.object(
+            mirage_sandbox, "_install_run_python_patch", return_value=False
+        ):
+            with self.assertRaises(ValueError):
+                MirageSandbox(timeout=_TIMEOUT, confine=True, require_confinement=True)
 
     def test_seccomp_filter_builds_for_known_arch(self):
         from unittest import mock
@@ -918,7 +953,7 @@ class MirageSandboxConfineTest(_SandboxTestCase):
             sandbox.close()
 
     async def test_confine_without_seccomp_allows_syscall(self):
-        # With seccomp disabled the same call is not blocked by a filter — proves
+        # With seccomp disabled the same call is not blocked by a filter; proves
         # the block above comes from seccomp, not the namespace.
         sandbox = MirageSandbox(timeout=_TIMEOUT, confine=True, seccomp=False)
         try:
@@ -980,7 +1015,7 @@ class MirageSandboxConfineTest(_SandboxTestCase):
         # A subagent's confined fork transparently carries the parent's whole
         # security config (egress allowlist, SSRF guard, extra binds, mount
         # modes, fail-closed), so confinement isn't something the subagent opts
-        # into — it inherits it.
+        # into; it inherits it.
         parent = MirageSandbox(
             timeout=_TIMEOUT,
             confine=True,
@@ -1049,14 +1084,21 @@ class RunPythonPatchTest(_SandboxTestCase):
         from synalinks.src.sandboxes import mirage_sandbox as ms
 
         # At least one known runner location must exist in the installed Mirage.
+        # A target's qualname may name a class method (0.0.4+ runtime table) or
+        # a module-level function, so resolve it the same way the patch does.
         resolved = None
-        for mod_name, attr_name in ms._RUN_PYTHON_TARGETS:
+        for mod_name, qualname in ms._RUN_PYTHON_TARGETS:
             try:
-                mod = importlib.import_module(mod_name)
+                owner = importlib.import_module(mod_name)
             except Exception:
                 continue
-            if getattr(mod, attr_name, None) is not None:
-                resolved = (mod, attr_name)
+            *parents, attr_name = qualname.split(".")
+            for parent in parents:
+                owner = getattr(owner, parent, None)
+                if owner is None:
+                    break
+            if owner is not None and getattr(owner, attr_name, None) is not None:
+                resolved = (owner, attr_name)
                 break
         if resolved is None:
             self.skipTest("no known mirage python-runner internal is importable")

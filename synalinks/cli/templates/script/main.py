@@ -1,11 +1,11 @@
-"""A minimal Synalinks program — your starting point.
+"""A minimal Synalinks program: your starting point.
 
 Run it:
 
     uv sync
     uv run python main.py
 
-The default MODEL is served by vLLM — start it with `vllm serve Qwen/Qwen3-4B`.
+The default MODEL is served by vLLM; start it with `vllm serve Qwen/Qwen3-4B`.
 To use another model, edit MODEL below (and `cp .env.template .env` for keys /
 endpoints). Set MLFLOW_TRACKING_URI to trace runs to MLflow.
 """
@@ -28,7 +28,7 @@ def _enable_observability():
         )
 
 
-# Structured input/output — every Synalinks module reads and writes DataModels.
+# Structured input/output: every Synalinks module reads and writes DataModels.
 class Question(synalinks.DataModel):
     question: str = synalinks.Field(description="The question to answer")
 

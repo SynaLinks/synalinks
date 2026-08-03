@@ -217,7 +217,7 @@ class LoadDataTest(testing.TestCase):
 class PlotTaskTest(testing.TestCase):
     """Exercise plot_task end-to-end by writing to a temp PNG.
 
-    We don't assert pixel content — just that each branch runs without
+    We don't assert pixel content, just that each branch runs without
     raising and produces a file.
     """
 

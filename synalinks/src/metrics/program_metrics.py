@@ -2,7 +2,7 @@
 
 """Program-wide operational metrics.
 
-Reads counters that live directly on the bound program object —
+Reads counters that live directly on the bound program object:
 specifically `{phase}_cumulated_invocations` and
 `{phase}_cumulated_invocation_elapsed_s`, which
 `Module._maybe_reset_call_context` bumps whenever the program is the
@@ -153,7 +153,7 @@ class ProgramCallsPerSecond(ProgramOperationalMetric):
 class ProgramCost(ProgramOperationalMetric):
     """Total provider cost (USD, as reported by litellm) across every LM
     and EM reached from the program for this run. The program object
-    itself doesn't pay providers — cost is summed from its bound models.
+    itself doesn't pay providers; cost is summed from its bound models.
     """
 
     def __init__(self, name="program_cost"):

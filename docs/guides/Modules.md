@@ -8,7 +8,7 @@
 ## Source
 
 ````python
---8<-- "guides/4_modules.py:635"
+--8 < --"guides/4_modules.py:635"
 ````
 
 ## Run log
@@ -17,7 +17,7 @@ This guide calls `synalinks.enable_logging()`, so a full run traces every
 module call. The log below is the **unedited** output of running the guide
 above with local models.
 
-??? example "Full run log — `guides/4_modules.log`"
+??? example "Full run log: `guides/4_modules.log`"
 
     ```text
     --8<-- "guides/4_modules.log"

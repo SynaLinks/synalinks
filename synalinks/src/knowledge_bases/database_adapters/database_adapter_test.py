@@ -53,7 +53,7 @@ class SanitizationTest(testing.TestCase):
 
     def test_sanitize_properties(self):
         # Keys are now funnelled through ``column_identifier`` which
-        # snake-cases first then sanitizes — so a mixedCase / PascalCase
+        # snake-cases first then sanitizes, so a mixedCase / PascalCase
         # key gets canonicalized to snake_case, not preserved verbatim.
         props = {"valid_key": "value", "AnotherKey": 123}
         result = sanitize_properties(props)
@@ -63,7 +63,7 @@ class SanitizationTest(testing.TestCase):
         # Previously: ``"invalid-key"`` (and worse) was rejected at
         # ``sanitize_identifier``. With the snake_case normalization in
         # front of the sanitizer, separator-style strings now get
-        # collapsed to a valid identifier — the malicious tokens are
+        # collapsed to a valid identifier: the malicious tokens are
         # *stripped*, not just refused. Either outcome is safe.
         result = sanitize_properties({"invalid-key": "value"})
         self.assertEqual(result, {"invalid_key": "value"})
@@ -209,7 +209,7 @@ class DuckDBAdapterInitTest(testing.TestCase):
 
     def test_close_is_idempotent_and_drops_connection(self):
         # close() must release the persistent connection and survive
-        # repeated invocation — `__del__` calls it during interpreter
+        # repeated invocation: `__del__` calls it during interpreter
         # shutdown so a second call from explicit user code can't be
         # allowed to throw.
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -276,7 +276,7 @@ class DuckDBAdapterInstallExtensionsTest(testing.TestCase):
     """Verify `_install_extensions` only opens a second connection when an
     extension is actually missing, and only ``INSTALL``s the missing
     ones. Probe and install both go through ``:memory:`` (extension
-    state is global to the user's DuckDB install) — this keeps the
+    state is global to the user's DuckDB install); this keeps the
     bootstrap free of the adapter's database file, so an encrypted
     file's key isn't required to install extensions."""
 
@@ -307,7 +307,7 @@ class DuckDBAdapterInstallExtensionsTest(testing.TestCase):
         executed, opened = self._run(installed=[])
         self.assertEqual(len([s for s in executed if "INSTALL fts" in s]), 1)
         self.assertEqual([s for s in executed if "LOAD" in s], [])
-        # Probe + installer — both throwaway, both on :memory:.
+        # Probe + installer: both throwaway, both on :memory:.
         self.assertEqual(opened, [":memory:", ":memory:"])
 
     def test_skips_install_vss_when_already_installed(self):
@@ -594,7 +594,7 @@ class DuckDBAdapterCRUDTest(testing.TestCase):
         result1 = await adapter.update(row)
         self.assertEqual(result1, "only")
 
-        # Second insert with the same id — must not raise (DO NOTHING).
+        # Second insert with the same id; must not raise (DO NOTHING).
         result2 = await adapter.update(row)
         self.assertEqual(result2, "only")
 
@@ -617,7 +617,7 @@ class DuckDBAdapterCRUDTest(testing.TestCase):
         adapter = DuckDBAdapter(uri=self.db_path)
 
         # Pre-create both tables so the failure isn't from a missing
-        # table — we want the failure to occur during executemany so
+        # table; we want the failure to occur during executemany so
         # we're testing rollback specifically.
         adapter._maybe_create_table(TableA.to_symbolic_data_model())
         adapter._maybe_create_table(TableB.to_symbolic_data_model())
@@ -657,14 +657,14 @@ class DuckDBAdapterCRUDTest(testing.TestCase):
 
         # TableA's bucket ran first and "succeeded" at the SQL layer,
         # but the second bucket's failure must roll the whole transaction
-        # back — both tables should have zero rows.
+        # back; both tables should have zero rows.
         rows_a = await adapter.getall(table_name="TableA")
         self.assertEqual(rows_a, [])
         rows_b = await adapter.getall(table_name="TableB")
         self.assertEqual(rows_b, [])
 
     async def test_getall_empty_table_returns_empty_list(self):
-        # Table exists but has no rows — getall should return []
+        # Table exists but has no rows; getall should return []
         # without raising. The previous over-broad try/except would
         # mask real failures here; the narrowed version returns []
         # only through the not-rows branch.
@@ -679,7 +679,7 @@ class DuckDBAdapterCRUDTest(testing.TestCase):
         self.assertEqual(rows, [])
 
     async def test_getall_limit_zero_returns_empty_list(self):
-        # LIMIT 0 must short-circuit cleanly — the cursor returns no
+        # LIMIT 0 must short-circuit cleanly: the cursor returns no
         # rows and we hand back [] rather than constructing the
         # JsonDataModel list from no input.
         class Note(DataModel):
@@ -698,7 +698,7 @@ class DuckDBAdapterCRUDTest(testing.TestCase):
         self.assertEqual(rows, [])
 
     async def test_getall_offset_beyond_rows_returns_empty_list(self):
-        # Pagination off the end should yield [] — not raise, not return
+        # Pagination off the end should yield [], not raise, not return
         # leftovers from the previous page.
         class Note(DataModel):
             id: str
@@ -714,7 +714,7 @@ class DuckDBAdapterCRUDTest(testing.TestCase):
 
     async def test_getall_nonexistent_table_warns_and_returns_empty(self):
         # If the schema describes a table the database doesn't have,
-        # getall must warn about the SELECT failure and return [] —
+        # getall must warn about the SELECT failure and return [];
         # callers depend on getall being non-fatal for soft schema
         # mismatches. The narrowed try/except catches only the duckdb
         # error, so this path is exactly the warning branch.
@@ -784,7 +784,7 @@ class DuckDBAdapterCRUDTest(testing.TestCase):
         # update([]) is a legitimate caller pattern (e.g. when an upstream
         # filter happened to drop all rows). It must not blow up trying
         # to start a transaction it never uses, and it must return the
-        # same shape it was called with — an empty list.
+        # same shape it was called with: an empty list.
         adapter = DuckDBAdapter(uri=self.db_path)
         result = await adapter.update([])
         self.assertEqual(result, [])
@@ -840,7 +840,7 @@ class DuckDBAdapterCRUDTest(testing.TestCase):
     async def test_update_accepts_raw_datamodel_not_just_json(self):
         # `update` calls `.to_json_data_model()` when given a DataModel
         # instance instead of a JsonDataModel. This shorthand is used
-        # widely in the examples — guard against accidental regressions
+        # widely in the examples; guard against accidental regressions
         # to the JsonDataModel-only contract.
         class Person(DataModel):
             name: str
@@ -931,13 +931,13 @@ class DuckDBAdapterQueryTest(testing.TestCase):
         # Schema-derived id_key is interpolated raw into multiple SQL
         # builds (ON CONFLICT, FTS PRAGMA, WHERE clauses). It must be
         # safe at the choke point so a maliciously-built schema can't
-        # punch through. `_get_id_key` is the choke point — and now
+        # punch through. `_get_id_key` is the choke point, and now
         # neutralizes injection-shaped names via the snake_case +
         # sanitize pipeline rather than refusing them. Either is safe.
         adapter = DuckDBAdapter(uri=self.db_path)
         bad_schema = {"properties": {"id; DROP TABLE t; --": {"type": "string"}}}
         result = adapter._get_id_key(bad_schema)
-        # Only the alphanumeric residue survives — the SQL tokens are
+        # Only the alphanumeric residue survives; the SQL tokens are
         # stripped, so this is a safe identifier to interpolate.
         self.assertEqual(result, "id_drop_table_t")
 
@@ -994,7 +994,7 @@ class DuckDBAdapterQueryTest(testing.TestCase):
 
     async def test_read_only_rejects_multi_statement_injection(self):
         # `read_only=True` must parse the input and reject anything
-        # that isn't a SELECT — including a trailing DROP smuggled in
+        # that isn't a SELECT, including a trailing DROP smuggled in
         # after a legitimate-looking SELECT.
         adapter = DuckDBAdapter(uri=self.db_path)
         with self.assertRaises(duckdb.InvalidInputException):
@@ -1048,7 +1048,7 @@ class DuckDBAdapterQueryTest(testing.TestCase):
         self.assertIn("disabled", str(ctx.exception).lower())
 
     async def test_read_only_blocks_read_csv_for_any_local_path(self):
-        # Same defence applies to *any* path, not just /etc/passwd —
+        # Same defence applies to *any* path, not just /etc/passwd;
         # write a benign csv next to the test db and confirm it's also
         # refused.
         bait = os.path.join(self.temp_dir, "bait.csv")
@@ -1060,7 +1060,7 @@ class DuckDBAdapterQueryTest(testing.TestCase):
 
     async def test_read_only_false_bypasses_validation(self):
         # When the caller explicitly opts out of read-only, the adapter
-        # does NOT pre-parse — the caller is responsible. (Internal
+        # does NOT pre-parse; the caller is responsible. (Internal
         # write paths in the adapter rely on this.)
         class Person(DataModel):
             name: str
@@ -1175,7 +1175,7 @@ class DuckDBAdapterSchemaConversionTest(testing.TestCase):
         self.assertIn("status VARCHAR", columns)
 
     def test_json_schema_to_duckdb_columns_with_int_enum(self):
-        """IntEnum emits `type: integer` inside `$defs` — must become INTEGER."""
+        """IntEnum emits `type: integer` inside `$defs`: must become INTEGER."""
         from enum import IntEnum
 
         class Priority(IntEnum):
@@ -1197,7 +1197,7 @@ class DuckDBAdapterSchemaConversionTest(testing.TestCase):
         )
 
     def test_json_schema_to_duckdb_columns_with_optional_enum(self):
-        """Optional[Enum] emits anyOf with `$ref` + null — must resolve."""
+        """Optional[Enum] emits anyOf with `$ref` + null: must resolve."""
         from enum import Enum
         from typing import Optional
 
@@ -1216,7 +1216,7 @@ class DuckDBAdapterSchemaConversionTest(testing.TestCase):
         self.assertIn("color VARCHAR", columns)
 
     def test_json_schema_to_duckdb_columns_with_nested_datamodel(self):
-        """Nested DataModel emits `$ref` resolving to `type: object` — JSON column."""
+        """Nested DataModel emits `$ref` resolving to `type: object` (JSON column)."""
 
         class Address(DataModel):
             city: str
@@ -1258,7 +1258,7 @@ class DuckDBAdapterSchemaConversionTest(testing.TestCase):
 
     def test_json_schema_to_duckdb_columns_preserves_description_on_ref(self):
         """When the referring property has `description`, it must not disappear
-        after `$ref` resolution — protects metadata the user attaches via
+        after `$ref` resolution: protects metadata the user attaches via
         `Field(description=...)` on enum fields."""
         from enum import Enum
 
@@ -1322,7 +1322,7 @@ class DuckDBAdapterFulltextSearchTest(testing.TestCase):
 
     async def test_fulltext_search_empty_query(self):
         adapter = DuckDBAdapter(uri=self.db_path)
-        # Empty query short-circuits to [] before any SQL — the
+        # Empty query short-circuits to [] before any SQL; the
         # table doesn't need to exist for this path to work.
         results = await adapter.fulltext_search("", table_name="Anything")
         self.assertEqual(results, [])
@@ -1408,9 +1408,9 @@ class DuckDBAdapterFulltextSearchTest(testing.TestCase):
         # we get the highest-scoring match, not the lowest.
         adapter = DuckDBAdapter(uri=self.db_path)
         docs = [
-            # Heavy on the query term — should rank highest.
+            # Heavy on the query term; should rank highest.
             JsonDataModel(data_model=Document(id="strong", text="quick quick quick fox")),
-            # One occurrence of the query term — should rank lower.
+            # One occurrence of the query term; should rank lower.
             JsonDataModel(
                 data_model=Document(
                     id="weak",
@@ -1428,7 +1428,7 @@ class DuckDBAdapterFulltextSearchTest(testing.TestCase):
         ids = [r["id"] for r in all_results]
         self.assertIn("strong", ids)
         self.assertIn("weak", ids)
-        # Scores must be in descending order — top result outranks bottom.
+        # Scores must be in descending order: top result outranks bottom.
         self.assertGreaterEqual(all_results[0]["score"], all_results[-1]["score"])
         # The strongest match comes first.
         self.assertEqual(all_results[0]["id"], "strong")
@@ -1493,7 +1493,7 @@ class DuckDBAdapterRegexSearchTest(testing.TestCase):
     async def test_regex_invalid_pattern_raises(self):
         adapter = DuckDBAdapter(uri=self.db_path)
         await self._seed_docs(adapter)
-        # Unclosed group — DuckDB raises InvalidInputException which the
+        # Unclosed group: DuckDB raises InvalidInputException which the
         # adapter rewraps with table context as RuntimeError.
         with self.assertRaises(RuntimeError):
             await adapter.regex_search("(unclosed", table_name="Document")
@@ -1559,7 +1559,7 @@ class DuckDBAdapterRegexSearchTest(testing.TestCase):
             fields=["text; DROP TABLE Document"],
         )
         # Normalized field name is "text_drop_table_document", which
-        # isn't a column on Document — the search skips this table
+        # isn't a column on Document; the search skips this table
         # with no rows returned and no side effects on the DB.
         self.assertEqual(results, [])
         # Verify the table is still intact.
@@ -1699,7 +1699,7 @@ class DuckDBAdapterVectorSearchTest(testing.TestCase):
 
     @patch("litellm.aembedding")
     async def test_similarity_search_k_zero_returns_empty(self, mock_embedding):
-        # k=0 must return an empty list — the LIMIT 0 binding produces
+        # k=0 must return an empty list: the LIMIT 0 binding produces
         # no rows per-table; the post-sort slice trims to nothing.
         vector_dim = 8
         embedding_vec = np.random.rand(vector_dim).tolist()
@@ -1813,8 +1813,8 @@ class DuckDBAdapterVectorSearchTest(testing.TestCase):
     @patch("litellm.aembedding")
     async def test_vector_index_rebuild_is_idempotent(self, mock_embedding):
         # Calling _maybe_create_vector_index twice on a table that
-        # already has the index would error without the DROP IF EXISTS
-        # — `CREATE INDEX` doesn't accept OR REPLACE. Verify two
+        # already has the index would error without the DROP IF EXISTS:
+        # `CREATE INDEX` doesn't accept OR REPLACE. Verify two
         # consecutive calls succeed and the index ends up present.
         vector_dim = 8
         vec = np.random.rand(vector_dim).tolist()
@@ -1835,7 +1835,7 @@ class DuckDBAdapterVectorSearchTest(testing.TestCase):
 
         # First build creates the index.
         adapter._maybe_create_vector_index(Document.to_symbolic_data_model())
-        # Second build must not raise — DROP IF EXISTS + CREATE.
+        # Second build must not raise: DROP IF EXISTS + CREATE.
         adapter._maybe_create_vector_index(Document.to_symbolic_data_model())
 
         with adapter._connect(read_only=True) as con:
@@ -1851,7 +1851,7 @@ class DuckDBAdapterVectorSearchTest(testing.TestCase):
         # End-to-end: an update() call to a table that already has
         # embedded rows must rebuild the HNSW index. This is the
         # "user inserted a vector via raw SQL, then ran update with
-        # more rows" path — the index gets brought up to date.
+        # more rows" path; the index gets brought up to date.
         vector_dim = 8
         vec = np.random.rand(vector_dim).tolist()
         mock_embedding.return_value = {"data": [{"embedding": vec}]}
@@ -1931,7 +1931,7 @@ class DuckDBAdapterHybridSearchTest(testing.TestCase):
 
     async def test_hybrid_regex_search_without_embedding_model(self):
         # Without an embedding model the vector half can't run, so the
-        # method falls through to the regex side alone — same fallback
+        # method falls through to the regex side alone, same fallback
         # convention as `hybrid_search` (which falls through to FTS).
         adapter = DuckDBAdapter(uri=self.db_path)
         docs = [

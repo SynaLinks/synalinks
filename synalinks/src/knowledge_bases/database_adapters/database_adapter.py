@@ -231,7 +231,7 @@ class DatabaseAdapter:
         Args:
             source: ``SymbolicDataModel`` or table-name string for
                 the table to rename.
-            table_name: New table name. Optional — pass to ``ALTER``
+            table_name: New table name. Optional; pass to ``ALTER``
                 the table.
             table_description: New schema description. Optional.
 
@@ -333,7 +333,7 @@ class DatabaseAdapter:
     ):
         """Execute a raw SQL query against the database.
 
-        Counterpart of `GraphDatabaseAdapter.cypher` — the
+        Counterpart of `GraphDatabaseAdapter.cypher`; the
         method is named after the query language so a KnowledgeBase
         that carries both a SQL store and a graph store has a clear
         per-language entry point (``kb.sql(...)`` vs ``kb.cypher(...)``).

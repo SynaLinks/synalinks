@@ -17,7 +17,7 @@ class Precision(FBetaScore):
     ```
 
     Mirrors `F1Score`: tokenization, masking and `average` modes behave
-    identically — only the result formula differs. Use this when you want
+    identically; only the result formula differs. Use this when you want
     to report precision as a separate signal alongside `Recall` and
     `F1Score`.
 
@@ -70,7 +70,7 @@ class Recall(FBetaScore):
     ```
 
     Mirrors `F1Score`: tokenization, masking and `average` modes behave
-    identically — only the result formula differs.
+    identically; only the result formula differs.
 
     Args:
         average (str): Type of averaging across per-field results.

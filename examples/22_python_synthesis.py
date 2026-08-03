@@ -5,7 +5,7 @@ This example evolves a **Python program** to solve an ARC-AGI task.
 
 Unlike a `Generator`, where the trainable state is a prompt and the LM
 runs on every prediction, a `PythonSynthesis` module's trainable state
-is a **Python script**. At inference time there is no LM at all — the
+is a **Python script**. At inference time there is no LM at all: the
 script runs in the Monty sandbox and transforms the input JSON into the
 output JSON. The language model only appears during `fit`, where the
 `OMEGA` optimizer uses it to **author and refine the script** across

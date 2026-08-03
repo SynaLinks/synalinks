@@ -53,7 +53,7 @@ def get(identifier):
     Resolution order: a concrete instance (or string / config dict) is
     always preferred; ``None`` falls back to the configured default
     (``synalinks.config.default_embedding_model()``). If no default is
-    configured, a ``ValueError`` is raised — this function never
+    configured, a ``ValueError`` is raised; this function never
     returns ``None``.
 
     Args:
@@ -73,7 +73,7 @@ def get(identifier):
         # Lazy import to avoid a backend → modules cycle. ``None`` falls
         # back to the configured default (which itself may be ``None``
         # when no default has been registered, in which case ``None``
-        # is what we return — callers that *require* a concrete
+        # is what we return; callers that *require* a concrete
         # instance see the error from the actual call site).
         from synalinks.src.backend.config import default_embedding_model
 

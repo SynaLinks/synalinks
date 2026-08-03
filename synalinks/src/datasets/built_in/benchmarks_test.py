@@ -305,7 +305,7 @@ class IterableDatasetTest(testing.TestCase):
         # 2 raw rows × repeat=2 = 4 examples; batch_size=2 → 2 batches.
         sizes = [len(b[0]) for b in batches]
         self.assertEqual(sizes, [2, 2])
-        # Repeats are consecutive — needed for GRPO grouping semantics.
+        # Repeats are consecutive, needed for GRPO grouping semantics.
         questions = [r.question for batch in batches for r in batch[0]]
         self.assertEqual(questions, ["q0", "q0", "q1", "q1"])
 

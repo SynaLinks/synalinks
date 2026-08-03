@@ -28,19 +28,19 @@ def get_default_instructions(tables: List[str], search_type: str) -> str:
     """
     if search_type == "similarity":
         retrieval_hint = (
-            "Use natural-language descriptions of what you need — the "
+            "Use natural-language descriptions of what you need; the "
             "search is vector-similarity over embeddings, so paraphrase "
             "the user's intent rather than guessing keywords."
         )
     elif search_type == "fulltext":
         retrieval_hint = (
-            "Use keyword-rich queries — the search is BM25 full-text, "
+            "Use keyword-rich queries; the search is BM25 full-text, "
             "so the words you pick must appear in the documents."
         )
     else:  # hybrid_fts
         retrieval_hint = (
             "Use natural-language queries that contain the keywords you "
-            "expect to appear in matching documents — the search fuses "
+            "expect to appear in matching documents; the search fuses "
             "vector similarity and BM25 with Reciprocal Rank Fusion, so "
             "both signals contribute."
         )
@@ -97,7 +97,7 @@ def _build_tools(
         search_type: Which retrieval method the ``search_knowledge_base``
             tool dispatches to. One of ``"similarity"``, ``"fulltext"``,
             ``"hybrid_fts"``.
-        k: Top-k for searches. Fixed per-agent — not exposed to the LM.
+        k: Top-k for searches. Fixed per-agent, not exposed to the LM.
         similarity_threshold: Maximum vector distance for the similarity
             and hybrid modes.
         fulltext_threshold: Minimum BM25 score for the fulltext and
@@ -256,7 +256,7 @@ class VectorRAGAgent(FunctionCallingAgent):
     - ``get_record_by_id``: full-record lookup after a search returns
       an id.
 
-    The constructor mirrors `FunctionCallingAgent` — every
+    The constructor mirrors `FunctionCallingAgent`: every
     parameter on that class is accepted here with identical semantics.
     The only additions are ``knowledge_base`` (required), the
     retrieval knobs (``search_type``, ``k``, ``similarity_threshold``,
@@ -321,7 +321,7 @@ class VectorRAGAgent(FunctionCallingAgent):
             Requires the knowledge base to have an embedding model
             configured for ``"similarity"`` and ``"hybrid_fts"``.
         k (int): Top-k for searches. Fixed per-agent at construction
-            time — the LM doesn't pass it. Defaults to 5.
+            time; the LM doesn't pass it. Defaults to 5.
         similarity_threshold (float): Maximum vector distance for the
             similarity and hybrid modes. Optional.
         fulltext_threshold (float): Minimum BM25 score for the

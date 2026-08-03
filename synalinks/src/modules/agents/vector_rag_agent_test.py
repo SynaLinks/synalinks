@@ -163,7 +163,7 @@ class VectorRAGAgentToolsTest(testing.TestCase):
 
 
 class VectorRAGAgentInstantiationTest(testing.TestCase):
-    """End-to-end instantiation tests — wires VectorRAGAgent but doesn't run LM."""
+    """End-to-end instantiation tests: wires VectorRAGAgent but doesn't run LM."""
 
     def _make_kb(self, with_embedding_model=False):
         tmpdir = tempfile.mkdtemp()
@@ -359,7 +359,7 @@ class VectorRAGAgentInstantiationTest(testing.TestCase):
         lm = LanguageModel(model="ollama/mistral")
 
         async def _private_helper(x: str):
-            """Has a leading underscore — should be rejected.
+            """Has a leading underscore, so should be rejected.
 
             Args:
                 x (str): unused.

@@ -6,7 +6,7 @@
 Training, which we will meet in [Guide 15](https://synalinks.github.io/synalinks/guides/Training/), has one input you cannot
 afford to choose carelessly: a **reward function** that tells the
 optimizer how good each prediction was. Pick the wrong reward and
-the optimizer cheerfully optimizes the wrong thing — happily, on
+the optimizer cheerfully optimizes the wrong thing, happily, on
 your dime. So before we get to the training loop itself, this
 guide makes the reward concrete: what it is, what the built-ins
 do, and how to write your own. Rewards are the steering wheel of
@@ -28,7 +28,7 @@ derivative.
 
 That non-differentiability is liberating. A reward can call a
 regex, run a unit test, ask another LM to grade the answer, hit
-a real database — anything you can express in async Python. The
+a real database, anything you can express in async Python. The
 optimizer treats the reward as a black box and only cares about
 the scalar it returns.
 
@@ -54,22 +54,22 @@ to score the configuration that produced it.
 Every reward inherits from `synalinks.Reward` and accepts the
 same handful of constructor arguments. The most important ones:
 
-- **`in_mask=["field_a", "field_b"]`** — *whitelist*. Only the
+- **`in_mask=["field_a", "field_b"]`**: *whitelist*. Only the
   named fields of `y_true` / `y_pred` participate in the score;
   everything else is ignored.
-- **`out_mask=["thinking"]`** — *blacklist*. Drop the named
+- **`out_mask=["thinking"]`**: *blacklist*. Drop the named
   fields before scoring; keep the rest.
-- **`in_mask_pattern=r"^answer.*"`** — like `in_mask` but the
-  field set is described by a regex (regular expression — a
+- **`in_mask_pattern=r"^answer.*"`**: like `in_mask` but the
+  field set is described by a regex (regular expression, a
   short language for matching text patterns). Useful when you
   have a lot of fields with a common prefix.
-- **`out_mask_pattern=r".*_thinking$"`** — same idea, for the
+- **`out_mask_pattern=r".*_thinking$"`**: same idea, for the
   blacklist side.
-- **`reduction="mean"`** — how the per-sample rewards in a
+- **`reduction="mean"`**: how the per-sample rewards in a
   batch are reduced to a single scalar in the progress logs.
   Valid values are `"mean"` (the default), `"sum"`, `"min"`,
   `"max"`, and `"none"`. `"min"` scores by the worst sample in
-  the batch — pessimistic; `"max"` scores by the best —
+  the batch, pessimistic; `"max"` scores by the best,
   optimistic / best-of-N. The per-sample values are always
   preserved for the optimizer; reduction only affects the
   number you see in the log and the number used to compare
@@ -78,7 +78,7 @@ same handful of constructor arguments. The most important ones:
 You will almost always use `in_mask` or `out_mask` to focus the
 reward on the field that actually matters. Without it, an answer
 that gets the final `answer` right but has a slightly different
-`thinking` string would still score `0.0` under `ExactMatch` —
+`thinking` string would still score `0.0` under `ExactMatch`,
 because *every* field has to match.
 
 ## The Four Built-In Rewards
@@ -87,7 +87,7 @@ Synalinks ships four reward types out of the box. They cover the
 common cases; for anything else, you write a small async
 function and wrap it (next section).
 
-### 1. `ExactMatch` — strict equality
+### 1. `ExactMatch`: strict equality
 
 The simplest reward there is. Compare the JSON of `y_pred` with
 the JSON of `y_true`; return `1.0` if they are equal, else
@@ -97,8 +97,8 @@ the JSON of `y_true`; return `1.0` if they are equal, else
 reward = synalinks.rewards.ExactMatch(in_mask=["answer"])
 ```
 
-`ExactMatch` is **discrete** — its only possible values are `0`
-or `1` — and that bluntness is both its strength and its weak
+`ExactMatch` is **discrete**: its only possible values are `0`
+or `1`, and that bluntness is both its strength and its weak
 spot. The strength: when the right answer is clearly defined
 (a number, a label, a name), exact equality is exactly the
 right standard. The weak spot: an answer that is *almost*
@@ -114,7 +114,7 @@ down the output schema ([Guide 2](https://synalinks.github.io/synalinks/guides/D
 formats, and to use `in_mask` to focus on the field where
 strict equality is genuinely the right test.
 
-### 2. `CosineSimilarity` — meaning, not letters
+### 2. `CosineSimilarity`: meaning, not letters
 
 A reward that scores `y_true` and `y_pred` by **semantic**
 similarity. It embeds both into vectors using an embedding
@@ -155,11 +155,11 @@ Two cautions:
   Calibrate your expectations to the metric, not to a
   classroom grading scheme.
 
-### 3. `LMAsJudge` — ask a second model
+### 3. `LMAsJudge`: ask a second model
 
 When the task is too open-ended for exact-match and too
-nuanced for cosine — for instance, "is this summary
-helpful?" or "did the assistant follow the policy?" — let
+nuanced for cosine, for instance, "is this summary
+helpful?" or "did the assistant follow the policy?", let
 *another* LM grade the output:
 
 ```python
@@ -171,7 +171,7 @@ reward = synalinks.rewards.LMAsJudge(
 ```
 
 Under the hood `LMAsJudge` is just a `Program` (the
-`LMAsJudgeProgram` class) wrapped as a reward — a wrapper
+`LMAsJudgeProgram` class) wrapped as a reward, a wrapper
 called `ProgramAsJudge`. The judge sees both `y_true` and
 `y_pred` (or just `y_pred` if no ground truth is provided), and
 returns a numeric score that the framework normalizes to
@@ -241,8 +241,8 @@ scalar with weights you chose.
 ## Batched Rewards: when samples need each other
 
 The four rewards above score each sample in isolation. Some
-ideas — group-relative scores, batch normalization, paired
-comparisons — need to see the whole batch at once. For those
+ideas, group-relative scores, batch normalization, paired
+comparisons, need to see the whole batch at once. For those
 cases there is `BatchReward`:
 
 ```python
@@ -257,8 +257,8 @@ class GroupRelativeReward(synalinks.BatchReward):
 
 A `BatchReward` subclass receives the **entire batch** at once
 and must return one reward per sample. Use it when the meaning
-of "good" depends on what the *other* samples in the batch did
-— for instance, "this answer is better than the median of
+of "good" depends on what the *other* samples in the batch did,
+for instance, "this answer is better than the median of
 its peers." A `BatchRewardFunctionWrapper` exists for the
 common case where you only want to wrap a stateless function.
 
@@ -276,7 +276,7 @@ ladder top to bottom and stop at the first match:
 2. **The right answer is open-ended text where paraphrases
    should earn credit?** Use `CosineSimilarity` with a cheap
    embedding model.
-3. **The "right answer" is a judgment call — helpfulness,
+3. **The "right answer" is a judgment call: helpfulness,
    tone, policy compliance?** Use `LMAsJudge` with a small
    judge model. Spot-check the judge.
 4. **None of the above?** Write a custom function and wrap it
@@ -290,7 +290,7 @@ ladder top to bottom and stop at the first match:
   the output, or the type of the field does not match. Print
   one `(y_pred, y_true)` pair before training to confirm.
 - **The reward saturates at `1.0` instantly.** The task is
-  too easy for this model — there is no signal left for the
+  too easy for this model: there is no signal left for the
   optimizer to chase. Make the task harder, the reward
   stricter, or move on.
 - **The reward rewards the wrong thing.** Classic
@@ -309,7 +309,7 @@ ladder top to bottom and stop at the first match:
 ## Take-Home Summary
 
 - A **reward** is a function `(y_true, y_pred) → [0, 1]`.
-  Higher is better. Non-differentiable is fine — we never
+  Higher is better. Non-differentiable is fine; we never
   take its derivative.
 - **`in_mask` / `out_mask`** focus the reward on the
   field(s) that actually matter. Regex variants
@@ -409,20 +409,20 @@ async def main():
     print(f"y_true: {y_true.get_json()}")
 
     # -------------------------------------------------------------------------
-    # 1. ExactMatch — strict equality on the `answer` field
+    # 1. ExactMatch: strict equality on the `answer` field
     # -------------------------------------------------------------------------
     print("\n" + "=" * 60)
     print("1. ExactMatch(in_mask=['answer'])")
     print("=" * 60)
     # Rewards accept either a DataModel or a JsonDataModel for both
-    # arguments — the framework converts internally — so we can pass
+    # arguments (the framework converts internally), so we can pass
     # `y_true` straight in without `.to_json_data_model()`.
     em = synalinks.rewards.ExactMatch(in_mask=["answer"])
     score = await em(y_true, y_pred)
     print(f"  reward: {score:.3f}")
 
     # -------------------------------------------------------------------------
-    # 2. Custom reward — wrap a plain async function
+    # 2. Custom reward: wrap a plain async function
     # -------------------------------------------------------------------------
     print("\n" + "=" * 60)
     print("2. RewardFunctionWrapper(fn=length_under, limit=200)")

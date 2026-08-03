@@ -1,6 +1,6 @@
 # programs/
 
-The Synalinks `Program` definitions live here — the functions that compose
+The Synalinks `Program` definitions live here: the functions that compose
 modules (`Generator`, `ChainOfThought`, agents, RAG pipelines) into the pipeline
 your app serves. This is the part you'll grow and optimize.
 
@@ -28,6 +28,6 @@ async def build_qa(lm) -> synalinks.Program:
 
 Keep build-once / serve-forever in mind: a `build` step constructs and `.save()`s
 the program, and the server only `.load()`s the artifact. Building does **not**
-call the LM (not even for agents) — it just composes modules and records their
-schemas — so you can build offline, e.g. in CI or at Docker image-build time.
+call the LM (not even for agents); it just composes modules and records their
+schemas, so you can build offline, e.g. in CI or at Docker image-build time.
 The bundled `main.py` builds inline; move it here as the project grows.

@@ -38,7 +38,7 @@ def get_default_instructions(workdir: Optional[str]) -> str:
         workdir_line = f"Workdir: {workdir}"
     else:
         workdir_line = (
-            "Workdir: (none) — an empty in-memory workspace; "
+            "Workdir: (none), an empty in-memory workspace; "
             "create files with `write_file`."
         )
     return f"""
@@ -56,7 +56,7 @@ Plan:
    1-based `start_line` / `end_line`. Page through long files with
    `offset` / `limit` (raise `offset` to read further in).
 4. Use `edit_file` for surgical changes (preferred over `write_file`).
-5. Use `run_bash` to run shell commands against the filesystem — pipes,
+5. Use `run_bash` to run shell commands against the filesystem: pipes,
    redirects, globs, `&&`, loops, and `python3` (e.g. `python3 script.py`
    after `write_file`-ing it). `python3` is a real interpreter with the
    full standard library, third-party packages and network.
@@ -66,7 +66,7 @@ Notes:
 - The filesystem is host-safe: edits and new files land in the sandbox's
   mounted filesystem and never modify the real workspace on disk.
 - If the conversation includes an `InputsSummary`, you only see field
-  previews and sizes — the full, untruncated input values are saved as the
+  previews and sizes; the full, untruncated input values are saved as the
   JSON file named in its `inputs_file` field. Read it with the `read_file`
   tool (or `run_bash` `cat`) rather than retyping values from the preview.
 """.strip()
@@ -79,10 +79,10 @@ You can delegate work to parallel subagents, each on its own isolated
 branch (a copy-on-write fork) of the filesystem:
 - `spawn_subagents(tasks)`: launch one subagent per task string. Each
   subagent sees the files you see *now* and may freely read/write/edit/
-  delete them, but its changes stay on its own branch — they never touch
+  delete them, but its changes stay on its own branch; they never touch
   your filesystem. Subagents run concurrently, so use this to parallelize
   independent exploration or edits. Returns a `handle` and a `patch`
-  (its pending changes as a git-style unified diff — the actual line-level
+  (its pending changes as a git-style unified diff, the actual line-level
   edits) plus a structured `diff` summary per subagent.
 - `merge_subagent(handle, paths=None, force=False)`: after reviewing a
   subagent's `patch`, fold its changes into your filesystem (pass `paths` to
@@ -107,7 +107,7 @@ Plan:
 1. Explore with `list_files` / `search_files` / `read_file`.
 2. Make the changes your task requires with `edit_file` / `write_file`,
    or run code with `run_bash` (e.g. `python3 script.py`).
-3. Stop and report concisely what you did and what you changed — the parent
+3. Stop and report concisely what you did and what you changed; the parent
    agent reviews your branch and decides whether to keep it.
 
 Notes:
@@ -163,11 +163,11 @@ class DeepAgent(FunctionCallingAgent):
     Every tool is backed by the sandbox's mounted filesystem, seeded from
     ``workdir``, so the agent is **host-safe by construction**: writes, edits
     and code execution land in the mount and can never modify the real
-    ``workdir`` or reach the host — so there is nothing to gate, and all tools
+    ``workdir`` or reach the host, so there is nothing to gate, and all tools
     are always available. Inspect what the agent did through ``agent.sandbox``
-    — ``changes()`` / ``diff()`` — and persist any of it yourself if desired.
+    (``changes()`` / ``diff()``) and persist any of it yourself if desired.
 
-    The constructor mirrors `FunctionCallingAgent` — every
+    The constructor mirrors `FunctionCallingAgent`: every
     parameter on that class is accepted here with identical semantics.
     The additions are ``workdir`` (required) and the sandbox ``timeout``.
     User-supplied ``tools`` are appended to the built-in ones.
@@ -215,7 +215,8 @@ class DeepAgent(FunctionCallingAgent):
             When omitted, the default is built from the workdir.
         final_instructions (str): Instructions for the final-answer
             generator. Defaults to ``instructions``.
-        temperature (float): LM sampling temperature. Defaults to None (the model's own default applies).
+        temperature (float): LM sampling temperature. Defaults to None
+            (the model's own default applies).
         max_tokens (int): Optional. Maximum number of tokens to generate.
             Default None (the model's own default; caps generation length).
         top_p (float): Optional. Nucleus sampling probability. Default None
@@ -250,7 +251,7 @@ class DeepAgent(FunctionCallingAgent):
             the real directory). When omitted, the sandbox starts as an
             empty in-memory filesystem.
         sandbox (Sandbox): Optional ready-made sandbox to operate on instead
-            of building one from ``workdir`` — e.g. a `Sandbox.fork`
+            of building one from ``workdir``, e.g. a `Sandbox.fork`
             of another agent's filesystem. When given, ``workdir`` is used
             only for the default instructions text.
         skills (list): Optional. Folder paths (Agent Skill roots) whose skills
@@ -260,12 +261,12 @@ class DeepAgent(FunctionCallingAgent):
             be read on demand. Defaults to ``None``.
         max_subagent_depth (int): When ``> 0``, the agent gains
             ``spawn_subagents`` / ``merge_subagent`` / ``discard_subagent``
-            tools, letting the LM run subagents in parallel — each on an
+            tools, letting the LM run subagents in parallel, each on an
             isolated `Sandbox.fork` of the filesystem whose changes
             only land on an explicit ``merge_subagent``. The value caps
             nesting: ``1`` (the recommended setting) lets this agent spawn
             subagents that cannot themselves spawn; ``2`` allows one more
-            level, and so on. Defaults to ``0`` (subagents disabled —
+            level, and so on. Defaults to ``0`` (subagents disabled,
             backward-compatible). Requires a fork-capable sandbox
             (``MirageSandbox`` is).
 
@@ -273,7 +274,7 @@ class DeepAgent(FunctionCallingAgent):
             fresh interpreter), so across parallel subagents you can fold
             back **all** their file changes. Folding back Python REPL state
             (variables/functions/imports) across subagents is a
-            `RecursiveLanguageModelAgent` feature — and limited to one
+            `RecursiveLanguageModelAgent` feature, and limited to one
             subagent there, because the REPL namespace serializes only
             as a whole (it can't union parallel namespaces). That is a
             backend constraint, not a design shortcut.
@@ -315,7 +316,7 @@ class DeepAgent(FunctionCallingAgent):
         description: Optional[str] = None,
     ):
         # `workdir` is optional: when omitted the sandbox is a pure in-memory
-        # filesystem. Resolve it first — the sandbox and default instructions
+        # filesystem. Resolve it first: the sandbox and default instructions
         # are derived from it, and they must exist before `super().__init__()`
         # (which calls `_get_builtin_tools`).
         self.workdir = resolve_workdir(workdir)
@@ -348,7 +349,7 @@ class DeepAgent(FunctionCallingAgent):
         # from the workdir and writes/edits/shell stay host-safe in the
         # mount. Inspect via `self.sandbox.changes()` / `.diff()`. A caller
         # (or this agent, when spawning a subagent) may supply a ready-made
-        # sandbox — e.g. a `fork()` of a parent's filesystem. Built before
+        # sandbox, e.g. a `fork()` of a parent's filesystem. Built before
         # `super().__init__()` because `_get_builtin_tools` binds its file tools.
         self.sandbox = (
             sandbox
@@ -419,8 +420,8 @@ class DeepAgent(FunctionCallingAgent):
         """Replace data inputs with a metadata summary, full values on disk.
 
         A *pure* ``ChatMessages`` conversation passes through untouched. Any
-        other input — including a data model that merely carries a ``messages``
-        field alongside data — is treated as data: the full JSON is written to a
+        other input, including a data model that merely carries a ``messages``
+        field alongside data, is treated as data: the full JSON is written to a
         collision-free file in the overlay and the LM is handed only an
         `InputsSummary` naming that file, keeping large inputs out of the
         prompt while leaving the complete values reachable via the file tools.
@@ -465,7 +466,7 @@ class DeepAgent(FunctionCallingAgent):
         copy-on-write fork of the *current* filesystem: it can read every
         file you see now and freely write, edit or delete, but its changes
         are isolated and do NOT affect your filesystem. Subagents run
-        concurrently. Nothing is applied automatically — review each
+        concurrently. Nothing is applied automatically; review each
         returned ``patch`` and then call ``merge_subagent(handle)`` to fold
         the changes you want into your filesystem (or
         ``discard_subagent(handle)`` to drop a branch).
@@ -475,7 +476,7 @@ class DeepAgent(FunctionCallingAgent):
                 what that subagent should accomplish.
 
         Returns:
-            dict: ``subagents`` — a list of
+            dict: ``subagents``, a list of
             ``{handle, task, result, diff, patch}`` per subagent, where
             ``patch`` is the subagent's pending changes as a git-style unified
             diff (the actual line-level edits) and ``diff`` is the structured
@@ -518,7 +519,7 @@ class DeepAgent(FunctionCallingAgent):
                 autonomous=True,
                 name=f"{self.name}_sub{index}",
             )
-            # Run the subagent through a Program — the canonical execution
+            # Run the subagent through a Program, the canonical execution
             # path. A direct eager call would re-run the agent's
             # `compute_output_spec` on concrete inputs (extra throwaway LM
             # calls); building once with a symbolic Input keeps that step

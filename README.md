@@ -13,15 +13,16 @@
 
 <b>Build [RAGs](https://synalinks.github.io/synalinks/guides/Knowledge%20Base/), [tool-using agents](https://synalinks.github.io/synalinks/guides/Agents/), multi-agents systems, [recursive agents](https://synalinks.github.io/synalinks/guides/Recursive%20Language%20Model%20Agent/) and more in just few lines</b>
 
-[Deutsch](https://zdoc.app/de/SynaLinks/synalinks) | 
-[English](https://zdoc.app/en/SynaLinks/synalinks) | 
-[Español](https://zdoc.app/es/SynaLinks/synalinks) | 
-[Français](https://zdoc.app/fr/SynaLinks/synalinks) | 
-[日本語](https://zdoc.app/ja/SynaLinks/synalinks) | 
-[한국어](https://zdoc.app/ko/SynaLinks/synalinks) | 
-[Português](https://zdoc.app/pt/SynaLinks/synalinks) | 
-[Русский](https://zdoc.app/ru/SynaLinks/synalinks) | 
-[中文](https://zdoc.app/zh/SynaLinks/synalinks)
+[Deutsch](translations/README_de.md) | 
+[English](README.md) | 
+[Español](translations/README_es.md) | 
+[Français](translations/README_fr.md) | 
+[Italiano](translations/README_it.md) | 
+[日本語](translations/README_ja.md) | 
+[한국어](translations/README_ko.md) | 
+[Português](translations/README_pt.md) | 
+[Русский](translations/README_ru.md) | 
+[中文](translations/README_zh.md)
 
 <p align="center">
   <a href="https://synalinks.github.io/synalinks" target="_blank"><strong>Documentation</strong></a> ·
@@ -50,7 +51,7 @@ If you find Synalinks useful, please star the repo! Help us reach more AI/ML eng
 
 <div align="center">
 
-Want to use Synalinks with your own coding agent (Claude Code, Cursor, Copilot, etc.)? Add the Synalinks-specific skills from [`synalinks-skills`](https://github.com/SynaLinks/synalinks-skills) on GitHub to your agent — they teach it the framework conventions and give it the context it needs to build Synalinks programs right away.
+Want to use Synalinks with your own coding agent (Claude Code, Cursor, Copilot, etc.)? Add the Synalinks-specific skills from [`synalinks-skills`](https://github.com/SynaLinks/synalinks-skills) on GitHub to your agent; they teach it the framework conventions and give it the context it needs to build Synalinks programs right away.
 
 </div>
 
@@ -85,12 +86,12 @@ Think Keras for Language Models applications, a clean, declarative API where:
 
 ## Why Synalinks?
 
-Many frameworks exist today — here is what Synalinks does differently:
+Many frameworks exist today; here is what Synalinks does differently:
 
 - **Embedded, container-free sandbox** : agents run untrusted code and tools in a [safe, isolated runtime](https://synalinks.github.io/synalinks/guides/Agents/) that needs **no Docker or external sandbox service**. The whole stack is pure-Python and embeddable, so it is great for scripting, research, serverless/cloud deployment (S3, Lambda, notebooks, etc.) or even for creating CLI harnesses!
-- **Embedded database support** : build [graph-based RAG and agentic memories](https://synalinks.github.io/synalinks/guides/Knowledge%20Base/) with **constrained Knowledge Graph extraction** and **automatic semantic deduplication**, on top of an embedded graph database — no separate graph server to run. Additionally, a fast embedded **SQL knowledge base** is available to store relational data and build vector/SQL RAGs.
+- **Embedded database support** : build [graph-based RAG and agentic memories](https://synalinks.github.io/synalinks/guides/Knowledge%20Base/) with **constrained Knowledge Graph extraction** and **automatic semantic deduplication**, on top of an embedded graph database, with no separate graph server to run. Additionally, a fast embedded **SQL knowledge base** is available to store relational data and build vector/SQL RAGs.
 - **In-Context RL to optimize your prompts (and anything else)** : [train and optimize](https://synalinks.github.io/synalinks/guides/Training/) prompts, few-shot examples, and [any trainable variable](https://synalinks.github.io/synalinks/guides/Trainable%20Variables/) per module **without touching model weights**, using the familiar `.compile()` / `.fit()` / `.evaluate()` / `.predict()` API.
-- **Effortless model switching** : set a default once with `synalinks.set_default_language_model(...)` or pass a string identifier, and swap between Ollama, vLLM, OpenAI, Azure, Anthropic, Mistral, Groq, Gemini, xAI, Cohere, DeepSeek, Together AI, OpenRouter, AWS Bedrock and Doubleword via [LiteLLM](https://docs.litellm.ai/docs/) — including [multi-objective model selection](https://synalinks.github.io/synalinks/guides/Multi-Objective%20LM%20Selection/) to pick the best model for cost/quality.
+- **Effortless model switching** : set a default once with `synalinks.set_default_language_model(...)` or pass a string identifier, and swap between Ollama, vLLM, OpenAI, Azure, Anthropic, Mistral, Groq, Gemini, xAI, Cohere, DeepSeek, Together AI, OpenRouter, AWS Bedrock and Doubleword via [LiteLLM](https://docs.litellm.ai/docs/), including [multi-objective model selection](https://synalinks.github.io/synalinks/guides/Multi-Objective%20LM%20Selection/) to pick the best model for cost/quality.
 - **Scaffold in one command, bring your own coding agent** : bootstrap a production-ready project with `synalinks init` (batteries-included templates for scripts, agents, and training), then drop in the official [Synalinks skills](https://github.com/SynaLinks/synalinks-skills) so Claude Code, Cursor, Copilot and friends write idiomatic Synalinks code from the start.
 
 Plus everything you'd expect from a production-grade framework:
@@ -139,8 +140,8 @@ npx skills add SynaLinks/synalinks-skills --skill synalinks
 Synalinks agents can now read your project's [`AGENTS.md`](https://agents.md)
 conventions and use [Agent Skills](https://agentskills.io/home). The example
 below wires the official [Synalinks skills](https://github.com/SynaLinks/synalinks-skills)
-into a [`DeepAgent`](https://synalinks.github.io/synalinks/guides/Agents/) — a
-sandboxed coding agent — and asks it to design the input/output data models for a
+into a [`DeepAgent`](https://synalinks.github.io/synalinks/guides/Agents/), a
+sandboxed coding agent, and asks it to design the input/output data models for a
 task, writing them into a `workspace/` folder.
 
 First set up the workspace. Install the official Synalinks skill with the
@@ -153,7 +154,7 @@ mkdir -p workspace && cd workspace
 npx skills add SynaLinks/synalinks-skills --skill synalinks
 ```
 
-This gives the layout below — `.agents/skills` is the skills *root* (one
+This gives the layout below: `.agents/skills` is the skills *root* (one
 sub-folder per skill, each holding a `SKILL.md`):
 
 ```text
@@ -172,8 +173,9 @@ workspace/
 import synalinks
 import asyncio
 
-# Set the default once — modules pick it up automatically.
+# Set the default once; modules pick it up automatically.
 synalinks.set_default_language_model("gemini/gemini-3.1-flash-lite-preview")
+
 
 # The agent's structured final answer.
 class Deliverable(synalinks.DataModel):
@@ -183,6 +185,7 @@ class Deliverable(synalinks.DataModel):
     files: list[str] = synalinks.Field(
         description="Paths of the files written into the workspace",
     )
+
 
 async def main():
     # A DeepAgent converses in ChatMessages (it is a coding agent).
@@ -196,7 +199,7 @@ async def main():
         workdir="workspace",
         # The skills root (installed by `skills add`). Listed to the agent as
         # `<available_skills>`; it reads each `SKILL.md` on demand from the
-        # sandbox — which is why the skills live under `workdir`.
+        # sandbox, which is why the skills live under `workdir`.
         skills=["workspace/.agents/skills"],
     )
     outputs = await agent(inputs)
@@ -212,7 +215,7 @@ async def main():
         "Define the input and output Synalinks DataModels for a support-ticket "
         "triage task: the input is a raw customer message; the output is the "
         "predicted category, a priority, and a short suggested reply. Write them "
-        "to `models.py` using idiomatic Synalinks — consult the skills first."
+        "to `models.py` using idiomatic Synalinks; consult the skills first."
     )
     result = await program(
         synalinks.ChatMessages(
@@ -221,9 +224,9 @@ async def main():
     )
     print(result.prettify_json())
 
+
 if __name__ == "__main__":
     asyncio.run(main())
-
 ```
 
 ## Data Model Operators
@@ -306,15 +309,14 @@ result = await program(
 ## Training your program/agent
 
 ```python
-
 # Setting the default language/embedding models allows you
 # to use the string identifier (Keras-like) to configure your pipeline/training.
 # You can still instantiate the classes if you want fine-grained control.
 synalinks.set_default_language_model("gemini/gemini-3.1-flash-lite-preview")
 synalinks.set_default_embedding_model("gemini/text-embedding-004")
 
+
 async def main():
-    
 
     # ... your program definition
 
@@ -325,8 +327,8 @@ async def main():
         optimizer="omega",
     )
 
-    batch_size=1
-    epochs=10
+    batch_size = 1
+    epochs = 10
 
     history = await program.fit(
         x_train,
@@ -335,6 +337,7 @@ async def main():
         batch_size=batch_size,
         epochs=epochs,
     )
+
 
 if __name__ == "__main__":
     asyncio.run(main())
@@ -386,7 +389,7 @@ import synalinks
 # Enable observability first
 synalinks.enable_observability(
     tracking_uri="http://localhost:5000",  # Optional: MLflow server URI
-    experiment_name="my_experiment"         # Optional: defaults to "synalinks_traces"
+    experiment_name="my_experiment",  # Optional: defaults to "synalinks_traces"
 )
 
 # Then create your modules - they will be automatically traced

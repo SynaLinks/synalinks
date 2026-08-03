@@ -1,6 +1,6 @@
 # routes/
 
-The FastAPI **routers** live here — the HTTP endpoints, grouped into
+The FastAPI **routers** live here: the HTTP endpoints, grouped into
 `APIRouter`s and included from `main.py`. Keep handlers thin: parse the request,
 call a `services/` function, return a `data_models/` type.
 
@@ -34,5 +34,5 @@ from routes.qa import router as qa_router
 app.include_router(qa_router)
 ```
 
-The bundled `main.py` defines the `/answer` route inline — split routes out here
+The bundled `main.py` defines the `/answer` route inline; split routes out here
 as the API grows.

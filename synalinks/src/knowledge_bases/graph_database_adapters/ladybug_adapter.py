@@ -4,14 +4,14 @@
 
 Full implementation of the ``GraphDatabaseAdapter`` contract:
 
-  * writes — ``update_entities`` / ``update_relations`` /
+  * writes: ``update_entities`` / ``update_relations`` /
     ``update_knowledge_graph`` with embedding-based deduplication,
     plus ``get_entity`` / ``delete_entity`` / ``delete_relation`` /
     ``rename`` for CRUD;
   * raw ``cypher()`` execution behind a read-only enforcement layer;
-  * search — entity / relation / path variants of similarity, BM25
+  * search: entity / relation / path variants of similarity, BM25
     full-text, regex, and their hybrid (RRF) fusions;
-  * graph analytics — ``pagerank``, ``detect_communities``, and the
+  * graph analytics: ``pagerank``, ``detect_communities``, and the
     GraphRAG ``local_graph_search`` / ``build_communities`` /
     ``global_graph_search`` surfaces.
 
@@ -22,7 +22,7 @@ Security model mirrors `DuckDBAdapter`:
     (``CREATE`` / ``MERGE`` / ``DELETE`` / ``DETACH`` / ``SET`` /
     ``REMOVE`` / ``DROP`` / ``ALTER`` / ``COPY`` / ``INSTALL`` /
     ``LOAD``). This is the parser-layer analog of DuckDB's
-    ``stmt.type == SELECT`` check — it blocks both write injection
+    ``stmt.type == SELECT`` check: it blocks both write injection
     and ``COPY ... TO '/path'`` file exfiltration through an
     otherwise-legitimate read query.
 
@@ -85,7 +85,7 @@ from synalinks.src.modules.embedding_models import get as _get_em
 METRICS = ("cosine", "l2sq", "l2", "dotproduct")
 
 # Word-boundary match of any Cypher write / admin keyword. Conservative
-# on purpose — it also fires inside string literals, but read_only
+# on purpose: it also fires inside string literals, but read_only
 # queries never legitimately need these words anyway, and the false
 # positive is a clearer error message than a successful write.
 _CYPHER_WRITE_RE = re.compile(
@@ -95,10 +95,10 @@ _CYPHER_WRITE_RE = re.compile(
 )
 
 # Strip Cypher line and block comments before scanning for write
-# keywords — otherwise `// SET foo` would falsely look like a write.
+# keywords; otherwise `// SET foo` would falsely look like a write.
 _CYPHER_COMMENT_RE = re.compile(r"//.*?$|/\*.*?\*/", re.MULTILINE | re.DOTALL)
 
-# Strip Cypher string literals before scanning for write keywords —
+# Strip Cypher string literals before scanning for write keywords;
 # otherwise `WHERE n.text = 'SET clause'` would falsely look like a
 # write. Handles both single- and double-quoted strings with embedded
 # backslash-escaped quotes. Cypher doesn't support raw or triple-quoted
@@ -112,12 +112,12 @@ _CYPHER_STRING_RE = re.compile(
 # interpolate them into Cypher. Verified against Ladybug 0.16.1:
 #
 #   * Pattern-position labels (``MATCH (n:$label)``, ``[r:$rel]``)
-#     fail at parse time — the grammar requires a literal token there.
+#     fail at parse time; the grammar requires a literal token there.
 #   * Catalog procs (``CALL TABLE_INFO``, ``SHOW_CONNECTION``,
 #     ``CREATE_VECTOR_INDEX``) reject ``$``-parameters at the binder
 #     with "PARAMETER but LITERAL was expected".
 #   * Only ``WHERE label(n) = $l`` accepts a bound label, and that's
-#     a runtime filter — useless for ``CREATE NODE TABLE`` / index DDL
+#     a runtime filter, useless for ``CREATE NODE TABLE`` / index DDL
 #     / catalog introspection where we actually need labels.
 #
 # So interpolation through the shared identifier helpers is mandatory
@@ -144,7 +144,7 @@ def sanitize_properties(props: Dict[str, Any]) -> Dict[str, Any]:
     sanitization, but property *names* are interpolated into Cypher
     so they go through `sanitize_property_name`
     (``snake_case`` normalization + identifier validation). The
-    ``label`` / ``subj`` / ``obj`` reserved fields are dropped —
+    ``label`` / ``subj`` / ``obj`` reserved fields are dropped:
     ``label`` is already captured by the table name; ``subj`` / ``obj``
     are how a ``Relation`` encodes its endpoints, not edge properties.
     """
@@ -166,7 +166,7 @@ def _strip_comments_and_strings(query: str) -> str:
     Order matters: we strip strings first, then comments. Doing the
     reverse would let a quoted ``// CREATE`` inside a string sneak
     through after the comment strip. We replace each match with a
-    single space so token boundaries don't accidentally fuse — e.g.
+    single space so token boundaries don't accidentally fuse; e.g.
     ``WHERE'CREATE'AND`` after a naive empty-string replacement
     would look like ``WHERECREATAND`` rather than three separate
     tokens. The whitespace keeps the keyword regex's ``\\b``
@@ -183,10 +183,10 @@ def _assert_read_only_cypher(query: str) -> None:
     Cypher doesn't expose a typed AST through Ladybug's Python bindings,
     so this is a token-level scan with two pre-strips:
 
-      * String literals (``'...'`` / ``"..."``) — without this, a
+      * String literals (``'...'`` / ``"..."``): without this, a
         legitimate ``WHERE n.label = 'CREATE'`` would falsely look
         like a write.
-      * Line and block comments — without this, ``// SET foo`` would
+      * Line and block comments: without this, ``// SET foo`` would
         falsely fire.
 
     Raises:
@@ -244,16 +244,16 @@ def _map_prop_to_cypher(prop_type: str, prop_spec: Dict[str, Any]) -> str:
 
     Type vocabulary picked from a probe of Ladybug 0.16:
 
-      * ``STRING``, ``INT64``, ``DOUBLE``, ``BOOL`` — scalars.
-      * ``DATE`` / ``TIMESTAMP`` — string properties with the matching
+      * ``STRING``, ``INT64``, ``DOUBLE``, ``BOOL``: scalars.
+      * ``DATE`` / ``TIMESTAMP``: string properties with the matching
         ``format`` annotation. (Ladybug exposes ``INTERVAL`` but no
         ``TIME``, so ``format=time`` falls back to ``STRING``.)
-      * ``STRING[]`` / ``DOUBLE[]`` / ``INT64[]`` / ``BOOL[]`` —
+      * ``STRING[]`` / ``DOUBLE[]`` / ``INT64[]`` / ``BOOL[]``:
         variable-length lists of primitives. The embedding vector is
         handled separately (fixed-size ``FLOAT[<dim>]``) outside the
         schema loop, so a generic list of numbers maps to
         ``DOUBLE[]``.
-      * ``JSON`` — fallback for nested objects and lists of objects.
+      * ``JSON``: fallback for nested objects and lists of objects.
     """
     if prop_type == "array":
         item_spec = prop_spec.get("items") or {}
@@ -316,7 +316,7 @@ def _cypher_type_to_json_property(cypher_type: str, name: str) -> Dict[str, Any]
     branch: maps a Ladybug type string back to a JSON-schema property
     spec, with the column name title-cased into the ``title`` field
     (same convention DuckDB uses). Fixed-size arrays (``FLOAT[N]``)
-    collapse to a plain ``array`` of the element type — JSON Schema
+    collapse to a plain ``array`` of the element type: JSON Schema
     has no length annotation on ``array`` items, and downstream
     consumers don't need one.
 
@@ -415,20 +415,20 @@ class LadybugAdapter(GraphDatabaseAdapter):
                 ``CREATE_VECTOR_INDEX`` ``mu`` arg). ``None`` defers
                 to the engine default.
             ml: HNSW lower-layer max degree (Ladybug's ``ml`` arg).
-            pu: HNSW upper-layer probability — controls how often a
+            pu: HNSW upper-layer probability; controls how often a
                 node lands in the sparser upper layer (Ladybug's
                 ``pu`` arg).
             efc: HNSW build-time candidate-list depth (Ladybug's
-                ``efc`` arg — the construction-time analogue of
+                ``efc`` arg, the construction-time analogue of
                 ``ef_search``). Higher = better index quality at
                 slower build time.
-            stemmer: FTS index stemmer (Ladybug's ``stemmer`` arg —
+            stemmer: FTS index stemmer (Ladybug's ``stemmer`` arg,
                 e.g. ``"porter"``, ``"english"``, ``"none"``).
             stopwords: FTS index stopwords source (Ladybug's
-                ``stopwords`` arg — accepts a node-table name or a
+                ``stopwords`` arg; accepts a node-table name or a
                 file path with one stopword per line).
             tokenizer: FTS index tokenizer (Ladybug's ``tokenizer``
-                arg — ``"simple"`` (default) or ``"jieba"`` for
+                arg: ``"simple"`` (default) or ``"jieba"`` for
                 Chinese).
         """
         if metric not in METRICS:
@@ -447,7 +447,7 @@ class LadybugAdapter(GraphDatabaseAdapter):
         self.metric = metric
         self.dedup_threshold = dedup_threshold
         self.name = name
-        # HNSW build params — only the ones the user supplied get
+        # HNSW build params: only the ones the user supplied get
         # forwarded into ``CREATE_VECTOR_INDEX``; ``None`` defers to
         # Ladybug's own default. Kept as attributes (not a dict) so
         # the surface matches the per-method param style and the
@@ -456,7 +456,7 @@ class LadybugAdapter(GraphDatabaseAdapter):
         self.ml = ml
         self.pu = pu
         self.efc = efc
-        # FTS build params — same shape as the HNSW ones above.
+        # FTS build params, same shape as the HNSW ones above.
         self.stemmer = stemmer
         self.stopwords = stopwords
         self.tokenizer = tokenizer
@@ -466,7 +466,7 @@ class LadybugAdapter(GraphDatabaseAdapter):
         # without an explicit `vector_dim`. The old code probed the dimension
         # here via `run_maybe_nested(self.embedding_model(...))`, which ran the
         # embedding on a transient thread-loop and bound litellm's process-global
-        # httpx client to a loop closed moments later — poisoning that client for
+        # httpx client to a loop closed moments later, poisoning that client for
         # every subsequent main-loop embedding ("Event loop is closed" noise).
         self.vector_dim = vector_dim or 0
         # The `FLOAT[dim]` embedding column needs the dimension up front, so when
@@ -511,8 +511,8 @@ class LadybugAdapter(GraphDatabaseAdapter):
         # ``_rebuild_fts_index`` (called after every ``update_entities``
         # batch) can drop + recreate the index against the same
         # columns. Ladybug's FTS index is a snapshot built at
-        # CREATE_FTS_INDEX time, so it must be rebuilt after inserts
-        # — same pattern DuckDB uses with PRAGMA create_fts_index +
+        # CREATE_FTS_INDEX time, so it must be rebuilt after inserts,
+        # same pattern DuckDB uses with PRAGMA create_fts_index +
         # overwrite=1 at the end of every ``update``.
         self._fts_columns: Dict[str, List[str]] = {}
 
@@ -557,7 +557,7 @@ class LadybugAdapter(GraphDatabaseAdapter):
         declaration order wins, after running through
         `sanitize_property_name` so the returned name matches
         the actual table column. Inputs that normalize away (empty
-        / leading digit / nothing but separators) are skipped — they
+        / leading digit / nothing but separators) are skipped: they
         wouldn't make a valid identifier either.
         """
         properties = schema.get("properties") if isinstance(schema, dict) else None
@@ -568,7 +568,7 @@ class LadybugAdapter(GraphDatabaseAdapter):
             )
         for name in properties:
             # ``label`` is the table name and ``embedding`` is the
-            # adapter-managed vector column — neither is a PK candidate.
+            # adapter-managed vector column; neither is a PK candidate.
             # Skipping ``embedding`` matters when the schema is inferred
             # from an already-embedded entity instance (dynamic table
             # creation), where it can appear before the natural key.
@@ -588,7 +588,7 @@ class LadybugAdapter(GraphDatabaseAdapter):
 
         These are the columns covered by the FTS index. ``label`` is
         metadata (it's the table name) and ``embedding`` is the vector
-        column — both are excluded. The PK column IS included when
+        column; both are excluded. The PK column IS included when
         it's STRING-typed, unlike DuckDB which excludes it: in a
         graph entity the PK is often the natural name of the thing
         (``name="Alice"``) and users expect to be able to FTS on it.
@@ -613,7 +613,7 @@ class LadybugAdapter(GraphDatabaseAdapter):
         optional kwargs as inline literals, not bound parameters
         (Ladybug DDL doesn't substitute ``$`` parameters at DDL
         time). We render bool / numeric directly and quote-escape
-        strings — the keys themselves are gated by the
+        strings. The keys themselves are gated by the
         ``_*_SUPPORTED_PARAMS`` allowlists, so the only thing we
         have to defend on the value side is single-quote escaping
         inside strings.
@@ -644,14 +644,14 @@ class LadybugAdapter(GraphDatabaseAdapter):
         """Build the FTS index for a label over the given columns.
 
         Ladybug's FTS index is a snapshot of the table at creation
-        time — inserts after this point don't show up until the
+        time: inserts after this point don't show up until the
         index is rebuilt. `update_entities` triggers that
         rebuild via `_rebuild_fts_index` at write time, so
         search paths assume the index is current.
 
         Optional build params (``stemmer`` / ``stopwords`` /
         ``tokenizer``) come from the matching ``self.<name>``
-        attributes set at construction time — same options applied
+        attributes set at construction time; same options applied
         to every label's index so the surface stays uniform across
         the graph.
         """
@@ -690,7 +690,7 @@ class LadybugAdapter(GraphDatabaseAdapter):
 
         Called from the write paths (`update_entities`) after the
         underlying inserts have committed. Search paths assume the
-        index is current — they never rebuild at query time.
+        index is current: they never rebuild at query time.
         """
         if label not in self._fts_columns:
             return
@@ -718,7 +718,7 @@ class LadybugAdapter(GraphDatabaseAdapter):
         the property map, resolves ``$ref`` references against the
         schema's ``$defs``, picks the non-null half of an ``anyOf``
         union, and maps each resolved type via `_map_prop_to_cypher`.
-        The reserved fields in ``skip`` are left to the caller —
+        The reserved fields in ``skip`` are left to the caller:
         ``label`` is implicit (table name), ``embedding`` is added
         back later as ``FLOAT[<dim>]``, and rel tables additionally
         strip ``subj`` / ``obj``.
@@ -751,7 +751,7 @@ class LadybugAdapter(GraphDatabaseAdapter):
         """Issue ``CREATE NODE TABLE`` from a JSON schema.
 
         The schema's first non-``label`` property becomes the PRIMARY
-        KEY — same convention DuckDB uses (the SQL adapter promotes
+        KEY, same convention DuckDB uses (the SQL adapter promotes
         the first column to PK in ``_json_schema_to_duckdb_columns``).
         ``label`` is never stored as a column; it's recoverable from
         the table name. When an embedding model is configured an
@@ -782,7 +782,7 @@ class LadybugAdapter(GraphDatabaseAdapter):
         downstream conversion helpers (e.g.
         `_max_distance_for_threshold`). HNSW build params
         (``mu`` / ``ml`` / ``pu`` / ``efc``) come from their matching
-        ``self.<name>`` attributes and only get forwarded when set —
+        ``self.<name>`` attributes and only get forwarded when set;
         ``None`` falls back to Ladybug's own defaults.
         """
         ddl_options: Dict[str, Any] = {"metric": self.metric}
@@ -800,7 +800,7 @@ class LadybugAdapter(GraphDatabaseAdapter):
         """Issue ``CREATE REL TABLE``.
 
         The relation schema must reference its endpoints via nested
-        ``subj`` / ``obj`` entities — Ladybug needs an explicit
+        ``subj`` / ``obj`` entities: Ladybug needs an explicit
         ``FROM <SrcLabel> TO <DstLabel>``. We resolve those labels from
         the ``$defs`` referenced by each field; the remaining schema
         properties (skipping ``subj`` / ``obj`` / ``label``) become
@@ -833,8 +833,8 @@ class LadybugAdapter(GraphDatabaseAdapter):
     async def _ensure_vector_dim(self, sample_vector=None):
         """Resolve the embedding dimension lazily, on the current event loop.
 
-        Prefers the length of an embedding vector already in hand — entities
-        arrive pre-embedded from ``EmbedKnowledge`` — and only falls back to a
+        Prefers the length of an embedding vector already in hand (entities
+        arrive pre-embedded from ``EmbedKnowledge``) and only falls back to a
         probe, awaited on *this* loop, when a table must be created before any
         embedded entity is available. Never uses ``run_maybe_nested``: that runs
         the embedding on a transient loop and poisons litellm's global client.
@@ -863,7 +863,7 @@ class LadybugAdapter(GraphDatabaseAdapter):
 
         Search methods accept either a query text (embedded here) or a
         pre-computed ``vector_or_vectors`` passed directly. When vectors
-        are supplied the embedding step — and the embedding model — are
+        are supplied the embedding step (and the embedding model) are
         skipped entirely; the vector dimension is learned from the first
         vector if it isn't known yet (``0`` is the unresolved sentinel).
         Returns a list of vectors, or ``None`` when there is nothing to
@@ -900,7 +900,7 @@ class LadybugAdapter(GraphDatabaseAdapter):
         """Create the NODE table for ``label`` on demand if it's unknown.
 
         ``entity_models`` declares tables eagerly at construction, but a
-        free-form graph carries labels the LM invented — not known ahead
+        free-form graph carries labels the LM invented, not known ahead
         of time. Rather than require every label up front, the schema is
         inferred from the entity instance the first time a label is seen,
         then cached in ``_pk_keys`` / ``_fts_columns`` exactly like a
@@ -932,7 +932,7 @@ class LadybugAdapter(GraphDatabaseAdapter):
         The endpoint pair ``FROM subj_label TO obj_label`` comes from the
         relation's actual endpoints, and any non-``subj``/``obj``/``label``
         properties become edge attributes. Endpoint NODE tables must
-        already exist — callers ensure them first.
+        already exist; callers ensure them first.
 
         A Ladybug REL table fixes its endpoint pair at creation, so a
         free-form relation label that connects several distinct
@@ -957,7 +957,7 @@ class LadybugAdapter(GraphDatabaseAdapter):
     def wipe_database(self) -> None:
         """Drop every node and rel table from the current database.
 
-        Indices have to come down first — Ladybug refuses to ``DROP
+        Indices have to come down first: Ladybug refuses to ``DROP
         TABLE`` while an FTS or vector index references it. So the
         order is: every FTS / vector index, then every REL table (FK
         to nodes), then the NODE tables themselves.
@@ -1013,8 +1013,8 @@ class LadybugAdapter(GraphDatabaseAdapter):
         a discriminated-union member (same shape the user-written
         ``Entity`` subclasses emit via Pydantic v2).
 
-        The ``embedding`` column is hidden by default — same default
-        as DuckDB's ``get_symbolic_data_models`` — because the vector
+        The ``embedding`` column is hidden by default (same default
+        as DuckDB's ``get_symbolic_data_models``) because the vector
         is internal to the adapter and rarely useful to downstream
         consumers (passing the schema as ``data_models`` to a search
         API, generating an LM prompt, etc.).
@@ -1071,7 +1071,7 @@ class LadybugAdapter(GraphDatabaseAdapter):
         ).get_all()
         if not connection_rows:
             raise ValueError(
-                f"REL table {label!r} has no SHOW_CONNECTION row — cannot "
+                f"REL table {label!r} has no SHOW_CONNECTION row; cannot "
                 f"recover endpoint labels"
             )
         src_label, dst_label = connection_rows[0][0], connection_rows[0][1]
@@ -1133,7 +1133,7 @@ class LadybugAdapter(GraphDatabaseAdapter):
 
         Each model's schema includes its endpoint node schemas under
         ``$defs`` and references them as ``subj`` / ``obj`` via
-        ``$ref`` — same shape Pydantic v2 emits for a hand-written
+        ``$ref``, same shape Pydantic v2 emits for a hand-written
         ``Relation`` subclass.
         """
         models: List[SymbolicDataModel] = []
@@ -1198,7 +1198,7 @@ class LadybugAdapter(GraphDatabaseAdapter):
     ) -> Union[Any, List[Any]]:
         """Insert entities with semantic dedup, one query per entity.
 
-        Processes the batch sequentially — each entity gets its own
+        Processes the batch sequentially: each entity gets its own
         ``CALL QUERY_VECTOR_INDEX`` round-trip that combines lookup +
         conditional CREATE into a single statement (see
         `_upsert_entity`). Sequential rather than bulk because
@@ -1209,7 +1209,7 @@ class LadybugAdapter(GraphDatabaseAdapter):
         the parser, and ``;``-separated multi-statement execute()
         with parameters errors out. Each per-entity query commits
         before the next runs, so within-batch dedup falls out for
-        free — two near-duplicate inputs will collapse onto the same
+        free: two near-duplicate inputs will collapse onto the same
         node id because the second query sees the first's CREATE.
 
         Tradeoff: N round-trips per batch (vs 1 for a hypothetical
@@ -1224,7 +1224,7 @@ class LadybugAdapter(GraphDatabaseAdapter):
 
         ids = [await self._upsert_entity(e) for e in items]
 
-        # FTS index rebuild is best-effort — data is already committed.
+        # FTS index rebuild is best-effort; data is already committed.
         # Same shape as the DuckDB adapter: pay the rebuild cost on
         # the write path so search paths can stay query-only.
         touched_labels = {sanitize_label(entity.get("label")) for entity in items}
@@ -1255,8 +1255,8 @@ class LadybugAdapter(GraphDatabaseAdapter):
             every property inline (Ladybug's HNSW index rejects
             ``SET`` on the indexed ``embedding`` column, so the
             value has to flow through the CREATE pattern). A PK
-            collision in this branch surfaces as a runtime error
-            — it means the user passed two entities with the same
+            collision in this branch surfaces as a runtime error:
+            it means the user passed two entities with the same
             PK but far-apart embeddings, which is a real conflict.
 
           B2 (RETURN-existing-if-near-duplicate):
@@ -1267,7 +1267,7 @@ class LadybugAdapter(GraphDatabaseAdapter):
         The fast path (no embedding model or no embedding on the
         entity) uses ``MERGE (n:Label {pk_key: $pk}) ON CREATE SET
         … ON MATCH SET …`` so re-inserts of the same PK upsert
-        rather than fail — there's no vector dedup safety net in
+        rather than fail: there's no vector dedup safety net in
         this branch, so a second insert is the only way to update
         a node's non-embedding properties.
         """
@@ -1278,7 +1278,7 @@ class LadybugAdapter(GraphDatabaseAdapter):
             )
         label = sanitize_label(entity.get("label"))
         # Learn the vector dimension from this entity's embedding (or an on-loop
-        # probe) before the node table — and its FLOAT[dim] embedding column —
+        # probe) before the node table (and its FLOAT[dim] embedding column)
         # is created on first sight of the label.
         await self._ensure_vector_dim(
             entity.get("embedding") if hasattr(entity, "get") else None
@@ -1287,7 +1287,7 @@ class LadybugAdapter(GraphDatabaseAdapter):
         pk_key = self._pk_keys.get(label)
         if pk_key is None:
             raise ValueError(
-                f"Label {label!r} has no usable primary key — its first "
+                f"Label {label!r} has no usable primary key: its first "
                 f"non-`label` property couldn't be resolved as an identifier."
             )
         props = sanitize_properties(entity.get_json())
@@ -1331,7 +1331,7 @@ class LadybugAdapter(GraphDatabaseAdapter):
         bindings["__max_dist"] = self._max_distance_for_threshold()
         index_name = f"{label.lower()}_vec"
 
-        # CREATE pattern with every property inline — PK, embedding,
+        # CREATE pattern with every property inline: PK, embedding,
         # and any SET-able prop alike. This is what Branch 1 fires
         # exactly once when the vector index says "no near-duplicate".
         create_inline = [f"{pk_key}: $__pk_value", "embedding: $__embedding"]
@@ -1381,14 +1381,14 @@ class LadybugAdapter(GraphDatabaseAdapter):
         """Insert relations with endpoint dedup + edge MERGE, sequentially.
 
         For each relation in turn:
-          1. Upsert ``subj`` via `_upsert_entity` (one query —
+          1. Upsert ``subj`` via `_upsert_entity` (one query:
              dedup against existing nodes with HNSW vector lookup).
           2. Upsert ``obj`` via `_upsert_entity` (one query).
           3. ``MERGE`` the edge between the two resolved ids so the
              same ``(s, label, o)`` triple is never inserted twice.
 
         Sequential rather than bulk for the same reason
-        `update_entities` is — within-batch dedup needs each
+        `update_entities` is: within-batch dedup needs each
         write to be visible to the next read, which Ladybug's
         in-query primitives don't support.
         """
@@ -1403,7 +1403,7 @@ class LadybugAdapter(GraphDatabaseAdapter):
     async def _upsert_relation(self, relation: Any) -> Optional[str]:
         """One-query MERGE: vector-resolve both endpoints + MERGE edge.
 
-        Same shape as the legacy MemGraph adapter — chain two
+        Same shape as the legacy MemGraph adapter: chain two
         ``CALL QUERY_VECTOR_INDEX`` calls (one per endpoint) into a
         single ``MERGE`` statement. Endpoints that don't match any
         existing node within ``dedup_threshold`` cause the WHERE
@@ -1415,7 +1415,7 @@ class LadybugAdapter(GraphDatabaseAdapter):
 
         Falls back to ``MATCH``-by-id + MERGE (3 queries total) when
         either endpoint lacks an embedding or the adapter has no
-        embedding model — no vector index means no in-query
+        embedding model: no vector index means no in-query
         endpoint resolution.
         """
         if not is_relation(relation):
@@ -1550,7 +1550,7 @@ class LadybugAdapter(GraphDatabaseAdapter):
         """Rename a node/relation label and/or update its description.
 
         Graph counterpart of `DuckDBAdapter.rename`. The new label
-        is issued through ``ALTER TABLE <old> RENAME TO <new>`` — which
+        is issued through ``ALTER TABLE <old> RENAME TO <new>``, which
         works for both NODE and REL tables and auto-updates any REL
         table's ``FROM``/``TO`` endpoints when a node label changes, so
         incident edges survive the rename.
@@ -1569,7 +1569,7 @@ class LadybugAdapter(GraphDatabaseAdapter):
             source: ``SymbolicDataModel`` for the table to rename, or
                 its label as a string. Either form is PascalCase-
                 normalized through `sanitize_label`.
-            table_name: New label. Optional — normalized to PascalCase.
+            table_name: New label. Optional, normalized to PascalCase.
             table_description: New schema description. Optional. Lives
                 in the ``SymbolicDataModel`` layer (Ladybug doesn't
                 carry per-table descriptions natively).
@@ -1734,7 +1734,7 @@ class LadybugAdapter(GraphDatabaseAdapter):
         pk_key = self._pk_keys.get(label)
         if pk_key is None:
             raise ValueError(
-                f"Label {label!r} has no registered primary key — pass it "
+                f"Label {label!r} has no registered primary key; pass it "
                 f"in `entity_models` at construction time."
             )
 
@@ -1780,7 +1780,7 @@ class LadybugAdapter(GraphDatabaseAdapter):
         the matched nodes are removed too (referentially consistent
         graph; no dangling edges). Returns the number of nodes
         actually deleted. The FTS index is rebuilt after the write
-        so subsequent search calls don't return ghost rows — same
+        so subsequent search calls don't return ghost rows, same
         write-time rebuild shape `update_entities` uses.
         """
         ids = [id_or_ids] if not isinstance(id_or_ids, list) else list(id_or_ids)
@@ -1791,7 +1791,7 @@ class LadybugAdapter(GraphDatabaseAdapter):
         pk_key = self._pk_keys.get(label)
         if pk_key is None:
             raise ValueError(
-                f"Label {label!r} has no registered primary key — pass it "
+                f"Label {label!r} has no registered primary key; pass it "
                 f"in `entity_models` at construction time."
             )
 
@@ -1802,7 +1802,7 @@ class LadybugAdapter(GraphDatabaseAdapter):
         ) as r:
             deleted = len(r.get_all())
 
-        # Best-effort FTS rebuild — failure here just means searches
+        # Best-effort FTS rebuild; failure here just means searches
         # may report stale hits until the next write triggers a rebuild.
         if label in self._fts_columns:
             try:
@@ -1825,7 +1825,7 @@ class LadybugAdapter(GraphDatabaseAdapter):
 
         Returns the number of edges actually removed (zero if no
         matching edge exists). Endpoints are matched by their declared
-        PKs — same convention as `get_entity` / `update_entities`.
+        PKs, same convention as `get_entity` / `update_entities`.
         """
         label = sanitize_label(label)
         subj_label, obj_label = self._resolve_endpoint_labels(label)
@@ -1834,7 +1834,7 @@ class LadybugAdapter(GraphDatabaseAdapter):
         if subj_pk is None or obj_pk is None:
             raise ValueError(
                 f"Endpoint labels {subj_label!r}/{obj_label!r} have no "
-                f"registered primary key — pass them via `entity_models`."
+                f"registered primary key; pass them via `entity_models`."
             )
 
         with self._execute(
@@ -1873,7 +1873,7 @@ class LadybugAdapter(GraphDatabaseAdapter):
         """Look up a registered entity model class by its label.
 
         Used by `detect_communities` to reconstruct typed
-        Pydantic instances from raw node structs — the user passed
+        Pydantic instances from raw node structs: the user passed
         ``Person`` / ``City`` etc. at construction time and we want
         the returned KnowledgeGraphs to round-trip through those
         types instead of collapsing to the base `Entity`.
@@ -2082,7 +2082,7 @@ class LadybugAdapter(GraphDatabaseAdapter):
         accepted set varies per procedure. This helper:
 
           * filters ``kwargs`` to keys the procedure actually
-            supports (silently drops the rest — keeps the cross-algo
+            supports (silently drops the rest; keeps the cross-algo
             Python signature stable),
           * renders the fragment ``, k1 := $k1, k2 := $k2`` (empty
             string when nothing is forwarded so the caller can
@@ -2120,7 +2120,7 @@ class LadybugAdapter(GraphDatabaseAdapter):
             concurrent calls don't collide,
           * interpolates the label lists into the ``PROJECT_GRAPH``
             call (Ladybug doesn't accept ``$``-parameter binding for
-            them — but the labels went through ``sanitize_label``
+            them, but the labels went through ``sanitize_label``
             upstream, so they're injection-safe),
           * yields the projection name to the caller,
           * always drops the projection on exit, even if the algo
@@ -2157,18 +2157,18 @@ class LadybugAdapter(GraphDatabaseAdapter):
 
         Algorithms:
 
-          * ``"louvain"`` — modularity-based clustering. Ladybug's
+          * ``"louvain"``: modularity-based clustering. Ladybug's
             implementation only supports a single node label at a
             time; if ``node_labels`` resolves to more than one this
             method raises. Nodes with degree 0 are assigned community
             ``-1`` by Louvain; each such isolated node lands in its
             own singleton `KnowledgeGraph` so the output
             stays unambiguous.
-          * ``"weakly_connected_components"`` — disconnected-piece
+          * ``"weakly_connected_components"``: disconnected-piece
             clustering across any number of node labels, ignoring
             edge direction. Useful when "communities" really means
             "graph islands".
-          * ``"strongly_connected_components"`` — same as WCC but
+          * ``"strongly_connected_components"``: same as WCC but
             requires directed reachability in both directions. Edges
             that are only traversable one way don't merge their
             endpoints into the same component.
@@ -2192,7 +2192,7 @@ class LadybugAdapter(GraphDatabaseAdapter):
                 engine default.
 
         Returns:
-            `KnowledgeGraphs` — one
+            `KnowledgeGraphs`: one
             `KnowledgeGraph` per detected community, sorted
             by community id for deterministic ordering.
         """
@@ -2258,7 +2258,7 @@ class LadybugAdapter(GraphDatabaseAdapter):
             pk_key = self._pk_keys.get(label, "id")
             pk_value = node.get(pk_key)
             if comm_id == -1:
-                # One singleton per isolated node — same partition
+                # One singleton per isolated node, same partition
                 # semantics WCC would give them.
                 comm_id = ("__isolated__", label, pk_value)
             comm_to_nodes[comm_id].append(node)
@@ -2273,7 +2273,7 @@ class LadybugAdapter(GraphDatabaseAdapter):
             except Exception:  # noqa: BLE001
                 continue
             if subj_label not in sanitized_nodes or obj_label not in sanitized_nodes:
-                # Endpoint table wasn't part of this projection — its
+                # Endpoint table wasn't part of this projection; its
                 # edges don't have communities to land in.
                 continue
             subj_pk = self._pk_keys.get(subj_label)
@@ -2328,7 +2328,7 @@ class LadybugAdapter(GraphDatabaseAdapter):
     # ------------------------------------------------------------------
 
     # Keyword args Ladybug's ``PAGE_RANK`` procedure accepts. Probed
-    # at the time of writing — Ladybug rejects unknown keys with a
+    # at the time of writing; Ladybug rejects unknown keys with a
     # binder exception, so the API surface is gated through
     # ``_build_algo_kwargs`` rather than passing user input through
     # blindly.
@@ -2358,8 +2358,8 @@ class LadybugAdapter(GraphDatabaseAdapter):
         ``{<pk_column>: <pk_value>, "label": <label>, "node": <full node>,
         "rank": <float>}`` sorted by ``rank`` descending. The per-label
         PK column name is kept verbatim (e.g. ``name`` for ``Person``,
-        ``isbn`` for ``Book``) instead of being aliased to ``id`` — same
-        convention as `entity_similarity_search` — so callers
+        ``isbn`` for ``Book``) instead of being aliased to ``id`` (same
+        convention as `entity_similarity_search`) so callers
         carrying multiple labels in one result set can still tell them
         apart.
 
@@ -2371,10 +2371,10 @@ class LadybugAdapter(GraphDatabaseAdapter):
             damping_factor: Ladybug's ``dampingFactor`` arg; 0.85 is
                 the standard textbook value.
             max_iterations: Ladybug's ``maxIterations`` arg.
-            tolerance: Ladybug's ``tolerance`` arg — convergence
+            tolerance: Ladybug's ``tolerance`` arg: convergence
                 threshold for the L1 difference between iterations.
                 ``None`` defers to Ladybug's default.
-            normalize_initial: Ladybug's ``normalizeInitial`` arg —
+            normalize_initial: Ladybug's ``normalizeInitial`` arg:
                 whether to normalize the starting rank vector.
                 ``None`` defers to Ladybug's default.
             k: Optional cap on returned rows. ``None`` returns every
@@ -2468,7 +2468,7 @@ class LadybugAdapter(GraphDatabaseAdapter):
         One fused round-trip per query embedding:
 
           1. ``CALL QUERY_VECTOR_INDEX`` finds the ``k`` entities of
-             ``label`` closest to the query — the seeds.
+             ``label`` closest to the query: the seeds.
           2. ``WITH`` carries them through (with an optional
              distance-threshold filter).
           3. ``OPTIONAL MATCH p = (seed)-[*1..max_hops]-(n)`` collects
@@ -2477,7 +2477,7 @@ class LadybugAdapter(GraphDatabaseAdapter):
              ``OPTIONAL`` keeps edge-less seeds in the result.
 
         The returned `KnowledgeGraph` is the deduped union of
-        every seed's neighbourhood — the local context subgraph you'd
+        every seed's neighbourhood: the local context subgraph you'd
         hand a generator alongside the question. Relations are rebuilt
         from each path edge's stored ``_SRC`` / ``_DST`` (not the
         traversal direction), so ``subj`` / ``obj`` stay schema-correct
@@ -2493,7 +2493,7 @@ class LadybugAdapter(GraphDatabaseAdapter):
                 no embedding model is required.
             max_hops: Neighbourhood radius in edges (>= 1, default 2).
             k: Number of seed entities per query text.
-            threshold: Optional seed vector-distance ceiling — seeds
+            threshold: Optional seed vector-distance ceiling; seeds
                 beyond it are dropped before expansion.
             rel_label: Optional rel-label constraint applied to every
                 hop. ``None`` (default) traverses any edge type.
@@ -2580,7 +2580,7 @@ class LadybugAdapter(GraphDatabaseAdapter):
             subj_node = nodes_by_iid.get(self._internal_id_key(edge.get("_SRC")))
             obj_node = nodes_by_iid.get(self._internal_id_key(edge.get("_DST")))
             if subj_node is None or obj_node is None:
-                # Endpoint fell outside the collected neighbourhood —
+                # Endpoint fell outside the collected neighbourhood;
                 # shouldn't happen (path nodes include both ends), but
                 # skip rather than emit a half-built relation.
                 continue
@@ -2627,7 +2627,7 @@ class LadybugAdapter(GraphDatabaseAdapter):
         (when ``with_pagerank``) `pagerank` to score importance,
         lazily ``ALTER``-adds the two reserved columns to each touched
         node table, and writes the values back keyed by primary key.
-        Idempotent — re-running overwrites the previous stamping.
+        Idempotent: re-running overwrites the previous stamping.
 
         Args:
             algorithm: Community-detection algorithm; see
@@ -2687,7 +2687,7 @@ class LadybugAdapter(GraphDatabaseAdapter):
 
         # Ensure the reserved columns exist on each touched table. Guard
         # first against a user model that legitimately declares one of
-        # the reserved names — stamping would clobber that field, and
+        # the reserved names; stamping would clobber that field, and
         # the strip in _node_to_json would hide it, so fail loudly.
         for label in touched_labels:
             model = self._entity_model_for_label(label)
@@ -2743,7 +2743,7 @@ class LadybugAdapter(GraphDatabaseAdapter):
 
         The query-time half of GraphRAG-global. Reads the ``community``
         / ``rank`` properties `build_communities` stamped and
-        rolls them up in a single multi-label aggregation query — no
+        rolls them up in a single multi-label aggregation query: no
         clustering at query time. Each returned row describes one
         community::
 
@@ -2753,7 +2753,7 @@ class LadybugAdapter(GraphDatabaseAdapter):
         ordered by ``total_rank`` descending and capped at ``k``
         communities. ``members`` carries the community's nodes (best
         first by ``rank``) so a caller can run the LM map-reduce step
-        — summarise each community, then combine — on top. That
+        (summarise each community, then combine) on top. That
         map-reduce stays above the adapter; Cypher only does the
         retrieval.
 
@@ -2812,6 +2812,156 @@ class LadybugAdapter(GraphDatabaseAdapter):
             )
         return format_search_results(records, output_format)
 
+    async def community_graph_search(
+        self,
+        *,
+        node_labels: Optional[List[str]] = None,
+        rel_labels: Optional[List[str]] = None,
+        k: int = 10,
+        members_per_community: Optional[int] = None,
+    ) -> KnowledgeGraphs:
+        """GraphRAG-style *global* search returning communities as graphs.
+
+        The graph-shaped counterpart to `global_graph_search`. Reads the
+        ``community`` / ``rank`` properties `build_communities` stamped,
+        groups the stamped nodes by community, and rebuilds each community
+        as a `KnowledgeGraph`: its member entities plus the relations
+        whose *both* endpoints fall in the same community (cross-community
+        edges are dropped, exactly like `detect_communities`). Communities
+        are ordered by aggregate ``rank`` (descending) and capped at ``k``,
+        so the caller gets the most important subgraphs first: the units a
+        downstream LM map-reduce summarises then combines.
+
+        Requires `build_communities` to have run first; node tables that
+        carry no stamped community column are skipped, and an empty
+        `KnowledgeGraphs` is returned when nothing has been built.
+
+        Args:
+            node_labels: Optional NODE-table whitelist (``None`` = every
+                stamped table).
+            rel_labels: Optional REL-table whitelist (``None`` = all).
+            k: Maximum number of communities (subgraphs) to return.
+            members_per_community: Optional cap on member entities per
+                community, best first by ``rank``. Relations referencing a
+                dropped member are omitted so each subgraph stays coherent.
+                ``None`` (default) keeps the whole community.
+
+        Returns:
+            (KnowledgeGraphs): one `KnowledgeGraph` per community, most
+            important first. Empty when no community has been built.
+        """
+        from collections import defaultdict
+
+        sanitized_nodes, sanitized_rels = self._resolve_projection_labels(
+            node_labels, rel_labels
+        )
+        # Only tables `build_communities` has actually stamped can be read;
+        # the others lack the reserved column entirely.
+        built = [
+            label
+            for label in sanitized_nodes
+            if self._COMMUNITY_COLUMN in self._node_columns(label)
+        ]
+        if not built:
+            return KnowledgeGraphs(knowledge_graphs=[])
+
+        # Pass 1: bucket every stamped node by community id, remember which
+        # community each (label, pk) lives in, and accumulate per-community
+        # rank so we can order by importance.
+        comm_to_nodes: Dict[Any, List[Dict[str, Any]]] = defaultdict(list)
+        comm_lookup: Dict[tuple, Any] = {}
+        comm_rank: Dict[Any, float] = defaultdict(float)
+        for label in built:
+            pk_key = self._pk_keys.get(label, "id")
+            rows = self._con.execute(
+                f"MATCH (n:{label}) "
+                f"WHERE n.{self._COMMUNITY_COLUMN} IS NOT NULL "
+                f"RETURN n, n.{self._COMMUNITY_COLUMN} AS comm, "
+                f"n.{self._RANK_COLUMN} AS rank"
+            ).get_all()
+            for node, comm, rank in rows:
+                comm_to_nodes[comm].append(node)
+                comm_lookup[(label, node.get(pk_key))] = comm
+                comm_rank[comm] += rank or 0.0
+
+        # Order communities by aggregate rank (desc), community id (asc) as a
+        # deterministic tie-break, then keep the top ``k``.
+        ordered_comms = sorted(
+            comm_to_nodes.keys(),
+            key=lambda c: (-comm_rank[c], c),
+        )[:k]
+        kept_comms = set(ordered_comms)
+
+        # Pass 2: collect intra-community edges. Same reconstruction the
+        # detect_communities path uses; only edges whose endpoints share a
+        # (kept) community survive.
+        comm_to_edges: Dict[Any, List[tuple]] = defaultdict(list)
+        for rel_label in sanitized_rels:
+            try:
+                subj_label, obj_label = self._resolve_endpoint_labels(rel_label)
+            except Exception:  # noqa: BLE001
+                continue
+            if subj_label not in built or obj_label not in built:
+                continue
+            subj_pk = self._pk_keys.get(subj_label)
+            obj_pk = self._pk_keys.get(obj_label)
+            if subj_pk is None or obj_pk is None:
+                continue
+            edge_rows = self._con.execute(
+                f"MATCH (s:{subj_label})-[r:{rel_label}]->(o:{obj_label}) RETURN s, r, o"
+            ).get_all()
+            for subj_node, edge, obj_node in edge_rows:
+                s_comm = comm_lookup.get((subj_label, subj_node.get(subj_pk)))
+                o_comm = comm_lookup.get((obj_label, obj_node.get(obj_pk)))
+                if s_comm is None or s_comm != o_comm or s_comm not in kept_comms:
+                    continue
+                comm_to_edges[s_comm].append(
+                    (rel_label, subj_label, obj_label, edge, subj_node, obj_node)
+                )
+
+        # Pass 3: build one KnowledgeGraph per kept community, honouring the
+        # optional member cap and pruning edges to dropped members.
+        kgs: List[KnowledgeGraph] = []
+        for comm in ordered_comms:
+            nodes = comm_to_nodes[comm]
+            if members_per_community is not None:
+                nodes = sorted(
+                    nodes,
+                    key=lambda n: n.get(self._RANK_COLUMN) or 0.0,
+                    reverse=True,
+                )[:members_per_community]
+            kept_pks = {
+                (n["_LABEL"], n.get(self._pk_keys.get(n["_LABEL"], "id"))) for n in nodes
+            }
+            entities = [self._build_entity_instance(n["_LABEL"], n) for n in nodes]
+            relations = []
+            for (
+                rel_label,
+                subj_label,
+                obj_label,
+                edge,
+                subj_node,
+                obj_node,
+            ) in comm_to_edges.get(comm, []):
+                subj_pk = self._pk_keys.get(subj_label, "id")
+                obj_pk = self._pk_keys.get(obj_label, "id")
+                if (subj_label, subj_node.get(subj_pk)) not in kept_pks:
+                    continue
+                if (obj_label, obj_node.get(obj_pk)) not in kept_pks:
+                    continue
+                relations.append(
+                    self._build_relation_instance(
+                        rel_label,
+                        subj_label,
+                        obj_label,
+                        edge,
+                        subj_node,
+                        obj_node,
+                    )
+                )
+            kgs.append(KnowledgeGraph(entities=entities, relations=relations))
+        return KnowledgeGraphs(knowledge_graphs=kgs)
+
     # ------------------------------------------------------------------
     # Search
     # ------------------------------------------------------------------
@@ -2841,9 +2991,9 @@ class LadybugAdapter(GraphDatabaseAdapter):
                 ``text_or_texts``. When supplied, no embedding model is
                 required on the adapter.
             k: Maximum number of results.
-            threshold: Optional maximum vector distance — rows beyond
+            threshold: Optional maximum vector distance; rows beyond
                 this are dropped.
-            ef_search: Optional HNSW ``efs`` — search-time depth of
+            ef_search: Optional HNSW ``efs``, search-time depth of
                 the candidate list. Higher = better recall but slower.
                 ``None`` defers to Ladybug's default.
             output_format: ``"json"`` (default) or ``"csv"``.
@@ -2908,7 +3058,7 @@ class LadybugAdapter(GraphDatabaseAdapter):
                 to match (AND); the default (``False``) ORs them so
                 any term match counts. Forwards to Ladybug's
                 ``conjunctive`` kwarg.
-            bm25_b: Optional override for BM25's ``b`` parameter —
+            bm25_b: Optional override for BM25's ``b`` parameter;
                 controls how aggressively document-length normalises
                 the score. ``None`` keeps Ladybug's default (0.75).
         """
@@ -2972,7 +3122,7 @@ class LadybugAdapter(GraphDatabaseAdapter):
         derived list of string-typed properties FTS indexes) so the
         scoping rules stay consistent across both search families.
         Case-insensitive matching is handled inline via the ``(?i)``
-        flag prefix — Ladybug forwards regexes to its underlying
+        flag prefix: Ladybug forwards regexes to its underlying
         engine, so this is a regex flag, not a Cypher operator.
 
         Args:
@@ -3036,7 +3186,7 @@ class LadybugAdapter(GraphDatabaseAdapter):
         """RRF fusion of vector similarity + regex match.
 
         Sibling of `entity_hybrid_fts_search`. The regex side
-        captures "exact textual shape" — useful when the user knows
+        captures "exact textual shape", useful when the user knows
         a substring / pattern that should appear, but the embedding
         alone doesn't surface it. Composition is RRF over per-source
         ranks, identical math to the FTS hybrid.
@@ -3106,7 +3256,7 @@ class LadybugAdapter(GraphDatabaseAdapter):
         candidate_k = max(k * 5, k)
         pk_key = self._pk_keys.get(label, "id")
 
-        # Vector side — one similarity_search call per slot (pre-computed
+        # Vector side: one similarity_search call per slot (pre-computed
         # vector or query text), widened to k*5 so the union has enough
         # breadth for RRF.
         if provided_vectors is not None:
@@ -3137,7 +3287,7 @@ class LadybugAdapter(GraphDatabaseAdapter):
                 if prev is None or row["distance"] < prev["distance"]:
                     vec_best[pk_value] = row
 
-        # Regex side — union over patterns, deduplicated by PK.
+        # Regex side: union over patterns, deduplicated by PK.
         rx_best: Dict[Any, Dict[str, Any]] = {}
         for pattern in patterns:
             try:
@@ -3156,7 +3306,7 @@ class LadybugAdapter(GraphDatabaseAdapter):
 
         # RRF per-source ranks. Vector: ascending by distance (smaller
         # is better). Regex: there's no score, so rows are ranked in
-        # the order the regex returned them — same shape DuckDB uses.
+        # the order the regex returned them, same shape DuckDB uses.
         vec_ranks = {
             pk: rank
             for rank, (pk, _) in enumerate(
@@ -3208,11 +3358,11 @@ class LadybugAdapter(GraphDatabaseAdapter):
         ``UNION ALL``-ed Cypher statement that returns *both* the
         FTS-ranked rows and the vector-ranked rows tagged with a
         ``source`` column. Python then assigns per-source ranks and
-        computes RRF — same end shape as DuckDB's
+        computes RRF, same end shape as DuckDB's
         ``hybrid_fts_search``, just with the fusion outside the DB.
 
         ``text_or_texts`` feeds the vector branch; ``keywords`` (when
-        provided) feeds the BM25 branch instead — the two signals
+        provided) feeds the BM25 branch instead: the two signals
         look for different things (semantic vs lexical) and the
         natural-language query that drives the vectors is usually
         not the keyword set you'd hand to BM25. When ``keywords`` is
@@ -3237,7 +3387,7 @@ class LadybugAdapter(GraphDatabaseAdapter):
             vector_or_vectors: Pre-computed query vector(s) for the
                 vector branch, used directly instead of embedding text.
             ef_search: Optional HNSW ``efs`` for the vector branch
-                (search-time candidate depth — higher = better recall).
+                (search-time candidate depth; higher = better recall).
             conjunctive: AND vs OR mode for the BM25 branch.
             bm25_b: Optional override for BM25's ``b`` parameter.
         """
@@ -3260,10 +3410,10 @@ class LadybugAdapter(GraphDatabaseAdapter):
         )
         if not can_vector:
             # Fulltext-only fallback. Prefer explicit keywords when
-            # the caller passed them — that's what the BM25 branch
+            # the caller passed them; that's what the BM25 branch
             # would have used in the full hybrid path anyway. Tag
             # each row with ``rrf_score`` (set to the BM25 score) so
-            # the result shape matches the full-hybrid path — callers
+            # the result shape matches the full-hybrid path; callers
             # can always read ``rrf_score`` without branching.
             fts_rows = await self.entity_fulltext_search(
                 keywords if keywords is not None else text_or_texts,
@@ -3279,8 +3429,8 @@ class LadybugAdapter(GraphDatabaseAdapter):
                 row.setdefault("fulltext_score", row.get("score", 0.0))
             return format_search_results(fts_rows, output_format)
 
-        # Build the per-slot vector-branch input — pre-computed vectors
-        # or embedded text — then align the BM25 keyword for each slot.
+        # Build the per-slot vector-branch input (pre-computed vectors
+        # or embedded text), then align the BM25 keyword for each slot.
         if provided_vectors is not None:
             vectors = provided_vectors
             if keywords is not None:
@@ -3310,7 +3460,7 @@ class LadybugAdapter(GraphDatabaseAdapter):
         vec_index = f"{label.lower()}_vec"
         # Widen each branch's candidate pool to 5*k before RRF fusion.
         # If we asked each branch for only k results, the actual top-k
-        # by combined score is often outside one branch's top-k —
+        # by combined score is often outside one branch's top-k,
         # standard RRF practice and what DuckDB's adapter does too.
         candidate_k = max(k * 5, k)
         vec_kwargs_frag, vec_kwargs_bind = self._build_algo_kwargs(
@@ -3418,7 +3568,7 @@ class LadybugAdapter(GraphDatabaseAdapter):
     def _resolve_endpoint_labels(self, rel_label: str) -> tuple:
         """Look up ``(subj_label, obj_label)`` for a REL table.
 
-        Uses ``CALL SHOW_CONNECTION`` — same introspection path
+        Uses ``CALL SHOW_CONNECTION``, same introspection path
         `_rel_table_to_json_schema` uses. Ladybug raises a
         binder-level error when the table doesn't exist or isn't a
         rel; this wrapper catches that and re-raises as a clear
@@ -3432,14 +3582,14 @@ class LadybugAdapter(GraphDatabaseAdapter):
         except Exception as e:  # noqa: BLE001
             raise ValueError(
                 f"Relation label {rel_label!r} couldn't be resolved via "
-                f"SHOW_CONNECTION — is it registered as a REL table? "
+                f"SHOW_CONNECTION. Is it registered as a REL table? "
                 f"Pass it via `relation_models` at construction time. "
                 f"(underlying error: {e})"
             ) from e
         if not rows:
             raise ValueError(
-                f"Relation label {rel_label!r} has no SHOW_CONNECTION row "
-                f"— is it registered as a REL table? Pass it via "
+                f"Relation label {rel_label!r} has no SHOW_CONNECTION row. "
+                f"Is it registered as a REL table? Pass it via "
                 f"`relation_models` at construction time."
             )
         return rows[0][0], rows[0][1]
@@ -3488,7 +3638,7 @@ class LadybugAdapter(GraphDatabaseAdapter):
         object side with ``matched_on = 'obj'``. Python then
         deduplicates by ``(subj_pk, obj_pk)``, keeping the smaller
         distance and tagging ``matched_on = 'both'`` when an edge
-        surfaced on both branches — useful for downstream ranking
+        surfaced on both branches, useful for downstream ranking
         (edges where both endpoints look relevant tend to be the
         most interesting).
 
@@ -3503,7 +3653,7 @@ class LadybugAdapter(GraphDatabaseAdapter):
             k: Maximum number of results.
             threshold: Optional vector-distance threshold applied to
                 each endpoint search before the union.
-            ef_search: Optional HNSW ``efs`` — search-time candidate
+            ef_search: Optional HNSW ``efs``, search-time candidate
                 depth applied to both endpoint vector searches.
             output_format: ``"json"`` (list of dicts, default) or
                 ``"csv"`` (CSV string).
@@ -3530,7 +3680,7 @@ class LadybugAdapter(GraphDatabaseAdapter):
         # Aliasing the PK twice would clash when subj_pk == obj_pk
         # (both endpoints use ``name``). The unique column names
         # ``__subj_pk`` / ``__obj_pk`` decouple the Cypher result
-        # from the user-facing PK column names — Python re-flattens
+        # from the user-facing PK column names; Python re-flattens
         # them with collision handling in `_flatten_endpoint_pks`.
         query = (
             f"CALL QUERY_VECTOR_INDEX('{subj_label}', '{subj_vec_index}', "
@@ -3702,7 +3852,7 @@ class LadybugAdapter(GraphDatabaseAdapter):
         Composed via `entity_regex_search` on each endpoint side.
         Regex hits have no continuous score; ranking is binary
         (matched or not) with a slight bias toward edges that hit on
-        both endpoints over edges that hit on only one — exposed via
+        both endpoints over edges that hit on only one, exposed via
         ``score`` (2.0 for both, 1.0 for one) and ``matched_on``.
 
         Args:
@@ -3792,7 +3942,7 @@ class LadybugAdapter(GraphDatabaseAdapter):
 
         Composed via `entity_hybrid_regex_search` on each
         endpoint side. Per matched edge, the final ``rrf_score`` is
-        the sum of the subject's and the object's hybrid scores —
+        the sum of the subject's and the object's hybrid scores,
         same 4-source-RRF reduction as `relation_hybrid_fts_search`.
 
         The vector branch can be driven by pre-computed vectors via
@@ -3927,7 +4077,7 @@ class LadybugAdapter(GraphDatabaseAdapter):
           2. ``WITH`` carry through (with optional threshold filter).
           3. Vector-search the object label → ``o``.
           4. ``WITH`` carry through (with optional threshold filter).
-          5. ``MATCH p = (s)-[*min..max]->(o)`` — any path of
+          5. ``MATCH p = (s)-[*min..max]->(o)``: any path of
              valid hop count. When ``label`` is set, the pattern
              tightens to ``[:label*min..max]`` so every hop must be
              of that type.
@@ -3935,7 +4085,7 @@ class LadybugAdapter(GraphDatabaseAdapter):
              with the two distances.
 
         Same chained-CALL shape `_merge_relation_by_vector`
-        uses for upserts — Ladybug parses chained CALLs as long as
+        uses for upserts; Ladybug parses chained CALLs as long as
         each one is separated by a ``WITH``. The variable-length
         pattern is Cypher's standard ``*<min>..<max>`` form,
         verified against Ladybug 0.16.
@@ -4124,7 +4274,7 @@ class LadybugAdapter(GraphDatabaseAdapter):
 
         Composed via `entity_hybrid_fts_search` on each
         endpoint side. Per matched edge, the final ``rrf_score`` is
-        the sum of the subject's and the object's hybrid scores —
+        the sum of the subject's and the object's hybrid scores,
         equivalent to a single 4-source RRF over the four underlying
         rankings, because each endpoint participates in exactly one
         subj-side rank and one obj-side rank.
@@ -4154,7 +4304,7 @@ class LadybugAdapter(GraphDatabaseAdapter):
             return format_search_results([], output_format)
 
         # Composed hybrid on each side. ``entity_hybrid_fts_search``
-        # raises when the endpoint has no FTS index — that's the
+        # raises when the endpoint has no FTS index; that's the
         # right error to surface upstream too, so let it propagate.
         subj_hits = await self.entity_hybrid_fts_search(
             text_or_texts=text_or_texts,
@@ -4198,7 +4348,7 @@ class LadybugAdapter(GraphDatabaseAdapter):
             return format_search_results([], output_format)
 
         # Pull all edges whose subj is among the hits OR whose obj
-        # is among the hits — single Cypher round-trip, with the
+        # is among the hits: single Cypher round-trip, with the
         # full subj/obj/edge structs so the result row matches the
         # similarity-version's shape. ``OR`` is the union semantics
         # (matches `relation_similarity_search`).
@@ -4565,7 +4715,7 @@ class LadybugAdapter(GraphDatabaseAdapter):
 
         Both endpoints must match their respective regex pattern;
         rows surface only when at least one path of valid length
-        connects a subject hit to an object hit. Regex uses RE2 — no
+        connects a subject hit to an object hit. Regex uses RE2: no
         catastrophic-backtracking exposure.
 
         Args:
@@ -4633,7 +4783,7 @@ class LadybugAdapter(GraphDatabaseAdapter):
             },
         ).get_all()
 
-        # Regex is binary — same path-length distinct dedup as the
+        # Regex is binary: same path-length distinct dedup as the
         # vector path search, ranked by length (shorter first).
         seen: set = set()
         results: List[Dict[str, Any]] = []
@@ -4681,7 +4831,7 @@ class LadybugAdapter(GraphDatabaseAdapter):
 
         Each side is hybrid-searched (vec + regex) independently;
         the path's combined ``rrf_score`` is the sum of the two
-        endpoint hybrid scores — the 4-source RRF identity. Falls
+        endpoint hybrid scores, the 4-source RRF identity. Falls
         through to `path_similarity_search` when no patterns
         are supplied. Each side's vector branch can be driven by
         pre-computed vectors via ``subj_vector_or_vectors`` /

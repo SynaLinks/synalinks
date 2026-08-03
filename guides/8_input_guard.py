@@ -3,11 +3,11 @@
 
 An **input guard** is a gate at the door of your program. Before the
 LM ever sees the request, the guard either lets it through unchanged
-or says "no" — in which case the LM call is skipped entirely. That
+or says "no", in which case the LM call is skipped entirely. That
 saves money *and* blocks unwanted inputs in one step.
 
 A precise way to describe an input guard is as a pure function
-`g : X -> Y ∪ {None}` ("∪" means "or" — the output is either a
+`g : X -> Y ∪ {None}` ("∪" means "or": the output is either a
 warning value of type `Y` or the special value `None`). The guard
 classifies inputs *before* they reach an expensive downstream module
 (typically an LM call). The two outcomes are labeled with a
@@ -22,8 +22,8 @@ deliberately *flipped* convention:
 Why this flipped convention? Because it lets us compose guards using
 two simple operators (`^`, `|`) provided by the framework, instead of
 writing `if`/`else` statements. The whole program stays a **static
-dataflow graph** — a fixed picture of how data flows between modules
-— which is easy to reason about, save to disk, and trace at runtime.
+dataflow graph**, a fixed picture of how data flows between modules,
+which is easy to reason about, save to disk, and trace at runtime.
 
 ## Why Place the Guard *Before* the LM?
 
@@ -43,7 +43,7 @@ Even a modest `p_block` saves real money over time.
 
 **Security.** Rejected inputs **never reach the model's context**,
 so they cannot influence its output. This closes off a whole class
-of attacks called **prompt injection** — where an attacker hides
+of attacks called **prompt injection**, where an attacker hides
 malicious instructions inside the user's input, trying to trick the
 LM into doing something it shouldn't.
 
@@ -96,7 +96,7 @@ pick what to show the user: the guard's warning, or the LM's answer.
 Row three is a corner case worth understanding: if both sides are
 non-`None`, the operator merges their fields, with the *left*
 operand taking priority. In a correctly wired guard graph this case
-is **unreachable** — because whenever `warning` is non-`None`,
+is **unreachable**, because whenever `warning` is non-`None`,
 `guarded_inputs` becomes `None`, which forces `answer` to `None` as
 well. So in practice only rows one and two ever fire.
 
@@ -135,17 +135,17 @@ generator's source code.
 
 ## Failure Modes to Audit
 
-Any guard is a **binary classifier** — it answers a yes/no question
-— and, like any classifier, it can make two kinds of mistakes:
+Any guard is a **binary classifier**; it answers a yes/no question
+and, like any classifier, it can make two kinds of mistakes:
 
 - **False negatives (bypasses).** The guard *should* have blocked
   the input but admitted it. A malicious input slips through.
   Substring matching, as in the example below, is easily defeated
-  by **obfuscation** — writing a banned word in a disguised form
+  by **obfuscation**: writing a banned word in a disguised form
   like `h@ck`, `h4ck`, base64, or Unicode escapes. Treat substring
   filters as a cheap *first layer*, not a real security boundary.
 - **False positives (over-blocks).** The guard blocks an input that
-  was fine — for example because the substring `hack` appears
+  was fine, for example because the substring `hack` appears
   inside `hackathon`, or `forbidden` appears inside `forbidden
   city`. The cost is user-visible friction.
 
@@ -167,7 +167,7 @@ A guard is an ordinary `synalinks.Module`. You override two methods:
 - **`compute_output_spec(inputs, training)`**: declares the
   **schema** (the type / shape) of the output. The framework needs
   this to build the static graph, so it must return the warning's
-  symbolic data model **even on the admit path** — a graph edge
+  symbolic data model **even on the admit path**: a graph edge
   always needs a declared type, regardless of whether the guard
   ends up firing at runtime.
 
@@ -277,12 +277,12 @@ Safe: {'answer': 'Paris'}
   **`|` selects the first non-`None`**. Together they implement a
   static "if/else" with no explicit branching statements.
 - **The generator never runs on a rejected input.** This is a
-  graph-level guarantee — you can prove it from the structure of
-  the graph — not a runtime check.
+  graph-level guarantee: you can prove it from the structure of
+  the graph, not a runtime check.
 - **Substring blacklists are a sieve, not a wall.** They catch easy
   cases but let determined attackers through. For real safety
   properties, combine them with stronger filters (regex
-  normalization, classifier-based guards, or **allow-lists** —
+  normalization, classifier-based guards, or **allow-lists**,
   lists of *permitted* patterns instead of forbidden ones).
 
 ## API References
