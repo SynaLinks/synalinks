@@ -1287,9 +1287,19 @@ class SbplProfileTest(testing.TestCase):
 
     def test_network_denied_by_default(self):
         profile = self._build()
-        # No blanket grant, and loopback only. `(deny default)` covers the rest.
+        # `(deny default)` covers everything; nothing re-opens it.
         self.assertNotIn("(allow network*)", profile)
-        self.assertIn("(allow network-outbound (local ip))", profile)
+
+    def test_host_loopback_is_never_granted(self):
+        # macOS has no network namespace, so `(local ip)` would be the *host's*
+        # 127.0.0.1: every service bound to localhost would be reachable from
+        # code that is supposed to have no network at all. Assert both
+        # directions, and under both network settings, since the blanket
+        # `(allow network*)` is the only intended way to get out.
+        for network in (False, True):
+            profile = self._build(network=network)
+            self.assertNotIn("(local ip)", profile)
+            self.assertNotIn("network-inbound", profile)
 
     def test_network_allowed_when_requested(self):
         profile = self._build(network=True)
@@ -1304,6 +1314,28 @@ class SbplProfileTest(testing.TestCase):
     def test_process_info_is_denied(self):
         profile = self._build()
         self.assertIn("(deny process-info*)", profile)
+
+    def test_mach_lookup_is_never_unrestricted(self):
+        # A bare `(allow mach-lookup)` lets the process ask any daemon to work
+        # on its behalf, and the daemon's child does not inherit this profile,
+        # so the filesystem and network rules would not apply to it. Every
+        # grant must name a specific service.
+        profile = self._build()
+        self.assertNotIn("(allow mach-lookup)\n", profile)
+        for line in profile.splitlines():
+            if "mach-lookup" in line:
+                self.assertIn("global-name", line)
+
+    def test_mach_lookup_allows_only_known_services(self):
+        profile = self._build()
+        self.assertIn(
+            '(allow mach-lookup (global-name "com.apple.system.notification_center"))',
+            profile,
+        )
+        # Process-spawning brokers are the escape route this allowlist exists
+        # to close, so they must never appear.
+        self.assertNotIn("launchservicesd", profile)
+        self.assertNotIn("com.apple.launchd", profile)
 
     def test_paths_with_quotes_are_escaped(self):
         # SBPL is s-expression syntax: an unescaped quote in a path would end

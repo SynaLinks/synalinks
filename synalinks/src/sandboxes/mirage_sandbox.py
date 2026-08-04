@@ -140,6 +140,19 @@ _LAUNCHER = "import base64,sys;exec(base64.b64decode(sys.argv[1]))"
 _LIBSANDBOX = "/usr/lib/libsandbox.1.dylib"
 
 _MACOS_CONFINE_SRC = r'''
+# Mach services the confined process may look up, by exact global name. See
+# `_build_sbpl` for why this is an allowlist and not `(allow mach-lookup)`.
+_MACOS_MACH_SERVICES = (
+    # libsystem_notify: registered during libSystem startup.
+    "com.apple.system.notification_center",
+    # os_log / libsystem_trace, touched by the C runtime before main().
+    "com.apple.logd",
+    # opendirectoryd's libinfo endpoint, backing pwd/getpwuid, which CPython
+    # calls from `site` and `os.path.expanduser`.
+    "com.apple.system.opendirectoryd.libinfo",
+)
+
+
 def _sbpl_quote(path):
     """Quote a path for SBPL, which is s-expression syntax, not shell."""
     return '"' + str(path).replace("\\", "\\\\").replace('"', '\\"') + '"'
@@ -150,18 +163,35 @@ def _build_sbpl(cfg):
     lines = [
         "(version 1)",
         "(deny default)",
-        # Keep the process able to run at all: fork/exec for subprocesses the
-        # snippet may spawn, signals to itself, and the Mach/sysctl lookups
-        # dyld and CPython perform during startup. These grant no filesystem
-        # or network reach on their own.
+        # Keep the process able to run at all: fork for subprocesses the snippet
+        # may spawn, signals to itself, and the sysctl reads CPython performs
+        # during startup. These grant no filesystem or network reach.
         "(allow process-fork)",
         "(allow signal (target self))",
         "(allow sysctl-read)",
-        "(allow mach-lookup)",
         # Deny introspection of other processes. Not a PID namespace, but it
         # removes the obvious host-process reconnaissance path.
         "(deny process-info*)",
     ]
+    # Mach services, by explicit name. A bare `(allow mach-lookup)` is the
+    # classic way to render a Seatbelt profile ineffective: a send right to any
+    # service lets the process ask a *daemon* to act for it, and the daemon's
+    # child does not inherit this profile, so the filesystem and network rules
+    # below simply do not apply to the work it performs. Chrome and the Codex /
+    # Gemini CLI profiles all allowlist for this reason.
+    #
+    # This set is deliberately minimal: the notification and logging services
+    # libSystem touches during startup, plus the directory-service lookup that
+    # backs `pwd`/`getpwuid` (CPython's `site` and `os.path.expanduser` call
+    # it). Nothing here brokers process execution. Notably absent, and to stay
+    # absent: `com.apple.coreservices.launchservicesd` and the launchd family,
+    # which exist precisely to spawn processes outside the caller's sandbox.
+    #
+    # Widen only on evidence: a missing service surfaces as the bootstrap
+    # failing closed with `confine-error` and exit 99, never as a silent loss
+    # of confinement, so growing this list from real failures is safe.
+    for service in _MACOS_MACH_SERVICES:
+        lines.append('(allow mach-lookup (global-name "%s"))' % service)
     # Character devices CPython needs; harmless and required for randomness,
     # /dev/null redirection and tty probing.
     for dev in ("/dev/null", "/dev/zero", "/dev/random", "/dev/urandom",
@@ -191,11 +221,15 @@ def _build_sbpl(cfg):
         lines.append("(allow network-outbound (subpath %s))" % _sbpl_quote(sock_dir))
     if cfg.get("network"):
         lines.append("(allow network*)")
-    else:
-        # Loopback stays open: the bridge and any local helper the snippet
-        # legitimately talks to live there, and it grants no egress.
-        lines.append("(allow network-outbound (local ip))")
-        lines.append("(allow network-inbound (local ip))")
+    # Nothing else. Loopback is deliberately NOT granted: unlike Linux, where
+    # NEWNET gives the process a private network namespace whose loopback is
+    # its own, macOS has no namespace and `(local ip)` would be the *host's*
+    # 127.0.0.1. That would hand supposedly network-isolated code every service
+    # bound to localhost (model servers, databases, the user's own dev APIs),
+    # which is exactly what confinement is meant to prevent. The host-tool
+    # bridge does not need it either: it is a unix socket, granted by the
+    # `rpc_socket_dir` rule above, which Seatbelt classes as network-outbound
+    # but matches on path rather than address.
     return "\n".join(lines) + "\n"
 
 
