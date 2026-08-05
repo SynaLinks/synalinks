@@ -168,7 +168,6 @@ def _sbpl_quote(path):
 def _build_sbpl(cfg):
     """Render the Seatbelt profile for this run."""
     import os
-    import sys
 
     lines = [
         "(version 1)",
@@ -260,17 +259,19 @@ def _build_sbpl(cfg):
     # cannot import anything, including its own bootstrap dependencies.
     for path in cfg.get("read_paths") or []:
         lines.append("(allow file-read* (subpath %s))" % _sbpl_quote(path))
-    # Execution is limited to the interpreter itself, and nothing else. The
-    # readable runtime set contains `/usr/bin`, so granting exec across it would
-    # hand the snippet every host binary on the machine (`curl`, `ssh`,
-    # `osascript`, ...). They would inherit this profile, so this is not an
-    # escape, but it is a large and needless capability: `multiprocessing`
-    # re-execs the interpreter and nothing else in the sandbox execs at all.
-    # Shelling out to a host binary therefore fails on macOS where it would
-    # work on Linux, which is the intended direction for the weaker backend.
-    for exe in {sys.executable, os.path.realpath(sys.executable)}:
-        if exe:
-            lines.append("(allow process-exec (literal %s))" % _sbpl_quote(exe))
+    # Execution is limited to that same read-only runtime set, so the snippet
+    # cannot exec a binary it wrote itself: the writable area is not in this
+    # set, and `file-map-executable` is denied there besides.
+    #
+    # It does include `/usr/bin`, so the snippet can shell out to host tools
+    # exactly as it can on Linux, where the runtime dirs are bind-mounted and
+    # executable. That is deliberate parity, and it is not an escape: a child
+    # process inherits the profile it is spawned under, so a `subprocess` here
+    # gets the same denied filesystem and network as its parent. The escape
+    # route in this area is not exec but `mach-lookup`, where a *daemon* does
+    # the work outside the profile, and that allowlist is empty.
+    for path in cfg.get("read_paths") or []:
+        lines.append("(allow process-exec (subpath %s))" % _sbpl_quote(path))
     # Read-write: the sandbox's own directories (dill state, result file, RPC
     # socket, working tree). This is the only writable surface.
     for path in cfg.get("rw_paths") or []:
@@ -1784,18 +1785,22 @@ class MirageSandbox(Sandbox):
     ``network=True`` (the host-tool bridge socket stays reachable either way).
     Reads are restricted, not merely writes.
 
-    Where macOS allows it, the profile is *tighter* than the Linux path rather
-    than looser, because capability reduction is the only lever left once the
-    two guarantees below are off the table:
+    Where macOS allows it the profile grants *less* than the Linux path, since
+    capability reduction is the only lever left once the two guarantees below
+    are off the table:
 
-    * **exec is the interpreter only.** ``/usr/bin`` is readable (the runtime
-      lives under ``/usr``), so shelling out to a host binary works on Linux
-      and is refused here. ``multiprocessing`` still re-execs fine.
     * **no Mach services.** The allowlist is empty; what libSystem needs it
       looks up before the profile applies. Each entry would be IPC into a
-      privileged daemon.
+      privileged daemon, which is the real escape route in this area: a daemon
+      does the work outside the caller's profile.
     * **write xor execute.** The writable area denies ``file-map-executable``,
       so a snippet cannot ``dlopen`` a dylib it wrote itself.
+    * **no reach into ``workdir``.** It is a seed, copied in host-side, and
+      stays unreadable and unwritable from inside.
+
+    Subprocesses work as they do on Linux: exec is limited to the read-only
+    runtime set (so not a binary the snippet wrote), and a child **inherits the
+    profile**, so it runs with the same denied filesystem and network.
 
     Two guarantees from the Linux path remain **absent**, and code that depends
     on them should check `confinement_kind` rather than assume parity:
@@ -1807,11 +1812,11 @@ class MirageSandbox(Sandbox):
       snippet brought itself is the main thing that would exploit the gap, and
       the write-xor-execute rule above is what closes off that route.
 
-    Two behaviours also differ from Linux and are not bugs. The snippet's own
-    ``open()`` is host I/O restricted to the sandbox's directories rather than
-    the virtual filesystem the file tools use, since there is no ``pivot_root``
-    to unify them; and ``workdir`` is neither readable nor writable from inside
-    (it is a seed, copied in host-side, and stays untouched).
+    One behaviour also differs and is not a bug: the snippet's own ``open()``
+    is host I/O restricted to the sandbox's directories, rather than the
+    virtual filesystem the file tools use, because there is no ``pivot_root``
+    to unify the two. Write a file with ``run`` and read it back with
+    `read_file` and you get the Linux answer on Linux and nothing here.
 
     ## Windows (run under WSL2)
 

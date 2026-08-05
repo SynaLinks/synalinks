@@ -1340,13 +1340,13 @@ class SbplProfileTest(testing.TestCase):
         self.assertNotIn("launchservicesd", profile)
         self.assertNotIn("com.apple.launchd", profile)
 
-    def test_exec_is_limited_to_the_interpreter(self):
-        # The readable runtime set contains /usr/bin, so granting exec across it
-        # would hand the snippet every host binary on the machine. Only the
-        # interpreter is executable, which is all `multiprocessing` needs.
-        profile = self._build()
-        self.assertNotIn('(allow process-exec (subpath "/usr"))', profile)
-        self.assertIn('(allow process-exec (literal "%s"))' % sys.executable, profile)
+    def test_exec_is_limited_to_the_read_only_runtime_set(self):
+        # Host tools stay reachable, as they are on Linux, and a child inherits
+        # the profile. What must not be executable is anything the snippet can
+        # write: the writable area is not in the exec set.
+        profile = self._build(rw_paths=["/private/tmp/sbx"])
+        self.assertIn('(allow process-exec (subpath "/usr"))', profile)
+        self.assertNotIn('(allow process-exec (subpath "/private/tmp/sbx"))', profile)
 
     def test_writable_area_is_not_executable(self):
         # Write-xor-execute: a snippet must not be able to drop a dylib into its
@@ -1580,23 +1580,29 @@ class MacosSeatbeltConfineTest(_SandboxTestCase):
         self.assertTrue(result.ok, msg=self._diag(result))
         self.assertNotIn("READ", result.stdout)
 
-    async def test_confine_blocks_exec_of_host_binaries(self):
-        # /usr/bin is readable (the runtime lives under /usr), so without the
-        # exec restriction the snippet could run every binary on the machine.
-        # They would inherit the profile, so this is capability reduction
-        # rather than an escape, but it is the largest one on offer here.
+    async def test_subprocesses_run_but_inherit_the_profile(self):
+        # Shelling out to a host tool works here as it does on Linux, and that
+        # is safe for one reason only: the child inherits the profile. Assert
+        # both halves together, because the first without the second is exactly
+        # the hole that would make exec worth denying.
         sandbox = MirageSandbox(timeout=_TIMEOUT, confine=True)
         result = await sandbox.run(
-            "import subprocess\n"
-            "try:\n"
-            "    subprocess.run(['/usr/bin/whoami'], capture_output=True)\n"
-            "    outcome = 'RAN'\n"
-            "except Exception as exc:\n"
-            "    outcome = type(exc).__name__\n"
-            "print(outcome)\n"
+            "import os, subprocess\n"
+            "ran = subprocess.run(\n"
+            "    ['/bin/sh', '-c', 'echo alive'], capture_output=True, text=True\n"
+            ")\n"
+            "print(ran.stdout.strip())\n"
+            "escape = os.path.expanduser('~/synalinks_subprocess_escape.txt')\n"
+            "out = subprocess.run(\n"
+            "    ['/bin/sh', '-c', 'echo escaped > %s' % escape],\n"
+            "    capture_output=True, text=True,\n"
+            ")\n"
+            "print('ESCAPED' if os.path.exists(escape) else 'CONFINED')\n"
         )
         self.assertTrue(result.ok, msg=self._diag(result))
-        self.assertNotIn("RAN", result.stdout)
+        self.assertIn("alive", result.stdout)
+        self.assertIn("CONFINED", result.stdout)
+        self.assertNotIn("ESCAPED", result.stdout)
 
     async def test_confine_cuts_network(self):
         sandbox = MirageSandbox(timeout=_TIMEOUT, confine=True)
