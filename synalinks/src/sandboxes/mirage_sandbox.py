@@ -213,11 +213,26 @@ def _build_sbpl(cfg):
     # own writable area fails EPERM while the profile looks, on paper, correct.
     # Metadata only: this permits `stat`/`readlink` on the ancestors, not
     # reading their contents or listing them.
+    #
+    # The working directory is in this set for the same reason, and it is not
+    # optional: `getcwd` is itself a path operation (the kernel walks the cwd up
+    # to the root), so a cwd outside the granted set fails EPERM. CPython calls
+    # it on the *first import after confinement*, since `python3 -c` puts "" at
+    # the head of `sys.path` and `_path_importer_cache` resolves "" through
+    # `getcwd` while catching only `FileNotFoundError`. That surfaces not as a
+    # denied file but as a `PermissionError` thrown by the import machinery,
+    # several frames away from anything that looks filesystem-related.
+    try:
+        cwd = os.getcwd()
+    except OSError:  # cwd already unreachable; nothing to grant
+        cwd = None
     ancestors = ["/"]
+    if cwd and cwd != "/":
+        ancestors.append(cwd)
     for path in (
         list(cfg.get("read_paths") or [])
         + list(cfg.get("rw_paths") or [])
-        + [cfg.get("rpc_socket_dir"), cfg.get("sock"), cfg.get("tmpdir")]
+        + [cfg.get("rpc_socket_dir"), cfg.get("sock"), cfg.get("tmpdir"), cwd]
     ):
         if not path:
             continue

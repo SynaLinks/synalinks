@@ -1,6 +1,7 @@
 # License Apache 2.0: (c) 2025-2026 Yoan Sallami (Synalinks Team)
 
 import gc
+import os
 import unittest
 
 from synalinks.src import testing
@@ -1356,6 +1357,19 @@ class SbplProfileTest(testing.TestCase):
                 self.assertIn("file-read-metadata", line)
         self.assertNotIn('(allow file-read* (subpath "/"))', profile)
         self.assertNotIn('(allow file-read* (subpath "/var"))', profile)
+
+    def test_working_directory_is_traversable(self):
+        # `getcwd` is a path operation, so a cwd outside the granted set fails
+        # EPERM, and CPython calls it on the first import after confinement
+        # (`python3 -c` puts "" at the head of `sys.path`), catching only
+        # `FileNotFoundError`. Without this the failure arrives as a
+        # `PermissionError` from the import machinery, nowhere near a file.
+        profile = self._build()
+        cwd = os.getcwd()
+        self.assertIn('(allow file-read-metadata (literal "%s"))' % cwd, profile)
+        # Metadata, not contents: `listdir` stays denied, which the import
+        # machinery handles as an empty directory and moves on.
+        self.assertNotIn('(allow file-read* (subpath "%s"))' % cwd, profile)
 
     def test_rpc_socket_literal_is_allowed_when_known(self):
         # `subpath` filters on `network-outbound` are far less attested than
