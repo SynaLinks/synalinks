@@ -291,11 +291,14 @@ def _build_sbpl(cfg):
     return "\n".join(lines) + "\n"
 
 
-def _confine_macos(cfg):
-    import ctypes
-    import ctypes.util
+def _prepare_macos_process(cfg):
+    """Put the process where the profile can afford to grant it, pre-profile.
+
+    Split out of `_confine_macos` because everything here is plain POSIX and
+    testable off a Darwin host, unlike the `sandbox_init` call that follows it.
+    """
     import os
-    import resource
+    import sys
     import tempfile
 
     # Point the snippet's temp dir at the sandbox's own writable area. The
@@ -310,8 +313,37 @@ def _confine_macos(cfg):
     if tmpdir:
         os.environ["TMPDIR"] = tmpdir
         tempfile.tempdir = tmpdir
+        # Move the process into that area rather than widen the profile to
+        # wherever it happens to be standing. `getcwd` is a path operation, and
+        # a cwd outside the granted set fails EPERM: granting metadata on the
+        # cwd is not enough, so the fix is to be somewhere the profile already
+        # grants outright. The Linux path ends up in the same place for the
+        # same reason, since `pivot_root` leaves the process chdir'd into the
+        # sandbox root. A relative path in a snippet then lands in the
+        # sandbox's own scratch dir instead of a host dir it cannot write.
+        try:
+            os.chdir(tmpdir)
+        except OSError:  # scratch dir missing; the profile still applies below
+            pass
 
-    # rlimits first: POSIX, and unaffected by the profile applied below.
+    # Drop the leading "" from `sys.path`, belt to the chdir's braces. CPython
+    # resolves that entry through `getcwd` on the first import *after* the
+    # profile applies, catching only `FileNotFoundError`, so an EPERM there
+    # surfaces as a `PermissionError` raised by the import machinery, frames
+    # away from anything filesystem-shaped, and takes down an import that would
+    # otherwise have succeeded from a granted `sys.path` entry. Nothing in the
+    # sandbox imports from the working directory: the runtime set is absolute.
+    sys.path = [entry for entry in sys.path if entry]
+
+
+def _confine_macos(cfg):
+    import ctypes
+    import ctypes.util
+    import resource
+
+    _prepare_macos_process(cfg)
+
+    # rlimits: POSIX, and unaffected by the profile applied below.
     rl = cfg.get("rlimits") or {}
     for key, which in (
         ("as", getattr(resource, "RLIMIT_AS", None)),

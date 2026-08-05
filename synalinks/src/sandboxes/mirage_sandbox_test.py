@@ -2,6 +2,8 @@
 
 import gc
 import os
+import sys
+import tempfile
 import unittest
 
 from synalinks.src import testing
@@ -1389,6 +1391,68 @@ class SbplProfileTest(testing.TestCase):
         profile = self._build(rw_paths=['/tmp/a"b'])
         self.assertIn(r'"/tmp/a\"b"', profile)
         self.assertNotIn('"/tmp/a"b"', profile)
+
+
+class MacosProcessPrologueTest(testing.TestCase):
+    """The pre-profile half of the macOS bootstrap, which is plain POSIX.
+
+    Runs on every platform, like `SbplProfileTest`: it is the part of the
+    Seatbelt path that decides *where the process stands* when the profile
+    lands, and standing in the wrong place is what a profile cannot fix.
+    """
+
+    def _prepare(self, cfg):
+        ns = {}
+        exec(_MACOS_CONFINE_SRC, ns)
+        cwd = os.getcwd()
+        path = list(sys.path)
+        env = os.environ.get("TMPDIR")
+        tempdir = tempfile.tempdir
+
+        def _restore():
+            os.chdir(cwd)
+            sys.path[:] = path
+            tempfile.tempdir = tempdir
+            if env is None:
+                os.environ.pop("TMPDIR", None)
+            else:
+                os.environ["TMPDIR"] = env
+
+        self.addCleanup(_restore)
+        ns["_prepare_macos_process"](cfg)
+
+    def test_tempdir_points_into_the_sandbox(self):
+        # The host temp dir is deliberately not granted, so a snippet reaching
+        # for scratch space has to land inside the sandbox's own area.
+        scratch = self.get_temp_dir()
+        self._prepare({"tmpdir": scratch})
+        self.assertEqual(os.environ["TMPDIR"], scratch)
+        self.assertEqual(tempfile.gettempdir(), scratch)
+
+    def test_working_directory_moves_into_the_sandbox(self):
+        # `getcwd` is a path operation: a cwd outside the granted set fails
+        # EPERM under the profile, and metadata on it is not enough. Being
+        # somewhere the profile grants outright is.
+        scratch = self.get_temp_dir()
+        self._prepare({"tmpdir": scratch})
+        self.assertEqual(os.path.realpath(os.getcwd()), os.path.realpath(scratch))
+
+    def test_empty_sys_path_entry_is_dropped(self):
+        # CPython resolves "" through `getcwd` on the first import after the
+        # profile applies, catching only `FileNotFoundError`, so an EPERM there
+        # kills an import that a granted `sys.path` entry would have served.
+        sys.path.insert(0, "")
+        self._prepare({"tmpdir": self.get_temp_dir()})
+        self.assertNotIn("", sys.path)
+        # ...and only that entry: the runtime set has to survive intact.
+        self.assertIn(os.path.dirname(os.__file__), sys.path)
+
+    def test_prologue_without_a_scratch_dir_is_harmless(self):
+        # `tmpdir` is absent for an unconfined run and on the `run_bash` path
+        # before a scratch dir exists; the prologue must not throw.
+        here = os.getcwd()
+        self._prepare({})
+        self.assertEqual(os.getcwd(), here)
 
 
 @unittest.skipUnless(_SEATBELT_OK, f"seatbelt confinement unavailable: {_KIND}")
