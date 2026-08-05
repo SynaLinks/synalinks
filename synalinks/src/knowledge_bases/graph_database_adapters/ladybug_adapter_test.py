@@ -477,6 +477,27 @@ class LadybugAdapterTest(testing.TestCase):
             results = await adapter.entity_fulltext_search("Alice", label="Person")
         self.assertEqual(len(results), 1)
 
+    async def test_creating_an_existing_fts_index_is_silent(self):
+        """Reopening a persistent store re-declares its entity models, so
+        the index from the previous session is already there. That is the
+        correct state, and search still works — warning about it would tell
+        the user their full-text search is dead when it isn't."""
+        import warnings as _warnings
+
+        adapter = self._adapter(embedding_model=_StubEmbeddingModel({}))
+        await adapter.update_entities(
+            Person(label="Person", name="Alice", embedding=[1.0, 0.0, 0.0])
+        )
+
+        with _warnings.catch_warnings(record=True) as caught:
+            _warnings.simplefilter("always")
+            # Same call the constructor makes for a declared entity model.
+            adapter._create_fts_index("Person", adapter._fts_columns["Person"])
+        self.assertEqual([str(w.message) for w in caught], [])
+
+        results = await adapter.entity_fulltext_search("Alice", label="Person")
+        self.assertEqual(len(results), 1)
+
     # ------------------------------------------------------------------
     # Lifecycle, raw queries, edge cases
     # ------------------------------------------------------------------
