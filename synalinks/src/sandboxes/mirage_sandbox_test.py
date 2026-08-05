@@ -1358,6 +1358,16 @@ class SbplProfileTest(testing.TestCase):
         self.assertIn(deny, profile)
         self.assertGreater(profile.index(deny), profile.index(allow))
 
+    def test_runtime_set_is_mappable_executable(self):
+        # The other half of write-xor-execute, and not implied by `file-read*`:
+        # `file-map-executable` is its own operation, so an exec'd binary and
+        # every dylib dyld then loads need it. Without this the child starts
+        # and dies in dyld, silently, which is not a failure mode anyone enjoys
+        # diagnosing from a CI log.
+        profile = self._build()
+        self.assertIn('(allow file-map-executable (subpath "/usr"))', profile)
+        self.assertIn('(allow file-map-executable (subpath "/System"))', profile)
+
     def test_symlinked_ancestors_are_traversable(self):
         # Reaching an allowed path means resolving every symlink on the way to
         # it, which `(deny default)` also denies. macOS puts the sandbox's own
@@ -1505,9 +1515,15 @@ class MacosSeatbeltConfineTest(_SandboxTestCase):
         *downstream* symptom (a `NameError` for state that never persisted, a
         `None` result), while the bootstrap's `persist-warn` / `result-warn`
         line naming the denied path goes to stderr. These run on CI hosts
-        nobody can attach to, so the message has to carry it.
+        nobody can attach to, so the message has to carry it. Stdout too, since
+        a snippet that reports a child's exit status has put the evidence
+        there.
         """
-        return "error=%s\nstderr=%s" % (result.error, result.stderr)
+        return "error=%s\nstdout=%s\nstderr=%s" % (
+            result.error,
+            result.stdout,
+            result.stderr,
+        )
 
     async def test_confinement_kind_is_seatbelt(self):
         self.assertEqual(confinement_kind(), "seatbelt")
@@ -1604,16 +1620,25 @@ class MacosSeatbeltConfineTest(_SandboxTestCase):
             "ran = subprocess.run(\n"
             "    ['/bin/sh', '-c', 'echo alive'], capture_output=True, text=True\n"
             ")\n"
-            "print(ran.stdout.strip())\n"
+            # Report the child's exit status and stderr, not just its stdout: a
+            # child that dies in dyld produces empty output and raises nothing,
+            # so silence here has to be distinguishable from success.
+            "print('RC', ran.returncode, 'ERR', ran.stderr.strip())\n"
+            "print('OUT', ran.stdout.strip())\n"
             "escape = os.path.expanduser('~/synalinks_subprocess_escape.txt')\n"
-            "out = subprocess.run(\n"
+            "subprocess.run(\n"
             "    ['/bin/sh', '-c', 'echo escaped > %s' % escape],\n"
             "    capture_output=True, text=True,\n"
             ")\n"
             "print('ESCAPED' if os.path.exists(escape) else 'CONFINED')\n"
         )
         self.assertTrue(result.ok, msg=self._diag(result))
-        self.assertIn("alive", result.stdout)
+        # The child ran. Assert this *first*: the escape check below is
+        # satisfied just as well by a child that never started, so on its own
+        # it would pass while proving nothing.
+        self.assertIn("RC 0", result.stdout, msg=self._diag(result))
+        self.assertIn("OUT alive", result.stdout, msg=self._diag(result))
+        # ...and it ran under the same profile as its parent.
         self.assertIn("CONFINED", result.stdout)
         self.assertNotIn("ESCAPED", result.stdout)
 

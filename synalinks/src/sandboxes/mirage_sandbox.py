@@ -270,8 +270,15 @@ def _build_sbpl(cfg):
     # gets the same denied filesystem and network as its parent. The escape
     # route in this area is not exec but `mach-lookup`, where a *daemon* does
     # the work outside the profile, and that allowlist is empty.
+    # `file-map-executable` goes with it and is not implied by `file-read*`:
+    # it is a separate operation, and an exec'd binary needs its pages, and
+    # dyld needs the pages of every dylib it then loads, mapped executable. A
+    # profile with `process-exec` but not this one starts the child and kills
+    # it in dyld, which surfaces as a subprocess that produces no output and
+    # raises nothing in the parent.
     for path in cfg.get("read_paths") or []:
         lines.append("(allow process-exec (subpath %s))" % _sbpl_quote(path))
+        lines.append("(allow file-map-executable (subpath %s))" % _sbpl_quote(path))
     # Read-write: the sandbox's own directories (dill state, result file, RPC
     # socket, working tree). This is the only writable surface.
     for path in cfg.get("rw_paths") or []:
@@ -280,11 +287,12 @@ def _build_sbpl(cfg):
     # ...but nothing written there may then be *executed* as native code. SBPL
     # is last-match-wins, so this deny follows the grant above and carves
     # `file-map-executable` back out of it: a snippet cannot drop a dylib into
-    # its own scratch dir and `dlopen` it. Write-xor-execute over the writable
-    # area, and the nearest macOS gets to the seccomp filter it has no
-    # equivalent of, since native code the snippet brought itself is exactly
-    # what a syscall denylist exists to constrain. (`ctypes` against the
-    # *system* libc is still reachable; no profile can gate that.)
+    # its own scratch dir and `dlopen` it. Executable pages therefore come from
+    # the read-only runtime set and nowhere else, which is write-xor-execute
+    # across the whole profile, and the nearest macOS gets to the seccomp
+    # filter it has no equivalent of: native code the snippet brought itself is
+    # exactly what a syscall denylist exists to constrain. (`ctypes` against
+    # the *system* libc is still reachable; no profile can gate that.)
     for path in cfg.get("rw_paths") or []:
         lines.append("(deny file-map-executable (subpath %s))" % _sbpl_quote(path))
     # The host-tool bridge is a unix socket, which Seatbelt classes as network
