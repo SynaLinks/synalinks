@@ -314,12 +314,13 @@ def _build_sbpl(cfg):
 
 
 def _prepare_macos_process(cfg):
-    """Put the process where the profile can afford to grant it, pre-profile.
+    """Pre-profile setup: rlimits, and standing where the profile can grant.
 
     Split out of `_confine_macos` because everything here is plain POSIX and
     testable off a Darwin host, unlike the `sandbox_init` call that follows it.
     """
     import os
+    import resource
     import sys
     import tempfile
 
@@ -357,29 +358,38 @@ def _prepare_macos_process(cfg):
     # sandbox imports from the working directory: the runtime set is absolute.
     sys.path = [entry for entry in sys.path if entry]
 
-
-def _confine_macos(cfg):
-    import ctypes
-    import ctypes.util
-    import resource
-
-    _prepare_macos_process(cfg)
-
-    # rlimits: POSIX, and unaffected by the profile applied below.
+    # rlimits: POSIX, and unaffected by the profile applied below. All except
+    # RLIMIT_NPROC, which is deliberately skipped here and is the one rlimit
+    # that does not mean the same thing on both platforms.
+    #
+    # It is counted per *user*, not per process. On Linux that lands on the
+    # fresh user namespace `_confine` unshares, so `max_processes` is a budget
+    # for the sandbox alone, counting from ~1. macOS has no namespace, so the
+    # same number is measured against every process the logged-in user is
+    # already running, which on any real machine is well past 64: setting it
+    # would not cap the sandbox, it would stop it forking at all, and
+    # `subprocess` / `multiprocessing` would fail with EAGAIN out of
+    # `_fork_exec`. Better to enforce nothing than to enforce that.
     rl = cfg.get("rlimits") or {}
     for key, which in (
         ("as", getattr(resource, "RLIMIT_AS", None)),
         ("cpu", getattr(resource, "RLIMIT_CPU", None)),
-        ("nproc", getattr(resource, "RLIMIT_NPROC", None)),
         ("fsize", getattr(resource, "RLIMIT_FSIZE", None)),
     ):
         if rl.get(key) and which is not None:
             try:
                 resource.setrlimit(which, (rl[key], rl[key]))
             except (ValueError, OSError):
-                # RLIMIT_NPROC is per-user on Darwin and may already sit below
-                # the request; a tighter existing limit is not a failure.
+                # An existing limit already tighter than the request is not a
+                # failure; the tighter one wins and confinement continues.
                 pass
+
+
+def _confine_macos(cfg):
+    import ctypes
+    import ctypes.util
+
+    _prepare_macos_process(cfg)
 
     path = ctypes.util.find_library("sandbox") or "/usr/lib/libsandbox.1.dylib"
     libsandbox = ctypes.CDLL(path, use_errno=True)
@@ -1811,6 +1821,9 @@ class MirageSandbox(Sandbox):
       numbers, so the seccomp denylist has no counterpart. Native code the
       snippet brought itself is the main thing that would exploit the gap, and
       the write-xor-execute rule above is what closes off that route.
+    * **no fork-bomb guard** - ``max_processes`` is per *user*, which on Linux
+      means the sandbox's own user namespace and here would mean the whole
+      login session, so it is ignored rather than enforced wrongly.
 
     One behaviour also differs and is not a bug: the snippet's own ``open()``
     is host I/O restricted to the sandbox's directories, rather than the
@@ -1948,6 +1961,12 @@ class MirageSandbox(Sandbox):
             confined run, in seconds. ``None`` for no limit.
         max_processes (int): Optional. Process cap (``RLIMIT_NPROC``) for a
             confined run (fork-bomb guard). Defaults to 64; ``None`` to disable.
+            **Linux only.** ``RLIMIT_NPROC`` is counted per user, which on Linux
+            means the fresh user namespace the sandbox unshares, so the cap
+            applies to the sandbox alone. macOS has no namespace to scope it to,
+            so the same number would be measured against every process the user
+            is already running and would stop the sandbox forking at all; it is
+            ignored there rather than enforced wrongly.
         extra_binds (list): Optional. Additional host directories to bind
             **read-only** into the confined root, on top of the auto-detected
             Python install / site-packages / ``PYTHONPATH`` dirs (which already

@@ -1465,6 +1465,19 @@ class MacosProcessPrologueTest(testing.TestCase):
         # ...and only that entry: the runtime set has to survive intact.
         self.assertIn(os.path.dirname(os.__file__), sys.path)
 
+    def test_nproc_rlimit_is_never_applied(self):
+        # RLIMIT_NPROC is counted per user. On Linux that is the sandbox's own
+        # user namespace, so `max_processes` caps the sandbox; here it would be
+        # measured against the whole login session and would stop the sandbox
+        # forking at all, failing `subprocess` with EAGAIN out of `_fork_exec`.
+        # Only the negative is asserted: the other rlimits would apply to this
+        # very test process.
+        import resource
+
+        before = resource.getrlimit(resource.RLIMIT_NPROC)
+        self._prepare({"tmpdir": self.get_temp_dir(), "rlimits": {"nproc": 8}})
+        self.assertEqual(resource.getrlimit(resource.RLIMIT_NPROC), before)
+
     def test_prologue_without_a_scratch_dir_is_harmless(self):
         # `tmpdir` is absent for an unconfined run and on the `run_bash` path
         # before a scratch dir exists; the prologue must not throw.
