@@ -121,6 +121,10 @@ _LAUNCHER = "import base64,sys;exec(base64.b64decode(sys.argv[1]))"
 #     only the Python runtime it needs and writes only the sandbox's own dirs.
 #     Reads are restricted, not just writes (Codex and Gemini CLI both give up
 #     on read restriction; here the runtime read set is known, so we keep it).
+#     ``TMPDIR`` is redirected into that writable area, since the host temp dir
+#     the snippet would otherwise get is deliberately not granted, and the
+#     ancestors of every allowed path are traversable (metadata only) so the
+#     ``/var`` -> ``/private/var`` symlink cannot strand the grants.
 #   * network: denied outright unless ``network`` is set, with the host-tool RPC
 #     socket allowed by literal path so the bridge keeps working either way.
 #   * rlimits: ``setrlimit`` is POSIX and applies unchanged.
@@ -160,6 +164,8 @@ def _sbpl_quote(path):
 
 def _build_sbpl(cfg):
     """Render the Seatbelt profile for this run."""
+    import os
+
     lines = [
         "(version 1)",
         "(deny default)",
@@ -198,6 +204,38 @@ def _build_sbpl(cfg):
                 "/dev/dtracehelper", "/dev/tty"):
         lines.append("(allow file-read* file-write-data (literal %s))"
                      % _sbpl_quote(dev))
+    # Path *resolution*, not content. Reaching an allowed path means reading
+    # every symlink on the way to it, and `(deny default)` denies that too.
+    # This is not a corner case on macOS: the sandbox's own directories live
+    # under the per-user temp dir `/var/folders/...`, and `/var` is a symlink
+    # into `/private`, so with the traversal denied the `file-write*` grant
+    # below never gets the chance to match and every write into the sandbox's
+    # own writable area fails EPERM while the profile looks, on paper, correct.
+    # Metadata only: this permits `stat`/`readlink` on the ancestors, not
+    # reading their contents or listing them.
+    ancestors = ["/"]
+    for path in (
+        list(cfg.get("read_paths") or [])
+        + list(cfg.get("rw_paths") or [])
+        + [cfg.get("rpc_socket_dir"), cfg.get("sock"), cfg.get("tmpdir")]
+    ):
+        if not path:
+            continue
+        # Both forms: the host hands over resolved paths, while the snippet may
+        # name the unresolved ones (`TMPDIR`, `/tmp`, `/etc`) for the same file.
+        for form in (str(path), os.path.realpath(str(path))):
+            current = os.path.dirname(form)
+            while current and current != "/":
+                if current not in ancestors:
+                    ancestors.append(current)
+                current = os.path.dirname(current)
+    # The top-level symlinks into /private, which any absolute path the snippet
+    # itself names under them has to traverse.
+    for path in ("/var", "/tmp", "/etc"):
+        if path not in ancestors:
+            ancestors.append(path)
+    for path in ancestors:
+        lines.append("(allow file-read-metadata (literal %s))" % _sbpl_quote(path))
     # Read-only: the interpreter, its stdlib and the host package dirs, the
     # same set the Linux path bind-mounts read-only. Without these the snippet
     # cannot import anything, including its own bootstrap dependencies.
@@ -215,10 +253,15 @@ def _build_sbpl(cfg):
     # The host-tool bridge is a unix socket, which Seatbelt classes as network
     # rather than file I/O, so it needs an explicit allow to survive the
     # network denial below. The socket is created per run under a random name,
-    # so this grants the containing directory, not a literal path.
+    # so this grants the containing directory; the literal is added as well
+    # when the host already knows the path, since path filters on
+    # `network-outbound` are far better attested for `literal` than `subpath`.
     sock_dir = cfg.get("rpc_socket_dir")
     if sock_dir:
         lines.append("(allow network-outbound (subpath %s))" % _sbpl_quote(sock_dir))
+    if cfg.get("sock"):
+        lines.append("(allow network-outbound (literal %s))"
+                     % _sbpl_quote(cfg["sock"]))
     if cfg.get("network"):
         lines.append("(allow network*)")
     # Nothing else. Loopback is deliberately NOT granted: unlike Linux, where
@@ -236,7 +279,22 @@ def _build_sbpl(cfg):
 def _confine_macos(cfg):
     import ctypes
     import ctypes.util
+    import os
     import resource
+    import tempfile
+
+    # Point the snippet's temp dir at the sandbox's own writable area. The
+    # Linux path gets this for free: it pivots into the virtual filesystem,
+    # where /tmp is the sandbox's. Seatbelt confines in place, so
+    # `tempfile.gettempdir()` would otherwise hand back the *host* temp dir,
+    # which the profile does not grant, and the most ordinary thing a snippet
+    # can do with a scratch file would fail. Set before the profile applies and
+    # before anything has called `gettempdir` (which memoizes), and set
+    # `tempfile.tempdir` too so the answer does not depend on that ordering.
+    tmpdir = cfg.get("tmpdir")
+    if tmpdir:
+        os.environ["TMPDIR"] = tmpdir
+        tempfile.tempdir = tmpdir
 
     # rlimits first: POSIX, and unaffected by the profile applied below.
     rl = cfg.get("rlimits") or {}
@@ -2034,8 +2092,11 @@ class MirageSandbox(Sandbox):
             )
         # Per-sandbox host directory holding the dill state, per-run result file
         # and RPC socket. Bind-mounted into the confined root so those paths
-        # still resolve after the pivot.
-        self._hostdir = tempfile.mkdtemp(prefix="mirage_sandbox_")
+        # still resolve after the pivot. Resolved on creation: on macOS the
+        # temp dir sits behind the `/var` -> `/private/var` symlink, and the
+        # Seatbelt profile matches resolved paths, so every path derived from
+        # this one is canonical from the start rather than per use site.
+        self._hostdir = os.path.realpath(tempfile.mkdtemp(prefix="mirage_sandbox_"))
         # Host file holding the dill-serialized interpreter namespace; created
         # lazily on the first ``run`` and reused (so state accumulates).
         self._state_path: Optional[str] = None
@@ -2210,12 +2271,18 @@ class MirageSandbox(Sandbox):
             # written against the unresolved one silently fails to match.
             rw_paths = [os.path.realpath(p) for p in rw_paths]
             read_paths = [os.path.realpath(p) for p in self._runtime_binds()]
+            # Scratch space for the snippet, inside the writable area and kept
+            # apart from the state / result / socket files that share it (see
+            # `_confine_macos`, which points `TMPDIR` here).
+            tmpdir = os.path.join(self._hostdir, "tmp")
+            os.makedirs(tmpdir, exist_ok=True)
             config = {
                 "confine": True,
                 "read_paths": read_paths,
                 "rw_paths": rw_paths,
                 "network": self._confine_network,
                 "rlimits": dict(self._rlimits),
+                "tmpdir": tmpdir,
             }
             # The per-run RPC socket is created inside the host dir under a
             # random name, so the profile allows the directory rather than a
@@ -2771,7 +2838,7 @@ class MirageSandbox(Sandbox):
         instance._rlimits = {}
         instance._ws = ws
         instance._fuse_mountpoint = getattr(ws, "fuse_mountpoint", None)
-        instance._hostdir = tempfile.mkdtemp(prefix="mirage_sandbox_")
+        instance._hostdir = os.path.realpath(tempfile.mkdtemp(prefix="mirage_sandbox_"))
         instance._state_path = None
         instance._fork_base = {}
         if payload.get("state"):
@@ -2891,7 +2958,7 @@ class MirageSandbox(Sandbox):
                     stacklevel=2,
                 )
         child._fuse_mountpoint = getattr(child._ws, "fuse_mountpoint", None)
-        child._hostdir = tempfile.mkdtemp(prefix="mirage_sandbox_")
+        child._hostdir = os.path.realpath(tempfile.mkdtemp(prefix="mirage_sandbox_"))
         child._state_path = None
         # The child branches from the parent's *current* tree, so the child's
         # `diff` reports exactly what it changes from here (a clean boundary).
