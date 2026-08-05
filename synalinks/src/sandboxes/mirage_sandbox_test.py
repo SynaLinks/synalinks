@@ -1337,6 +1337,37 @@ class SbplProfileTest(testing.TestCase):
         self.assertNotIn("launchservicesd", profile)
         self.assertNotIn("com.apple.launchd", profile)
 
+    def test_symlinked_ancestors_are_traversable(self):
+        # Reaching an allowed path means resolving every symlink on the way to
+        # it, which `(deny default)` also denies. macOS puts the sandbox's own
+        # dirs under `/var/folders/...`, where `/var` is a symlink, so without
+        # this the `file-write*` grant below can never match and writes into the
+        # sandbox's own area fail while the profile looks correct.
+        profile = self._build(rw_paths=["/private/var/folders/ab/cd/T/sbx"])
+        for path in ("/var", "/private/var/folders/ab/cd/T", "/private/var/folders"):
+            self.assertIn('(allow file-read-metadata (literal "%s"))' % path, profile)
+
+    def test_traversal_grant_is_metadata_only(self):
+        # The traversal grants must not become read access: `file-read*` on an
+        # ancestor would hand the snippet the contents of everything under it.
+        profile = self._build(rw_paths=["/private/var/folders/ab/cd/T/sbx"])
+        for line in profile.splitlines():
+            if "/private/var/folders/ab/cd" in line and "sbx" not in line:
+                self.assertIn("file-read-metadata", line)
+        self.assertNotIn('(allow file-read* (subpath "/"))', profile)
+        self.assertNotIn('(allow file-read* (subpath "/var"))', profile)
+
+    def test_rpc_socket_literal_is_allowed_when_known(self):
+        # `subpath` filters on `network-outbound` are far less attested than
+        # `literal`, and the host knows the socket path by the time the profile
+        # is rendered, so the exact path is granted as well.
+        profile = self._build(
+            rpc_socket_dir="/private/tmp/sbx", sock="/private/tmp/sbx/rpc_1.sock"
+        )
+        self.assertIn(
+            '(allow network-outbound (literal "/private/tmp/sbx/rpc_1.sock"))', profile
+        )
+
     def test_paths_with_quotes_are_escaped(self):
         # SBPL is s-expression syntax: an unescaped quote in a path would end
         # the string early and could terminate the rule, so a crafted directory
@@ -1357,6 +1388,18 @@ class MacosSeatbeltConfineTest(_SandboxTestCase):
     `test_confine_seccomp_blocks_denied_syscall`.
     """
 
+    @staticmethod
+    def _diag(result):
+        """Failure message carrying the sandbox's own stderr.
+
+        A profile that denies something it should not usually surfaces as a
+        *downstream* symptom (a `NameError` for state that never persisted, a
+        `None` result), while the bootstrap's `persist-warn` / `result-warn`
+        line naming the denied path goes to stderr. These run on CI hosts
+        nobody can attach to, so the message has to carry it.
+        """
+        return "error=%s\nstderr=%s" % (result.error, result.stderr)
+
     async def test_confinement_kind_is_seatbelt(self):
         self.assertEqual(confinement_kind(), "seatbelt")
 
@@ -1364,10 +1407,23 @@ class MacosSeatbeltConfineTest(_SandboxTestCase):
         # The boundary is worthless if it also breaks execution: the snippet
         # must still import, run and keep state across calls.
         sandbox = MirageSandbox(timeout=_TIMEOUT, confine=True)
-        await sandbox.run("import json\nkeep = json.dumps({'a': 1})")
+        first = await sandbox.run("import json\nkeep = json.dumps({'a': 1})")
+        # Assert on the *first* run too: it is the one that has to write the
+        # dill state into the sandbox's own dir, so a profile that cannot reach
+        # that dir fails here rather than as a NameError one run later.
+        self.assertTrue(first.ok, msg=self._diag(first))
         result = await sandbox.run("print(keep)")
-        self.assertTrue(result.ok, msg=result.error)
+        self.assertTrue(result.ok, msg=self._diag(result))
         self.assertIn('{"a": 1}', result.stdout)
+
+    async def test_confined_run_captures_result(self):
+        # The last-expression value travels back through a file in the sandbox
+        # dir, the same writable surface the state file uses, so it is a second
+        # independent check that writes there actually land.
+        sandbox = MirageSandbox(timeout=_TIMEOUT, confine=True)
+        result = await sandbox.run("6 * 7")
+        self.assertTrue(result.ok, msg=self._diag(result))
+        self.assertEqual(result.result, 42, msg=self._diag(result))
 
     async def test_confine_blocks_write_outside_sandbox(self):
         sandbox = MirageSandbox(timeout=_TIMEOUT, confine=True)
@@ -1381,7 +1437,7 @@ class MacosSeatbeltConfineTest(_SandboxTestCase):
             "    outcome = type(exc).__name__\n"
             "print(outcome)\n"
         )
-        self.assertTrue(result.ok, msg=result.error)
+        self.assertTrue(result.ok, msg=self._diag(result))
         self.assertNotIn("WROTE", result.stdout)
         self.assertIn("Error", result.stdout)
 
@@ -1397,7 +1453,7 @@ class MacosSeatbeltConfineTest(_SandboxTestCase):
             "    outcome = type(exc).__name__\n"
             "print(outcome)\n"
         )
-        self.assertTrue(result.ok, msg=result.error)
+        self.assertTrue(result.ok, msg=self._diag(result))
         self.assertNotIn("READ", result.stdout)
 
     async def test_confine_cuts_network(self):
@@ -1413,17 +1469,23 @@ class MacosSeatbeltConfineTest(_SandboxTestCase):
             "    outcome = type(exc).__name__\n"
             "print(outcome)\n"
         )
-        self.assertTrue(result.ok, msg=result.error)
+        self.assertTrue(result.ok, msg=self._diag(result))
         self.assertNotIn("CONNECTED", result.stdout)
 
     async def test_confine_writes_inside_sandbox_still_work(self):
         # The complement of the escape test: the sandbox's own writable area
-        # must stay writable, or the boundary is just breakage.
+        # must stay writable, or the boundary is just breakage. `TMPDIR` is
+        # pointed into that area precisely so the most ordinary thing a snippet
+        # does with a scratch file works; the host temp dir it would otherwise
+        # name is *not* granted, and must not be.
         sandbox = MirageSandbox(timeout=_TIMEOUT, confine=True)
         result = await sandbox.run(
             "import os, tempfile\n"
             "p = os.path.join(tempfile.gettempdir(), 'inside.txt')\n"
             "open(p, 'w').write('ok')\n"
+            "print(open(p).read())\n"
             "print('WROTE_INSIDE')\n"
         )
-        self.assertTrue(result.ok, msg=result.error)
+        self.assertTrue(result.ok, msg=self._diag(result))
+        self.assertIn("WROTE_INSIDE", result.stdout)
+        self.assertIn("ok", result.stdout)
