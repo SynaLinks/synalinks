@@ -147,17 +147,27 @@ _MACOS_CONFINE_SRC = r'''
 # Mach services the confined process may look up, by exact global name. See
 # `_build_sbpl` for why this is an allowlist and not `(allow mach-lookup)`.
 #
-# Empty, deliberately. The services libSystem touches (notifyd, logd, and
-# opendirectoryd's libinfo endpoint behind `pwd`/`getpwuid`) are reached during
-# *startup*, which happens before the profile is applied, and each one is an IPC
-# channel into a privileged daemon: surface worth not carrying if nothing needs
-# it. `os.path.expanduser` still works, since posixpath consults `HOME` before
-# it ever falls back to `pwd`.
+# Deliberately minimal, and every entry is here on evidence.
 #
-# Grow this list only on evidence, one name at a time with the failure that
-# justified it: a missing service surfaces as a run that fails, never as a
-# silent loss of confinement.
-_MACOS_MACH_SERVICES = ()
+# "The profile is applied after startup, so nothing needs these" holds for the
+# process that applies it and *only* that process. A child exec'd under the
+# profile runs libSystem startup inside it, and a denied bootstrap lookup there
+# does not degrade: libxpc aborts the process. Emptying this list did not break
+# `run`, which is why it looked safe; it broke every `subprocess`, which died
+# on SIGABRT before it could write a word to stderr.
+#
+# Nothing here brokers process execution. Notably absent, and to stay absent:
+# `com.apple.coreservices.launchservicesd` and the launchd family, which exist
+# precisely to spawn processes outside the caller's sandbox.
+_MACOS_MACH_SERVICES = (
+    # libsystem_notify: registered during libSystem startup.
+    "com.apple.system.notification_center",
+    # os_log / libsystem_trace, touched by the C runtime before main().
+    "com.apple.logd",
+    # opendirectoryd's libinfo endpoint, backing pwd/getpwuid, which CPython
+    # calls from `site` and `os.path.expanduser`.
+    "com.apple.system.opendirectoryd.libinfo",
+)
 
 
 def _sbpl_quote(path):
@@ -179,8 +189,13 @@ def _build_sbpl(cfg):
         "(allow signal (target self))",
         "(allow sysctl-read)",
         # Deny introspection of other processes. Not a PID namespace, but it
-        # removes the obvious host-process reconnaissance path.
+        # removes the obvious host-process reconnaissance path. Self is allowed
+        # back, after the deny since SBPL is last-match-wins: a process reading
+        # its own proc info is not reconnaissance (it is its own memory), and
+        # dyld asks about itself while starting a freshly exec'd image, which a
+        # blanket deny turns into an abort.
         "(deny process-info*)",
+        "(allow process-info* (target self))",
     ]
     # Mach services, by explicit name. A bare `(allow mach-lookup)` is the
     # classic way to render a Seatbelt profile ineffective: a send right to any
@@ -1807,10 +1822,11 @@ class MirageSandbox(Sandbox):
     capability reduction is the only lever left once the two guarantees below
     are off the table:
 
-    * **no Mach services.** The allowlist is empty; what libSystem needs it
-      looks up before the profile applies. Each entry would be IPC into a
-      privileged daemon, which is the real escape route in this area: a daemon
-      does the work outside the caller's profile.
+    * **Mach services by name, three of them.** A bare ``(allow mach-lookup)``
+      is the real escape route in this area, since a daemon does the work
+      outside the caller's profile. The three allowed are what libSystem looks
+      up while a freshly exec'd child starts; none brokers process execution,
+      and the launchd family is deliberately absent.
     * **write xor execute.** The writable area denies ``file-map-executable``,
       so a snippet cannot ``dlopen`` a dylib it wrote itself.
     * **no reach into ``workdir``.** It is a seed, copied in host-side, and

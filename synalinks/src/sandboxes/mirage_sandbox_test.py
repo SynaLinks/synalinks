@@ -1314,9 +1314,16 @@ class SbplProfileTest(testing.TestCase):
         profile = self._build(rpc_socket_dir="/private/tmp/sbx")
         self.assertIn('(allow network-outbound (subpath "/private/tmp/sbx"))', profile)
 
-    def test_process_info_is_denied(self):
+    def test_process_info_is_denied_except_for_self(self):
+        # Other processes: denied, since that is the reconnaissance path. Self:
+        # allowed back afterwards (last-match-wins), because a process reading
+        # its own proc info is reading its own memory, and dyld does exactly
+        # that while starting a freshly exec'd image.
         profile = self._build()
-        self.assertIn("(deny process-info*)", profile)
+        deny = "(deny process-info*)"
+        allow = "(allow process-info* (target self))"
+        self.assertIn(deny, profile)
+        self.assertGreater(profile.index(allow), profile.index(deny))
 
     def test_mach_lookup_is_never_unrestricted(self):
         # A bare `(allow mach-lookup)` lets the process ask any daemon to work
@@ -1329,12 +1336,15 @@ class SbplProfileTest(testing.TestCase):
             if "mach-lookup" in line:
                 self.assertIn("global-name", line)
 
-    def test_no_mach_service_is_granted_by_default(self):
-        # The allowlist is empty: what libSystem needs, it looks up during
-        # startup, before the profile applies. Each entry is IPC into a
-        # privileged daemon, so the list grows only on evidence.
+    def test_mach_lookup_allows_only_startup_services(self):
+        # Each entry is IPC into a privileged daemon and is here on evidence: a
+        # child exec'd under the profile runs libSystem startup *inside* it, and
+        # a denied bootstrap lookup aborts it rather than degrading.
         profile = self._build()
-        self.assertNotIn("mach-lookup", profile)
+        self.assertIn(
+            '(allow mach-lookup (global-name "com.apple.system.notification_center"))',
+            profile,
+        )
         # Process-spawning brokers are the escape route the allowlist exists to
         # close, so they must never appear whatever else is added.
         self.assertNotIn("launchservicesd", profile)
