@@ -673,6 +673,13 @@ class LadybugAdapter(GraphDatabaseAdapter):
                 f"[{col_list}]{options_fragment})"
             )
         except Exception as e:  # noqa: BLE001
+            # Reopening a persistent store re-declares every entity model, so
+            # the index built in a previous session is still there. That is
+            # the already-correct state, not a failure — the write paths
+            # rebuild it on the next insert. Warning here would tell the user
+            # their full-text search is dead when it works fine.
+            if "already exists" in str(e).lower():
+                return
             warnings.warn(
                 f"Failed to create FTS index for {label!r}: {e}. "
                 f"Full-text search on {label!r} will return no results."
