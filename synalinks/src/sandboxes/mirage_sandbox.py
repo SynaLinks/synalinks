@@ -105,6 +105,174 @@ _LAUNCHER = "import base64,sys;exec(base64.b64decode(sys.argv[1]))"
 # snippet is exec'd under the filename ``<sandbox>`` so tracebacks trim to user
 # frames; its last *expression* (the ``result`` convention) is JSON-encoded
 # to the result file so the host can surface it as ``ExecutionResult.result``.
+# macOS in-process confinement, the Seatbelt counterpart to ``_confine`` below.
+#
+# The Linux path is unavailable here and cannot be ported: namespaces,
+# ``pivot_root``, ``/proc/self/uid_map`` and seccomp are Linux kernel features
+# with no XNU equivalent (POSIX never standardized sandboxing, so every kernel
+# grew its own). macOS instead exposes Seatbelt, the TrustedBSD MAC policy the
+# App Sandbox is built on, which takes a declarative SBPL profile rather than a
+# constructed namespace. ``sandbox_init`` applies one to the *calling* process,
+# which fits this bootstrap exactly as ``_confine`` does: run first, in-process,
+# before the snippet imports anything.
+#
+# What this DOES enforce, kernel-side and without root:
+#   * filesystem: ``(deny default)`` then explicit allows, so the snippet reads
+#     only the Python runtime it needs and writes only the sandbox's own dirs.
+#     Reads are restricted, not just writes (Codex and Gemini CLI both give up
+#     on read restriction; here the runtime read set is known, so we keep it).
+#   * network: denied outright unless ``network`` is set, with the host-tool RPC
+#     socket allowed by literal path so the bridge keeps working either way.
+#   * rlimits: ``setrlimit`` is POSIX and applies unchanged.
+#
+# What it does NOT, and why the docs must not imply Linux parity:
+#   * no PID isolation. XNU has no PID namespace, so the host process table
+#     stays visible; ``(deny process-info*)`` narrows this but is not the same
+#     guarantee as being PID 1 in a fresh namespace.
+#   * no syscall filter. Seatbelt gates MAC operations, not syscall numbers,
+#     so the seccomp denylist has no counterpart. The two models overlap but
+#     neither contains the other.
+#
+# ``sandbox_init`` is deprecated (Apple ship no replacement for non-App-Store
+# process sandboxing) but remains the documented path, still works on current
+# macOS, and underpins Apple's own sandboxes; Chrome, Nix, Bazel, Codex and
+# Gemini CLI all rely on it today.
+_LIBSANDBOX = "/usr/lib/libsandbox.1.dylib"
+
+_MACOS_CONFINE_SRC = r'''
+# Mach services the confined process may look up, by exact global name. See
+# `_build_sbpl` for why this is an allowlist and not `(allow mach-lookup)`.
+_MACOS_MACH_SERVICES = (
+    # libsystem_notify: registered during libSystem startup.
+    "com.apple.system.notification_center",
+    # os_log / libsystem_trace, touched by the C runtime before main().
+    "com.apple.logd",
+    # opendirectoryd's libinfo endpoint, backing pwd/getpwuid, which CPython
+    # calls from `site` and `os.path.expanduser`.
+    "com.apple.system.opendirectoryd.libinfo",
+)
+
+
+def _sbpl_quote(path):
+    """Quote a path for SBPL, which is s-expression syntax, not shell."""
+    return '"' + str(path).replace("\\", "\\\\").replace('"', '\\"') + '"'
+
+
+def _build_sbpl(cfg):
+    """Render the Seatbelt profile for this run."""
+    lines = [
+        "(version 1)",
+        "(deny default)",
+        # Keep the process able to run at all: fork for subprocesses the snippet
+        # may spawn, signals to itself, and the sysctl reads CPython performs
+        # during startup. These grant no filesystem or network reach.
+        "(allow process-fork)",
+        "(allow signal (target self))",
+        "(allow sysctl-read)",
+        # Deny introspection of other processes. Not a PID namespace, but it
+        # removes the obvious host-process reconnaissance path.
+        "(deny process-info*)",
+    ]
+    # Mach services, by explicit name. A bare `(allow mach-lookup)` is the
+    # classic way to render a Seatbelt profile ineffective: a send right to any
+    # service lets the process ask a *daemon* to act for it, and the daemon's
+    # child does not inherit this profile, so the filesystem and network rules
+    # below simply do not apply to the work it performs. Chrome and the Codex /
+    # Gemini CLI profiles all allowlist for this reason.
+    #
+    # This set is deliberately minimal: the notification and logging services
+    # libSystem touches during startup, plus the directory-service lookup that
+    # backs `pwd`/`getpwuid` (CPython's `site` and `os.path.expanduser` call
+    # it). Nothing here brokers process execution. Notably absent, and to stay
+    # absent: `com.apple.coreservices.launchservicesd` and the launchd family,
+    # which exist precisely to spawn processes outside the caller's sandbox.
+    #
+    # Widen only on evidence: a missing service surfaces as the bootstrap
+    # failing closed with `confine-error` and exit 99, never as a silent loss
+    # of confinement, so growing this list from real failures is safe.
+    for service in _MACOS_MACH_SERVICES:
+        lines.append('(allow mach-lookup (global-name "%s"))' % service)
+    # Character devices CPython needs; harmless and required for randomness,
+    # /dev/null redirection and tty probing.
+    for dev in ("/dev/null", "/dev/zero", "/dev/random", "/dev/urandom",
+                "/dev/dtracehelper", "/dev/tty"):
+        lines.append("(allow file-read* file-write-data (literal %s))"
+                     % _sbpl_quote(dev))
+    # Read-only: the interpreter, its stdlib and the host package dirs, the
+    # same set the Linux path bind-mounts read-only. Without these the snippet
+    # cannot import anything, including its own bootstrap dependencies.
+    for path in cfg.get("read_paths") or []:
+        lines.append("(allow file-read* (subpath %s))" % _sbpl_quote(path))
+    # Execution is limited to that same read-only runtime set, so the snippet
+    # cannot exec an arbitrary host binary it managed to reference.
+    for path in cfg.get("read_paths") or []:
+        lines.append("(allow process-exec (subpath %s))" % _sbpl_quote(path))
+    # Read-write: the sandbox's own directories (dill state, result file, RPC
+    # socket, working tree). This is the only writable surface.
+    for path in cfg.get("rw_paths") or []:
+        lines.append("(allow file-read* file-write* (subpath %s))"
+                     % _sbpl_quote(path))
+    # The host-tool bridge is a unix socket, which Seatbelt classes as network
+    # rather than file I/O, so it needs an explicit allow to survive the
+    # network denial below. The socket is created per run under a random name,
+    # so this grants the containing directory, not a literal path.
+    sock_dir = cfg.get("rpc_socket_dir")
+    if sock_dir:
+        lines.append("(allow network-outbound (subpath %s))" % _sbpl_quote(sock_dir))
+    if cfg.get("network"):
+        lines.append("(allow network*)")
+    # Nothing else. Loopback is deliberately NOT granted: unlike Linux, where
+    # NEWNET gives the process a private network namespace whose loopback is
+    # its own, macOS has no namespace and `(local ip)` would be the *host's*
+    # 127.0.0.1. That would hand supposedly network-isolated code every service
+    # bound to localhost (model servers, databases, the user's own dev APIs),
+    # which is exactly what confinement is meant to prevent. The host-tool
+    # bridge does not need it either: it is a unix socket, granted by the
+    # `rpc_socket_dir` rule above, which Seatbelt classes as network-outbound
+    # but matches on path rather than address.
+    return "\n".join(lines) + "\n"
+
+
+def _confine_macos(cfg):
+    import ctypes
+    import ctypes.util
+    import resource
+
+    # rlimits first: POSIX, and unaffected by the profile applied below.
+    rl = cfg.get("rlimits") or {}
+    for key, which in (
+        ("as", getattr(resource, "RLIMIT_AS", None)),
+        ("cpu", getattr(resource, "RLIMIT_CPU", None)),
+        ("nproc", getattr(resource, "RLIMIT_NPROC", None)),
+        ("fsize", getattr(resource, "RLIMIT_FSIZE", None)),
+    ):
+        if rl.get(key) and which is not None:
+            try:
+                resource.setrlimit(which, (rl[key], rl[key]))
+            except (ValueError, OSError):
+                # RLIMIT_NPROC is per-user on Darwin and may already sit below
+                # the request; a tighter existing limit is not a failure.
+                pass
+
+    path = ctypes.util.find_library("sandbox") or "/usr/lib/libsandbox.1.dylib"
+    libsandbox = ctypes.CDLL(path, use_errno=True)
+    libsandbox.sandbox_init.argtypes = [
+        ctypes.c_char_p,
+        ctypes.c_uint64,
+        ctypes.POINTER(ctypes.c_char_p),
+    ]
+    libsandbox.sandbox_init.restype = ctypes.c_int
+    err = ctypes.c_char_p()
+    # flags=0 means "profile is SBPL source", as opposed to one of the named
+    # builtin profiles.
+    rc = libsandbox.sandbox_init(_build_sbpl(cfg).encode("utf-8"), 0,
+                                 ctypes.byref(err))
+    if rc != 0:
+        detail = err.value.decode("utf-8", "replace") if err.value else "unknown"
+        raise OSError("sandbox_init failed: " + detail)
+'''
+
+
 # Rootless in-process confinement, shared by the ``run`` bootstrap and the
 # ``run_bash`` ``_run_python`` patch: enter fresh user/mount/PID(/net)
 # namespaces, fork (PID namespaces only apply to children) so the child is PID 1
@@ -288,10 +456,17 @@ if len(sys.argv) > 3 and sys.argv[3]:
         print("config-warn: " + repr(exc), file=sys.stderr)
 """
     + _CONFINE_SRC
+    + _MACOS_CONFINE_SRC
     + r"""
 if config.get("confine"):
     try:
-        _confine(config)
+        # Same decision the host made in `_confine_config`, re-derived here
+        # rather than trusted from the config: the bootstrap runs on the very
+        # host being confined, so its own platform is the authority.
+        if sys.platform == "darwin":
+            _confine_macos(config)
+        else:
+            _confine(config)
     except Exception as exc:
         print("confine-error: " + repr(exc), file=sys.stderr)
         sys.exit(99)
@@ -670,18 +845,42 @@ def _maybe_warn_native_windows():
 _maybe_warn_native_windows()
 
 
+def confinement_kind() -> Optional[str]:
+    """Which confinement backend this host can use, or ``None`` for neither.
+
+    ``"namespaces"`` on Linux is the strong one: user/mount/PID/net namespaces,
+    a ``pivot_root`` into the virtual filesystem, and a seccomp syscall
+    denylist. ``"seatbelt"`` on macOS enforces the filesystem and network
+    boundaries plus rlimits, but has no PID isolation and no syscall filter,
+    because XNU provides no equivalent of either.
+
+    Callers that need the full guarantee should branch on this rather than on
+    the availability boolean, which only says *some* confinement is possible.
+    """
+    import platform
+
+    system = platform.system()
+    if system == "Linux":
+        return "namespaces"
+    if system == "Darwin":
+        return "seatbelt"
+    return None
+
+
 def _confinement_available() -> tuple[bool, str]:
-    """Whether in-process confinement (FUSE + user-namespace pivot) can run.
+    """Whether in-process confinement can run, by whichever backend fits.
 
     Returns ``(ok, reason)``; ``reason`` explains why not when ``ok`` is False.
-    Requires Linux, ``os.unshare`` (Python 3.12+), ``/dev/fuse``, and
-    unprivileged user namespaces. The confinement is Linux-only by
-    construction (``unshare`` / ``pivot_root`` / FUSE / seccomp have no Windows
-    equivalent), so on Windows the intended path is to run inside **WSL2**,
-    where it works unchanged; the reason string says so, and
-    ``require_confinement=True`` turns that into a hard error rather than a
-    silent unconfined run.
+    On Linux this means ``os.unshare`` (Python 3.12+), ``/dev/fuse``, libfuse
+    and unprivileged user namespaces; on macOS it means Seatbelt's libsandbox.
+    Windows has neither, and the intended path there is to run synalinks inside
+    **WSL2**, where the Linux backend works unchanged; the reason string says
+    so, and ``require_confinement=True`` turns any of these into a hard error
+    rather than a silent unconfined run.
+
+    See `confinement_kind` for *which* backend, and how much it guarantees.
     """
+    import ctypes.util
     import platform
 
     system = platform.system()
@@ -690,8 +889,19 @@ def _confinement_available() -> tuple[bool, str]:
             "confinement requires Linux; on Windows, run synalinks inside WSL2 "
             "(Windows Subsystem for Linux), where confinement works unchanged"
         )
+    if system == "Darwin":
+        # Seatbelt rather than namespaces; see `_MACOS_CONFINE_SRC` for what
+        # that does and does not buy. Weaker than the Linux path (no PID
+        # isolation, no syscall filter), so callers who need the full guarantee
+        # should check `confinement_kind`, not just this boolean.
+        if not (ctypes.util.find_library("sandbox") or os.path.exists(_LIBSANDBOX)):
+            return False, (
+                "confinement requires the macOS Seatbelt library (libsandbox), "
+                "which could not be found"
+            )
+        return True, ""
     if system != "Linux":
-        return False, f"confinement requires Linux (this host is {system})"
+        return False, f"confinement requires Linux or macOS (this host is {system})"
     if not hasattr(os, "unshare"):
         return False, "confinement requires os.unshare (Python 3.12+)"
     if not os.path.exists("/dev/fuse"):
@@ -1189,7 +1399,19 @@ def _install_run_python_patch() -> bool:
         cfg = _active_confine.get()
         if cfg is None:
             return code
-        return "import os\n" + _CONFINE_SRC + "\n_confine(" + repr(cfg) + ")\n" + code
+        # Both prologues are emitted and the platform picked at run time, so a
+        # `python3` the shell spawns self-confines exactly as `run`'s bootstrap
+        # does, on whichever host it lands.
+        return (
+            "import os, sys\n"
+            + _CONFINE_SRC
+            + _MACOS_CONFINE_SRC
+            + "\n_fn = _confine_macos if sys.platform == 'darwin' else _confine\n"
+            + "_fn("
+            + repr(cfg)
+            + ")\n"
+            + code
+        )
 
     if inspect.isclass(owner):
         # 0.0.4+ runtime-table layout: ``async def run(self, RunArgs)``. RunArgs
@@ -1404,7 +1626,7 @@ class MirageSandbox(Sandbox):
     just like a REPL (without replaying earlier snippets), and a snippet that
     raises does not wipe the accumulated namespace.
 
-    ## Confinement (the default; `confine=True`, Linux)
+    ## Confinement (the default; `confine=True`, Linux and macOS)
 
     By default each ``run`` (and any ``python3`` spawned by `run_bash`) is
     **confined**: it enters a fresh user / mount / PID / network namespace and
@@ -1419,15 +1641,37 @@ class MirageSandbox(Sandbox):
     and entirely in-process (no container runtime): the Python subprocess
     sandboxes itself at startup via ``unshare`` + read-only runtime binds +
     ``pivot_root``, with optional ``RLIMIT_*`` caps. Requires Linux,
-    ``/dev/fuse`` and unprivileged user namespaces; elsewhere it falls back to
-    unconfined execution with a ``RuntimeWarning`` (or set
-    ``require_confinement=True`` to make that a hard error).
+    ``/dev/fuse``, libfuse and unprivileged user namespaces; where confinement
+    is unavailable it falls back to unconfined execution with a
+    ``RuntimeWarning`` (or set ``require_confinement=True`` to make that a hard
+    error).
+
+    ## Confinement on macOS (Seatbelt, and how it differs)
+
+    macOS confines through **Seatbelt**, the TrustedBSD MAC policy behind the
+    App Sandbox, because none of the Linux mechanism exists on XNU: namespaces,
+    ``pivot_root``, ``/proc`` and seccomp are Linux kernel features, and POSIX
+    never standardized sandboxing. ``sandbox_init`` applies a default-deny SBPL
+    profile to the process, which **enforces the filesystem and network
+    boundaries plus ``RLIMIT_*``**: the snippet reads only the Python runtime it
+    needs, writes only the sandbox's own directories, and gets no network unless
+    ``network=True`` (the host-tool bridge socket stays reachable either way).
+    Reads are restricted, not merely writes.
+
+    Two guarantees from the Linux path are **absent**, and code that depends on
+    them should check `confinement_kind` rather than assume parity:
+
+    * **no PID isolation** - XNU has no PID namespace, so host processes remain
+      visible. ``(deny process-info*)`` narrows inspection but is not the same.
+    * **no syscall filter** - Seatbelt gates MAC operations, not syscall
+      numbers, so the seccomp denylist has no counterpart.
 
     ## Windows (run under WSL2)
 
-    Confinement is Linux-only by construction: ``unshare`` / ``pivot_root`` /
-    FUSE / seccomp have no native-Windows equivalent. The supported way to get
-    it on Windows is to run synalinks **inside WSL2** (Windows Subsystem for
+    Windows has no confinement backend: ``unshare`` / ``pivot_root`` / FUSE /
+    seccomp have no native-Windows equivalent, and Seatbelt is macOS-only. The
+    supported way to get it on Windows is to run synalinks **inside WSL2**
+    (Windows Subsystem for
     Linux 2): it is a real Linux kernel, so confinement works unchanged, and
     because WSL2 is itself a lightweight VM, the confined process is additionally
     separated from the Windows host by the VM boundary. On **native** Windows
@@ -1775,7 +2019,14 @@ class MirageSandbox(Sandbox):
 
         self._ws = self._new_workspace()
         self._fuse_mountpoint = getattr(self._ws, "fuse_mountpoint", None)
-        if self._require_confinement and not self._fuse_mountpoint:
+        # Only the namespace backend pivots into the FUSE mount; Seatbelt
+        # confines the process in place, so a missing mountpoint is not a
+        # confinement failure there.
+        if (
+            self._require_confinement
+            and not self._fuse_mountpoint
+            and confinement_kind() != "seatbelt"
+        ):
             raise RuntimeError(
                 "MirageSandbox(require_confinement=True): the FUSE mount was not "
                 "established, so the snippet cannot be confined to the virtual "
@@ -1903,6 +2154,19 @@ class MirageSandbox(Sandbox):
             "/lib64",
             "/bin",
         ]
+        if sys.platform == "darwin":
+            # dyld resolves nearly every library out of the shared cache under
+            # /System, and Homebrew prefixes hold the interpreter and its
+            # dependencies on most developer machines. Without these the
+            # Seatbelt profile denies the reads CPython performs before it can
+            # execute a single line of the snippet.
+            candidates += [
+                "/System",
+                "/Library",
+                "/opt/homebrew",
+                "/opt/local",
+                "/private/var/db/dyld",
+            ]
         # Host import locations outside the active prefix, so packages installed
         # in user site / system dist-packages / PYTHONPATH (and editable installs
         # they reference) resolve inside the sandbox. ``site`` re-adds these to
@@ -1930,7 +2194,35 @@ class MirageSandbox(Sandbox):
 
     def _confine_config(self) -> Optional[dict]:
         """Confinement block for the bootstrap config, or ``None`` if disabled."""
-        if not self._confine or not self._fuse_mountpoint:
+        if not self._confine:
+            return None
+        if confinement_kind() == "seatbelt":
+            # No FUSE mount to pivot into on macOS, and none needed: Seatbelt
+            # confines the process where it stands instead of relocating it.
+            # The writable surface is therefore the sandbox's own host dirs,
+            # and the readable surface the same runtime set the Linux path
+            # bind-mounts read-only.
+            rw_paths = [self._hostdir]
+            if self._workdir and os.path.isdir(self._workdir):
+                rw_paths.append(os.path.abspath(self._workdir))
+            # Darwin hands out /var/folders temp dirs through a /private
+            # symlink, and Seatbelt matches on the resolved path, so a profile
+            # written against the unresolved one silently fails to match.
+            rw_paths = [os.path.realpath(p) for p in rw_paths]
+            read_paths = [os.path.realpath(p) for p in self._runtime_binds()]
+            config = {
+                "confine": True,
+                "read_paths": read_paths,
+                "rw_paths": rw_paths,
+                "network": self._confine_network,
+                "rlimits": dict(self._rlimits),
+            }
+            # The per-run RPC socket is created inside the host dir under a
+            # random name, so the profile allows the directory rather than a
+            # literal path it cannot know yet.
+            config["rpc_socket_dir"] = os.path.realpath(self._hostdir)
+            return config
+        if not self._fuse_mountpoint:
             return None
         config = {
             "confine": True,
@@ -2281,7 +2573,11 @@ class MirageSandbox(Sandbox):
         # mountpoint so a confined sandbox pivots into the live mount (and
         # ``require_confinement`` still holds) after a reset.
         self._fuse_mountpoint = getattr(self._ws, "fuse_mountpoint", None)
-        if self._require_confinement and not self._fuse_mountpoint:
+        if (
+            self._require_confinement
+            and not self._fuse_mountpoint
+            and confinement_kind() != "seatbelt"
+        ):
             raise RuntimeError(
                 "MirageSandbox(require_confinement=True): the FUSE mount was not "
                 "re-established after reset; cannot confine."
