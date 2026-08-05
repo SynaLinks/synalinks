@@ -146,15 +146,18 @@ _LIBSANDBOX = "/usr/lib/libsandbox.1.dylib"
 _MACOS_CONFINE_SRC = r'''
 # Mach services the confined process may look up, by exact global name. See
 # `_build_sbpl` for why this is an allowlist and not `(allow mach-lookup)`.
-_MACOS_MACH_SERVICES = (
-    # libsystem_notify: registered during libSystem startup.
-    "com.apple.system.notification_center",
-    # os_log / libsystem_trace, touched by the C runtime before main().
-    "com.apple.logd",
-    # opendirectoryd's libinfo endpoint, backing pwd/getpwuid, which CPython
-    # calls from `site` and `os.path.expanduser`.
-    "com.apple.system.opendirectoryd.libinfo",
-)
+#
+# Empty, deliberately. The services libSystem touches (notifyd, logd, and
+# opendirectoryd's libinfo endpoint behind `pwd`/`getpwuid`) are reached during
+# *startup*, which happens before the profile is applied, and each one is an IPC
+# channel into a privileged daemon: surface worth not carrying if nothing needs
+# it. `os.path.expanduser` still works, since posixpath consults `HOME` before
+# it ever falls back to `pwd`.
+#
+# Grow this list only on evidence, one name at a time with the failure that
+# justified it: a missing service surfaces as a run that fails, never as a
+# silent loss of confinement.
+_MACOS_MACH_SERVICES = ()
 
 
 def _sbpl_quote(path):
@@ -165,6 +168,7 @@ def _sbpl_quote(path):
 def _build_sbpl(cfg):
     """Render the Seatbelt profile for this run."""
     import os
+    import sys
 
     lines = [
         "(version 1)",
@@ -256,15 +260,32 @@ def _build_sbpl(cfg):
     # cannot import anything, including its own bootstrap dependencies.
     for path in cfg.get("read_paths") or []:
         lines.append("(allow file-read* (subpath %s))" % _sbpl_quote(path))
-    # Execution is limited to that same read-only runtime set, so the snippet
-    # cannot exec an arbitrary host binary it managed to reference.
-    for path in cfg.get("read_paths") or []:
-        lines.append("(allow process-exec (subpath %s))" % _sbpl_quote(path))
+    # Execution is limited to the interpreter itself, and nothing else. The
+    # readable runtime set contains `/usr/bin`, so granting exec across it would
+    # hand the snippet every host binary on the machine (`curl`, `ssh`,
+    # `osascript`, ...). They would inherit this profile, so this is not an
+    # escape, but it is a large and needless capability: `multiprocessing`
+    # re-execs the interpreter and nothing else in the sandbox execs at all.
+    # Shelling out to a host binary therefore fails on macOS where it would
+    # work on Linux, which is the intended direction for the weaker backend.
+    for exe in {sys.executable, os.path.realpath(sys.executable)}:
+        if exe:
+            lines.append("(allow process-exec (literal %s))" % _sbpl_quote(exe))
     # Read-write: the sandbox's own directories (dill state, result file, RPC
     # socket, working tree). This is the only writable surface.
     for path in cfg.get("rw_paths") or []:
         lines.append("(allow file-read* file-write* (subpath %s))"
                      % _sbpl_quote(path))
+    # ...but nothing written there may then be *executed* as native code. SBPL
+    # is last-match-wins, so this deny follows the grant above and carves
+    # `file-map-executable` back out of it: a snippet cannot drop a dylib into
+    # its own scratch dir and `dlopen` it. Write-xor-execute over the writable
+    # area, and the nearest macOS gets to the seccomp filter it has no
+    # equivalent of, since native code the snippet brought itself is exactly
+    # what a syscall denylist exists to constrain. (`ctypes` against the
+    # *system* libc is still reachable; no profile can gate that.)
+    for path in cfg.get("rw_paths") or []:
+        lines.append("(deny file-map-executable (subpath %s))" % _sbpl_quote(path))
     # The host-tool bridge is a unix socket, which Seatbelt classes as network
     # rather than file I/O, so it needs an explicit allow to survive the
     # network denial below. The socket is created per run under a random name,
@@ -1763,13 +1784,34 @@ class MirageSandbox(Sandbox):
     ``network=True`` (the host-tool bridge socket stays reachable either way).
     Reads are restricted, not merely writes.
 
-    Two guarantees from the Linux path are **absent**, and code that depends on
-    them should check `confinement_kind` rather than assume parity:
+    Where macOS allows it, the profile is *tighter* than the Linux path rather
+    than looser, because capability reduction is the only lever left once the
+    two guarantees below are off the table:
+
+    * **exec is the interpreter only.** ``/usr/bin`` is readable (the runtime
+      lives under ``/usr``), so shelling out to a host binary works on Linux
+      and is refused here. ``multiprocessing`` still re-execs fine.
+    * **no Mach services.** The allowlist is empty; what libSystem needs it
+      looks up before the profile applies. Each entry would be IPC into a
+      privileged daemon.
+    * **write xor execute.** The writable area denies ``file-map-executable``,
+      so a snippet cannot ``dlopen`` a dylib it wrote itself.
+
+    Two guarantees from the Linux path remain **absent**, and code that depends
+    on them should check `confinement_kind` rather than assume parity:
 
     * **no PID isolation** - XNU has no PID namespace, so host processes remain
       visible. ``(deny process-info*)`` narrows inspection but is not the same.
     * **no syscall filter** - Seatbelt gates MAC operations, not syscall
-      numbers, so the seccomp denylist has no counterpart.
+      numbers, so the seccomp denylist has no counterpart. Native code the
+      snippet brought itself is the main thing that would exploit the gap, and
+      the write-xor-execute rule above is what closes off that route.
+
+    Two behaviours also differ from Linux and are not bugs. The snippet's own
+    ``open()`` is host I/O restricted to the sandbox's directories rather than
+    the virtual filesystem the file tools use, since there is no ``pivot_root``
+    to unify them; and ``workdir`` is neither readable nor writable from inside
+    (it is a seed, copied in host-side, and stays untouched).
 
     ## Windows (run under WSL2)
 
@@ -2264,13 +2306,19 @@ class MirageSandbox(Sandbox):
         ]
         if sys.platform == "darwin":
             # dyld resolves nearly every library out of the shared cache under
-            # /System, and Homebrew prefixes hold the interpreter and its
-            # dependencies on most developer machines. Without these the
-            # Seatbelt profile denies the reads CPython performs before it can
-            # execute a single line of the snippet.
+            # /System, and the package prefixes hold the interpreter's own
+            # dependency dylibs (a Homebrew or MacPorts python links against
+            # libssl / libffi living beside it, outside `sys.prefix`). Without
+            # these the Seatbelt profile denies the reads CPython performs
+            # before it can execute a single line of the snippet.
+            #
+            # `/Library` is deliberately not here. It is where third-party
+            # software keeps its data on a Mac, so granting it reads the user's
+            # installed-application state for no gain: a python.org framework
+            # build lives under `/Library/Frameworks/Python.framework`, which
+            # `sys.base_prefix` already covers on its own.
             candidates += [
                 "/System",
-                "/Library",
                 "/opt/homebrew",
                 "/opt/local",
                 "/private/var/db/dyld",
@@ -2307,12 +2355,19 @@ class MirageSandbox(Sandbox):
         if confinement_kind() == "seatbelt":
             # No FUSE mount to pivot into on macOS, and none needed: Seatbelt
             # confines the process where it stands instead of relocating it.
-            # The writable surface is therefore the sandbox's own host dirs,
+            # The writable surface is therefore the sandbox's own host dir,
             # and the readable surface the same runtime set the Linux path
             # bind-mounts read-only.
+            #
+            # `workdir` is deliberately NOT writable here, and not readable
+            # either. It is a *seed*: `_seed_from_workdir` copies it into the
+            # virtual filesystem host-side at construction, and the documented
+            # contract is that the agent's writes never touch the real
+            # directory. On Linux that holds because the host filesystem is
+            # gone after the pivot; granting it on macOS would quietly make the
+            # one platform where the host is still there the one platform where
+            # a snippet can edit the user's own files.
             rw_paths = [self._hostdir]
-            if self._workdir and os.path.isdir(self._workdir):
-                rw_paths.append(os.path.abspath(self._workdir))
             # Darwin hands out /var/folders temp dirs through a /private
             # symlink, and Seatbelt matches on the resolved path, so a profile
             # written against the unresolved one silently fails to match.

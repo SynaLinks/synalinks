@@ -1329,16 +1329,34 @@ class SbplProfileTest(testing.TestCase):
             if "mach-lookup" in line:
                 self.assertIn("global-name", line)
 
-    def test_mach_lookup_allows_only_known_services(self):
+    def test_no_mach_service_is_granted_by_default(self):
+        # The allowlist is empty: what libSystem needs, it looks up during
+        # startup, before the profile applies. Each entry is IPC into a
+        # privileged daemon, so the list grows only on evidence.
         profile = self._build()
-        self.assertIn(
-            '(allow mach-lookup (global-name "com.apple.system.notification_center"))',
-            profile,
-        )
-        # Process-spawning brokers are the escape route this allowlist exists
-        # to close, so they must never appear.
+        self.assertNotIn("mach-lookup", profile)
+        # Process-spawning brokers are the escape route the allowlist exists to
+        # close, so they must never appear whatever else is added.
         self.assertNotIn("launchservicesd", profile)
         self.assertNotIn("com.apple.launchd", profile)
+
+    def test_exec_is_limited_to_the_interpreter(self):
+        # The readable runtime set contains /usr/bin, so granting exec across it
+        # would hand the snippet every host binary on the machine. Only the
+        # interpreter is executable, which is all `multiprocessing` needs.
+        profile = self._build()
+        self.assertNotIn('(allow process-exec (subpath "/usr"))', profile)
+        self.assertIn('(allow process-exec (literal "%s"))' % sys.executable, profile)
+
+    def test_writable_area_is_not_executable(self):
+        # Write-xor-execute: a snippet must not be able to drop a dylib into its
+        # own scratch dir and `dlopen` it. SBPL is last-match-wins, so the deny
+        # has to come *after* the grant it carves into.
+        profile = self._build(rw_paths=["/private/tmp/sbx"])
+        deny = '(deny file-map-executable (subpath "/private/tmp/sbx"))'
+        allow = '(allow file-read* file-write* (subpath "/private/tmp/sbx"))'
+        self.assertIn(deny, profile)
+        self.assertGreater(profile.index(deny), profile.index(allow))
 
     def test_symlinked_ancestors_are_traversable(self):
         # Reaching an allowed path means resolving every symlink on the way to
@@ -1519,6 +1537,34 @@ class MacosSeatbeltConfineTest(_SandboxTestCase):
         self.assertNotIn("WROTE", result.stdout)
         self.assertIn("Error", result.stdout)
 
+    async def test_confine_blocks_writes_to_the_seed_workdir(self):
+        # `workdir` is a seed, copied into the virtual filesystem host-side, and
+        # the documented contract is that the agent's writes never reach the
+        # real directory. Linux gets that from the pivot: the host filesystem is
+        # gone. macOS is the one platform where the directory is still *there*,
+        # so it is the one platform where this has to be asserted.
+        import shutil
+
+        workdir = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, workdir, True)
+        host_file = os.path.join(workdir, "main.py")
+        with open(host_file, "w") as fh:
+            fh.write("print('orig')\n")
+
+        sandbox = MirageSandbox(timeout=_TIMEOUT, confine=True, workdir=workdir)
+        result = await sandbox.run(
+            "try:\n"
+            "    open(%r, 'w').write('escaped')\n"
+            "    outcome = 'WROTE'\n"
+            "except Exception as exc:\n"
+            "    outcome = type(exc).__name__\n"
+            "print(outcome)\n" % host_file
+        )
+        self.assertTrue(result.ok, msg=self._diag(result))
+        self.assertNotIn("WROTE", result.stdout)
+        with open(host_file) as fh:
+            self.assertEqual(fh.read(), "print('orig')\n")
+
     async def test_confine_blocks_read_outside_runtime_set(self):
         # Reads are restricted, unlike the Codex/Gemini Seatbelt profiles which
         # allow the whole disk. /etc/passwd is readable on any unconfined mac.
@@ -1533,6 +1579,24 @@ class MacosSeatbeltConfineTest(_SandboxTestCase):
         )
         self.assertTrue(result.ok, msg=self._diag(result))
         self.assertNotIn("READ", result.stdout)
+
+    async def test_confine_blocks_exec_of_host_binaries(self):
+        # /usr/bin is readable (the runtime lives under /usr), so without the
+        # exec restriction the snippet could run every binary on the machine.
+        # They would inherit the profile, so this is capability reduction
+        # rather than an escape, but it is the largest one on offer here.
+        sandbox = MirageSandbox(timeout=_TIMEOUT, confine=True)
+        result = await sandbox.run(
+            "import subprocess\n"
+            "try:\n"
+            "    subprocess.run(['/usr/bin/whoami'], capture_output=True)\n"
+            "    outcome = 'RAN'\n"
+            "except Exception as exc:\n"
+            "    outcome = type(exc).__name__\n"
+            "print(outcome)\n"
+        )
+        self.assertTrue(result.ok, msg=self._diag(result))
+        self.assertNotIn("RAN", result.stdout)
 
     async def test_confine_cuts_network(self):
         sandbox = MirageSandbox(timeout=_TIMEOUT, confine=True)
