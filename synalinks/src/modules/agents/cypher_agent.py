@@ -40,7 +40,7 @@ Plan:
 Constraints:
 - Only read-only Cypher is accepted. `CREATE`, `MERGE`, `SET`,
   `DELETE`, `DETACH DELETE`, `REMOVE`, `DROP`, `ALTER`, `COPY`,
-  `INSTALL`, and `LOAD` are rejected by the engine — don't waste turns
+  `INSTALL`, and `LOAD` are rejected by the engine; don't waste turns
   trying them.
 - Node and relation labels are case-sensitive PascalCase (e.g.
   ``Person``, ``LivesIn``); property names are snake_case.
@@ -95,7 +95,7 @@ def _build_tools(knowledge_base, output_format: str = "csv", k: int = 50):
     ``run_cypher_query`` and fixed per-agent at construction time:
     ``"csv"`` (default) compacts result sets so the LM spends fewer
     input tokens reading them; ``"json"`` returns a list of dicts.
-    The ``get_graph_schema`` tool ignores the format — its output is
+    The ``get_graph_schema`` tool ignores the format: its output is
     always a small textual summary.
 
     ``k`` caps the page size the LM can pull through
@@ -207,7 +207,7 @@ def _build_tools(knowledge_base, output_format: str = "csv", k: int = 50):
         Only read-only Cypher is accepted. The graph adapter rejects
         any query containing a write/admin keyword (``CREATE``,
         ``MERGE``, ``SET``, ``DELETE``, ``DETACH``, ``REMOVE``,
-        ``DROP``, ``ALTER``, ``COPY``, ``INSTALL``, ``LOAD``) — this
+        ``DROP``, ``ALTER``, ``COPY``, ``INSTALL``, ``LOAD``); this
         also blocks ``COPY ... FROM`` file ingestion through an
         otherwise-legitimate read query.
 
@@ -267,7 +267,7 @@ class CypherAgent(FunctionCallingAgent):
     - ``run_cypher_query``: executes a read-only Cypher query via
       `KnowledgeBase.cypher` with ``read_only=True``.
 
-    The constructor mirrors `FunctionCallingAgent` — every
+    The constructor mirrors `FunctionCallingAgent`: every
     parameter on that class is accepted here with identical semantics.
     The only additions are ``knowledge_base`` (required, must expose a
     graph adapter) and ``output_format`` (controls the Cypher tools'
@@ -350,7 +350,7 @@ class CypherAgent(FunctionCallingAgent):
             to both ``get_node_sample`` and ``run_cypher_query``.
         tools (list): Additional `Tool` instances (or plain
             async functions) to expose alongside the three built-in
-            Cypher tools — for example a calculator, a datetime
+            Cypher tools, for example a calculator, a datetime
             helper, a web-search tool. Tool names must not collide
             with the built-ins (``get_graph_schema``, ``get_node_sample``,
             ``run_cypher_query``) or a ``ValueError`` is raised.
@@ -443,7 +443,7 @@ class CypherAgent(FunctionCallingAgent):
         # Domain attributes the `_get_builtin_tools` hook depends on must be set
         # before `super().__init__()` (which calls the hook).
         self.knowledge_base = _get_kb(knowledge_base)
-        # Fail fast if the KB has no graph adapter — the tools all
+        # Fail fast if the KB has no graph adapter: the tools all
         # call graph methods, so a SQL-only KB would only error at
         # tool-invocation time inside the agent loop.
         self.knowledge_base._require_graph_adapter()

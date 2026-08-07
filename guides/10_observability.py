@@ -20,7 +20,7 @@ call to a remote model, parsing the model's text back into a
 structured object, possibly invoking tools, possibly branching on
 what the model returned. When the final answer is wrong, the bug
 could live in any of those steps. A `print` at the end tells you the
-program failed — but it does not tell you which link broke.
+program failed, but it does not tell you which link broke.
 
 ## Two Tools: Logging and Tracing
 
@@ -29,7 +29,7 @@ head.
 
 A **log record** is what `print()` would be if it were better
 behaved: a time-stamped line of text emitted from one point in the
-code. Logs are *flat* — no parent/child relationships, no nesting —
+code. Logs are *flat* (no parent/child relationships, no nesting),
 easy to grep through, and familiar to anyone who has ever debugged
 with print statements.
 
@@ -85,7 +85,7 @@ them, or all three.
    captures training metrics and saved artifacts.
 
 3. **`synalinks.record_traces(base_dir=...)`** writes every
-   `LanguageModel` call to JSONL files on disk — the chat messages
+   `LanguageModel` call to JSONL files on disk: the chat messages
    sent to the model, the completion it returned, token usage, and
    cost. Where logging and MLflow are aimed at *debugging*, trace
    recording is aimed at *harvesting*: the files are formatted as
@@ -114,7 +114,7 @@ the model behind it*. Every real interaction your program handles is
 a potential fine-tuning example: the exact prompt the `LanguageModel`
 received, and the completion it produced. Trace recording captures
 those pairs as they happen, so that after a program has been running
-for a while you have a dataset — for distilling a large model into a
+for a while you have a dataset, for distilling a large model into a
 smaller one, or for fine-tuning on your domain.
 
 ```python
@@ -133,8 +133,8 @@ building the graph are ignored.
 
 Because one `LanguageModel` instance is typically shared by several
 modules (a `Generator` here, a `ChainOfThought` there), each record
-is attributed to the **originating module** — the module whose
-`call()` invoked the LM — and the files are organized accordingly:
+is attributed to the **originating module**, the module whose
+`call()` invoked the LM, and the files are organized accordingly:
 
 ```
 ~/.synalinks/
@@ -147,7 +147,7 @@ is attributed to the **originating module** — the module whose
 
 Each line is one LM call. The `messages` field holds the full
 conversation in **OpenAI chat format**, completion included as the
-final assistant message — which is the chat dataset schema expected
+final assistant message, which is the chat dataset schema expected
 by OpenAI-compatible fine-tuning stacks such as **NVIDIA NeMo**
 (NeMo Customizer chat datasets, NeMo AutoModel's `ChatDataset`).
 For reasoning models, the assistant's `reasoning_content` is kept in
@@ -179,7 +179,7 @@ The metadata around `messages` is there for dataset curation:
 - `config` / `config_hash` (the serialized `LanguageModel`) group
   records by the exact model configuration that produced them, so you
   can filter out records from an older model version.
-- `program` / `module` let you build one dataset per module — the
+- `program` / `module` let you build one dataset per module: the
   answer generator and the critique generator learn different jobs.
 - `usage` / `cost` / `duration` let you weigh or filter examples
   (e.g. drop truncated completions).
@@ -188,7 +188,7 @@ Consumers that reject unknown top-level keys get a pristine file with
 one projection: `jq -c '{messages}' *.jsonl`.
 
 Two caveats. First, like `enable_observability()`, the flag is read
-when a module is *constructed* — call `record_traces()` before
+when a module is *constructed*: call `record_traces()` before
 creating your modules. Second, streamed responses (`streaming=True`)
 are recorded without `outputs`, an appended completion, or token
 usage: the record is written when the call returns the stream, before
@@ -252,7 +252,7 @@ of modules.'
 (The `Output Schema` cell normally shows the full JSON Schema; we have
 abbreviated it here for readability.)
 
-`Variable #` counts **trainable in-context variables** — JSON
+`Variable #` counts **trainable in-context variables**: JSON
 objects obeying a `Trainable` schema that the optimizers in
 `synalinks.optimizers` can rewrite during training, much like
 weights in a neural network. The most common cases hold a system
@@ -272,7 +272,7 @@ way you intended.
 ## What Goes Wrong Without Observability?
 
 It is worth naming the kinds of bugs that tracing directly helps
-with — so you recognize them in the wild and know to reach for the
+with, so you recognize them in the wild and know to reach for the
 right tool:
 
 - **Silent prompt drift.** A refactor accidentally changes a system
@@ -370,8 +370,8 @@ if __name__ == "__main__":
   describes the shape of the program *before* running it.
   **Runtime** tracing records what *actually* happened during
   execution. The two complement each other.
-- **Tracing** turns a class of hard debugging problems — prompt
-  drift, schema errors, latency, cost, branch attribution — from
+- **Tracing** turns a class of hard debugging problems, prompt
+  drift, schema errors, latency, cost, branch attribution, from
   one-off detective work into routine database queries.
 
 ## API References

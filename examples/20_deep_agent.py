@@ -2,7 +2,7 @@
 # Deep Agent
 
 A **Deep Agent** is a coding-style agent that treats a working directory
-as its environment — read files, grep them, write or patch them, run a
+as its environment: read files, grep them, write or patch them, run a
 bit of Python to check the result. Where a `FunctionCallingAgent`
 typically calls a few narrow tools (search, calculate, fetch), a deep
 agent edits a workspace in place.
@@ -70,15 +70,15 @@ agent **cannot damage the real workspace**:
 - **Paths** are rooted at the workdir; `..` cannot escape it, and a
   symlink in the base pointing outside it is refused.
 - **`run_python_code`** (inline snippet) and **`run_python_file`** (a
-  script the agent wrote into the overlay) both run inside Monty — a
+  script the agent wrote into the overlay) both run inside Monty, a
   restricted Python interpreter with a small stdlib subset, no
-  third-party imports and no network — so model-authored code can't
+  third-party imports and no network, so model-authored code can't
   reach the host either. (A `run_python_file` script must be
   self-contained: Monty cannot import other overlay files.)
 
 ## Building the Agent
 
-`DeepAgent` mirrors `FunctionCallingAgent` — every parameter on that
+`DeepAgent` mirrors `FunctionCallingAgent`: every parameter on that
 class is accepted with identical semantics. The only additions are
 `workdir` (required) and the sandbox `timeout` (the per-snippet budget
 for `run_python_code` / `run_python_file`).
@@ -107,7 +107,7 @@ FunctionCallingAgent-derived class.
 ## Example Usage
 
 This example creates a small Python project, asks the agent to add a
-function, and then inspects the agent's overlay to see the edit — while
+function, and then inspects the agent's overlay to see the edit, while
 the file on disk stays untouched.
 
 ```python
@@ -135,7 +135,7 @@ The agent will typically:
 - **One module, seven tools**: `synalinks.DeepAgent` bundles file IO,
   search, and a Python sandbox into a single ready-to-use agent.
 - **Host-safe by construction**: the tools are a copy-on-write overlay,
-  so the agent can explore and edit freely without touching the disk —
+  so the agent can explore and edit freely without touching the disk:
   there are no capability gates to set, because nothing it does is ever
   written back.
 - **Inspect & persist**: `agent.sandbox.changes()` / `.journal()` /
@@ -295,7 +295,7 @@ async def main():
         result = await agent(task)
         print_messages(result)
 
-        # The edit lives in the sandbox overlay — show it, and show that the
+        # The edit lives in the sandbox overlay; show it, and show that the
         # file on disk is untouched.
         print("\n--- calculator.py (sandbox overlay) ---")
         overlay = await deep_agent.sandbox.read_file("/calculator.py")

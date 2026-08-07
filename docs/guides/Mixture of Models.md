@@ -7,13 +7,13 @@
 ## Source
 
 ````python
---8<-- "guides/29_mixture_of_models.py:396"
+--8 < --"guides/29_mixture_of_models.py:396"
 ````
 
 ## Run log
 
 This guide calls `synalinks.enable_logging()`, so a full run traces every
-module call — each proposer, the merge, and the aggregator. The log below is
+module call: each proposer, the merge, and the aggregator. The log below is
 the **unedited** output of running the guide above.
 
     ```text

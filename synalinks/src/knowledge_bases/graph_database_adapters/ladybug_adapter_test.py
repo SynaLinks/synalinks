@@ -183,7 +183,7 @@ class LadybugAdapterTest(testing.TestCase):
         # `_get_em` only knows how to coerce strings / dicts /
         # EmbeddingModel instances; patch it to pass our stub straight
         # through. Real EmbeddingModel objects would also work but
-        # require mocking litellm — too much ceremony for unit tests
+        # require mocking litellm, too much ceremony for unit tests
         # that don't exercise the model itself.
         with patch(
             "synalinks.src.knowledge_bases.graph_database_adapters."
@@ -217,7 +217,7 @@ class LadybugAdapterTest(testing.TestCase):
 
     async def test_update_entities_dedup_returns_existing_id(self):
         """Inserting two near-identical embeddings should yield only one
-        node — the second call returns the first's id."""
+        node: the second call returns the first's id."""
         adapter = self._adapter(
             embedding_model=_StubEmbeddingModel({}),
             dedup_threshold=0.85,
@@ -455,10 +455,10 @@ class LadybugAdapterTest(testing.TestCase):
         self.assertEqual(col_types["color"], "STRING")
 
     async def test_update_entities_rebuilds_fts_at_write_time(self):
-        """Search paths assume the FTS index is current — the rebuild
+        """Search paths assume the FTS index is current; the rebuild
         happens at the end of update_entities, not at query time."""
         adapter = self._adapter(embedding_model=_StubEmbeddingModel({}))
-        # First search hits the FTS index right after a write — must
+        # First search hits the FTS index right after a write; must
         # already be current without any explicit query-time rebuild
         # call. (Verified by patching _rebuild_fts_index to error if
         # called from a search path.)
@@ -517,7 +517,7 @@ class LadybugAdapterTest(testing.TestCase):
         self.assertEqual(adapter._existing_tables("REL"), set())
 
     async def test_cypher_binds_parameters_safely(self):
-        """`$`-parameters bind values, not SQL/Cypher syntax — strings
+        """`$`-parameters bind values, not SQL/Cypher syntax: strings
         containing apostrophes or quotes must round-trip intact."""
         adapter = self._adapter()
         # `read_only=False` because we're CREATEing.
@@ -609,7 +609,7 @@ class LadybugAdapterTest(testing.TestCase):
             embedding: List[float] = []
 
         # An embedding model is required for the embedding column to
-        # be added — without it the regression target (FLOAT[3])
+        # be added; without it the regression target (FLOAT[3])
         # wouldn't exist at all and the test would be moot.
         with patch(
             "synalinks.src.knowledge_bases.graph_database_adapters."
@@ -650,7 +650,7 @@ class LadybugAdapterTest(testing.TestCase):
         results = await adapter.entity_similarity_search(
             ["alice", "paris"], label="Person", k=10
         )
-        # Both rows show up — multi-query union — and Alice's row
+        # Both rows show up (multi-query union), and Alice's row
         # carries her best (zero) distance from the "alice" query.
         # PK == name, so the result row carries the PK under its real
         # column name (no alias to "id").
@@ -698,7 +698,7 @@ class LadybugAdapterTest(testing.TestCase):
 
     async def test_bulk_update_entities_preserves_input_order(self):
         """A bulk call with multiple entities returns ids in the same
-        order they were passed in — the UNWIND/UNION query reorders
+        order they were passed in: the UNWIND/UNION query reorders
         rows but the adapter remaps by pre-assigned id."""
         adapter = self._adapter(embedding_model=_StubEmbeddingModel({}))
         ids = await adapter.update_entities(
@@ -802,7 +802,7 @@ class LadybugAdapterTest(testing.TestCase):
         self.assertGreater(results[0]["score"], 0)
 
     async def test_entity_fulltext_search_rebuilds_after_inserts(self):
-        """FTS index is a snapshot — newly inserted rows must show up
+        """FTS index is a snapshot: newly inserted rows must show up
         in subsequent search results without an explicit rebuild call."""
         adapter = self._adapter(embedding_model=_StubEmbeddingModel({}))
         await adapter.update_entities(
@@ -810,7 +810,7 @@ class LadybugAdapterTest(testing.TestCase):
         )
         first = await adapter.entity_fulltext_search("Alice", label="Person")
         self.assertEqual(len(first), 1)
-        # Add another row and search again — should pick it up.
+        # Add another row and search again; should pick it up.
         await adapter.update_entities(
             Person(label="Person", name="Bob Marley", embedding=[0.0, 1.0, 0.0])
         )
@@ -830,7 +830,7 @@ class LadybugAdapterTest(testing.TestCase):
 
     async def test_entity_fulltext_search_requires_string_columns(self):
         """A label whose entity model has no string properties has no
-        FTS index — search should raise with a clear message."""
+        FTS index; search should raise with a clear message."""
 
         class NumberOnly(Entity):
             label: Literal["NumberOnly"]
@@ -874,7 +874,7 @@ class LadybugAdapterTest(testing.TestCase):
         self,
     ):
         """Without an embedding model, hybrid degrades to fulltext-only
-        rather than raising — same shape as DuckDB's adapter."""
+        rather than raising, same shape as DuckDB's adapter."""
         adapter = LadybugAdapter(
             uri="ladybug://:memory:",
             entity_models=[Person, City],
@@ -1183,7 +1183,7 @@ class CypherTypeToJsonPropertyTest(testing.TestCase):
         )
 
     def test_fixed_size_array_collapses_to_plain_array(self):
-        # FLOAT[4] (embedding) and INT64[8] both lose the length —
+        # FLOAT[4] (embedding) and INT64[8] both lose the length:
         # JSON schema has no fixed-length array annotation.
         self.assertEqual(
             _cypher_type_to_json_property("FLOAT[4]", "embedding"),
@@ -1262,7 +1262,7 @@ class SymbolicSchemaTest(testing.TestCase):
         )
 
     def test_get_symbolic_entities_hides_embedding_by_default(self):
-        """The vector column is internal to the adapter — leaving it
+        """The vector column is internal to the adapter: leaving it
         out matches DuckDB's ``get_symbolic_data_models`` default."""
         adapter = self._adapter()
         for m in adapter.get_symbolic_entities():
@@ -1271,7 +1271,7 @@ class SymbolicSchemaTest(testing.TestCase):
     def test_get_symbolic_entities_includes_typed_properties(self):
         """Non-reserved columns survive the round-trip with their
         JSON-schema type. The PK (``name`` here) appears as a plain
-        string property — no synthetic ``id`` is injected."""
+        string property; no synthetic ``id`` is injected."""
         adapter = self._adapter()
         schemas = {m.name: m.get_schema() for m in adapter.get_symbolic_entities()}
         props = schemas["Person"]["properties"]
@@ -1295,7 +1295,7 @@ class SymbolicSchemaTest(testing.TestCase):
 
     def test_get_symbolic_relations_emits_ref_endpoints(self):
         """``subj`` / ``obj`` are ``$ref``-encoded into ``$defs``, with
-        the endpoint schemas inlined — same shape Pydantic v2 emits
+        the endpoint schemas inlined, same shape Pydantic v2 emits
         for a hand-written Relation subclass."""
         adapter = self._adapter()
         schema = adapter.get_symbolic_relations()[0].get_schema()
@@ -1323,7 +1323,7 @@ class SymbolicSchemaTest(testing.TestCase):
         """Edge attributes (not subj/obj/label) come back as typed
         properties, distinct from the endpoint schemas in $defs."""
         adapter = self._adapter()
-        # The model-driven LivesIn has no extra attributes — extend
+        # The model-driven LivesIn has no extra attributes; extend
         # the table on the fly so the test exercises the property
         # round-trip without needing a separate Pydantic model.
         adapter._con.execute("ALTER TABLE LivesIn ADD since DATE")
@@ -1341,7 +1341,7 @@ class SymbolicSchemaTest(testing.TestCase):
     def test_get_symbolic_relations_handles_self_loop(self):
         """A rel table whose source and destination are the same
         label produces a schema with one ``$defs`` entry, referenced
-        twice — not a duplicated def."""
+        twice, not a duplicated def."""
         with patch(
             "synalinks.src.knowledge_bases.graph_database_adapters."
             "ladybug_adapter._get_em",
@@ -2072,7 +2072,7 @@ class RelationSearchTest(testing.TestCase):
 class HybridKeywordsTest(testing.TestCase):
     """The hybrid surfaces accept ``keywords`` separate from the
     vector-side texts: vectors search semantically, BM25 searches
-    lexically — the natural-language query that drives the vectors
+    lexically; the natural-language query that drives the vectors
     is typically not the keyword set you'd hand to BM25.
     """
 
@@ -2120,7 +2120,7 @@ class HybridKeywordsTest(testing.TestCase):
     async def test_entity_hybrid_falls_back_to_texts_when_keywords_none(
         self,
     ):
-        """Existing call sites that omit ``keywords`` keep working —
+        """Existing call sites that omit ``keywords`` keep working:
         the text is reused for both branches."""
         adapter = self._adapter(lookup={"Alice": [1.0, 0.0, 0.0]})
         await adapter.update_entities(
@@ -2307,7 +2307,7 @@ class RegexSearchTest(testing.TestCase):
 
     async def test_entity_hybrid_regex_search_combines_signals(self):
         """Vector hits Alice (perfect embedding match); regex hits
-        Carol — RRF should surface both with Carol higher (regex is a
+        Carol; RRF should surface both with Carol higher (regex is a
         cleaner exact-shape signal here)."""
         adapter = self._adapter(
             lookup={"engineer": [1.0, 0.0, 0.0]},
@@ -2330,7 +2330,7 @@ class RegexSearchTest(testing.TestCase):
         self,
     ):
         """With no patterns, the hybrid degrades to plain similarity
-        search — same shape as DuckDB's adapter."""
+        search, same shape as DuckDB's adapter."""
         adapter = self._adapter(lookup={"engineer": [1.0, 0.0, 0.0]})
         await self._seed(adapter)
         rows = await adapter.entity_hybrid_regex_search(
@@ -2338,7 +2338,7 @@ class RegexSearchTest(testing.TestCase):
             pattern_or_patterns=None,
             label="WidePerson",
         )
-        # Result shape is the similarity_search shape — has `distance`.
+        # Result shape is the similarity_search shape; has `distance`.
         self.assertIn("distance", rows[0])
 
     async def test_entity_hybrid_regex_search_no_embedding_model_falls_back(
@@ -2562,7 +2562,7 @@ class CommunityDetectionTest(testing.TestCase):
 
     async def test_detect_communities_max_iterations_is_forwarded(self):
         """``max_iterations=1`` should be accepted by Ladybug for both
-        Louvain and WCC — proves the kwarg fragment reaches the
+        Louvain and WCC: proves the kwarg fragment reaches the
         procedure call without a binder exception."""
         adapter = self._adapter()
         await self._seed_two_clusters_plus_isolated(adapter)
@@ -2576,7 +2576,7 @@ class CommunityDetectionTest(testing.TestCase):
         )
 
     async def test_detect_communities_strongly_connected_components(self):
-        """SCC requires bidirectional reachability — a one-way chain
+        """SCC requires bidirectional reachability: a one-way chain
         should land in singleton components, distinct from WCC's
         single-component view of the same edges."""
         adapter = self._adapter()
@@ -2595,12 +2595,12 @@ class CommunityDetectionTest(testing.TestCase):
             ]
         )
         scc = await adapter.detect_communities(algorithm="strongly_connected_components")
-        # Three singleton components — no cycles, so no SCC has size > 1.
+        # Three singleton components: no cycles, so no SCC has size > 1.
         sizes = sorted(len(kg.entities) for kg in scc.knowledge_graphs)
         self.assertEqual(sizes, [1, 1, 1])
 
         wcc = await adapter.detect_communities(algorithm="weakly_connected_components")
-        # One component for the chain — WCC ignores direction.
+        # One component for the chain: WCC ignores direction.
         sizes = sorted(len(kg.entities) for kg in wcc.knowledge_graphs)
         self.assertEqual(sizes, [3])
 
@@ -2703,7 +2703,7 @@ class PageRankTest(testing.TestCase):
         self.assertEqual(rows[0]["node"]["name"], "Hub")
 
     async def test_pagerank_low_max_iterations_still_succeeds(self):
-        """Even ``max_iterations=1`` should be accepted by Ladybug —
+        """Even ``max_iterations=1`` should be accepted by Ladybug:
         proves the kwarg fragment is forwarded correctly."""
         adapter = self._adapter()
         await self._seed_hub_and_spokes(adapter)
@@ -2772,7 +2772,7 @@ class IndexOptionsAndSearchParamsTest(testing.TestCase):
 
     def test_none_build_params_omit_from_ddl(self):
         """``None`` defaults must not appear in the rendered DDL
-        kwargs — otherwise Ladybug would see ``stemmer := null`` and
+        kwargs; otherwise Ladybug would see ``stemmer := null`` and
         reject the unknown literal."""
         adapter = self._adapter()  # every build param defaults to None
         # If any None had leaked into the DDL string this would have
@@ -2782,7 +2782,7 @@ class IndexOptionsAndSearchParamsTest(testing.TestCase):
         self.assertIsNone(adapter.mu)
 
     async def test_entity_similarity_search_forwards_ef_search(self):
-        """``ef_search=200`` must not raise — Ladybug accepts ``efs``
+        """``ef_search=200`` must not raise: Ladybug accepts ``efs``
         as a query-time HNSW kwarg."""
         adapter = self._adapter()
         await adapter.update_entities(
@@ -2814,8 +2814,8 @@ class IndexOptionsAndSearchParamsTest(testing.TestCase):
         await adapter.update_entities(
             [Person(label="Person", name="alice", embedding=[1.0, 0.0, 0.0])]
         )
-        # The hybrid path takes both surfaces' kwargs and merges them
-        # — a successful call exercises the full plumbing.
+        # The hybrid path takes both surfaces' kwargs and merges them;
+        # a successful call exercises the full plumbing.
         rows = await adapter.entity_hybrid_fts_search(
             text_or_texts="alice",
             label="Person",
@@ -3116,6 +3116,111 @@ class GlobalGraphSearchTest(testing.TestCase):
             await adapter.build_communities(algorithm="louvain")
 
 
+class CommunityGraphSearchTest(testing.TestCase):
+    """Graph-shaped global search: communities rebuilt as KnowledgeGraphs."""
+
+    def _adapter(self):
+        with patch(
+            "synalinks.src.knowledge_bases.graph_database_adapters."
+            "ladybug_adapter._get_em",
+            side_effect=lambda x: x,
+        ):
+            return LadybugAdapter(
+                uri="ladybug://:memory:",
+                entity_models=[Person],
+                relation_models=[Knows],
+                vector_dim=3,
+            )
+
+    async def _seed(self, adapter):
+        # Cluster A: {Alice, Bob, Carol} triangle. Cluster B: {Xenia,
+        # Yara} chain. Isolated: {Zeke}. Plus one cross-cluster edge
+        # (Carol→Xenia) that community reconstruction must drop.
+        await adapter.update_entities(
+            [
+                Person(label="Person", name=n)
+                for n in ["Alice", "Bob", "Carol", "Xenia", "Yara", "Zeke"]
+            ]
+        )
+        await adapter.update_relations(
+            [
+                Knows(
+                    label="Knows",
+                    subj=Person(label="Person", name=s),
+                    obj=Person(label="Person", name=o),
+                )
+                for s, o in [
+                    ("Alice", "Bob"),
+                    ("Bob", "Carol"),
+                    ("Carol", "Alice"),
+                    ("Xenia", "Yara"),
+                    ("Carol", "Xenia"),
+                ]
+            ]
+        )
+
+    async def test_returns_one_graph_per_community_most_important_first(self):
+        adapter = self._adapter()
+        await self._seed(adapter)
+        await adapter.build_communities(algorithm="louvain")
+        result = await adapter.community_graph_search(k=10)
+        sizes = [len(kg.entities) for kg in result.knowledge_graphs]
+        # Three communities: triangle, chain, isolated; ordered by
+        # aggregate rank, which on this graph tracks size.
+        self.assertEqual(sorted(sizes, reverse=True), [3, 2, 1])
+        self.assertEqual(sizes[0], 3)
+
+    async def test_entities_are_typed_and_edges_stay_intra_community(self):
+        adapter = self._adapter()
+        await self._seed(adapter)
+        await adapter.build_communities(algorithm="louvain")
+        result = await adapter.community_graph_search(k=10)
+        all_names_per_graph = []
+        total_edges = 0
+        for kg in result.knowledge_graphs:
+            names = {e.name for e in kg.entities}
+            all_names_per_graph.append(names)
+            for entity in kg.entities:
+                self.assertIsInstance(entity, Person)
+            for rel in kg.relations:
+                self.assertIn(rel.subj.name, names)
+                self.assertIn(rel.obj.name, names)
+            total_edges += len(kg.relations)
+        # The cross-community Carol→Xenia edge is dropped: 3 triangle
+        # edges + 1 chain edge survive.
+        self.assertEqual(total_edges, 4)
+        # No entity appears in two communities.
+        seen = set()
+        for names in all_names_per_graph:
+            self.assertFalse(seen & names)
+            seen |= names
+
+    async def test_before_build_returns_empty(self):
+        adapter = self._adapter()
+        await self._seed(adapter)
+        result = await adapter.community_graph_search()
+        self.assertEqual(result.knowledge_graphs, [])
+
+    async def test_k_caps_number_of_graphs(self):
+        adapter = self._adapter()
+        await self._seed(adapter)
+        await adapter.build_communities(algorithm="louvain")
+        result = await adapter.community_graph_search(k=1)
+        self.assertEqual(len(result.knowledge_graphs), 1)
+        # The single kept community is the most important one (the triangle).
+        self.assertEqual(len(result.knowledge_graphs[0].entities), 3)
+
+    async def test_members_per_community_caps_and_prunes_edges(self):
+        adapter = self._adapter()
+        await self._seed(adapter)
+        await adapter.build_communities(algorithm="louvain")
+        result = await adapter.community_graph_search(members_per_community=1)
+        for kg in result.knowledge_graphs:
+            self.assertLessEqual(len(kg.entities), 1)
+            # Every edge would reference a dropped member: none survive.
+            self.assertEqual(kg.relations, [])
+
+
 # ----------------------------------------------------------------------
 # Free-form graphs: dynamic table creation (no predeclared models)
 # ----------------------------------------------------------------------
@@ -3227,6 +3332,6 @@ class FreeFormGraphTest(testing.TestCase):
         """A free-form entity whose schema yields no usable PK fails
         loudly rather than creating a broken table."""
         adapter = self._adapter()
-        # Base Entity has only `label` — no property to promote to PK.
+        # Base Entity has only `label`: no property to promote to PK.
         with self.assertRaisesRegex(ValueError, "primary key"):
             await adapter.update_entities(Entity(label="Bare"))

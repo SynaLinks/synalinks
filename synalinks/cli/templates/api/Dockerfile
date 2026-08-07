@@ -12,7 +12,7 @@ ARG MODEL=vllm/Qwen/Qwen3-4B
 ENV MODEL=$MODEL
 
 # Build the agent at image-build time ("build once"): building doesn't call the
-# LM, so this works offline — no model/credentials needed here.
+# LM, so this works offline: no model/credentials needed here.
 RUN uv run python main.py build
 
 EXPOSE 8000

@@ -176,7 +176,7 @@ class CompileMetrics(metrics_module.Metric):
     ):
         flat_metrics = []
         if isinstance(metrics, dict):
-            # Without output names the dict-keyed form is meaningless — the
+            # Without output names the dict-keyed form is meaningless: the
             # keys can't be matched to outputs. Raise with the intended
             # message instead of letting the membership check below crash
             # on ``None``.

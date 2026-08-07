@@ -1,6 +1,6 @@
 # Synalinks Script
 
-A minimal **[Synalinks](https://github.com/SynaLinks/synalinks)** project — a
+A minimal **[Synalinks](https://github.com/SynaLinks/synalinks)** project: a
 single `main.py` with one program you can run and grow from.
 
 ## Quickstart

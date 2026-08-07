@@ -483,8 +483,8 @@ def _stub_lm_with_extras():
 class LMRatesAndCachePerPhaseTest(testing.TestCase):
     """`result()` paths for rate / per-call / cache-hit / reasoning-share
     metrics. The inference set is covered by tests above; this class extends
-    the contract to the reward and optimizer phases — same shape, different
-    counter prefix — and adds cached-tokens / cache-creation / reasoning
+    the contract to the reward and optimizer phases (same shape, different
+    counter prefix) and adds cached-tokens / cache-creation / reasoning
     coverage for inference."""
 
     PHASES = (

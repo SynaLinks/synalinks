@@ -3,11 +3,11 @@
 """
 # Cypher Agent
 
-[Guide 23](https://synalinks.github.io/synalinks/guides/SQL%20Agent/) built an **SQL Agent** — an agent whose tools let
+[Guide 23](https://synalinks.github.io/synalinks/guides/SQL%20Agent/) built an **SQL Agent**: an agent whose tools let
 it discover a schema, sample rows, and run read-only `SELECT` queries over a
 tabular `KnowledgeBase`. This guide builds the **graph** counterpart. A
-**Cypher Agent** answers questions over a *knowledge graph* — nodes connected
-by typed edges — by writing read-only [Cypher](https://opencypher.org/)
+**Cypher Agent** answers questions over a *knowledge graph*, nodes connected
+by typed edges, by writing read-only [Cypher](https://opencypher.org/)
 queries.
 
 ## Tables vs. graphs
@@ -69,9 +69,9 @@ class LivesIn(synalinks.Relation):
 ## Safety
 
 Only **read-only** Cypher runs. The adapter scans the query (after stripping
-comments and string literals) and rejects any write/admin keyword — `CREATE`,
+comments and string literals) and rejects any write/admin keyword, `CREATE`,
 `MERGE`, `SET`, `DELETE`, `DETACH`, `REMOVE`, `DROP`, `ALTER`, `COPY`,
-`INSTALL`, `LOAD` — so the agent can explore the graph but never mutate it or
+`INSTALL`, `LOAD`, so the agent can explore the graph but never mutate it or
 read files.
 
 ## A note on the model

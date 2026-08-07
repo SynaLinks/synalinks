@@ -178,5 +178,5 @@ class KnowledgeGraphsTest(testing.TestCase):
 
     def test_is_knowledge_graphs_false_for_single_graph(self):
         # KnowledgeGraph has `entities`/`relations`, not
-        # `knowledge_graphs` — the predicate must distinguish them.
+        # `knowledge_graphs`; the predicate must distinguish them.
         self.assertFalse(is_knowledge_graphs(KnowledgeGraph))

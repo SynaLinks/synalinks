@@ -5,11 +5,11 @@
 
 [Guide 6](https://synalinks.github.io/synalinks/guides/Agents/) built a *single* agent: one model, one tool loop, one
 answer. This guide wires several models together into one program.
-The simplest way to do that — and a good first multi-model pattern to
-learn — is a **mixture of models**: the model-level form of
-[Mixture-of-Agents (Wang, Wang, Athiwaratkun, Zhang, Zou — 2024)](https://arxiv.org/abs/2406.04692).
+The simplest way to do that, and a good first multi-model pattern to
+learn, is a **mixture of models**: the model-level form of
+[Mixture-of-Agents (Wang, Wang, Athiwaratkun, Zhang, Zou, 2024)](https://arxiv.org/abs/2406.04692).
 We say "models" rather than "agents" because the members here are plain
-reasoners, not tool-using agents — though, as you will see, swapping
+reasoners, not tool-using agents, though, as you will see, swapping
 in real agents is a one-line change.
 
 The idea is borrowed from how a newsroom works. You do not ask one
@@ -22,16 +22,16 @@ the editor's job is to reconcile them.
 A mixture of models is exactly that, with language models in both
 roles:
 
-- A layer of **proposers** — several models that answer the *same*
+- A layer of **proposers**: several models that answer the *same*
   question *in parallel*, independently of one another.
-- A single **aggregator** — one more model that reads the original
+- A single **aggregator**: one more model that reads the original
   question together with every proposal and synthesises one final
   answer.
 
 The bet is that *diverse* mistakes cancel out. If three different
 models are wrong, they are usually wrong in *different* ways, and the
 aggregator can see the disagreement and resolve it. This is the same
-reason ensembles beat single models in classical machine learning —
+reason ensembles beat single models in classical machine learning;
 here we just do it with whole models instead of classifiers.
 
 ## Why Not Just Use One Big Model?
@@ -48,7 +48,7 @@ Two reasons, one practical and one about reliability.
    aggregator gets to pick the best of each, rather than being stuck
    with whatever one model happened to know.
 
-The cost is more LM calls — `N` proposers plus one aggregator instead
+The cost is more LM calls: `N` proposers plus one aggregator instead
 of one call. Because the proposers are independent, Synalinks runs
 them **concurrently**, so the wall-clock cost is roughly *one slow
 proposer plus the aggregator*, not the sum of all of them.
@@ -73,24 +73,24 @@ separately, now combined:
 - **Parallel branches** (Code Examples → *Parallel Branches*): when
   several modules consume the *same* input node, Synalinks schedules
   them concurrently. The three proposers all read `inputs`, so they
-  fan out automatically — you do not write any threading code.
+  fan out automatically; you do not write any threading code.
 - **The resilient-merge operator `|`** (Code Examples → *Data Model
   Operators*): merges the proposals (and the original query) into a
   single data model to feed the aggregator. When two fields share a
-  name, the merge keeps both by adding a numeric suffix — `candidate`,
-  `candidate_1`, `candidate_2` — so no proposal is silently dropped.
+  name, the merge keeps both by adding a numeric suffix (`candidate`,
+  `candidate_1`, `candidate_2`) so no proposal is silently dropped.
   We use `|` rather than `+` so a *failed* proposer is dropped instead
-  of crashing the panel — see *Resilient Merging* below.
+  of crashing the panel; see *Resilient Merging* below.
 - **Reasoning modules** ([Guide 4](https://synalinks.github.io/synalinks/guides/Modules/)): each proposer here is a
   `ChainOfThought`, so every model reasons before committing to a
   candidate. A proposer can equally well be a full
-  `FunctionCallingAgent` — see *Giving Proposers Tools* below.
+  `FunctionCallingAgent`; see *Giving Proposers Tools* below.
 
 ## What Counts as a Proposer?
 
 A proposer is *any module that maps the query to a candidate answer*.
 That is deliberately broad. In this guide each proposer is a
-`ChainOfThought` — a model that thinks step by step and emits one
+`ChainOfThought`, a model that thinks step by step and emits one
 candidate. We use `ChainOfThought` rather than tool-using agents for
 the runnable example for one practical reason: **a mixture of models
 wants maximum model diversity, and not every model supports tool
@@ -113,7 +113,7 @@ proposer = await synalinks.ChainOfThought(
 )(inputs)
 ```
 
-`data_model=Proposal` keeps the proposer's output narrow — a single
+`data_model=Proposal` keeps the proposer's output narrow: a single
 `candidate` field. (The `ChainOfThought` still produces a `thinking`
 field too, which is what we *want* per proposer; we simply do not
 forward it to the aggregator.) Give every proposer the **same input
@@ -149,24 +149,24 @@ final = await synalinks.ChainOfThought(
 
 ### Resilient Merging: Why `|`, Not `+`
 
-A proposer can *fail* — a model is down, a request times out, an
-output is rejected — and in Synalinks a failed branch surfaces as
+A proposer can *fail* (a model is down, a request times out, an
+output is rejected), and in Synalinks a failed branch surfaces as
 `None`. How you merge decides what that one failure does to the whole
 panel:
 
 | Operator | All proposers OK | One proposer is `None` |
 |----------|------------------|-------------------------|
-| `+` (concat) | merges | **raises** — one dead proposer crashes the run |
-| `&` (and) | merges | bundle becomes `None` — the run *degrades* to nothing |
+| `+` (concat) | merges | **raises**: one dead proposer crashes the run |
+| `&` (and) | merges | bundle becomes `None`; the run *degrades* to nothing |
 | `\\|` (or) | merges | the `None` is **dropped**, survivors are kept |
 
 `+` is the wrong choice for a panel: a single flaky proposer takes the
-whole program down with an exception. `|` is the resilient default —
+whole program down with an exception. `|` is the resilient default:
 it **keeps going with whatever proposers did succeed**. `inputs | p_a |
 p_b | p_c` keeps the query (always present) merged with every survivor
 and silently drops the failures, so the aggregator still runs on a
 partial panel. A mixture of models is supposed to be *robust through
-redundancy*; `|` is what delivers that — losing one of three models
+redundancy*; `|` is what delivers that: losing one of three models
 costs you one candidate, not the whole answer.
 
 If instead you want a strict "all proposers reported, or nothing" gate,
@@ -179,7 +179,7 @@ when a partial panel is *worse* than no answer; for the usual case,
 One wart worth knowing: the *built* schema of a `|` chain advertises
 only the first operand's fields (`{query}` here), because logical-or
 cannot know at build time which proposals will be present. The data
-still flows in full at **runtime** — the aggregator reads the actual
+still flows in full at **runtime**: the aggregator reads the actual
 input *values*, not the declared schema (it uses the default
 `use_inputs_schema=False`), so it sees every surviving candidate and
 the panel works as intended. Don't be surprised, though, if
@@ -201,7 +201,7 @@ Two things make the aggregator work:
 ## Giving Proposers Tools
 
 Because a proposer is just a module, you can upgrade any of them to a
-full agent from [Guide 6](https://synalinks.github.io/synalinks/guides/Agents/) — same input node, same `Proposal`
+full agent from [Guide 6](https://synalinks.github.io/synalinks/guides/Agents/): same input node, same `Proposal`
 output, so the rest of the program is unchanged:
 
 ```python
@@ -220,11 +220,11 @@ Two cautions when you do this:
 
 - **The model must support tool calling.** A `FunctionCallingAgent`
   on a model that does not (e.g. Gemma) fails every step and returns
-  an empty proposal — a dead branch in your panel.
+  an empty proposal, a dead branch in your panel.
 - **Set `return_inputs_with_trajectory=False`.** The default (`True`,
   from [Guide 6](https://synalinks.github.io/synalinks/guides/Agents/)) attaches each agent's full trajectory *and* a
   copy of the original query to its output. Merging three of those
-  produces duplicated queries and trajectories — noise the aggregator
+  produces duplicated queries and trajectories, noise the aggregator
   does not need. Turn it off so each proposer returns just its
   `candidate`.
 
@@ -241,7 +241,7 @@ their outputs feed layer 3, and so on, with a final aggregator at the
 top. Each layer gets to react to the previous layer's collective
 output.
 
-You do not need new machinery for this — it is the same two moves
+You do not need new machinery for this; it is the same two moves
 (parallel proposers, then `+`) repeated. A second layer simply takes
 the merged bundle as its input instead of the raw query:
 
@@ -349,13 +349,13 @@ Final answer: The bookstore sold a total of 144 books over the
 three days.
 ```
 
-(23 on Monday, 69 on Tuesday — three times Monday — and 52 on
-Wednesday — 17 fewer than Tuesday — sum to 144.)
+(23 on Monday, 69 on Tuesday (three times Monday) and 52 on
+Wednesday (17 fewer than Tuesday) sum to 144.)
 
 The interesting part is not the final number but *how the proposers
 disagreed on the way there*. With small open-weight models you will
-typically see at least one proposer slip — miscomputing Tuesday, or
-forgetting to subtract on Wednesday — while the others get it right.
+typically see at least one proposer slip (miscomputing Tuesday, or
+forgetting to subtract on Wednesday) while the others get it right.
 The aggregator, seeing two candidates agree on `144` and one dissent,
 sides with the majority. That is the whole value of the pattern: it
 turns three unreliable answers into one more-reliable answer, without
@@ -373,16 +373,16 @@ any single model having to be trustworthy on its own.
   supported); swap in a `FunctionCallingAgent` when a proposer needs
   tools.
 - **Parallelism is automatic.** Proposers that share the same input
-  node run concurrently — wall-clock cost is one slow proposer plus
+  node run concurrently; wall-clock cost is one slow proposer plus
   the aggregator, not the sum.
 - **Merge with `|`, not `+`.** `|` auto-suffixes colliding field names
   (`candidate`, `candidate_1`, ...) just like `+`, but a *failed*
-  proposer (a `None` branch) is dropped and the survivors are kept —
+  proposer (a `None` branch) is dropped and the survivors are kept;
   `+` would crash the whole panel and `&` would collapse it to `None`.
   `|` is what makes the panel robust through redundancy. Merge the
   query in too, so the aggregator can check the candidates.
-- **Stack layers** for a deep MoA — feed the merged proposals back in
-  as context — but only deepen if one layer is not enough.
+- **Stack layers** for a deep MoA (feed the merged proposals back in
+  as context), but only deepen if one layer is not enough.
 
 ## API References
 
@@ -444,7 +444,10 @@ async def main():
     proposer_models = [
         ("proposer_gemma", synalinks.LanguageModel(model="ollama/gemma:latest")),
         ("proposer_mistral", synalinks.LanguageModel(model="ollama/mistral:latest")),
-        ("proposer_qwen", synalinks.LanguageModel(model="ollama/qwen3:8b", reasoning_effort="disable")),
+        (
+            "proposer_qwen",
+            synalinks.LanguageModel(model="ollama/qwen3:8b", reasoning_effort="disable"),
+        ),
     ]
     aggregator_lm = synalinks.LanguageModel(model="ollama/mistral:latest")
 

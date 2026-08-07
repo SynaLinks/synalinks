@@ -25,7 +25,7 @@ because the words sound almost identical:
 - A **parameter** is something the *training loop* updates as it
   runs. In a neural network it would be a floating-point weight;
   in Synalinks ([Guide 15](https://synalinks.github.io/synalinks/guides/Training/)) it is a JSON object obeying a
-  `Trainable` schema — most often holding an instruction string
+  `Trainable` schema, most often holding an instruction string
   or a list of few-shot examples, but in general any structured
   data the schema permits. Training changes these values
   automatically.
@@ -34,15 +34,15 @@ because the words sound almost identical:
   value you have to re-train from scratch.
 
 Picking hyperparameters is like adjusting the dials on a stove
-before you turn on the heat — once you start cooking, you do not
+before you turn on the heat; once you start cooking, you do not
 fiddle with the dials anymore. Search is the process of cooking
 the same dish many times, each time with slightly different dial
 settings, then keeping the best version.
 
 If you happen to have used **Keras-Tuner** before, this guide will
 feel familiar from sentence one: Synalinks ships drop-in wrappers
-around the four standard Keras-Tuner tuners — `RandomSearch`,
-`BayesianOptimization`, `Hyperband`, and `GridSearch` — under the
+around the four standard Keras-Tuner tuners, `RandomSearch`,
+`BayesianOptimization`, `Hyperband`, and `GridSearch`, under the
 `synalinks.tuners` namespace, and the user-facing API is identical.
 If you have *not* used Keras-Tuner before, that is fine; we explain
 every piece below from scratch.
@@ -65,7 +65,7 @@ a new program from those values, fits it on the training data,
 measures it on the validation data, and reports the score back to
 the **oracle**.
 
-The "oracle" is a colorful name for a small, ordinary object — it
+The "oracle" is a colorful name for a small, ordinary object: it
 is just the part of the tuner that, given the trials run so far,
 decides which hyperparameters to try next. Different tuners use
 different oracles: `RandomSearch` rolls dice; `BayesianOptimization`
@@ -78,18 +78,18 @@ tells you which set of dial settings won.
 ## The `build_program(hp)` Hypermodel
 
 The only thing **you** have to write is one function:
-`build_program(hp)`. The convention is straightforward — wherever
+`build_program(hp)`. The convention is straightforward: wherever
 you would normally hard-code a value, you instead *sample* it from
 the `hp` argument:
 
-- `hp.Boolean("use_chain_of_thought", default=True)` — sample
+- `hp.Boolean("use_chain_of_thought", default=True)`: sample
   `True` or `False`.
-- `hp.Float("temperature", 0.0, 1.0, default=0.0)` — sample a real
+- `hp.Float("temperature", 0.0, 1.0, default=0.0)`: sample a real
   number in `[0.0, 1.0]`.
-- `hp.Choice("reasoning_effort", ["minimal", "low", "medium"])` —
+- `hp.Choice("reasoning_effort", ["minimal", "low", "medium"])`:
   sample one item from a fixed list.
 
-The function returns a *compiled* `Program` — a `Program` on which
+The function returns a *compiled* `Program`: a `Program` on which
 you have already called `.compile(...)` exactly as in [Guide 15](https://synalinks.github.io/synalinks/guides/Training/).
 This is the same shape as the `build_model(hp)` function you would
 write in a Keras-Tuner script. The only Synalinks-specific detail
@@ -144,7 +144,7 @@ blackboard before the next student attempts the problem."
 ## The Tuner
 
 Once you have the hypermodel, constructing the tuner is a single
-call. The simplest tuner is `RandomSearch` — it samples
+call. The simplest tuner is `RandomSearch`: it samples
 hyperparameter values **uniformly at random** from the declared
 ranges and runs trials until it hits `max_trials`. "Uniformly at
 random" here means every value in the range is equally likely; the
@@ -166,14 +166,14 @@ Two ideas in that block are new:
 
 - **`Objective`.** A pair of `(metric_name, direction)` telling
   the oracle what counts as "better." Here we want to *maximize*
-  `val_reward` — the reward measured on the validation split.
+  `val_reward`, the reward measured on the validation split.
   Whenever you care about something smaller-is-better (latency,
   token cost, dollars), use `direction="min"` instead. The
   `val_` prefix in the metric name is a convention: training
   metrics get reported as-is, and the same metric measured on the
   validation split gets prefixed with `val_`.
-- **The project directory.** The tuner persists every trial — the
-  hyperparameter values it tried, the metrics it observed — to a
+- **The project directory.** The tuner persists every trial, the
+  hyperparameter values it tried, the metrics it observed, to a
   folder on disk. That means you can stop a search halfway
   through, come back later, and resume from the last completed
   trial. `overwrite=True` says "I am starting fresh, please
@@ -195,8 +195,8 @@ tuner.search(
 
 `epochs=1` keeps each trial quick. For a serious run you would
 turn up both `epochs` and `max_trials`. There is a trade-off here
-worth recognizing: more **trials** means more *exploration* — the
-search sees more configurations — while more **epochs per trial**
+worth recognizing: more **trials** means more *exploration*, the
+search sees more configurations, while more **epochs per trial**
 means more *depth*, so each individual trial is a more accurate
 estimate of how that configuration really performs. Total cost is
 the product, so you cannot just have everything.
@@ -207,24 +207,24 @@ The choice of tuner is really the choice of *how the oracle
 proposes new hyperparameter sets*. All four Synalinks tuners share
 the constructor shape above, so swapping between them is one line.
 
-- **`RandomSearch`** — sample uniformly at random from the
+- **`RandomSearch`**: sample uniformly at random from the
   declared ranges. Embarrassingly simple, and embarrassingly
   hard to beat at small budgets. This is the right default.
-- **`BayesianOptimization`** — fit a small statistical model of
+- **`BayesianOptimization`**: fit a small statistical model of
   "given hyperparameters, predict the score," update it after
   every trial, and propose the point the model thinks is most
   likely to improve. Much more sample-efficient than random
   when each trial is expensive (which is true for LM programs,
   where one trial costs many API calls).
-- **`Hyperband`** — start many trials cheaply, kill the worst
+- **`Hyperband`**: start many trials cheaply, kill the worst
   ones early, hand the saved budget to the survivors so they
   can train longer. Picture a tournament that eliminates half
   the players each round. Useful when training is *cheap* and
   the scarce resource is total training steps.
-- **`GridSearch`** — enumerate every combination of every
+- **`GridSearch`**: enumerate every combination of every
   `Choice` exactly once. Use this when your search space is
-  small and discrete — for instance, "try each of these three
-  models" — and you do not want any to be visited twice. We
+  small and discrete, for instance, "try each of these three
+  models", and you do not want any to be visited twice. We
   meet `GridSearch` head-on in [Guide 18](https://synalinks.github.io/synalinks/guides/Multi-Objective%20LM%20Selection/).
 
 ## One Bit of Plumbing: `disable_keras_backend`
@@ -233,7 +233,7 @@ Keras-Tuner does `import keras` at module load time. Synalinks
 does *not* depend on Keras at runtime, so we ship a small shim
 that installs a minimal stub of the Keras namespace **before**
 Keras-Tuner has a chance to look for it. You have to call this
-shim before any `keras_tuner` import path runs — that is, right
+shim before any `keras_tuner` import path runs, that is, right
 at the top of your script, immediately after `import synalinks`:
 
 ```python
@@ -243,7 +243,7 @@ synalinks.disable_keras_backend()   # MUST run before importing tuners
 
 Forget this call and the error you get is unhelpful: a
 `ModuleNotFoundError` about a missing tensor backend (TensorFlow,
-JAX, PyTorch — none of which Synalinks needs). If you see that
+JAX, PyTorch, none of which Synalinks needs). If you see that
 error, your call to `disable_keras_backend()` is either missing
 or in the wrong place.
 
@@ -252,14 +252,14 @@ or in the wrong place.
 After `tuner.search()` returns, three useful entry points let you
 poke at what happened:
 
-- **`tuner.results_summary(num_trials=N)`** — prints the top
+- **`tuner.results_summary(num_trials=N)`**: prints the top
   `N` trials, their hyperparameters, and their scores. Good for
   a quick eyeball.
-- **`tuner.get_best_hyperparameters(num_trials=1)[0]`** — returns
+- **`tuner.get_best_hyperparameters(num_trials=1)[0]`**: returns
   the best `HyperParameters` object, which you can hand back to
   `build_program(hp)` to rebuild the winning program from
   scratch.
-- **`tuner.oracle.get_best_trials(num_trials=1)[0]`** — returns
+- **`tuner.oracle.get_best_trials(num_trials=1)[0]`**: returns
   the underlying `Trial` object, which carries every recorded
   metric and the duration of the trial. Use this when you want
   more than the aggregated score.
@@ -277,7 +277,7 @@ print(f"Test reward: {metrics.get('reward'):.3f}")
 Why a *third* split? Because the validation reward was used by
 the oracle to **choose** hyperparameters. As soon as you select a
 configuration on the basis of its val score, that val score stops
-being an unbiased estimate of how the program generalizes — by
+being an unbiased estimate of how the program generalizes: by
 construction, you picked the configuration most flattered by the
 val data. The held-out test split has never been seen by the
 search, so its score is an honest measurement of what you will
@@ -308,13 +308,13 @@ Before you press "go," it is worth knowing four levers:
    Save the strong (expensive) model for the final evaluation on
    the test split.
 3. **Always set `seed=...` on the tuner.** Without a seed, the
-   search trajectory is non-reproducible — two runs over the same
+   search trajectory is non-reproducible: two runs over the same
    dataset can find different winners. With a seed, the
    trajectory is identical every time, which makes debugging far
    easier.
 4. **`directory=` / `project_name=` are not optional in
-   practice.** When a trial crashes — and at some point, one
-   will — the tuner can resume from the last completed trial,
+   practice.** When a trial crashes, and at some point, one
+   will, the tuner can resume from the last completed trial,
    but only if there is a folder on disk for it to read from.
 
 ## Take-Home Summary
@@ -370,7 +370,7 @@ FOLDER = "guides"
 PROJECT_NAME = "gsm8k_hp_search"
 
 # Module-level handle the hypermodel reads. Populated in `main()` before
-# the tuner is constructed — the keras-tuner pattern of "build_program(hp)
+# the tuner is constructed; the keras-tuner pattern of "build_program(hp)
 # just reads the world" depends on the world being ready.
 language_model: synalinks.LanguageModel | None = None
 
@@ -485,7 +485,7 @@ async def main():
     print(f"\nFull trial history persisted under {FOLDER}/{PROJECT_NAME}")
 
     # Rebuild the winner from the best HPs and evaluate on the held-out
-    # test slice — the validation reward was used by the oracle to pick
+    # test slice: the validation reward was used by the oracle to pick
     # hyperparameters, so it overstates the true generalization score.
     print("\nRebuilding winner and evaluating on test split...")
     program = await build_program(best_hp)

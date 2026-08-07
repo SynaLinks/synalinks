@@ -11,7 +11,7 @@ Two pieces of state, deliberately kept separate:
 
 - **The active scope** is a ``contextvars.ContextVar``. Synalinks runs LM/EM
   calls concurrently (``asyncio.gather``) and across greenlets that copy the
-  *context* (see ``utils.async_utils``) — a ``threading.local`` set on the
+  *context* (see ``utils.async_utils``); a ``threading.local`` set on the
   trainer thread would be lost there and calls would be misattributed. A
   ContextVar is copied into each child task/greenlet at creation, so every
   concurrent call reads the scope that was active when it was spawned, and
@@ -20,7 +20,7 @@ Two pieces of state, deliberately kept separate:
 - **Per-phase wall-clock** is accumulated on enter/exit with a nesting stack.
   Only the scope currently on top of the stack accrues time, so the optimizer
   phase (which wraps reward computation) is credited its *self* time and does
-  not double-count the nested reward span — mirroring how calls are bucketed.
+  not double-count the nested reward span, mirroring how calls are bucketed.
   This lives in ``global_state`` (thread-local, reset by ``clear_session``);
   enter/exit run serially on the trainer's event-loop thread, and that's the
   same thread that reads the totals when computing metrics.

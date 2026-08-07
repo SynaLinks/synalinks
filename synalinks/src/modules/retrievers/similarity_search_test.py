@@ -1,7 +1,7 @@
 # License Apache 2.0: (c) 2025-2026 Yoan Sallami (Synalinks Team)
 """End-to-end tests for `SimilaritySearch` against a real DuckDB store.
 
-The DuckDB knowledge base — including its HNSW vector index — is real.
+The DuckDB knowledge base, including its HNSW vector index, is real.
 Only the external APIs are mocked: ``litellm.aembedding`` yields
 deterministic keyword-based vectors so nearest-neighbour ranking is
 verifiable, and ``litellm.acompletion`` returns the search query.

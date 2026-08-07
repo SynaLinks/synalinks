@@ -20,7 +20,7 @@ class DROPAnswer(DataModel):
 
 
 _INPUT_TEMPLATE = r'{"question": {{ (passage ~ "\n\nQuestion: " ~ question) | tojson }}}'
-# Pick the first gold span — DROP has multiple equivalent answers.
+# Pick the first gold span; DROP has multiple equivalent answers.
 _OUTPUT_TEMPLATE = r'{"answer": {{ answers_spans.spans[0] | tojson }}}'
 
 

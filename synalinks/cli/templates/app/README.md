@@ -2,7 +2,7 @@
 
 A full-stack starter built around a **[Synalinks](https://github.com/SynaLinks/synalinks)**
 + FastAPI **backend**, a local **vLLM** model server, and an **MLflow** tracking
-server, wired together with Docker Compose. The **frontend is left to you** —
+server, wired together with Docker Compose. The **frontend is left to you**:
 `frontend/` is a placeholder with guidance for plugging in whatever you like
 (see `frontend/README.md`).
 
@@ -32,7 +32,7 @@ backend/            # Synalinks + FastAPI service (question -> answer)
   Dockerfile
   auth/             #   add authentication here (see auth/README.md)
   services/         #   business logic / integrations (see services/README.md)
-frontend/           # placeholder — bring your own frontend (see its README)
+frontend/           # placeholder: bring your own frontend (see its README)
 docker-compose.yaml # vLLM + MLflow + backend
 ```
 
@@ -57,7 +57,7 @@ uv run python main.py            # http://localhost:8000  (or: fastapi dev main.
 - **Build a frontend** in `frontend/` and add a service for it to
   `docker-compose.yaml` (see `frontend/README.md`).
 - Swap the backend's one-module `Generator` for a `ChainOfThought`, an agent, or
-  a RAG pipeline — the wire format (`POST /answer`) stays the same.
+  a RAG pipeline; the wire format (`POST /answer`) stays the same.
 - For an OpenAI-compatible chat endpoint backed by an agent, scaffold the `api`
   template instead (`synalinks init --list`).
 

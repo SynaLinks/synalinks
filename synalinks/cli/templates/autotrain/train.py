@@ -45,12 +45,12 @@ def _enable_observability():
 
 
 # ---------------------------------------------------------------------------
-# CONFIG — the levers. Edit in place; the autotrain loop commits this file.
+# CONFIG: the levers. Edit in place; the autotrain loop commits this file.
 # ---------------------------------------------------------------------------
 
 MODEL = "vllm/Qwen/Qwen3-4B"
 # Used only by the OMEGA optimizer. vLLM serves embeddings too, but from a
-# separate model/endpoint — run a second vLLM (e.g. `vllm serve
+# separate model/endpoint; run a second vLLM (e.g. `vllm serve
 # Qwen/Qwen3-Embedding-0.6B --port 8002`) and pass its api_base explicitly, or
 # just use Ollama here (ollama/mxbai-embed-large).
 EMBEDDING_MODEL = "vllm/Qwen/Qwen3-Embedding-0.6B"
@@ -67,7 +67,7 @@ DESCRIPTION = "baseline"
 
 
 # ---------------------------------------------------------------------------
-# The program — this is what the autotrain loop optimizes. Every field
+# The program: this is what the autotrain loop optimizes. Every field
 # description below is part of the prompt; rewording one is a research lever.
 # ---------------------------------------------------------------------------
 
@@ -90,7 +90,7 @@ async def build_program(lm):
     A single ``ChainOfThought`` that reads a ``MathQuestion`` and produces a
     ``MathAnswer`` (the chain-of-thought adds a ``thinking`` field of its own).
     Swap it for a plain ``Generator``, add self-consistency branches, or wire
-    extra modules here — this function is the "module composition" lever.
+    extra modules here; this function is the "module composition" lever.
     """
     inputs = synalinks.Input(data_model=MathQuestion)
     outputs = await synalinks.ChainOfThought(
@@ -146,7 +146,7 @@ async def main():
 
     program = await build_program(lm)
 
-    # The optimizer lever — swap this line to change strategy:
+    # The optimizer lever. Swap this line to change strategy:
     optimizer = synalinks.optimizers.RandomFewShot(nb_max_examples=3)
     # OMEGA needs an embedding model for its diversity (DNS) metric:
     # em = synalinks.EmbeddingModel(model=EMBEDDING_MODEL)
@@ -203,7 +203,7 @@ async def main():
     print(f"optimizer    : {optimizer_name}")
     print(f"train_reward : {_fmt(train_reward)}")
     print(f"val_reward   : {_fmt(val_reward)}")
-    test_display = _fmt(test_reward) if args.test else "(not run — pass --test)"
+    test_display = _fmt(test_reward) if args.test else "(not run; pass --test)"
     print(f"test_reward  : {test_display}")
     print(f"best program : {checkpoint}")
 

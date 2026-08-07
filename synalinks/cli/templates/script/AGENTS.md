@@ -1,4 +1,4 @@
-# Agent guide — script
+# Agent guide: script
 
 A minimal **Synalinks** project. Everything is in `main.py`: structured I/O
 (`DataModel`s), a one-module program (`Question -> Answer`), and an async
@@ -29,7 +29,7 @@ Skills can live under `.agents/skills/`.
 
 ## Troubleshooting a framework bug
 
-Most failures are in *your* program — fix those here. But if you trace a problem
+Most failures are in *your* program; fix those here. But if you trace a problem
 to **Synalinks itself** (a stack trace inside the `synalinks` package, or a
 missing/broken framework feature), fix it at the source and upstream it:
 

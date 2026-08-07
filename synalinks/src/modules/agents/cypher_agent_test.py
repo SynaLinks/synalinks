@@ -159,7 +159,7 @@ class CypherAgentToolsTest(testing.TestCase):
 
 
 class CypherAgentInstantiationTest(testing.TestCase):
-    """Instantiation tests — wires CypherAgent but doesn't run an LM."""
+    """Instantiation tests: wires CypherAgent but doesn't run an LM."""
 
     def _make_kb(self):
         return KnowledgeBase(

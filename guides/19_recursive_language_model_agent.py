@@ -4,7 +4,7 @@
 # Recursive Language Model Agent
 
 This is the last guide in the series, and we now build on everything
-that came before. [Guide 6](https://synalinks.github.io/synalinks/guides/Agents/) introduced agents — a loop that decides,
+that came before. [Guide 6](https://synalinks.github.io/synalinks/guides/Agents/) introduced agents: a loop that decides,
 acts, observes, and repeats. This guide presents a more powerful
 agent design: one that can **spawn a smaller helper agent for
 sub-tasks**, the way a recursive function in CS101 calls itself on
@@ -27,18 +27,18 @@ Formally, A is a function:
 In English: A takes a question and some inputs, and it returns an
 answer. The implementation is a loop. On each turn A calls a single
 tool, `run_python_code(code=...)`, with a small piece of
-Python code (a "**snippet**"). The snippet runs in a **sandbox** — a
-restricted Python environment — that exposes two helpers, called the
+Python code (a "**snippet**"). The snippet runs in a **sandbox**, a
+restricted Python environment, that exposes two helpers, called the
 **recursive primitives** `llm_query` and `llm_query_batched`, which
 forward sub-problems to a second language model M'. These primitives
 (and `submit`) are callables *inside* the sandbox, not separate tools:
 A reaches them only from the code it passes to `run_python_code`.
-Whatever the snippet prints or returns becomes an **observation** — a
-log line A can read on its next turn — and the loop continues.
+Whatever the snippet prints or returns becomes an **observation**, a
+log line A can read on its next turn, and the loop continues.
 
 The recursion is **value-recursive**: A does not call itself on the
 same inputs. Instead, on each turn, A delegates a *piece* of the
-inputs to M' — a slice of text, a regex match, a single paragraph.
+inputs to M': a slice of text, a regex match, a single paragraph.
 ("Projection" in this context just means "a smaller view of the
 inputs.")
 
@@ -47,22 +47,22 @@ externally by three **decreasing measures**. A decreasing measure
 is a number that must strictly shrink on every step; once it hits
 zero, the loop is forced to end. RLM uses three of them at once:
 
-1. **iteration count** — how many turns A is allowed,
-2. **sub-LM call budget** — how many times A can call M',
-3. **per-snippet wall clock** — how long one snippet may run.
+1. **iteration count**: how many turns A is allowed,
+2. **sub-LM call budget**: how many times A can call M',
+3. **per-snippet wall clock**: how long one snippet may run.
 
 Because each measure decreases on every step, the whole thing must
 stop eventually.
 
 The construction follows
-[Recursive Language Models (Zhang, Kraska, Khattab — 2025)](https://arxiv.org/abs/2512.24601).
+[Recursive Language Models (Zhang, Kraska, Khattab, 2025)](https://arxiv.org/abs/2512.24601).
 
 ## Why Bother With This Design?
 
 Suppose the input is very large. Let *n* be the size of the input in
 **tokens** (a token is the model's unit of text, roughly a short
-word fragment) and *k* the size of the question. When *n* is huge —
-a whole book, a long log file — three costs grow with *n*:
+word fragment) and *k* the size of the question. When *n* is huge,
+a whole book, a long log file, three costs grow with *n*:
 
 1. **Prompt cost.** The price of one LM call grows roughly linearly
    in prompt length. A 200,000-token prompt is mostly tokens the
@@ -70,8 +70,8 @@ a whole book, a long log file — three costs grow with *n*:
 2. **Latency.** Most providers cap throughput per input token, so
    waiting time grows with *n*, not with the size of the answer.
 3. **Recall.** Past a model-specific threshold, the model gets
-   *worse* at finding the right fact inside its own context — the
-   well-known "lost in the middle" effect — even when the fact is
+   *worse* at finding the right fact inside its own context, the
+   well-known "lost in the middle" effect, even when the fact is
    present.
 
 Two standard fixes you might have already met:
@@ -86,12 +86,12 @@ Two standard fixes you might have already met:
   retrieval can ever be.
 
 **RLM is a third option.** The primary LM (the orchestrator) is
-*never* given the full input. It is given an `InputsSummary` — a
+*never* given the full input. It is given an `InputsSummary`: a
 list of field names, types, sizes, and short previews. The full
 value lives inside a persistent Python sandbox, bound to the
 variable `inputs[field]`. On each turn the primary LM writes a
-Python snippet that decides — conditional on the question *and* on
-what it has already learned — which slice of the input is worth a
+Python snippet that decides, conditional on the question *and* on
+what it has already learned, which slice of the input is worth a
 sub-LM call.
 
 The key win: the chunking is chosen **after** the question is
@@ -180,7 +180,7 @@ Two consequences of this design:
 - **Aggregate in code, then query for meaning.** Structural
   questions ("where," "how many," "what shape?") have
   deterministic answers and should be handled by Python: regular
-  expressions (regex — pattern matching on strings), slicing
+  expressions (regex, pattern matching on strings), slicing
   (taking sub-ranges), set operations. Semantic questions ("what
   does this mean?", "is this about X?") should be answered by
   `llm_query` on spans the code has already isolated.
@@ -192,7 +192,7 @@ stays small; the data is the environment and stays external.
 
 A **primitive** here means a built-in helper function the snippet
 can call. Besides `submit` (which returns the final answer), the
-sandbox exposes two **asynchronous** primitives — "asynchronous"
+sandbox exposes two **asynchronous** primitives, "asynchronous"
 meaning they use Python's `await` so several calls can run
 concurrently.
 
@@ -207,7 +207,7 @@ asyncio.run(main())
 ```
 
 Sends one prompt to the sub-LM (which model that is can be
-configured — see below) and returns a dict `{"result": <text>}`.
+configured; see below) and returns a dict `{"result": <text>}`.
 Use it for **semantic** work on a span the code has already pulled
 out: classify a paragraph, summarize a span, extract names,
 reformat a quote. Each call decrements the shared budget by one.
@@ -234,7 +234,7 @@ input prompts.
 
 **Prefer the batched form** over a Python `for` loop of single
 `llm_query` calls. A loop calls the sub-LM *m* times sequentially
-and stacks up *m* latencies one after another — it will run out of
+and stacks up *m* latencies one after another; it will run out of
 the per-snippet timeout long before it runs out of budget. If a
 single prompt in the batch fails, its slot contains a string of
 the form `"[error] <ExceptionType>: <message>"`, so check for that
@@ -254,10 +254,10 @@ Both primitives draw from a single counter *c*, initialized to
 - A `llm_query` call when c == 0 returns immediately with `error`
   set, and does not decrement c.
 - A `llm_query_batched(prompts)` call where c < len(prompts) returns
-  immediately, all-or-nothing — it never partially fulfils a batch.
+  immediately, all-or-nothing: it never partially fulfils a batch.
 
 In plain words: if you cannot afford the whole batch, you get
-nothing — the budget is never overshot.
+nothing: the budget is never overshot.
 
 The counter is reset at the start of every `agent(...)` invocation,
 so two concurrent invocations don't share a jar.
@@ -281,15 +281,15 @@ using `result`.**
 ## Adding Your Own Tools
 
 `RecursiveLanguageModelAgent` accepts a `tools=` argument. You can
-plug in your own helper functions — fetch a URL, query a database,
-hit a search API — and the model can call them from inside its
+plug in your own helper functions, fetch a URL, query a database,
+hit a search API, and the model can call them from inside its
 snippets. The names `llm_query`, `llm_query_batched`, and `submit`
 are reserved; every other tool is bound as a global async function
 inside the sandbox and can be combined with the recursive
 primitives in the same snippet.
 
 **A note on trust.** A tool *body* runs on the host machine with
-full Python privileges — filesystem, network, third-party
+full Python privileges: filesystem, network, third-party
 libraries. The sandbox restricts only the snippet itself; once
 execution crosses into a host-side tool, the sandbox no longer
 protects you. In practice, each tool is the **trust boundary**:
@@ -326,7 +326,7 @@ agent = synalinks.RLM(
 Inside a single snippet the LM can now mix real-world side effects
 with recursive sub-LM work: fetch a page, hand the body to
 `llm_query` for classification, then `submit` the result. Treat
-every tool the way you'd treat a public web endpoint — validate
+every tool the way you'd treat a public web endpoint: validate
 inputs, restrict filesystem and network access, and don't expose
 anything destructive unless the deployment really requires it.
 
@@ -340,7 +340,7 @@ production, because the two jobs have very different shapes:
 - The **primary** LM plans, writes code, and formats the final
   structured answer. It needs to be capable, but you only call it
   a handful of times per run.
-- The **sub-LM** answers narrow, local questions — "summarize
+- The **sub-LM** answers narrow, local questions: "summarize
   this paragraph", "is this paragraph about X?". A small, cheap
   model is usually plenty, and you call it many times per run.
 
@@ -384,7 +384,7 @@ mode this design has hit in practice:
    `submit`.
 5. **`submit` is terminal.** A snippet runs to completion (so a
    `print` near `submit` does execute), but once `submit`
-   succeeds the loop ends — that final captured print is never
+   succeeds the loop ends; that final captured print is never
    read by the model. Lesson: inspect on one turn, then submit on
    the next.
 
@@ -424,13 +424,13 @@ large logs, large lists where a few items decide the answer.
 ## Common Traps
 
 These are the same pitfalls you would worry about with ordinary
-recursive functions in a CS101 course — base cases, termination,
-type mismatches — but applied to an agent. (Recall: a **base
+recursive functions in a CS101 course: base cases, termination,
+type mismatches, but applied to an agent. (Recall: a **base
 case** is the condition under which a recursive function stops
 recursing.)
 
 - **Infinite recursion in disguise.** The agent itself never
-  recurses on its own inputs, but a *tool body* can — for
+  recurses on its own inputs, but a *tool body* can: for
   example, a fetch tool whose next URL is computed from the
   previous sub-LM answer. Without an explicit decreasing measure
   (recursion depth, byte budget, set of already-visited URLs),
@@ -438,7 +438,7 @@ recursing.)
   way you would treat factorial without a base case: insist on an
   argument that strictly shrinks.
 - **Unbounded depth.** `max_iterations` bounds primary-LM turns
-  and `max_llm_calls` bounds sub-LM calls — but neither bounds
+  and `max_llm_calls` bounds sub-LM calls, but neither bounds
   the depth of nested tool calls *inside one snippet*. Check that
   a snippet cannot build arbitrarily deep call chains.
 - **Schema drift.** The sub-LM returns plain strings, not
@@ -463,7 +463,7 @@ recursing.)
 A real task: **incident triage over a long multi-service log**. The input
 pairs a short `question` (fully visible to the primary LM) with a 2000-line
 `log` (only previewed). The question states only the *goal*; the agent decides
-*how*. Answering needs both halves of the design — code to find the first error
+*how*. Answering needs both halves of the design, code to find the first error
 line deterministically (structure), and the sub-LM to explain it (meaning):
 
 ```python
@@ -500,8 +500,8 @@ async def main():
 
     log = open("app.log").read()
     question = (
-        "An incident took place. Find its root cause — the first error in this "
-        "chronological log — and explain in one sentence what went wrong."
+        "An incident took place. Find its root cause, the first error in this "
+        "chronological log, and explain in one sentence what went wrong."
     )
     result = await agent(LogReport(question=question, log=log))
     print(result.prettify_json())
@@ -512,11 +512,11 @@ if __name__ == "__main__":
 
 Inside the `agent(...)` call the primary LM sees only the *preview* of the
 log. From the goal alone it works out the approach: scan the full log inside
-the sandbox, keep the ERROR lines, take the first (the root cause — `db` here,
+the sandbox, keep the ERROR lines, take the first (the root cause: `db` here,
 with `api` / `worker` cascading off it), hand that one line to the sub-LM for a
 human-readable explanation, and `submit` the structured `Incident`. The
 structural part of the answer (`first_error_line`) is copied verbatim by
-deterministic code, not guessed — so it is correct regardless of model size,
+deterministic code, not guessed, so it is correct regardless of model size,
 and a cheap sub-LM only ever phrases a single short line.
 
 ## Expected output (representative)
@@ -546,12 +546,12 @@ Trajectory has 4 messages:
 ```
 
 Output is *stochastic* (varies from run to run) and depends heavily on the
-models you pick. The **first_error_line is deterministic** — it is copied from
-the log by code, not the model — so a model that actually runs the scan gets it
+models you pick. The **first_error_line is deterministic**: it is copied from
+the log by code, not the model, so a model that actually runs the scan gets it
 exactly right every time; only the phrasing of `explanation` varies. A capable
 primary model closes the loop in two or three turns. A small local model
 (`ollama/qwen3:8b`) is slower and less reliable here: it can over-think each
-step or guess from the preview instead of scanning — which is exactly why the
+step or guess from the preview instead of scanning, which is exactly why the
 deterministic `✅ / ❌` check above is worth printing. The lesson generalizes:
 keep the *structural* part of the answer in code so it stays correct
 independent of model strength, and spend the LM only on what needs language.
@@ -604,7 +604,7 @@ import synalinks
 # previewed). The answer is *structured* and needs both halves of the RLM
 # design:
 #   - CODE (structure): scan the lines, keep the ERRORs, take the first one
-#     (the log is chronological). Deterministic — never a sub-LM call.
+#     (the log is chronological). Deterministic: never a sub-LM call.
 #   - sub-LM (meaning): turn that one terse error line into a plain-English
 #     explanation.
 # =============================================================================
@@ -631,9 +631,9 @@ class Incident(synalinks.DataModel):
 
 
 # =============================================================================
-# Synthetic long input — a realistic multi-service log with one buried incident
+# Synthetic long input: a realistic multi-service log with one buried incident
 #
-# Thousands of INFO/DEBUG lines across five services, then — ~60% in — a real
+# Thousands of INFO/DEBUG lines across five services, then (~60% in) a real
 # incident: `db` fails FIRST (connection pool exhausted), and `api` / `worker`
 # cascade off it a few seconds later. The earliest ERROR by timestamp is the
 # db one, so the root cause is deterministic and checkable. The primary LM
@@ -697,7 +697,7 @@ def show_incident(result, truth):
     """Print the structured answer and check the deterministic part.
 
     ``first_error_line`` is copied verbatim from the log by code, so it must
-    match the planted root-cause line exactly — a hard, model-independent check.
+    match the planted root-cause line exactly: a hard, model-independent check.
     """
     first_line = str(result.get("first_error_line", ""))
     correct = truth["line"] in first_line
@@ -718,9 +718,7 @@ async def main():
 
     # A capable primary LM for orchestration; a cheap one for sub-queries.
     # Both default to the same model if you only pass `language_model=`.
-    primary = synalinks.LanguageModel(
-        model="ollama/qwen3:8b", reasoning_effort="disable"
-    )
+    primary = synalinks.LanguageModel(model="ollama/qwen3:8b", reasoning_effort="disable")
     cheap = synalinks.LanguageModel(model="ollama/qwen3:8b", reasoning_effort="disable")
 
     # synalinks.enable_observability(
@@ -729,8 +727,8 @@ async def main():
 
     log, truth = build_incident_log(total_lines=2000)
     question = (
-        "An incident took place. Find its root cause — the first error in this "
-        "chronological log — and explain in one sentence what went wrong."
+        "An incident took place. Find its root cause, the first error in this "
+        "chronological log, and explain in one sentence what went wrong."
     )
     print(f"Log: {len(log.splitlines())} lines, {len(log)} characters")
     print(
@@ -738,7 +736,7 @@ async def main():
     )
 
     # -------------------------------------------------------------------------
-    # Example 1: Full triage — the primary LM never sees the 2000-line log,
+    # Example 1: Full triage. The primary LM never sees the 2000-line log,
     # only its preview. It writes code to find the earliest ERROR (structure)
     # and delegates the explanation to the sub-LM (meaning).
     # -------------------------------------------------------------------------
@@ -762,7 +760,7 @@ async def main():
     show_incident(result, truth)
 
     # -------------------------------------------------------------------------
-    # Example 2: Inspect the trajectory — every assistant code block and every
+    # Example 2: Inspect the trajectory. Every assistant code block and every
     # observation is recorded when return_inputs_with_trajectory=True (the
     # default). Useful for seeing which snippets the agent ran, which sub-LM
     # calls it dispatched, and how it converged on (or missed) the answer.

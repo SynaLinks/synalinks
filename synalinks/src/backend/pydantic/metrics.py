@@ -1,6 +1,6 @@
 # License Apache 2.0: (c) 2025-2026 Yoan Sallami (Synalinks Team)
 
-"""Metric-shaped data models — discretized scales the LM can pick from."""
+"""Metric-shaped data models: discretized scales the LM can pick from."""
 
 from enum import Enum
 

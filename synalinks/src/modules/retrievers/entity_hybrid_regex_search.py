@@ -23,7 +23,7 @@ from synalinks.src.saving import serialization_lib
 class EntityHybridRegexSearchInput(DataModel):
     """Input shape for `EntityHybridRegexSearch`.
 
-    The ``regex_patterns`` list is optional — when omitted, the
+    The ``regex_patterns`` list is optional: when omitted, the
     adapter falls back to plain vector similarity over
     ``similarity_search``.
     """
@@ -71,7 +71,7 @@ class EntityHybridRegexSearch(Module):
             providing ``schema`` via ``.get_schema()`` when ``schema``
             is not given.
         label (str): Target entity label. Defaults to the schema's
-            ``title``. **Optional** — when neither ``label`` nor a
+            ``title``. **Optional**: when neither ``label`` nor a
             schema to derive it from is given, the language model infers
             the target entity label per call (constrained to the
             knowledge base's actual entity labels).
@@ -211,7 +211,7 @@ class EntityHybridRegexSearch(Module):
         patterns = query_json.get("regex_patterns")
         # Fixed label, or the one the LM inferred this call.
         label = self.label or query_json.get("entity_label")
-        # Need at least one signal — vector or regex — plus a label to look up.
+        # Need at least one signal (vector or regex) plus a label to look up.
         if (not queries and not patterns) or not label:
             return None
 

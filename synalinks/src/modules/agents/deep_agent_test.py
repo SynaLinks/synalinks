@@ -100,7 +100,7 @@ class DeepAgentSandboxTest(testing.TestCase):
 
 
 class DeepAgentInstantiationTest(testing.TestCase):
-    """End-to-end instantiation tests — wires DeepAgent but doesn't run LM."""
+    """End-to-end instantiation tests: wires DeepAgent but doesn't run LM."""
 
     def _workdir(self):
         tmpdir = tempfile.mkdtemp()
@@ -384,7 +384,7 @@ class DeepAgentSubagentTest(testing.TestCase):
     @patch("litellm.acompletion")
     async def test_spawn_runs_parallel_isolated_subagents(self, mock_completion):
         # Every LM call returns a plain answer (no tool calls), so each subagent
-        # finalizes immediately — deterministic regardless of parallel ordering.
+        # finalizes immediately, deterministic regardless of parallel ordering.
         def no_tools(*args, **kwargs):
             return _lm_response(content="nothing to do")
 

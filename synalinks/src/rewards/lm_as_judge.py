@@ -59,7 +59,7 @@ class LMAsJudgeProgram(Program):
         y_true = inputs[0]
         y_pred = inputs[1]
         if not y_pred:
-            # No prediction to judge — return a reward-bearing data model
+            # No prediction to judge; return a reward-bearing data model
             # (the `ProgramAsJudge` contract) rather than a bare float, which
             # the wrapper would reject with `'float' has no attribute 'get'`.
             return CritiqueWithReward(

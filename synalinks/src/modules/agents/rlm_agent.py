@@ -50,11 +50,11 @@ code, never re-type them from the preview.
 
 Use `print(...)` to log intermediate observations. `submit` and any tools
 bound to the agent are functions available *inside* the sandbox (see the tools
-catalog), not separate tool calls — call them directly, e.g.
+catalog), not separate tool calls; call them directly, e.g.
 `out = submit(...)`. Reach them only from the code you pass to
 `run_python_code`.
 
-A snippet looks like this (note the variable is `inputs`, plural — it is a
+A snippet looks like this (note the variable is `inputs`, plural: it is a
 dict; `input` is something else):
 
     text = inputs["some_field"]          # read the full value via the binding
@@ -118,7 +118,7 @@ dict-comprehension counting) over re-querying.
 Use `print(...)` to log intermediate observations. Call sandbox tools
 directly, e.g. `out = llm_query(prompt)`.
 
-A snippet looks like this (note the variable is `inputs`, plural — it is a
+A snippet looks like this (note the variable is `inputs`, plural: it is a
 dict; `input` is something else):
 
     text = inputs["some_field"]          # read the full value via the binding
@@ -145,13 +145,13 @@ Working rules:
 5. `submit` IS TERMINAL. The snippet runs to completion (so a
    `print(...)` next to `submit(...)` is captured into the
    observation), but a successful submit ends the loop with no
-   follow-up turn — you never get to read that print. Inspect on one
+   follow-up turn; you never get to read that print. Inspect on one
    turn, submit on the next.
 
 Termination: call `submit(result={...})` from inside your snippet, with
 `result` matching its schema. `submit`, `llm_query` and `llm_query_batched`
 are functions available *inside* the sandbox (advertised in the tools
-catalog), not separate tool calls — call them directly and reach them only
+catalog), not separate tool calls; call them directly and reach them only
 from the code you pass to `run_python_code`. `submit` is the only termination
 path; an empty snippet is a no-op and you'll be reminded to call `submit`.
 Don't run out of iterations without calling it.
@@ -163,8 +163,7 @@ class ToolSpec(DataModel):
 
     name: str = Field(
         description=(
-            "The function's name in the sandbox. Call it directly as "
-            "`{name}(**kwargs)`."
+            "The function's name in the sandbox. Call it directly as `{name}(**kwargs)`."
         )
     )
     description: str = Field(
@@ -186,7 +185,7 @@ class ToolsCatalog(DataModel):
         default=[],
         description=(
             "Tools callable inside the sandbox as global functions: call them "
-            "directly, `result = name(**kwargs)`. Every tool returns a dict — a "
+            "directly, `result = name(**kwargs)`. Every tool returns a dict: a "
             "tool wrapping `def f(x) -> int` yields `{'result': <value>}`; a "
             "tool already returning a dict yields that dict directly."
         ),
@@ -239,7 +238,7 @@ def _build_submit_tool(schema, holder: dict, tool_name: str = "submit"):
         Args:
             result (dict): The final payload. With a target schema, ``result``
                 must match it (validation errors come back as an observation on
-                the next turn). Schemaless, pass ``{"answer": "..."}`` — the
+                the next turn). Schemaless, pass ``{"answer": "..."}``: the
                 ``answer`` string becomes the content of the final assistant
                 message.
         """
@@ -322,7 +321,7 @@ def _build_llm_query_batched_tool(sub_language_model, max_llm_calls, counter, lo
 
         Returns:
             dict: ``{"result": [...]}`` where each element is the
-                sub-LM response text, or, for prompts that failed —
+                sub-LM response text, or, for prompts that failed,
                 an error string prefixed with
                 ``"[error] <ExceptionType>: <message>"``. Order matches
                 the input prompts. Inspect each entry before aggregating
@@ -386,12 +385,12 @@ isolated *fork* of the sandbox that inherits your current REPL state
 - `spawn_subagents(tasks)`: launch one subagent per task string. Each runs
   concurrently on its own fork; its REPL/file changes stay on that fork and do
   NOT affect you. Returns a `handle`, the subagent's `result`, and a `patch`
-  (its file changes as a git-style unified diff — the actual line-level edits)
+  (its file changes as a git-style unified diff, the actual line-level edits)
   per subagent. Call it as a top-level tool (not from inside a snippet).
 - `merge_subagent(handle, paths=None, force=False, adopt_repl=False)`: fold a
   subagent's file changes into your sandbox (paths/force as for files).
   `adopt_repl=True` ALSO adopts that subagent's whole Python namespace
-  (variables/functions/imports) — all-or-nothing, and only one subagent's REPL
+  (variables/functions/imports), all-or-nothing, and only one subagent's REPL
   can be adopted per batch (a second would overwrite the first).
 - `discard_subagent(handle)`: drop a subagent's fork unmerged.
 Nothing a subagent does affects your sandbox until you `merge_subagent` it.
@@ -445,7 +444,7 @@ class RecursiveLanguageModelAgent(FunctionCallingAgent):
     returns ``{"stdout", "stderr", "error"}``. State (variables, imports,
     function definitions) accumulates across turns so the agent can build up
     intermediate values, probe data, and iterate. ``submit``, the recursive
-    helpers and any user tools are **not** exposed to the LM as tools — they
+    helpers and any user tools are **not** exposed to the LM as tools: they
     live *inside* the sandbox as plain synchronous functions (advertised
     through the tools catalog), reachable only from the code passed to
     ``run_python_code``.
@@ -477,7 +476,7 @@ class RecursiveLanguageModelAgent(FunctionCallingAgent):
     The ``llm_query`` quota is per-call: every invocation of this agent
     gets a fresh budget of ``max_llm_calls`` sub-LM queries, and
     concurrent invocations of the *same* agent instance each get an
-    independent budget — the counter and lock are built inside
+    independent budget: the counter and lock are built inside
     ``call()`` and never shared across runs.
 
     Example:
@@ -700,7 +699,7 @@ class RecursiveLanguageModelAgent(FunctionCallingAgent):
         # Domain attributes set before `super().__init__()`: the base
         # constructor builds the (inherited) step + final generators from the
         # instructions composed here, and `_get_builtin_tools` (called from
-        # there) needs none of them — RLM's callable tool is built per call.
+        # there) needs none of them; RLM's callable tool is built per call.
         self.max_subagent_depth = max_subagent_depth
         self._subagent_depth = _subagent_depth
         # Subagent delegation is offered only while we may still go one level
@@ -858,7 +857,7 @@ class RecursiveLanguageModelAgent(FunctionCallingAgent):
         the sandbox's ``run_python_code`` (which runs the
         snippet in the persistent sandbox) and clips the captured streams
         to ``max_output_chars``. The tools (``submit``, ``llm_query`` and
-        the user tools) and the ``inputs`` payload are not passed here —
+        the user tools) and the ``inputs`` payload are not passed here;
         `call` binds them onto the sandbox before each run (via
         ``bind_functions`` and a persisted ``inputs`` variable). The
         sandbox is closed over, so a fresh tool is built per call. For
@@ -881,10 +880,10 @@ class RecursiveLanguageModelAgent(FunctionCallingAgent):
         async def run_python_code(code: str) -> dict:
             """Execute one Python snippet in the persistent sandbox.
 
-            State persists across calls — variables, imports and function
+            State persists across calls: variables, imports and function
             definitions stay defined. The user input is bound as a dict named
             `inputs`; read full values via `inputs[field]`. Other tools
-            (`submit`, `llm_query`, ...) are pre-imported functions — call them
+            (`submit`, `llm_query`, ...) are pre-imported functions; call them
             directly, e.g. `out = llm_query(prompt)`. Call `submit(result={...})`
             to end the run.
 
@@ -906,8 +905,8 @@ class RecursiveLanguageModelAgent(FunctionCallingAgent):
     def _build_subagent_tools(self, sandbox, registry, counter, repl_state):
         """Build the per-call subagent tools (spawn / merge / discard).
 
-        These are *native* tools the LM calls directly — never from inside a
-        ``run_python_code`` snippet — so the sandbox REPL is idle when they
+        These are *native* tools the LM calls directly, never from inside a
+        ``run_python_code`` snippet, so the sandbox REPL is idle when they
         fork or merge it (a busy REPL can't be dumped). The closures capture
         the resolved ``sandbox``, a per-call ``registry`` (handle -> fork),
         a handle ``counter``, and ``repl_state`` tracking the single REPL
@@ -930,7 +929,7 @@ class RecursiveLanguageModelAgent(FunctionCallingAgent):
                     what that subagent should accomplish.
 
             Returns:
-                dict: ``subagents`` — a list of ``{handle, task, result,
+                dict: ``subagents``: a list of ``{handle, task, result,
                 diff, patch}`` per subagent, where ``patch`` is the subagent's
                 pending changes as a git-style unified diff (the actual
                 line-level edits) and ``diff`` is the structured
@@ -1025,7 +1024,7 @@ class RecursiveLanguageModelAgent(FunctionCallingAgent):
 
             Merges the subagent's file changes (``paths`` / ``force`` as for
             files). With ``adopt_repl=True``, also adopts the subagent's whole
-            Python namespace (variables/functions/imports) — only ONE
+            Python namespace (variables/functions/imports); only ONE
             subagent's REPL can be adopted per ``spawn_subagents`` batch (a
             second would overwrite the first).
 
@@ -1098,7 +1097,7 @@ class RecursiveLanguageModelAgent(FunctionCallingAgent):
             inputs_json = {}
         else:
             inputs_json = inputs.get_json()
-            # The LM prompt only sees a metadata summary of the inputs —
+            # The LM prompt only sees a metadata summary of the inputs:
             # previews and sizes, never the full value. The sandbox gets the
             # complete `inputs_json` rebound on every `run_python_code` call,
             # so `inputs[field]` is always reachable.
@@ -1129,7 +1128,7 @@ class RecursiveLanguageModelAgent(FunctionCallingAgent):
                 sandbox = self.sandbox_type(timeout=self.timeout)
 
         # The per-turn snippet is delivered as a native `run_python_code` tool
-        # call — the only tool the LM can call, wrapping the sandbox's own
+        # call, the only tool the LM can call, wrapping the sandbox's own
         # `run_python_code`. The sandbox-side tools (submit, llm_query, user
         # tools) are NOT exposed to the LM; they live inside the sandbox as
         # plain synchronous functions (advertised via the tools catalog). Bind
@@ -1145,8 +1144,8 @@ class RecursiveLanguageModelAgent(FunctionCallingAgent):
         run_tool = self._build_run_python_code_tool(sandbox)
 
         # Subagent tools (spawn / merge / discard) are *native* tools the LM
-        # calls directly alongside run_python_code — never from inside a
-        # snippet — so the REPL is idle when they fork/merge it. Built fresh per
+        # calls directly alongside run_python_code, never from inside a
+        # snippet, so the REPL is idle when they fork/merge it. Built fresh per
         # call with a private fork registry and a single-REPL-adoption guard.
         subagent_registry = {}
         extra_native_tools = {}
@@ -1206,7 +1205,7 @@ class RecursiveLanguageModelAgent(FunctionCallingAgent):
             tool_args = function.get("arguments") or {}
             tool_call_id = tool_call.get("id")
             if tool_name in extra_native_tools:
-                # spawn_subagents / merge_subagent / discard_subagent —
+                # spawn_subagents / merge_subagent / discard_subagent:
                 # native tools, invoked with the REPL idle.
                 try:
                     result = await extra_native_tools[tool_name](**tool_args)

@@ -306,7 +306,7 @@ class EmbeddingFailureMetricsTest(testing.TestCase):
 class EMRatesAndCacheTest(testing.TestCase):
     """`result()` paths for rate, per-call, and cache-hit-rate metrics that
     the existing tests don't hit. Three phases (inference/reward/optimizer)
-    follow the same shape — one parametric case per phase keeps coverage
+    follow the same shape; one parametric case per phase keeps coverage
     honest without 30 copy-pasted methods."""
 
     PHASES = (
@@ -391,7 +391,7 @@ class EMRatesAndCacheTest(testing.TestCase):
 
     def test_avg_per_call_metrics_per_phase(self):
         # `AvgRewardEmbeddingTokensPerCall`, `AvgRewardEmbeddingVectorsPerCall`,
-        # `AvgRewardEmbeddingCostPerCall`, and the optimizer-phase mirrors —
+        # `AvgRewardEmbeddingCostPerCall`, and the optimizer-phase mirrors:
         # each computes `<X>_delta / calls_delta`.
         for phase, AvgT, AvgV, AvgC in (
             (

@@ -4,9 +4,9 @@
 
 When a retriever is constructed without a fixed target (no ``table_name`` /
 ``label`` / endpoint label), it must let the language model choose one per call.
-These helpers build an extra JSON-schema field — constrained to a JSON-schema
+These helpers build an extra JSON-schema field (constrained to a JSON-schema
 ``enum`` of the knowledge base's actual tables / entity labels / relation labels,
-so the LM cannot pick a nonexistent target — and concatenate it onto the query
+so the LM cannot pick a nonexistent target) and concatenate it onto the query
 generator's input schema (`concatenate_schema`). The retriever then reads the
 inferred value back out of the generated query.
 """

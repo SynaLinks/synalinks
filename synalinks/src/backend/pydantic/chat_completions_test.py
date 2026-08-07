@@ -34,7 +34,7 @@ def _assistant_with_tool_call():
 class ChatCompletionsTest(testing.TestCase):
     def test_message_api_has_exact_key_parity_with_chat_completion(self):
         # The synalinks message API and the chat-completion wire message
-        # expose exactly the same keys — parity is on names only; value
+        # expose exactly the same keys: parity is on names only; value
         # types may deliberately differ (e.g. parsed-dict tool arguments
         # vs the JSON-encoded wire string).
         self.assertEqual(

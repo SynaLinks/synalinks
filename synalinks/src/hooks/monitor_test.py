@@ -33,7 +33,7 @@ class MonitorSpanTypeTest(testing.TestCase):
 
     def test_orchestrator_modules_map_to_chain(self):
         """`Generator` / `ChainOfThought` / `SelfCritique` are
-        orchestrators that wrap an LM call — the actual `CHAT_MODEL`
+        orchestrators that wrap an LM call: the actual `CHAT_MODEL`
         span is emitted by the inner `LanguageModel`, so these wrappers
         belong to `SpanType.CHAIN` (MLflow convention)."""
         for class_name in ("Generator", "ChainOfThought", "SelfCritique"):

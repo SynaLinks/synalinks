@@ -144,7 +144,7 @@ class DisableKerasBackendTest(testing.TestCase):
     def test_happy_path_emits_no_warnings(self):
         """Fresh state: stub installs silently.
 
-        Whether or not real Keras is on disk no longer affects this — the
+        Whether or not real Keras is on disk no longer affects this: the
         only signal we use is `sys.modules`. So the typical
         `synalinks + keras-tuner` user (kt pulls keras transitively but
         never imports it) gets a quiet install.
@@ -168,7 +168,7 @@ class DisableKerasBackendTest(testing.TestCase):
 
         `keras_tuner` was imported first, so it has already bound to whatever
         keras it found at import time. Installing the stub now would not
-        rewire kt and could mask the real failure mode — warn and bail.
+        rewire kt and could mask the real failure mode: warn and bail.
         """
         sys.modules["keras_tuner"] = types.ModuleType("keras_tuner")
 
@@ -187,8 +187,8 @@ class DisableKerasBackendTest(testing.TestCase):
 class KerasTunerIntegrationTest(testing.TestCase):
     """End-to-end: verify a synalinks user can actually drive `keras_tuner`.
 
-    These exercise the canonical pattern — subclass `kt.Tuner`, override
-    `run_trial` to return a float or dict — against the stub. Skipped
+    These exercise the canonical pattern (subclass `kt.Tuner`, override
+    `run_trial` to return a float or dict) against the stub. Skipped
     automatically when `keras_tuner` isn't installed.
 
     Each test gets a fresh kt import: once kt loads it caches references
@@ -265,7 +265,7 @@ class KerasTunerIntegrationTest(testing.TestCase):
     def test_tuner_callback_subclasses_stub(self):
         """kt's internal `TunerCallback` must successfully subclass the
         stub's `keras.callbacks.Callback` at import time."""
-        kt = self._kt()  # noqa: F841 — imports trigger kt module loads
+        kt = self._kt()  # noqa: F841 (imports trigger kt module loads)
         import keras
         from keras_tuner.src.engine.tuner_utils import TunerCallback
 
@@ -413,7 +413,7 @@ class KerasTunerIntegrationTest(testing.TestCase):
 
         best = tuner.get_best_hyperparameters(num_trials=1)
         self.assertEqual(len(best), 1)
-        # 20 random samples in [0,1] — best should land within 0.3 of the peak.
+        # 20 random samples in [0,1]; best should land within 0.3 of the peak.
         self.assertLess(abs(best[0].get("x") - 0.3), 0.3)
 
     def test_search_respects_min_direction(self):
@@ -466,7 +466,7 @@ class KerasTunerIntegrationTest(testing.TestCase):
         self.assertEqual(seen_choices, {"a", "b", "c"})
 
     def test_trials_persist_to_disk(self):
-        """kt writes each trial under the project directory — verify our
+        """kt writes each trial under the project directory; verify our
         stub doesn't interfere with that persistence."""
         kt = self._kt()
         import os

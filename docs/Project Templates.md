@@ -4,7 +4,7 @@
 templates ship inside the wheel, so it works fully offline.
 
 ```shell
-# Interactive — pick a template from a menu:
+# Interactive (pick a template from a menu):
 uvx synalinks init
 
 # Or non-interactively:
@@ -35,7 +35,7 @@ Run `synalinks init --list` to see the templates available in your version.
 
 | Template | What you get |
 | --- | --- |
-| **`script`** | A minimal single-file project — one `Generator` program you run and grow from. The best starting point. |
+| **`script`** | A minimal single-file project: one `Generator` program you run and grow from. The best starting point. |
 | **`api`** | An **OpenAI chat-completions-compatible** REST endpoint (`POST /v1/chat/completions`) backed by a `FunctionCallingAgent`, served with FastAPI. Point any OpenAI client at it. |
 | **`app`** | A full-stack starter: a Synalinks + FastAPI **backend**, a local **vLLM** model server, and an **MLflow** tracking server wired together with Docker Compose. The `frontend/` is a placeholder for the UI of your choice. |
 | **`mcp`** | A Synalinks agent exposed as an **MCP server** (Model Context Protocol) with FastMCP, so clients like Claude Desktop or Cursor can call it as a tool. |
@@ -51,7 +51,7 @@ npx skills add -y SynaLinks/synalinks-skills --skill synalinks
 ```
 
 Then start your coding agent (Claude Code, Cursor, Copilot, …) in the project
-folder — every template ships an `AGENTS.md` (with a `CLAUDE.md` symlink) that
+folder; every template ships an `AGENTS.md` (with a `CLAUDE.md` symlink) that
 teaches the agent how the project is laid out.
 
 ## Shared conventions
@@ -67,11 +67,11 @@ Every template follows the same conventions, so moving between them is easy:
 - **Build once, serve forever.** Server templates split *building* the program
   (a `build` step that composes modules and `.save()`s a JSON artifact) from
   *serving* it (the server only `.load()`s the artifact). Building does **not**
-  call the LM — even for an agent — so it runs fully offline (CI, Docker
+  call the LM (even for an agent), so it runs fully offline (CI, Docker
   image-build); a model is only needed at request time.
 - **Observability is one env var away.** Set `MLFLOW_TRACKING_URI` and every
   module call is traced to [MLflow](guides/Observability.md). Leave it unset and
-  tracing is a no-op — no MLflow server required.
+  tracing is a no-op: no MLflow server required.
 - **`.env` for secrets and endpoints.** Each template ships a `.env.template`;
   copy it to `.env` and fill in only what your model needs.
 - **Bring your own coding agent.** `AGENTS.md` documents the project for coding
@@ -96,11 +96,11 @@ Each template's own `README.md` has the exact quickstart, ports, and endpoints.
 
 ## Related
 
-- [FastAPI Deployment](guides/FastAPI Deployment.md) — the pattern behind the
+- [FastAPI Deployment](guides/FastAPI Deployment.md): the pattern behind the
   `api` and `app` templates.
-- [FastMCP Deployment](guides/FastMCP Deployment.md) — the pattern behind the
+- [FastMCP Deployment](guides/FastMCP Deployment.md): the pattern behind the
   `mcp` template.
-- [Training](guides/Training.md) — the `.compile()` / `.fit()` loop behind
+- [Training](guides/Training.md): the `.compile()` / `.fit()` loop behind
   `autotrain`.
-- [Observability](guides/Observability.md) — the MLflow tracing every template
+- [Observability](guides/Observability.md): the MLflow tracing every template
   wires in.

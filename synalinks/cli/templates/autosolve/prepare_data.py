@@ -1,4 +1,4 @@
-"""Where your data comes from — currently empty on purpose.
+"""Where your data comes from (currently empty on purpose).
 
 `evaluate.py` loads the built-in GSM8K benchmark directly:
 
@@ -11,7 +11,7 @@ When you move to *your own* task, put the data loading here and have
     (x_dev, y_dev), (x_test, y_test) = load_data()
 
 `x` and `y` are lists of `synalinks.DataModel` instances (the program's input and
-target). There are three ways to produce them — pick one and uncomment it.
+target). There are three ways to produce them; pick one and uncomment it.
 
 
 # =============================================================================
@@ -67,7 +67,7 @@ target). There are three ways to produce them — pick one and uncomment it.
 # =============================================================================
 # 3. Build the (x, y) lists yourself
 # =============================================================================
-# No file at all — just construct DataModel instances in code. Simplest path for
+# No file at all: just construct DataModel instances in code. Simplest path for
 # small / synthetic / programmatically-generated data.
 #
 #   import synalinks
@@ -79,5 +79,5 @@ target). There are three ways to produce them — pick one and uncomment it.
 #       return (x[:split], y[:split]), (x[split:], y[split:])
 #
 # For full control over streaming/rendering you can subclass `synalinks.Dataset`
-# and implement its row iterator — see `synalinks/src/datasets/` for examples.
+# and implement its row iterator; see `synalinks/src/datasets/` for examples.
 """

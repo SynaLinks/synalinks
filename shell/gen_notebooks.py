@@ -18,9 +18,13 @@ by guides/examples (``guides/22_sql_agent.py`` -> ``guides/sql_agent``).
 
 The ``.py`` files stay the single source of truth: their code is copied
 verbatim (only mkdocs-only ``# --8<--`` markers are stripped). The prose
-is rewritten so it renders in a notebook: mermaid diagrams become images
-(kroki.io), relative image paths become absolute, and cross-page ``.md``
-links are unwrapped to plain text.
+is rewritten so it renders in a notebook: relative image paths become
+absolute and cross-page ``.md`` links are unwrapped to plain text.
+Mermaid fences are kept as-is: renderers that support mermaid (GitHub,
+VS Code, Jupyter with the mermaid extension) draw them, and everywhere
+else they degrade to a readable code block (never a broken image, which
+is what converting them to kroki.io URLs produced whenever the kroki
+mermaid service was down).
 
 Usage:
     uv run python shell/gen_notebooks.py
@@ -29,11 +33,9 @@ Usage:
 from __future__ import annotations
 
 import ast
-import base64
 import json
 import re
 import shutil
-import zlib
 from pathlib import Path
 
 # --- Repo coordinates Colab/raw fetch from (see mkdocs.yml repo_url) ----------
@@ -68,7 +70,6 @@ OLLAMA_RE = re.compile(r"ollama/([A-Za-z0-9_.:\-]+)")
 HOSTED_RE = re.compile(r"\b(" + "|".join(HOSTED_ENV) + r")/[A-Za-z0-9_.:\-]+")
 ORDINAL_RE = re.compile(r"^\d+[a-z]?_")  # 22_ , 5a_ , 12b_
 
-MERMAID_RE = re.compile(r"```mermaid[ \t]*\n(.*?)\n[ \t]*```", re.S)
 IMG_REL_RE = re.compile(r"(!\[[^\]]*\]\()(?:\.\./)+assets/([^)]+)\)")
 MD_LINK_RE = re.compile(r"(?<!!)\[([^\]]+)\]\([^)]*\.md[^)]*\)")
 SNIPPET_MARKER_RE = re.compile(r"^[ \t]*#[ \t]*-{2}8<-{2}.*\n?", re.M)
@@ -79,16 +80,8 @@ def slug(stem: str) -> str:
     return ORDINAL_RE.sub("", stem)
 
 
-def kroki_image(diagram: str, diagram_type: str = "mermaid", fmt: str = "png") -> str:
-    """Encode a diagram for kroki.io so it renders as an <img> in a notebook."""
-    payload = zlib.compress(diagram.encode("utf-8"), 9)
-    encoded = base64.urlsafe_b64encode(payload).decode("ascii")
-    return f"https://kroki.io/{diagram_type}/{fmt}/{encoded}"
-
-
 def render_prose(text: str) -> str:
     """Rewrite mkdocs-only markdown so it renders inside a notebook."""
-    text = MERMAID_RE.sub(lambda m: f"![diagram]({kroki_image(m.group(1))})", text)
     text = IMG_REL_RE.sub(
         lambda m: f"{m.group(1)}{RAW_BASE}/docs/assets/{m.group(2)})", text
     )
@@ -117,7 +110,7 @@ def split_docstring_and_code(py_path: Path) -> tuple[str, str]:
 
 def build_bootstrap(code: str) -> str:
     parts = [
-        "# @title Setup — run me first",
+        "# @title Setup: run me first",
         "%pip install -q synalinks python-dotenv",
     ]
 
@@ -137,7 +130,7 @@ def build_bootstrap(code: str) -> str:
         parts += [
             "",
             "# This example uses local Ollama models. Install + start the server,",
-            "# then pull the models it needs. Slow on a CPU runtime — prefer a GPU one.",
+            "# then pull the models it needs. Slow on a CPU runtime; prefer a GPU one.",
             "!curl -fsSL https://ollama.com/install.sh | sh",
             "import subprocess, time",
             'subprocess.Popen(["ollama", "serve"])',
@@ -224,7 +217,7 @@ def inject_badge(md_path: Path, package: str, name: str) -> None:
 
 def main() -> None:
     if OUT_DIR.exists():
-        shutil.rmtree(OUT_DIR)  # fully regenerated — drop stale notebooks
+        shutil.rmtree(OUT_DIR)  # fully regenerated: drop stale notebooks
     count, seen = 0, {}
     for md_path in sorted(DOCS_DIR.rglob("*.md")):
         match = DIRECTIVE_RE.search(md_path.read_text(encoding="utf-8"))

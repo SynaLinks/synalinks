@@ -8,7 +8,7 @@ from synalinks.src.optimizers.optimizer import Optimizer
 def _trainable(history=None, candidates=None, best_candidates=None, **extra):
     """Build a JsonDataModel shaped like a `Trainable` variable.
 
-    Only the fields `on_epoch_end` touches are wired up — keeping the
+    Only the fields `on_epoch_end` touches are wired up, keeping the
     fixture minimal so each test reads as a contract assertion."""
     payload = {
         "candidates": candidates if candidates is not None else [],
@@ -42,7 +42,7 @@ class OptimizerHistoryTest(testing.TestCase):
         history = var.get("history")
         self.assertEqual(len(history), 1)
         self.assertEqual(history[0], {"prompt": "b"})
-        # `reward` must be stripped — history is a timeline of states,
+        # `reward` must be stripped: history is a timeline of states,
         # not of scored candidates.
         self.assertNotIn("reward", history[0])
 
@@ -80,7 +80,7 @@ class OptimizerHistoryTest(testing.TestCase):
         # Epoch 1: best = "v2" (added to candidates this round)
         var.update({"candidates": [{"prompt": "v2", "reward": 0.8}]})
         await optimizer.on_epoch_end(1, [var])
-        # Epoch 2: same best as epoch 1 — should NOT grow.
+        # Epoch 2: same best as epoch 1; should NOT grow.
         var.update({"candidates": [{"prompt": "v2", "reward": 0.95}]})
         await optimizer.on_epoch_end(2, [var])
         # Epoch 3: new best "v3".
@@ -112,7 +112,7 @@ class OptimizerHistoryTest(testing.TestCase):
 
         await optimizer.on_epoch_end(0, [var_a, var_b])
 
-        # Each variable maintains its own history — no cross-pollination.
+        # Each variable maintains its own history; no cross-pollination.
         self.assertEqual(var_a.get("history"), [{"prompt": "alpha"}])
         self.assertEqual(var_b.get("history"), [{"prompt": "beta"}])
 

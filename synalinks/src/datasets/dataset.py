@@ -15,14 +15,14 @@ class Dataset:
     """Base class for streaming datasets compatible with synalinks trainers.
 
     `Trainer.fit/evaluate/predict(x=...)` accepts a Python generator that
-    yields `(inputs,)` or `(inputs, targets)` tuples — one tuple per
+    yields `(inputs,)` or `(inputs, targets)` tuples: one tuple per
     batch. See `synalinks/src/trainers/data_adapters/generator_data_adapter.py`
     and the dispatch in `synalinks/src/trainers/data_adapters/__init__.py`.
 
     Subclasses implement ``_iter_rows()`` as a generator yielding raw row
     dicts (one per source example). The base class' ``__iter__`` then
     renders each row through the Jinja2 templates, validates the shape,
-    and yields batched ``(x, y)`` numpy object arrays — including the
+    and yields batched ``(x, y)`` numpy object arrays, including the
     ``repeat`` expansion. Calling the dataset returns a fresh generator
     suitable for synalinks:
 
@@ -35,7 +35,7 @@ class Dataset:
     OR a raw JSON Schema (``input_schema`` / ``output_schema``). The two
     are mutually exclusive on each side. With a class, rows are validated
     via ``cls.model_validate_json(rendered)``. With a schema, rows are
-    wrapped as ``JsonDataModel(schema=..., json=json.loads(rendered))`` —
+    wrapped as ``JsonDataModel(schema=..., json=json.loads(rendered))``:
     the schema flows directly into the LM as a structured-output
     constraint, so any JSON Schema feature (enum, const, oneOf, ...) is
     supported.
@@ -58,7 +58,7 @@ class Dataset:
             Mutually exclusive with ``output_data_model``. Must be omitted
             when ``output_template`` is omitted.
         output_template (str): Jinja2 template string used to render raw
-            rows into the target shape. Optional — when omitted, the
+            rows into the target shape. Optional: when omitted, the
             dataset is inputs-only and yields single-element ``(x,)``
             batches (no targets). Rewards that need ``y_true`` will see
             it missing.
@@ -71,7 +71,7 @@ class Dataset:
         repeat (int): Number of consecutive copies to emit per raw
             example. Defaults to 1 (no expansion). Setting
             ``repeat == batch_size`` makes every batch a group of N
-            rollouts of the same prompt — the expected layout for
+            rollouts of the same prompt, the expected layout for
             GRPO-style RL where reward statistics are computed across
             rollouts of one input.
         **kwargs (Any): Provider-specific fields forwarded by subclasses
@@ -211,15 +211,15 @@ class Dataset:
     def materialize(self):
         """Iterate the dataset to exhaustion and concatenate every batch.
 
-        Returns a single ``(x,)`` or ``(x, y)`` pair — numpy object
-        arrays of ``DataModel`` instances — suitable for
+        Returns a single ``(x,)`` or ``(x, y)`` pair (numpy object
+        arrays of ``DataModel`` instances) suitable for
         ``program.evaluate(x=x, y=y)``, ``program.fit(x=x, y=y)``,
         or for slicing into train/test splits with
         ``split_train_test``.
 
         This is the streaming-to-arrays bridge: any ``Dataset``
-        subclass — ``HuggingFaceDataset``, a custom CSV loader,
-        anything else — can be force-evaluated into in-memory NumPy
+        subclass (``HuggingFaceDataset``, a custom CSV loader,
+        anything else) can be force-evaluated into in-memory NumPy
         object arrays with a single method call. Use it for small
         benchmark datasets that fit comfortably in memory; for huge
         sources, iterate via ``ds()`` instead so rows stream on
@@ -243,7 +243,7 @@ class Dataset:
 
 @synalinks_export(["synalinks.datasets.split_train_test"])
 def split_train_test(x, y, validation_split=0.2):
-    """Deterministic head/tail split — for sources that ship a single
+    """Deterministic head/tail split, for sources that ship a single
     labeled split (HumanEval, IFEval, BBH, TruthfulQA, BBQ, ...).
 
     Args:

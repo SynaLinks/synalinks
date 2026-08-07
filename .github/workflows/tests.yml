@@ -29,7 +29,7 @@ jobs:
       # setup-uv used to create a `.venv` automatically; since uv 0.11.16 it no
       # longer does, so `uv pip install` (in shell/install.sh) has no
       # environment and aborts with "No virtual environment found". Create it
-      # explicitly — the `.venv` that install.sh and `uv run` both target.
+      # explicitly: the `.venv` that install.sh and `uv run` both target.
       - name: Create virtual environment
         run: uv venv
       - name: Display Python version
@@ -44,7 +44,7 @@ jobs:
       # GitHub's ubuntu-24.04 runners ship
       # kernel.apparmor_restrict_unprivileged_userns=1, which lets unshare()
       # create a user namespace but then neuters it so the /proc/self/setgroups
-      # write EPERMs — sandbox confinement can't initialize. Flip it off so the
+      # write EPERMs; sandbox confinement can't initialize. Flip it off so the
       # MirageSandbox confinement is genuinely exercised in CI (macOS has no
       # such mechanism; confinement is Linux-only and those tests skip there).
       - name: Enable unprivileged user namespaces (sandbox confinement)
@@ -53,7 +53,7 @@ jobs:
           sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 || true
           sudo sysctl -w kernel.unprivileged_userns_clone=1 || true
       # Fail loudly if confinement is NOT actually available on Linux, rather
-      # than letting the confine tests silently skip — CI must keep confinement
+      # than letting the confine tests silently skip: CI must keep confinement
       # under test (the whole point of the step above).
       - name: Assert sandbox confinement is available (Linux)
         if: runner.os == 'Linux'

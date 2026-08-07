@@ -8,5 +8,5 @@
 ## Source
 
 ````python
---8<-- "guides/18_multi_objective_lm_selection.py:429"
+--8 < --"guides/18_multi_objective_lm_selection.py:429"
 ````

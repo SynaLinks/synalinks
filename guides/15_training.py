@@ -2,7 +2,7 @@
 # Training
 
 So far we have *used* language models. In this guide we **improve**
-them — without ever touching their weights. The pieces have been
+them, without ever touching their weights. The pieces have been
 assembled in the last four guides: [Guide 11](https://synalinks.github.io/synalinks/guides/Datasets/) explained where the
 training data comes from; [Guide 12](https://synalinks.github.io/synalinks/guides/Trainable%20Variables/) explained what trainable state
 lives on a `Module`; [Guide 13](https://synalinks.github.io/synalinks/guides/Rewards/) explained how a reward function
@@ -19,7 +19,7 @@ whole time; what changes is the JSON state we place in front of it.
 
 We need to be precise with terminology in this guide, because words
 like *loss*, *gradient*, *optimizer*, *epoch*, and *batch* are
-borrowed from classical deep learning — and they mean something
+borrowed from classical deep learning, and they mean something
 subtly different here. Confusing the two mental models is the single
 most common pitfall for new users, so we spend a section up front
 contrasting them.
@@ -27,8 +27,8 @@ contrasting them.
 ## What We Are *Not* Doing: a contrast with classical ML
 
 In a typical "train a neural net" course, a model is a mathematical
-function `f_θ(x)` with a big bag of numeric parameters `θ` ("theta")
-— the **weights**. Training searches for values of `θ` that make the
+function `f_θ(x)` with a big bag of numeric parameters `θ` ("theta"),
+the **weights**. Training searches for values of `θ` that make the
 model's outputs match the targets on a dataset. The classical recipe
 looks like:
 
@@ -44,15 +44,15 @@ numbers inside the network.
 
 Synalinks does **none of this**. A Synalinks `Program` is a DAG of
 `Module`s. The parameters exposed to training are **JSON objects**
-attached to the modules — each one obeying a fixed schema (a
+attached to the modules, each one obeying a fixed schema (a
 subclass of `synalinks.Trainable`, the topic of [Guide 12](https://synalinks.github.io/synalinks/guides/Trainable%20Variables/)). On a
 `Generator`, the two trainable variables you will meet most often
 are:
 
-- the **instruction** variable — a JSON object whose primary
+- the **instruction** variable: a JSON object whose primary
   field is a string of system-prompt text the LM reads on every
   call, and
-- the **examples** variable — a JSON object whose primary field
+- the **examples** variable: a JSON object whose primary field
   is a list of `(input, output)` pairs shown to the LM as
   few-shot demonstrations.
 
@@ -61,8 +61,8 @@ hold any structured data its schema permits (you will see a
 `Persona` variable with a custom field in [Guide 12](https://synalinks.github.io/synalinks/guides/Trainable%20Variables/)). We never
 look inside the LM, and we never compute gradients. The LM is
 treated as a complete black box: we call it, we get text back,
-we score the text. What we optimize is the **context** — the
-trainable JSON objects — that drives the LM on each call.
+we score the text. What we optimize is the **context**, the
+trainable JSON objects, that drives the LM on each call.
 
 ```mermaid
 graph LR
@@ -83,10 +83,10 @@ graph LR
 Two consequences follow from this design:
 
 1. **No differentiation needed.** Any LM you can call through an API
-   works — open or closed, local or hosted. We never need access to
+   works: open or closed, local or hosted. We never need access to
    the model's internal weights.
 2. **Interpretable state.** After training, the learned state is
-   a small collection of JSON objects — typically one with an
+   a small collection of JSON objects, typically one with an
    instruction string inside, and one with a list of
    `(input, output)` pairs inside. You can open the saved JSON
    file in a text editor and literally **read** what was learned.
@@ -114,11 +114,11 @@ Now the precise versions, used consistently throughout this guide:
 - **Generator.** A `Module` that wraps a `LanguageModel` and emits
   a structured output. It exposes two trainable variables, each
   one a JSON object obeying a `Trainable` schema:
-    - `instruction_variable` — a JSON object whose primary field
+    - `instruction_variable`: a JSON object whose primary field
       is the system instruction shown to the LM (think: "You are
       an expert at solving math problems..."). The variable also
       carries optimizer bookkeeping fields; see [Guide 12](https://synalinks.github.io/synalinks/guides/Trainable%20Variables/).
-    - `examples_variable` — a JSON object whose primary field is
+    - `examples_variable`: a JSON object whose primary field is
       a list of `(input, target)` pairs inserted into the prompt
       as *few-shot demonstrations* (worked examples the LM can
       imitate).
@@ -133,7 +133,7 @@ Now the precise versions, used consistently throughout this guide:
 - **Optimizer.** An object with an
   `optimize(trainable_variables, ...)` method. Given the current
   variables and the `(y_pred, y_true, reward)` triples it has
-  observed, it proposes new JSON values for those variables — a
+  observed, it proposes new JSON values for those variables: a
   new instruction, a new list of examples, a new persona record,
   whatever the variables' schemas describe.
 - **Epoch.** One full pass over the training set.
@@ -169,7 +169,7 @@ For each training step `i`:
 A crucial property: **between two steps inside the same epoch, the
 trainable state does not change.** By default, updates happen only
 at epoch boundaries. So if you watch the reward stay flat through an
-epoch and worry, do not — that is the design, not a bug. Improvement
+epoch and worry, do not; that is the design, not a bug. Improvement
 shows up *across* epochs, not within one.
 
 ## The Training Loop in Code
@@ -235,7 +235,7 @@ the program by editing the LM's prompt instead of its weights). After
 each epoch, it picks `k = nb_max_examples` examples whose reward was
 above a threshold and pastes them into `examples_variable` as worked
 demonstrations for the LM to imitate. Cost per epoch is `O(N_train)`
-LM calls — one per training example — plus negligible bookkeeping.
+LM calls (one per training example) plus negligible bookkeeping.
 
 ```python
 optimizer = synalinks.optimizers.RandomFewShot(nb_max_examples=3)
@@ -247,7 +247,7 @@ optimizer will improve on it.
 
 ### `OMEGA`
 
-An **evolutionary** optimizer — that is, an optimizer modeled on
+An **evolutionary** optimizer, that is, an optimizer modeled on
 biological evolution. It keeps a **population** of candidate prompt
 variants, scores each on a held-out slice of data, throws out the
 worst ones (**selection**), and randomly tweaks the survivors
@@ -277,7 +277,7 @@ ships three useful ones out of the box.
 Compare only the fields named in `in_mask`. Return `1` if every one
 of those fields is exactly equal in `y_pred` and `y_true`, else `0`.
 This is a **discrete** (zero-or-one) reward that is
-**non-differentiable** — there is no notion of "almost correct."
+**non-differentiable**: there is no notion of "almost correct."
 Neither matters here, because we never take derivatives.
 
 ```python
@@ -339,7 +339,7 @@ is deliberately tiny so the guide finishes in a few minutes; do *not*
 read the reported rewards as evidence of model quality at scale.
 
 Expected output (numbers match a fresh run on the same model, up to the
-usual nondeterminism of LM sampling — the same prompt can give slightly
+usual nondeterminism of LM sampling; the same prompt can give slightly
 different text on different runs):
 
 ```
@@ -393,7 +393,7 @@ Loaded program test: 100 / 10 = 10
 ```
 
 A reward of `1.0` on every example here means the task is too easy
-for this model — the optimizer has nothing to fix. On a more
+for this model; the optimizer has nothing to fix. On a more
 challenging task you should expect the training reward to start
 below `1.0` and rise across epochs, with `val_reward` (the reward on
 held-out data) lagging slightly behind `reward`. That small gap is
@@ -408,7 +408,7 @@ normal.
   one `(y_pred, y_true)` pair *before* training to confirm shapes
   match.
 - **`mean_reward` rises, but `val_mean_reward` falls.** This is the
-  classic shape of **overfitting** — memorizing the training data
+  classic shape of **overfitting**: memorizing the training data
   without learning anything that generalizes. The few-shot pool is
   filled with examples too similar to the training split. Shrink
   `nb_max_examples`, or enlarge the training set.

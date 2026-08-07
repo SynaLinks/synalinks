@@ -37,7 +37,7 @@ Constraints:
 - Table and column names are case-sensitive: tables are PascalCase
   (e.g. ``Customer``), columns are snake_case (e.g. ``customer_id``).
 - Use the `database_schema` field already provided in the input to
-  pick the right tables and columns — do not invent identifiers.
+  pick the right tables and columns; do not invent identifiers.
 - When the user asks for "the top N" or "a few", add an explicit
   ``LIMIT`` clause; result sets are capped server-side anyway.
 """.strip()
@@ -46,9 +46,9 @@ Constraints:
 def _format_schema(knowledge_base) -> str:
     """Render the knowledge-base schema as a single text block.
 
-    Mirrors the ``get_database_schema`` SQL agent tool — each table is
+    Mirrors the ``get_database_schema`` SQL agent tool (each table is
     listed with its PascalCase title and snake_case columns annotated
-    with type and description — but returns a plain string so it can
+    with type and description) but returns a plain string so it can
     be embedded as a single field on a ``DatabaseSchema`` data model.
     """
     symbolic_models = knowledge_base.get_symbolic_data_models()
@@ -240,7 +240,7 @@ class Text2SQL(Module):
             raise ValueError(f"`k` must be a positive integer or None, got {k!r}")
         self.k = k
 
-        # Schema text is fetched at call time, not here — the KB can
+        # Schema text is fetched at call time, not here; the KB can
         # gain tables between construction and use, and a Program
         # built once but called many times must not freeze a stale
         # schema. Default instructions are schema-agnostic for the

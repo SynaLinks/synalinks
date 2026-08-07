@@ -169,10 +169,10 @@ class FBetaScore(Metric):
         false_negatives = []
         intermediate_weights = []
         # For each field of y_true and y_pred. SQuAD-style multiset (Counter)
-        # intersection — needed so identical strings with repeated tokens
+        # intersection, needed so identical strings with repeated tokens
         # score 1.0.
         # zip_longest, not zip: unmatched leaves (pred and gold structures can
-        # disagree on variable-length arrays) must be scored — the "" fill has
+        # disagree on variable-length arrays) must be scored; the "" fill has
         # no tokens, so they land entirely in false positives/negatives.
         for yt, yp in zip_longest(y_true, y_pred, fillvalue=""):
             y_true_tokens = nlp_utils.normalize_and_tokenize(str(yt))
@@ -541,7 +541,7 @@ class BinaryFBetaScore(FBetaScore):
         # zero-pad to the longer leaf list so the element-wise products below
         # never hit a broadcast error. A padded gold 0 makes an extra pred
         # leaf a false positive; a padded pred 0 makes a missing leaf a false
-        # negative — unmatched leaves are penalized, not dropped.
+        # negative: unmatched leaves are penalized, not dropped.
         size = max(len(y_true), len(y_pred))
         y_true = np.convert_to_tensor(y_true + [0.0] * (size - len(y_true)))
         y_pred = np.convert_to_tensor(y_pred + [0.0] * (size - len(y_pred)))

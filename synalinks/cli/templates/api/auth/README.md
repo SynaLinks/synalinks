@@ -1,6 +1,6 @@
 # auth/
 
-Authentication and authorization for the API live here. It's empty by design —
+Authentication and authorization for the API live here. It's empty by design:
 Synalinks doesn't opine on auth, and FastAPI already ships the building blocks.
 
 ## What goes here
@@ -20,7 +20,7 @@ _header = APIKeyHeader(name="Authorization", auto_error=False)
 
 
 async def require_api_key(value: str = Security(_header)) -> None:
-    # Compare against an env/secret store — never hard-code keys.
+    # Compare against an env/secret store; never hard-code keys.
     if value != f"Bearer {EXPECTED_KEY}":
         raise HTTPException(status_code=401, detail="Invalid or missing API key")
 ```

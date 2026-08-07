@@ -517,7 +517,7 @@ class FunctionCallingAgentTest(testing.TestCase):
         stream = await agent(input_messages)
 
         # The result must be the StreamingIterator itself, not a wrapped
-        # ChatMessages — the caller drains it.
+        # ChatMessages; the caller drains it.
         collected = ""
         async for chunk in stream:
             collected += chunk.get("content", "")
@@ -565,7 +565,7 @@ class FunctionCallingAgentTest(testing.TestCase):
         with op_scope("inference"):
             result = await agent(input_messages)
 
-        # Concrete, scorable prediction — not a raw StreamingIterator.
+        # Concrete, scorable prediction, not a raw StreamingIterator.
         self.assertNotIsInstance(result, StreamingIterator)
         self.assertTrue(is_chat_messages(result))
         # The drained final answer is appended to the trajectory.

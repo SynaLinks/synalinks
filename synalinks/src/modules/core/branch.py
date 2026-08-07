@@ -22,9 +22,9 @@ class Branch(Module):
 
     The behaviour of the selector depends on `decision_type`:
 
-    - `decision_type=Decision` (default) — exactly **one** branch is
+    - `decision_type=Decision` (default): exactly **one** branch is
       selected per call. All other slots are `None`.
-    - `decision_type=MultiDecision` — **one or more** branches are
+    - `decision_type=MultiDecision`: **one or more** branches are
       selected per call. Non-selected slots remain `None`. Use this for
       multi-label routing where several branches may need to fire at
       once (e.g., an article that spans both `science` and `finance`,
@@ -136,7 +136,7 @@ class Branch(Module):
     ```
 
     For a biotech-startup article the result might be
-    `(<ScienceSummary>, <FinanceSummary>, None)` — `science` and
+    `(<ScienceSummary>, <FinanceSummary>, None)`: `science` and
     `finance` are both active, `sports` stays `None`. The non-active
     slots can be combined downstream with `|` (logical OR) the same
     way as in the single-label example.

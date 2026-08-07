@@ -1,16 +1,16 @@
 """A Synalinks agent exposed as an MCP server with FastMCP.
 
-MCP (Model Context Protocol) lets a language-model client — Claude Desktop,
-Cursor, … — discover and call your code as a tool. This server exposes a
+MCP (Model Context Protocol) lets a language-model client (Claude Desktop,
+Cursor, …) discover and call your code as a tool. This server exposes a
 Synalinks `FunctionCallingAgent` as one MCP tool, `solve`.
 
-Build once, serve forever — two steps, never one:
+Build once, serve forever (two steps, never one):
 
     uv run python main.py build   # 1. build the agent, save it to disk
     uv run python main.py         # 2. serve it over stdio (what clients launch)
 
 The server's only startup job is to *load* the prepared artifact and fail fast
-if it is missing — it never rebuilds on the fly. See the guide:
+if it is missing; it never rebuilds on the fly. See the guide:
 https://synalinks.github.io/synalinks/guides/FastMCP%20Deployment/
 
 The model is read from the MODEL env var; it defaults to vLLM. MODEL is baked
@@ -54,7 +54,7 @@ def _enable_observability() -> None:
 
 
 # =============================================================================
-# Data models — the agent's structured input/output.
+# Data models: the agent's structured input/output.
 # =============================================================================
 
 
@@ -67,7 +67,7 @@ class NumericalAnswer(synalinks.DataModel):
 
 
 # =============================================================================
-# Tool used by the agent (inner) — distinct from the MCP tool (outer) below.
+# Tool used by the agent (inner), distinct from the MCP tool (outer) below.
 # =============================================================================
 
 
@@ -96,9 +96,9 @@ async def calculate(expression: str):
 async def build_and_save_program(path: Path) -> "synalinks.Program":
     """Build the agent once and persist it to ``path``.
 
-    Run this as a *separate* step (CLI verb, CI job, REPL) — never from the
+    Run this as a *separate* step (CLI verb, CI job, REPL), never from the
     server lifespan. Building does not call the LM (it just composes modules and
-    records schemas), so it works offline — no model needed until request time.
+    records schemas), so it works offline: no model needed until request time.
     """
     synalinks.clear_session()
     lm = synalinks.LanguageModel(model=os.environ.get("MODEL", DEFAULT_MODEL))
@@ -120,7 +120,7 @@ async def build_and_save_program(path: Path) -> "synalinks.Program":
 
 
 # =============================================================================
-# FastMCP server — loads a prepared artifact, fails fast if it is missing.
+# FastMCP server: loads a prepared artifact, fails fast if it is missing.
 # =============================================================================
 
 
@@ -148,7 +148,7 @@ async def solve(query: str, ctx: Context) -> NumericalAnswer:
     """Solve an arithmetic word problem expressed in natural language.
 
     Use this tool whenever the user asks a question that needs careful
-    arithmetic — counting, totals, averages, or any multi-step calculation.
+    arithmetic: counting, totals, averages, or any multi-step calculation.
     Pass the user's question verbatim as ``query``; the tool returns a single
     numerical answer.
     """

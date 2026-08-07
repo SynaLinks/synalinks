@@ -23,7 +23,7 @@ def _write(path, content=b"hello"):
 class PathToStringTest(testing.TestCase):
     def test_converts_pathlike(self):
         # Compare against the OS-native string form (backslashes on Windows),
-        # not a hardcoded POSIX path — the point is PathLike -> str conversion.
+        # not a hardcoded POSIX path; the point is PathLike -> str conversion.
         path = Path("/tmp/x")
         self.assertEqual(file_utils.path_to_string(path), os.fspath(path))
 
@@ -204,7 +204,7 @@ class SafePathFilterTest(testing.TestCase):
             tf.addfile(info, fileobj=None)
 
         # filter_safe_paths judges members against the *current* working
-        # directory (resolve_path(".")), so pin the CWD to tmp — otherwise the
+        # directory (resolve_path(".")), so pin the CWD to tmp; otherwise the
         # escape is non-deterministic depending on where an earlier test left
         # the process (e.g. at "/", "../escape.txt" no longer escapes).
         cwd = os.getcwd()

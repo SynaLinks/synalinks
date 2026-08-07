@@ -1,9 +1,9 @@
-# Agent guide — app
+# Agent guide: app
 
 A full-stack starter: a Synalinks + FastAPI **backend** (`backend/main.py`), a
 local **vLLM** model server, and an **MLflow** tracking server, orchestrated by
 `docker-compose.yaml`. The **frontend is a placeholder** (`frontend/` holds only
-a README) — the user brings their own.
+a README); the user brings their own.
 
 ## What to know
 
@@ -17,7 +17,7 @@ a README) — the user brings their own.
   service to `docker-compose.yaml`.
 - **Models = vLLM by default** (`MODEL=vllm/Qwen/Qwen3-4B`); the base URL comes
   from `HOSTED_VLLM_API_BASE`. `MODEL` is baked into the backend artifact at
-  build time — set it in `backend/.env` or as the compose build arg, then
+  build time; set it in `backend/.env` or as the compose build arg, then
   rebuild. No GPU? Use `MODEL=ollama/mistral:latest`.
 - **MLflow tracing** is enabled at startup whenever `MLFLOW_TRACKING_URI` is set
   (`_enable_observability()` runs before the program is loaded).
@@ -37,7 +37,7 @@ template. Custom Agent Skills can live under `.agents/skills/`.
 
 ## Troubleshooting a framework bug
 
-Most failures are in *your* program — fix those here. But if you trace a problem
+Most failures are in *your* program; fix those here. But if you trace a problem
 to **Synalinks itself** (a stack trace inside the `synalinks` package, or a
 missing/broken framework feature), fix it at the source and upstream it:
 

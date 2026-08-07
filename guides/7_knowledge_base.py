@@ -3,7 +3,7 @@
 
 So far the programs you have built have used only what the language
 model already knows from its pre-training. That works for "What is the
-capital of France?" — but not for "What did our company decide in
+capital of France?", but not for "What did our company decide in
 yesterday's meeting?" In this guide we add a memory that lives
 *outside* the LM: a **knowledge base** (KB) the program can search at
 runtime.
@@ -21,38 +21,38 @@ A slightly more formal description: a knowledge base is a triple
   (it has a known set of typed fields).
 - `I` is one or more indices built over `S`.
 - `Q` is a family of query operators that take a search request and
-  return a **ranked** subset of `S` — records sorted from most to
+  return a **ranked** subset of `S`: records sorted from most to
   least relevant.
 
 In Synalinks, `S` is defined by `DataModel` classes (the Pydantic-style
 typed records you have seen since [Guide 2](https://synalinks.github.io/synalinks/guides/Data%20Models/)). The indices are provided by
 **DuckDB**, an embedded SQL engine, plus a couple of DuckDB extensions
 for text and vector search. `Q` is exposed on a `KnowledgeBase`
-object via five complementary retrieval methods —
+object via five complementary retrieval methods:
 `fulltext_search` (BM25), `similarity_search` (vector),
 `regex_search` (RE2 patterns), `hybrid_fts_search` (vector + BM25
 fused with Reciprocal Rank Fusion), and `hybrid_regex_search`
-(vector + regex, same fusion) — plus a raw `query()` escape hatch
+(vector + regex, same fusion), plus a raw `query()` escape hatch
 for arbitrary SQL.
 
 ## Why Put Knowledge Outside the Model
 
 A language model is a fixed function. Once trained, its weights are
 frozen. At inference time the only "memory" the model has is whatever
-text you put into its **context window** — the bounded buffer of tokens
+text you put into its **context window**: the bounded buffer of tokens
 it reads on each call. That gives us two hard limits:
 
 1. **Parameter cutoff.** Weights are frozen at the end of training. A
    fact discovered yesterday simply cannot appear in the model unless
    you either retrain it (expensive) or paste the fact into the
    context window at query time (cheap).
-2. **Context bound.** The context window is finite — typically a few
+2. **Context bound.** The context window is finite, typically a few
    thousand to a few hundred thousand tokens. You cannot paste an
    entire corpus into every prompt. And even if you could, longer
    contexts degrade quality and cost more.
 
-A knowledge base **externalizes** state. Retrieval — picking the
-records relevant to a question — becomes a deterministic, auditable
+A knowledge base **externalizes** state. Retrieval, picking the
+records relevant to a question, becomes a deterministic, auditable
 preprocessing step that selects the small slice of context the
 (non-deterministic) generator will then read. When something goes
 wrong, you can isolate the bug to the boundary between *symbolic*
@@ -72,7 +72,7 @@ The arrow from `Query` directly into the `Generator` is deliberate:
 the original query is needed both to *select* the context (via the
 retriever) and to tell the generator what the user actually asked.
 
-This whole pattern — retrieve, then generate — has a name you will see
+This whole pattern (retrieve, then generate) has a name you will see
 everywhere in the field: **RAG**, for Retrieval-Augmented Generation.
 
 ## Architecture
@@ -81,7 +81,7 @@ A single DuckDB file stores both the rows and the indices. DuckDB is
 an **embedded SQL database**, similar in spirit to SQLite: it runs
 inside your Python process, and the entire database is one file on
 disk. Each `DataModel` class maps to one SQL table. Indices are built
-lazily — the first call to a search method on a table triggers index
+lazily: the first call to a search method on a table triggers index
 construction; subsequent calls reuse it.
 
 ```mermaid
@@ -159,7 +159,7 @@ We walk through them in order of conceptual complexity:
 two **hybrid** combinations (vector + BM25, vector + regex) that
 fuse pairs of them via Reciprocal Rank Fusion. Pick whichever
 signal your query expresses. If you're unsure, **`hybrid_fts_search`
-is the production-default** — it captures both lexical precision
+is the production-default**: it captures both lexical precision
 and semantic recall.
 
 ### 1. Full-text search (BM25)
@@ -168,10 +168,10 @@ Full-text search answers the question: *"which records contain the
 words in my query?"* The classic scoring function for this is **BM25**.
 Intuitively, BM25 gives a record a higher score when:
 
-- it contains more of the query terms (**term frequency** — the more
+- it contains more of the query terms (**term frequency**: the more
   often a word appears, the more relevant the record is),
 - those terms are *rare* in the corpus overall (**inverse document
-  frequency** — words like "the" appear everywhere and tell you almost
+  frequency**: words like "the" appear everywhere and tell you almost
   nothing about which document is relevant; rare words are more
   informative), and
 - the record is not unusually long (long records are penalized so they
@@ -199,8 +199,8 @@ learning", because no query word literally appears in the documents.
 
 ### 2. Similarity search (vector)
 
-A **vector embedding** is a fixed-length list of numbers — typically a
-few hundred floats — produced by a neural network. The network is
+A **vector embedding** is a fixed-length list of numbers, typically a
+few hundred floats, produced by a neural network. The network is
 trained so that *semantically* similar texts get *numerically* nearby
 vectors. So "machine learning" and "how computers learn" land close
 together in the vector space even though they share no words.
@@ -214,7 +214,7 @@ Similarity search works in three steps:
    query vector under your chosen `metric` (typically cosine
    similarity).
 
-The index structure is called **HNSW** — Hierarchical Navigable Small
+The index structure is called **HNSW**: Hierarchical Navigable Small
 World, an *approximate* nearest-neighbor data structure. The word
 "approximate" is important: exact nearest-neighbor search over
 millions of vectors would be too slow, so HNSW trades a tiny amount of
@@ -242,13 +242,13 @@ This closes the lexical gap. Two cautions:
 
 ### 3. Hybrid: Vector + BM25 (`hybrid_fts_search`)
 
-Hybrid search runs both retrievers — BM25 *and* vector — and **fuses**
+Hybrid search runs both retrievers (BM25 *and* vector) and **fuses**
 their rankings into a single combined ranking. Synalinks uses
 **Reciprocal Rank Fusion (RRF)**: each candidate's final score is a
 weighted sum of `1 / (k + rank)` from each retriever, where `rank` is
 its position in that retriever's list. The intuition: being near the
 top of *either* list is strong evidence, and RRF rewards documents
-that show up well in multiple rankings — without requiring the
+that show up well in multiple rankings, without requiring the
 underlying scores to be on comparable scales.
 
 ```python
@@ -259,7 +259,7 @@ results = await kb.hybrid_fts_search(
 )
 ```
 
-(There is no per-retriever weight knob — RRF is rank-based, so the
+(There is no per-retriever weight knob; RRF is rank-based, so the
 two retrievers contribute symmetrically. The only fusion knob is
 `k_rank`, the RRF smoothing constant. Optional `similarity_threshold`
 and `fulltext_threshold` arguments filter each retriever's input
@@ -276,7 +276,7 @@ The vector-plus-regex sibling of `hybrid_fts_search`. Same Reciprocal
 Rank Fusion, but the second retriever is **regex matching** (RE2
 syntax) instead of BM25. Use it when the query has both a *semantic*
 shape ("error in the auth layer") and an *exact textual* shape
-("`HTTP/\\d{3}\\s+ERROR`") — vectors get the semantics, regex pins
+("`HTTP/\\d{3}\\s+ERROR`"): vectors get the semantics, regex pins
 down the literal pattern, and the two signals merge.
 
 ```python
@@ -289,7 +289,7 @@ results = await kb.hybrid_regex_search(
 ```
 
 Pass `pattern_or_patterns=None` to skip the regex half (degenerates
-to a plain vector search) — useful when the LM hasn't decided what
+to a plain vector search), useful when the LM hasn't decided what
 the literal shape should be. Without an embedding model configured,
 the call gracefully falls back to regex-only.
 
@@ -297,7 +297,7 @@ the call gracefully falls back to regex-only.
 
 Pure pattern matching against the string fields of each table.
 DuckDB ships RE2 (Google's regex library), so evaluation is
-**linear-time** — no catastrophic-backtracking surface even on
+**linear-time**: no catastrophic-backtracking surface even on
 untrusted patterns.
 
 ```python
@@ -316,7 +316,7 @@ an article but not its `tags`).
 
 ## CRUD: Storing and Reading Records
 
-**CRUD** stands for **C**reate, **R**ead, **U**pdate, **D**elete —
+**CRUD** stands for **C**reate, **R**ead, **U**pdate, **D**elete:
 the four basic database operations. Synalinks exposes them as async
 methods on `KnowledgeBase`.
 
@@ -361,7 +361,7 @@ all_docs = await kb.getall(
 # One id at a time.
 n_deleted = await kb.delete("doc1", table_name="Document")
 
-# Or a batch — the return value is the number of rows that
+# Or a batch; the return value is the number of rows that
 # actually matched and got removed.
 n_deleted = await kb.delete(
     ["doc1", "doc2", "ghost"],   # "ghost" doesn't exist → not counted
@@ -397,13 +397,13 @@ results = await kb.sql(
 Always use **parameterized queries**: the `?` placeholder is filled in
 by the database *after* the SQL has been parsed, so user input can
 never be mistaken for SQL syntax. This is how you avoid SQL injection
-attacks — a class of security vulnerability you should learn to spot
+attacks, a class of security vulnerability you should learn to spot
 even if you never become a security engineer.
 
 #### Letting an LM write the SQL: `read_only=True`
 
 `kb.sql` is also how you let a language model write SQL against
-the KB (an "SQL agent" — see the [SQL Agent example](https://synalinks.github.io/synalinks/Code%20Examples/SQL%20Agent/)).
+the KB (an "SQL agent"; see the [SQL Agent example](https://synalinks.github.io/synalinks/Code%20Examples/SQL%20Agent/)).
 The model's output is, by definition, untrusted: it may be
 malformed, mutating, or trying to read files. Passing
 `read_only=True` enables two layers of defence:
@@ -413,14 +413,14 @@ malformed, mutating, or trying to read files. Passing
    `SELECT`. This catches multi-statement injection
    (`SELECT 1; DROP TABLE x`), `COPY (SELECT …) TO 'file'`
    exfiltration, `ATTACH`, `EXPORT`, and every other side-effecting
-   statement. It is the *only* layer that blocks writes — the
+   statement. It is the *only* layer that blocks writes; the
    adapter's underlying connection is read-write, so the parser is
    what keeps untrusted SQL read-only.
 2. **Sandbox (blocks external I/O).** The persistent connection
    has `enable_external_access=false` set at construction time,
    so `SELECT` table functions that touch the filesystem or
-   network — `read_csv`, `read_parquet`, `read_json`, `read_blob`,
-   `glob`, the httpfs/S3 variants — return a permission error
+   network (`read_csv`, `read_parquet`, `read_json`, `read_blob`,
+   `glob`, the httpfs/S3 variants) return a permission error
    instead of leaking files. Without this layer,
    `SELECT * FROM read_csv('/etc/passwd', ...)` would pass the
    parser check because it is a syntactically valid `SELECT`.
@@ -431,7 +431,7 @@ result = await kb.sql(llm_generated_sql, read_only=True)
 ```
 
 The default for `kb.sql` is `read_only=True`. Pass
-`read_only=False` only from call sites *you* control — those skip
+`read_only=False` only from call sites *you* control; those skip
 the parser check and accept any SQL on the same sandboxed
 connection.
 
@@ -442,7 +442,7 @@ lifetime, so one process can run many operations back-to-back
 without paying the open + extension-load cost on each call. The
 trade-off: this process holds DuckDB's exclusive file lock until
 the KB is closed. Call `kb.adapter.close()` (or just let the KB go
-out of scope — `__del__` cleans up best-effort) before opening
+out of scope; `__del__` cleans up best-effort) before opening
 another process against the same file.
 
 ### Encrypted databases
@@ -463,20 +463,20 @@ A few things to know:
 - **The key is never serialised.** It does not appear in
   `kb.get_config()`, in `repr(kb)`, or in any saved program file.
   When you reload a program that uses an encrypted KB, you must
-  re-supply the key — exactly the same shape as a database
+  re-supply the key, exactly the same shape as a database
   password.
 - **Wrong / missing key fails loudly.** `Invalid Input Error: Wrong
   encryption key used to open the database file` for a mismatch;
   `Cannot open encrypted database "…" without a key` for the
   no-key case.
 - **One process at a time.** Encryption doesn't change the
-  exclusive-file-lock story — only one adapter at a time can
+  exclusive-file-lock story: only one adapter at a time can
   attach the file. Use separate files for separate processes, or
   put a shared service in front.
 
 ## Loading from Files
 
-The CRUD methods above insert one row (or a list of rows) at a time —
+The CRUD methods above insert one row (or a list of rows) at a time,
 fine for hand-curated content or live writes from your application, but
 the wrong tool when you already have a CSV / Parquet / JSON / JSONL
 file on disk and want to get its contents into the KB as fast as
@@ -486,21 +486,21 @@ trade speed for transformation power in opposite directions.
 ```mermaid
 graph LR
     A["Source file"] --> B{"Does the source<br/>need transformation<br/>row-by-row?"}
-    B -->|"No — load as-is"| C["kb.from_csv / from_parquet<br/>/ from_json / from_jsonl"]
-    B -->|"Yes — rename,<br/>derive, reshape"| D["kb.update(CSVDataset / …)"]
+    B -->|"No: load as-is"| C["kb.from_csv / from_parquet<br/>/ from_json / from_jsonl"]
+    B -->|"Yes: rename,<br/>derive, reshape"| D["kb.update(CSVDataset / …)"]
     C --> E["Native DuckDB load<br/>(~25× faster)"]
     D --> F["Python row pipeline<br/>(Pydantic + Jinja)"]
 ```
 
-Pick the **fast path** (`kb.from_*`) when the file can be loaded as-is
-— you don't need to rename columns, derive fields, or otherwise
+Pick the **fast path** (`kb.from_*`) when the file can be loaded as-is:
+you don't need to rename columns, derive fields, or otherwise
 rewrite each row. The schema is inferred directly from the file, with
 the first column promoted to PRIMARY KEY. Pick the **streaming path**
 (`kb.update(<...>Dataset(...))`) when you do need to rewrite rows
 through a Jinja template before storage. The streaming path is what
 HuggingFace, Parquet, and CSV `Dataset` objects feed into.
 
-The performance gap is large enough to matter — see
+The performance gap is large enough to matter; see
 `benchmarks/bench_kb_ingest.py` for the full table. At 10 000 rows on
 a typical laptop:
 
@@ -517,7 +517,7 @@ INSERT inside DuckDB, with no Python on the per-row hot loop.
 ### The fast path: `kb.from_csv` / `from_parquet` / `from_json` / `from_jsonl`
 
 All four methods share the same shape. You don't pre-declare a
-`DataModel` for the target table — the schema is read straight from
+`DataModel` for the target table; the schema is read straight from
 the file. The call returns the constructed `SymbolicDataModel`, which
 is the handle you pass to subsequent `get` / `search` calls.
 
@@ -533,12 +533,12 @@ documents = await kb.from_csv(
     table_description="Knowledge-base articles.",   # being explicit
 )
 
-# Equivalent — table named `Articles` from the filename stem:
+# Equivalent: table named `Articles` from the filename stem:
 articles = await kb.from_parquet("articles.parquet")
 posts    = await kb.from_json("posts.json")
 events   = await kb.from_jsonl("events.jsonl")
 
-# Returned models carry the post-load table name — pass it back in:
+# Returned models carry the post-load table name; pass it back in:
 hits = await kb.fulltext_search(
     "python",
     table_name=documents.get_schema()["title"],
@@ -548,7 +548,7 @@ hits = await kb.fulltext_search(
 
 What happens under the hood:
 
-1. The persistent sandboxed connection is briefly torn down — DuckDB
+1. The persistent sandboxed connection is briefly torn down; DuckDB
    enforces a single-writer lock per database file, and the native
    readers (`read_csv`, `read_parquet`, `read_json`) need
    `enable_external_access=true`, which the sandboxed connection
@@ -558,7 +558,7 @@ What happens under the hood:
    `CREATE TABLE IF NOT EXISTS <name> (...)` with the first column
    promoted to PRIMARY KEY.
 3. One `INSERT INTO <name> (cols…) SELECT cols… FROM read_*(?) ON
-   CONFLICT (pk) DO UPDATE SET …` — so existing rows are overwritten
+   CONFLICT (pk) DO UPDATE SET …`, so existing rows are overwritten
    on a primary-key match, just like the single-row `update` call.
 4. The persistent connection is reopened with the sandbox re-applied
    (so `kb.sql(read_only=True)` still refuses external readers
@@ -572,14 +572,14 @@ What happens under the hood:
    at least one non-NULL embedding (see *Embeddings on the fast path*
    below).
 
-If you want the symbolic data model for a table later — say after
-re-opening a KB pointed at the same file — call
+If you want the symbolic data model for a table later, say after
+re-opening a KB pointed at the same file, call
 `kb.get_symbolic_data_models()` to enumerate every table the adapter
 knows about.
 
 #### Format-specific notes
 
-**CSV.** Types are inferred by DuckDB's CSV reader — same behaviour
+**CSV.** Types are inferred by DuckDB's CSV reader, same behaviour
 as the Parquet / JSON paths. A column of digits comes out as
 `BIGINT`, a column of decimals as `DOUBLE`, a column of text as
 `VARCHAR`. The auto-detector is conservative about strings that
@@ -600,7 +600,7 @@ docs = await kb.from_csv(
 ```
 
 **Parquet.** The schema is explicit in the file footer, so there's no
-inference guesswork — types match end-to-end whenever the source file
+inference guesswork; types match end-to-end whenever the source file
 and the data model agree.
 
 **JSON.** The file must be a top-level array of objects:
@@ -613,7 +613,7 @@ memory.
 
 #### Embeddings on the fast path
 
-The bulk load does **not** insert the embedding column — the source
+The bulk load does **not** insert the embedding column; the source
 files typically don't contain precomputed vectors. The HNSW vector
 index is auto-built only when an embedding model is configured *and*
 the table already has rows with non-NULL embeddings (e.g., from a
@@ -628,8 +628,8 @@ previous `update()` call that populated them). So:
 
 ### The streaming path: `kb.update(<...>Dataset(...))`
 
-When the source rows need transformation — column renames, deriving a
-field from two others, normalizing a date, anything Jinja-shaped —
+When the source rows need transformation (column renames, deriving a
+field from two others, normalizing a date, anything Jinja-shaped),
 build a `Dataset` and hand it to `kb.update`. The dataset iterates the
 file batch-by-batch, runs each row through your Jinja `input_template`
 to produce a JSON payload, validates it against the `DataModel`, and
@@ -650,7 +650,7 @@ ids = await kb.update(ds)
 ```
 
 Here the source columns are `row_id`, `headline`, `body`, but the
-stored shape is `id`, `title`, `content` — the template performs the
+stored shape is `id`, `title`, `content`; the template performs the
 rename per row. The same pattern works for `synalinks.ParquetDataset`,
 `synalinks.JSONDataset`, `synalinks.JSONLDataset`, and
 `synalinks.HuggingFaceDataset`.
@@ -668,7 +668,7 @@ template needs to do real work.
 
 `kb.update(dataset)` only accepts **inputs-only** datasets (no
 `output_template`). A labeled dataset configured for training raises a
-clear `ValueError` — the KB stores records, not `(input, target)`
+clear `ValueError`: the KB stores records, not `(input, target)`
 pairs.
 
 ## Knowledge Modules: KB Operations Inside Programs
@@ -705,14 +705,14 @@ retrieved = await synalinks.RetrieveKnowledge(
 
 `search_type` mirrors the KB's five operators:
 
-- `"similarity"` — vector only.
-- `"fulltext"` — BM25 only.
-- `"hybrid_fts"` (default) — vector + BM25 fused with RRF. The legacy
+- `"similarity"`: vector only.
+- `"fulltext"`: BM25 only.
+- `"hybrid_fts"` (default): vector + BM25 fused with RRF. The legacy
   spelling `"hybrid"` is accepted as an alias.
-- `"regex"` — RE2 regex against string fields. The LM is instructed
+- `"regex"`: RE2 regex against string fields. The LM is instructed
   to emit *regex patterns* in the `search` list instead of natural-
   language queries.
-- `"hybrid_regex"` — vector + regex, fused with RRF. The LM emits
+- `"hybrid_regex"`: vector + regex, fused with RRF. The LM emits
   both a natural-language `search` list (vector side) and a
   `patterns` list (regex side), which means the output schema picks
   up a `patterns` field for this mode only.
@@ -885,7 +885,7 @@ A short list of failure modes worth scanning for before you ship a KB:
   built with `embedding_model=None` raises an error at *query* time,
   not at construction time. Decide up front whether you will need
   vector search. (`hybrid_fts_search` and `hybrid_regex_search`
-  degrade gracefully in this case — they fall back to the non-vector
+  degrade gracefully in this case; they fall back to the non-vector
   half rather than erroring.)
 - **Primary-key collision.** `update` silently overwrites the
   existing row on a key match. If that is wrong for your use case,
@@ -909,9 +909,9 @@ A short list of failure modes worth scanning for before you ship a KB:
   **`similarity_search`** (vector, semantic, needs an
   embedding model), **`regex_search`** (RE2 patterns, linear-time
   evaluation), **`hybrid_fts_search`** (vector + BM25 fused with
-  Reciprocal Rank Fusion — the standard default for production RAG),
+  Reciprocal Rank Fusion, the standard default for production RAG),
   and **`hybrid_regex_search`** (vector + regex, same fusion). Plus
-  a raw **`query()`** escape hatch — see the *Raw SQL* section below.
+  a raw **`query()`** escape hatch; see the *Raw SQL* section below.
 - The **`RetrieveKnowledge`** module drops retrieval into a
   `Program` directly; combined with a downstream `Generator`,
   that is **RAG** (Retrieval-Augmented Generation).

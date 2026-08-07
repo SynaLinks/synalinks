@@ -204,7 +204,7 @@ class GeneratorModuleTest(testing.TestCase):
             m["role"].value if hasattr(m["role"], "value") else m["role"] for m in msgs
         ]
 
-        # system, user(inputs), assistant(tool_calls), tool — the assistant
+        # system, user(inputs), assistant(tool_calls), tool; the assistant
         # tool-call is never the first turn after the system instruction.
         self.assertEqual(roles, ["system", "user", "assistant", "tool"])
         # The inputs must actually appear in the leading user turn.
@@ -251,7 +251,7 @@ class GeneratorModuleTest(testing.TestCase):
             instructions="be helpful",
         )
 
-        # {query (input), messages, answer (output)} — the output field sits
+        # {query (input), messages, answer (output)}; the output field sits
         # after `messages` because concat appends it.
         trajectory = await ops.concat(
             await ops.concat(
@@ -374,7 +374,7 @@ class GeneratorModuleTest(testing.TestCase):
         ]
         rendered = " ".join(str(m["content"]) for m in msgs)
 
-        # No synthetic input turn — just system + the conversation.
+        # No synthetic input turn: just system + the conversation.
         self.assertEqual(roles, ["system", "user"])
         self.assertIn("just-a-question", rendered)
         self.assertNotIn("trailing-output", rendered)
@@ -382,11 +382,11 @@ class GeneratorModuleTest(testing.TestCase):
     async def test_format_messages_contained_chat_message_with_extra_fields(self):
         """An input that only *contains* a chat message but carries extra sibling
         fields (and no `messages` list) must not be splatted into a single strict
-        ChatMessage — that trips ChatMessage's `extra="forbid"`.
+        ChatMessage; that trips ChatMessage's `extra="forbid"`.
 
         Mirrors `LMAsJudge`, which concatenates a `gold_`-prefixed reference with
         the prediction: the merged model is `{gold_role, gold_content, role,
-        content}` — chat-message-shaped, but not strictly a chat message. It is
+        content}`: chat-message-shaped, but not strictly a chat message. It is
         rendered as input data (system + user turn), not sent as a chat message.
         """
 
@@ -404,7 +404,7 @@ class GeneratorModuleTest(testing.TestCase):
             ChatMessage(role="assistant", content="predicted-answer"),
         )
 
-        # Must not raise (previously: ValidationError — extra inputs forbidden).
+        # Must not raise (previously: ValidationError, extra inputs forbidden).
         msgs = generator.format_messages(merged).get("messages")
         roles = [
             m["role"].value if hasattr(m["role"], "value") else m["role"] for m in msgs

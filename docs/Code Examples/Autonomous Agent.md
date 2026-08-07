@@ -8,7 +8,7 @@
 ## Source
 
 ````python
---8<-- "examples/10_autonomous_agent.py:108"
+--8 < --"examples/10_autonomous_agent.py:108"
 ````
 
 ## Run log
@@ -16,7 +16,7 @@
 The log below is the **unedited** combined output of running the example above
 with local models (ollama).
 
-??? example "Full run log — `examples/10_autonomous_agent.log`"
+??? example "Full run log: `examples/10_autonomous_agent.log`"
 
     ```text
     --8<-- "examples/10_autonomous_agent.log"

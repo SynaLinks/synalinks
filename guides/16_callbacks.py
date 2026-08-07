@@ -10,7 +10,7 @@ and asks a list of objects called **callbacks** whether they would
 like to do something.
 
 A **callback** is a small object whose methods are called by the
-trainer at well-defined points in `fit()` — when an epoch starts,
+trainer at well-defined points in `fit()`: when an epoch starts,
 when a batch ends, when training finishes. Each method receives
 the current metrics and gets to react. Inside a callback you can
 **save the program to disk**, **stop training early**, **append a
@@ -34,8 +34,8 @@ By the end of this guide you will be able to:
 
 ## What a Callback Looks Like
 
-A callback is a Python object — usually a subclass of
-`synalinks.callbacks.Callback` — that overrides one or more of
+A callback is a Python object, usually a subclass of
+`synalinks.callbacks.Callback`, that overrides one or more of
 these **lifecycle hooks**:
 
 ```python
@@ -94,11 +94,11 @@ the observability story and is covered in [Guide 10](https://synalinks.github.io
 solve concrete operational problems that come up on almost every
 non-trivial run.
 
-### `EarlyStopping` — Stop When Improvement Plateaus
+### `EarlyStopping`: Stop When Improvement Plateaus
 
 **The problem.** You ask for `epochs=20`, but the reward stops
 improving after epoch 7. You burn thirteen epochs of LM calls for
-no gain — possibly even regressing as the optimizer overfits the
+no gain, possibly even regressing as the optimizer overfits the
 prompt to noise in the training set.
 
 **The fix.** `EarlyStopping` watches a metric and halts training
@@ -126,7 +126,7 @@ of a false positive (stopping a hair too early) is one epoch of
 training; the cost of running thirteen useless epochs at $0.01 per
 LM call adds up fast.
 
-### `ProgramCheckpoint` — Save the Best Program
+### `ProgramCheckpoint`: Save the Best Program
 
 **The problem.** You finish a long training run and discover the
 final program is *worse* than what you had at epoch 5. Without
@@ -146,7 +146,7 @@ ckpt = synalinks.callbacks.ProgramCheckpoint(
 
 If `save_best_only=True`, the file is overwritten only when a new
 peak is observed; the final file is always the best program seen.
-With `save_best_only=False`, every epoch produces a checkpoint —
+With `save_best_only=False`, every epoch produces a checkpoint,
 useful when you want a full history but expensive in disk space.
 
 Two extras worth knowing:
@@ -167,10 +167,10 @@ for the current run; checkpointing writes them **to disk** so they
 survive a crash or a fresh Python process. Real training runs
 usually use both.
 
-### `BackupAndRestore` — Survive Crashes Mid-Run
+### `BackupAndRestore`: Survive Crashes Mid-Run
 
 **The problem.** Your training run is at epoch 7 of 20 when the
-process dies — out-of-memory, network blip, somebody hit Ctrl-C
+process dies: out-of-memory, network blip, somebody hit Ctrl-C
 in the wrong terminal. You restart the script and it begins from
 epoch 0. Every epoch you ran was wasted.
 
@@ -195,11 +195,11 @@ invalid and the trainer will refuse to load it.
 do *different* jobs even though both write files; on a long, real
 run you will want both.
 
-### `CSVLogger` — Append Metrics to a CSV
+### `CSVLogger`: Append Metrics to a CSV
 
 **The problem.** The progress bar shows metrics as they go, but
-when you want to *plot* them — to compare two training runs, or
-to make a figure for a report — you need them in a file.
+when you want to *plot* them, to compare two training runs, or
+to make a figure for a report, you need them in a file.
 
 **The fix.** `CSVLogger` appends one row per epoch to a CSV file,
 with one column per metric.
@@ -215,11 +215,11 @@ The resulting file plays nicely with `pandas.read_csv`,
 `matplotlib`, spreadsheets, anything. No structured logging
 service required for the basics.
 
-### `Monitor` — MLflow Integration ([Guide 10](https://synalinks.github.io/synalinks/guides/Observability/))
+### `Monitor`: MLflow Integration ([Guide 10](https://synalinks.github.io/synalinks/guides/Observability/))
 
 Synalinks also ships a `Monitor` callback that logs everything
-`CSVLogger` does — plus the program plot and the saved program
-itself — to an **MLflow** tracking server. You usually do not
+`CSVLogger` does, plus the program plot and the saved program
+itself, to an **MLflow** tracking server. You usually do not
 instantiate it directly; the recommended path is
 
 ```python
@@ -273,7 +273,7 @@ budget after improvement plateaus; log to CSV for the post-mortem*.
 
 When none of the built-ins do what you want, subclass
 `synalinks.callbacks.Callback` and override the hooks you care
-about. A toy example — a callback that prints a one-line summary
+about. A toy example: a callback that prints a one-line summary
 at the end of each epoch:
 
 ```python
@@ -310,8 +310,8 @@ Two rules of thumb when writing callbacks:
    hooks fire dozens of times per epoch. Anything heavier than a
    `print` belongs in `on_epoch_end` instead.
 2. **Mutate the program with care.** A callback *can* mutate the
-   program's variables in place — e.g. call `variable.assign(...)` on
-   entries of `self.program.trainable_variables` — and the change will
+   program's variables in place, e.g. call `variable.assign(...)` on
+   entries of `self.program.trainable_variables`, and the change will
    take effect; but every other callback in the list runs against the
    mutated state too. Reserve direct mutation for callbacks
    designed to do so, like `EarlyStopping(restore_best_variables=True)`.
@@ -343,7 +343,7 @@ sequenceDiagram
 Read top-to-bottom: `on_train_begin` fires once at the start, then
 each epoch fires its own begin/end with a stream of batch hooks in
 between. Validation, when present, slots in **before**
-`on_epoch_end` — which is why metric keys like `val_reward`
+`on_epoch_end`, which is why metric keys like `val_reward`
 already have values when `on_epoch_end` runs.
 
 ## Failure Modes Worth Watching For
@@ -352,7 +352,7 @@ already have values when `on_epoch_end` runs.
   argument (`EarlyStopping`, `ProgramCheckpoint`) silently no-op
   if the key is not in `logs`. If you compiled the program with
   `metrics=[BinaryF1Score(average="macro")]`, the key is
-  `val_binary_f1_score` — not `val_f1`, not `val_macro_f1`.
+  `val_binary_f1_score`, not `val_f1`, not `val_macro_f1`.
   Print `history.history.keys()` after a short run to discover
   the exact names.
 - **`mode="min"` on a reward.** Synalinks rewards are *maximized*
@@ -361,7 +361,7 @@ already have values when `on_epoch_end` runs.
   *improves*. The default `mode="auto"` infers direction from the
   metric name and is usually correct.
 - **Re-using `backup_dir` across runs.** `BackupAndRestore` is
-  strict about reuse — its directory must not be shared with
+  strict about reuse: its directory must not be shared with
   another callback or another training run. Use one per
   experiment.
 - **CSV file growing across re-runs.** With `append=True`,
@@ -372,7 +372,7 @@ already have values when `on_epoch_end` runs.
 ## Take-Home Summary
 
 - **Callbacks are pluggable side-effects** the trainer fires at
-  specific points in `fit()` — epoch begin/end, batch begin/end,
+  specific points in `fit()`: epoch begin/end, batch begin/end,
   train begin/end.
 - **Four built-ins cover the bread-and-butter operational
   needs**: `EarlyStopping` (stop when plateaued),
@@ -434,7 +434,7 @@ class NumericAnswer(synalinks.DataModel):
 
 
 class TerseLogger(synalinks.callbacks.Callback):
-    """Prints one short line per epoch — illustrates the on_epoch_end hook."""
+    """Prints one short line per epoch; illustrates the on_epoch_end hook."""
 
     def on_epoch_end(self, epoch, logs=None):
         logs = logs or {}
@@ -452,7 +452,7 @@ class TerseLogger(synalinks.callbacks.Callback):
 async def main():
     # -------------------------------------------------------------------------
     # Build a tiny program. The exact program does not matter for the
-    # callbacks demo — what matters is that fit() runs.
+    # callbacks demo; what matters is that fit() runs.
     # -------------------------------------------------------------------------
     language_model = synalinks.LanguageModel(model="ollama/mistral")
 

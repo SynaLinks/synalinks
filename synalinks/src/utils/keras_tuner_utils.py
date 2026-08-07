@@ -11,7 +11,7 @@ the stubbed `keras.callbacks.History`).
 
 The wrappers here override `run_trial` to:
 
-1. Build the program by calling `tuner.hypermodel.build(hp)` — the
+1. Build the program by calling `tuner.hypermodel.build(hp)`: the
    hypermodel may return either a `synalinks.Program` directly or a
    coroutine that resolves to one.
 2. Run `await program.fit(*args, **kwargs)` with whatever the user passed
@@ -59,7 +59,7 @@ best_hp = tuner.get_best_hyperparameters(num_trials=1)[0]
 ```
 
 `keras_tuner` is an optional dependency. Importing this module does **not**
-import `keras_tuner` — the kt subclasses are built lazily on the first
+import `keras_tuner`: the kt subclasses are built lazily on the first
 instantiation of `RandomSearch` / `BayesianOptimization` / `Hyperband` /
 `GridSearch`. If `keras_tuner` (and either real Keras or the
 `disable_keras_backend()` stub) cannot be loaded then, a clear error is
@@ -71,8 +71,8 @@ import functools
 import inspect
 
 from synalinks.src.api_export import synalinks_export
-from synalinks.src.utils.async_utils import _LoopCoroRunner
 from synalinks.src.utils.async_utils import _close_loop
+from synalinks.src.utils.async_utils import _LoopCoroRunner
 from synalinks.src.utils.async_utils import run_maybe_nested
 
 
@@ -81,7 +81,7 @@ def _close_litellm_async_clients(loop):
 
     litellm caches a module-level async httpx client bound to the first event
     loop it touches. Closing it ON the search loop, before that loop is torn
-    down, prevents an httpx pool being left bound to a dead loop — which GC would
+    down, prevents an httpx pool being left bound to a dead loop, which GC would
     otherwise try to close on a closed loop, emitting a final "Event loop is
     closed" and occasionally wedging interpreter exit. litellm is a hard
     dependency, but its teardown API varies by version, so every step is guarded
@@ -98,6 +98,7 @@ def _close_litellm_async_clients(loop):
             loop.run_until_complete(result)
     except Exception:
         pass
+
 
 _TUNER_CLASS_NAMES = (
     "RandomSearch",
@@ -124,8 +125,8 @@ def _synalinks_name_direction_map():
     is what kt's ``infer_metric_direction`` is asked about.
 
     ``"reward"`` is added as a special case: it's the conventional name for a
-    ``Mean``/``MeanMetricWrapper`` instance wrapping a synalinks reward —
-    not a class name — so no class introspection would catch it.
+    ``Mean``/``MeanMetricWrapper`` instance wrapping a synalinks reward,
+    not a class name, so no class introspection would catch it.
     """
     from synalinks.src import metrics as _metrics_pkg
 
@@ -160,13 +161,13 @@ def _patch_kt_inference():
     ``keras.metrics.deserialize`` then matches the class name against a
     hardcoded ``_MAX_METRICS`` whitelist. Synalinks metrics don't live in
     ``keras.metrics``, and ``keras_backend.py`` ships deserialize stubs that
-    always raise — so without help, inference returns None for every
+    always raise, so without help, inference returns None for every
     synalinks metric name. The replacement here consults the synalinks
     metrics registry first (via `_synalinks_name_direction_map`) and
     falls through to kt's original for keras compat (``"loss"`` etc.).
 
-    Both kt call sites — ``metrics_tracking.register`` and
-    ``objective.create_objective`` — look up the function via attribute
+    Both kt call sites (``metrics_tracking.register`` and
+    ``objective.create_objective``) look up the function via attribute
     access on the ``metrics_tracking`` module, so a single replacement on
     that module covers both.
     """
@@ -202,7 +203,7 @@ def _sync_driving_hypermodel(hypermodel):
     relies on the ``hp.Float(...)`` / ``hp.Choice(...)`` calls inside it to
     register the search space, including any conditional scopes). A synalinks
     ``build_program`` is typically ``async def``, so calling it synchronously
-    just returns a coroutine that is never awaited — its body never runs.
+    just returns a coroutine that is never awaited: its body never runs.
 
     The visible symptom is ``RuntimeWarning: coroutine 'build_program' was
     never awaited`` (raised from ``base_tuner.py`` at construction); the
@@ -289,8 +290,8 @@ def _resolve_kt_tuner(name):
             super().__init__(*args, **kwargs)
 
         def search(self, *fit_args, **fit_kwargs):
-            # Run EVERY trial on ONE event loop — created here, closed once at
-            # the end — instead of letting `run_maybe_nested` spin up and tear
+            # Run EVERY trial on ONE event loop (created here, closed once at
+            # the end) instead of letting `run_maybe_nested` spin up and tear
             # down a fresh loop per trial (see `run_trial`).
             #
             # Why: litellm caches a *module-level* async httpx client bound to
@@ -308,7 +309,7 @@ def _resolve_kt_tuner(name):
             # RuntimeError of its own (e.g. keras_tuner's consecutive-failure
             # abort); catching that here would swallow the real error and
             # wrongly fall through to spin up our own loop on top of the
-            # already-running one — which then dies with "Cannot run the event
+            # already-running one, which then dies with "Cannot run the event
             # loop while another loop is running".
             try:
                 asyncio.get_running_loop()
@@ -361,7 +362,7 @@ async def _run_trial_async(tuner, trial, *fit_args, **fit_kwargs):
       - With an optimizer set on the compiled program, run the normal
         fit loop and reduce the History across epochs.
       - With no optimizer, `fit()` would just iterate the training data
-        without applying any updates — wasted compute. Dispatch to
+        without applying any updates: wasted compute. Dispatch to
         `program.evaluate(...)` on `validation_data` (or on the
         positional `(x, y)` when no validation pair was passed) and
         report those metrics to the oracle. Each metric is reported
@@ -385,10 +386,10 @@ async def _evaluate_only(program, *fit_args, **fit_kwargs):
     """Run a single `program.evaluate(...)` in place of `fit(...)`.
 
     Eval-set selection mirrors what `fit()` would have used:
-      1. `validation_data=(x_val, y_val)` if the caller provided it —
+      1. `validation_data=(x_val, y_val)` if the caller provided it:
          keeps objectives named `val_*` consistent across fit and
          evaluate dispatch.
-      2. otherwise the positional `(x, y)` — the only data available.
+      2. otherwise the positional `(x, y)`, the only data available.
 
     Only the kwargs `evaluate()` actually accepts are forwarded
     (`batch_size`, `verbose`, `steps`, `callbacks`); training-only
@@ -483,7 +484,7 @@ def _make_stub(name, kt_doc_hint):
 
     The stub carries the `@synalinks_export` decorator so the api generator
     routes it to `synalinks.tuners.<name>`. It does not subclass anything
-    from `keras_tuner` — `keras_tuner` is only imported inside `__new__`,
+    from `keras_tuner`; `keras_tuner` is only imported inside `__new__`,
     which makes the real subclass on the first call.
     """
 
@@ -521,7 +522,7 @@ RandomSearch = _make_stub(
 BayesianOptimization = _make_stub(
     "BayesianOptimization",
     "Gaussian-process based sequential search. Spends more compute per "
-    "trial choosing the next point — worth it when each trial is expensive.",
+    "trial choosing the next point; worth it when each trial is expensive.",
 )
 Hyperband = _make_stub(
     "Hyperband",

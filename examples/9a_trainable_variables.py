@@ -14,7 +14,7 @@ small custom module called `HintedAnswerer` that:
 - can be optimized end-to-end with `program.compile(...).fit(...)` so the
   optimizer rewrites the hints in-context based on a reward.
 
-The point of the example is not the hints themselves — it is the *plumbing*:
+The point of the example is not the hints themselves; it is the *plumbing*:
 how to declare trainable state on a `Module`, how to read and update it in
 `call()`, how the optimizer picks it up automatically, and how to save and
 restore the trained state.
@@ -134,11 +134,11 @@ class HintedAnswerer(synalinks.Module):
     """Answer questions, biased by an evolving list of hints.
 
     Trainable surface:
-        `self.state` — a `Hints` variable. Optimizers may rewrite the
+        `self.state`: a `Hints` variable. Optimizers may rewrite the
         `hints` list and/or the `examples` few-shot store.
 
     Non-trainable surface:
-        `self.stats` — a `CallStats` variable, mutated from `call()`.
+        `self.stats`: a `CallStats` variable, mutated from `call()`.
 
     Internals:
         A wrapped `synalinks.Generator` does the actual LM call. The hints
@@ -365,7 +365,7 @@ async def main():
         return
 
     print("\n" + "=" * 70)
-    print("Training with OMEGA — the optimizer will rewrite the hints")
+    print("Training with OMEGA: the optimizer will rewrite the hints")
     print("=" * 70)
 
     embedding_model = synalinks.EmbeddingModel(
@@ -404,7 +404,7 @@ async def main():
     print(f"\nHints after training: {hint_variable.get('hints')}")
     print(f"History of best candidates: {len(hint_variable.get('history'))} entries")
 
-    # Save and reload — both variables are persisted by the saving layer.
+    # Save and reload: both variables are persisted by the saving layer.
     save_path = os.path.join(FOLDER, "hinted_answerer.json")
     program.save(save_path)
     print(f"\nSaved trained program to {save_path}")

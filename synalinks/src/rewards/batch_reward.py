@@ -48,7 +48,7 @@ class BatchReward(Reward):
     async def compute_batch(self, y_true, y_pred):
         """Apply masks and return the per-sample reward list (unreduced).
 
-        This is what the trainer calls — it expects the raw ``list[float]``
+        This is what the trainer calls: it expects the raw ``list[float]``
         of length ``batch_size`` so it can treat each entry as that
         sample's reward.
         """
@@ -168,6 +168,6 @@ def _validate_batch_rewards(rewards, y_pred, cls_name):
     if hasattr(y_pred, "__len__") and len(rewards) != len(y_pred):
         raise ValueError(
             f"`{cls_name}.call` returned {len(rewards)} rewards but the "
-            f"batch has {len(y_pred)} samples — they must match."
+            f"batch has {len(y_pred)} samples; they must match."
         )
     return [float(r) for r in rewards]

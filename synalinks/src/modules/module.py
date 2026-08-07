@@ -38,7 +38,7 @@ else:
 # Per-call execution context (`call_id`, `parent_call_id`, `training`,
 # `entry_module`). Stored in a `contextvars.ContextVar` rather than the
 # `threading.local` global state: an asyncio event loop runs many coroutines on
-# a single OS thread, so a thread-local context is shared — and corrupted —
+# a single OS thread, so a thread-local context is shared (and corrupted)
 # between modules awaited concurrently, e.g. `asyncio.gather(modA(x), modB(x))`
 # or parallel branches in a `Program`. A `ContextVar` is copied into each
 # `asyncio.Task`/greenlet at creation, so concurrent calls each get an isolated
@@ -164,7 +164,7 @@ class Module(BackendModule, Operation, SynalinksSaveable):
             module=self,
         )
         # Top-level invocation counters. Bumped only when this module is the
-        # entry module of a `CallContext` — i.e., when it's the outermost
+        # entry module of a `CallContext`, i.e., when it's the outermost
         # `__call__` in the stack. Nested calls leave these untouched.
         # Phase routing follows the same `op_scope` contextvar convention as
         # LanguageModel / EmbeddingModel.

@@ -165,6 +165,7 @@ Example:
 import synalinks
 import asyncio
 
+
 async def main():
     class ThinkingWithAnswer(synalinks.DataModel):
         thinking: str
@@ -187,12 +188,13 @@ async def main():
         ]
     )
 
-    program.modules[0].trainable = False # Freeze the first generator
+    program.modules[0].trainable = False  # Freeze the first generator
 
     assert program.modules[0].trainable_variables == []
 
     program.compile(...)
-    history = await program.fit(...) # Train only the second generator
+    history = await program.fit(...)  # Train only the second generator
+
 
 if __name__ == "__main__":
     asyncio.run(main())

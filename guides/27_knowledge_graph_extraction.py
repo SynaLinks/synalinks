@@ -1,7 +1,7 @@
 """
 # Knowledge Graph Extraction
 
-[Guide 7](https://synalinks.github.io/synalinks/guides/Knowledge%20Base/) stored *flat* records — one table per
+[Guide 7](https://synalinks.github.io/synalinks/guides/Knowledge%20Base/) stored *flat* records: one table per
 `DataModel`, retrieved by full-text or vector search. That is enough
 when the answer lives inside a single record ("what is the total of
 invoice INV-2024-002?"). It is *not* enough when the answer lives in
@@ -11,7 +11,7 @@ capital of France?"). For that you need a **knowledge graph**: typed
 
 This guide is about getting that graph *out of unstructured text*.
 The model reads a document and emits a graph whose shape you fixed in
-advance — every node and edge validated against a schema by
+advance: every node and edge validated against a schema by
 **constrained JSON decoding**, so the LM cannot invent a label or drop
 a required field. Once extracted, the graph is embedded and stored in a
 graph-backed `KnowledgeBase`, ready for the graph retrieval covered at
@@ -30,7 +30,7 @@ The single most important idea: **extraction is not one fixed
 pipeline.** A frontier model can read a paragraph and emit the whole
 graph in one call; a small local model does far better when you split
 the job into narrow sub-tasks and recombine the pieces. Synalinks lets
-you dial that granularity up or down without changing the schema — the
+you dial that granularity up or down without changing the schema: the
 same `City` / `IsCapitalOf` definitions back a one-call extractor and a
 ten-call one. We build up from the simplest strategy to the most
 robust, and end with how to pick.
@@ -39,9 +39,9 @@ robust, and end with how to pick.
 
 Two base classes describe a property graph:
 
-- **`Entity`** — a node. It carries a `label` (the node *type*) plus
+- **`Entity`**: a node. It carries a `label` (the node *type*) plus
   whatever fields that type needs.
-- **`Relation`** — a directed edge. It carries a `label`, a `subj`
+- **`Relation`**: a directed edge. It carries a `label`, a `subj`
   (source entity), and an `obj` (target entity).
 
 You subclass them, pinning `label` to a `Literal` so it becomes a
@@ -77,8 +77,8 @@ class IsLocatedIn(synalinks.Relation):
 
 Two conventions worth burning in, both inherited from the KB:
 
-- **The first content field is the primary key.** Here that is `name`
-  — two extractions of `"Paris"` collapse onto one node instead of
+- **The first content field is the primary key.** Here that is `name`;
+  two extractions of `"Paris"` collapse onto one node instead of
   duplicating. Keep the identifying field first.
 - **You do not declare an `embedding` field.** When the graph store has
   an embedding model, it adds the vector column (and its index)
@@ -92,7 +92,7 @@ relations-only strategy at the end possible.
 
 A graph-backed `KnowledgeBase` is opened with `graph_uri=` (instead of,
 or alongside, the SQL `uri=`). The default backend is an embedded graph
-store, so — like DuckDB in Guide 7 — there is no server to run.
+store, so, like DuckDB in Guide 7, there is no server to run.
 
 ```python
 knowledge_base = synalinks.KnowledgeBase(
@@ -105,7 +105,7 @@ knowledge_base = synalinks.KnowledgeBase(
 ```
 
 `entity_models` declares the node tables, `relation_models` the edge
-tables — the graph counterpart of Guide 7's `data_models`. The
+tables, the graph counterpart of Guide 7's `data_models`. The
 `embedding_model` is what lets the store deduplicate near-identical
 nodes and, later, answer similarity queries.
 
@@ -115,7 +115,7 @@ Two modules move an extracted graph into the store:
 
 - **`EmbedKnowledge`** walks the graph and embeds the field(s) named in
   `in_mask`, attaching a vector to every entity. Embed the field that
-  *identifies* the node (its `name`), not every field — that keeps the
+  *identifies* the node (its `name`), not every field; that keeps the
   vector focused and cheap.
 - **`UpdateKnowledge`** writes the embedded graph to the store,
   upserting nodes by primary key and creating the edges.
@@ -134,7 +134,7 @@ stored = await synalinks.UpdateKnowledge(
 Everything before these two steps is *how you produce the graph*. That
 is where the strategies diverge.
 
-## Strategy 1 — One-Stage Extraction
+## Strategy 1: One-Stage Extraction
 
 Ask for the entire graph in a single `Generator` call. Define a
 `KnowledgeGraph` subclass whose `entities` and `relations` are `Union`s
@@ -160,12 +160,12 @@ knowledge_graph = await synalinks.Generator(
 ```
 
 One call, minimal latency, simplest wiring. The cost: the model must
-hold the *whole* extraction task in its head at once — identify every
+hold the *whole* extraction task in its head at once: identify every
 entity type, infer every relation, and stay self-consistent. Frontier
 models handle this well; smaller models start dropping entities and
 hallucinating edges as the schema grows.
 
-## Strategy 2 — Two-Stage Extraction
+## Strategy 2: Two-Stage Extraction
 
 Split entity-finding from relation-finding. First extract the entities,
 feed them *back in* alongside the document so the second call has the
@@ -204,11 +204,11 @@ knowledge_graph = entities & relations
 
 Each call now reasons about *one* thing, which a mid-sized model does
 more reliably than the all-at-once version. The `&` operator
-(logical AND) is what stitches the stages together — the
+(logical AND) is what stitches the stages together; the
 [Data Model Operators example](https://synalinks.github.io/synalinks/Code%20Examples/Data%20Model%20Operators/)
 covers it and its siblings in depth.
 
-## Strategy 3 — Multi-Stage Extraction
+## Strategy 3: Multi-Stage Extraction
 
 For small local models, or wildly heterogeneous schemas, go further:
 **one `Generator` per type.** Each call extracts a single entity or
@@ -239,13 +239,13 @@ choice about **failure semantics**: `And` requires every branch to
 succeed (all-or-nothing), while `Or` keeps whatever branches *did*
 succeed (robust to a flaky call). `.factorize()` then merges the
 several `Entities` results into a single deduplicated list. Maximum
-accuracy per call and maximum resilience — at the price of many LM
+accuracy per call and maximum resilience, at the price of many LM
 round-trips.
 
-## Strategy 4 — Relations-Only (Avoiding Orphan Nodes)
+## Strategy 4: Relations-Only (Avoiding Orphan Nodes)
 
-An **orphan node** is an entity connected to nothing. Graph retrieval —
-the whole point of building a graph — works by *traversing edges*, so
+An **orphan node** is an entity connected to nothing. Graph retrieval,
+the whole point of building a graph, works by *traversing edges*, so
 orphans are dead weight: they can never be reached from a neighbour.
 
 Because a `Relation` carries its `subj` and `obj` entities in full,
@@ -270,7 +270,7 @@ stored = await synalinks.UpdateKnowledge(
 ```
 
 `UpdateKnowledge` unpacks each relation into its two endpoint nodes plus
-the edge, so the graph is fully populated — just guaranteed
+the edge, so the graph is fully populated, just guaranteed
 connected. Reach for this whenever you intend to *query* the graph by
 traversal rather than look entities up one by one.
 
@@ -281,10 +281,10 @@ could not. The retrieval surface is covered in the
 [Knowledge Base guide](https://synalinks.github.io/synalinks/guides/Knowledge%20Base/); the two graph-native entry
 points are:
 
-- **`kb.local_graph_search(query, label=..., max_hops=N)`** — vector-match
+- **`kb.local_graph_search(query, label=..., max_hops=N)`**: vector-match
   seed entities, then return their `N`-hop neighbourhood as a subgraph.
   Entity-centric: *"what does the graph say around here?"*
-- **`kb.cypher(query)`** — a read-only Cypher escape hatch for exact,
+- **`kb.cypher(query)`**: a read-only Cypher escape hatch for exact,
   hand-written traversals.
 
 ```python
@@ -309,7 +309,7 @@ rows = await knowledge_base.cypher(
 | Relations-only | per relation type | You will *query by traversal* | Entities never mentioned in a relation are skipped |
 
 Start at the top. Move down only when evaluation shows the model
-dropping or hallucinating parts of the graph — the schema never
+dropping or hallucinating parts of the graph; the schema never
 changes, only how many calls you spend filling it. And remember the
 generators are **trainable**: before adding stages, you can often close
 the gap by optimizing the prompts of a simpler pipeline (see the
@@ -331,7 +331,7 @@ the gap by optimizing the prompts of a simpler pipeline (see the
   joined with `&`) → **multi-stage** (one call per type, fused with
   `And`/`Or` + `.factorize()`). Same schema throughout.
 - **Relations carry their endpoints in full**, so extracting
-  *relations only* guarantees a connected graph with no orphan nodes —
+  *relations only* guarantees a connected graph with no orphan nodes,
   the right default when you'll query by traversal.
 - Query the result with **`local_graph_search`** (neighbourhood) or
   **`cypher`** (exact traversal).

@@ -24,7 +24,7 @@ class ParquetDataset(Dataset):
     usage stays bounded. Each row is rendered through the Jinja2
     ``input_template`` / ``output_template`` to JSON, validated against
     the corresponding ``DataModel`` (or ``synalinks.ChatMessages`` when
-    ``None``), and accumulated into batches of size ``batch_size`` —
+    ``None``), and accumulated into batches of size ``batch_size``,
     the same contract as `HuggingFaceDataset`.
 
     Templates receive each Parquet row as a dict keyed by column name.
@@ -116,7 +116,7 @@ class ParquetDataset(Dataset):
         self.batch_size_rows = batch_size_rows
 
         # Open each file once at construction time. ``ParquetFile`` only
-        # reads the footer metadata at this point — no row data — so
+        # reads the footer metadata at this point (no row data), so
         # this is cheap even for many large files.
         self._files = [pa_parquet.ParquetFile(p) for p in self.paths]
 
@@ -133,6 +133,6 @@ class ParquetDataset(Dataset):
         if self.limit is not None:
             num_rows = self.limit
         else:
-            # Pull row counts from footer metadata — no row data is read.
+            # Pull row counts from footer metadata; no row data is read.
             num_rows = sum(pf.metadata.num_rows for pf in self._files)
         return self._total_batches(num_rows)

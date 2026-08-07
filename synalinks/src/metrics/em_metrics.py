@@ -114,7 +114,7 @@ class EmbeddingModelOperationalMetric(Metric):
 
     def _wall_clock_delta(self):
         """Wall-clock seconds the trainer spent in this metric's phase since
-        the last snapshot — the throughput denominator (concurrency-safe,
+        the last snapshot: the throughput denominator (concurrency-safe,
         unlike summed `elapsed_s`).
         """
         return read_phase_wall_clock_s(self._phase) - self._wall_baseline

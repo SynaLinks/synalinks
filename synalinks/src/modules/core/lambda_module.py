@@ -31,7 +31,7 @@ class Lambda(Module):
     * a `DataModel` or `JsonDataModel` instance, or
     * `None`.
 
-    Any callable works — Python `lambda`s, named sync functions, or named
+    Any callable works: Python `lambda`s, named sync functions, or named
     async functions are all supported. Named, decorated functions are required
     when you need the program to be serializable; `lambda`s cannot be saved.
 

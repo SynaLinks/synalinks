@@ -14,8 +14,8 @@ class GraphDatabaseAdapter:
     """Base class for graph database adapters.
 
     GraphDatabaseAdapter provides a unified interface for storing and
-    retrieving graph-structured data — entities, relations, and full
-    knowledge graphs — with optional embedding-based similarity search
+    retrieving graph-structured data (entities, relations, and full
+    knowledge graphs) with optional embedding-based similarity search
     and full-text search on entity properties.
 
     Orthogonal to `DatabaseAdapter` (the row/SQL surface): both
@@ -112,13 +112,13 @@ class GraphDatabaseAdapter:
         max_iterations: Optional[int] = None,
     ) -> Any:
         """Run a community-detection algorithm and return the result
-        as a `KnowledgeGraphs` — one `KnowledgeGraph`
+        as a `KnowledgeGraphs`: one `KnowledgeGraph`
         per detected community.
 
         Each community's `KnowledgeGraph` carries the nodes
         whose computed community-id matches, plus every relation
         whose two endpoints fall in the same community.
-        Cross-community edges are dropped — they don't belong to
+        Cross-community edges are dropped: they don't belong to
         any single community's subgraph by definition.
 
         Args:
@@ -130,7 +130,7 @@ class GraphDatabaseAdapter:
             node_labels: Optional restriction on which node tables
                 participate. ``None`` means every existing node
                 table. Some algorithms (e.g. Louvain) only support
-                a single node label — the adapter raises if the
+                a single node label; the adapter raises if the
                 constraint is violated.
             rel_labels: Optional restriction on which relation
                 tables participate. ``None`` means every existing
@@ -167,7 +167,7 @@ class GraphDatabaseAdapter:
 
         Each row carries the entity's PK column, its label, the raw
         node struct (so callers can extract any property), and the
-        computed rank — sorted by rank descending. Mirrors the row
+        computed rank, sorted by rank descending. Mirrors the row
         shape of `entity_similarity_search` (PK column + node
         + scalar metric) so the two surfaces feel symmetric.
 
@@ -313,7 +313,7 @@ class GraphDatabaseAdapter:
         Args:
             source: ``SymbolicDataModel`` or label string for the
                 node/relation table to rename.
-            table_name: New label. Optional — pass to ``ALTER`` the
+            table_name: New label. Optional: pass to ``ALTER`` the
                 node or relation table.
             table_description: New schema description. Optional.
 
@@ -558,7 +558,7 @@ class GraphDatabaseAdapter:
     ):
         """RRF fusion of vector similarity + regex match over entities.
 
-        Sibling of `entity_hybrid_fts_search` — the regex side
+        Sibling of `entity_hybrid_fts_search`: the regex side
         carries the orthogonal "exact textual shape" signal that
         BM25 doesn't capture. Degenerates to plain similarity search
         when no patterns are supplied, or to plain regex search when
@@ -700,8 +700,8 @@ class GraphDatabaseAdapter:
         the subject entity table and the object entity table; each
         endpoint match contributes its 2-source RRF score (vec + fts
         on that side) to any incident edge of ``label``. Per edge,
-        the final score is the sum of the subj and obj contributions
-        — mathematically equivalent to a single 4-source RRF over
+        the final score is the sum of the subj and obj contributions,
+        mathematically equivalent to a single 4-source RRF over
         ``{subj_fts, subj_vec, obj_fts, obj_vec}``. ``matched_on``
         reports which side(s) actually fired.
 
@@ -759,7 +759,7 @@ class GraphDatabaseAdapter:
         For each ``(subj_text, obj_text)`` pair both endpoints must
         hit. Each side is run through hybrid (vec + fts) so two
         signals contribute per endpoint; the path's combined
-        ``rrf_score`` is the sum of the two endpoint RRF scores —
+        ``rrf_score`` is the sum of the two endpoint RRF scores,
         mathematically equivalent to a 4-source RRF over the four
         underlying rankings.
 
@@ -826,7 +826,7 @@ class GraphDatabaseAdapter:
         AND-semantics on the two query texts: rows survive only when
         both endpoint vectors clear their thresholds AND at least one
         path of valid length exists between them. ``label`` is an
-        optional rel-label filter — when set, every hop in the path
+        optional rel-label filter: when set, every hop in the path
         must be of that label; when ``None``, any edge type is
         allowed (Cypher's plain ``[*min..max]`` form).
 
@@ -879,7 +879,7 @@ class GraphDatabaseAdapter:
 
         Finds the ``k`` entities of ``label`` closest to the query,
         then expands their ``max_hops`` neighbourhood (undirected) and
-        returns the deduped union as a `KnowledgeGraph` — the
+        returns the deduped union as a `KnowledgeGraph`: the
         local context subgraph a generator answers from. Entity-centric:
         "what does the graph say around *these* entities".
 
@@ -973,6 +973,42 @@ class GraphDatabaseAdapter:
         raise NotImplementedError(
             f"{self.__class__.__name__} should implement the "
             f"`global_graph_search()` method"
+        )
+
+    async def community_graph_search(
+        self,
+        *,
+        node_labels: Optional[List[str]] = None,
+        rel_labels: Optional[List[str]] = None,
+        k: int = 10,
+        members_per_community: Optional[int] = None,
+    ) -> Any:
+        """GraphRAG-style *global* search returning communities as graphs.
+
+        The graph-shaped counterpart to `global_graph_search`: reads the
+        community / rank properties `build_communities` stamped and rebuilds
+        each community as a `KnowledgeGraph` (its member entities plus the
+        relations internal to the community), ordered by aggregate importance
+        and capped at ``k``: the subgraphs an LM map-reduce summarises then
+        combines. Requires `build_communities` to have run first.
+
+        Args:
+            node_labels: Optional NODE-table whitelist (``None`` = every
+                stamped table).
+            rel_labels: Optional REL-table whitelist (``None`` = all).
+            k: Maximum number of communities (subgraphs) to return.
+            members_per_community: Optional cap on member entities per
+                community, best first by rank.
+
+        Returns:
+            One `KnowledgeGraph` per community, most important first.
+
+        Raises:
+            NotImplementedError: Subclasses must implement this method.
+        """
+        raise NotImplementedError(
+            f"{self.__class__.__name__} should implement the "
+            f"`community_graph_search()` method"
         )
 
     def __repr__(self):

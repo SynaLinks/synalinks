@@ -127,7 +127,7 @@ class HuggingFaceDatasetTest(testing.TestCase):
             batch_size=2,
         )
         sizes = [len(b[0]) for b in ds]
-        # Two batches: [2, 1] — trailing partial batch gets flushed.
+        # Two batches: [2, 1]; trailing partial batch gets flushed.
         self.assertEqual(sizes, [2, 1])
 
     def test_len_streaming_without_limit_raises(self):

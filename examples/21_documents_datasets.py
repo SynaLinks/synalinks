@@ -5,12 +5,12 @@ This example uses two built-in `synalinks` dataset loaders that walk a
 directory tree and stream documents into a `KnowledgeBase`:
 
 - `synalinks.TextDataset` reads `.txt` files verbatim and
-  yields `TextDocument(filepath, text)` rows — one row per file. Use
+  yields `TextDocument(filepath, text)` rows: one row per file. Use
   it for any flat-text corpus (logs, transcripts, scraped pages,
   notes, ...).
 - `synalinks.MarkdownDataset` parses `.md` files into
-  `MarkdownDocument(filepath, title, sections=[MarkdownSection(...)])`
-  — one row per file, with the file split into heading-delimited
+  `MarkdownDocument(filepath, title, sections=[MarkdownSection(...)])`:
+  one row per file, with the file split into heading-delimited
   sections. Use it when you want section-level retrieval (each section
   becomes an independently searchable chunk under its own heading
   path). Heading detection is delegated to `markdown-it-py`, so
@@ -22,11 +22,11 @@ Both datasets are inputs-only and accepted directly by
 
 ## Storage strategy
 
-`TextDocument` rows store one row per `.txt` file — flat shape, direct
+`TextDocument` rows store one row per `.txt` file: flat shape, direct
 upsert with `filepath` as the primary key.
 
 `MarkdownSection` rows store one row per heading region of every `.md`
-file — each section gets a stable `section_id` (`<filepath>#<path>`)
+file: each section gets a stable `section_id` (`<filepath>#<path>`)
 as its primary key, so re-running the loader upserts deterministically.
 The `MarkdownDocument` the dataset yields is the nested view of a file;
 this example flattens it to per-section rows because BM25 / vector
@@ -54,7 +54,7 @@ class Answer(synalinks.DataModel):
 
 
 # =============================================================================
-# Sample corpus — written to a tempdir so the example is self-contained
+# Sample corpus, written to a tempdir so the example is self-contained
 # =============================================================================
 
 
@@ -89,7 +89,7 @@ through installing the package and running your first program.
 Install via `uv`:
 
 ```bash
-# This `#` is inside a fenced code block — markdown-it-py classifies
+# This `#` is inside a fenced code block; markdown-it-py classifies
 # this as a code-fence token, so it is NOT treated as a heading.
 uv add synalinks
 ```
@@ -122,7 +122,7 @@ LadybugDB (graph).
 Primary Key Convention
 ----------------------
 
-The primary key is the first declared field of your DataModel — Synalinks
+The primary key is the first declared field of your DataModel; Synalinks
 does not inject a synthetic `uuid` column.
 
 ### Why no UUID
@@ -147,7 +147,7 @@ Backed by DuckDB's VSS extension (HNSW index).
 
 ### Hybrid Search
 
-Reciprocal-rank fusion over the two — the default for `RetrieveKnowledge`.
+Reciprocal-rank fusion over the two, the default for `RetrieveKnowledge`.
 """,
 }
 
@@ -189,7 +189,7 @@ async def main():
         )
 
         # ------------------------------------------------------------------
-        # Step 1 — Iterate TextDataset for inspection.
+        # Step 1: Iterate TextDataset for inspection.
         # ------------------------------------------------------------------
         print("Step 1: TextDataset preview")
         print("=" * 60)
@@ -201,7 +201,7 @@ async def main():
                 print(f"  [{doc.filepath}]  ({len(doc.text)} chars)")
 
         # ------------------------------------------------------------------
-        # Step 2 — Stream `.txt` files into the KnowledgeBase.
+        # Step 2: Stream `.txt` files into the KnowledgeBase.
         # `KnowledgeBase.update(...)` accepts a Dataset directly and
         # writes batch-by-batch, so this works for arbitrarily large
         # corpora without materializing everything in memory.
@@ -212,7 +212,7 @@ async def main():
         print(f"  Stored {len(text_ids)} .txt files: {text_ids}")
 
         # ------------------------------------------------------------------
-        # Step 3 — Iterate MarkdownDataset and inspect the
+        # Step 3: Iterate MarkdownDataset and inspect the
         # parsed structure. Each row is a MarkdownDocument carrying a
         # list of MarkdownSection objects.
         # ------------------------------------------------------------------
@@ -224,7 +224,7 @@ async def main():
         for batch in md_dataset:
             (xs,) = batch
             for structured in xs:
-                print(f"\n  {structured.filepath}  —  title: {structured.title!r}")
+                print(f"\n  {structured.filepath}, title: {structured.title!r}")
                 for sect in structured.sections:
                     prefix = "    " + ("  " * max(sect.level - 1, 0))
                     name = sect.section_name or "(preamble)"
@@ -232,7 +232,7 @@ async def main():
                     all_sections.append(sect)
 
         # ------------------------------------------------------------------
-        # Step 4 — Flatten sections into the `MarkdownSection` table.
+        # Step 4: Flatten sections into the `MarkdownSection` table.
         # The dataset's `MarkdownDocument` is the user-facing
         # abstraction; for retrieval we store one row per section so
         # BM25 / vector search chunks at heading granularity.
@@ -243,7 +243,7 @@ async def main():
         print(f"  Stored {len(section_ids)} sections")
 
         # ------------------------------------------------------------------
-        # Step 5 — Hybrid search over the section index.
+        # Step 5: Hybrid search over the section index.
         # ------------------------------------------------------------------
         print("\nStep 5: Hybrid search over MarkdownSection")
         print("=" * 60)
@@ -265,7 +265,7 @@ async def main():
                 )
 
         # ------------------------------------------------------------------
-        # Step 6 — RAG: retrieve sections + ground an answer.
+        # Step 6: RAG. Retrieve sections + ground an answer.
         # ------------------------------------------------------------------
         print("\nStep 6: RAG pipeline grounded on the section index")
         print("=" * 60)

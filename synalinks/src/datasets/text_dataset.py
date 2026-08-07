@@ -17,7 +17,7 @@ from synalinks.src.datasets.dataset import Dataset
     ]
 )
 class TextDocument(DataModel):
-    """A plain-text document — one row per `.txt` file.
+    """A plain-text document: one row per `.txt` file.
 
     ``filepath`` is the first declared field so it becomes the primary
     key when the row is inserted into a ``KnowledgeBase`` (see the
@@ -56,7 +56,7 @@ class TextDataset(Dataset):
     and yields one row per file. Each row is rendered through the
     Jinja2 ``input_template`` to JSON, validated against
     ``input_data_model`` (defaults to `TextDocument`), and
-    accumulated into batches of size ``batch_size`` — the same contract
+    accumulated into batches of size ``batch_size``, the same contract
     as `CSVDataset` and the other loaders.
 
     The yielded shape is inputs-only (no ``output_template``), so the
@@ -134,7 +134,7 @@ class TextDataset(Dataset):
 
     def _iter_files(self) -> Iterator[str]:
         if self.recursive:
-            # os.walk's order is filesystem-dependent — sort filenames
+            # os.walk's order is filesystem-dependent; sort filenames
             # within each directory so the dataset is deterministic
             # across reruns on the same corpus.
             for dirpath, _, filenames in os.walk(self.root):

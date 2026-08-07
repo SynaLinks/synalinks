@@ -8,7 +8,7 @@
 ## Source
 
 ````python
---8<-- "examples/7_reward_metrics_and_optimizers.py:84"
+--8 < --"examples/7_reward_metrics_and_optimizers.py:84"
 ````
 
 ## Run log
@@ -16,7 +16,7 @@
 The log below is the **unedited** combined output of running the example above
 with local models (ollama).
 
-??? example "Full run log — `examples/7_reward_metrics_and_optimizers.log`"
+??? example "Full run log: `examples/7_reward_metrics_and_optimizers.log`"
 
     ```text
     --8<-- "examples/7_reward_metrics_and_optimizers.log"

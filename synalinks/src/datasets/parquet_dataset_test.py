@@ -183,7 +183,7 @@ class ParquetDatasetTest(testing.TestCase):
             batch_size=4,
             limit=10,
         )
-        # Limit caps the source — 10 rows / 4 = ceil → 3.
+        # Limit caps the source: 10 rows / 4 = ceil → 3.
         self.assertEqual(len(ds), 3)
 
     def test_len_sums_multiple_files(self):
@@ -255,7 +255,7 @@ class ParquetDatasetTest(testing.TestCase):
     def test_batch_size_rows_controls_reader_buffer(self):
         # `batch_size_rows` controls the pyarrow reader's chunk size,
         # not the yielded batch size. The dataset still emits batches
-        # of `batch_size` rows — but internally it consumes the
+        # of `batch_size` rows, but internally it consumes the
         # underlying record-batch reader in chunks of
         # `batch_size_rows`. Verify both knobs work independently.
         path = os.path.join(self.tmp, "buf.parquet")
@@ -275,7 +275,7 @@ class ParquetDatasetTest(testing.TestCase):
     #
     # Parquet files come from real producers that crash, get
     # truncated, or write inconsistent schemas across runs. The
-    # failure modes are very different from CSV — Parquet's footer
+    # failure modes are very different from CSV: Parquet's footer
     # holds the schema and row count, so a truncated file is
     # detectable at open time, and per-row malformation isn't
     # really possible. We still want predictable behaviour on the
@@ -285,7 +285,7 @@ class ParquetDatasetTest(testing.TestCase):
     def test_empty_file_with_schema_yields_no_rows(self):
         # A 0-row parquet file (valid header + footer, no row
         # groups). This is what `pq.write_table` of an empty table
-        # produces — a perfectly legal Parquet artifact. The
+        # produces, a perfectly legal Parquet artifact. The
         # loader must iterate cleanly and report __len__ as zero.
         path = os.path.join(self.tmp, "empty.parquet")
         empty = pa.table({"q": pa.array([], type=pa.string())})
@@ -305,7 +305,7 @@ class ParquetDatasetTest(testing.TestCase):
         # written by a later pipeline version with {q, a, score}.
         # When we don't restrict ``columns``, each file is iterated
         # with its own schema and the row dicts carry whatever
-        # columns that file has — the template only references
+        # columns that file has; the template only references
         # what it needs, so the surplus is ignored.
         a = os.path.join(self.tmp, "old.parquet")
         b = os.path.join(self.tmp, "new.parquet")
@@ -325,7 +325,7 @@ class ParquetDatasetTest(testing.TestCase):
 
     def test_multi_file_missing_column_raises_clearly(self):
         # If one file in a multi-file batch lacks a column the
-        # template requires, the failure must surface — silently
+        # template requires, the failure must surface; silently
         # filling None would corrupt downstream training data. We
         # leave the raise to pyarrow when ``columns=`` includes a
         # missing one, and to Jinja's StrictUndefined otherwise.
@@ -334,7 +334,7 @@ class ParquetDatasetTest(testing.TestCase):
         _write_parquet(a, {"q": ["a1"], "a": ["x"]})
         _write_parquet(b, {"q": ["b1"]})  # missing `a`
 
-        # Path 1: explicit columns including `a` — pyarrow raises
+        # Path 1: explicit columns including `a`; pyarrow raises
         # when reading the second file.
         ds_pushed = ParquetDataset(
             path=[a, b],
@@ -348,7 +348,7 @@ class ParquetDatasetTest(testing.TestCase):
         with pytest.raises(Exception):
             [batch for batch in ds_pushed]
 
-        # Path 2: no columns pushdown — Jinja's StrictUndefined
+        # Path 2: no columns pushdown; Jinja's StrictUndefined
         # raises on the second file's row because `a` isn't there.
         ds_loose = ParquetDataset(
             path=[a, b],
@@ -362,7 +362,7 @@ class ParquetDatasetTest(testing.TestCase):
             [batch for batch in ds_loose]
 
     def test_corrupt_file_raises_at_construction(self):
-        # A file with garbage bytes can't be opened as Parquet —
+        # A file with garbage bytes can't be opened as Parquet;
         # ParquetFile validates the magic-number footer at
         # construction. The error must surface immediately so the
         # caller fails fast rather than after iteration starts.
@@ -385,7 +385,7 @@ class ParquetDatasetTest(testing.TestCase):
         _write_parquet(good, {"q": ["a", "b", "c"]})
         with open(good, "rb") as f:
             content = f.read()
-        # Drop the trailing footer / magic bytes — anything past the
+        # Drop the trailing footer / magic bytes; anything past the
         # first 32 bytes is fine for tearing the footer off.
         with open(path, "wb") as f:
             f.write(content[: max(32, len(content) // 4)])

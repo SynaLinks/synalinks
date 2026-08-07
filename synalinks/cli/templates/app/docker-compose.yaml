@@ -13,7 +13,7 @@
 #
 # No GPU? Set MODEL=ollama/mistral:latest and point HOSTED_VLLM_API_BASE at an
 # Ollama service instead (see backend/.env.template). Add your own `frontend`
-# service when you build one — see frontend/README.md.
+# service when you build one; see frontend/README.md.
 
 services:
   vllm:

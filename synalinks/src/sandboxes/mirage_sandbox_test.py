@@ -1,16 +1,30 @@
 # License Apache 2.0: (c) 2025-2026 Yoan Sallami (Synalinks Team)
 
 import gc
+import os
+import sys
+import tempfile
 import unittest
 
 from synalinks.src import testing
+from synalinks.src.sandboxes.mirage_sandbox import _MACOS_CONFINE_SRC
 from synalinks.src.sandboxes.mirage_sandbox import MirageSandbox
 from synalinks.src.sandboxes.mirage_sandbox import _confinement_available
+from synalinks.src.sandboxes.mirage_sandbox import confinement_kind
 from synalinks.src.sandboxes.sandbox import ExecutionResult
 from synalinks.src.sandboxes.sandbox import Sandbox
 
 _TIMEOUT = 30.0
 _CONFINE_OK, _CONFINE_REASON = _confinement_available()
+# The tests below assert namespace-specific behaviour (PID namespaces, seccomp,
+# the pivot_root filesystem swap), so they gate on the *backend* rather than on
+# confinement being available at all. macOS now reports confinement available
+# too, via Seatbelt, which enforces a deliberately different and weaker set;
+# `MacosSeatbeltConfineTest` covers what it does guarantee.
+_KIND = confinement_kind()
+_NAMESPACES_OK = _CONFINE_OK and _KIND == "namespaces"
+_SEATBELT_OK = _CONFINE_OK and _KIND == "seatbelt"
+_NS_REASON = f"namespace confinement unavailable: {_CONFINE_REASON or _KIND}"
 
 
 class _SandboxTestCase(testing.TestCase):
@@ -19,7 +33,7 @@ class _SandboxTestCase(testing.TestCase):
     Most tests build a ``MirageSandbox`` (and forks) as locals and never call
     ``close()``. Each live sandbox holds a FUSE mount, so without cleanup the
     suite accumulates mounts until ``mount_max`` (default 1000) is hit and new
-    mounts fail *silently* — the confinement tests then read empty output and
+    mounts fail *silently*; the confinement tests then read empty output and
     fail. Forcing a GC pass after every test runs each dropped sandbox's
     finalizer, which releases its mount deterministically between tests.
     """
@@ -98,7 +112,7 @@ class MirageSandboxTest(_SandboxTestCase):
         async def adder(x, y):
             return {"sum": x + y}
 
-        # Bound tools are called *synchronously* inside the sandbox — no
+        # Bound tools are called *synchronously* inside the sandbox: no
         # `await` / `asyncio.run(...)` ceremony.
         code = "out = adder(x=3, y=4)\nprint(out['sum'])\n"
         result = await sandbox.run(code, external_functions={"adder": adder})
@@ -107,7 +121,7 @@ class MirageSandboxTest(_SandboxTestCase):
 
     async def test_sync_tool_call_returns_value_directly(self):
         # A bare synchronous call returns the host tool's value directly, usable
-        # in the same expression — and it actually invokes the host callable.
+        # in the same expression, and it actually invokes the host callable.
         called = {"n": 0}
 
         async def adder(x, y):
@@ -366,7 +380,9 @@ class MirageSandboxTest(_SandboxTestCase):
         self.assertFalse(caps["seccomp"])
         self.assertEqual(caps["network"], {"mode": "host"})
         self.assertEqual(caps["tools"], [])
-        self.assertFalse(caps["native_shell"])
+        # Unconfined, the default 'local' runtime is host-reaching by design and
+        # is reported as such rather than hidden.
+        self.assertEqual(caps["host_runtimes"], ["local"])
 
     async def test_non_root_mounts_default_to_read_only(self):
         from mirage import RAMResource
@@ -392,27 +408,60 @@ class MirageSandboxTest(_SandboxTestCase):
         )
         self.assertEqual(sandbox.granted_capabilities()["mounts"]["/rw"], "WRITE")
 
-    @unittest.skipUnless(_CONFINE_OK, f"confinement unavailable: {_CONFINE_REASON}")
-    async def test_native_true_stripped_under_confine(self):
-        # native=True (host shell, bypasses confinement) is stripped when
-        # confinement is active, with a warning. Requires real confinement: where
-        # it is unavailable, confine=True falls back to unconfined and native is
+    @unittest.skipUnless(_NAMESPACES_OK, _NS_REASON)
+    async def test_unvouched_runtime_stripped_under_confine(self):
+        # A runtime the sandbox cannot vouch for could execute code on the host
+        # outside the confinement prologue, so it is dropped (with a warning)
+        # when confinement is active. Requires real confinement: where it is
+        # unavailable, confine=True falls back to unconfined and the entry is
         # left intact, so this assertion only holds on a confine-capable host.
         with self.assertWarns(RuntimeWarning):
             sandbox = MirageSandbox(
-                timeout=_TIMEOUT, confine=True, workspace_kwargs={"native": True}
+                timeout=_TIMEOUT,
+                confine=True,
+                workspace_kwargs={"runtimes": ["vfs", "not-a-vouched-runtime"]},
             )
-        self.assertFalse(sandbox.granted_capabilities()["native_shell"])
+        self.assertEqual(sandbox.granted_capabilities()["host_runtimes"], [])
+        # The vouched entry survives; only the unknown one is removed.
+        self.assertEqual(sandbox._workspace_kwargs["runtimes"], ["vfs"])
+        sandbox.close()
 
-    @unittest.skipUnless(_CONFINE_OK, f"confinement unavailable: {_CONFINE_REASON}")
-    async def test_native_true_rejected_under_require_confinement(self):
+    @unittest.skipUnless(_NAMESPACES_OK, _NS_REASON)
+    async def test_unvouched_runtime_rejected_under_require_confinement(self):
         with self.assertRaises(ValueError):
             MirageSandbox(
                 timeout=_TIMEOUT,
                 confine=True,
                 require_confinement=True,
-                workspace_kwargs={"native": True},
+                workspace_kwargs={"runtimes": ["not-a-vouched-runtime"]},
             )
+
+    @unittest.skipUnless(_NAMESPACES_OK, _NS_REASON)
+    async def test_local_runtime_allowed_under_confinement_when_patched(self):
+        # 'local' reaches the host, but the run-python patch prepends the
+        # confinement prologue to everything it runs, so it is the one
+        # host-reaching runtime the sandbox vouches for. This is the default,
+        # and it must not trip the guard.
+        sandbox = MirageSandbox(timeout=_TIMEOUT, confine=True)
+        try:
+            self.assertTrue(sandbox._run_python_patched)
+            self.assertEqual(sandbox.granted_capabilities()["host_runtimes"], [])
+        finally:
+            sandbox.close()
+
+    @unittest.skipUnless(_NAMESPACES_OK, _NS_REASON)
+    async def test_local_runtime_rejected_when_patch_unavailable(self):
+        # Fail-closed: if the confinement prologue cannot be installed, 'local'
+        # is an unguarded hole and require_confinement must refuse to build.
+        from unittest import mock
+
+        from synalinks.src.sandboxes import mirage_sandbox
+
+        with mock.patch.object(
+            mirage_sandbox, "_install_run_python_patch", return_value=False
+        ):
+            with self.assertRaises(ValueError):
+                MirageSandbox(timeout=_TIMEOUT, confine=True, require_confinement=True)
 
     def test_seccomp_filter_builds_for_known_arch(self):
         from unittest import mock
@@ -709,7 +758,7 @@ class MirageSandboxTest(_SandboxTestCase):
             shutil.rmtree(workdir, ignore_errors=True)
 
 
-@unittest.skipUnless(_CONFINE_OK, f"confinement unavailable: {_CONFINE_REASON}")
+@unittest.skipUnless(_NAMESPACES_OK, _NS_REASON)
 class MirageSandboxConfineTest(_SandboxTestCase):
     """In-process confinement (FUSE + user-namespace pivot), Linux-only."""
 
@@ -918,7 +967,7 @@ class MirageSandboxConfineTest(_SandboxTestCase):
             sandbox.close()
 
     async def test_confine_without_seccomp_allows_syscall(self):
-        # With seccomp disabled the same call is not blocked by a filter — proves
+        # With seccomp disabled the same call is not blocked by a filter; proves
         # the block above comes from seccomp, not the namespace.
         sandbox = MirageSandbox(timeout=_TIMEOUT, confine=True, seccomp=False)
         try:
@@ -980,7 +1029,7 @@ class MirageSandboxConfineTest(_SandboxTestCase):
         # A subagent's confined fork transparently carries the parent's whole
         # security config (egress allowlist, SSRF guard, extra binds, mount
         # modes, fail-closed), so confinement isn't something the subagent opts
-        # into — it inherits it.
+        # into; it inherits it.
         parent = MirageSandbox(
             timeout=_TIMEOUT,
             confine=True,
@@ -1049,14 +1098,21 @@ class RunPythonPatchTest(_SandboxTestCase):
         from synalinks.src.sandboxes import mirage_sandbox as ms
 
         # At least one known runner location must exist in the installed Mirage.
+        # A target's qualname may name a class method (0.0.4+ runtime table) or
+        # a module-level function, so resolve it the same way the patch does.
         resolved = None
-        for mod_name, attr_name in ms._RUN_PYTHON_TARGETS:
+        for mod_name, qualname in ms._RUN_PYTHON_TARGETS:
             try:
-                mod = importlib.import_module(mod_name)
+                owner = importlib.import_module(mod_name)
             except Exception:
                 continue
-            if getattr(mod, attr_name, None) is not None:
-                resolved = (mod, attr_name)
+            *parents, attr_name = qualname.split(".")
+            for parent in parents:
+                owner = getattr(owner, parent, None)
+                if owner is None:
+                    break
+            if owner is not None and getattr(owner, attr_name, None) is not None:
+                resolved = (owner, attr_name)
                 break
         if resolved is None:
             self.skipTest("no known mirage python-runner internal is importable")
@@ -1190,3 +1246,453 @@ class InfraSelfHealTest(_SandboxTestCase):
         self.assertEqual(calls["exec"], 1)
         self.assertFalse(result.ok)
         self.assertIn("ValueError", result.error)
+
+
+class SbplProfileTest(testing.TestCase):
+    """Unit tests for the generated Seatbelt profile.
+
+    Pure string generation, so these run on every platform. They are the only
+    part of the macOS backend that can be checked off a Darwin host, which
+    makes them the first line of defence against a profile that silently grants
+    more than intended.
+    """
+
+    def _build(self, **overrides):
+        cfg = {
+            "read_paths": ["/usr", "/System"],
+            "rw_paths": ["/private/tmp/sbx"],
+            "network": False,
+        }
+        cfg.update(overrides)
+        ns = {}
+        exec(_MACOS_CONFINE_SRC, ns)
+        return ns["_build_sbpl"](cfg)
+
+    def test_profile_is_default_deny(self):
+        # Everything else in the profile is an exception to this line; without
+        # it the profile grants the world.
+        profile = self._build()
+        self.assertIn("(version 1)", profile)
+        self.assertIn("(deny default)", profile)
+
+    def test_read_paths_are_read_only(self):
+        profile = self._build()
+        self.assertIn('(allow file-read* (subpath "/usr"))', profile)
+        # The runtime set must never become writable: that is what stops the
+        # snippet rewriting the interpreter it is about to run under.
+        self.assertNotIn('(allow file-read* file-write* (subpath "/usr"))', profile)
+
+    def test_rw_paths_are_writable(self):
+        profile = self._build()
+        self.assertIn(
+            '(allow file-read* file-write* (subpath "/private/tmp/sbx"))', profile
+        )
+
+    def test_network_denied_by_default(self):
+        profile = self._build()
+        # `(deny default)` covers everything; nothing re-opens it.
+        self.assertNotIn("(allow network*)", profile)
+
+    def test_host_loopback_is_never_granted(self):
+        # macOS has no network namespace, so `(local ip)` would be the *host's*
+        # 127.0.0.1: every service bound to localhost would be reachable from
+        # code that is supposed to have no network at all. Assert both
+        # directions, and under both network settings, since the blanket
+        # `(allow network*)` is the only intended way to get out.
+        for network in (False, True):
+            profile = self._build(network=network)
+            self.assertNotIn("(local ip)", profile)
+            self.assertNotIn("network-inbound", profile)
+
+    def test_network_allowed_when_requested(self):
+        profile = self._build(network=True)
+        self.assertIn("(allow network*)", profile)
+
+    def test_rpc_socket_dir_is_allowed_even_without_network(self):
+        # The host-tool bridge is a unix socket, which Seatbelt treats as
+        # network; without this the bridge would break under the denial above.
+        profile = self._build(rpc_socket_dir="/private/tmp/sbx")
+        self.assertIn('(allow network-outbound (subpath "/private/tmp/sbx"))', profile)
+
+    def test_process_info_is_denied_except_for_self(self):
+        # Other processes: denied, since that is the reconnaissance path. Self:
+        # allowed back afterwards (last-match-wins), because a process reading
+        # its own proc info is reading its own memory, and dyld does exactly
+        # that while starting a freshly exec'd image.
+        profile = self._build()
+        deny = "(deny process-info*)"
+        allow = "(allow process-info* (target self))"
+        self.assertIn(deny, profile)
+        self.assertGreater(profile.index(allow), profile.index(deny))
+
+    def test_mach_lookup_is_never_unrestricted(self):
+        # A bare `(allow mach-lookup)` lets the process ask any daemon to work
+        # on its behalf, and the daemon's child does not inherit this profile,
+        # so the filesystem and network rules would not apply to it. Every
+        # grant must name a specific service.
+        profile = self._build()
+        self.assertNotIn("(allow mach-lookup)\n", profile)
+        for line in profile.splitlines():
+            if "mach-lookup" in line:
+                self.assertIn("global-name", line)
+
+    def test_mach_lookup_allows_only_startup_services(self):
+        # Each entry is IPC into a privileged daemon and is here on evidence: a
+        # child exec'd under the profile runs libSystem startup *inside* it, and
+        # a denied bootstrap lookup aborts it rather than degrading.
+        profile = self._build()
+        self.assertIn(
+            '(allow mach-lookup (global-name "com.apple.system.notification_center"))',
+            profile,
+        )
+        # Process-spawning brokers are the escape route the allowlist exists to
+        # close, so they must never appear whatever else is added.
+        self.assertNotIn("launchservicesd", profile)
+        self.assertNotIn("com.apple.launchd", profile)
+
+    def test_exec_is_limited_to_the_read_only_runtime_set(self):
+        # Host tools stay reachable, as they are on Linux, and a child inherits
+        # the profile. What must not be executable is anything the snippet can
+        # write: the writable area is not in the exec set.
+        profile = self._build(rw_paths=["/private/tmp/sbx"])
+        self.assertIn('(allow process-exec (subpath "/usr"))', profile)
+        self.assertNotIn('(allow process-exec (subpath "/private/tmp/sbx"))', profile)
+
+    def test_writable_area_is_not_executable(self):
+        # Write-xor-execute: a snippet must not be able to drop a dylib into its
+        # own scratch dir and `dlopen` it. SBPL is last-match-wins, so the deny
+        # has to come *after* the grant it carves into.
+        profile = self._build(rw_paths=["/private/tmp/sbx"])
+        deny = '(deny file-map-executable (subpath "/private/tmp/sbx"))'
+        allow = '(allow file-read* file-write* (subpath "/private/tmp/sbx"))'
+        self.assertIn(deny, profile)
+        self.assertGreater(profile.index(deny), profile.index(allow))
+
+    def test_runtime_set_is_mappable_executable(self):
+        # The other half of write-xor-execute, and not implied by `file-read*`:
+        # `file-map-executable` is its own operation, so an exec'd binary and
+        # every dylib dyld then loads need it. Without this the child starts
+        # and dies in dyld, silently, which is not a failure mode anyone enjoys
+        # diagnosing from a CI log.
+        profile = self._build()
+        self.assertIn('(allow file-map-executable (subpath "/usr"))', profile)
+        self.assertIn('(allow file-map-executable (subpath "/System"))', profile)
+
+    def test_symlinked_ancestors_are_traversable(self):
+        # Reaching an allowed path means resolving every symlink on the way to
+        # it, which `(deny default)` also denies. macOS puts the sandbox's own
+        # dirs under `/var/folders/...`, where `/var` is a symlink, so without
+        # this the `file-write*` grant below can never match and writes into the
+        # sandbox's own area fail while the profile looks correct.
+        profile = self._build(rw_paths=["/private/var/folders/ab/cd/T/sbx"])
+        for path in ("/var", "/private/var/folders/ab/cd/T", "/private/var/folders"):
+            self.assertIn('(allow file-read-metadata (literal "%s"))' % path, profile)
+
+    def test_traversal_grant_is_metadata_only(self):
+        # The traversal grants must not become read access: `file-read*` on an
+        # ancestor would hand the snippet the contents of everything under it.
+        profile = self._build(rw_paths=["/private/var/folders/ab/cd/T/sbx"])
+        for line in profile.splitlines():
+            if "/private/var/folders/ab/cd" in line and "sbx" not in line:
+                self.assertIn("file-read-metadata", line)
+        self.assertNotIn('(allow file-read* (subpath "/"))', profile)
+        self.assertNotIn('(allow file-read* (subpath "/var"))', profile)
+
+    def test_root_directory_is_readable_not_just_traversable(self):
+        # dyld4's CacheFinder locates the shared-cache cryptex by *reading* the
+        # root directory (macOS 26), and a denied read there halts a freshly
+        # exec'd child in `ignition_halt`: SIGABRT, empty stderr, before dyld
+        # can load a single dylib. Metadata on `/` is not enough. The grant is
+        # a `literal`, so it exposes the well-known top-level names and nothing
+        # of any file's contents.
+        profile = self._build()
+        self.assertIn('(allow file-read-data (literal "/"))', profile)
+        self.assertNotIn('(allow file-read-data (subpath "/"))', profile)
+
+    def test_working_directory_is_traversable(self):
+        # `getcwd` is a path operation, so a cwd outside the granted set fails
+        # EPERM, and CPython calls it on the first import after confinement
+        # (`python3 -c` puts "" at the head of `sys.path`), catching only
+        # `FileNotFoundError`. Without this the failure arrives as a
+        # `PermissionError` from the import machinery, nowhere near a file.
+        profile = self._build()
+        cwd = os.getcwd()
+        self.assertIn('(allow file-read-metadata (literal "%s"))' % cwd, profile)
+        # Metadata, not contents: `listdir` stays denied, which the import
+        # machinery handles as an empty directory and moves on.
+        self.assertNotIn('(allow file-read* (subpath "%s"))' % cwd, profile)
+
+    def test_rpc_socket_literal_is_allowed_when_known(self):
+        # `subpath` filters on `network-outbound` are far less attested than
+        # `literal`, and the host knows the socket path by the time the profile
+        # is rendered, so the exact path is granted as well.
+        profile = self._build(
+            rpc_socket_dir="/private/tmp/sbx", sock="/private/tmp/sbx/rpc_1.sock"
+        )
+        self.assertIn(
+            '(allow network-outbound (literal "/private/tmp/sbx/rpc_1.sock"))', profile
+        )
+
+    def test_paths_with_quotes_are_escaped(self):
+        # SBPL is s-expression syntax: an unescaped quote in a path would end
+        # the string early and could terminate the rule, so a crafted directory
+        # name must not be able to edit the profile.
+        profile = self._build(rw_paths=['/tmp/a"b'])
+        self.assertIn(r'"/tmp/a\"b"', profile)
+        self.assertNotIn('"/tmp/a"b"', profile)
+
+
+class MacosProcessPrologueTest(testing.TestCase):
+    """The pre-profile half of the macOS bootstrap, which is plain POSIX.
+
+    Runs on every platform, like `SbplProfileTest`: it is the part of the
+    Seatbelt path that decides *where the process stands* when the profile
+    lands, and standing in the wrong place is what a profile cannot fix.
+    """
+
+    def _prepare(self, cfg):
+        ns = {}
+        exec(_MACOS_CONFINE_SRC, ns)
+        cwd = os.getcwd()
+        path = list(sys.path)
+        env = os.environ.get("TMPDIR")
+        tempdir = tempfile.tempdir
+
+        def _restore():
+            os.chdir(cwd)
+            sys.path[:] = path
+            tempfile.tempdir = tempdir
+            if env is None:
+                os.environ.pop("TMPDIR", None)
+            else:
+                os.environ["TMPDIR"] = env
+
+        self.addCleanup(_restore)
+        ns["_prepare_macos_process"](cfg)
+
+    def test_tempdir_points_into_the_sandbox(self):
+        # The host temp dir is deliberately not granted, so a snippet reaching
+        # for scratch space has to land inside the sandbox's own area.
+        scratch = self.get_temp_dir()
+        self._prepare({"tmpdir": scratch})
+        self.assertEqual(os.environ["TMPDIR"], scratch)
+        self.assertEqual(tempfile.gettempdir(), scratch)
+
+    def test_working_directory_moves_into_the_sandbox(self):
+        # `getcwd` is a path operation: a cwd outside the granted set fails
+        # EPERM under the profile, and metadata on it is not enough. Being
+        # somewhere the profile grants outright is.
+        scratch = self.get_temp_dir()
+        self._prepare({"tmpdir": scratch})
+        self.assertEqual(os.path.realpath(os.getcwd()), os.path.realpath(scratch))
+
+    def test_empty_sys_path_entry_is_dropped(self):
+        # CPython resolves "" through `getcwd` on the first import after the
+        # profile applies, catching only `FileNotFoundError`, so an EPERM there
+        # kills an import that a granted `sys.path` entry would have served.
+        sys.path.insert(0, "")
+        self._prepare({"tmpdir": self.get_temp_dir()})
+        self.assertNotIn("", sys.path)
+        # ...and only that entry: the runtime set has to survive intact.
+        self.assertIn(os.path.dirname(os.__file__), sys.path)
+
+    def test_nproc_rlimit_is_never_applied(self):
+        # RLIMIT_NPROC is counted per user. On Linux that is the sandbox's own
+        # user namespace, so `max_processes` caps the sandbox; here it would be
+        # measured against the whole login session and would stop the sandbox
+        # forking at all, failing `subprocess` with EAGAIN out of `_fork_exec`.
+        # Only the negative is asserted: the other rlimits would apply to this
+        # very test process.
+        import resource
+
+        before = resource.getrlimit(resource.RLIMIT_NPROC)
+        self._prepare({"tmpdir": self.get_temp_dir(), "rlimits": {"nproc": 8}})
+        self.assertEqual(resource.getrlimit(resource.RLIMIT_NPROC), before)
+
+    def test_prologue_without_a_scratch_dir_is_harmless(self):
+        # `tmpdir` is absent for an unconfined run and on the `run_bash` path
+        # before a scratch dir exists; the prologue must not throw.
+        here = os.getcwd()
+        self._prepare({})
+        self.assertEqual(os.getcwd(), here)
+
+
+@unittest.skipUnless(_SEATBELT_OK, f"seatbelt confinement unavailable: {_KIND}")
+class MacosSeatbeltConfineTest(_SandboxTestCase):
+    """Behavioural checks for the macOS backend, on a real Darwin host.
+
+    These assert the boundary actually holds, rather than that the profile
+    merely renders. Seatbelt gives no PID isolation and no syscall filter, so
+    there is deliberately no counterpart here to the namespace suite's
+    `test_confine_pid_namespace_hides_host_processes` or
+    `test_confine_seccomp_blocks_denied_syscall`.
+    """
+
+    @staticmethod
+    def _diag(result):
+        """Failure message carrying the sandbox's own stderr.
+
+        A profile that denies something it should not usually surfaces as a
+        *downstream* symptom (a `NameError` for state that never persisted, a
+        `None` result), while the bootstrap's `persist-warn` / `result-warn`
+        line naming the denied path goes to stderr. These run on CI hosts
+        nobody can attach to, so the message has to carry it. Stdout too, since
+        a snippet that reports a child's exit status has put the evidence
+        there.
+        """
+        return "error=%s\nstdout=%s\nstderr=%s" % (
+            result.error,
+            result.stdout,
+            result.stderr,
+        )
+
+    async def test_confinement_kind_is_seatbelt(self):
+        self.assertEqual(confinement_kind(), "seatbelt")
+
+    async def test_confined_run_still_works(self):
+        # The boundary is worthless if it also breaks execution: the snippet
+        # must still import, run and keep state across calls.
+        sandbox = MirageSandbox(timeout=_TIMEOUT, confine=True)
+        first = await sandbox.run("import json\nkeep = json.dumps({'a': 1})")
+        # Assert on the *first* run too: it is the one that has to write the
+        # dill state into the sandbox's own dir, so a profile that cannot reach
+        # that dir fails here rather than as a NameError one run later.
+        self.assertTrue(first.ok, msg=self._diag(first))
+        result = await sandbox.run("print(keep)")
+        self.assertTrue(result.ok, msg=self._diag(result))
+        self.assertIn('{"a": 1}', result.stdout)
+
+    async def test_confined_run_captures_result(self):
+        # The last-expression value travels back through a file in the sandbox
+        # dir, the same writable surface the state file uses, so it is a second
+        # independent check that writes there actually land.
+        sandbox = MirageSandbox(timeout=_TIMEOUT, confine=True)
+        result = await sandbox.run("6 * 7")
+        self.assertTrue(result.ok, msg=self._diag(result))
+        self.assertEqual(result.result, 42, msg=self._diag(result))
+
+    async def test_confine_blocks_write_outside_sandbox(self):
+        sandbox = MirageSandbox(timeout=_TIMEOUT, confine=True)
+        result = await sandbox.run(
+            "import os\n"
+            "target = os.path.expanduser('~/synalinks_seatbelt_escape.txt')\n"
+            "try:\n"
+            "    open(target, 'w').write('escaped')\n"
+            "    outcome = 'WROTE'\n"
+            "except Exception as exc:\n"
+            "    outcome = type(exc).__name__\n"
+            "print(outcome)\n"
+        )
+        self.assertTrue(result.ok, msg=self._diag(result))
+        self.assertNotIn("WROTE", result.stdout)
+        self.assertIn("Error", result.stdout)
+
+    async def test_confine_blocks_writes_to_the_seed_workdir(self):
+        # `workdir` is a seed, copied into the virtual filesystem host-side, and
+        # the documented contract is that the agent's writes never reach the
+        # real directory. Linux gets that from the pivot: the host filesystem is
+        # gone. macOS is the one platform where the directory is still *there*,
+        # so it is the one platform where this has to be asserted.
+        import shutil
+
+        workdir = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, workdir, True)
+        host_file = os.path.join(workdir, "main.py")
+        with open(host_file, "w") as fh:
+            fh.write("print('orig')\n")
+
+        sandbox = MirageSandbox(timeout=_TIMEOUT, confine=True, workdir=workdir)
+        result = await sandbox.run(
+            "try:\n"
+            "    open(%r, 'w').write('escaped')\n"
+            "    outcome = 'WROTE'\n"
+            "except Exception as exc:\n"
+            "    outcome = type(exc).__name__\n"
+            "print(outcome)\n" % host_file
+        )
+        self.assertTrue(result.ok, msg=self._diag(result))
+        self.assertNotIn("WROTE", result.stdout)
+        with open(host_file) as fh:
+            self.assertEqual(fh.read(), "print('orig')\n")
+
+    async def test_confine_blocks_read_outside_runtime_set(self):
+        # Reads are restricted, unlike the Codex/Gemini Seatbelt profiles which
+        # allow the whole disk. /etc/passwd is readable on any unconfined mac.
+        sandbox = MirageSandbox(timeout=_TIMEOUT, confine=True)
+        result = await sandbox.run(
+            "try:\n"
+            "    open('/etc/passwd').read()\n"
+            "    outcome = 'READ'\n"
+            "except Exception as exc:\n"
+            "    outcome = type(exc).__name__\n"
+            "print(outcome)\n"
+        )
+        self.assertTrue(result.ok, msg=self._diag(result))
+        self.assertNotIn("READ", result.stdout)
+
+    async def test_subprocesses_run_but_inherit_the_profile(self):
+        # Shelling out to a host tool works here as it does on Linux, and that
+        # is safe for one reason only: the child inherits the profile. Assert
+        # both halves together, because the first without the second is exactly
+        # the hole that would make exec worth denying.
+        sandbox = MirageSandbox(timeout=_TIMEOUT, confine=True)
+        result = await sandbox.run(
+            "import os, subprocess\n"
+            "ran = subprocess.run(\n"
+            "    ['/bin/sh', '-c', 'echo alive'], capture_output=True, text=True\n"
+            ")\n"
+            # Report the child's exit status and stderr, not just its stdout: a
+            # child that dies in dyld produces empty output and raises nothing,
+            # so silence here has to be distinguishable from success.
+            "print('RC', ran.returncode, 'ERR', ran.stderr.strip())\n"
+            "print('OUT', ran.stdout.strip())\n"
+            "escape = os.path.expanduser('~/synalinks_subprocess_escape.txt')\n"
+            "subprocess.run(\n"
+            "    ['/bin/sh', '-c', 'echo escaped > %s' % escape],\n"
+            "    capture_output=True, text=True,\n"
+            ")\n"
+            "print('ESCAPED' if os.path.exists(escape) else 'CONFINED')\n"
+        )
+        self.assertTrue(result.ok, msg=self._diag(result))
+        # The child ran. Assert this *first*: the escape check below is
+        # satisfied just as well by a child that never started, so on its own
+        # it would pass while proving nothing.
+        self.assertIn("RC 0", result.stdout, msg=self._diag(result))
+        self.assertIn("OUT alive", result.stdout, msg=self._diag(result))
+        # ...and it ran under the same profile as its parent.
+        self.assertIn("CONFINED", result.stdout)
+        self.assertNotIn("ESCAPED", result.stdout)
+
+    async def test_confine_cuts_network(self):
+        sandbox = MirageSandbox(timeout=_TIMEOUT, confine=True)
+        result = await sandbox.run(
+            "import socket\n"
+            "s = socket.socket()\n"
+            "s.settimeout(5)\n"
+            "try:\n"
+            "    s.connect(('1.1.1.1', 80))\n"
+            "    outcome = 'CONNECTED'\n"
+            "except Exception as exc:\n"
+            "    outcome = type(exc).__name__\n"
+            "print(outcome)\n"
+        )
+        self.assertTrue(result.ok, msg=self._diag(result))
+        self.assertNotIn("CONNECTED", result.stdout)
+
+    async def test_confine_writes_inside_sandbox_still_work(self):
+        # The complement of the escape test: the sandbox's own writable area
+        # must stay writable, or the boundary is just breakage. `TMPDIR` is
+        # pointed into that area precisely so the most ordinary thing a snippet
+        # does with a scratch file works; the host temp dir it would otherwise
+        # name is *not* granted, and must not be.
+        sandbox = MirageSandbox(timeout=_TIMEOUT, confine=True)
+        result = await sandbox.run(
+            "import os, tempfile\n"
+            "p = os.path.join(tempfile.gettempdir(), 'inside.txt')\n"
+            "open(p, 'w').write('ok')\n"
+            "print(open(p).read())\n"
+            "print('WROTE_INSIDE')\n"
+        )
+        self.assertTrue(result.ok, msg=self._diag(result))
+        self.assertIn("WROTE_INSIDE", result.stdout)
+        self.assertIn("ok", result.stdout)

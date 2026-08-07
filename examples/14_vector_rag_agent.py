@@ -4,7 +4,7 @@
 A **Vector RAG Agent** combines retrieval over a knowledge base with
 the agent loop. Unlike a fixed RAG pipeline that always retrieves
 once and then answers, the agent decides *if* retrieval is needed,
-*which* table to search, and *how* to phrase the query — and it can
+*which* table to search, and *how* to phrase the query, and it can
 call other tools in between (a calculator, a datetime helper, a web
 search).
 
@@ -48,7 +48,7 @@ Pick the retrieval mode via `search_type=`:
 - `"similarity"`: pure vector search over embeddings.
 - `"fulltext"`: BM25 keyword search.
 - `"hybrid_fts"` (default): vector + BM25 fused with Reciprocal Rank
-  Fusion (RRF) — best general default.
+  Fusion (RRF); best general default.
 
 Search results are rendered as **CSV** by default so the LM spends
 fewer input tokens reading tabular hits. Use `output_format="json"`
@@ -56,7 +56,7 @@ if you'd rather get a list of dicts.
 
 ## Adding Extra Tools
 
-`VectorRAGAgent` mirrors `FunctionCallingAgent` exactly — every
+`VectorRAGAgent` mirrors `FunctionCallingAgent` exactly: every
 parameter is accepted with identical semantics. The `tools=` slot
 appends extra tools on top of the three built-ins, so you can mix in
 a calculator, a clock, a web search, etc.
@@ -301,10 +301,10 @@ SAMPLE_DOCUMENTS = [
 async def main():
     load_dotenv()
 
-#     synalinks.enable_observability(
-#         tracking_uri="http://localhost:5000",
-#         experiment_name="vector_rag_agent",
-#     )
+    #     synalinks.enable_observability(
+    #         tracking_uri="http://localhost:5000",
+    #         experiment_name="vector_rag_agent",
+    #     )
 
     language_model = synalinks.LanguageModel(
         model="ollama/qwen3:8b",

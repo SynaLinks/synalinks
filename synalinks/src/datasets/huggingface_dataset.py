@@ -19,8 +19,8 @@ class HuggingFaceDataset(Dataset):
     Jinja2 ``input_template`` / ``output_template`` to JSON, validated
     against the corresponding ``DataModel`` (or ``synalinks.ChatMessages``
     when ``None``), and accumulated into batches of size ``batch_size``.
-    Each batch is yielded as ``(x, y)`` — numpy object arrays of
-    ``DataModel`` instances — matching the format synalinks'
+    Each batch is yielded as ``(x, y)`` (numpy object arrays of
+    ``DataModel`` instances), matching the format synalinks'
     ``GeneratorDataAdapter`` expects.
 
     Templates should render to JSON. Use Jinja's ``tojson`` filter for
@@ -52,7 +52,7 @@ class HuggingFaceDataset(Dataset):
         revision (str): Optional. The dataset revision (commit hash,
             branch, tag).
         streaming (bool): If ``True`` (default), use HF's
-            ``IterableDataset`` so rows are downloaded on demand —
+            ``IterableDataset`` so rows are downloaded on demand;
             required for datasets that don't fit on disk. The generator
             naturally terminates when the source is exhausted, so the
             trainer ends the epoch on its own; pass ``steps_per_epoch``
@@ -158,7 +158,7 @@ def load_split(
     returns numpy object arrays directly.
 
     Use this when you want a whole HF split as in-memory NumPy
-    arrays — for evaluation, head/tail train/test splits via
+    arrays: for evaluation, head/tail train/test splits via
     ``split_train_test``, or quick experiments. For streaming use
     cases, construct ``HuggingFaceDataset`` directly.
     """

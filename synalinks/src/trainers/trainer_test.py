@@ -245,9 +245,7 @@ class TestCompiledMetricIsolation(testing.TestCase):
         async def custom_metric(y_true, y_pred):
             return 0.0
 
-        shared_ordinary = metrics_module.MeanMetricWrapper(
-            custom_metric, name="custom"
-        )
+        shared_ordinary = metrics_module.MeanMetricWrapper(custom_metric, name="custom")
         shared_ops = Cost()
 
         progs = []
@@ -270,9 +268,7 @@ class TestCompiledMetricIsolation(testing.TestCase):
             # Clones keep the type, name, and (for the wrapper) the fn BY
             # REFERENCE -- the wrapped callable is shared, never deep-copied.
             by_name = {m.name: m for m in instances}
-            self.assertIsInstance(
-                by_name["custom"], metrics_module.MeanMetricWrapper
-            )
+            self.assertIsInstance(by_name["custom"], metrics_module.MeanMetricWrapper)
             self.assertIs(by_name["custom"]._fn, custom_metric)
 
         # The two programs own distinct clones (nothing shared between them).
@@ -287,7 +283,7 @@ class TestCompiledMetricIsolation(testing.TestCase):
 
 class TestCompileStringIdentifiers(testing.TestCase):
     """Keras-style: pass lowercase strings to `compile(...)` instead of
-    instances. Lookup is case-insensitive — CamelCase still works but
+    instances. Lookup is case-insensitive: CamelCase still works but
     lowercase is the idiomatic form."""
 
     def _make_program(self):

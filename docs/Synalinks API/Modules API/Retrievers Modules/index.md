@@ -20,3 +20,6 @@
 - [PathRegexSearch module](PathRegexSearch module.md)
 - [PathHybridFTSSearch module](PathHybridFTSSearch module.md)
 - [PathHybridRegexSearch module](PathHybridRegexSearch module.md)
+- [LocalGraphSearch module](LocalGraphSearch module.md)
+- [GlobalGraphSearch module](GlobalGraphSearch module.md)
+- [GlobalGraphMapReduce module](GlobalGraphMapReduce module.md)

@@ -51,7 +51,7 @@ services:
     build:
       context: .
       args:
-        # Baked into the agent at build time (offline — no LM call).
+        # Baked into the agent at build time (offline; no LM call).
         MODEL: ${MODEL:-vllm/Qwen/Qwen3-4B}
     ports:
       - "8000:8000"

@@ -57,14 +57,14 @@ class PathRegexSearch(Module):
             explicitly. Mutually inferrable with ``subj_entity_model``.
         subj_entity_model (Entity | SymbolicDataModel): Subject entity
             model (provides ``subj_schema`` / ``subj_label``).
-        subj_label (str): Subject entity label. **Optional** — when
+        subj_label (str): Subject entity label. **Optional**: when
             neither it nor a schema to derive it from is given, the
             language model infers it per call (constrained to the
             knowledge base's entity labels).
         obj_schema (dict): JSON schema of the object entity.
         obj_entity_model (Entity | SymbolicDataModel): Object entity
             model (provides ``obj_schema`` / ``obj_label``).
-        obj_label (str): Object entity label. **Optional** — inferred
+        obj_label (str): Object entity label. **Optional**: inferred
             per call like ``subj_label`` when not given.
         rel_label (str): Optional rel-label constraint applied to
             every hop.

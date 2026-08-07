@@ -153,7 +153,7 @@ class MonitorLogMetricsTest(testing.TestCase):
         cb.set_params({"epochs": 10})
         with patch.object(monitor_module, "mlflow") as mlf:
             mlf.log_params.side_effect = RuntimeError("boom")
-            # Should not raise — Monitor logs and continues.
+            # Should not raise; Monitor logs and continues.
             await cb._log_params()
 
     async def test_log_params_skips_when_no_run(self):

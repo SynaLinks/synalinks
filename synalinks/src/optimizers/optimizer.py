@@ -621,8 +621,8 @@ class Optimizer(SynalinksSaveable):
             # `nb_visit` / `cumulative_reward` are the per-batch struggle signal
             # read by `select_variable_name_to_update`: they reflect ONLY this
             # batch's predictions for this variable (reset, not accumulated), so
-            # the next selection picks whichever module struggled in THIS batch
-            # — a different variable can win each batch. Skip the update when
+            # the next selection picks whichever module struggled in THIS batch;
+            # a different variable can win each batch. Skip the update when
             # this pass produced no predictions for the variable (e.g. the
             # validation assign pass, where `current_predictions` is empty) so
             # the train-batch signal isn't wiped out.

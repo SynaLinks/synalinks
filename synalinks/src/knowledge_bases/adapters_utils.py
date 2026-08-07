@@ -2,8 +2,8 @@
 """Shared helpers used by both SQL and graph KB adapters.
 
 Keeping these in one place stops the DuckDB and Ladybug adapters from
-drifting on shared concerns — output formatting and per-query keyword
-alignment — that have nothing to do with the underlying engine.
+drifting on shared concerns (output formatting and per-query keyword
+alignment) that have nothing to do with the underlying engine.
 """
 
 import io
@@ -98,7 +98,7 @@ def resolve_db_path(
 
     Shared by every KB adapter so a no-args ``KnowledgeBase()`` lands
     every store under the same ``synalinks_home()`` directory and
-    survives across processes — SQL goes to ``database.db``, the
+    survives across processes: SQL goes to ``database.db``, the
     graph store sits next to it as ``database.lb``. Recognized inputs:
 
       * ``None`` → ``{synalinks_home()}/{name or default_stem}.{extension}``
@@ -139,7 +139,7 @@ def format_search_results(arrow_or_records, output_format: str):
     Accepts either a PyArrow ``Table`` (the DuckDB adapter's native
     result shape) or a list of dicts (what the Ladybug adapter
     produces from row-iteration). PyArrow handles the CSV encoding
-    for both — it's faster than Python's ``csv`` module and gets
+    for both: it's faster than Python's ``csv`` module and gets
     quoting right out of the box.
     """
     if output_format not in SEARCH_OUTPUT_FORMATS:
@@ -204,7 +204,7 @@ def normalize_query_vectors(
     The search adapters accept either a query *text* (which they embed)
     or a pre-computed query *vector* passed directly via
     ``vector_or_vectors``. This helper coerces that argument into the
-    same shape the embedding path produces — a list of vectors — so the
+    same shape the embedding path produces (a list of vectors) so the
     downstream search loop is identical regardless of where the vectors
     came from.
 
@@ -240,7 +240,7 @@ def align_keywords(
     """Pair vector-side texts with FTS-side keywords for hybrid search.
 
     Hybrid methods take ``text_or_texts`` for the vector branch and a
-    parallel ``keywords`` argument for the BM25 branch — they look at
+    parallel ``keywords`` argument for the BM25 branch: they look at
     different signals (semantic vs lexical) so the natural-language
     query that drives the vectors often isn't the keyword set you'd
     hand to BM25. When ``keywords`` is omitted the helper falls back
@@ -252,7 +252,7 @@ def align_keywords(
 
     Raises:
         ValueError: ``keywords`` and ``text_or_texts`` are both lists
-            but of different lengths — the per-query pairing would be
+            but of different lengths; the per-query pairing would be
             ambiguous.
     """
     texts: List[str] = (

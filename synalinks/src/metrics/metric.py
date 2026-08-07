@@ -27,7 +27,7 @@ class Metric(SynalinksSaveable):
         direction (str | None): Class-level optimization direction. ``"up"`` if
             higher values are better (accuracy, F1, reward), ``"down"`` if
             lower is better (cost, latency, loss-like metrics). ``None``
-            means unknown — consumers (EarlyStopping, Keras-Tuner inference)
+            means unknown; consumers (EarlyStopping, Keras-Tuner inference)
             then require an explicit `mode=` / `direction=`. Concrete metric
             classes set this at class scope; ``Mean``/``MeanMetricWrapper``
             can also set it at instance scope when wrapping a reward.
@@ -204,8 +204,8 @@ def ragged_add(current, fresh):
     """Element-wise add of two per-leaf state vectors that may differ in length.
 
     Metric state is positional (leaf ``i`` of the flattened JSON). Samples
-    with variable-length structures — e.g. an extraction gold whose array
-    holds N items — produce a different leaf count per update, so a plain
+    with variable-length structures (e.g. an extraction gold whose array
+    holds N items) produce a different leaf count per update, so a plain
     ``np.add`` raises a broadcast error the moment two updates disagree on
     length. The shorter vector is zero-padded instead: aggregate sums
     ("micro") stay exact, and per-position reductions simply see no

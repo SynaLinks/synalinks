@@ -1,7 +1,7 @@
 """The Synalinks program *and* its evaluation harness, in one file.
 
 This is **autosolve**: a self-improving system where *you, the coding
-agent, are the optimizer*. There is **no training loop** here — no
+agent, are the optimizer*. There is **no training loop** here: no
 ``program.fit()``, no in-context optimizer, no few-shot search. Instead you read
 the program's actual failures and **rewrite the program itself** (its
 instructions, field descriptions, module composition, or whole new modules),
@@ -18,19 +18,19 @@ iterate. Run ``--test`` only to confirm a result you already like on
 
 What it does, in order:
   1. turn on Synalinks logging so every module call is observable (see
-     ``LOG_LEVEL``) — the run prints each module's inputs/outputs to stdout,
-  2. load a GSM8K subset (small by default so it runs locally — even ONE sample
+     ``LOG_LEVEL``); the run prints each module's inputs/outputs to stdout,
+  2. load a GSM8K subset (small by default so it runs locally: even ONE sample
      is a valid loop; see ``DEV_SIZE``),
-  3. build the program (see ``build_program`` below) — the thing you edit,
+  3. build the program (see ``build_program`` below), the thing you edit,
   4. run it over the DEV set with ``predict()`` and score every example with the
      reward, writing per-example results to ``predictions_dev.jsonl`` (READ
-     THESE — they are how you find the next thing to fix),
+     THESE; they are how you find the next thing to fix),
   5. (only with --test) score the held-out TEST subset,
   6. print a RESULTS block and append one row to ``results.tsv``.
 
 The autosolve loop runs this as ``uv run python evaluate.py > eval.log 2>&1``,
 so ``eval.log`` holds the full module-by-module trace. To understand *why* a
-prediction is wrong, read it — pair it with ``DEV_SIZE = 1`` to study a single
+prediction is wrong, read it; pair it with ``DEV_SIZE = 1`` to study a single
 problem in full detail.
 
 Every *lever* is code in this file, not a CLI flag. That is deliberate: each
@@ -60,13 +60,13 @@ def _enable_observability():
 
 
 # ---------------------------------------------------------------------------
-# CONFIG — the levers. Edit in place; the autosolve loop commits this file.
+# CONFIG: the levers. Edit in place; the autosolve loop commits this file.
 # ---------------------------------------------------------------------------
 
 MODEL = "vllm/Qwen/Qwen3-4B"
 
 # How much Synalinks logs while the program runs. `enable_logging` attaches a
-# Logger hook that prints every module's inputs/outputs as JSON during the run —
+# Logger hook that prints every module's inputs/outputs as JSON during the run;
 # that trace is how you, the optimizer, understand what the program actually did.
 # It goes to stdout, so the loop's `> eval.log 2>&1` redirect saves it in
 # eval.log. "info" = the data flowing through each module; "debug" = also the
@@ -88,7 +88,7 @@ DESCRIPTION = "baseline"
 
 
 # ---------------------------------------------------------------------------
-# The program — this is what YOU optimize. There is no optimizer to lean on:
+# The program: this is what YOU optimize. There is no optimizer to lean on:
 # every improvement is an edit to the code below. Each field description is part
 # of the prompt; ``build_program`` is where architecture lives.
 # ---------------------------------------------------------------------------
@@ -112,7 +112,7 @@ async def build_program(lm):
     A single ``ChainOfThought`` that reads a ``MathQuestion`` and produces a
     ``MathAnswer`` (the chain-of-thought adds a ``thinking`` field of its own).
     This function is the heart of autosolve: with no training loop, the way
-    you raise the reward is to *change what this builds* — swap modules, add a
+    you raise the reward is to *change what this builds*: swap modules, add a
     verifier/repair step, branch for self-consistency and merge, or author a
     custom ``synalinks.Module``. Read ``AUTOSOLVE.md`` for the lever menu.
     """
@@ -131,7 +131,7 @@ async def build_program(lm):
 
 
 # ---------------------------------------------------------------------------
-# The harness. No fit(), no optimizer — just run the program and score it.
+# The harness. No fit(), no optimizer: just run the program and score it.
 # ---------------------------------------------------------------------------
 
 
@@ -156,7 +156,7 @@ async def solve(program, reward, x, y, split):
     """Run the program over (x, y), score each example, dump per-example results.
 
     Returns ``(mean_reward, records)``. Writes ``predictions_<split>.jsonl`` next
-    to this file (git-ignored) so you can read the *actual* failures — the whole
+    to this file (git-ignored) so you can read the *actual* failures; the whole
     point of the autosolve loop is to fix what you see there, not the score.
     """
     y_pred = await program.predict(x, verbose=0)
@@ -221,7 +221,7 @@ async def main():
     # Turn on Synalinks logging so the program's behavior is observable: the
     # Logger hook (on by default) prints each module's inputs/outputs as it runs.
     # It streams to stdout, so the loop's `> eval.log 2>&1` redirect captures the
-    # full trace in eval.log. This is autosolve's microscope — especially
+    # full trace in eval.log. This is autosolve's microscope, especially
     # with DEV_SIZE = 1.
     if LOG_LEVEL:
         synalinks.enable_logging(log_level=LOG_LEVEL)
@@ -235,7 +235,7 @@ async def main():
 
     program = await build_program(lm)
 
-    # The reward is the only judge here — there is no optimizer to compile for.
+    # The reward is the only judge here; there is no optimizer to compile for.
     # Swapping it (ExactMatch -> tolerant numeric -> LMAsJudge) is a lever.
     reward = synalinks.ExactMatch(in_mask=["answer"])
 
@@ -252,7 +252,7 @@ async def main():
     print("=" * 60)
     print(f"program     : {program.name}")
     print(f"dev_reward  : {_fmt(dev_reward)}")
-    test_display = _fmt(test_reward) if args.test else "(not run — pass --test)"
+    test_display = _fmt(test_reward) if args.test else "(not run; pass --test)"
     print(f"test_reward : {test_display}")
 
     # Append one row to results.tsv with placeholders, writing the header once.

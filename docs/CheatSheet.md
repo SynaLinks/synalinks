@@ -52,15 +52,16 @@ For more information on how to use each way, refer to the [Program](Synalinks AP
 ```python
 import synalinks
 
+
 class UserQuery(synalinks.DataModel):
     query: str
+
 
 async def main():
 
     # ... your program definition
 
     result = await program(UserQuery(query="what is the capital of France?"))
-
 ```
 
 ## How to batch the program execution?
@@ -125,6 +126,7 @@ To evaluate a program, you can use the `program.evaluate()` method, after compil
 ```python
 import synalinks
 
+
 async def main():
 
     # ... your program definition
@@ -132,8 +134,6 @@ async def main():
     program.compile(...)
 
     metrics = program.evaluate(x=x_train, y=y_train)
-
-
 ```
 
 ## How to train my program?
@@ -142,6 +142,7 @@ You can train your program using the `program.fit()` method, after compiling you
 
 ```python
 import synalinks
+
 
 async def main():
 
@@ -165,6 +166,7 @@ async def main():
 import synalinks
 
 synalinks.enable_logging()
+
 
 class Query(synalinks.DataModel):
     query: str
@@ -229,7 +231,6 @@ What happen if you concatenate two data models with the same fields?
 When property names conflict, numerical suffixes are added to ensure uniqueness.
 
 ```python
-
 two_queries = Query + Query
 
 print(two_queries.prettify_schema())
@@ -269,7 +270,6 @@ print(two_queries.prettify_json())
 Now, what happen when you concatenate with `None`? An exception is raised!
 
 ```python
-
 failing_query = Query(query="Why is neuro-symbolic AI powering the next wave?") + None
 # ValueError: Received x1=query='Why is neuro-symbolic AI powering the next wave?' and x2=None
 ```
@@ -287,6 +287,7 @@ This behavior can be summarized with the following truth table:
 
 ```python
 import synalinks
+
 
 class Query(synalinks.DataModel):
     query: str
@@ -344,6 +345,7 @@ Here is the table summarizing the behavior:
 import synalinks
 import asyncio
 
+
 class Query(synalinks.DataModel):
     query: str
 
@@ -373,7 +375,6 @@ Truth Table:
 | `None` | `None` | `None`           |
 
 ```python
-
 answer = Answer(answer="Toulouse") | None
 
 print(answer.prettify_json())
@@ -449,6 +450,7 @@ async def main():
     )
 
     print(answer.prettify_json())
+
 
 # {
 #   "thinking": "The answer to the given query involves finding a city in
@@ -526,10 +528,12 @@ async def main():
 ```python
 import synalinks
 
+
 class UserQuery(synalinks.DataModel):
     query: str = synalinks.Field(
         description="The user query",
     )
+
 
 class Answer(synalinks.DataModel):
     answer: str = syalinks.Field(
@@ -554,7 +558,6 @@ async def main():
         name="chain_of_thought_answer",
         description="A program using chain of thought to answer",
     )
-
 ```
 
 # How to use the SelfConsistency?
@@ -565,15 +568,18 @@ This technique can be quite expensive at inference time, so check first that a C
 ```python
 import synalinks
 
+
 class UserQuery(synalinks.DataModel):
     query: str = synalinks.Field(
         description="The user query",
     )
 
+
 class Answer(synalinks.DataModel):
     answer: str = syalinks.Field(
         descriptino="The final answer",
     )
+
 
 async def main():
 
@@ -590,7 +596,9 @@ async def main():
         return_inputs=False,
     )(inputs)
 
-    x2 = inputs & x1 & x2 # concatenate the inputs with each answer (robust to provider failure)
+    x2 = (
+        inputs & x1 & x2
+    )  # concatenate the inputs with each answer (robust to provider failure)
 
     # This stage (optional) critique the two previous answers
     x3 = synalinks.SelfCritique(
@@ -599,7 +607,7 @@ async def main():
         return_inputs=True,
     )(x2)
 
-    # Compute the final answer based on the previous answers and critique 
+    # Compute the final answer based on the previous answers and critique
     outputs = synalinks.Generator(
         data_model=Answer,
         language_model=language_model,
@@ -610,8 +618,7 @@ async def main():
         inputs=inputs,
         outputs=outputs,
         name="self_consistency",
-        description="A self-consistency program"
+        description="A self-consistency program",
     )
-
 ```
 

@@ -68,7 +68,7 @@ class CSVDatasetTest(testing.TestCase):
 
     def test_reads_multiple_files_in_order(self):
         # Multi-path: each file is consumed in the order given. Order
-        # matters because rows are not shuffled — callers slicing or
+        # matters because rows are not shuffled; callers slicing or
         # splitting downstream rely on it being deterministic.
         a = os.path.join(self.tmp, "a.csv")
         b = os.path.join(self.tmp, "b.csv")
@@ -122,7 +122,7 @@ class CSVDatasetTest(testing.TestCase):
         self.assertEqual([item.question for item in x], ["foo", "bar"])
 
     def test_columns_pushdown_restricts_returned_fields(self):
-        # ``columns`` filters at the pyarrow layer — the omitted columns
+        # ``columns`` filters at the pyarrow layer; the omitted columns
         # never reach the row dict, so a template referencing one would
         # raise. We exercise this by including only the column the
         # template uses.
@@ -187,7 +187,7 @@ class CSVDatasetTest(testing.TestCase):
             batch_size=2,
         )
         sizes = [len(b[0]) for b in ds]
-        # 5 rows, batch_size 2 → [2, 2, 1] — partial batch isn't dropped.
+        # 5 rows, batch_size 2 → [2, 2, 1]: partial batch isn't dropped.
         self.assertEqual(sizes, [2, 2, 1])
 
     def test_inputs_only_no_output_template(self):
@@ -200,7 +200,7 @@ class CSVDatasetTest(testing.TestCase):
             batch_size=1,
         )
         batch = next(iter(ds))
-        # Inputs-only datasets yield (x,) — a one-tuple.
+        # Inputs-only datasets yield (x,), a one-tuple.
         self.assertEqual(len(batch), 1)
         self.assertEqual(batch[0][0].question, "only-input")
 
@@ -294,7 +294,7 @@ class CSVDatasetTest(testing.TestCase):
     # mid-flush, a hand-edited file may have rows with missing trailing
     # columns, or the file may have been written with embedded
     # newlines inside quoted fields. The loader should not blow up on
-    # these shapes — instead the failure mode should either be
+    # these shapes; instead the failure mode should either be
     # silent-empty (empty / header-only file) or surface as a clear
     # downstream validation error from Pydantic / Jinja, not a parser
     # crash inside csv.DictReader.
@@ -302,7 +302,7 @@ class CSVDatasetTest(testing.TestCase):
     def test_empty_file_yields_no_rows(self):
         # A zero-byte file is the classic "the producer crashed before
         # writing anything" failure. DictReader treats it as "no
-        # header, no rows" — iterating returns nothing. Use iter(ds)
+        # header, no rows": iterating returns nothing. Use iter(ds)
         # explicitly because the streaming dataset has no __len__
         # without a limit and ``list(ds)`` would call __len__.
         path = os.path.join(self.tmp, "empty.csv")
@@ -335,13 +335,13 @@ class CSVDatasetTest(testing.TestCase):
         # partway through the last row. DictReader fills the missing
         # trailing columns with None, so the row reaches the template
         # with `None` for the absent field. Verify the loader doesn't
-        # drop the row silently — it surfaces a Pydantic error so the
+        # drop the row silently; it surfaces a Pydantic error so the
         # user knows the file is corrupt.
         path = os.path.join(self.tmp, "trunc.csv")
         with open(path, "w", encoding="utf-8") as f:
             f.write("q,a\n")
             f.write("q1,ans1\n")
-            f.write("q2\n")  # truncated — no `a` field
+            f.write("q2\n")  # truncated: no `a` field
         ds = CSVDataset(
             path=path,
             input_data_model=Question,
@@ -360,7 +360,7 @@ class CSVDatasetTest(testing.TestCase):
     def test_truncated_row_works_when_template_tolerates_missing_field(self):
         # Same truncated file, but the input-only template only
         # references the field that *is* present. The loader yields
-        # the good row and the partial row without complaint —
+        # the good row and the partial row without complaint,
         # consistent with "the loader doesn't crash, the template
         # decides what's required".
         path = os.path.join(self.tmp, "trunc2.csv")
@@ -379,7 +379,7 @@ class CSVDatasetTest(testing.TestCase):
 
     def test_row_with_empty_string_values_passes_through(self):
         # Quoted-empty values are a legitimate "missing-but-present"
-        # encoding. DictReader returns "" — not None — so a
+        # encoding. DictReader returns "", not None, so a
         # string-typed DataModel accepts them.
         path = os.path.join(self.tmp, "blanks.csv")
         with open(path, "w", encoding="utf-8") as f:
@@ -425,7 +425,7 @@ class CSVDatasetTest(testing.TestCase):
         # A row with more columns than the header is unusual but
         # legal. DictReader collects the extras under the `None` key.
         # Templates that only reference declared columns ignore the
-        # extras — the loader doesn't fail just because there's
+        # extras; the loader doesn't fail just because there's
         # surplus data on a row.
         path = os.path.join(self.tmp, "extras.csv")
         with open(path, "w", encoding="utf-8") as f:
@@ -442,7 +442,7 @@ class CSVDatasetTest(testing.TestCase):
 
     def test_blank_lines_in_middle_are_skipped_by_dictreader(self):
         # ``csv.DictReader`` skips empty lines (rows that produce ``[]``
-        # from the underlying reader) — that's standard stdlib
+        # from the underlying reader); that's standard stdlib
         # behavior, not anything our loader adds. A blank line in the
         # middle of a file therefore doesn't poison the stream with a
         # bogus all-empty row. Pin that behavior down so a future

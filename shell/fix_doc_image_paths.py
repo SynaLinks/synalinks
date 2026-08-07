@@ -14,7 +14,7 @@ domain root and every such image 404s.
 
 Every asset lives at ``site/assets/``, so the correct number of ``../`` for any
 page is exactly its directory depth below ``site/``. This pass rewrites the
-leading ``./``/``../`` run of every ``assets/...`` link (and only those — it
+leading ``./``/``../`` run of every ``assets/...`` link (and only those; it
 leaves ``http(s)://`` and root-absolute ``/assets`` links untouched) to match
 that depth. Links that were already correct (CSS, nav) normalize to themselves.
 

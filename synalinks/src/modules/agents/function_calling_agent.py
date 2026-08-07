@@ -439,7 +439,7 @@ class FunctionCallingAgent(Module):
         # an `AGENTS.md` inside it is injected as an extra input message at
         # call time (see `read_agents_md`).
         self.workdir = resolve_workdir(workdir)
-        # Read AGENTS.md once, here at construction — re-reading it on every
+        # Read AGENTS.md once, here at construction; re-reading it on every
         # `call()` could pick up a changed/corrupted file and would defeat the
         # re-injection guard (which compares against this stable message).
         self.agents_md_message = self.read_agents_md()
@@ -489,7 +489,7 @@ class FunctionCallingAgent(Module):
             if tool.name.startswith("_"):
                 raise ValueError(
                     f"Tool name {tool.name!r} starts with an underscore. "
-                    f"Tools exposed to the LM must have public names — "
+                    f"Tools exposed to the LM must have public names; "
                     f"rename the function or pass an explicit `name=` to "
                     f"Tool(...)."
                 )
@@ -506,7 +506,7 @@ class FunctionCallingAgent(Module):
         # Native function-calling: the LM picks tools and emits a
         # ChatMessage with `tool_calls` populated in the synalinks flat
         # shape ({id, name, arguments}). Tool-call IDs are the provider's
-        # own — no local uuid4 needed. Tools are passed at call time
+        # own; no local uuid4 needed. Tools are passed at call time
         # (see `call`), not at construction.
         tool_calls_generator_cls = ChainOfThought if use_chain_of_thought else Generator
         self.tool_calls_generator = tool_calls_generator_cls(
@@ -541,7 +541,7 @@ class FunctionCallingAgent(Module):
     def _get_builtin_tools(self):
         """Return the agent's built-in tools (hook for subclasses).
 
-        The base `FunctionCallingAgent` has no built-in tools — it exposes only
+        The base `FunctionCallingAgent` has no built-in tools: it exposes only
         the user-supplied `tools`. Subclasses (e.g. `SQLAgent`, `DeepAgent`)
         override this to inject domain tools, which are merged ahead of the
         user's tools and protected against name collisions. Domain attributes
@@ -566,7 +566,7 @@ class FunctionCallingAgent(Module):
         """Convert the workdir's root ``AGENTS.md`` into an input message.
 
         When a ``workdir`` is configured and contains a non-empty root
-        ``AGENTS.md``, its body is taken verbatim (no added framing — the
+        ``AGENTS.md``, its body is taken verbatim (no added framing; the
         agents.md spec prescribes no prompt wording) and wrapped in a user
         ``ChatMessage`` for injection at the front of the trajectory (see
         `discover_agents_md` / `agents_md_prompt`). No sandbox needed.
@@ -587,7 +587,7 @@ class FunctionCallingAgent(Module):
         """Build the ``<available_skills>`` context message from `skills` roots.
 
         Discovers the Agent Skills under each configured root (deduped by name,
-        first root wins) and renders the ``<available_skills>`` XML block — names
+        first root wins) and renders the ``<available_skills>`` XML block: names
         and descriptions only (level 1 / progressive disclosure). The block is
         wrapped in a user ``ChatMessage`` for injection at the front of the
         trajectory (see `prepend_context_message`).
@@ -629,7 +629,7 @@ class FunctionCallingAgent(Module):
 
             # Inject context messages at the front of the trajectory, read once
             # at construction. Skills are prepended first so that AGENTS.md
-            # (prepended after) ends up as the very first message — keeping
+            # (prepended after) ends up as the very first message, keeping
             # declared project conventions at the top. Both are guarded against
             # re-injection so feeding a returned trajectory back in (e.g. in
             # interactive mode) doesn't stack duplicate copies each turn.
@@ -642,9 +642,7 @@ class FunctionCallingAgent(Module):
                 return await self._run_autonomous(
                     trajectory, agent_messages, ctx, training
                 )
-            return await self._run_interactive(
-                trajectory, agent_messages, ctx, training
-            )
+            return await self._run_interactive(trajectory, agent_messages, ctx, training)
 
     async def _begin_call(self, inputs, training, **kwargs):
         """Build the working trajectory and an opaque per-call context (hook).

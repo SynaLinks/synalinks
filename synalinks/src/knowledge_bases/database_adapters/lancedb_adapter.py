@@ -15,7 +15,7 @@ of LanceDB:
   (LanceDB has no SQL engine of its own).
 
 LanceDB has no primary-key constraint, so upserts are done with
-``merge_insert(on=<pk>)`` keyed off the first declared field — the same
+``merge_insert(on=<pk>)`` keyed off the first declared field, the same
 "primary key = first field" convention the DuckDB adapter uses. The original
 JSON schema is stashed in the Arrow schema metadata so reflection round-trips
 losslessly (object/array-typed columns are stored as JSON strings).
@@ -106,7 +106,7 @@ class LanceDBAdapter(DatabaseAdapter):
         # `_ensure_vector_dim`), never via a probe here. The old probe used
         # `run_maybe_nested`, running the embedding on a transient thread-loop
         # and binding litellm's process-global httpx client to a loop closed
-        # moments later — poisoning it for every later main-loop embedding
+        # moments later, poisoning it for every later main-loop embedding
         # ("Event loop is closed"). `vector_dim=` short-circuits.
         self.vector_dim = vector_dim
         # The fixed-size vector column needs the dimension up front, so when an
@@ -377,7 +377,7 @@ class LanceDBAdapter(DatabaseAdapter):
 
         Search methods accept either a query text (embedded here) or a
         pre-computed ``vector_or_vectors`` passed directly. When vectors
-        are supplied the embedding step — and the embedding model — are
+        are supplied the embedding step (and the embedding model) are
         skipped entirely; the vector dimension is learned from the first
         vector if it isn't known yet. Returns a list of vectors, or
         ``None`` when there is nothing to search for.
@@ -649,7 +649,7 @@ class LanceDBAdapter(DatabaseAdapter):
         Args:
             source: ``SymbolicDataModel`` for the table to rename, or its
                 name as a string. Always normalized to PascalCase.
-            table_name: New table name. Optional — pass to rename the table.
+            table_name: New table name. Optional; pass to rename the table.
             table_description: New schema description. Optional.
 
         Returns:
@@ -853,7 +853,7 @@ class LanceDBAdapter(DatabaseAdapter):
                 ``text_or_texts``. When supplied, no embedding model is
                 required on the adapter.
             k: Maximum number of rows returned.
-            threshold: Optional maximum vector distance — rows beyond this
+            threshold: Optional maximum vector distance; rows beyond this
                 distance are dropped.
             ef_search: Optional override for the HNSW search-time
                 candidate-list depth. Accepted for parity with the DuckDB
@@ -1013,7 +1013,7 @@ class LanceDBAdapter(DatabaseAdapter):
         """Deprecated alias of `hybrid_fts_search`.
 
         Kept so call sites pre-dating the rename keep working. Prefer the
-        new name in new code — it's symmetric with `hybrid_regex_search`.
+        new name in new code; it's symmetric with `hybrid_regex_search`.
         """
         return await self.hybrid_fts_search(*args, **kwargs)
 
@@ -1090,8 +1090,8 @@ class LanceDBAdapter(DatabaseAdapter):
                 row.setdefault("rrf_score", row.get("score", 0.0))
             return format_search_results(fts_rows, output_format)
 
-        # Build the per-slot vector-branch input — either pre-computed
-        # vectors or texts to embed — then align the keyword for each slot.
+        # Build the per-slot vector-branch input (either pre-computed
+        # vectors or texts to embed), then align the keyword for each slot.
         if provided_vectors is not None:
             vec_texts: List[Optional[str]] = [None] * len(provided_vectors)
             vec_vectors: List[Optional[List[float]]] = list(provided_vectors)
@@ -1250,8 +1250,8 @@ class LanceDBAdapter(DatabaseAdapter):
                     merged[r[id_key]] = r
             return format_search_results(list(merged.values())[:k], output_format)
 
-        # Build the per-slot vector-branch input — pre-computed vectors
-        # or texts to embed — then align a pattern to each slot.
+        # Build the per-slot vector-branch input (pre-computed vectors
+        # or texts to embed), then align a pattern to each slot.
         if provided_vectors is not None:
             vec_texts: List[Optional[str]] = [None] * len(provided_vectors)
             vec_vectors: List[Optional[List[float]]] = list(provided_vectors)

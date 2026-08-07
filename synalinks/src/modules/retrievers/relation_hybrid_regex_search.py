@@ -23,7 +23,7 @@ from synalinks.src.saving import serialization_lib
 class RelationHybridRegexSearchInput(DataModel):
     """Input shape for `RelationHybridRegexSearch`.
 
-    The ``regex_patterns`` list is optional — when omitted, the
+    The ``regex_patterns`` list is optional: when omitted, the
     adapter falls back to plain vector similarity over
     ``similarity_search``.
     """
@@ -50,7 +50,7 @@ class RelationHybridRegexSearch(Module):
     edges. LM-driven wrapper around
     `KnowledgeBase.relation_hybrid_regex_search`. Per matched
     edge, the final ``rrf_score`` is the sum of the subject's and
-    the object's hybrid scores — same 4-source-RRF reduction as
+    the object's hybrid scores, the same 4-source-RRF reduction as
     `RelationHybridFTSSearch`. Falls back to plain vector
     similarity when ``regex_patterns`` is empty.
 
@@ -71,7 +71,7 @@ class RelationHybridRegexSearch(Module):
             providing ``schema`` via ``.get_schema()`` when ``schema``
             is not given.
         label (str): Target relation label. Defaults to the schema's
-            ``title``. **Optional** — when neither ``label`` nor a
+            ``title``. **Optional**: when neither ``label`` nor a
             schema to derive it from is given, the language model infers
             the target relation label per call (constrained to the
             knowledge base's actual relation labels).
@@ -215,7 +215,7 @@ class RelationHybridRegexSearch(Module):
         patterns = query_json.get("regex_patterns")
         # Fixed label, or the one the LM inferred this call.
         label = self.label or query_json.get("relation_label")
-        # Need at least one signal — vector or regex — and a label to look up.
+        # Need at least one signal (vector or regex) and a label to look up.
         if (not queries and not patterns) or not label:
             return None
 

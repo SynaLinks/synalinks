@@ -21,7 +21,7 @@ writes Cypher, runs it, and summarizes the rows.
 
 ## When do you want one?
 
-Graphs shine when the answer follows **relationships** — friend-of-friend,
+Graphs shine when the answer follows **relationships**: friend-of-friend,
 shortest path, "which X connects to Y through Z". Those are multi-hop
 traversals that an SQL agent would express as a chain of self-joins. With a
 graph, the same question is a single `MATCH` pattern:
@@ -35,7 +35,7 @@ RETURN p.name
 
 Only **read-only** Cypher runs. The graph adapter scans the query and rejects
 any write/admin keyword (`CREATE`, `MERGE`, `SET`, `DELETE`, `DETACH`,
-`REMOVE`, `DROP`, `ALTER`, `COPY`, `INSTALL`, `LOAD`) — so an LM can explore
+`REMOVE`, `DROP`, `ALTER`, `COPY`, `INSTALL`, `LOAD`), so an LM can explore
 the graph but never mutate it.
 
 ## API References
@@ -93,10 +93,10 @@ async def main():
     load_dotenv()
     synalinks.clear_session()
 
-#     synalinks.enable_observability(
-#         tracking_uri="http://localhost:5000",
-#         experiment_name="cypher_agent",
-#     )
+    #     synalinks.enable_observability(
+    #         tracking_uri="http://localhost:5000",
+    #         experiment_name="cypher_agent",
+    #     )
 
     # A graph KnowledgeBase needs `graph_uri=` (Ladybug here) plus the entity
     # and relation models. `:memory:` keeps it ephemeral; swap in a file path

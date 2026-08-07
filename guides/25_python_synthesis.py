@@ -9,12 +9,12 @@ optimizer's job was to write better English.
 This guide swaps the genome. The trainable variable is now a **Python
 program**, and the optimizer's job is to **write better code**. The
 module is `PythonSynthesis`, and the only optimizer that can drive it
-is an evolutionary one — `OMEGA`.
+is an evolutionary one: `OMEGA`.
 
 The mental shift is worth stating plainly up front. With a `Generator`,
 the LM is *in the loop at inference time*: every prediction is an LM
 call. With `PythonSynthesis`, the LM is *only in the training loop*. At
-inference time there is **no LM** — just a deterministic Python script
+inference time there is **no LM**, just a deterministic Python script
 running in a sandbox. The LM's role is to author and refine that script
 during `fit`, not to run it. This is the neuro-symbolic, self-evolving
 paradigm that systems like DeepMind's AlphaEvolve popularized: a
@@ -59,7 +59,7 @@ object. The contract the script must honor:
 - `result` must validate against the module's target schema (the
   `data_model` you pass in). If it does not, the run is discarded.
 
-The script runs inside the **Mirage** sandbox — a real, isolated
+The script runs inside the **Mirage** sandbox: a real, isolated
 Python 3 interpreter, sandboxed from the host. Because it is genuine
 CPython, the optimizer can write ordinary Python:
 
@@ -69,13 +69,13 @@ CPython, the optimizer can write ordinary Python:
 - Tools bound to the module are exposed as **global async callables**
   under their tool name: `await` them inside an `async def` driven by
   `asyncio.run(...)`; each call returns a dict.
-- The sandbox is host-safe — the script runs isolated from the real
-  workspace — and execution is bounded by the module's `timeout`
+- The sandbox is host-safe, the script runs isolated from the real
+  workspace, and execution is bounded by the module's `timeout`
   (long-running scripts are aborted). The exact constraints ultimately
   depend on the active sandbox (`sandbox.description`).
 
-Because LM-authored code fails *often* — a syntax slip, a forbidden
-import, an infinite loop, an output of the wrong shape — the module is
+Because LM-authored code fails *often*, a syntax slip, a forbidden
+import, an infinite loop, an output of the wrong shape, the module is
 built to **fail soft**. On any error it returns your
 `default_return_value` (which must itself validate against the schema)
 and surfaces the interpreter's `stdout`/`stderr` on the output, so the
@@ -97,7 +97,7 @@ synthesis = synalinks.PythonSynthesis(
 
 `RandomFewShot` ([Guide 15](https://synalinks.github.io/synalinks/guides/Training/)) optimizes a `Generator` by collecting
 high-reward `(input, output)` pairs and pasting them into the prompt as
-demonstrations. It has no machinery to *write code* — it only curates
+demonstrations. It has no machinery to *write code*; it only curates
 examples. Point it at a `PythonSynthesis` module and it has nothing to
 do; the script never changes.
 
@@ -106,7 +106,7 @@ introduced it briefly). It treats the script as a **genome** and runs a genetic
 algorithm over a population of script variants:
 
 - **Mutation.** An LM is shown the current script, the inputs, what it
-  predicted, the ground truth, and the reward — and asked to rewrite the
+  predicted, the ground truth, and the reward, and asked to rewrite the
   script to do better. This is where the bug-fixing and rule-discovery
   happens.
 - **Crossover.** Two high-performing scripts are merged by an LM into a
@@ -115,7 +115,7 @@ algorithm over a population of script variants:
   candidate is dropped only if it is *both* lower-reward *and* similar
   to a fitter neighbor (similarity measured by embedding the candidate
   with an `embedding_model`). This keeps the population diverse, so the
-  search does not collapse onto one mediocre approach — which is exactly
+  search does not collapse onto one mediocre approach, which is exactly
   the failure mode you want to avoid when synthesizing algorithms.
 
 That last point is why `OMEGA` needs **both** a `language_model` (to
@@ -143,7 +143,7 @@ flowchart TD
     STOP -->|"yes"| KEEP["Keep the winning script"]
 ```
 
-The seed is just a starting point — usually a trivial identity
+The seed is just a starting point, usually a trivial identity
 function. The optimizer earns its keep by turning that seed into a real
 algorithm across generations.
 
@@ -159,17 +159,17 @@ ARC-AGI is a natural fit for program synthesis for three reasons:
 
 1. **The rules are algorithmic.** "Tile the grid into a 3×3 of itself
    wherever a cell is non-zero", "recolor the largest shape", "reflect
-   across the diagonal" — these are short programs, not facts to
+   across the diagonal"; these are short programs, not facts to
    memorize. A Python script can express them exactly; a prompt can
    only gesture at them.
 2. **Scoring is exact and cheap.** A predicted grid either equals the
    true grid or it does not. `ExactMatch` gives a crisp `0`/`1` reward
    with no LM-as-judge cost.
-3. **It is genuinely hard — but tractable for a strong model.** This
+3. **It is genuinely hard, but tractable for a strong model.** This
    particular task (`007bbfb7`) is one a capable code model can crack:
    in practice `gemini/gemini-3.5-flash` solved it in the first
    generation (see the evolved script below). Treat that as the
-   optimistic case, not the rule — most ARC tasks are far harder, and a
+   optimistic case, not the rule; most ARC tasks are far harder, and a
    weak or local model will mostly demonstrate the wiring rather than
    land a solution.
 
@@ -228,7 +228,7 @@ carries `stdout`/`stderr` fields, and we score *only* the grid.
 
 The `EarlyStopping` callback matters more here than in prose tuning.
 `ExactMatch` is a `0`/`1` reward, so it jumps straight to its `1.0`
-ceiling the instant a script solves the training set — often in the
+ceiling the instant a script solves the training set, often in the
 first generation with a capable code model. Set a generous `epochs`
 cap and let `EarlyStopping(mode="max")` halt the run once the reward
 stops improving; `restore_best_variables=True` keeps the solving
@@ -237,7 +237,7 @@ re-evolve an already-perfect solution.
 
 ## The Payoff: Interpretable State
 
-After training, the learned state is not an inscrutable tensor — it is a
+After training, the learned state is not an inscrutable tensor; it is a
 **Python script you can read**. Pull it off the module's variable:
 
 ```python
@@ -257,7 +257,7 @@ with zero LM calls.
 Here is a script OMEGA actually evolved for this task, driving the loop
 with `gemini/gemini-3.5-flash`. It reached reward `1.0` in the **first
 generation** and solved all 5 training examples *and* the held-out test
-input — a correct, general fractal self-tiling algorithm:
+input: a correct, general fractal self-tiling algorithm:
 
 ```python
 def transform(inputs):
@@ -282,8 +282,8 @@ result = transform(inputs)
 ```
 
 Read that against the seed (an identity that just echoes the input):
-the optimizer discovered the rule — "tile the grid into a 3×3 of itself,
-placing a copy wherever the input cell is non-zero" — purely from the
+the optimizer discovered the rule, "tile the grid into a 3×3 of itself,
+placing a copy wherever the input cell is non-zero", purely from the
 reward signal and the example pairs in the mutation prompt.
 
 ## Honest Expectations and Failure Modes
@@ -296,10 +296,10 @@ reward signal and the example pairs in the mutation prompt.
   attempts.
 - **`ExactMatch` is unforgiving.** One wrong cell drops the reward to
   `0`. There is no partial credit. This is correct for ARC but means the
-  reward signal is sparse — large populations and more generations help.
+  reward signal is sparse; large populations and more generations help.
 - **The sandbox rejects a lot.** Scripts that import `numpy`, define a
   `class`, or use `itertools` will fail and fall back to the default.
-  Read `stderr` on the predictions to see why — that feedback is exactly
+  Read `stderr` on the predictions to see why; that feedback is exactly
   what OMEGA's mutation step consumes.
 - **Cost scales with `population_size × generations × batch`.** Each
   candidate is an LM authoring call. Start small while you debug the
@@ -321,10 +321,10 @@ reward signal and the example pairs in the mutation prompt.
 5. **Stop early.** Pair a generous `epochs` cap with
    `EarlyStopping(monitor="reward", mode="max", restore_best_variables=True)`.
    Because `ExactMatch` saturates at `1.0`, a capable model often solves
-   in the first generation — without early stopping you pay for every
+   in the first generation; without early stopping you pay for every
    remaining epoch re-evolving a solution you already have.
 6. **Save after every run.** `program.save("path.json")` writes the
-   evolved script to a human-readable file — `diff` it across runs to
+   evolved script to a human-readable file; `diff` it across runs to
    watch the algorithm take shape.
 
 ## API References
@@ -429,7 +429,7 @@ async def main():
     pred = await program(x0)
     solved = pred.get("output_grid") == y0.get("output_grid")
 
-    print("\nSeed output (identity — just echoes the input grid):")
+    print("\nSeed output (identity, just echoes the input grid):")
     print(_grid_str(pred.get("output_grid")))
     print("\nGround-truth output grid:")
     print(_grid_str(y0.get("output_grid")))
@@ -480,7 +480,7 @@ async def main():
 
     # `ExactMatch` saturates at 1.0 the moment a script solves every training
     # example, so set a generous epoch cap and let `EarlyStopping` halt the run
-    # as soon as the reward plateaus — `restore_best_variables` keeps the best
+    # as soon as the reward plateaus; `restore_best_variables` keeps the best
     # (solving) script. Without this you burn LM calls re-evolving an already
     # perfect solution. We monitor `reward` (train) rather than `val_reward`
     # because the leave-one-out split leaves only a single, noisy validation
@@ -521,7 +521,7 @@ async def main():
         print("\n--- evolved python_script ---")
         print(best.get("python_script"))
     else:
-        print("\nNo evolved candidates yet — the active script is:")
+        print("\nNo evolved candidates yet; the active script is:")
         print(synthesis.state.get("python_script"))
 
     # -------------------------------------------------------------------------

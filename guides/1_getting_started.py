@@ -3,7 +3,7 @@
 
 Welcome. This is the first of seventeen guides. By the end of this one you will
 have written a tiny program that asks a language model a question and gets
-back a Python object you can use directly — no string parsing, no fragile
+back a Python object you can use directly: no string parsing, no fragile
 regex, no `if "yes" in answer.lower()` hacks. We will cover just three
 ingredients: a `DataModel`, a `Generator`, and a `Program`. Everything else
 in the framework is built on top of these three.
@@ -17,14 +17,14 @@ appears.
 ## The Problem We Are Solving
 
 A language model (LM) is, at its simplest, a very elaborate autocomplete.
-You give it some text — a "prompt" — and it gives you back more text — a
+You give it some text (a "prompt") and it gives you back more text, a
 "completion." That works beautifully for a chat window, where a human reads
 the reply and decides what to do with it.
 
 It works much less beautifully when the LM is not the whole product but a
 *part* of a larger program. Imagine you are writing a tutor app: the user
 types a math problem, an LM works out the answer, and the rest of your code
-needs to know two things — was the answer correct, and how should we score
+needs to know two things: was the answer correct, and how should we score
 it? If the LM hands you back the string
 
 ```
@@ -42,7 +42,7 @@ system tells us what is in each. That requires three pieces the raw LM API
 does not give us:
 
 1. A **typed interface**. The call should consume and produce structured
-   values — Python objects with named fields — rather than free text.
+   values (Python objects with named fields) rather than free text.
 2. A way to **declare what we want**. Instead of hand-crafting a prompt
    that begs the model to "please respond in JSON," we should describe the
    shape of the answer once and let the framework handle the rest.
@@ -64,17 +64,17 @@ flowchart LR
 
 The top row is the raw experience. The bottom row is what Synalinks adds.
 You describe the shape of the answer you want (this description is called
-a **schema** — think of it like the header row of a spreadsheet, listing
+a **schema**: think of it like the header row of a spreadsheet, listing
 which columns exist and what type each column holds), and the framework:
 
 - builds an appropriate prompt for you,
 - runs the LM in a mode that refuses to produce output of the wrong shape
-  (this is called **constrained decoding** — picture a strict proofreader
+  (this is called **constrained decoding**: picture a strict proofreader
   watching every word and crossing out anything that would break the
   format),
 - parses the result back into a Python object you can use directly.
 
-If something still goes wrong — say the LM produces gibberish — Synalinks
+If something still goes wrong (say the LM produces gibberish), Synalinks
 retries; if retries fail it raises a clean exception instead of silently
 returning broken data. The promise to remember: **a successful call gives
 you back a value that matches the shape you declared.** You will not be
@@ -90,7 +90,7 @@ pip install synalinks    # or, if you use uv: uv pip install synalinks
 
 ## Pointing the Code at a Language Model
 
-Synalinks does not ship with its own LM — it talks to whichever one you
+Synalinks does not ship with its own LM; it talks to whichever one you
 already have. For this guide we use a local copy of Llama via Ollama, which
 runs on your laptop and needs no account or API key:
 
@@ -109,12 +109,12 @@ GEMINI_API_KEY=...
 ANTHROPIC_API_KEY=...
 ```
 
-## Ingredient 1: `DataModel` — describing what data looks like
+## Ingredient 1: `DataModel`, describing what data looks like
 
 A `DataModel` is a Python class that describes the *shape* of a piece of
 data: what fields it has and what type each field holds. The closest
-everyday analogy is a paper form with labeled blanks — "Name: ____",
-"Age: ____" — except that here the blanks come with type rules ("Age must
+everyday analogy is a paper form with labeled blanks, "Name: ____",
+"Age: ____", except that here the blanks come with type rules ("Age must
 be a whole number").
 
 Under the hood, a `DataModel` is a Pydantic model. **Pydantic** is a widely
@@ -125,7 +125,7 @@ when something does not match. Synalinks adds two things on top:
 
 1. Every field carries a short natural-language `description`. This
    description is given to the LM as part of the prompt.
-2. The class can be exported as a **JSON Schema** — a standard,
+2. The class can be exported as a **JSON Schema**, a standard,
    machine-readable description of what a JSON object should look like.
    That schema is what the LM is constrained to follow.
 
@@ -155,10 +155,10 @@ Two facts about this code that are easy to underestimate:
   reason out loud *before* committing to a final answer. This trick is
   called **chain-of-thought**, and it noticeably improves accuracy on
   multi-step problems. If you reversed the order, the model would commit
-  to an answer first and then rationalize it — losing most of the
+  to an answer first and then rationalize it, losing most of the
   benefit. A common beginner trap.
 
-## Ingredient 2: `Generator` — one LM call, typed at both ends
+## Ingredient 2: `Generator`, one LM call, typed at both ends
 
 A `Generator` is the smallest reusable piece that actually talks to a
 language model. The mental model is simple: a `DataModel` goes in, a
@@ -167,7 +167,7 @@ you think of an LM call as a typed function, a `Generator` *is* that
 function.
 
 In Synalinks vocabulary, a `Generator` is a kind of `Module`. (`Module`
-is Synalinks' word for a reusable building block — exactly analogous to a
+is Synalinks' word for a reusable building block, exactly analogous to a
 layer in Keras.) When you create one, you tell it what output shape you
 want and which LM to talk to:
 
@@ -187,7 +187,7 @@ calls in parallel without each one blocking the next. If `async` is new
 to you, just read `await thing` as "wait until `thing` finishes, then
 keep going."
 
-## Ingredient 3: `Program` — bundle modules into something you can ship
+## Ingredient 3: `Program`, bundle modules into something you can ship
 
 A `Program` is a container that wraps one or more modules into a single
 object you can call, save, load, and (later on) train. If `Generator` is
@@ -210,7 +210,7 @@ outputs = await synalinks.Generator(
 program = synalinks.Program(inputs=inputs, outputs=outputs, name="qa_program")
 ```
 
-Here is the subtle part — and the single most common confusion when
+Here is the subtle part, and the single most common confusion when
 people first read this code. `Input(data_model=Question)` does **not**
 create a `Question` object. It creates a *symbolic placeholder* that
 stands for "a `Question` value that will arrive here later." When you
@@ -286,7 +286,7 @@ field varies from run to run, and sometimes it is factually wrong (France
 does not actually have multiple capitals) even when the answer it
 produces is right. That is the LM speaking, not the framework.
 **Synalinks guarantees the *shape* of the output, not its *truth*.** Making
-the model more truthful is the job of techniques we meet later —
+the model more truthful is the job of techniques we meet later:
 optimizers, rewards, and retrieval. For now, celebrate that the *shape*
 worked: `result["answer"]` will always be a string, never `None`, never
 a paragraph with the answer buried in the middle.
@@ -294,7 +294,7 @@ a paragraph with the answer buried in the middle.
 ## A Detail That Bites People: `clear_session`
 
 When you create a module without giving it a name, Synalinks invents one
-for you — `generator_1`, `generator_2`, and so on, counted off a counter
+for you: `generator_1`, `generator_2`, and so on, counted off a counter
 that lives for the lifetime of the Python process. In a Jupyter notebook,
 where you re-run cells without restarting the kernel, that counter just
 keeps growing. Each re-run produces different module names, and since
@@ -314,7 +314,7 @@ If you take only four ideas from this guide, take these:
   on.)
 - **A successful `Generator` call returns a typed object.** Its fields
   match exactly what you declared. You can access them with bracket
-  notation (`result["answer"]`) or dot notation (`result.answer`) —
+  notation (`result["answer"]`) or dot notation (`result.answer`),
   whichever you prefer.
 - **Field descriptions are part of the prompt.** Rewording a description
   changes how the program behaves, even though no Python logic changed.
@@ -326,12 +326,12 @@ If you take only four ideas from this guide, take these:
 
 ## Where to Go Next
 
-- **[Guide 2](https://synalinks.github.io/synalinks/guides/Data%20Models/) — Data Models.** Nested objects, list fields, enums, custom
+- **[Guide 2](https://synalinks.github.io/synalinks/guides/Data%20Models/): Data Models.** Nested objects, list fields, enums, custom
   validation. Most real programs use richer schemas than `Question` and
   `Answer`.
-- **[Guide 3](https://synalinks.github.io/synalinks/guides/Programs/) — Programs.** The other two ways to build a `Program`
+- **[Guide 3](https://synalinks.github.io/synalinks/guides/Programs/): Programs.** The other two ways to build a `Program`
   (subclassing and the `Sequential` shortcut) and when to prefer each.
-- **[Guide 4](https://synalinks.github.io/synalinks/guides/Modules/) — Modules.** The catalogue of pre-built modules beyond
+- **[Guide 4](https://synalinks.github.io/synalinks/guides/Modules/): Modules.** The catalogue of pre-built modules beyond
   `Generator`: chain-of-thought, decision-making, voting, and more.
 
 ## API References

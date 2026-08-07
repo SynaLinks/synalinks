@@ -125,7 +125,7 @@ class ProgramCheckpointBatchScheduleTest(testing.TestCase):
         cb = ProgramCheckpoint(filepath="/tmp/x.json", save_freq=2)
         cb._should_save_on_batch(0)  # 1
         self.assertTrue(cb._should_save_on_batch(1))  # 2 → save
-        # New epoch — batch goes back down to 0, treated as "batch + 1" added.
+        # New epoch: batch goes back down to 0, treated as "batch + 1" added.
         self.assertFalse(cb._should_save_on_batch(0))  # 1
         self.assertTrue(cb._should_save_on_batch(1))  # 2 → save
 
@@ -203,9 +203,9 @@ class ProgramCheckpointSaveTest(testing.TestCase):
         program = _FakeProgram()
         cb.set_program(program)
         cb.on_epoch_begin(0)
-        cb.on_train_batch_end(0, logs={})  # 1 — no save
+        cb.on_train_batch_end(0, logs={})  # 1: no save
         self.assertEqual(program.saved, [])
-        cb.on_train_batch_end(1, logs={})  # 2 — save
+        cb.on_train_batch_end(1, logs={})  # 2: save
         self.assertEqual(program.saved, [filepath])
 
     def test_io_error_directory_raised_as_helpful_message(self):

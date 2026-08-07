@@ -9,7 +9,7 @@ you know the shape of your domain up front and want to *store and query*
 it in a typed graph.
 
 But sometimes you **don't** know the shape in advance. You're pointed at
-an arbitrary corpus — a pile of articles, a research paper, a wiki — and
+an arbitrary corpus (a pile of articles, a research paper, a wiki) and
 you want the model to surface *whatever* entities and relations it finds,
 inventing the vocabulary as it goes. That is **free-form extraction**:
 the schema constrains the *structure* (there are entities, there are
@@ -32,7 +32,7 @@ graph LR
 
 ## Constrained vs. Free-form
 
-The two approaches share every module — the only difference is the
+The two approaches share every module; the only difference is the
 schema you hand the `Generator`.
 
 | | Constrained (Guide 27) | Free-form (this guide) |
@@ -44,7 +44,7 @@ schema you hand the `Generator`.
 | Best for | Known domain, typed queries | Exploration, unknown corpora |
 | Risk | Misses types you didn't model | Label drift / inconsistency |
 
-Neither is "better" — they're the two ends of a dial. Free-form
+Neither is "better"; they're the two ends of a dial. Free-form
 maximizes *coverage* (nothing is excluded by your schema) at the cost of
 *consistency* (the model might say `"Person"` in one document and
 `"Human"` in the next). Constrained is the reverse. A common pattern is
@@ -63,7 +63,7 @@ from typing import List
 import synalinks
 
 class Node(synalinks.Entity):
-    # `label` is inherited as a plain `str` — the model fills it with
+    # `label` is inherited as a plain `str`; the model fills it with
     # the type it discovers ("Person", "Organization", "Concept", ...).
     name: str = synalinks.Field(description="The entity's name / identifier.")
     description: str = synalinks.Field(description="A short description.")
@@ -81,7 +81,7 @@ class Graph(synalinks.KnowledgeGraph):
 
 Compared with Guide 27, there is no `Union` of concrete types and no
 `Literal` anywhere. `name` is still the first content field, so it is
-still the primary key — two mentions of `"Marie Curie"` collapse onto
+still the primary key: two mentions of `"Marie Curie"` collapse onto
 one node regardless of the label the model chose.
 
 ## Why Storage Still Works Without Declaring Models
@@ -89,7 +89,7 @@ one node regardless of the label the model chose.
 Here is the part that makes free-form practical: you store the result
 **without telling the knowledge base which labels exist**. The graph
 store creates a node table the first time it sees a label, and an edge
-table the first time it sees a relation type — inferring each table's
+table the first time it sees a relation type, inferring each table's
 columns from the data itself.
 
 ```python
@@ -104,7 +104,7 @@ This is the division of labor to keep in mind: **data models constrain
 the schema at the generator** (constrained decoding), while the **store
 materializes whatever arrives**. In Guide 27 the two happened to line up
 (you declared `City`, the store made a `City` table). Here they
-deliberately don't — the generator is unconstrained, and the store
+deliberately don't: the generator is unconstrained, and the store
 follows the data.
 
 A practical consequence: a graph store's edge table fixes its endpoint
@@ -112,7 +112,7 @@ types when first created, so a relation label that connects *consistent*
 types ("`BORN_IN`" always Person→Place) stores cleanly, while one that
 connects wildly different type pairs under the same label is the case to
 watch. In practice relation types are consistent, so this is rarely a
-problem — but it's the reason a little label hygiene in your prompt pays
+problem, but it's the reason a little label hygiene in your prompt pays
 off.
 
 ## Extracting, Storing, and Reading Back
@@ -139,7 +139,7 @@ stored = await synalinks.UpdateKnowledge(knowledge_base=knowledge_base)(embedded
 ```
 
 Because the labels are discovered, **introspection matters more** than
-in the constrained case — you often don't know the node/edge tables
+in the constrained case: you often don't know the node/edge tables
 until after the run. `kb.cypher(...)` is the natural lens:
 
 ```python
@@ -156,20 +156,20 @@ subgraph = await knowledge_base.local_graph_search(
 ```
 
 The same multi-stage strategies and orphan-node reasoning from Guide 27
-apply unchanged — they're about *how many calls* you spend, orthogonal
+apply unchanged; they're about *how many calls* you spend, orthogonal
 to whether the labels are fixed or open.
 
 ## Key Takeaways
 
 - **Free-form extraction** keeps the structure (entities, relations,
-  labels) but leaves the **labels open** — drop the `Literal`, use the
+  labels) but leaves the **labels open**: drop the `Literal`, use the
   inherited `label: str`, and collapse the type union into one generic
   `Node` and one generic `Edge`.
 - The model **discovers the graph schema**: maximal coverage, at the cost of
   label consistency. Start free-form to learn a corpus; promote the
   labels worth keeping into a constrained schema (Guide 27) later.
 - **No `entity_models` / `relation_models` needed.** The store creates
-  node and relation tables on demand, inferring columns from the data —
+  node and relation tables on demand, inferring columns from the data;
   the data models are where *decoding* is constrained, not where storage
   is.
 - The **first content field is still the primary key**, so dedup works
@@ -251,7 +251,7 @@ async def main():
         ),
     )
 
-    # The knowledge base declares NO entity_models / relation_models — the
+    # The knowledge base declares NO entity_models / relation_models: the
     # labels aren't known until the model discovers them, and the store
     # creates the tables on demand.
     knowledge_base = synalinks.KnowledgeBase(

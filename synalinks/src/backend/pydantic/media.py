@@ -5,7 +5,7 @@
 A modality is just a *content part* of a `Message`: the OpenAI/litellm
 chat-completion `content` is either a string or a list of parts, and an image
 or an audio clip is one of those parts. So multimodal input is plain
-chat-completion — `Image` and `Audio` are special types you drop straight into
+chat-completion: `Image` and `Audio` are special types you drop straight into
 a `ChatMessage`'s content list, mixed with the text that usually goes with
 them:
 
@@ -26,8 +26,8 @@ strict chat-completion message and flows through the normal generator path.
 ## Two ways a source becomes a payload
 
 A `url` or `path` is just a *reference*; at some point the actual bytes have to
-be read and inlined as a base64 ``data:`` URI so every provider — including
-local ones that cannot fetch a URL themselves — receives the same self-contained
+be read and inlined as a base64 ``data:`` URI so every provider, including
+local ones that cannot fetch a URL themselves, receives the same self-contained
 payload. There are two moments that can happen, for two different use cases:
 
 1. **At construction**, when you build an `Image(url=...)` / `Audio(path=...)`
@@ -36,15 +36,15 @@ payload. There are two moments that can happen, for two different use cases:
    re-fetching. This is the right default for hand-written, interactive use.
 
 2. **Per batch, at inference**, for content built from raw JSON rather than the
-   Python constructor — most importantly `Dataset` rows, which go through
+   Python constructor: most importantly `Dataset` rows, which go through
    `ChatMessages.model_validate_json(...)`. There the `image_url`/`input_audio`
    parts stay as lightweight **references** (a `url`/`path`), so a dataset of a
    million images never inlines a million payloads into memory. Resolution is
    deferred to `resolve_content_media`, which the language model calls on the
-   messages it is about to send — i.e. only the current batch's media is ever
+   messages it is about to send; i.e. only the current batch's media is ever
    resolved at once, and it is freed as soon as the request goes out.
 
-A payload already inline — base64 `data`, or a ``data:`` URI — is left untouched
+A payload already inline (base64 `data`, or a ``data:`` URI) is left untouched
 by both paths, so the per-batch resolver is a no-op on construction-resolved
 content.
 
@@ -88,7 +88,7 @@ def _read_file(path):
 def _read_source(url, path):
     """Resolve a `url`/`path` source to ``(bytes, mime)`` synchronously.
 
-    Returns `None` when there is nothing to fetch — no source, or a `url` that
+    Returns `None` when there is nothing to fetch: no source, or a `url` that
     is already an inline ``data:`` URI.
     """
     if path is not None:
@@ -137,8 +137,8 @@ class Image(DataModel):
     def _inline_source(self):
         """Fetch/read a `url`/`path` source and inline it as base64 `data`.
 
-        Runs once, at construction. A source already inline — base64 `data` or
-        a ``data:`` URI in `url` — is left untouched.
+        Runs once, at construction. A source already inline (base64 `data` or
+        a ``data:`` URI in `url`) is left untouched.
         """
         if self.data is not None:
             return self
@@ -174,7 +174,7 @@ class Image(DataModel):
 class Audio(DataModel):
     """An audio content part for a chat message.
 
-    Provide a source — a `url`, a local file `path`, or raw base64 `data` — and
+    Provide a source (a `url`, a local file `path`, or raw base64 `data`) and
     a container `format` (e.g. ``"wav"`` or ``"mp3"``). The chat-completion
     `input_audio` part carries inline base64 only, so a `url`/`path` is fetched
     and inlined at construction.
@@ -297,9 +297,9 @@ async def resolve_content_media(messages):
     `messages` is a list of chat-completion wire dicts (one batch's worth). Any
     `image_url` part pointing at an ``http(s)``/``file://`` source, and any
     `input_audio` part carrying a deferred `url`/`path`/marker source, is
-    fetched/read and inlined as base64. Parts that are already inline — a
+    fetched/read and inlined as base64. Parts that are already inline (a
     ``data:`` URI or base64 `data`, e.g. content built from a constructed
-    `Image`/`Audio` — are left untouched, so construction-resolved messages and
+    `Image`/`Audio`) are left untouched, so construction-resolved messages and
     text-only conversations pay nothing.
     """
     for message in messages:

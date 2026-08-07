@@ -21,7 +21,7 @@ class IFEvalAnswer(DataModel):
 
 
 _INPUT_TEMPLATE = r'{"prompt": {{ prompt | tojson }}}'
-# IFEval has no gold response — the original benchmark scores by rules.
+# IFEval has no gold response; the original benchmark scores by rules.
 # We mirror the prompt as ``response`` so an LM-as-judge sees both fields.
 _OUTPUT_TEMPLATE = r'{"response": {{ prompt | tojson }}}'
 

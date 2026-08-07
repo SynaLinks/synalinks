@@ -3,7 +3,7 @@
 """
 # Custom Modules with Trainable Variables
 
-In a few guides we will meet **training** — the process that runs
+In a few guides we will meet **training**: the process that runs
 your `Program` on labeled examples, scores its predictions with a
 reward, and rewrites the program's internal knobs to do better
 next time. Before we can talk about that loop sensibly ([Guide 15](https://synalinks.github.io/synalinks/guides/Training/)),
@@ -13,18 +13,18 @@ guide. By the end you will have written a `Module` of your own
 that owns trainable state, and you will know exactly what the
 optimizer expects to see once training begins.
 
-A **trainable variable** is a piece of state your module owns — like
-a normal Python attribute — except the framework knows about it.
+A **trainable variable** is a piece of state your module owns, like
+a normal Python attribute, except the framework knows about it.
 Because the framework knows about it, it can save it to disk, load it
 back later, and let an **optimizer** (the component that improves
 your program during training) change it between batches of data.
 
 In classical deep learning, the equivalent object is a **weight
-tensor** — a grid of numbers that gradient descent nudges every
+tensor**: a grid of numbers that gradient descent nudges every
 step. In Synalinks, the analogous object holds structured JSON (a
 dictionary with a fixed shape) instead of numbers, and the optimizer
-is an *in-context search procedure* — a loop that proposes new JSON
-values and keeps the ones that score well — rather than stochastic
+is an *in-context search procedure*, a loop that proposes new JSON
+values and keeps the ones that score well, rather than stochastic
 gradient descent.
 
 The **interface** you write as a developer is deliberately
@@ -33,7 +33,7 @@ it through a list called `trainable_variables`, the trainer reads
 and writes that state during training, and saving/loading round-trips
 it automatically. If you have ever written a Keras `Layer` with a
 `self.kernel = self.add_weight(...)` line in `build`, this is the
-same shape — only the *contents* of the weight are different.
+same shape; only the *contents* of the weight are different.
 
 This guide builds the picture bottom-up. We introduce the `Variable`
 container (the box that holds the state), state precisely when a
@@ -51,7 +51,7 @@ numbers in place using **gradients** (calculus telling each number
 which way to move).
 
 In Synalinks, a parameter is instead a **JSON value with a fixed
-schema** — a fixed list of field names, types, and default values.
+schema**: a fixed list of field names, types, and default values.
 Training rewrites that JSON in place using a search loop driven by a
 language model and a **scalar reward** (a single number scoring how
 well the current value works).
@@ -90,7 +90,7 @@ A `Variable` holds three pieces of information:
   whole dict) or `get(field)` (returns one field),
 - a **JSON schema** describing what fields and types are allowed,
   accessed via `get_schema()`,
-- a **`trainable` flag** — a boolean saying whether optimizers are
+- a **`trainable` flag**: a boolean saying whether optimizers are
   allowed to rewrite it.
 
 There are three ways to mutate a `Variable`, listed from most surgical to
@@ -104,8 +104,8 @@ self.state.assign(new_json_dict)         # full replacement
 
 It is worth contrasting `Variable` with `JsonDataModel`, since they
 look similar but play opposite roles. A `JsonDataModel` is the
-**value flowing between modules during a single call** — the input
-to your module, the output of your module — and is *immutable* for
+**value flowing between modules during a single call**, the input
+to your module, the output of your module, and is *immutable* for
 the duration of that call; you cannot change it in place. A
 `Variable` is the **state carried by a module across calls** and is
 *mutable* by design. Mix these up and you will either try to mutate
@@ -148,7 +148,7 @@ every trainable variable:
 | `cumulative_reward`    | sum of rewards collected on `nb_visit` predictions        |
 
 Those nine fields come for free when you inherit from `synalinks.Trainable`.
-On top of them, your subclass adds the field(s) you actually want to learn —
+On top of them, your subclass adds the field(s) you actually want to learn,
 the equivalent of a "weight" in a neural network:
 
 ```python
@@ -169,7 +169,7 @@ Two rules the framework relies on, both of which catch people out:
   construct a *placeholder* instance of your DataModel *before* any
   real data has flowed through. If a field has no default, that
   construction crashes during symbolic setup (when you call
-  `synalinks.Input(...)`) — not later at runtime, where it would be
+  `synalinks.Input(...)`), not later at runtime, where it would be
   harder to diagnose. A *default* is simply the value the field
   takes if no one supplies one.
 - **`add_variable` silently downgrades a request to
@@ -182,7 +182,7 @@ Two rules the framework relies on, both of which catch people out:
 
 ## 4. Declaring the Variable: `Module.add_variable`
 
-Variables are not declared *just anywhere* — you create them inside
+Variables are not declared *just anywhere*: you create them inside
 the module's constructor (or its `build` method, see below) so the
 framework can keep an accurate list of them. That list is frozen the
 first time the module runs, so the optimizer sees the *same* set of
@@ -191,8 +191,8 @@ variables on every batch.
 Concretely: state must be created in `__init__()` (the constructor), or in
 `build(self, input_schema)` if the variable's shape depends on the input
 schema (what kind of data will be passed in). After the first call to the
-module, the module's variable *tracker* — the internal list that remembers
-every `Variable` you registered — locks; any later `add_variable` call
+module, the module's variable *tracker*, the internal list that remembers
+every `Variable` you registered, locks; any later `add_variable` call
 raises an error. This mirrors Keras's "build once" semantics.
 
 ```python
@@ -230,7 +230,7 @@ Three details deserve attention:
   intercepts every attribute assignment via Python's `__setattr__`
   mechanism, recognises any value that is a `Variable`, and routes it into
   the module's `trainable_variables` list. That is how the framework
-  discovers your variables automatically — there is no separate
+  discovers your variables automatically: there is no separate
   "register this variable" call.
 
 ## 5. Reading and Writing State Inside `call()`
@@ -240,7 +240,7 @@ module's logic for one example. It is an `async` method (defined
 with `async def`, awaited by the framework), it takes a
 `JsonDataModel` as input, and returns a `JsonDataModel`. The
 `training` flag tells the module whether it is currently being
-trained — when `True`, the module owes the optimizer some extra
+trained: when `True`, the module owes the optimizer some extra
 bookkeeping (we will see what in a moment).
 
 Inside the body, the variable is just structured state you read from:
@@ -281,7 +281,7 @@ propose nothing useful.
 ## 6. Non-trainable Variables: same API, narrower contract
 
 Sometimes a module needs to remember things across calls but you do
-**not** want an optimizer touching them — for example, a counter of
+**not** want an optimizer touching them: for example, a counter of
 how many times the module ran, a cache of previously seen inputs, or
 a conversation memory. The API is the same `add_variable` call, just
 with `trainable=False` (or with a DataModel that does not subclass
@@ -312,16 +312,16 @@ it:
 
 - If the variable's schema is **fixed and fully known** at module
   construction time, create it in `__init__` (the constructor).
-- If the schema **depends on the module's input schema** — for
+- If the schema **depends on the module's input schema**, for
   example, a variable whose fields mirror `inputs.get_schema()`,
-  whose shape depends on what data will eventually flow in — create
+  whose shape depends on what data will eventually flow in, create
   it inside `build(self, input_schema)`. The framework calls
   `__call__` on your module the first time it runs; `__call__`
   invokes `build` automatically on that first call and then locks
   the variable tracker (the internal list of variables) so no
   further variables can be added.
 
-The locked tracker is a **load-bearing invariant** — meaning lots of
+The locked tracker is a **load-bearing invariant**, meaning lots of
 other machinery depends on it. It guarantees that the set of
 trainable variables a `Program` reports is the same set the
 optimizer sees on every batch. Adding state mid-training would
@@ -329,12 +329,12 @@ silently invalidate the optimizer's bookkeeping.
 
 ## 8. The Optimizer's View of Your Module
 
-Each batch — a small group of training examples processed together —
+Each batch, a small group of training examples processed together,
 the trainer runs a fixed sequence of steps. The contract you owe the
 optimizer is narrow: declare a `Trainable` DataModel, expose it
 through `add_variable`, read it in `call`, and append to
-`current_predictions` when `training=True`. Everything else —
-proposing new values, scoring them, keeping the best — is the
+`current_predictions` when `training=True`. Everything else,
+proposing new values, scoring them, keeping the best, is the
 optimizer's responsibility.
 
 ```mermaid
@@ -369,7 +369,7 @@ child. The interface on **your** side is the same regardless.
 ## 9. Serialization: `get_config` and `from_config`
 
 Saving a program to disk has two halves. First, the framework needs
-to know **how to rebuild your module** — what class, what
+to know **how to rebuild your module**: what class, what
 constructor arguments. Second, it needs to know **what values its
 variables currently hold**.
 
@@ -377,7 +377,7 @@ variables currently hold**.
 comes from `get_config()`, which returns a JSON-serializable dict;
 the rebuild itself is performed by `from_config(cls, config)`. The
 variable values are saved and reloaded by the saving system
-automatically — you do not write that code yourself.
+automatically; you do not write that code yourself.
 
 ```python
 def get_config(self):
@@ -395,7 +395,7 @@ def from_config(cls, config):
 
 If your module holds another Synalinks object as an attribute (a
 `LanguageModel`, an `EmbeddingModel`, a sub-`Module`), you cannot just put
-it directly into the dict — serialise it with
+it directly into the dict: serialise it with
 `synalinks.saving.serialize_synalinks_object(obj)` in `get_config` and
 restore it with `synalinks.saving.deserialize_synalinks_object(...)` in
 `from_config`. See `examples/9_custom_modules.py` for the canonical
@@ -418,7 +418,7 @@ guide, wraps it in a tiny program, and demonstrates four things:
   (changing the persona by hand, the way an optimizer would),
 - persistence: the non-trainable counter keeps incrementing across calls.
 
-The example does not call any language model — it is fully deterministic.
+The example does not call any language model; it is fully deterministic.
 Running `program.fit(...)` in earnest requires three more ingredients: a
 reward (e.g. `synalinks.ExactMatch`, which scores 1.0 if the output matches
 the expected answer and 0.0 otherwise), an optimizer (e.g.
@@ -457,7 +457,7 @@ Non-trainable state: the call counter
 
 Two things to read off the output. First, the trainable variable's field
 list contains all nine `Trainable` bookkeeping fields *and* the
-user-defined `persona` field — the optimizer's machinery is genuinely
+user-defined `persona` field: the optimizer's machinery is genuinely
 there even though we never invoke an optimizer. Second, the call counter
 ends at `2`, not `1`: the program is called once before the manual update
 and once after, and the non-trainable counter survives both calls because
@@ -471,7 +471,7 @@ variables persist across calls by design.
   across calls. `JsonDataModel`s, by contrast, are the values
   passed between modules and are immutable for a single call.
 - **Trainable if and only if the DataModel subclasses
-  `synalinks.Trainable`.** No subclass, no trainability —
+  `synalinks.Trainable`.** No subclass, no trainability:
   `add_variable` silently downgrades to `trainable=False`. Every
   field of a `Trainable` subclass needs a default value.
 - **`call()` reads state**; under `training=True` it also appends a
@@ -521,7 +521,7 @@ class Persona(synalinks.Trainable):
 
 
 class CallStats(synalinks.DataModel):
-    """Plain DataModel — *not* trainable, just persistent state."""
+    """Plain DataModel: *not* trainable, just persistent state."""
 
     count: int = synalinks.Field(
         description="Number of times the module has been called.",
@@ -550,8 +550,8 @@ class Personalize(synalinks.Module):
     """Greets the user in a style controlled by a trainable persona variable.
 
     The `call()` method is deterministic and does not use a language model,
-    so this guide can run offline. The *shape* of the module — trainable
-    state, non-trainable state, build-time registration, serialization — is
+    so this guide can run offline. The *shape* of the module, trainable
+    state, non-trainable state, build-time registration, serialization, is
     exactly what you would write for an LM-backed module.
     """
 

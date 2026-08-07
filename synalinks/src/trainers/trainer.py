@@ -560,7 +560,7 @@ class Trainer:
             # History so callers that inspect `.history` keep working.
             warnings.warn(
                 "`Program.fit()` was called but no optimizer is set on the "
-                "compiled program — training cannot update any variables, so "
+                "compiled program; training cannot update any variables, so "
                 "iterating the training data would be wasted compute. "
                 "Skipping the fit loop. If you intended to evaluate, call "
                 "`program.evaluate(x=..., y=...)` directly. If you intended "
@@ -1072,7 +1072,7 @@ class Trainer:
         """
         # Tag this work as "inference" so LanguageModel / EmbeddingModel can
         # attribute token / latency / cost to the program's forward pass
-        # only. See synalinks.src.backend.common.op_scope — the active phase
+        # only. See synalinks.src.backend.common.op_scope; the active phase
         # is one of "inference", "reward", "optimizer", or None.
         with op_scope("inference"):
             tasks = []

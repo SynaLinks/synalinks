@@ -8,7 +8,7 @@
 ## Source
 
 ````python
---8<-- "examples/12_knowledge_extraction_and_storage.py:110"
+--8 < --"examples/12_knowledge_extraction_and_storage.py:110"
 ````
 
 ## Run log
@@ -16,7 +16,7 @@
 The log below is the **unedited** combined output of running the example above
 with local models (ollama).
 
-??? example "Full run log — `examples/12_knowledge_extraction_and_storage.log`"
+??? example "Full run log: `examples/12_knowledge_extraction_and_storage.log`"
 
     ```text
     --8<-- "examples/12_knowledge_extraction_and_storage.log"

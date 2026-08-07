@@ -399,7 +399,7 @@ class DatabaseAdapterParityTest(testing.TestCase):
 
     @patch("litellm.aembedding")
     async def test_similarity_scores_match_across_adapters(self, mock_embedding):
-        # Not just the ranking — the actual per-row score must agree numerically
+        # Not just the ranking: the actual per-row score must agree numerically
         # across adapters for every metric (canonical units: squared-L2 /
         # cosine-distance / negative inner product).
         mock_embedding.return_value = {"data": [{"embedding": [1.0, 0.0, 0.0]}]}

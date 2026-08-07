@@ -8,11 +8,13 @@ Ownership is the caller's responsibility: construct a sandbox, hand it to a code
 import synalinks
 import asyncio
 
+
 async def main():
     sandbox = synalinks.MirageSandbox(timeout=5.0)
 
     result = await sandbox.run("x = 21\nx * 2")
     print(result.result)  # 42
+
 
 if __name__ == "__main__":
     asyncio.run(main())

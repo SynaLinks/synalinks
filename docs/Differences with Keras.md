@@ -86,7 +86,7 @@ Instead of implicit tensor shapes, **Synalinks** uses **explicit JSON schemas**:
 
 ### Synalinks: LM-Based Optimization
 - Defines reward function (higher values indicate better performance)
-- No gradient computation—uses language models to reason about improvements
+- No gradient computation; uses language models to reason about improvements
 - LM analyzes current performance and proposes better configurations
 - Updates trainable variables (JSON objects) based on LM suggestions
 - Can incorporate discrete decisions and non-differentiable operations

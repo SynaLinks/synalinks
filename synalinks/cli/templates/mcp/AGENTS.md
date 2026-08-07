@@ -1,4 +1,4 @@
-# Agent guide — mcp
+# Agent guide: mcp
 
 A Synalinks `FunctionCallingAgent` exposed as an **MCP server** with **FastMCP**.
 Everything is in `main.py`: the agent, the MCP tool (`solve`), and the server.
@@ -10,11 +10,11 @@ Everything is in `main.py`: the agent, the MCP tool (`solve`), and the server.
   Prefer scalar argument types (`str`, `int`, …) so the LM sees flat top-level
   parameters; the body wraps `query` into the program's `Query` model.
 - **Two layers of "tool".** `calculate` is the *inner* tool the agent calls
-  (returns a dict with a `log`, never raises). `solve` is the *outer* MCP tool —
+  (returns a dict with a `log`, never raises). `solve` is the *outer* MCP tool:
   it **raises** on failure so the client LM gets a structured error.
 - **Build once, serve forever.** `build_and_save_program` writes `program.json`;
   the lifespan only *loads* it (and fails fast if missing). Building does **not**
-  call the LM — even for an agent — so it runs offline (no model needed until a
+  call the LM, even for an agent, so it runs offline (no model needed until a
   tool call).
 - **Reach the program via `Context.lifespan_context["program"]`** inside the
   tool; the lifespan yields it once at startup.
@@ -37,12 +37,12 @@ uv run python main.py         # serve over stdio
 ```
 
 Swap `calculate` for your own tools, or replace the agent with any Synalinks
-program — the MCP layer is unchanged. Custom Agent Skills can live under
+program; the MCP layer is unchanged. Custom Agent Skills can live under
 `.agents/skills/`.
 
 ## Troubleshooting a framework bug
 
-Most failures are in *your* program — fix those here. But if you trace a problem
+Most failures are in *your* program; fix those here. But if you trace a problem
 to **Synalinks itself** (a stack trace inside the `synalinks` package, or a
 missing/broken framework feature), fix it at the source and upstream it:
 

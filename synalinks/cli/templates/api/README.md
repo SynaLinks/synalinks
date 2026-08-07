@@ -3,7 +3,7 @@
 An **OpenAI chat-completions-compatible** endpoint backed by a
 **[Synalinks](https://github.com/SynaLinks/synalinks)** `FunctionCallingAgent`,
 served with [FastAPI](https://fastapi.tiangolo.com/). Point any OpenAI client at
-it — the agent can call tools (here, a calculator) before answering.
+it; the agent can call tools (here, a calculator) before answering.
 
 ## Quickstart (local)
 
@@ -17,11 +17,11 @@ vllm serve Qwen/Qwen3-4B --port 8001
 cp .env.template .env            # then set: HOSTED_VLLM_API_BASE=http://localhost:8001/v1
 #    (no GPU? set MODEL=ollama/mistral:latest and run `ollama serve` instead)
 
-# 3. (optional) MLflow tracing — start a server and set the URI:
+# 3. (optional) MLflow tracing. Start a server and set the URI:
 #    mlflow server --host 127.0.0.1 --port 5000
 #    then in .env: MLFLOW_TRACKING_URI=http://localhost:5000
 
-# 4. Build the agent once (offline — no model needed), then serve it
+# 4. Build the agent once (offline; no model needed), then serve it
 uv run python main.py build
 uv run python main.py            # or: fastapi dev main.py
 ```
@@ -98,9 +98,9 @@ unset to disable. See the
   returns `400` for it. Add it with a `StreamingResponse` when you need it.
 - **Build once, serve forever.** `build` constructs and saves the agent; the
   server only loads it. Building doesn't call the LM (it just composes modules
-  and records schemas), so it runs offline — no model needed until request time.
+  and records schemas), so it runs offline: no model needed until request time.
 - Swap `calculate` for your own tools, or change the agent for an RLM / RAG /
-  DeepAgent — the OpenAI-compatible layer stays the same.
+  DeepAgent; the OpenAI-compatible layer stays the same.
 
 For production posture (process manager, timeouts, auth, observability), read
 the [deployment guide](https://synalinks.github.io/synalinks/guides/FastAPI%20Deployment/).

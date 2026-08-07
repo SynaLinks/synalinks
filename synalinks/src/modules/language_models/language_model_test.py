@@ -215,11 +215,7 @@ class LanguageModelTest(testing.TestCase):
         class MockResponse(dict):
             def __init__(self):
                 super().__init__(
-                    {
-                        "choices": [
-                            {"message": {"content": "Hello, how can I help you?"}}
-                        ]
-                    }
+                    {"choices": [{"message": {"content": "Hello, how can I help you?"}}]}
                 )
                 self._hidden_params = {"response_cost": None}
 
@@ -433,7 +429,7 @@ def _set_scope(value):
 
 class LMCounterPopulationTest(testing.TestCase):
     """End-to-end checks that LiteLLM-shaped responses populate operational
-    counters correctly. Guards against drift in LiteLLM's response schema —
+    counters correctly. Guards against drift in LiteLLM's response schema,
     in particular the contract we depend on: `response["usage"]["prompt_tokens"]`,
     `response["usage"]["completion_tokens"]`, `response["usage"]["total_tokens"]`,
     and `response._hidden_params["response_cost"]`.
@@ -500,9 +496,7 @@ class LMCounterPopulationTest(testing.TestCase):
 
     @patch("litellm.acompletion")
     async def test_lm_no_scope_only_updates_alltime(self, mock_completion):
-        mock_completion.return_value = _lm_response(
-            prompt_tokens=8, completion_tokens=2
-        )
+        mock_completion.return_value = _lm_response(prompt_tokens=8, completion_tokens=2)
         lm = LanguageModel(model="ollama/mistral")
         _set_scope(None)
         await lm(_chat_messages())
@@ -663,9 +657,7 @@ class LMFileCacheTest(testing.TestCase):
     @patch("litellm.acompletion")
     async def test_identical_call_served_from_disk(self, mock_completion):
         cache_dir = os.path.join(self.get_temp_dir(), "lm_cache")
-        mock_completion.return_value = _lm_response(
-            prompt_tokens=10, completion_tokens=5
-        )
+        mock_completion.return_value = _lm_response(prompt_tokens=10, completion_tokens=5)
         lm = LanguageModel(model="openai/gpt-4o", cache_dir=cache_dir)
 
         first = await lm(_chat_messages())
@@ -679,9 +671,7 @@ class LMFileCacheTest(testing.TestCase):
     @patch("litellm.acompletion")
     async def test_cache_persists_across_instances(self, mock_completion):
         cache_dir = os.path.join(self.get_temp_dir(), "lm_cache")
-        mock_completion.return_value = _lm_response(
-            prompt_tokens=10, completion_tokens=5
-        )
+        mock_completion.return_value = _lm_response(prompt_tokens=10, completion_tokens=5)
         lm = LanguageModel(model="openai/gpt-4o", cache_dir=cache_dir)
         first = await lm(_chat_messages())
 
@@ -696,15 +686,11 @@ class LMFileCacheTest(testing.TestCase):
     @patch("litellm.acompletion")
     async def test_different_prompt_is_a_miss(self, mock_completion):
         cache_dir = os.path.join(self.get_temp_dir(), "lm_cache")
-        mock_completion.return_value = _lm_response(
-            prompt_tokens=10, completion_tokens=5
-        )
+        mock_completion.return_value = _lm_response(prompt_tokens=10, completion_tokens=5)
         lm = LanguageModel(model="openai/gpt-4o", cache_dir=cache_dir)
 
         await lm(_chat_messages())
-        await lm(
-            ChatMessages(messages=[ChatMessage(role=ChatRole.USER, content="Bye")])
-        )
+        await lm(ChatMessages(messages=[ChatMessage(role=ChatRole.USER, content="Bye")]))
 
         self.assertEqual(mock_completion.call_count, 2)
         self.assertEqual(lm.cumulated_cache_hits, 0)
@@ -774,9 +760,7 @@ class LMFileCacheTest(testing.TestCase):
     async def test_streamed_and_non_streamed_calls_share_entries(self, mock_completion):
         cache_dir = os.path.join(self.get_temp_dir(), "lm_cache")
         lm = LanguageModel(model="openai/gpt-4o", cache_dir=cache_dir)
-        mock_completion.return_value = _lm_response(
-            prompt_tokens=10, completion_tokens=5
-        )
+        mock_completion.return_value = _lm_response(prompt_tokens=10, completion_tokens=5)
         first = await lm(_chat_messages())
 
         # The same request with streaming=True replays the cached message.

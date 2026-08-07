@@ -23,7 +23,7 @@ from synalinks.src.saving import serialization_lib
 class EntityHybridFTSSearchInput(DataModel):
     """Input shape for `EntityHybridFTSSearch`.
 
-    The ``keywords`` list is optional — when omitted, the adapter
+    The ``keywords`` list is optional: when omitted, the adapter
     re-uses the vector side's text for BM25 scoring as well.
     """
 
@@ -66,7 +66,7 @@ class EntityHybridFTSSearch(Module):
             providing ``schema`` via ``.get_schema()`` when ``schema``
             is not given.
         label (str): Target entity label. Defaults to the schema's
-            ``title``. **Optional** — when neither ``label`` nor a
+            ``title``. **Optional**: when neither ``label`` nor a
             schema to derive it from is given, the language model infers
             the target entity label per call (constrained to the
             knowledge base's actual entity labels).

@@ -4,8 +4,8 @@
 
 Chat-message primitives shared across modules, agents, and the OpenAI
 Chat Completions wire converter. Lives here (rather than in `base.py`)
-because every chat-shaped path — generators, agents, datasets, tool
-calling — depends on `ChatMessage` / `ChatMessages` / `ToolCall`.
+because every chat-shaped path (generators, agents, datasets, tool
+calling) depends on `ChatMessage` / `ChatMessages` / `ToolCall`.
 """
 
 import warnings
@@ -132,7 +132,7 @@ class ChatMessage(DataModel):
     """A chat message.
 
     Its keys are in exact parity with the litellm-extended Chat Completions
-    message (`backend.pydantic.chat_completions.ChatCompletionMessage`) —
+    message (`backend.pydantic.chat_completions.ChatCompletionMessage`):
     same names on both sides, enforced by test. Only value types may differ
     where synalinks is deliberately richer (e.g. parsed-dict tool-call
     arguments, dict tool-result content). When adding a field, add its wire

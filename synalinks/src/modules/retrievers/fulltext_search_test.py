@@ -2,7 +2,7 @@
 """End-to-end tests for `FullTextSearch` against a real DuckDB store.
 
 Only the language model (search-query generation) is mocked; the
-DuckDB knowledge base — including BM25 full-text indexing — is real.
+DuckDB knowledge base (including BM25 full-text indexing) is real.
 """
 
 import os

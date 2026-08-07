@@ -40,7 +40,20 @@ dependencies = [
   "namex",
   "numpy",
   "dill",
-  "mirage-ai>=0.0.2",
+  # Upper-bounded on purpose: mirage-ai is pre-1.0 and ships breaking API
+  # changes in patch releases (0.0.4 moved `fuse` off the Workspace
+  # constructor, dropped `native`, made `load` async and stopped
+  # auto-creating sessions). An open `>=` let that land silently.
+  # The [fuse] extra is required, not optional: MirageSandbox's confinement
+  # pivots into the FUSE-mounted virtual filesystem, mfusepy is what brings
+  # that mount up, and 0.0.4 moved it behind this extra. Without it there is
+  # no mount and therefore no confinement, on Linux where confinement is
+  # otherwise available. It is inert on macOS and Windows, which cannot
+  # confine regardless. Missing libfuse no longer degrades quietly:
+  # `_confinement_available` in synalinks/src/sandboxes/mirage_sandbox.py
+  # probes for it and fails closed, so keep this extra to make confinement
+  # work, not to keep it honest.
+  "mirage-ai[fuse]>=0.0.4,<0.0.5",
   "optree",
   "orjson",
   "pydantic",

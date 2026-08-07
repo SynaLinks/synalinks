@@ -11,7 +11,7 @@ persistent sandbox, and recursively delegates semantic work to a
 *sub-LM* on the snippets it actually cares about.
 
 The pattern follows
-[Recursive Language Models (Zhang, Kraska, Khattab — 2025)](https://arxiv.org/abs/2512.24601).
+[Recursive Language Models (Zhang, Kraska, Khattab, 2025)](https://arxiv.org/abs/2512.24601).
 
 ## Why Recursive?
 
@@ -42,7 +42,7 @@ flowchart TD
 ## Needle in a Haystack
 
 This example builds a long, repetitive document (~200 paragraphs of
-filler text) and hides a single fact — "The magic number is 4242" —
+filler text) and hides a single fact ("The magic number is 4242")
 near the middle. The primary LM never sees the full text; it only
 sees an `InputsSummary` with a preview and a length. Finding the
 needle requires writing code that scans the full text in the sandbox
@@ -74,16 +74,16 @@ outputs = await synalinks.RLM(
 agent = synalinks.Program(inputs=inputs, outputs=outputs, name="rlm_needle")
 ```
 
-When the agent runs, the primary LM is given a **single** tool —
-`run_python_code(code=...)` — and calls it with one Python
+When the agent runs, the primary LM is given a **single** tool,
+`run_python_code(code=...)`, and calls it with one Python
 snippet per turn. The snippet runs in a Monty REPL sandbox and the call
 returns `{"stdout": ..., "stderr": ..., "error": ...}`. State persists
-across turns — variables, imports, and function definitions accumulate.
+across turns: variables, imports, and function definitions accumulate.
 `submit` and two extra async helpers live **inside** the sandbox (not as
 tools the LM can call) alongside any tools you bind:
 
-- `llm_query(prompt)` — single sub-LM call, returns `{"result": <text>}`.
-- `llm_query_batched(prompts)` — concurrent sub-LM calls, returns
+- `llm_query(prompt)`: single sub-LM call, returns `{"result": <text>}`.
+- `llm_query_batched(prompts)`: concurrent sub-LM calls, returns
   `{"result": [<text>, ...]}`, preserving input order.
 
 A shared counter caps the two helpers at `max_llm_calls` per
@@ -94,7 +94,7 @@ budgets.
 
 Termination: the snippet calls the in-sandbox `submit(result={...})`,
 which captures the final payload, validates it against the configured
-output schema, and ends the run. Empty snippets are no-ops — the loop
+output schema, and ends the run. Empty snippets are no-ops; the loop
 reminds the LM to call `submit`. If `max_iterations` is reached without a
 successful `submit`, a final LM inference step formats the accumulated
 trajectory into the target schema.
@@ -161,10 +161,10 @@ def build_haystack(needle: str, paragraphs: int = 200) -> str:
 async def main():
     load_dotenv()
 
-#     synalinks.enable_observability(
-#         tracking_uri="http://localhost:5000",
-#         experiment_name="rlm_needle",
-#     )
+    #     synalinks.enable_observability(
+    #         tracking_uri="http://localhost:5000",
+    #         experiment_name="rlm_needle",
+    #     )
 
     language_model = synalinks.LanguageModel(
         model="ollama/qwen3:8b",

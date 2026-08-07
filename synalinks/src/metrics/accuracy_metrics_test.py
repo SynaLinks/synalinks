@@ -351,7 +351,7 @@ class RaggedStructureAccuracyTest(testing.TestCase):
             Extraction(relations=["alpha beta", "gamma delta", "epsilon zeta"]),
             Extraction(relations=["alpha beta", "gamma delta", "epsilon zeta"]),
         )
-        # 1 leaf, perfect — pre-fix this raised
+        # 1 leaf, perfect; pre-fix this raised
         # "operands could not be broadcast together"
         await metric(
             Extraction(relations=["alpha beta"]),

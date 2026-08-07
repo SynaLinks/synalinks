@@ -52,7 +52,7 @@ def _to_int(v):
 
 
 # Long-tail Usage fields we sum into `<phase>_cumulated_details` for
-# introspection (no dedicated metric — read via `lm.<phase>_cumulated_details`).
+# introspection (no dedicated metric; read via `lm.<phase>_cumulated_details`).
 _PROMPT_DETAIL_KEYS = (
     "audio_tokens",
     "text_tokens",
@@ -451,7 +451,7 @@ class LanguageModel(Module):
             cache. When set, every successful response is saved as a JSON
             file keyed by the full request (model, messages, schema and
             generation parameters), and identical requests are answered from
-            disk without calling the provider — including across runs and
+            disk without calling the provider, including across runs and
             processes. Streamed responses are cached once the stream is fully
             consumed (an abandoned stream is not cached) and a cache hit on a
             streaming call is replayed as a stream. (Default to None,
@@ -491,9 +491,7 @@ class LanguageModel(Module):
         # JsonDataModel guard would otherwise reject it.
         self._allow_non_json_data_model_positional_args = True
         if model is None:
-            raise ValueError(
-                "You need to set the `model` argument for any LanguageModel"
-            )
+            raise ValueError("You need to set the `model` argument for any LanguageModel")
         model_provider = model.split("/")[0]
         if model_provider == "ollama":
             # Switch from `ollama` to `ollama_chat`
@@ -503,7 +501,7 @@ class LanguageModel(Module):
             model = model.replace("vllm", "hosted_vllm")
         if model_provider == "doubleword":
             # Doubleword is OpenAI-compatible (strict JSON schema + same
-            # request/response shape) — route via litellm's `openai`
+            # request/response shape); route via litellm's `openai`
             # provider with the Doubleword endpoint as `api_base`.
             model = model.replace("doubleword", "openai", 1)
             if not api_base:
@@ -575,7 +573,7 @@ class LanguageModel(Module):
         self.last_call_cached_tokens = 0
         self.last_call_cache_creation_tokens = 0
         self.last_call_reasoning_tokens = 0
-        # Phase-scoped counters — populated based on `synalinks_op_scope` set
+        # Phase-scoped counters, populated based on `synalinks_op_scope` set
         # by the trainer: "inference" inside `predict_on_batch`, "reward"
         # inside `compute_reward`, "optimizer" inside `optimizer.optimize`.
         # Calls made outside any scope (e.g. standalone debugging) are
@@ -584,7 +582,7 @@ class LanguageModel(Module):
         # Tier 1 extras (first-class, drive dedicated KPI metrics):
         #   cached_tokens, cache_creation_tokens, reasoning_tokens.
         # Tier 2 long tail (multimodal split, tool use, LiteLLM overhead)
-        # lives in `<phase>_cumulated_details` — a dict accumulated per call.
+        # lives in `<phase>_cumulated_details`, a dict accumulated per call.
         for _phase in ("inference", "reward", "optimizer"):
             setattr(self, f"{_phase}_cumulated_calls", 0)
             setattr(self, f"{_phase}_cumulated_prompt_tokens", 0)
@@ -636,7 +634,7 @@ class LanguageModel(Module):
                 If None, output a ChatMessage-like answer.
             tools (list | dict): Optional iterable or `{name: Tool}` mapping of
                 `synalinks.modules.Tool` the LM may call. Mutually exclusive
-                with `schema` — schema forces structured output, tools let the
+                with `schema`: schema forces structured output, tools let the
                 LM choose; they cannot both apply to the same call. In the
                 function-calling agent pattern, the tool-call generator uses
                 `tools` and the final generator uses `schema`.
@@ -659,7 +657,7 @@ class LanguageModel(Module):
             raise ValueError(
                 "`schema` and `tools` cannot be passed to the same LM call: "
                 "schema forces structured output, while tools let the LM choose "
-                "which to call. Split into two calls — typically the tool-call "
+                "which to call. Split into two calls: typically the tool-call "
                 "generator uses `tools` and the final generator uses `schema`."
             )
         input_kwargs = copy.deepcopy(kwargs)
@@ -693,7 +691,7 @@ class LanguageModel(Module):
                     tools = tools.values()
                 wire_tools.extend(_tool_to_wire(t) for t in tools)
             if tool_schemas:
-                # Already in OpenAI wire shape — pass through verbatim.
+                # Already in OpenAI wire shape; pass through verbatim.
                 wire_tools.extend(tool_schemas)
             kwargs["tools"] = wire_tools
 
@@ -719,7 +717,7 @@ class LanguageModel(Module):
                 kwargs["reasoning_effort"] = reasoning_effort
                 if schema_had_thinking:
                     # The LM produces a native reasoning trace via
-                    # `reasoning_content` — strip `thinking` from the LM
+                    # `reasoning_content`; strip `thinking` from the LM
                     # schema to save tokens; we re-inject it after the call.
                     schema["properties"].pop("thinking", None)
                     required = schema.get("required")
@@ -876,7 +874,7 @@ class LanguageModel(Module):
         # prompts, tools or generation parameters yields a different entry.
         # The `stream` flag is excluded from the key: a streamed call stores
         # the same assistant ChatMessage a non-streamed schema-less call does
-        # (streaming forces schema=None), so both share one entry — a hit is
+        # (streaming forces schema=None), so both share one entry; a hit is
         # replayed as a single-chunk stream when `streaming=True`.
         cache_key = None
         if self._file_cache is not None:
@@ -1147,7 +1145,7 @@ class StreamingIterator:
     Chunks containing only role/finish markers are skipped so reasoning-only
     deltas don't terminate the stream prematurely.
 
-    Also accepts a plain sync iterator — useful for tests that mock
+    Also accepts a plain sync iterator, useful for tests that mock
     `litellm.acompletion`.
 
     When `language_model` and `request_start` are provided, the iterator times
@@ -1175,9 +1173,7 @@ class StreamingIterator:
         trajectory_start=None,
     ):
         self._iterator = iterator
-        self._is_async = hasattr(iterator, "__anext__") or hasattr(
-            iterator, "__aiter__"
-        )
+        self._is_async = hasattr(iterator, "__anext__") or hasattr(iterator, "__aiter__")
         self._language_model = language_model
         self._op_scope = op_scope
         self._request_start = request_start

@@ -31,11 +31,12 @@ class UpdateKnowledge(Module):
       (the KB has no bulk multi-graph endpoint).
     * ``Entities`` wrapper (``is_entities``) →
       `KnowledgeBase.update_entities` with the wrapped list (bulk nodes).
-    * ``Relations`` wrapper (``is_relations``) →
-      `KnowledgeBase.update_relations` with the wrapped list (bulk edges).
-    * ``Relation`` (``is_relation``) →
-      `KnowledgeBase.update_relations` (single edge; endpoints upserted
-      as needed).
+    * ``Relations`` wrapper (``is_relations``) → the endpoint entities
+      first (`KnowledgeBase.update_entities`; each relation carries its
+      ``subj``/``obj`` in full), then the edges
+      (`KnowledgeBase.update_relations`), so a relations-only payload
+      populates the whole graph.
+    * ``Relation`` (``is_relation``) → same, for a single edge.
     * ``Entity`` (``is_entity``) →
       `KnowledgeBase.update_entities` (single node).
     * Anything else → `KnowledgeBase.update` (SQL row/table store);
@@ -43,12 +44,12 @@ class UpdateKnowledge(Module):
 
     To pass a Python list of entities or relations rather than a wrapper
     data model, ``tree.map_structure`` flattens the inputs so each item
-    is dispatched individually — wrap as ``Entities`` / ``Relations``
+    is dispatched individually; wrap as ``Entities`` / ``Relations``
     for a single bulk round-trip instead of N per-item ones.
 
     The output is a name-mangled clone of the input (``"updated_" +
     name``), passed through unchanged. The KB methods' return values
-    (assigned ids) are ignored — use the KB directly if you need them.
+    (assigned ids) are ignored; use the KB directly if you need them.
 
     Args:
         knowledge_base (KnowledgeBase): The knowledge base to update.
@@ -72,31 +73,54 @@ class UpdateKnowledge(Module):
         )
         self.knowledge_base = _get_kb(knowledge_base)
 
+    async def _update_relations_with_endpoints(self, relations):
+        """Upsert the relations' endpoint entities, then the relations.
+
+        A relation carries its ``subj`` / ``obj`` entities in full, so a
+        relations-only payload populates the whole graph. The endpoints
+        must be written first: with an embedding model the adapter
+        resolves a relation's endpoints against *existing* nodes (vector
+        dedup) and silently no-ops when they are absent.
+        """
+        if not relations:
+            return
+        endpoints = []
+        for relation in relations:
+            for key in ("subj", "obj"):
+                endpoint = relation.get_nested_entity(key)
+                if endpoint is not None:
+                    endpoints.append(endpoint)
+        if endpoints:
+            await self.knowledge_base.update_entities(endpoints)
+        await self.knowledge_base.update_relations(relations)
+
     async def _update(self, data_model):
         if data_model is None:
             return None
         # Order matters:
         #   * KnowledgeGraph passes is_entities AND is_relations
-        #     (it has both fields) — check it FIRST.
+        #     (it has both fields); check it FIRST.
         #   * is_relation also passes is_entity (a Relation has a
-        #     `label` field) — relation check must come before entity.
+        #     `label` field); relation check must come before entity.
         if is_knowledge_graph(data_model):
             await self.knowledge_base.update_knowledge_graph(data_model)
         elif is_knowledge_graphs(data_model):
-            # No bulk multi-graph endpoint — iterate per KG.
+            # No bulk multi-graph endpoint; iterate per KG.
             for kg in data_model.get_nested_entity_list("knowledge_graphs") or []:
                 await self.knowledge_base.update_knowledge_graph(kg)
         elif is_entities(data_model):
-            # Bulk wrapper — pass the underlying list to update_entities
+            # Bulk wrapper: pass the underlying list to update_entities
             # so the adapter sees one batched call instead of N per-entity
-            # round-trips.
-            await self.knowledge_base.update_entities(data_model.get("entities") or [])
+            # round-trips. The KB needs typed instances, not raw JSON items.
+            await self.knowledge_base.update_entities(
+                data_model.get_nested_entity_list("entities") or []
+            )
         elif is_relations(data_model):
-            await self.knowledge_base.update_relations(
-                data_model.get("relations") or []
+            await self._update_relations_with_endpoints(
+                data_model.get_nested_entity_list("relations") or []
             )
         elif is_relation(data_model):
-            await self.knowledge_base.update_relations(data_model)
+            await self._update_relations_with_endpoints([data_model])
         elif is_entity(data_model):
             await self.knowledge_base.update_entities(data_model)
         else:
@@ -107,7 +131,7 @@ class UpdateKnowledge(Module):
         if not inputs:
             return None
         # Await each update on the current event loop, sequentially (avoids the
-        # transient thread-loops `run_maybe_nested` created — which orphaned
+        # transient thread-loops `run_maybe_nested` created, which orphaned
         # litellm's global client and serialized DB writes anyway). flatten/pack
         # mirrors `map_structure` since data models are tree leaves.
         leaves = tree.flatten(inputs)

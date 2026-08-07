@@ -98,7 +98,7 @@ class SQLAgentToolsTest(testing.TestCase):
         self.assertIsInstance(result["sample_data"], str)
         self.assertIn("name", result["sample_data"])
 
-        # Page 2 — offset past the first 2 rows returns the remaining 1.
+        # Page 2: offset past the first 2 rows returns the remaining 1.
         result = await get_sample(table_name="Customer", limit=2, offset=2)
         self.assertEqual(result["row_count"], 1)
 
@@ -142,7 +142,7 @@ class SQLAgentToolsTest(testing.TestCase):
             ]
         )
 
-        # LM asks for 2 — under the k=10 cap — so request is honored verbatim.
+        # LM asks for 2 (under the k=10 cap), so request is honored verbatim.
         _, get_sample, _ = self._tools(kb, output_format="json", k=10)
         result = await get_sample(table_name="Customer", limit=2, offset=0)
 
@@ -224,7 +224,7 @@ class SQLAgentToolsTest(testing.TestCase):
             ]
         )
 
-        # k=50, user asks for LIMIT 2 — inner limit wins.
+        # k=50, user asks for LIMIT 2; inner limit wins.
         _, _, run_sql = self._tools(kb, output_format="json", k=50)
         result = await run_sql(sql_query="SELECT * FROM Customer LIMIT 2")
 
@@ -240,7 +240,7 @@ class SQLAgentToolsTest(testing.TestCase):
             ]
         )
 
-        # Aggregate returns 1 row — well under cap, may_have_more is False.
+        # Aggregate returns 1 row (well under cap), may_have_more is False.
         _, _, run_sql = self._tools(kb, output_format="json", k=10)
         result = await run_sql(sql_query="SELECT COUNT(*) AS n FROM Customer")
 
@@ -285,7 +285,7 @@ class SQLAgentToolsTest(testing.TestCase):
 
 
 class SQLAgentInstantiationTest(testing.TestCase):
-    """End-to-end instantiation tests — wires SQLAgent but doesn't run LM."""
+    """End-to-end instantiation tests: wires SQLAgent but doesn't run LM."""
 
     def _make_kb(self):
         tmpdir = tempfile.mkdtemp()
@@ -445,7 +445,7 @@ class SQLAgentInstantiationTest(testing.TestCase):
         lm = LanguageModel(model="ollama/mistral")
 
         async def _private_helper(x: str):
-            """Has a leading underscore — should be rejected.
+            """Has a leading underscore; should be rejected.
 
             Args:
                 x (str): unused.

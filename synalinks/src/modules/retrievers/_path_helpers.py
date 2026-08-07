@@ -18,7 +18,7 @@ def resolve_endpoint(schema, entity_model, label, side):
 
     Mirrors the single-endpoint entity-search contract: derive schema from
     ``entity_model`` if needed and the label from the schema's ``title`` if
-    needed. The label is **optional** — when neither a label nor a schema to
+    needed. The label is **optional**: when neither a label nor a schema to
     derive it from is given it stays ``None``, and the caller lets the language
     model infer the endpoint label per call. ``side`` (``"subj"`` / ``"obj"``)
     is kept for symmetry with callers.

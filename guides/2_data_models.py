@@ -3,7 +3,7 @@
 
 In [Guide 1](https://synalinks.github.io/synalinks/guides/Getting%20Started/) you met the three core ingredients: `DataModel`, `Generator`,
 and `Program`. This guide zooms in on the first of them. Data models are
-the language you use to describe what your LM should produce — and they
+the language you use to describe what your LM should produce, and they
 are the reason the rest of the framework can give you typed objects
 instead of strings to parse.
 
@@ -22,12 +22,12 @@ and let the framework refuse to give you anything else.
 
 In Synalinks vocabulary, a *data model* is a typed schema that fixes the
 shape of any value crossing a module boundary. The word **schema** simply
-means "a description of which fields exist and what types they hold" —
+means "a description of which fields exist and what types they hold";
 the header row of a spreadsheet is a perfectly good mental picture. More
 concretely, a data model is a class that inherits from
 `synalinks.DataModel` (which is itself a Pydantic class), and its field
-annotations get translated into a **JSON Schema** — a standard,
-machine-readable description of a JSON object — that the LM is forced to
+annotations get translated into a **JSON Schema**, a standard,
+machine-readable description of a JSON object, that the LM is forced to
 follow.
 
 **Pydantic**, in case you have never run into it, is a Python library
@@ -43,7 +43,7 @@ the same time, and they are worth pausing to appreciate:
 1. The prompt sent to the model now carries a machine-readable
    description of the target structure (the schema), not just
    hand-written hints like "please respond in JSON."
-2. The model's output is policed — either by **constrained decoding**
+2. The model's output is policed, either by **constrained decoding**
    (the model is only allowed to emit tokens that keep the output
    syntactically valid, like a strict spell-checker for shape) or by
    **validate-and-retry** (bad outputs are detected and the call is
@@ -52,7 +52,7 @@ the same time, and they are worth pausing to appreciate:
 3. Downstream code sees a typed Python object, not a string. Writing
    `result["sentiment"]` is *statically meaningful*: that field will be
    one of the values you declared, or the program will have failed
-   loudly earlier — never silently produced garbage in the middle.
+   loudly earlier, never silently produced garbage in the middle.
 
 This is the same step that took early programmers from `printf`-style
 text everywhere to typed records: you give up a little flexibility at
@@ -83,7 +83,7 @@ graph LR
 
 The second pipeline has one property the first lacks: **every arrow is
 typed**. When something goes wrong, the failure happens at the validator
-— right next to its cause — instead of three function calls later when
+(right next to its cause) instead of three function calls later when
 some `dict.get(...)` quietly returns `None` and you spend the evening
 chasing the source.
 
@@ -147,7 +147,7 @@ about style, tone, or intent, encode it in the **description**.
 
 `synalinks.Field` is a very thin wrapper over Pydantic's own `Field`. Its
 `description` argument is the slot through which you talk to the model.
-The string you put there appears in the prompt the LM reads — verbatim.
+The string you put there appears in the prompt the LM reads, verbatim.
 It is not metadata that the model politely ignores; it is instructions
 the model will follow to the letter. Treat it the way you would treat a
 function docstring being read by a co-author who has no other context.
@@ -169,7 +169,7 @@ answer: str = synalinks.Field(
 
 The Python types you can put on a `DataModel` field are exactly the ones
 that have a clean counterpart in JSON. JSON itself has only a handful of
-value kinds — strings, numbers, booleans, arrays, objects — so the table
+value kinds (strings, numbers, booleans, arrays, objects), so the table
 below is essentially the list of Python types that survive the round
 trip:
 
@@ -196,8 +196,8 @@ keys in advance, prefer a nested `DataModel`.
 
 ### Enums: closed lists of allowed choices
 
-When the answer must come from a small fixed set of options — say one of
-`"low"`, `"medium"`, `"high"`, `"critical"` — encode it as an `Enum`. (A
+When the answer must come from a small fixed set of options, say one of
+`"low"`, `"medium"`, `"high"`, `"critical"`, encode it as an `Enum`. (A
 **closed alphabet** is just jargon for "a fixed, finite list of allowed
 values.") The schema then tells the model exactly which members exist,
 and validation rejects anything outside the list.
@@ -221,7 +221,7 @@ class TaskAnalysis(synalinks.DataModel):
 ```
 
 The property guaranteed to hold here (the **invariant**, in math
-jargon — "a thing that is always true no matter what happens") is this:
+jargon, "a thing that is always true no matter what happens") is this:
 any value you read out as `result['priority']` is guaranteed to be a
 member of the `Priority` enum. You can write
 `if priority == Priority.HIGH:` without a defensive
@@ -231,7 +231,7 @@ point.
 A small trap: the *order* in which you list enum members matters for
 documentation but not for validation. If you later add
 `BLOCKER = "blocker"`, old saved data that still contains `"critical"`
-will validate fine — only *unknown* strings get rejected.
+will validate fine; only *unknown* strings get rejected.
 
 ### synalinks.Score: a 0-to-1 scale split into buckets
 
@@ -239,7 +239,7 @@ A very common need is to ask the model for a confidence or quality score
 between 0 and 1. `synalinks.Score` is a ready-made enum over the eleven
 values `{0.0, 0.1, 0.2, ..., 1.0}`, with named members from `VERY_BAD`
 (0.0) through `VERY_GOOD` (1.0). The fancy word for taking a continuous range
-and splitting it into a fixed list of buckets is **discretization** —
+and splitting it into a fixed list of buckets is **discretization**;
 that is all we have done here.
 
 Why not let the model emit an arbitrary float like `0.8732`? Two
@@ -257,21 +257,21 @@ class Analysis(synalinks.DataModel):
     )
 ```
 
-Use `Score` for confidence, quality, similarity — anything that lives on
+Use `Score` for confidence, quality, similarity: anything that lives on
 a normalized scale. Do *not* use it when you genuinely need continuous
 values (for example, the target of a regression task); for that, declare
 the field as `float` and validate the range yourself.
 
 ## Combining Data Models with Operators
 
-Sooner or later you will want to combine two data models — for example,
+Sooner or later you will want to combine two data models, for example,
 gluing the output of one module onto the output of another, or stripping
 some fields before passing data along. Synalinks defines a small set of
 operators on data models for exactly this purpose, so you do not have to
 write a throwaway adapter class every time.
 
 The word **algebra** here just means "a few operators with predictable
-rules" — the same way `+` and `*` are an algebra on numbers. Each
+rules", the same way `+` and `*` are an algebra on numbers. Each
 operator below takes two (or one) data models and returns a new data
 model whose schema is built from the inputs.
 
@@ -292,7 +292,7 @@ graph TD
 
 A useful mental picture: think of each data model as a dictionary from
 field name to value. The operators above are then set-like operations on
-those dictionaries — combining, intersecting, taking differences.
+those dictionaries: combining, intersecting, taking differences.
 
 ### Stitching two branches' outputs together
 
@@ -307,7 +307,7 @@ combined = result1 + result2
 #    "details": "Additional details", "tags": ["a", "b"]}
 ```
 
-One thing to keep in mind: `+` preserves field order — the left
+One thing to keep in mind: `+` preserves field order: the left
 operand's fields come first, then the right operand's. So `a + b` and
 `b + a` hold the same values but lay the fields out in a different order;
 `+` is *not* commutative. And if the two operands share a field name,
@@ -318,7 +318,7 @@ first.
 
 ## Masking: keeping (or dropping) a subset of fields
 
-Sometimes you want only *part* of a data model's fields downstream — for
+Sometimes you want only *part* of a data model's fields downstream, for
 example, you want to hide the model's internal reasoning before you show
 the answer to a user. The operation for picking a subset of fields from
 a record is called **projection** (the same term you might have seen in
@@ -365,8 +365,8 @@ masking helpers, and two convenience methods,
 `.to_json_data_model()` and `.to_symbolic_data_model()`. Everything else
 is plain Pydantic.
 
-So if you already have Pydantic models in your project — say, ones used
-by your web API — and you do not want to declare them twice, you can
+So if you already have Pydantic models in your project, say, ones used
+by your web API, and you do not want to declare them twice, you can
 hand the schemas directly to Synalinks. Any module that accepts a
 `data_model=` argument also accepts a `schema=` argument: a JSON Schema
 dictionary, which any Pydantic class can produce via its
@@ -418,7 +418,7 @@ of Synalinks, but you lose a few conveniences:
 - **No conversion helpers.** Instead of `.to_json_data_model()` and
   `.to_symbolic_data_model()` you call `.model_json_schema()` and
   `.model_dump()` yourself.
-- `synalinks.Score` and other enums still work — they are ordinary
+- `synalinks.Score` and other enums still work; they are ordinary
   Python enums and do not depend on the `DataModel` base class.
 
 If you later decide you want the operator algebra or masking on a
@@ -432,7 +432,7 @@ in a `JsonDataModel` and use `synalinks.ops.in_mask` /
 The example below stitches the ideas of this guide into one runnable
 program. A `ReviewInput` flows into a `Generator` that returns a
 `ReviewAnalysis`. The `Generator` is `await`ed because under the hood it
-talks to the LM over the network — exactly the same `async`/`await`
+talks to the LM over the network, exactly the same `async`/`await`
 pattern from [Guide 1](https://synalinks.github.io/synalinks/guides/Getting%20Started/).
 
 ```python

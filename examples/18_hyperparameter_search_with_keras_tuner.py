@@ -4,8 +4,8 @@
 # Hyperparameter Search with Keras Tuner
 
 Synalinks ships drop-in wrappers around the four standard `keras_tuner`
-tuners — `RandomSearch`, `BayesianOptimization`, `Hyperband`, and
-`GridSearch` — under the `synalinks.tuners` namespace. The user-facing
+tuners (`RandomSearch`, `BayesianOptimization`, `Hyperband`, and
+`GridSearch`) under the `synalinks.tuners` namespace. The user-facing
 API is the same as `keras_tuner`'s: write a `build_program(hp)` function
 that samples hyperparameters and returns a compiled program, hand it to
 a tuner, call `tuner.search(...)`.
@@ -40,11 +40,11 @@ tuner.search(x=x_train, y=y_train, validation_data=(x_val, y_val), epochs=1)
 
 For each trial we sample three hyperparameters of a GSM8K solver:
 
-- `use_chain_of_thought` (Boolean) — `ChainOfThought` vs plain `Generator`
-- `temperature` (Float) — LM sampling temperature
-- `reasoning_effort` (Choice) — only used by `ChainOfThought`
+- `use_chain_of_thought` (Boolean): `ChainOfThought` vs plain `Generator`
+- `temperature` (Float): LM sampling temperature
+- `reasoning_effort` (Choice): only used by `ChainOfThought`
 
-GSM8K is large — we deliberately use a *tiny* subset here (12 train, 6 val,
+GSM8K is large; we deliberately use a *tiny* subset here (12 train, 6 val,
 6 test) so a full search fits in a few minutes. Bump the constants below
 for a serious run.
 
@@ -86,7 +86,7 @@ FOLDER = "examples"
 PROJECT_NAME = "gsm8k_hp_search"
 
 # Module-level handle the hypermodel reads. Populated in `main()` before
-# the tuner is constructed — the keras-tuner pattern of "build_model(hp)
+# the tuner is constructed: the keras-tuner pattern of "build_model(hp)
 # just reads the world" depends on the world being ready.
 language_model: synalinks.LanguageModel | None = None
 
@@ -100,7 +100,7 @@ async def build_program(hp):
     """Sample HPs and return a compiled `synalinks.Program`.
 
     This is the synalinks equivalent of `build_model(hp)` in a keras-tuner
-    script. `async` because synalinks `Module.__call__` is awaitable —
+    script. `async` because synalinks `Module.__call__` is awaitable;
     `synalinks.tuners.*` awaits the coroutine for you.
     """
     use_cot = hp.Boolean("use_chain_of_thought", default=True)

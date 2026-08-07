@@ -26,7 +26,7 @@ class TestCase(
         load_dotenv()
         # clear global state so that test cases are independent
         clear_session(free_memory=False)
-        # Reset default LM/EM in memory only — without touching the
+        # Reset default LM/EM in memory only, without touching the
         # persisted `~/.synalinks/synalinks.json` so tests don't clobber a
         # user's saved defaults.
         _config._DEFAULT_LANGUAGE_MODEL = None
@@ -42,13 +42,14 @@ class TestCase(
         backoff (default `retry=5` -> `1+2+4+8 = 15s`). In tests `litellm` is
         mocked, so a call that falls into the retry path (e.g. an
         under-provided `side_effect` list) would otherwise sleep the full real
-        backoff and stack across calls — turning sub-second tests into 15s+
+        backoff and stack across calls, turning sub-second tests into 15s+
         ones. Retry *logic* is untouched (attempt counts, fallback selection);
         only the *wait* is zeroed, and only in-process. Production defaults are
         unaffected.
         """
-        import tenacity
         from unittest import mock
+
+        import tenacity
 
         from synalinks.src.modules.embedding_models import embedding_model
         from synalinks.src.modules.language_models import language_model
@@ -57,9 +58,7 @@ class TestCase(
             return tenacity.wait_fixed(0)
 
         for module in (language_model, embedding_model):
-            patcher = mock.patch.object(
-                module, "rate_limit_aware_wait", _instant_wait
-            )
+            patcher = mock.patch.object(module, "rate_limit_aware_wait", _instant_wait)
             patcher.start()
             self.addCleanup(patcher.stop)
 

@@ -3,7 +3,7 @@
 """
 # Datasets
 
-Up to this point we have hand-built every input the program sees —
+Up to this point we have hand-built every input the program sees:
 typing `Query(question="...")` in a script, or pasting examples
 into a `numpy` array. That works for a tutorial. It does not work
 when your training set is ten thousand rows, your data lives on
@@ -11,7 +11,7 @@ disk or on the Hugging Face Hub, and your validation split is
 another five thousand rows you do not want to load into memory all
 at once.
 
-Synalinks' answer is the `Dataset` class — a small but principled
+Synalinks' answer is the `Dataset` class: a small but principled
 streaming interface that hands batches of `(x, y)` pairs to the
 trainer one at a time, in exactly the shape `program.fit(...)`
 expects. By the end of this guide you will have:
@@ -37,8 +37,8 @@ generator that yields one **batch** at a time. A batch is either:
 
 Both `x` and `y` are **NumPy object arrays** whose elements are
 `DataModel` instances. In [Guide 15](https://synalinks.github.io/synalinks/guides/Training/) (Training) we will build such
-arrays by hand — e.g.
-`np.array([Question(...), Question(...)], dtype="object")` — to
+arrays by hand, e.g.
+`np.array([Question(...), Question(...)], dtype="object")`, to
 keep the training example self-contained. A `Dataset` produces
 arrays of exactly the same shape, just one batch at a time and
 from a real source instead of a Python literal.
@@ -52,14 +52,14 @@ flowchart LR
 ```
 
 A `Dataset` subclass plugs in at the leftmost box (where do the
-rows come from?). The rest — templating, validation, batching — is
+rows come from?). The rest (templating, validation, batching) is
 inherited from the `synalinks.Dataset` base class and is the same
 across every source.
 
 ## Loading a Hugging Face Dataset
 
 The Hugging Face Hub is the largest public catalog of text
-datasets — millions of rows on tens of thousands of tasks, all
+datasets: millions of rows on tens of thousands of tasks, all
 accessible through one library. Synalinks wraps it in
 `synalinks.HuggingFaceDataset`. You give the wrapper a path on the
 Hub, two Jinja2 templates that explain how to convert one HF row
@@ -109,7 +109,7 @@ Walking through the arguments:
 - **`name`** is the **configuration name** when a dataset
   ships several variants. `gsm8k` has a configuration called
   `"main"` and one called `"socratic"`; we pick `"main"`.
-- **`split`** is the slice of the dataset you want —
+- **`split`** is the slice of the dataset you want:
   typically `"train"`, `"validation"`, or `"test"`. Passing
   `None` iterates every split in order.
 - **`input_data_model`** + **`input_template`** describe the
@@ -118,7 +118,7 @@ Walking through the arguments:
   the `y` side. Omit both for an inputs-only dataset (useful
   at inference time).
 - **`batch_size`** is the number of examples accumulated
-  before yielding one batch. Default `1` — bump it up to give
+  before yielding one batch. Default `1`; bump it up to give
   the trainer larger batches and the optimizer better
   statistics.
 
@@ -131,7 +131,7 @@ A Hugging Face row arrives as a plain Python dict whose keys are
 whatever the dataset chose to name them. For `gsm8k` those keys
 are `question` (a string) and `answer` (a string in the awkward
 form `"<chain of thought>\\n#### 42"`). Your `DataModel` does not
-care about that shape — it just wants typed Python fields. The
+care about that shape: it just wants typed Python fields. The
 two templates convert from one to the other.
 
 **Jinja2** is the standard Python templating language; the
@@ -143,13 +143,13 @@ should render to **valid JSON** that matches the corresponding
 
 Two filters you will use over and over:
 
-- **`| tojson`** — the Jinja2 filter that quotes and escapes a
+- **`| tojson`**: the Jinja2 filter that quotes and escapes a
   Python value into a JSON literal. Always use it around any
   string field. Skipping `tojson` is the templating equivalent
-  of forgetting to parameterize a SQL query ([Guide 7](https://synalinks.github.io/synalinks/guides/Knowledge%20Base/)) — quotes,
+  of forgetting to parameterize a SQL query ([Guide 7](https://synalinks.github.io/synalinks/guides/Knowledge%20Base/)): quotes,
   backslashes, and Unicode in the source row will quietly break
   your output.
-- **`| float`** (and `| int`, etc.) — coerce the value to a
+- **`| float`** (and `| int`, etc.): coerce the value to a
   number before it lands in JSON, so Pydantic can validate a
   numeric field.
 
@@ -187,7 +187,7 @@ post-processing in your training code.
   demand from the Hub. The generator naturally terminates when
   the source is exhausted. **Required** when the dataset does
   not fit on disk (e.g. `c4`, `RedPajama`). Length is unknown
-  ahead of time, so `len(ds)` raises — unless you also pass
+  ahead of time, so `len(ds)` raises, unless you also pass
   `limit=N`, in which case the size is capped and known.
 - **Materialized** (`streaming=False`). The entire split is
   downloaded once, then iterated locally. Use it for small
@@ -206,7 +206,7 @@ Three pieces of API turn the common streaming-to-arrays patterns
 into one-liners. The first lives on every `Dataset`, the other
 two are module-level functions.
 
-### `ds.materialize()` — stream → in-memory arrays
+### `ds.materialize()`: stream → in-memory arrays
 
 For evaluation or a small experiment, you usually want the
 *whole* dataset sitting in memory as one NumPy object array, not
@@ -235,13 +235,13 @@ x, y = ds.materialize()
 # program.evaluate(x=x, y=y).
 ```
 
-`materialize()` works for any `Dataset` subclass — `HuggingFaceDataset`,
-your own CSV loader, anything — because it is defined on the base
+`materialize()` works for any `Dataset` subclass, `HuggingFaceDataset`,
+your own CSV loader, anything, because it is defined on the base
 class. Use it for small benchmark datasets that fit in memory;
 for huge sources, iterate via `ds()` instead so rows stream on
 demand.
 
-### `synalinks.datasets.load_split` — one HF split → one `(x, y)`
+### `synalinks.datasets.load_split`: one HF split → one `(x, y)`
 
 When the source is Hugging Face, the construct-and-materialize
 pattern above is so common that Synalinks ships a one-line
@@ -267,12 +267,12 @@ This is exactly equivalent to constructing the dataset with
 `streaming=False` and calling `materialize()` on it; under the
 hood, that is precisely what `load_split` does.
 
-### `synalinks.datasets.split_train_test` — head/tail split
+### `synalinks.datasets.split_train_test`: head/tail split
 
 Some benchmark datasets ship a *single* labeled split (HumanEval,
 IFEval, BBH, BBQ, TruthfulQA, ...). When you need a train/eval
 cut from one such split, a deterministic head/tail slice is the
-standard recipe — the same convention Keras uses with
+standard recipe, the same convention Keras uses with
 `validation_split=`:
 
 ```python
@@ -299,21 +299,21 @@ have to write the templates yourself. Each one wraps
 (x_train, y_train), (x_test, y_test) = synalinks.datasets.gsm8k.load_data()
 
 print(x_train.shape, y_train.shape)
-# (7473,) (7473,)   — NumPy object arrays of DataModels
+# (7473,) (7473,): NumPy object arrays of DataModels
 ```
 
-The catalog at the time of writing — most of these are the
+The catalog at the time of writing; most of these are the
 canonical reasoning/QA benchmarks you will see in the LM
 literature:
 
-- `synalinks.datasets.gsm8k` — grade-school math word problems
-- `synalinks.datasets.hotpotqa` — multi-hop question answering
-- `synalinks.datasets.squad` — reading-comprehension QA
-- `synalinks.datasets.mmlu` — multitask multiple-choice
-- `synalinks.datasets.bbh` — Big-Bench-Hard
-- `synalinks.datasets.hellaswag` — commonsense completion
-- `synalinks.datasets.humaneval` — code-generation
-- `synalinks.datasets.ifeval` — instruction-following
+- `synalinks.datasets.gsm8k`: grade-school math word problems
+- `synalinks.datasets.hotpotqa`: multi-hop question answering
+- `synalinks.datasets.squad`: reading-comprehension QA
+- `synalinks.datasets.mmlu`: multitask multiple-choice
+- `synalinks.datasets.bbh`: Big-Bench-Hard
+- `synalinks.datasets.hellaswag`: commonsense completion
+- `synalinks.datasets.humaneval`: code-generation
+- `synalinks.datasets.ifeval`: instruction-following
 - `synalinks.datasets.truthfulqa`, `synalinks.datasets.bbq`,
   `synalinks.datasets.arc_challenge`,
   `synalinks.datasets.arcagi`, `synalinks.datasets.boolq`,
@@ -321,21 +321,21 @@ literature:
   `synalinks.datasets.logiqa`, `synalinks.datasets.winogrande`
 
 If your task is on this list, prefer the built-in loader. If it
-is not, write a `HuggingFaceDataset` directly — the same
+is not, write a `HuggingFaceDataset` directly: the same
 machinery, just with templates you choose.
 
 ## Other Knobs Worth Knowing
 
 A few `HuggingFaceDataset` arguments you may need later:
 
-- **`limit=N`** — cap how many *raw* rows are consumed across
+- **`limit=N`**: cap how many *raw* rows are consumed across
   all splits. Useful for smoke tests; also makes `len(ds)`
   available on streaming datasets.
-- **`repeat=K`** — emit each raw example `K` times in a row.
+- **`repeat=K`**: emit each raw example `K` times in a row.
   Setting `repeat == batch_size` produces "group of K
   rollouts of the same prompt" batches, which is the layout
   GRPO-style RL training expects.
-- **`revision=...`** — pin to a specific dataset commit or
+- **`revision=...`**: pin to a specific dataset commit or
   branch. Important for reproducibility on a moving Hub.
 - **`**kwargs`** are forwarded straight to
   `datasets.load_dataset`, so anything that library accepts
@@ -344,8 +344,8 @@ A few `HuggingFaceDataset` arguments you may need later:
 
 ## Custom Sources: Subclassing `Dataset`
 
-When the data does not live on the Hub — your own SQLite
-database, a CSV file, an internal API — subclass
+When the data does not live on the Hub, your own SQLite
+database, a CSV file, an internal API, subclass
 `synalinks.Dataset` and implement one method, `_iter_rows()`,
 which yields raw row dicts. The base class handles templates,
 validation, batching, and the `repeat` / `limit` knobs. A
@@ -373,7 +373,7 @@ ds = CsvDataset(
 )
 ```
 
-`HuggingFaceDataset` is itself just such a subclass — its
+`HuggingFaceDataset` is itself just such a subclass: its
 `_iter_rows()` is a tiny wrapper around the HF library.
 
 ## Failure Modes Worth Watching For
@@ -438,7 +438,7 @@ import synalinks
 
 
 # =============================================================================
-# Data Models — match the shape of `gsm8k` rows
+# Data Models: match the shape of `gsm8k` rows
 # =============================================================================
 
 
@@ -455,7 +455,7 @@ class NumericalAnswer(synalinks.DataModel):
 
 
 # =============================================================================
-# Templates — convert one raw gsm8k row into JSON matching the data models
+# Templates: convert one raw gsm8k row into JSON matching the data models
 # =============================================================================
 
 # Input is simple: just quote/escape the question string.
@@ -527,7 +527,7 @@ def main():
     print(f"\n  loaded: x={x.shape}, y={y.shape}")
 
     # -------------------------------------------------------------------------
-    # 3) `split_train_test` — deterministic head/tail slice. Useful for
+    # 3) `split_train_test`: deterministic head/tail slice. Useful for
     #    sources that ship a single labeled split, or (as here) for
     #    carving a quick validation slice out of an HF train split.
     # -------------------------------------------------------------------------
@@ -546,7 +546,7 @@ def main():
     # -------------------------------------------------------------------------
     # 4) Built-in loader. `synalinks.datasets.gsm8k.load_data()` does the
     #    same template setup behind the scenes and hands back two
-    #    materialized (x, y) pairs — one for train, one for test.
+    #    materialized (x, y) pairs: one for train, one for test.
     # -------------------------------------------------------------------------
     print("\n" + "=" * 60)
     print("4) Built-in loader: synalinks.datasets.gsm8k.load_data()")

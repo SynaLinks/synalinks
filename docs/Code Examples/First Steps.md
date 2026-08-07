@@ -8,7 +8,7 @@
 ## Source
 
 ````python
---8<-- "examples/0_first_steps.py:135"
+--8 < --"examples/0_first_steps.py:135"
 ````
 
 ## Run log
@@ -16,7 +16,7 @@
 The log below is the **unedited** combined output of running the example above
 with local models (ollama).
 
-??? example "Full run log — `examples/0_first_steps.log`"
+??? example "Full run log: `examples/0_first_steps.log`"
 
     ```text
     --8<-- "examples/0_first_steps.log"

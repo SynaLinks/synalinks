@@ -39,7 +39,7 @@ def _to_int(v):
         return 0
 
 
-# Embedding-specific long-tail keys (smaller than the LM set — embeddings
+# Embedding-specific long-tail keys (smaller than the LM set: embeddings
 # have no completion phase, no reasoning, no tool use).
 _EM_PROMPT_DETAIL_KEYS = (
     "audio_tokens",
@@ -173,7 +173,7 @@ class EmbeddingModel(Module):
             embeddings cache. When set, every successful response is saved
             as a JSON file keyed by the full request (model, input texts and
             parameters), and identical requests are answered from disk
-            without calling the provider — including across runs and
+            without calling the provider, including across runs and
             processes. (Default to None, disabled).
         name (str): Optional. The name of the module.
         description (str): Optional. The description of the module.
@@ -248,7 +248,7 @@ class EmbeddingModel(Module):
         self.last_call_vectors = 0
         self.last_call_elapsed_s = 0.0
         self.last_call_cost = 0.0
-        # Phase-scoped counters — populated based on `synalinks_op_scope` set
+        # Phase-scoped counters, populated based on `synalinks_op_scope` set
         # by the trainer: "inference" inside `predict_on_batch`, "reward"
         # inside `compute_reward`, "optimizer" inside `optimizer.optimize`.
         # `cached_tokens` is the only tier-1 extra that makes sense for

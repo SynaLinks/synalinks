@@ -20,7 +20,7 @@ def _coerce_path(path):
 def _filter_columns(row, columns):
     """Project a row dict to `columns`, silently dropping absent keys.
 
-    Matches the column-pushdown semantics used by the Parquet loader —
+    Matches the column-pushdown semantics used by the Parquet loader:
     a missing column on one row doesn't fail the load, the template
     decides what's required."""
     return {k: row[k] for k in columns if k in row}
@@ -37,14 +37,14 @@ class JSONDataset(Dataset):
 
     Each file must contain a JSON array of objects at its top level
     (``[{"id": ..., "text": ...}, ...]``). The whole array is parsed
-    into memory at iteration time per file — JSON arrays aren't
+    into memory at iteration time per file: JSON arrays aren't
     natively line-streamable, so use `JSONLDataset` for huge
     sources you can't fit in RAM.
 
     Each row is rendered through the Jinja2 ``input_template`` /
     ``output_template`` to JSON, validated against the corresponding
     ``DataModel`` (or ``synalinks.ChatMessages`` when ``None``), and
-    accumulated into batches of size ``batch_size`` — the same
+    accumulated into batches of size ``batch_size``, the same
     contract as `HuggingFaceDataset` and the other loaders.
 
     Example:
@@ -159,7 +159,7 @@ class JSONLDataset(Dataset):
     """Streaming dataset backed by one or more JSON Lines (NDJSON) files.
 
     Each line in each file is a standalone JSON object. The reader
-    streams line-by-line — memory usage stays bounded for arbitrarily
+    streams line-by-line; memory usage stays bounded for arbitrarily
     large files, which is the main reason JSONL exists in the first
     place and the main reason to prefer it over `JSONDataset`
     for sources you can't fit in RAM.

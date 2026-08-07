@@ -4,7 +4,7 @@
 
 `keras-tuner` does `import keras` (and `from keras... import *`) at module
 load time. Real Keras 3 then needs a backend (TensorFlow, JAX, PyTorch, or
-numpy) — none of which `synalinks` itself requires. This module installs
+numpy), none of which `synalinks` itself requires. This module installs
 minimal stubs in `sys.modules` so `import keras_tuner` succeeds without
 pulling a full Keras runtime into the process.
 
@@ -16,18 +16,18 @@ synalinks.disable_keras_backend()  # MUST come before `import keras_tuner`
 import keras_tuner as kt
 ```
 
-Caveats — read before adopting:
+Caveats (read before adopting):
 
 - The stub mutates `sys.modules["keras"]` and a handful of submodules. Real
   Keras becomes unreachable in the same Python process. If you mix
-  `synalinks` with real Keras in one script, do not call this — you don't
+  `synalinks` with real Keras in one script, do not call this; you don't
   need it!
 - The stub fakes a small surface (`keras.callbacks.Callback`,
   `keras.utils.serialize_keras_object`, etc.) that is enough for
   `keras-tuner`'s search loop when `BaseTuner.run_trial` is overridden.
   Anything that reaches deeper into the Keras runtime will fail.
 - Any dependency that imports `keras` *after* this call will see the stub
-  and likely break — including TensorFlow ≥ 2.16, AutoKeras, KerasCV, and
+  and likely break, including TensorFlow ≥ 2.16, AutoKeras, KerasCV, and
   KerasNLP. Only call this in scripts that don't pull those in.
 - `keras-tuner` workers spawned via `multiprocessing` start with a fresh
   `sys.modules`. If you use kt's parallel search, call
@@ -83,8 +83,8 @@ def _build_keras_stubs() -> dict[str, types.ModuleType]:
     # `keras_tuner.src.engine.metrics_tracking.infer_metric_direction` walks
     # `keras.metrics.deserialize` / `keras.losses.deserialize` to figure out
     # whether an unknown metric name should be maximized or minimized. For
-    # synalinks users that's never a hit — synalinks metrics live in their
-    # own namespace — so we wire up stubs that always raise. kt catches the
+    # synalinks users that's never a hit (synalinks metrics live in their
+    # own namespace), so we wire up stubs that always raise. kt catches the
     # exception and returns `None` (direction unknown). The `Metric` /
     # `Loss` base classes are needed for kt's `isinstance(metric, ...)`
     # branches; keeping them as empty classes is enough because the
@@ -184,7 +184,7 @@ def disable_keras_backend() -> None:
     ------------------
     - If `keras` is already in `sys.modules` (real or stubbed), this function
       is a **no-op**. So if you need real Keras alongside `synalinks`+`kt`,
-      `import keras` *before* calling `disable_keras_backend()` — the stub
+      `import keras` *before* calling `disable_keras_backend()`: the stub
       will detect Keras and stay out of the way. kt will use real Keras.
     - If `keras_tuner` is already imported when this is called, kt has
       already bound to whatever keras it found at import time, so the stub

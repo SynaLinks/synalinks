@@ -79,7 +79,7 @@ class JSONDatasetTest(testing.TestCase):
 
     def test_columns_filter_drops_unrequested_keys(self):
         # Directly inspect the row dicts the loader yields. Previously
-        # this test only asserted the resulting DataModel field — which
+        # this test only asserted the resulting DataModel field, which
         # would have passed even if no projection happened, since the
         # template ignored the unrequested keys.
         path = os.path.join(self.tmp, "wide.json")
@@ -237,7 +237,7 @@ class JSONDatasetTest(testing.TestCase):
             [b for b in ds]
 
     def test_truncated_file_raises_json_decode_error(self):
-        # Producer crashed mid-write — the file ends mid-token. json.load
+        # Producer crashed mid-write: the file ends mid-token. json.load
         # surfaces the standard decode error so the user can find the
         # offending byte offset.
         path = os.path.join(self.tmp, "trunc.json")
@@ -320,7 +320,7 @@ class JSONLDatasetTest(testing.TestCase):
         self.assertEqual([item.question for item in x], ["alpha", "beta", "gamma"])
 
     def test_columns_filter_drops_unrequested_keys(self):
-        # Directly inspect the projection — see the JSONDataset
+        # Directly inspect the projection; see the JSONDataset
         # equivalent for why the original "round-trip via template"
         # form was too weak to catch a missing filter.
         path = os.path.join(self.tmp, "wide.jsonl")

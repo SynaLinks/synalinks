@@ -283,7 +283,7 @@ class MultimodalDatasetRoundTripTest(testing.TestCase):
 
     async def test_validated_json_keeps_ref_then_resolves_per_batch(self):
         # This is exactly how `Dataset._make_input` builds a row: render JSON,
-        # then `model_validate_json` — no Image() constructor, so the source
+        # then `model_validate_json`: no Image() constructor, so the source
         # stays a reference rather than being inlined into the dataset.
         rendered = (
             '{"messages":[{"role":"user","content":['

@@ -43,7 +43,7 @@ def load_data(validation_split=0.2):
 
     HF ships only a ``test`` split (164 problems), so we split it
     deterministically into train / test. Real scoring requires running
-    unit tests against the completion — exact match against the
+    unit tests against the completion; exact match against the
     canonical solution is a placeholder reward.
 
     Args:

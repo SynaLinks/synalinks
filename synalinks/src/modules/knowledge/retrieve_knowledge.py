@@ -55,7 +55,7 @@ def default_retriever_instructions(tables, search_type="hybrid"):
             "The `search` field should be a list of regular-expression "
             "patterns (RE2 syntax) to match against the text fields of "
             "the chosen tables. Prefer anchors, character classes, and "
-            "alternation over natural-language phrasing — the patterns "
+            "alternation over natural-language phrasing; the patterns "
             "are matched literally, not interpreted."
         )
     elif search_type == "hybrid_regex":
@@ -100,7 +100,7 @@ class HybridRegexSearchQuery(DataModel):
     Adds a ``patterns`` field so the LM can supply the regex side of
     the hybrid lookup explicitly. Embedding a regex pattern for vector
     search makes no sense, and treating a natural-language sentence as
-    a regex literally never matches — the two signals need separate
+    a regex literally never matches; the two signals need separate
     inputs.
     """
 
@@ -268,7 +268,7 @@ class RetrieveKnowledge(Module):
         self.return_inputs = return_inputs
         self.return_query = return_query
 
-        # The LM output schema is chosen by search_type — the hybrid_regex
+        # The LM output schema is chosen by search_type: the hybrid_regex
         # mode needs an extra `patterns` field, every other mode reuses
         # the legacy `SearchQuery` shape.
         self.search_query_generator = Generator(
@@ -298,7 +298,7 @@ class RetrieveKnowledge(Module):
         don't know which field is the primary key here.
 
         Per-table k is set to ``self.k`` and the merged top-k is
-        taken at the end — when ``score`` is present (similarity /
+        taken at the end: when ``score`` is present (similarity /
         fulltext / hybrid), the merge sorts by descending score
         (lower is better for plain similarity, so we negate); for
         score-less results (regex), insertion order is preserved.

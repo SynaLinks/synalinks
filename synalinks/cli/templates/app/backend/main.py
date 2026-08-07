@@ -1,6 +1,6 @@
 """The app backend: a Synalinks program served as a REST API with FastAPI.
 
-Build once, serve forever — two steps, never one:
+Build once, serve forever (two steps, never one):
 
     uv run python main.py build   # 1. build the program, save it to disk
     uv run python main.py         # 2. serve the saved artifact
@@ -9,7 +9,7 @@ Build once, serve forever — two steps, never one:
 
 The model is read from the MODEL env var (see `.env`); it defaults to vLLM.
 NOTE: MODEL is baked into the saved program at *build* time, so set it before
-`build` — changing it at serve time has no effect (rebuild to switch models).
+`build`; changing it at serve time has no effect (rebuild to switch models).
 No GPU? Set MODEL=ollama/mistral:latest. To use a hosted model,
 `cp .env.template .env`, add the matching key, and set MODEL there.
 
@@ -49,7 +49,7 @@ def _enable_observability() -> None:
 PROGRAM_PATH = Path(os.environ.get("PROGRAM_PATH", "program.json"))
 
 
-# Structured I/O — DataModels are Pydantic models, so FastAPI reuses them as
+# Structured I/O: DataModels are Pydantic models, so FastAPI reuses them as
 # request/response bodies and publishes their schemas at /docs for free.
 class Question(synalinks.DataModel):
     question: str = synalinks.Field(description="The question to answer")
@@ -62,7 +62,7 @@ class Answer(synalinks.DataModel):
 async def build_and_save_program(path: Path) -> "synalinks.Program":
     """Build the program once and persist it to ``path``.
 
-    Run this as a *separate* step (CLI verb, CI job, REPL) — never from the
+    Run this as a *separate* step (CLI verb, CI job, REPL), never from the
     server lifespan. A production server should load a known artifact, not
     construct one (and maybe fail) on its first request.
     """
@@ -106,7 +106,7 @@ app = FastAPI(title="synalinks-app-backend", version="0.1.0", lifespan=lifespan)
 
 @app.get("/healthz")
 async def healthz() -> dict:
-    """Liveness probe — cheap and credential-free."""
+    """Liveness probe: cheap and credential-free."""
     return {"status": "ok"}
 
 
@@ -115,7 +115,7 @@ async def answer(request: Request, question: Question) -> Answer:
     """Answer a question."""
     result = await request.state.program(question)
     if result is None:
-        # A Synalinks guard refused the call — an application-level "no",
+        # A Synalinks guard refused the call: an application-level "no",
         # not an upstream failure, so 422 is the honest status code.
         raise HTTPException(status_code=422, detail="Guard rejected input or output")
     try:

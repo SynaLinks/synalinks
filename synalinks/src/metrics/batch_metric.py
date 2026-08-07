@@ -10,7 +10,7 @@ class BatchMetric(Metric):
 
     A regular `Metric` is updated one sample at a time by the trainer. A
     `BatchMetric` instead receives the **entire batch at once**, so it can
-    compute quantities that only make sense across a group of samples — e.g.
+    compute quantities that only make sense across a group of samples, e.g.
     ``pass@k`` over the ``k`` samples drawn for a single problem.
 
     The trainer detects `BatchMetric` instances and routes the whole
