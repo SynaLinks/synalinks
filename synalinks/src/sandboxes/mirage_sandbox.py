@@ -269,6 +269,15 @@ def _build_sbpl(cfg):
             ancestors.append(path)
     for path in ancestors:
         lines.append("(allow file-read-metadata (literal %s))" % _sbpl_quote(path))
+    # The root directory gets `file-read-data` on top of the metadata above,
+    # and it is load-bearing for every subprocess: dyld4's CacheFinder locates
+    # the shared-cache cryptex by *reading* `/` (macOS 26 runners), and a
+    # denied read there does not degrade, it halts the freshly exec'd child in
+    # `ignition_halt` before dyld can write a word to stderr. The parent never
+    # trips this because its cache was mapped before the profile applied.
+    # `literal` keeps the grant to the directory itself: listing `/` exposes
+    # the well-known top-level names and nothing of any file's contents.
+    lines.append('(allow file-read-data (literal "/"))')
     # Read-only: the interpreter, its stdlib and the host package dirs, the
     # same set the Linux path bind-mounts read-only. Without these the snippet
     # cannot import anything, including its own bootstrap dependencies.

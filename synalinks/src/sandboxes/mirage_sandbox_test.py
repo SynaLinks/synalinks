@@ -1398,6 +1398,17 @@ class SbplProfileTest(testing.TestCase):
         self.assertNotIn('(allow file-read* (subpath "/"))', profile)
         self.assertNotIn('(allow file-read* (subpath "/var"))', profile)
 
+    def test_root_directory_is_readable_not_just_traversable(self):
+        # dyld4's CacheFinder locates the shared-cache cryptex by *reading* the
+        # root directory (macOS 26), and a denied read there halts a freshly
+        # exec'd child in `ignition_halt`: SIGABRT, empty stderr, before dyld
+        # can load a single dylib. Metadata on `/` is not enough. The grant is
+        # a `literal`, so it exposes the well-known top-level names and nothing
+        # of any file's contents.
+        profile = self._build()
+        self.assertIn('(allow file-read-data (literal "/"))', profile)
+        self.assertNotIn('(allow file-read-data (subpath "/"))', profile)
+
     def test_working_directory_is_traversable(self):
         # `getcwd` is a path operation, so a cwd outside the granted set fails
         # EPERM, and CPython calls it on the first import after confinement
