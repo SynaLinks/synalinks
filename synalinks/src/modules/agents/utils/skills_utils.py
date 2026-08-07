@@ -305,11 +305,16 @@ def build_read_skill_tool(roots, *, max_chars: int = 50_000):
 
     The ``<available_skills>`` block surfaces only each skill's name and
     description (level 1 of progressive disclosure); the spec assumes the
-    agent reads the rest "through its own file tools". A tool-calling agent
+    agent reads the rest through its own file tools. A tool-calling agent
     whose tools are domain tools (SQL, retrieval, ...) has none — its skills
     would be advertised but unreadable. This tool completes the disclosure
-    chain for those agents: level 2 (the ``SKILL.md`` body) and level 3
-    (bundled ``references/`` / ``assets/`` files) on demand.
+    chain for those agents, with the activation shape the ecosystem settled
+    on (Claude Code's Skill tool, the Claude API's container skills):
+    **one name-like argument**. The bare skill name returns the ``SKILL.md``
+    body plus the bundled file listing (level 2 — activation); the name
+    prefixing one of the relative paths skills use to reference their own
+    files (``pdf-processing/references/api.md``) returns that bundled file
+    (level 3).
 
     Reads are confined to the discovered skill directories: the requested
     path is resolved and must stay inside the skill's own directory, so
@@ -335,48 +340,53 @@ def build_read_skill_tool(roots, *, max_chars: int = 50_000):
 
     resolved = list(roots or [])
 
-    async def read_skill(name: str, file: str) -> dict:
-        """Read an installed Agent Skill's instructions or a bundled file.
+    async def read_skill(skill: str) -> dict:
+        """Read an installed Agent Skill.
 
         The available skills (name + description) are listed in the
         <available_skills> block of your context; this tool returns the rest
-        on demand. Read a skill's instructions BEFORE following it, and read
-        the bundled files its instructions point to.
+        on demand. Read a skill BEFORE following it. When its instructions
+        reference a bundled file, read that file the same way, prefixing the
+        skill name to the file's relative path.
 
         Args:
-            name (str): The skill to read — its `name` from
-                <available_skills>, e.g. 'pdf-processing'.
-            file (str): Pass 'SKILL.md' (or an empty string) for the skill's
-                instructions. To read a bundled file the instructions mention,
-                pass its relative path, e.g. 'references/api.md'.
+            skill (str): The skill name from <available_skills>
+                (e.g. 'pdf-processing') to read its instructions — the
+                response also lists the skill's bundled files. Or a bundled
+                file the instructions mention, as the skill name followed by
+                the file's relative path (e.g.
+                'pdf-processing/references/api.md').
         """
+        name, _, relative = (skill or "").strip().strip("/").partition("/")
         skill_dirs = {d.name: d for d in discover_skills_in_roots(resolved)}
-        skill_dir = skill_dirs.get((name or "").strip())
+        skill_dir = skill_dirs.get(name)
         if skill_dir is None:
             return {
                 "error": f"Unknown skill {name!r}.",
                 "available_skills": sorted(skill_dirs),
             }
-        relative = (file or "").strip() or "SKILL.md"
+        relative = relative or "SKILL.md"
         root = skill_dir.resolve()
         target = (root / relative).resolve()
         if root != target and root not in target.parents:
             return {
                 "error": (
-                    f"{file!r} is outside the {name!r} skill directory; only "
+                    f"{skill!r} is outside the {name!r} skill directory; only "
                     f"the skill's own files can be read."
                 )
             }
+        files = sorted(str(p.relative_to(root)) for p in root.rglob("*") if p.is_file())
         if not target.is_file():
-            available = sorted(
-                str(p.relative_to(root)) for p in root.rglob("*") if p.is_file()
-            )
             return {
                 "error": f"No file {relative!r} in skill {name!r}.",
-                "available_files": available,
+                "available_files": files,
             }
         content = target.read_text(encoding="utf-8", errors="replace")
-        report = {"skill": skill_dir.name, "file": relative}
+        report = {"skill": name, "file": relative}
+        if relative == "SKILL.md" and len(files) > 1:
+            # Activation also surfaces what else the skill bundles, so the
+            # agent knows what it can read next (level 3).
+            report["files"] = files
         if len(content) > max_chars:
             report["note"] = (
                 f"Truncated to the first {max_chars} of {len(content)} characters."
