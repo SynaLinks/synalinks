@@ -259,6 +259,18 @@ class SkillsPromptTest(testing.TestCase):
         self.assertIn("<description>\nHandle PDFs.\n</description>", out)
         self.assertIn(f"<location>\n{d}/SKILL.md\n</location>", out)
 
+    def test_locations_false_omits_location(self):
+        d = self._write("pdf", "---\nname: pdf\ndescription: Handle PDFs.\n---\n")
+        out = skills_prompt([d], locations=False)
+        self.assertIn("<name>\npdf\n</name>", out)
+        self.assertIn("<description>\nHandle PDFs.\n</description>", out)
+        self.assertNotIn("<location>", out)
+
+    def test_root_cannot_combine_with_locations_false(self):
+        d = self._write("pdf", "---\nname: pdf\ndescription: Handle PDFs.\n---\n")
+        with self.assertRaises(ValueError):
+            skills_prompt([d], root="/work/skills", locations=False)
+
     def test_root_overrides_location_prefix(self):
         d = self._write("pdf", _MINIMAL.replace("hello", "pdf"))
         out = skills_prompt([d], root="/work/skills")
@@ -293,52 +305,36 @@ class BuildReadSkillToolTest(testing.TestCase):
             f.write("# API\nDetails here.")
         return root
 
-    async def test_bare_name_reads_body_and_lists_bundled_files(self):
+    async def test_reads_skill_body_by_name(self):
         tool = build_read_skill_tool([self._make_root()])
         self.assertEqual(tool.name, READ_SKILL_TOOL_NAME)
-        report = await _json(tool)(skill="pdf-processing")
+        report = await _json(tool)(name="pdf-processing")
         self.assertEqual(report["skill"], "pdf-processing")
-        self.assertEqual(report["file"], "SKILL.md")
         self.assertIn("pdfplumber", report["content"])
-        self.assertEqual(report["files"], ["SKILL.md", "references/api.md"])
 
-    async def test_name_slash_path_reads_bundled_file(self):
+    async def test_nothing_path_shaped_in_the_report(self):
+        # The name is the whole address: storage stays internal, so no path
+        # or file listing leaks into the observation.
         tool = build_read_skill_tool([self._make_root()])
-        report = await _json(tool)(skill="pdf-processing/references/api.md")
-        self.assertEqual(report["file"], "references/api.md")
-        self.assertIn("Details here.", report["content"])
-        self.assertNotIn("files", report)
+        report = await _json(tool)(name="pdf-processing")
+        self.assertEqual(sorted(report), ["content", "skill"])
 
     async def test_unknown_skill_lists_available(self):
         tool = build_read_skill_tool([self._make_root()])
-        report = await _json(tool)(skill="nope")
+        report = await _json(tool)(name="nope")
         self.assertIn("error", report)
         self.assertEqual(report["available_skills"], ["pdf-processing"])
 
-    async def test_missing_file_lists_available_files(self):
+    async def test_path_shaped_names_are_unknown(self):
         tool = build_read_skill_tool([self._make_root()])
-        report = await _json(tool)(skill="pdf-processing/references/missing.md")
-        self.assertIn("error", report)
-        self.assertIn("SKILL.md", report["available_files"])
-        self.assertIn("references/api.md", report["available_files"])
-
-    async def test_rejects_paths_outside_the_skill(self):
-        root = self._make_root()
-        with open(os.path.join(root, "secret.txt"), "w") as f:
-            f.write("nope")
-        tool = build_read_skill_tool([root])
-        for path in (
-            "pdf-processing/../secret.txt",
-            "pdf-processing/references/../../secret.txt",
-        ):
-            report = await _json(tool)(skill=path)
+        for name in ("pdf-processing/references/api.md", "../pdf-processing"):
+            report = await _json(tool)(name=name)
             self.assertIn("error", report)
             self.assertNotIn("content", report)
 
-    async def test_truncates_large_files(self):
-        root = self._make_root()
-        tool = build_read_skill_tool([root], max_chars=10)
-        report = await _json(tool)(skill="pdf-processing/references/api.md")
+    async def test_truncates_large_bodies(self):
+        tool = build_read_skill_tool([self._make_root()], max_chars=10)
+        report = await _json(tool)(name="pdf-processing")
         self.assertEqual(len(report["content"]), 10)
         self.assertIn("note", report)
 
@@ -347,5 +343,5 @@ class BuildReadSkillToolTest(testing.TestCase):
         with open(os.path.join(second, "pdf-processing", "SKILL.md"), "w") as f:
             f.write(_MINIMAL.replace("hello", "pdf-processing"))
         tool = build_read_skill_tool([first, second])
-        report = await _json(tool)(skill="pdf-processing")
+        report = await _json(tool)(name="pdf-processing")
         self.assertIn("pdfplumber", report["content"])

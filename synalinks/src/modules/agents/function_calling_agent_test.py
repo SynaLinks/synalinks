@@ -1100,7 +1100,7 @@ class SkillsToolWiringTest(testing.TestCase):
             skills=[self._make_skills_root()],
         )
         self.assertIn("read_skill", agent.tools)
-        report = await agent.tools["read_skill"](skill="pdf-processing")
+        report = await agent.tools["read_skill"](name="pdf-processing")
         self.assertIn("pdfplumber", report.get_json()["content"])
 
     async def test_no_skills_no_read_skill_tool(self):
@@ -1111,11 +1111,11 @@ class SkillsToolWiringTest(testing.TestCase):
         self.assertNotIn("read_skill", agent.tools)
 
     async def test_user_read_skill_tool_wins_over_builtin(self):
-        async def read_skill(skill: str):
+        async def read_skill(name: str):
             """Custom reader.
 
             Args:
-                skill (str): The skill name.
+                name (str): The skill name.
             """
             return {"custom": True}
 
@@ -1124,7 +1124,7 @@ class SkillsToolWiringTest(testing.TestCase):
             tools=[Tool(read_skill)],
             skills=[self._make_skills_root()],
         )
-        report = await agent.tools["read_skill"](skill="x")
+        report = await agent.tools["read_skill"](name="x")
         self.assertTrue(report.get_json()["custom"])
 
     async def test_skill_tool_alone_satisfies_the_tools_requirement(self):
@@ -1135,6 +1135,15 @@ class SkillsToolWiringTest(testing.TestCase):
             skills=[self._make_skills_root()],
         )
         self.assertEqual(list(agent.tools), ["read_skill"])
+
+    async def test_skills_listing_has_no_location(self):
+        agent = FunctionCallingAgent(
+            language_model=LanguageModel(model="ollama/mistral"),
+            skills=[self._make_skills_root()],
+        )
+        content = agent.skills_message.content
+        self.assertIn("pdf-processing", content)
+        self.assertNotIn("<location>", content)
 
     async def test_skill_tool_survives_serialization_roundtrip(self):
         root = self._make_skills_root()

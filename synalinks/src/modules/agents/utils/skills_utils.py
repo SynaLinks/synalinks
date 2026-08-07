@@ -253,21 +253,31 @@ def discover_skills_in_roots(roots, *, strict: bool = False) -> List[Path]:
     return sorted(seen.values(), key=lambda d: d.name)
 
 
-def skills_prompt(skill_dirs, *, root: Optional[str] = None) -> str:
+def skills_prompt(
+    skill_dirs, *, root: Optional[str] = None, locations: bool = True
+) -> str:
     """Render the ``<available_skills>`` prompt block (Agent Skills *level 1*).
 
     ``skill_dirs`` is an iterable of skill directories (as from `discover_skills`
-    / `discover_skills_in_roots`). Without ``root`` this delegates to
+    / `discover_skills_in_roots`). By default this delegates to
     ``skills_ref.to_prompt``: the exact XML Anthropic recommends, one
     ``<skill>`` per entry with ``<name>`` / ``<description>`` / ``<location>``
-    (the absolute path to ``SKILL.md``). ``root`` overrides the ``<location>``
-    prefix (e.g. the skills directory as the *sandbox* sees it, when the host
-    path differs), a remap ``skills_ref.to_prompt`` cannot do, so that case is
-    rendered locally to byte-identical XML using ``skills_ref.read_properties``
-    for each skill's name / description.
+    (the absolute path to ``SKILL.md``). Two adjustments ``skills_ref`` cannot
+    do are rendered locally to otherwise-identical XML:
+
+    - ``root`` overrides the ``<location>`` prefix (e.g. the skills directory
+      as the *sandbox* sees it, when the host path differs);
+    - ``locations=False`` omits ``<location>`` entirely — for agents that
+      read skills **by name** through the built-in ``read_skill`` tool, where
+      storage is internal and a filesystem path would only leak an
+      implementation detail (and invite the model to ask for paths).
     """
     skill_dirs = [Path(d) for d in skill_dirs]
-    if not root:
+    if root and not locations:
+        raise ValueError(
+            "`root` overrides <location>; it cannot be combined with locations=False."
+        )
+    if not root and locations:
         return to_prompt(skill_dirs)
 
     import html
@@ -277,7 +287,6 @@ def skills_prompt(skill_dirs, *, root: Optional[str] = None) -> str:
     lines = ["<available_skills>"]
     for skill_dir in skill_dirs:
         props = read_properties(skill_dir)
-        location = f"{root.rstrip('/')}/{skill_dir.name}/SKILL.md"
         lines += [
             "<skill>",
             "<name>",
@@ -286,11 +295,14 @@ def skills_prompt(skill_dirs, *, root: Optional[str] = None) -> str:
             "<description>",
             html.escape(props.description),
             "</description>",
-            "<location>",
-            location,
-            "</location>",
-            "</skill>",
         ]
+        if locations:
+            lines += [
+                "<location>",
+                f"{root.rstrip('/')}/{skill_dir.name}/SKILL.md",
+                "</location>",
+            ]
+        lines.append("</skill>")
     lines.append("</available_skills>")
     return "\n".join(lines)
 
@@ -307,28 +319,25 @@ def build_read_skill_tool(roots, *, max_chars: int = 50_000):
     description (level 1 of progressive disclosure); the spec assumes the
     agent reads the rest through its own file tools. A tool-calling agent
     whose tools are domain tools (SQL, retrieval, ...) has none — its skills
-    would be advertised but unreadable. This tool completes the disclosure
-    chain for those agents, with the activation shape the ecosystem settled
-    on (Claude Code's Skill tool, the Claude API's container skills):
-    **one name-like argument**. The bare skill name returns the ``SKILL.md``
-    body plus the bundled file listing (level 2 — activation); the name
-    prefixing one of the relative paths skills use to reference their own
-    files (``pdf-processing/references/api.md``) returns that bundled file
-    (level 3).
+    would be advertised but unreadable. This tool completes activation
+    (level 2) with the shape the ecosystem settled on (Claude Code's Skill
+    tool, the Claude API's container skills): **by name, and by name only**.
+    The skill's name is its whole address — where and how the skill is
+    stored stays internal, so no filesystem is exposed to the model (and
+    none needs to exist: a future backing could be a registry or an
+    archive). Bundled ``references/``/``scripts/`` files (level 3) remain
+    the province of agents with real file tools.
 
-    Reads are confined to the discovered skill directories: the requested
-    path is resolved and must stay inside the skill's own directory, so
-    neither ``..`` traversal nor absolute paths nor symlinks escaping the
-    skill can reach anything else. Errors come back as observations (an
-    ``"error"`` key with the available names/files), never as exceptions —
-    a wrong guess costs the agent one round, not the run.
+    Errors come back as observations (an ``"error"`` key with the available
+    skill names), never as exceptions — a wrong guess costs the agent one
+    round, not the run.
 
     Args:
         roots: Skill root directories, as accepted by `discover_skills_in_roots`
             (each root holds ``<name>/SKILL.md`` folders; first root wins on a
             shared name — matching what the listing shows).
-        max_chars: Truncation budget for a returned file, so a large bundled
-            asset cannot flood the context window.
+        max_chars: Truncation budget for a returned body, so an oversized
+            skill cannot flood the context window.
 
     Returns:
         The ``read_skill`` `Tool`.
@@ -340,53 +349,26 @@ def build_read_skill_tool(roots, *, max_chars: int = 50_000):
 
     resolved = list(roots or [])
 
-    async def read_skill(skill: str) -> dict:
-        """Read an installed Agent Skill.
+    async def read_skill(name: str) -> dict:
+        """Read an installed Agent Skill's full instructions.
 
         The available skills (name + description) are listed in the
-        <available_skills> block of your context; this tool returns the rest
-        on demand. Read a skill BEFORE following it. When its instructions
-        reference a bundled file, read that file the same way, prefixing the
-        skill name to the file's relative path.
+        <available_skills> block of your context; this tool loads a skill's
+        complete instructions. Read a skill BEFORE following it.
 
         Args:
-            skill (str): The skill name from <available_skills>
-                (e.g. 'pdf-processing') to read its instructions — the
-                response also lists the skill's bundled files. Or a bundled
-                file the instructions mention, as the skill name followed by
-                the file's relative path (e.g.
-                'pdf-processing/references/api.md').
+            name (str): The skill name from <available_skills>,
+                e.g. 'pdf-processing'.
         """
-        name, _, relative = (skill or "").strip().strip("/").partition("/")
         skill_dirs = {d.name: d for d in discover_skills_in_roots(resolved)}
-        skill_dir = skill_dirs.get(name)
+        skill_dir = skill_dirs.get((name or "").strip())
         if skill_dir is None:
             return {
                 "error": f"Unknown skill {name!r}.",
                 "available_skills": sorted(skill_dirs),
             }
-        relative = relative or "SKILL.md"
-        root = skill_dir.resolve()
-        target = (root / relative).resolve()
-        if root != target and root not in target.parents:
-            return {
-                "error": (
-                    f"{skill!r} is outside the {name!r} skill directory; only "
-                    f"the skill's own files can be read."
-                )
-            }
-        files = sorted(str(p.relative_to(root)) for p in root.rglob("*") if p.is_file())
-        if not target.is_file():
-            return {
-                "error": f"No file {relative!r} in skill {name!r}.",
-                "available_files": files,
-            }
-        content = target.read_text(encoding="utf-8", errors="replace")
-        report = {"skill": name, "file": relative}
-        if relative == "SKILL.md" and len(files) > 1:
-            # Activation also surfaces what else the skill bundles, so the
-            # agent knows what it can read next (level 3).
-            report["files"] = files
+        content = (skill_dir / "SKILL.md").read_text(encoding="utf-8", errors="replace")
+        report = {"skill": skill_dir.name}
         if len(content) > max_chars:
             report["note"] = (
                 f"Truncated to the first {max_chars} of {len(content)} characters."

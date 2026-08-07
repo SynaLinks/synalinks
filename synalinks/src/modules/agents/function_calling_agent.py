@@ -392,14 +392,16 @@ class FunctionCallingAgent(Module):
             agentskills.io standard). The discovered skills' names and
             descriptions are injected as an ``<available_skills>`` context
             message so the agent knows what is available; per progressive
-            disclosure, each skill's full ``SKILL.md`` body and bundled files
-            are read on demand. Setting `skills` also adds a built-in
-            ``read_skill`` tool for exactly that (reads confined to the skill
-            directories), so agents without file/bash tools can still follow
-            their skills; an existing tool named ``read_skill`` (from a
-            subclass or the `tools` argument) takes precedence over the
-            built-in. Each path must point to an existing directory
-            (Default to None).
+            disclosure, each skill's full ``SKILL.md`` body is read on
+            demand: setting `skills` also adds a built-in ``read_skill(name)``
+            tool, so agents without file/bash tools can still follow their
+            skills. Skills are addressed **by name only** — storage stays
+            internal and no path is exposed to the model (the listing is
+            rendered without ``<location>``); bundled ``references/`` files
+            remain the province of agents with real file tools. An existing
+            tool named ``read_skill`` (from a subclass or the `tools`
+            argument) takes precedence over the built-in. Each path must
+            point to an existing directory (Default to None).
         streaming (bool): Optional. If true, stream the final answer. Only takes
             effect when no `data_model`/`schema` is provided. When streaming,
             the agent returns a `StreamingIterator` instead of a wrapped
@@ -638,7 +640,12 @@ class FunctionCallingAgent(Module):
         skills = discover_skills_in_roots(self.skills)
         if not skills:
             return None
-        return ChatMessage(role=ChatRole.USER, content=skills_prompt(skills))
+        # Rendered without <location>: this agent reads skills by name
+        # (the built-in or an overriding `read_skill` tool), so a
+        # filesystem path would only leak an implementation detail.
+        return ChatMessage(
+            role=ChatRole.USER, content=skills_prompt(skills, locations=False)
+        )
 
     async def call(self, inputs, training=False, **kwargs):
         if not inputs:
