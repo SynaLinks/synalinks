@@ -9,9 +9,11 @@ import os
 import tempfile
 
 from synalinks.src import testing
+from synalinks.src.modules.agents.utils.skills_utils import READ_SKILL_TOOL_NAME
 from synalinks.src.modules.agents.utils.skills_utils import Skill
 from synalinks.src.modules.agents.utils.skills_utils import SkillParseError
 from synalinks.src.modules.agents.utils.skills_utils import SkillValidationError
+from synalinks.src.modules.agents.utils.skills_utils import build_read_skill_tool
 from synalinks.src.modules.agents.utils.skills_utils import discover_skills
 from synalinks.src.modules.agents.utils.skills_utils import find_skill_md
 from synalinks.src.modules.agents.utils.skills_utils import load_skill
@@ -267,3 +269,79 @@ class SkillsPromptTest(testing.TestCase):
         d = self._write("x", "---\nname: x\ndescription: a & b <c>\n---\n")
         out = skills_prompt([d])
         self.assertIn("a &amp; b &lt;c&gt;", out)
+
+
+def _json(tool):
+    """Call a tool and return its plain-dict result (tools wrap dicts in a
+    JsonDataModel)."""
+
+    async def call(**kwargs):
+        result = await tool(**kwargs)
+        return result.get_json() if hasattr(result, "get_json") else result
+
+    return call
+
+
+class BuildReadSkillToolTest(testing.TestCase):
+    def _make_root(self):
+        root = tempfile.mkdtemp()
+        skill_dir = os.path.join(root, "pdf-processing")
+        os.makedirs(os.path.join(skill_dir, "references"))
+        with open(os.path.join(skill_dir, "SKILL.md"), "w") as f:
+            f.write(_FULL)
+        with open(os.path.join(skill_dir, "references", "api.md"), "w") as f:
+            f.write("# API\nDetails here.")
+        return root
+
+    async def test_reads_skill_body_by_default(self):
+        tool = build_read_skill_tool([self._make_root()])
+        self.assertEqual(tool.name, READ_SKILL_TOOL_NAME)
+        for file in ("", "SKILL.md"):
+            report = await _json(tool)(name="pdf-processing", file=file)
+            self.assertEqual(report["skill"], "pdf-processing")
+            self.assertEqual(report["file"], "SKILL.md")
+            self.assertIn("pdfplumber", report["content"])
+
+    async def test_reads_bundled_reference_file(self):
+        tool = build_read_skill_tool([self._make_root()])
+        report = await _json(tool)(name="pdf-processing", file="references/api.md")
+        self.assertEqual(report["file"], "references/api.md")
+        self.assertIn("Details here.", report["content"])
+
+    async def test_unknown_skill_lists_available(self):
+        tool = build_read_skill_tool([self._make_root()])
+        report = await _json(tool)(name="nope", file="")
+        self.assertIn("error", report)
+        self.assertEqual(report["available_skills"], ["pdf-processing"])
+
+    async def test_missing_file_lists_available_files(self):
+        tool = build_read_skill_tool([self._make_root()])
+        report = await _json(tool)(name="pdf-processing", file="references/missing.md")
+        self.assertIn("error", report)
+        self.assertIn("SKILL.md", report["available_files"])
+        self.assertIn("references/api.md", report["available_files"])
+
+    async def test_rejects_paths_outside_the_skill(self):
+        root = self._make_root()
+        with open(os.path.join(root, "secret.txt"), "w") as f:
+            f.write("nope")
+        tool = build_read_skill_tool([root])
+        for path in ("../secret.txt", "/etc/hostname", "references/../../secret.txt"):
+            report = await _json(tool)(name="pdf-processing", file=path)
+            self.assertIn("error", report)
+            self.assertNotIn("content", report)
+
+    async def test_truncates_large_files(self):
+        root = self._make_root()
+        tool = build_read_skill_tool([root], max_chars=10)
+        report = await _json(tool)(name="pdf-processing", file="references/api.md")
+        self.assertEqual(len(report["content"]), 10)
+        self.assertIn("note", report)
+
+    async def test_first_root_wins_for_shared_names(self):
+        first, second = self._make_root(), self._make_root()
+        with open(os.path.join(second, "pdf-processing", "SKILL.md"), "w") as f:
+            f.write(_MINIMAL.replace("hello", "pdf-processing"))
+        tool = build_read_skill_tool([first, second])
+        report = await _json(tool)(name="pdf-processing", file="")
+        self.assertIn("pdfplumber", report["content"])

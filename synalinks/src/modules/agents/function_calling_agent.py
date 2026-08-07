@@ -16,6 +16,8 @@ from synalinks.src.modules.agents.utils.agents_utils import discover_agents_md
 from synalinks.src.modules.agents.utils.agents_utils import merge_tools
 from synalinks.src.modules.agents.utils.agents_utils import prepend_context_message
 from synalinks.src.modules.agents.utils.agents_utils import resolve_workdir
+from synalinks.src.modules.agents.utils.skills_utils import READ_SKILL_TOOL_NAME
+from synalinks.src.modules.agents.utils.skills_utils import build_read_skill_tool
 from synalinks.src.modules.agents.utils.skills_utils import discover_skills_in_roots
 from synalinks.src.modules.agents.utils.skills_utils import resolve_skills_paths
 from synalinks.src.modules.agents.utils.skills_utils import skills_prompt
@@ -390,9 +392,14 @@ class FunctionCallingAgent(Module):
             agentskills.io standard). The discovered skills' names and
             descriptions are injected as an ``<available_skills>`` context
             message so the agent knows what is available; per progressive
-            disclosure, each skill's full ``SKILL.md`` body and bundled files are
-            read on demand through the agent's own file/bash tools. Each path
-            must point to an existing directory (Default to None).
+            disclosure, each skill's full ``SKILL.md`` body and bundled files
+            are read on demand. Setting `skills` also adds a built-in
+            ``read_skill`` tool for exactly that (reads confined to the skill
+            directories), so agents without file/bash tools can still follow
+            their skills; an existing tool named ``read_skill`` (from a
+            subclass or the `tools` argument) takes precedence over the
+            built-in. Each path must point to an existing directory
+            (Default to None).
         streaming (bool): Optional. If true, stream the final answer. Only takes
             effect when no `data_model`/`schema` is provided. When streaming,
             the agent returns a `StreamingIterator` instead of a wrapped
@@ -474,11 +481,14 @@ class FunctionCallingAgent(Module):
         self.language_model = _get_lm(language_model)
 
         # Built-in tools come from the `_get_builtin_tools` hook (empty for the
-        # base agent; subclasses inject domain tools). User-supplied `tools`
-        # are merged on top, with name-collision and underscore checks.
+        # base agent; subclasses inject domain tools), plus the skill-reading
+        # tool when Agent Skills are configured. User-supplied `tools` are
+        # merged on top, with name-collision and underscore checks.
         self.extra_tools = list(tools) if tools else []
+        builtin_tools = list(self._get_builtin_tools())
+        builtin_tools += self._skills_tools(builtin_tools)
         merged_tools = merge_tools(
-            self._get_builtin_tools(),
+            builtin_tools,
             self.extra_tools,
             kind=self._builtin_tool_kind(),
         )
@@ -548,6 +558,33 @@ class FunctionCallingAgent(Module):
         the hook depends on must be assigned *before* ``super().__init__()``.
         """
         return []
+
+    def _skills_tools(self, builtin_tools):
+        """The skill-reading built-in, when Agent Skills are configured.
+
+        The ``<available_skills>`` context block lists only names and
+        descriptions; the spec expects the agent to read the bodies through
+        its own file tools, which a tool-calling agent equipped with domain
+        tools does not have — its skills would be advertised but unreadable.
+        So whenever `skills` roots are set, a built-in ``read_skill`` tool is
+        added to complete progressive disclosure (the ``SKILL.md`` body and
+        bundled files, confined to the skill directories).
+
+        Skipped when a tool named ``read_skill`` already exists — a
+        subclass's or the caller's own reader wins over the built-in one.
+        Not serialized: like every built-in it is rebuilt from the `skills`
+        config on reload.
+        """
+        if not self.skills:
+            return []
+        taken = {tool.name for tool in builtin_tools}
+        for extra in self.extra_tools:
+            taken.add(
+                extra.name if hasattr(extra, "name") else getattr(extra, "__name__", "")
+            )
+        if READ_SKILL_TOOL_NAME in taken:
+            return []
+        return [build_read_skill_tool(self.skills)]
 
     def _builtin_tool_kind(self):
         """Short noun naming the built-in tool family, used in collision errors."""

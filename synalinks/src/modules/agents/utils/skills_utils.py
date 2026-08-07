@@ -68,6 +68,8 @@ __all__ = [
     "discover_skills_in_roots",
     "resolve_skills_paths",
     "skills_prompt",
+    "READ_SKILL_TOOL_NAME",
+    "build_read_skill_tool",
 ]
 
 
@@ -291,3 +293,96 @@ def skills_prompt(skill_dirs, *, root: Optional[str] = None) -> str:
         ]
     lines.append("</available_skills>")
     return "\n".join(lines)
+
+
+#: The reserved name of the built-in skill-reading tool (see
+#: `build_read_skill_tool`).
+READ_SKILL_TOOL_NAME = "read_skill"
+
+
+def build_read_skill_tool(roots, *, max_chars: int = 50_000):
+    """Build the built-in ``read_skill`` tool over Agent Skill *root* dirs.
+
+    The ``<available_skills>`` block surfaces only each skill's name and
+    description (level 1 of progressive disclosure); the spec assumes the
+    agent reads the rest "through its own file tools". A tool-calling agent
+    whose tools are domain tools (SQL, retrieval, ...) has none — its skills
+    would be advertised but unreadable. This tool completes the disclosure
+    chain for those agents: level 2 (the ``SKILL.md`` body) and level 3
+    (bundled ``references/`` / ``assets/`` files) on demand.
+
+    Reads are confined to the discovered skill directories: the requested
+    path is resolved and must stay inside the skill's own directory, so
+    neither ``..`` traversal nor absolute paths nor symlinks escaping the
+    skill can reach anything else. Errors come back as observations (an
+    ``"error"`` key with the available names/files), never as exceptions —
+    a wrong guess costs the agent one round, not the run.
+
+    Args:
+        roots: Skill root directories, as accepted by `discover_skills_in_roots`
+            (each root holds ``<name>/SKILL.md`` folders; first root wins on a
+            shared name — matching what the listing shows).
+        max_chars: Truncation budget for a returned file, so a large bundled
+            asset cannot flood the context window.
+
+    Returns:
+        The ``read_skill`` `Tool`.
+    """
+    # Deferred: `Tool` builds on `Module`, and importing it at module scope
+    # would cycle through `modules/__init__` while `modules.agents.utils` is
+    # itself being imported.
+    from synalinks.src.modules.core.tool import Tool
+
+    resolved = list(roots or [])
+
+    async def read_skill(name: str, file: str) -> dict:
+        """Read an installed Agent Skill's instructions or a bundled file.
+
+        The available skills (name + description) are listed in the
+        <available_skills> block of your context; this tool returns the rest
+        on demand. Read a skill's instructions BEFORE following it, and read
+        the bundled files its instructions point to.
+
+        Args:
+            name (str): The skill to read — its `name` from
+                <available_skills>, e.g. 'pdf-processing'.
+            file (str): Pass 'SKILL.md' (or an empty string) for the skill's
+                instructions. To read a bundled file the instructions mention,
+                pass its relative path, e.g. 'references/api.md'.
+        """
+        skill_dirs = {d.name: d for d in discover_skills_in_roots(resolved)}
+        skill_dir = skill_dirs.get((name or "").strip())
+        if skill_dir is None:
+            return {
+                "error": f"Unknown skill {name!r}.",
+                "available_skills": sorted(skill_dirs),
+            }
+        relative = (file or "").strip() or "SKILL.md"
+        root = skill_dir.resolve()
+        target = (root / relative).resolve()
+        if root != target and root not in target.parents:
+            return {
+                "error": (
+                    f"{file!r} is outside the {name!r} skill directory; only "
+                    f"the skill's own files can be read."
+                )
+            }
+        if not target.is_file():
+            available = sorted(
+                str(p.relative_to(root)) for p in root.rglob("*") if p.is_file()
+            )
+            return {
+                "error": f"No file {relative!r} in skill {name!r}.",
+                "available_files": available,
+            }
+        content = target.read_text(encoding="utf-8", errors="replace")
+        report = {"skill": skill_dir.name, "file": relative}
+        if len(content) > max_chars:
+            report["note"] = (
+                f"Truncated to the first {max_chars} of {len(content)} characters."
+            )
+            content = content[:max_chars]
+        report["content"] = content
+        return report
+
+    return Tool(read_skill, name=READ_SKILL_TOOL_NAME)
