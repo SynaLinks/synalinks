@@ -1075,3 +1075,85 @@ class FunctionCallingAgentTest(testing.TestCase):
             if isinstance(m.get("content"), str) and "<available_skills>" in m["content"]
         )
         self.assertEqual(skills_count, 1)
+
+
+class SkillsToolWiringTest(testing.TestCase):
+    """The built-in `read_skill` tool added when Agent Skills are configured."""
+
+    def _make_skills_root(self):
+        root = tempfile.mkdtemp()
+        skill_dir = os.path.join(root, "pdf-processing")
+        os.makedirs(skill_dir)
+        with open(os.path.join(skill_dir, "SKILL.md"), "w") as f:
+            f.write(
+                "---\n"
+                "name: pdf-processing\n"
+                "description: Extract PDF text. Use when handling PDFs.\n"
+                "---\n"
+                "Use pdfplumber.\n"
+            )
+        return root
+
+    async def test_skills_add_builtin_read_skill_tool(self):
+        agent = FunctionCallingAgent(
+            language_model=LanguageModel(model="ollama/mistral"),
+            skills=[self._make_skills_root()],
+        )
+        self.assertIn("read_skill", agent.tools)
+        report = await agent.tools["read_skill"](name="pdf-processing")
+        self.assertIn("pdfplumber", report.get_json()["content"])
+
+    async def test_no_skills_no_read_skill_tool(self):
+        agent = FunctionCallingAgent(
+            language_model=LanguageModel(model="ollama/mistral"),
+            tools=[Tool(calculate)],
+        )
+        self.assertNotIn("read_skill", agent.tools)
+
+    async def test_user_read_skill_tool_wins_over_builtin(self):
+        async def read_skill(name: str):
+            """Custom reader.
+
+            Args:
+                name (str): The skill name.
+            """
+            return {"custom": True}
+
+        agent = FunctionCallingAgent(
+            language_model=LanguageModel(model="ollama/mistral"),
+            tools=[Tool(read_skill)],
+            skills=[self._make_skills_root()],
+        )
+        report = await agent.tools["read_skill"](name="x")
+        self.assertTrue(report.get_json()["custom"])
+
+    async def test_skill_tool_alone_satisfies_the_tools_requirement(self):
+        # With skills set, the built-in reader counts as a tool, so an agent
+        # may be constructed without any user tools.
+        agent = FunctionCallingAgent(
+            language_model=LanguageModel(model="ollama/mistral"),
+            skills=[self._make_skills_root()],
+        )
+        self.assertEqual(list(agent.tools), ["read_skill"])
+
+    async def test_skills_listing_has_no_location(self):
+        agent = FunctionCallingAgent(
+            language_model=LanguageModel(model="ollama/mistral"),
+            skills=[self._make_skills_root()],
+        )
+        content = agent.skills_message.content
+        self.assertIn("pdf-processing", content)
+        self.assertNotIn("<location>", content)
+
+    async def test_skill_tool_survives_serialization_roundtrip(self):
+        root = self._make_skills_root()
+        agent = FunctionCallingAgent(
+            language_model=LanguageModel(model="ollama/mistral"),
+            skills=[root],
+        )
+        config = agent.get_config()
+        # Built-ins are not serialized with the user tools...
+        self.assertEqual(config["tools"], [])
+        # ...but rebuild from the `skills` config on reload.
+        reloaded = FunctionCallingAgent.from_config(config)
+        self.assertIn("read_skill", reloaded.tools)

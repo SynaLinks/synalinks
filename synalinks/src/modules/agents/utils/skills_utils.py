@@ -68,6 +68,8 @@ __all__ = [
     "discover_skills_in_roots",
     "resolve_skills_paths",
     "skills_prompt",
+    "READ_SKILL_TOOL_NAME",
+    "build_read_skill_tool",
 ]
 
 
@@ -251,21 +253,31 @@ def discover_skills_in_roots(roots, *, strict: bool = False) -> List[Path]:
     return sorted(seen.values(), key=lambda d: d.name)
 
 
-def skills_prompt(skill_dirs, *, root: Optional[str] = None) -> str:
+def skills_prompt(
+    skill_dirs, *, root: Optional[str] = None, locations: bool = True
+) -> str:
     """Render the ``<available_skills>`` prompt block (Agent Skills *level 1*).
 
     ``skill_dirs`` is an iterable of skill directories (as from `discover_skills`
-    / `discover_skills_in_roots`). Without ``root`` this delegates to
+    / `discover_skills_in_roots`). By default this delegates to
     ``skills_ref.to_prompt``: the exact XML Anthropic recommends, one
     ``<skill>`` per entry with ``<name>`` / ``<description>`` / ``<location>``
-    (the absolute path to ``SKILL.md``). ``root`` overrides the ``<location>``
-    prefix (e.g. the skills directory as the *sandbox* sees it, when the host
-    path differs), a remap ``skills_ref.to_prompt`` cannot do, so that case is
-    rendered locally to byte-identical XML using ``skills_ref.read_properties``
-    for each skill's name / description.
+    (the absolute path to ``SKILL.md``). Two adjustments ``skills_ref`` cannot
+    do are rendered locally to otherwise-identical XML:
+
+    - ``root`` overrides the ``<location>`` prefix (e.g. the skills directory
+      as the *sandbox* sees it, when the host path differs);
+    - ``locations=False`` omits ``<location>`` entirely — for agents that
+      read skills **by name** through the built-in ``read_skill`` tool, where
+      storage is internal and a filesystem path would only leak an
+      implementation detail (and invite the model to ask for paths).
     """
     skill_dirs = [Path(d) for d in skill_dirs]
-    if not root:
+    if root and not locations:
+        raise ValueError(
+            "`root` overrides <location>; it cannot be combined with locations=False."
+        )
+    if not root and locations:
         return to_prompt(skill_dirs)
 
     import html
@@ -275,7 +287,6 @@ def skills_prompt(skill_dirs, *, root: Optional[str] = None) -> str:
     lines = ["<available_skills>"]
     for skill_dir in skill_dirs:
         props = read_properties(skill_dir)
-        location = f"{root.rstrip('/')}/{skill_dir.name}/SKILL.md"
         lines += [
             "<skill>",
             "<name>",
@@ -284,10 +295,86 @@ def skills_prompt(skill_dirs, *, root: Optional[str] = None) -> str:
             "<description>",
             html.escape(props.description),
             "</description>",
-            "<location>",
-            location,
-            "</location>",
-            "</skill>",
         ]
+        if locations:
+            lines += [
+                "<location>",
+                f"{root.rstrip('/')}/{skill_dir.name}/SKILL.md",
+                "</location>",
+            ]
+        lines.append("</skill>")
     lines.append("</available_skills>")
     return "\n".join(lines)
+
+
+#: The reserved name of the built-in skill-reading tool (see
+#: `build_read_skill_tool`).
+READ_SKILL_TOOL_NAME = "read_skill"
+
+
+def build_read_skill_tool(roots, *, max_chars: int = 50_000):
+    """Build the built-in ``read_skill`` tool over Agent Skill *root* dirs.
+
+    The ``<available_skills>`` block surfaces only each skill's name and
+    description (level 1 of progressive disclosure); the spec assumes the
+    agent reads the rest through its own file tools. A tool-calling agent
+    whose tools are domain tools (SQL, retrieval, ...) has none — its skills
+    would be advertised but unreadable. This tool completes activation
+    (level 2) with the shape the ecosystem settled on (Claude Code's Skill
+    tool, the Claude API's container skills): **by name, and by name only**.
+    The skill's name is its whole address — where and how the skill is
+    stored stays internal, so no filesystem is exposed to the model (and
+    none needs to exist: a future backing could be a registry or an
+    archive). Bundled ``references/``/``scripts/`` files (level 3) remain
+    the province of agents with real file tools.
+
+    Errors come back as observations (an ``"error"`` key with the available
+    skill names), never as exceptions — a wrong guess costs the agent one
+    round, not the run.
+
+    Args:
+        roots: Skill root directories, as accepted by `discover_skills_in_roots`
+            (each root holds ``<name>/SKILL.md`` folders; first root wins on a
+            shared name — matching what the listing shows).
+        max_chars: Truncation budget for a returned body, so an oversized
+            skill cannot flood the context window.
+
+    Returns:
+        The ``read_skill`` `Tool`.
+    """
+    # Deferred: `Tool` builds on `Module`, and importing it at module scope
+    # would cycle through `modules/__init__` while `modules.agents.utils` is
+    # itself being imported.
+    from synalinks.src.modules.core.tool import Tool
+
+    resolved = list(roots or [])
+
+    async def read_skill(name: str) -> dict:
+        """Read an installed Agent Skill's full instructions.
+
+        The available skills (name + description) are listed in the
+        <available_skills> block of your context; this tool loads a skill's
+        complete instructions. Read a skill BEFORE following it.
+
+        Args:
+            name (str): The skill name from <available_skills>,
+                e.g. 'pdf-processing'.
+        """
+        skill_dirs = {d.name: d for d in discover_skills_in_roots(resolved)}
+        skill_dir = skill_dirs.get((name or "").strip())
+        if skill_dir is None:
+            return {
+                "error": f"Unknown skill {name!r}.",
+                "available_skills": sorted(skill_dirs),
+            }
+        content = (skill_dir / "SKILL.md").read_text(encoding="utf-8", errors="replace")
+        report = {"skill": skill_dir.name}
+        if len(content) > max_chars:
+            report["note"] = (
+                f"Truncated to the first {max_chars} of {len(content)} characters."
+            )
+            content = content[:max_chars]
+        report["content"] = content
+        return report
+
+    return Tool(read_skill, name=READ_SKILL_TOOL_NAME)
