@@ -153,12 +153,44 @@ def _message_to_wire(message):
     return wire
 
 
+def _plain_containers(value):
+    """Rebuild `value` out of plain `dict`/`list` containers.
+
+    A `Tool` assembles its schema from its own attributes, so the module's
+    `Tracker` has already wrapped them as `TrackedDict`/`TrackedList`. Each
+    wrapper holds a reference back to that tracker, whose `config` reaches every
+    variable and submodule of the owning program — so a tracked container is not
+    a leaf, it is a handle on the whole module graph.
+
+    That matters because a provider may copy what it is handed: litellm's
+    Anthropic handler runs `copy.deepcopy(optional_params)` before translating
+    them. Deep-copying a tracked container therefore walks the module graph, and
+    the graph has cycles (tracker -> store -> module -> tracked attribute ->
+    tracker). Cycles make `copy` hand back a half-built `Tracker` from its memo,
+    and `TrackedDict.__setitem__` then dereferences `tracker.config` on it,
+    raising `'Tracker' object has no attribute 'config'` — which surfaced as an
+    `APIConnectionError` on every Anthropic tool-calling request.
+
+    Nothing on the wire needs the tracking behaviour, so the converters emit
+    plain containers. This also keeps a provider-side copy proportional to the
+    schema rather than to the program.
+    """
+    if isinstance(value, dict):
+        return {key: _plain_containers(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_plain_containers(item) for item in value]
+    return value
+
+
 def _tool_to_wire(tool):
     """Convert a synalinks Tool to an OpenAI Chat Completions wire-format
     tool declaration dict."""
     if not isinstance(tool, Tool):
         raise TypeError(f"Expected synalinks.modules.Tool, got {type(tool).__name__}")
-    function = {"name": tool.name, "parameters": tool.get_tool_schema()}
+    function = {
+        "name": tool.name,
+        "parameters": _plain_containers(tool.get_tool_schema()),
+    }
     if tool.description:
         function["description"] = tool.description
     return {"type": "function", "function": function}
