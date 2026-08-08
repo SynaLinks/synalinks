@@ -1,6 +1,7 @@
 # License Apache 2.0: (c) 2025-2026 Yoan Sallami (Synalinks Team)
 
 import base64
+import copy
 import os
 from unittest.mock import patch
 
@@ -12,6 +13,7 @@ from litellm.types.utils import PromptTokensDetailsWrapper
 from litellm.types.utils import ServerToolUse
 from litellm.types.utils import Usage
 
+import synalinks
 from synalinks.src import testing
 from synalinks.src.backend import Audio
 from synalinks.src.backend import ChatMessage
@@ -20,7 +22,9 @@ from synalinks.src.backend import ChatRole
 from synalinks.src.backend import DataModel
 from synalinks.src.backend import Image
 from synalinks.src.backend.common.op_scope import _OP_SCOPE
+from synalinks.src.modules.core.tool import Tool
 from synalinks.src.modules.language_models import LanguageModel
+from synalinks.src.modules.language_models.language_model import _tool_to_wire
 
 _SAMPLE_IMAGE = os.path.join(
     os.path.dirname(os.path.abspath(__file__)),
@@ -779,3 +783,70 @@ class LMFileCacheTest(testing.TestCase):
         restored = LanguageModel.from_config(config)
         self.assertEqual(restored.cache_dir, cache_dir)
         self.assertIsNotNone(restored._file_cache)
+
+
+class ToolWireFormatTest(testing.TestCase):
+    """A wire-format tool declaration must be plain, self-contained data.
+
+    A `Tool` builds its schema from its own attributes, so the module's
+    `Tracker` has wrapped them as `TrackedDict`/`TrackedList`. Each wrapper
+    points back at that tracker, and through it at every variable and submodule
+    of the owning program. litellm's Anthropic handler deepcopies the optional
+    params it is given, so a leaked wrapper made it copy the whole module graph
+    — and the graph's cycles left the copied tracker half-built, failing every
+    tool-calling request on that provider with `'Tracker' object has no
+    attribute 'config'`.
+    """
+
+    @staticmethod
+    def _tool():
+        @synalinks.saving.register_synalinks_serializable()
+        async def search(query: str, limit: int):
+            """Search the index.
+
+            Args:
+                query (str): What to look for.
+                limit (int): How many results to return.
+            """
+            return {"results": []}
+
+        return Tool(func=search)
+
+    def test_wire_declaration_uses_builtin_containers(self):
+        wire = _tool_to_wire(self._tool())
+
+        def assert_plain(value, path):
+            if isinstance(value, dict):
+                self.assertIs(type(value), dict, f"{path} is {type(value).__name__}")
+                for key, item in value.items():
+                    assert_plain(item, f"{path}.{key}")
+            elif isinstance(value, list):
+                self.assertIs(type(value), list, f"{path} is {type(value).__name__}")
+                for index, item in enumerate(value):
+                    assert_plain(item, f"{path}[{index}]")
+
+        assert_plain(wire, "tool")
+
+    def test_wire_declaration_holds_no_tracker_reference(self):
+        """No node on the wire may be a handle on the module graph."""
+        wire = _tool_to_wire(self._tool())
+        stack = [("tool", wire)]
+        while stack:
+            path, value = stack.pop()
+            self.assertFalse(
+                hasattr(value, "tracker"),
+                f"{path} carries a tracker reference into the provider payload",
+            )
+            if isinstance(value, dict):
+                stack.extend((f"{path}.{k}", v) for k, v in value.items())
+            elif isinstance(value, list):
+                stack.extend((f"{path}[{i}]", v) for i, v in enumerate(value))
+
+    def test_wire_declaration_preserves_the_schema(self):
+        wire = _tool_to_wire(self._tool())
+        parameters = wire["function"]["parameters"]
+        self.assertEqual(wire["type"], "function")
+        self.assertEqual(wire["function"]["name"], "search")
+        self.assertEqual(parameters["type"], "object")
+        self.assertEqual(set(parameters["properties"]), {"query", "limit"})
+        self.assertEqual(sorted(parameters["required"]), ["limit", "query"])
