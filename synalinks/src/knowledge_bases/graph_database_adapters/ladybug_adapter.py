@@ -50,6 +50,7 @@ References:
 """
 
 import re
+import threading
 import uuid
 import warnings
 from contextlib import contextmanager
@@ -83,6 +84,15 @@ from synalinks.src.knowledge_bases.graph_database_adapters.graph_database_adapte
 from synalinks.src.modules.embedding_models import get as _get_em
 
 METRICS = ("cosine", "l2sq", "l2", "dotproduct")
+
+# `INSTALL` on an extension not already cached on disk fetches it over the
+# network; Ladybug's C++ layer runs that fetch synchronously with no timeout
+# of its own, so a stalled connection (a flaky runner, a rate-limited CDN)
+# blocks forever inside `__init__` — observed as CI jobs stuck for 20+ minutes
+# with no error, on a network hiccup completely unrelated to the code under
+# test. Bounding it here turns a hang into the same "extension unavailable"
+# warning the surrounding `except` already produces for a real failure.
+_EXTENSION_INSTALL_TIMEOUT_SECONDS = 15
 
 # Word-boundary match of any Cypher write / admin keyword. Conservative
 # on purpose: it also fires inside string literals, but read_only
@@ -482,10 +492,12 @@ class LadybugAdapter(GraphDatabaseAdapter):
 
         # Install / load extensions used by the indices below. Failures
         # surface as a warning so the adapter still opens for users who
-        # only need bare Cypher.
+        # only need bare Cypher. `INSTALL` is the one that can reach the
+        # network (see `_EXTENSION_INSTALL_TIMEOUT_SECONDS`), so it alone
+        # runs bounded; `LOAD` only touches the local cache once installed.
         for ext in ("vector", "fts", "algo"):
             try:
-                self._con.execute(f"INSTALL {ext}")
+                self._install_extension(ext)
                 self._con.execute(f"LOAD {ext}")
             except Exception as e:  # noqa: BLE001
                 warnings.warn(
@@ -497,6 +509,37 @@ class LadybugAdapter(GraphDatabaseAdapter):
             self.wipe_database()
 
         self._setup_schema()
+
+    def _install_extension(self, ext: str) -> None:
+        """Run ``INSTALL {ext}`` off-thread, bounded by a hard timeout.
+
+        Through a throwaway in-memory connection, never ``self._con``: if the
+        network stalls there is no way to cancel the call from Python, so the
+        worker thread (a daemon — it cannot block interpreter exit) keeps
+        running past the timeout. Touching the *shared* connection from that
+        abandoned thread while the caller moves on and uses it too would race.
+        `INSTALL` writes into the extensions cache DuckDB-family engines share
+        on disk, so a later ``LOAD`` on ``self._con`` still finds it once it
+        lands — this only bounds how long ``__init__`` waits for that.
+        """
+        error: Dict[str, BaseException] = {}
+
+        def _target():
+            try:
+                lb.Connection(lb.Database(":memory:")).execute(f"INSTALL {ext}")
+            except Exception as exc:  # noqa: BLE001
+                error["exc"] = exc
+
+        thread = threading.Thread(target=_target, daemon=True)
+        thread.start()
+        thread.join(timeout=_EXTENSION_INSTALL_TIMEOUT_SECONDS)
+        if thread.is_alive():
+            raise TimeoutError(
+                f"INSTALL {ext} did not complete within "
+                f"{_EXTENSION_INSTALL_TIMEOUT_SECONDS}s"
+            )
+        if "exc" in error:
+            raise error["exc"]
 
     # ------------------------------------------------------------------
     # Schema
