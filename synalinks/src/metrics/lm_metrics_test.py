@@ -111,10 +111,14 @@ def _record(lm, prompt, completion, elapsed, cost, phase="inference"):
 
 
 class _FakeModule:
-    """Minimal stand-in for a Module with a `.language_model` attribute."""
+    """Minimal stand-in for a Module with `.language_model` /
+    `.sub_language_model` attributes (the latter matching
+    `RecursiveLanguageModelAgent`/`DeepAgent`, which resolve it to its own
+    `LanguageModel` instance, distinct from `.language_model`)."""
 
-    def __init__(self, lm=None, submodules=()):
+    def __init__(self, lm=None, sub_lm=None, submodules=()):
         self.language_model = lm
+        self.sub_language_model = sub_lm
         self._modules = list(submodules)
 
 
@@ -335,6 +339,41 @@ class OperationalMetricsAutoBindTest(testing.TestCase):
         lms = _collect_language_models(program)
         self.assertEqual(len(lms), 1)
         self.assertIs(lms[0], shared_lm)
+
+    def test_collect_walks_sub_language_model(self):
+        # `RecursiveLanguageModelAgent`/`DeepAgent` resolve `sub_language_model`
+        # to its own `LanguageModel` instance (distinct from `language_model`
+        # even when built from the same model identifier), to drive
+        # `llm_query`/`llm_query_batched`/subagent calls. A module exposing
+        # only `.language_model` to `_collect_language_models` left every
+        # token/latency operational metric blind to that instance's calls,
+        # even though its `cumulated_cost` (updated unconditionally,
+        # independent of this collector) was still counted correctly.
+        primary_lm = _stub_lm()
+        sub_lm = _stub_lm()
+        program = _FakeProgram(
+            modules=[_FakeModule(lm=primary_lm, sub_lm=sub_lm)]
+        )
+        lms = _collect_language_models(program)
+        ids = [id(lm) for lm in lms]
+        self.assertIn(id(primary_lm), ids)
+        self.assertIn(id(sub_lm), ids)
+        self.assertEqual(len(set(ids)), 2)
+
+    def test_bind_program_aggregates_sub_language_model_tokens(self):
+        # End-to-end version of the bug: a metric bound to a program whose
+        # only LM module exposes `sub_language_model` must still see calls
+        # recorded on it.
+        primary_lm = _stub_lm()
+        sub_lm = _stub_lm()
+        program = _FakeProgram(
+            modules=[_FakeModule(lm=primary_lm, sub_lm=sub_lm)]
+        )
+        m = TotalTokens()
+        m.bind_program(program)
+        _record(primary_lm, prompt=100, completion=20, elapsed=0.1, cost=0.001)
+        _record(sub_lm, prompt=50, completion=10, elapsed=0.1, cost=0.0005)
+        self.assertEqual(m.result(), 180)  # 120 (primary) + 60 (sub)
 
     def test_bind_program_aggregates_across_modules(self):
         lm_a = _stub_lm()

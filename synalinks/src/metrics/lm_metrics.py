@@ -41,6 +41,15 @@ _TRACKED_SUFFIXES = (
 def _collect_language_models(program):
     """Walk a program's module tree and return every unique LanguageModel
     (including those reached via the `fallback` chain), preserving order.
+
+    Checks both `language_model` and `sub_language_model`: agents such as
+    `RecursiveLanguageModelAgent` and `DeepAgent` resolve `sub_language_model`
+    to its own `LanguageModel` instance (distinct from `language_model`, even
+    when constructed from the same model identifier — see
+    `RecursiveLanguageModelAgent.__init__`) to drive recursive sub-queries /
+    subagents. Skipping it here left those calls' `cumulated_cost` counted
+    (updated unconditionally) but every token/latency operational metric
+    blind to them, since only `language_model` was ever chained.
     """
     from synalinks.src.modules.language_models import LanguageModel
 
@@ -61,6 +70,7 @@ def _collect_language_models(program):
         modules = program._flatten_modules(include_self=True, recursive=True)
     for module in modules:
         _add_chain(getattr(module, "language_model", None))
+        _add_chain(getattr(module, "sub_language_model", None))
         if isinstance(module, LanguageModel):
             _add_chain(module)
     return lms
