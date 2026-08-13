@@ -94,6 +94,13 @@ METRICS = ("cosine", "l2sq", "l2", "dotproduct")
 # warning the surrounding `except` already produces for a real failure.
 _EXTENSION_INSTALL_TIMEOUT_SECONDS = 15
 
+# Whether `INSTALL {ext}` has already succeeded (True) or failed (False) once
+# this process, keyed by extension name; unset means "not attempted yet". Same
+# idea as `_confine_smoke_cache` below: an extension's availability doesn't
+# change mid-process, so every `LadybugAdapter` past the first pays this from
+# cache instead of repeating the same network round-trip.
+_extension_install_ok: Dict[str, bool] = {}
+
 # Word-boundary match of any Cypher write / admin keyword. Conservative
 # on purpose: it also fires inside string literals, but read_only
 # queries never legitimately need these words anyway, and the false
@@ -494,14 +501,35 @@ class LadybugAdapter(GraphDatabaseAdapter):
         # surface as a warning so the adapter still opens for users who
         # only need bare Cypher. `INSTALL` is the one that can reach the
         # network (see `_EXTENSION_INSTALL_TIMEOUT_SECONDS`), so it alone
-        # runs bounded; `LOAD` only touches the local cache once installed.
+        # runs bounded, and only once per extension per process
+        # (`_extension_install_ok`, same idea as `_confine_smoke_cache`
+        # above): a genuinely unavailable extension (missing platform
+        # build, registry outage) fails the same way on every adapter, so
+        # without the cache every single instantiation re-pays the same
+        # network round-trip — across a test suite that opens hundreds of
+        # adapters, that is what turned a few seconds of real unavailability
+        # into a CI job stuck for 30+ minutes. `LOAD` still runs every time
+        # (cheap, local, and connection-scoped once installed).
         for ext in ("vector", "fts", "algo"):
+            installed = _extension_install_ok.get(ext)
+            if installed is None:
+                try:
+                    self._install_extension(ext)
+                    installed = True
+                except Exception as e:  # noqa: BLE001
+                    installed = False
+                    warnings.warn(
+                        f"Ladybug extension {ext!r} unavailable: {e}. "
+                        f"{ext} queries will fail until the extension is loaded."
+                    )
+                _extension_install_ok[ext] = installed
+            if not installed:
+                continue
             try:
-                self._install_extension(ext)
                 self._con.execute(f"LOAD {ext}")
             except Exception as e:  # noqa: BLE001
                 warnings.warn(
-                    f"Ladybug extension {ext!r} unavailable: {e}. "
+                    f"Ladybug extension {ext!r} failed to load: {e}. "
                     f"{ext} queries will fail until the extension is loaded."
                 )
 
