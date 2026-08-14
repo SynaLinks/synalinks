@@ -3,6 +3,7 @@
 # License Apache 2.0: (c) 2025-2026 Yoan Sallami (Synalinks Team)
 
 import asyncio
+import inspect
 import json
 from typing import List
 from typing import Optional
@@ -363,9 +364,27 @@ def _build_llm_query_batched_tool(sub_language_model, max_llm_calls, counter, lo
 def _adapt_tool_for_sandbox(tool):
     """Route a sandbox tool call through the `Tool` Module (preserving
     observability/retry) and return a plain dict the sandbox can marshal back.
-    """
 
-    async def adapter(**kwargs):
+    `Tool` (like every `Module`) only accepts plain Python values as
+    *keyword* arguments — `Module.__call__` rejects a non-DataModel
+    positional value outright, and `Tool.call(self, training=False,
+    **kwargs)` forwards kwargs only. A sandboxed snippet calls tools like
+    ordinary Python functions though, positionally or by keyword (the
+    built-in recursive helpers' own instructions show `llm_query(prompt)`,
+    not `llm_query(prompt=...)`), so a positional call has to be translated
+    to its keyword form here, using the wrapped function's own parameter
+    names/order, before it ever reaches `tool(...)`.
+    """
+    param_names = list(inspect.signature(tool._func).parameters)
+
+    async def adapter(*args, **kwargs):
+        if args:
+            if len(args) > len(param_names):
+                raise TypeError(
+                    f"{tool.name}() takes {len(param_names)} positional "
+                    f"argument(s) but {len(args)} were given"
+                )
+            kwargs = {**dict(zip(param_names, args)), **kwargs}
         result = await tool(**kwargs)
         if result is None:
             return None

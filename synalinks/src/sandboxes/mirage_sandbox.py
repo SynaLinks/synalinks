@@ -655,9 +655,11 @@ if _inputs:
 _sock = config.get("sock")
 if _sock and config.get("tools"):
     import asyncio, struct, threading
-    async def _rpc(_name, **kwargs):
+    async def _rpc(_name, *args, **kwargs):
         reader, writer = await asyncio.open_unix_connection(_sock)
-        payload = json.dumps({"name": _name, "kwargs": kwargs}).encode("utf-8")
+        payload = json.dumps(
+            {"name": _name, "args": args, "kwargs": kwargs}
+        ).encode("utf-8")
         writer.write(struct.pack(">I", len(payload)) + payload)
         await writer.drain()
         header = await reader.readexactly(4)
@@ -676,9 +678,9 @@ if _sock and config.get("tools"):
     _tool_loop = asyncio.new_event_loop()
     threading.Thread(target=_tool_loop.run_forever, daemon=True).start()
     def _make_stub(_name):
-        def _stub(**kwargs):
+        def _stub(*args, **kwargs):
             return asyncio.run_coroutine_threadsafe(
-                _rpc(_name, **kwargs), _tool_loop
+                _rpc(_name, *args, **kwargs), _tool_loop
             ).result()
         return _stub
     for _tool_name in config["tools"]:
@@ -2672,8 +2674,8 @@ class MirageSandbox(Sandbox):
         """Build the Unix-socket handler that dispatches in-sandbox tool calls.
 
         Each connection carries one length-prefixed JSON request
-        ``{"name", "kwargs"}``; the named host callable runs (awaited if a
-        coroutine) and its JSON-marshalable return is sent back as
+        ``{"name", "args", "kwargs"}``; the named host callable runs (awaited
+        if a coroutine) and its JSON-marshalable return is sent back as
         ``{"ok": true, "result": ...}`` (or ``{"ok": false, "error": ...}``).
         """
 
@@ -2683,13 +2685,14 @@ class MirageSandbox(Sandbox):
                 (length,) = struct.unpack(">I", header)
                 request = json.loads((await reader.readexactly(length)).decode("utf-8"))
                 name = request.get("name")
+                args = request.get("args") or []
                 kwargs = request.get("kwargs") or {}
                 func = functions.get(name)
                 if func is None:
                     resp = {"ok": False, "error": f"unknown tool: {name}"}
                 else:
                     try:
-                        result = func(**kwargs)
+                        result = func(*args, **kwargs)
                         if inspect.isawaitable(result):
                             result = await result
                         resp = {"ok": True, "result": _jsonable(result)}

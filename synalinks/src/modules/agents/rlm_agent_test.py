@@ -195,6 +195,64 @@ class RecursiveLanguageModelAgentTest(testing.TestCase):
         )
 
     @patch("litellm.acompletion")
+    async def test_llm_query_round_trip_positional_call(self, mock_completion):
+        """`llm_query(prompt)` called positionally — the shape the built-in
+        instructions themselves show (`llm_query(prompt)`, no `prompt=`) —
+        must work exactly like the keyword form. Regression test: the
+        sandbox's tool-call RPC bridge (bootstrap stub -> Unix socket -> host
+        dispatcher -> `_adapt_tool_for_sandbox`) used to be keyword-only at
+        every hop, so this raised `TypeError: _stub() takes 0 positional
+        arguments but 1 was given` even though `Tool.__call__` itself already
+        supports `*args`."""
+        language_model = LanguageModel(model="ollama/mistral")
+
+        inputs = Input(data_model=Query)
+        outputs = await RecursiveLanguageModelAgent(
+            data_model=Answer,
+            language_model=language_model,
+            max_iterations=3,
+        )(inputs)
+        agent = Program(inputs=inputs, outputs=outputs)
+
+        turn1 = {"code": ("out = llm_query('summarize this')\nprint(out['result'])")}
+        turn2 = {"code": "submit(result={'answer': 'done'})"}
+
+        mock_completion.side_effect = [
+            _exec_tool_call(turn1["code"], "call_1"),
+            {"choices": [{"message": {"content": "the gist is X"}}]},
+            _exec_tool_call(turn2["code"], "call_2"),
+        ]
+
+        result = await agent(Query(query="long doc here"))
+        self.assertEqual(result.get("answer"), "done")
+        tool_messages = [m for m in result.get("messages") if m.get("role") == "tool"]
+        self.assertTrue(
+            any("the gist is X" in str(m.get("content")) for m in tool_messages),
+            f"expected sub-LM response in tool observation; got: {tool_messages}",
+        )
+
+    @patch("litellm.acompletion")
+    async def test_user_tool_accepts_positional_call(self, mock_completion):
+        """A plain user tool (not a recursive helper) called positionally
+        through the sandbox — same RPC bridge, same regression."""
+        language_model = LanguageModel(model="ollama/mistral")
+
+        inputs = Input(data_model=Query)
+        outputs = await RecursiveLanguageModelAgent(
+            data_model=Answer,
+            language_model=language_model,
+            tools=[Tool(square)],
+            max_iterations=2,
+        )(inputs)
+        agent = Program(inputs=inputs, outputs=outputs)
+
+        turn1 = {"code": "out = square(5)\nsubmit(result={'answer': str(out['result'])})"}
+        mock_completion.side_effect = [_exec_tool_call(turn1["code"], "call_1")]
+
+        result = await agent(Query(query="square 5"))
+        self.assertEqual(result.get("answer"), "25")
+
+    @patch("litellm.acompletion")
     async def test_llm_query_batched_runs_concurrently(self, mock_completion):
         """`llm_query_batched` returns one response per prompt."""
         language_model = LanguageModel(model="ollama/mistral")
