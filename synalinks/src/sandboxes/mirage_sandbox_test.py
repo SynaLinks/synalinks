@@ -138,6 +138,23 @@ class MirageSandboxTest(_SandboxTestCase):
         self.assertEqual(result.result, 7)
         self.assertEqual(called["n"], 1)
 
+    async def test_external_function_accepts_positional_args(self):
+        # Regression: the sandbox's tool-call RPC bridge (bootstrap stub ->
+        # Unix socket -> host dispatcher) used to marshal only `kwargs`, so a
+        # positional call raised `TypeError: _stub() takes 0 positional
+        # arguments but 1 was given` even though a plain Python call and
+        # `Tool.__call__` both support positional args fine.
+        async def adder(x, y):
+            return {"sum": x + y}
+
+        sandbox = MirageSandbox(timeout=_TIMEOUT)
+        result = await sandbox.run(
+            "out = adder(3, 4)\nprint(out['sum'])\n",
+            external_functions={"adder": adder},
+        )
+        self.assertTrue(result.ok, msg=result.error)
+        self.assertIn("7", result.stdout)
+
     async def test_bound_functions_persist_across_runs(self):
         captured = {}
 
