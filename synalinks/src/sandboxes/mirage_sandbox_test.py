@@ -83,6 +83,39 @@ class MirageSandboxTest(_SandboxTestCase):
         result = await sandbox.run("print(sq(4), math.floor(2.7), P.v)")
         self.assertIn("16 2 3", result.stdout)
 
+    async def test_function_sees_names_defined_in_later_runs(self):
+        """A restored function shares the live namespace, like a real REPL.
+
+        dill pickles a function with a private copy of its globals; without
+        re-homing restored functions onto the live ``ns``, ``f`` here keeps a
+        ghost namespace frozen at definition time and raises NameError even
+        though ``helper`` is defined (top-down design: call first, fill in
+        after)."""
+        sandbox = MirageSandbox(timeout=_TIMEOUT)
+        await sandbox.run("def f(x):\n    return helper(x) + 1")
+        await sandbox.run("def helper(x):\n    return x * 10")
+        result = await sandbox.run("print(f(4))")
+        self.assertIn("41", result.stdout)
+
+    async def test_method_sees_names_defined_in_later_runs(self):
+        sandbox = MirageSandbox(timeout=_TIMEOUT)
+        await sandbox.run("class G:\n    def area(self):\n        return helper(3)")
+        await sandbox.run("def helper(x):\n    return x * 10")
+        result = await sandbox.run("print(G().area())")
+        self.assertIn("30", result.stdout)
+
+    async def test_rehomed_function_keeps_closure_and_kwdefaults(self):
+        sandbox = MirageSandbox(timeout=_TIMEOUT)
+        await sandbox.run(
+            "def make_adder(n):\n"
+            "    def add(x, *, scale=2):\n"
+            "        return (x + n) * scale\n"
+            "    return add\n"
+            "add5 = make_adder(5)"
+        )
+        result = await sandbox.run("print(add5(1), add5(1, scale=1))")
+        self.assertIn("12 6", result.stdout)
+
     async def test_state_survives_error(self):
         sandbox = MirageSandbox(timeout=_TIMEOUT)
         await sandbox.run("keep = 11")

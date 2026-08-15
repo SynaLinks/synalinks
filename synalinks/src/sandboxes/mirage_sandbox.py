@@ -652,6 +652,38 @@ if _inputs:
         ns.update(dill.loads(base64.b64decode(_inputs)))
     except Exception as exc:
         print("inputs-warn: " + repr(exc), file=sys.stderr)
+# Re-home restored functions onto the live ``ns``. dill pickles a function
+# together with a *private copy* of the globals it referenced, so a restored
+# function's ``__globals__`` is a ghost of the namespace as of the run that
+# defined it — while this run's snippet execs into ``ns``. Without re-homing,
+# a function defined in an earlier run can never see a name defined in a
+# later one (``def f(): return helper()`` then ``def helper(): ...`` next run
+# leaves ``f`` raising NameError forever), and every dump/restore round-trip
+# nests another ghost copy into the state file. Rebuilding each function on
+# ``ns`` restores true REPL semantics: one shared global namespace.
+import types as _types
+def _rehome(value):
+    if isinstance(value, _types.FunctionType) and value.__globals__ is not ns:
+        fixed = _types.FunctionType(
+            value.__code__, ns, value.__name__, value.__defaults__, value.__closure__
+        )
+        fixed.__kwdefaults__ = value.__kwdefaults__
+        fixed.__qualname__ = value.__qualname__
+        fixed.__dict__.update(value.__dict__)
+        fixed.__module__ = value.__module__
+        return fixed
+    return value
+for _key in list(ns):
+    _value = ns[_key] = _rehome(ns[_key])
+    if isinstance(_value, type):
+        # Methods of sandbox-defined classes carry the same ghost globals.
+        for _attr, _member in list(vars(_value).items()):
+            _fixed = _rehome(_member)
+            if _fixed is not _member:
+                try:
+                    setattr(_value, _attr, _fixed)
+                except (AttributeError, TypeError):
+                    pass
 _sock = config.get("sock")
 if _sock and config.get("tools"):
     import asyncio, struct, threading
