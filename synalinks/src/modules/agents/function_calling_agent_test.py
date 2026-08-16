@@ -2,6 +2,7 @@
 
 import json
 import os
+import warnings
 import tempfile
 from unittest.mock import patch
 
@@ -1157,3 +1158,31 @@ class SkillsToolWiringTest(testing.TestCase):
         # ...but rebuild from the `skills` config on reload.
         reloaded = FunctionCallingAgent.from_config(config)
         self.assertIn("read_skill", reloaded.tools)
+
+
+class TruncatedGenerationTest(testing.TestCase):
+    @patch("litellm.acompletion")
+    async def test_length_cut_stops_without_burning_retries(self, mock_completion):
+        language_model = LanguageModel(model="ollama/mistral", retry=3)
+        inputs = Input(data_model=ChatMessages)
+        outputs = await FunctionCallingAgent(
+            language_model=language_model,
+            tools=[Tool(calculate)],
+            autonomous=True,
+            max_iterations=3,
+        )(inputs)
+        agent = Program(inputs=inputs, outputs=outputs, name="truncated_test")
+
+        mock_completion.side_effect = [
+            {"choices": [{"message": {"content": ""}, "finish_reason": "length"}]},
+            _lm_response(content="final"),
+        ]
+
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            await agent(
+                ChatMessages(messages=[ChatMessage(role="user", content="hi")])
+            )
+
+        # One turn (not retried three times), then the final generator.
+        self.assertEqual(mock_completion.call_count, 2)
