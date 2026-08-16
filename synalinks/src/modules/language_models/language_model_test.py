@@ -3,6 +3,7 @@
 import base64
 import copy
 import os
+import warnings
 from unittest.mock import patch
 
 from litellm.types.utils import Choices
@@ -254,7 +255,7 @@ class LanguageModelTest(testing.TestCase):
             "choices": [{"message": {"content": '{"answer":"4"}'}}]
         }
 
-        result = await language_model(messages, schema=Answer.get_schema())
+        result = await language_model(messages, schema=_FinishReasonAnswer.get_schema())
 
         self.assertEqual(result.get_json(), {"answer": "4"})
         response_format = mock_completion.call_args.kwargs["response_format"]
@@ -711,8 +712,8 @@ class LMFileCacheTest(testing.TestCase):
         }
         lm = LanguageModel(model="openai/gpt-4o", cache_dir=cache_dir)
 
-        first = await lm(_chat_messages(), schema=Answer.get_schema())
-        second = await lm(_chat_messages(), schema=Answer.get_schema())
+        first = await lm(_chat_messages(), schema=_FinishReasonAnswer.get_schema())
+        second = await lm(_chat_messages(), schema=_FinishReasonAnswer.get_schema())
 
         self.assertEqual(mock_completion.call_count, 1)
         self.assertEqual(first.get_json(), {"answer": "Toulouse"})
@@ -850,3 +851,88 @@ class ToolWireFormatTest(testing.TestCase):
         self.assertEqual(parameters["type"], "object")
         self.assertEqual(set(parameters["properties"]), {"query", "limit"})
         self.assertEqual(sorted(parameters["required"]), ["limit", "query"])
+
+
+class _FinishReasonAnswer(DataModel):
+    answer: str
+
+
+class FinishReasonTest(testing.TestCase):
+    """`finish_reason` is a choice field, so it is reported on the model
+    (`last_call_finish_reason`) rather than on the returned message."""
+
+    @staticmethod
+    def _response(content="", finish_reason="stop"):
+        return {
+            "choices": [
+                {"message": {"content": content}, "finish_reason": finish_reason}
+            ]
+        }
+
+    @patch("litellm.acompletion")
+    async def test_finish_reason_is_reported_on_the_model(self, mock_completion):
+        mock_completion.return_value = self._response(content="hi", finish_reason="stop")
+        lm = LanguageModel(model="ollama/mistral")
+        response = await lm(_chat_messages())
+        self.assertEqual(response.get("content"), "hi")
+        self.assertEqual(lm.last_call_finish_reason, "stop")
+        # The message stays exactly a chat-completion message.
+        self.assertNotIn("finish_reason", response.get_json())
+
+    @patch("litellm.acompletion")
+    async def test_finish_reason_is_cleared_between_calls(self, mock_completion):
+        lm = LanguageModel(model="ollama/mistral")
+        mock_completion.return_value = self._response(content="hi", finish_reason="length")
+        await lm(_chat_messages())
+        self.assertEqual(lm.last_call_finish_reason, "length")
+        mock_completion.return_value = {"choices": [{"message": {"content": "hi"}}]}
+        await lm(_chat_messages())
+        self.assertIsNone(lm.last_call_finish_reason)
+
+    @patch("litellm.acompletion")
+    async def test_length_cut_is_reported_once_not_retried(self, mock_completion):
+        # An identical retry reproduces a spent budget, so it costs
+        # `retry` x `timeout` and buys nothing.
+        mock_completion.return_value = self._response(finish_reason="length")
+        lm = LanguageModel(model="ollama/mistral", retry=3)
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            result = await lm(_chat_messages())
+        self.assertEqual(mock_completion.call_count, 1)
+        self.assertIsNone(result)
+        self.assertEqual(lm.last_call_finish_reason, "length")
+
+    @patch("litellm.acompletion")
+    async def test_blocked_completion_is_reported_once_not_retried(
+        self, mock_completion
+    ):
+        mock_completion.return_value = self._response(finish_reason="content_filter")
+        lm = LanguageModel(model="ollama/mistral", retry=3)
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            await lm(_chat_messages())
+        self.assertEqual(mock_completion.call_count, 1)
+        self.assertEqual(lm.last_call_finish_reason, "content_filter")
+
+    @patch("litellm.acompletion")
+    async def test_transient_empty_response_still_retries(self, mock_completion):
+        # The case a retry does fix keeps its retries.
+        mock_completion.return_value = self._response(finish_reason="stop")
+        lm = LanguageModel(model="ollama/mistral", retry=3)
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            result = await lm(_chat_messages())
+        self.assertEqual(mock_completion.call_count, 3)
+        self.assertIsNone(result)
+
+    @patch("litellm.acompletion")
+    async def test_empty_response_error_names_the_cause(self, mock_completion):
+        mock_completion.return_value = self._response(finish_reason="length")
+        lm = LanguageModel(model="ollama/mistral", retry=3)
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            await lm(_chat_messages(), schema=_FinishReasonAnswer.get_schema())
+        messages = " ".join(str(w.message) for w in caught)
+        self.assertIn("finish_reason='length'", messages)
+        self.assertIn("completion token budget was exhausted", messages)
+        self.assertIn("max_tokens", messages)

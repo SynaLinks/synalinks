@@ -10,6 +10,7 @@ import litellm
 import orjson
 from tenacity import before_sleep_log
 from tenacity import retry
+from tenacity import retry_if_not_exception_type
 from tenacity import stop_after_attempt
 
 from synalinks.src.api_export import synalinks_export
@@ -42,6 +43,42 @@ def _safe_get(obj, key, default=None):
     else:
         v = getattr(obj, key, None)
     return default if v is None else v
+
+
+# Stop reasons an identical retry cannot change, so they are raised straight
+# through instead of consuming the retry budget.
+DETERMINISTIC_FINISH_REASONS = frozenset({"length", "content_filter", "safety"})
+
+_EMPTY_RESPONSE_CAUSES = {
+    "length": (
+        "the completion token budget was exhausted before any content or "
+        "tool_calls were produced -- raise `max_tokens`, lower the reasoning "
+        "effort, or shorten the prompt"
+    ),
+    "content_filter": "the provider blocked the completion",
+    "safety": "the provider blocked the completion",
+    "stop": "the model stopped without emitting anything",
+    "tool_calls": "the model signalled tool calls but sent none",
+}
+
+
+def _empty_response_message(finish_reason):
+    cause = _EMPTY_RESPONSE_CAUSES.get(
+        finish_reason, "no content or tool_calls were returned"
+    )
+    return (
+        f"Empty response from the language model "
+        f"(finish_reason={finish_reason!r}): {cause}."
+    )
+
+
+class DeterministicStopError(ValueError):
+    """An empty completion a retry cannot fix. Subclasses `ValueError` so
+    existing handlers keep working."""
+
+    def __init__(self, message, finish_reason):
+        super().__init__(message)
+        self.finish_reason = finish_reason
 
 
 def _to_int(v):
@@ -605,6 +642,8 @@ class LanguageModel(Module):
         self.last_call_cached_tokens = 0
         self.last_call_cache_creation_tokens = 0
         self.last_call_reasoning_tokens = 0
+        # Why the last completion stopped, from the response choice.
+        self.last_call_finish_reason = None
         # Phase-scoped counters, populated based on `synalinks_op_scope` set
         # by the trainer: "inference" inside `predict_on_batch`, "reward"
         # inside `compute_reward`, "optimizer" inside `optimizer.optimize`.
@@ -692,6 +731,9 @@ class LanguageModel(Module):
                 "which to call. Split into two calls: typically the tool-call "
                 "generator uses `tools` and the final generator uses `schema`."
             )
+        # Cleared per call: a cache hit or a streamed call has no choice to
+        # read it from and must not report the previous call's reason.
+        self.last_call_finish_reason = None
         input_kwargs = copy.deepcopy(kwargs)
         # Merge instance-level defaults; per-call kwargs win.
         kwargs = {**self.default_kwargs, **kwargs}
@@ -973,6 +1015,7 @@ class LanguageModel(Module):
             # Honor a rate-limit `Retry-After` header (e.g. Azure OpenAI TPM
             # throttling); fall back to exponential backoff for other errors.
             wait=rate_limit_aware_wait(max_wait=self.retry_max_wait),
+            retry=retry_if_not_exception_type(DeterministicStopError),
             before_sleep=before_sleep_log(logger, logging.WARNING),
             reraise=True,
         )
@@ -1042,6 +1085,8 @@ class LanguageModel(Module):
                         "Empty response from the language model: no choices returned."
                     )
                 response_message = response["choices"][0]["message"]
+                finish_reason = _safe_get(response["choices"][0], "finish_reason")
+                self.last_call_finish_reason = finish_reason
                 wire_tool_calls = _safe_get(response_message, "tool_calls", None)
                 refusal = _safe_get(response_message, "refusal")
                 audio = _safe_get(response_message, "audio")
@@ -1061,10 +1106,12 @@ class LanguageModel(Module):
                             raise ValueError(
                                 "The language model refused to answer: " + refusal
                             )
-                        raise ValueError(
-                            "Empty response from the language model: no content "
-                            "or tool_calls returned."
-                        )
+                        if finish_reason in DETERMINISTIC_FINISH_REASONS:
+                            raise DeterministicStopError(
+                                _empty_response_message(finish_reason),
+                                finish_reason,
+                            )
+                        raise ValueError(_empty_response_message(finish_reason))
                     response_str = response_str.strip() if response_str else ""
                 reasoning_content = response_message.get("reasoning_content")
                 thinking_blocks = response_message.get("thinking_blocks")
