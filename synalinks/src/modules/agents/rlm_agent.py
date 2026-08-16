@@ -591,6 +591,20 @@ class RecursiveLanguageModelAgent(FunctionCallingAgent):
             ``tool.name == tool._func.__name__``. ``Tool(_my_helper)``
             shows up inside the script as ``_my_helper``. Rename the
             function rather than relying on an alias.
+        sandbox_tools (list): Optional. Explicit spelling of ``tools``;
+            the two are concatenated. Pass the pair
+            ``sandbox_tools=`` / ``native_tools=`` when an agent has some
+            of each and ``tools=`` would read ambiguously.
+        native_tools (list): Optional. `Tool` instances the LM calls
+            **directly**, alongside ``run_python_code``, rather than from
+            inside a snippet. Use this for a tool the LM *consults* —
+            one whose answer shapes the snippet it is about to write,
+            like a library or documentation lookup. Keep a tool in the
+            sandbox when a snippet *composes* with it: when its result
+            feeds the next line of Python. Native tools are dispatched
+            with the REPL idle, are absent from the sandbox namespace and
+            from the tools catalog, and may not share a name with a
+            sandbox tool.
         autonomous (bool): Optional. If ``True`` (default), run the
             full code/execute/observe loop until the LM calls
             ``submit`` or ``max_iterations`` is reached, then produce a
@@ -693,6 +707,8 @@ class RecursiveLanguageModelAgent(FunctionCallingAgent):
         reasoning_effort=None,
         use_chain_of_thought=False,
         tools=None,
+        sandbox_tools=None,
+        native_tools=None,
         autonomous=True,
         return_inputs_with_trajectory=True,
         max_iterations=20,
@@ -787,7 +803,7 @@ class RecursiveLanguageModelAgent(FunctionCallingAgent):
             use_outputs_schema=use_outputs_schema,
             reasoning_effort=reasoning_effort,
             use_chain_of_thought=use_chain_of_thought,
-            tools=tools,
+            tools=[*(tools or []), *(sandbox_tools or [])] or None,
             autonomous=autonomous,
             return_inputs_with_trajectory=return_inputs_with_trajectory,
             max_iterations=max_iterations,
@@ -798,16 +814,52 @@ class RecursiveLanguageModelAgent(FunctionCallingAgent):
             description=description,
         )
 
-        # User tools are stored by the base constructor in `self.tools` but,
-        # for RLM, are exposed *inside* the sandbox (advertised via the
-        # catalog) rather than as native tool calls. Reject reserved helper
-        # names here, after the base's public-name check.
+        # `tools` / `sandbox_tools` are stored by the base constructor in
+        # `self.tools` but, for RLM, are exposed *inside* the sandbox
+        # (advertised via the catalog) rather than as native tool calls.
+        # Reject reserved helper names here, after the base's public-name
+        # check.
         reserved = self._reserved_tool_names()
         for tool_name in self.tools:
             if tool_name in reserved:
                 raise ValueError(
                     f"Tool name '{tool_name}' is reserved by {type(self).__name__}."
                 )
+
+        # `native_tools` are the other half of the split: tools the LM calls
+        # directly, alongside `run_python_code`, instead of from inside a
+        # snippet. Sandbox placement is right for anything a snippet composes
+        # with (its result feeds the next line of Python), and wrong for a
+        # tool the LM just wants to *consult* — a lookup whose answer shapes
+        # the snippet it is about to write. Forcing the latter through the
+        # sandbox costs a round-trip through generated code, and the catalog
+        # advertises names the LM cannot call, which models routinely try
+        # anyway and get `Unknown tool` back.
+        self.native_tools = {}
+        for tool in native_tools or []:
+            if tool.name.startswith("_"):
+                raise ValueError(
+                    f"Tool name {tool.name!r} starts with an underscore. "
+                    f"Tools exposed to the LM must have public names; "
+                    f"rename the function or pass an explicit `name=` to "
+                    f"Tool(...)."
+                )
+            if tool.name in reserved:
+                raise ValueError(
+                    f"Tool name '{tool.name}' is reserved by {type(self).__name__}."
+                )
+            if tool.name in self.tools:
+                raise ValueError(
+                    f"Tool name '{tool.name}' is given as both a native tool "
+                    "and a sandbox tool; a name can only be one or the other."
+                )
+            if tool.name in self.native_tools:
+                raise ValueError(f"Duplicate native tool name '{tool.name}'.")
+            self.native_tools[tool.name] = tool
+
+        # Only sandbox tools go in the catalog: native ones travel in the
+        # provider's own tool schema, so advertising them here would describe
+        # the same tool twice, in two different calling conventions.
         self.tools_catalog = _build_tools_catalog(self.tools)
 
     def _get_builtin_tools(self):
@@ -1172,6 +1224,12 @@ class RecursiveLanguageModelAgent(FunctionCallingAgent):
             extra_native_tools = self._build_subagent_tools(
                 sandbox, subagent_registry, [0], {"adopted": False}
             )
+        # User-supplied `native_tools` join them: same dispatch path, same
+        # provider schema, same `Unknown tool` message listing what is
+        # callable. They are deliberately absent from `call_tools`, so they
+        # are neither bound into the sandbox namespace nor advertised in the
+        # catalog as snippet-reachable.
+        extra_native_tools = {**extra_native_tools, **self.native_tools}
 
         ctx = {
             "sandbox": sandbox,
@@ -1184,8 +1242,9 @@ class RecursiveLanguageModelAgent(FunctionCallingAgent):
         return trajectory, ctx
 
     def _native_tools(self, ctx):
-        # The LM only ever calls `run_python_code` (plus the subagent tools);
-        # user tools are reachable from inside the sandbox, not as native calls.
+        # The LM calls `run_python_code`, the subagent tools, and any tool
+        # passed as `native_tools=`; everything in `tools=` / `sandbox_tools=`
+        # is reachable from inside the sandbox instead, not as a native call.
         return ctx["native_tools"]
 
     def _requires_tools(self):
