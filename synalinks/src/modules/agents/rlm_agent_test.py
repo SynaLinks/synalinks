@@ -32,6 +32,16 @@ async def square(x: int) -> int:
     return x * x
 
 
+@register_synalinks_serializable()
+async def cube(x: int) -> int:
+    """Cube an integer.
+
+    Args:
+        x (int): the integer to cube.
+    """
+    return x * x * x
+
+
 def _exec_tool_call(code, call_id="call_1"):
     """A litellm response where the LM calls `run_python_code` with the
     given `code`, the native tool-call transport the RLM uses each turn.
@@ -130,6 +140,197 @@ class RecursiveLanguageModelAgentTest(testing.TestCase):
         # on `self.tools`.
         self.assertNotIn("llm_query", agent.tools)
         self.assertNotIn("llm_query_batched", agent.tools)
+
+    async def test_tools_still_means_sandbox_tools(self):
+        """Back-compat: `tools=` keeps its original meaning.
+
+        Adding `native_tools=` must not silently move existing agents' tools
+        out of the sandbox — `tools=` stays the sandbox half, and an agent
+        that never mentions `native_tools` has none."""
+        language_model = LanguageModel(model="ollama/mistral")
+        agent = RecursiveLanguageModelAgent(
+            data_model=Answer,
+            language_model=language_model,
+            tools=[Tool(square)],
+        )
+        self.assertIn("square", agent.tools)
+        self.assertNotIn("square", agent.native_tools)
+        self.assertEqual(agent.native_tools, {})
+
+    async def test_tools_and_sandbox_tools_are_concatenated(self):
+        language_model = LanguageModel(model="ollama/mistral")
+        agent = RecursiveLanguageModelAgent(
+            data_model=Answer,
+            language_model=language_model,
+            tools=[Tool(square)],
+            sandbox_tools=[Tool(cube)],
+        )
+        self.assertIn("square", agent.tools)
+        self.assertIn("cube", agent.tools)
+        self.assertEqual(agent.native_tools, {})
+
+    async def test_sandbox_tools_is_a_spelling_of_tools(self):
+        language_model = LanguageModel(model="ollama/mistral")
+        agent = RecursiveLanguageModelAgent(
+            data_model=Answer,
+            language_model=language_model,
+            sandbox_tools=[Tool(square)],
+        )
+        self.assertIn("square", agent.tools)
+        self.assertEqual(agent.native_tools, {})
+
+    async def test_native_tools_are_kept_out_of_the_sandbox_set(self):
+        """A native tool is callable directly, so it is not a sandbox tool.
+
+        It must stay out of `self.tools`: that set is what gets bound into the
+        sandbox namespace and advertised in the catalog as snippet-reachable.
+        """
+        language_model = LanguageModel(model="ollama/mistral")
+        agent = RecursiveLanguageModelAgent(
+            data_model=Answer,
+            language_model=language_model,
+            native_tools=[Tool(square)],
+        )
+        self.assertIn("square", agent.native_tools)
+        self.assertNotIn("square", agent.tools)
+
+    async def test_native_and_sandbox_tools_coexist(self):
+        language_model = LanguageModel(model="ollama/mistral")
+        agent = RecursiveLanguageModelAgent(
+            data_model=Answer,
+            language_model=language_model,
+            sandbox_tools=[Tool(square)],
+            native_tools=[Tool(cube)],
+        )
+        self.assertIn("square", agent.tools)
+        self.assertNotIn("cube", agent.tools)
+        self.assertIn("cube", agent.native_tools)
+
+    async def test_same_name_in_both_halves_rejected(self):
+        language_model = LanguageModel(model="ollama/mistral")
+        with self.assertRaises(ValueError):
+            RecursiveLanguageModelAgent(
+                data_model=Answer,
+                language_model=language_model,
+                sandbox_tools=[Tool(square)],
+                native_tools=[Tool(square)],
+            )
+
+    async def test_reserved_names_rejected_for_native_tools_too(self):
+        language_model = LanguageModel(model="ollama/mistral")
+
+        @register_synalinks_serializable()
+        async def llm_query(prompt: str) -> dict:
+            """Reserved name.
+
+            Args:
+                prompt (str): the prompt.
+            """
+            return {}
+
+        with self.assertRaises(ValueError):
+            RecursiveLanguageModelAgent(
+                data_model=Answer,
+                language_model=language_model,
+                native_tools=[Tool(llm_query)],
+            )
+
+    @patch("litellm.acompletion")
+    async def test_native_tool_is_dispatched_not_rejected(self, mock_completion):
+        """The LM calls a `native_tools=` tool directly and gets its result.
+
+        The same call against a sandbox tool comes back as `Unknown tool`,
+        which is the whole point of the split.
+        """
+        language_model = LanguageModel(model="ollama/mistral")
+
+        inputs = Input(data_model=Query)
+        outputs = await RecursiveLanguageModelAgent(
+            data_model=Answer,
+            language_model=language_model,
+            native_tools=[Tool(cube)],
+            max_iterations=3,
+        )(inputs)
+        agent = Program(inputs=inputs, outputs=outputs)
+
+        mock_completion.side_effect = [
+            {
+                "choices": [
+                    {
+                        "message": {
+                            "content": "",
+                            "tool_calls": [
+                                {
+                                    "id": "call_1",
+                                    "type": "function",
+                                    "function": {
+                                        "name": "cube",
+                                        "arguments": json.dumps({"x": 3}),
+                                    },
+                                }
+                            ],
+                        }
+                    }
+                ]
+            },
+            _exec_tool_call("submit(result={'answer': 'done'})", "call_2"),
+        ]
+
+        result = await agent(Query(query="hi"))
+        self.assertEqual(result.get("answer"), "done")
+        tool_messages = [m for m in result.get("messages") if m.get("role") == "tool"]
+        self.assertTrue(
+            any("27" in str(m.get("content")) for m in tool_messages),
+            f"expected the native tool's result; got: {tool_messages}",
+        )
+        self.assertFalse(
+            any("Unknown tool" in str(m.get("content")) for m in tool_messages),
+            f"native tool was rejected: {tool_messages}",
+        )
+
+    @patch("litellm.acompletion")
+    async def test_sandbox_tool_called_natively_is_still_rejected(self, mock_completion):
+        """The other half of the contract: a sandbox tool stays snippet-only."""
+        language_model = LanguageModel(model="ollama/mistral")
+
+        inputs = Input(data_model=Query)
+        outputs = await RecursiveLanguageModelAgent(
+            data_model=Answer,
+            language_model=language_model,
+            sandbox_tools=[Tool(cube)],
+            max_iterations=3,
+        )(inputs)
+        agent = Program(inputs=inputs, outputs=outputs)
+
+        mock_completion.side_effect = [
+            {
+                "choices": [
+                    {
+                        "message": {
+                            "content": "",
+                            "tool_calls": [
+                                {
+                                    "id": "call_1",
+                                    "type": "function",
+                                    "function": {
+                                        "name": "cube",
+                                        "arguments": json.dumps({"x": 3}),
+                                    },
+                                }
+                            ],
+                        }
+                    }
+                ]
+            },
+            _exec_tool_call("submit(result={'answer': 'done'})", "call_2"),
+        ]
+
+        result = await agent(Query(query="hi"))
+        tool_messages = [m for m in result.get("messages") if m.get("role") == "tool"]
+        self.assertTrue(
+            any("Unknown tool" in str(m.get("content")) for m in tool_messages),
+            f"expected the sandbox tool to be rejected natively; got: {tool_messages}",
+        )
 
     @patch("litellm.acompletion")
     async def test_llm_query_visible_in_prompt_catalog(self, mock_completion):
