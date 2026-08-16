@@ -661,9 +661,22 @@ if _inputs:
 # leaves ``f`` raising NameError forever), and every dump/restore round-trip
 # nests another ghost copy into the state file. Rebuilding each function on
 # ``ns`` restores true REPL semantics: one shared global namespace.
+#
+# Only functions *defined in the sandbox* may be re-homed. An imported
+# function closes over its own module's globals, and rebuilding it on ``ns``
+# strips the module internals it reaches at call time: re-homing
+# ``collections.Counter``'s methods makes ``Counter('aa')`` raise
+# ``NameError: name '_collections_abc' is not defined``, and re-homing
+# ``os.path.join`` loses ``sep``. Sandbox-defined functions are the ones whose
+# (ghost) globals are a copy of ``ns``, which carries ``__name__ ==
+# "__main__"``; an imported one carries its own module name.
 import types as _types
 def _rehome(value):
-    if isinstance(value, _types.FunctionType) and value.__globals__ is not ns:
+    if (
+        isinstance(value, _types.FunctionType)
+        and value.__globals__ is not ns
+        and value.__globals__.get("__name__") == "__main__"
+    ):
         fixed = _types.FunctionType(
             value.__code__, ns, value.__name__, value.__defaults__, value.__closure__
         )

@@ -116,6 +116,35 @@ class MirageSandboxTest(_SandboxTestCase):
         result = await sandbox.run("print(add5(1), add5(1, scale=1))")
         self.assertIn("12 6", result.stdout)
 
+    async def test_imported_function_keeps_its_own_module_globals(self):
+        """Re-homing must not touch functions imported from a module.
+
+        An imported function closes over its *module's* globals and reaches
+        names in them at call time. Rebuilding it on the sandbox namespace
+        strips those: ``os.path.join`` re-homed this way loses ``sep``."""
+        sandbox = MirageSandbox(timeout=_TIMEOUT)
+        await sandbox.run("from os.path import join")
+        result = await sandbox.run("print(join('a', 'b'))")
+        self.assertIn("a/b", result.stdout)
+        self.assertFalse(result.error)
+
+    async def test_imported_class_methods_keep_their_module_globals(self):
+        """Same for the methods of an imported class.
+
+        ``Counter.update`` reads ``_collections_abc`` and ``_count_elements``
+        from ``collections``' own globals, so re-homing it onto the sandbox
+        namespace made ``Counter('aa')`` raise NameError on every run after
+        the one that imported it. Worse, the class is re-homed *in place*, so
+        a later plain ``import collections`` inherited the damage."""
+        sandbox = MirageSandbox(timeout=_TIMEOUT)
+        await sandbox.run("from collections import Counter")
+        result = await sandbox.run("print(Counter('aab')['a'])")
+        self.assertIn("2", result.stdout)
+        self.assertFalse(result.error)
+        fresh = await sandbox.run("import collections\nprint(collections.Counter('aab')['a'])")
+        self.assertIn("2", fresh.stdout)
+        self.assertFalse(fresh.error)
+
     async def test_state_survives_error(self):
         sandbox = MirageSandbox(timeout=_TIMEOUT)
         await sandbox.run("keep = 11")
