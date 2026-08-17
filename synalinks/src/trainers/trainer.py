@@ -831,11 +831,18 @@ class Trainer:
                 steps_per_execution=self.steps_per_execution,
             )
 
+        # Building calls the program for real on the first batch. That batch is
+        # the first one this evaluation is about to score anyway — the iterator
+        # is unshuffled and rewound below — so the build's predictions are kept
+        # and handed to the first `test_on_batch` instead of being dropped and
+        # recomputed. Nothing is skipped either way; the difference is one
+        # forward pass, which for an agent program is a whole agent run.
+        prebuilt_y_pred = None
         if not all(module.built for module in self._flatten_modules()):
             # Build the model on one batch of data.
             for _, data in epoch_iterator:
                 data_batch = data[0]
-                self._auto_build(
+                prebuilt_y_pred = self._auto_build(
                     iterator=epoch_iterator,
                     data_batch=data_batch,
                 )
@@ -862,10 +869,14 @@ class Trainer:
             callbacks.on_test_batch_begin(step)
             data = iterator[0]
             x_batch, y_batch = data_adapter_utils.unpack_x_y(data)
+            # Only the first step can consume the auto-build's predictions, and
+            # only once: taking it clears it, so every later batch predicts.
+            y_pred, prebuilt_y_pred = prebuilt_y_pred, None
             logs = await self.test_on_batch(
                 x=x_batch,
                 y=y_batch,
                 return_dict=True,
+                y_pred=y_pred,
             )
             callbacks.on_test_batch_end(step, logs)
             if self.stop_evaluating:
@@ -1024,6 +1035,7 @@ class Trainer:
         x,
         y=None,
         return_dict=False,
+        y_pred=None,
     ):
         """Test the program on a single batch of samples.
 
@@ -1033,6 +1045,13 @@ class Trainer:
             return_dict (bool): If `True`, reward and metric results are returned as a
                 dict, with each key being the name of the metric. If `False`,
                 they are returned as a list.
+            y_pred (list): Optional predictions for `x`, already computed by an
+                earlier forward pass. When given, the program is not called
+                again — see `evaluate`, which reuses the prediction its
+                auto-build pass produced for the first batch. Passing
+                predictions that are not the program's own output for `x` will
+                silently report rewards and metrics for something the program
+                never predicted.
 
         Returns:
             (float | list | dict): A scalar reward value
@@ -1040,7 +1059,8 @@ class Trainer:
                 and metric values (if there are metrics and `return_dict=False`),
                 or a dict of metric and reward values (if `return_dict=True`).
         """
-        y_pred = await self.predict_on_batch(x)
+        if y_pred is None:
+            y_pred = await self.predict_on_batch(x)
 
         rewards = await self.compute_reward(
             x=x,
@@ -1193,6 +1213,20 @@ class Trainer:
             raise ValueError(msg)
 
     def _auto_build(self, iterator=None, data_batch=None):
+        """Build the program, its metrics, its reward and its optimizer.
+
+        Building the program means calling it: a program's output schema is
+        not knowable without running it, so this does one real forward pass on
+        `data_batch`. That pass is as expensive as any other — for an agent
+        program it is a full agent run, LM calls and all — so the predictions
+        it produces are returned rather than dropped, letting a caller that is
+        about to evaluate the very same batch reuse them.
+
+        Returns:
+            (list | None): The predictions for `data_batch`'s inputs, or None
+                when nothing needed building and no forward pass was made.
+        """
+        y_pred = None
         program_unbuilt = not all(module.built for module in self._flatten_modules())
         compile_metrics_unbuilt = (
             self._compile_metrics is not None and not self._compile_metrics.built
@@ -1249,6 +1283,7 @@ class Trainer:
             # Build optimizer
             run_maybe_nested(self.optimizer.build(self.trainable_variables))
         self._post_build()
+        return y_pred
 
     def _assert_compile_called(self, method_name=None):
         if not self.compiled:
