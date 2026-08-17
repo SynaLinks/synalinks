@@ -146,6 +146,91 @@ class TestTrainer(testing.TestCase):
         )
 
     @patch("litellm.acompletion")
+    async def test_evaluate_predicts_each_sample_once_when_unbuilt(
+        self, mock_completion
+    ):
+        """An unbuilt program must not be run twice on the batch it builds on.
+
+        Building a program means calling it, and `evaluate` builds on the first
+        batch — which is also the first batch it scores. Dropping that build's
+        predictions and recomputing them costs a second full forward pass per
+        sample in the batch, which for an agent program is a second agent run:
+        every LM call and every tool call paid twice, for a result thrown away.
+
+        The program here keeps a module its `call()` never reaches, which is
+        what makes this permanent rather than a one-off. `built` is only set by
+        calling a module, so a module on an untaken path never becomes built,
+        `all(module.built ...)` never becomes true, and *every* `evaluate` pays
+        the extra pass. Agents are full of such modules — a fallback generator
+        that only runs when the loop ends without submitting, a tool the model
+        happens not to call.
+        """
+        mock_answer = AnswerWithRationale(
+            rationale="""The capital of France is well-known and is the seat of """
+            """the French government.""",
+            answer="Paris",
+        )
+
+        mock_completion.return_value = {
+            "choices": [{"message": {"content": json.dumps(mock_answer.get_json())}}]
+        }
+
+        language_model = LanguageModel(model="ollama/mistral")
+
+        class ProgramWithAnUntakenPath(programs.Program):
+            forward_passes = 0
+
+            def __init__(self, language_model=None):
+                super().__init__()
+                self.answer = modules.Generator(
+                    data_model=AnswerWithRationale,
+                    language_model=language_model,
+                )
+                self.fallback = modules.Generator(
+                    data_model=AnswerWithRationale,
+                    language_model=language_model,
+                )
+
+            async def call(self, inputs, training=False):
+                type(self).forward_passes += 1
+                return await self.answer(inputs)
+
+        program = ProgramWithAnUntakenPath(language_model=language_model)
+
+        program.compile(
+            optimizer=optimizers.random_few_shot.RandomFewShot(),
+            reward=rewards.ExactMatch(in_mask=["answer"]),
+            metrics=[
+                metrics.MeanMetricWrapper(rewards.exact_match, in_mask=["answer"]),
+            ],
+        )
+
+        (_, _), (x_test, y_test) = load_test_data()
+
+        self.assertFalse(all(module.built for module in program._flatten_modules()))
+
+        _ = await program.evaluate(x=x_test, y=y_test)
+
+        # The build pass predicted the whole first batch, and those predictions
+        # are what the first `test_on_batch` scores — so each sample is
+        # predicted once, not twice. The one extra pass is `_auto_build`'s own
+        # spec pass for the metric and reward state; it is paid once per
+        # program, not once per sample, and is not what this reuse addresses.
+        self.assertLessEqual(
+            ProgramWithAnUntakenPath.forward_passes, len(x_test) + 1
+        )
+
+        # `fallback` is still unbuilt, so the next `evaluate` auto-builds again
+        # — and must again cost exactly one pass per sample. This is what makes
+        # the duplication permanent rather than a first-call toll.
+        before = ProgramWithAnUntakenPath.forward_passes
+        _ = await program.evaluate(x=x_test, y=y_test)
+        self.assertFalse(all(module.built for module in program._flatten_modules()))
+        self.assertEqual(
+            ProgramWithAnUntakenPath.forward_passes - before, len(x_test)
+        )
+
+    @patch("litellm.acompletion")
     async def test_predict(self, mock_completion):
         mock_answer = AnswerWithRationale(
             rationale="""The capital of France is well-known and is the seat of """
