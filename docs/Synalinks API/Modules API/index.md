@@ -109,6 +109,9 @@ if __name__ == "__main__":
 - [PathRegexSearch module](Retrievers Modules/PathRegexSearch module.md)
 - [PathHybridFTSSearch module](Retrievers Modules/PathHybridFTSSearch module.md)
 - [PathHybridRegexSearch module](Retrievers Modules/PathHybridRegexSearch module.md)
+- [LocalGraphSearch module](Retrievers Modules/LocalGraphSearch module.md)
+- [GlobalGraphSearch module](Retrievers Modules/GlobalGraphSearch module.md)
+- [GlobalGraphMapReduce module](Retrievers Modules/GlobalGraphMapReduce module.md)
 
 ---
 
