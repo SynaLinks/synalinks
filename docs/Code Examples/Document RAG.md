@@ -8,7 +8,7 @@
 ## Source
 
 ````python
---8 < --"examples/13_document_rag.py:89"
+--8<-- "examples/13_document_rag.py:89"
 ````
 
 ## Run log

@@ -8,7 +8,7 @@
 ## Source
 
 ````python
---8 < --"examples/1c_sequential.py:109"
+--8<-- "examples/1c_sequential.py:109"
 ````
 
 ## Run log

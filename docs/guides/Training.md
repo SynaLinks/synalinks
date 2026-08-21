@@ -8,5 +8,5 @@
 ## Source
 
 ````python
---8 < --"guides/15_training.py:444"
+--8<-- "guides/15_training.py:444"
 ````

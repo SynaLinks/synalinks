@@ -7,5 +7,5 @@
 ## Source
 
 ````python
---8 < --"examples/22_python_synthesis.py:source"
+--8<-- "examples/22_python_synthesis.py:source"
 ````

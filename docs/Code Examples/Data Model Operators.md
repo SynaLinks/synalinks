@@ -8,7 +8,7 @@
 ## Source
 
 ````python
---8 < --"examples/5a_data_model_operators.py:168"
+--8<-- "examples/5a_data_model_operators.py:168"
 ````
 
 ## Run log

@@ -8,7 +8,7 @@
 ## Source
 
 ````python
---8 < --"guides/7_knowledge_base.py:source"
+--8<-- "guides/7_knowledge_base.py:source"
 ````
 
 ## Run log

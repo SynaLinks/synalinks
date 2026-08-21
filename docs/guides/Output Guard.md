@@ -8,7 +8,7 @@
 ## Source
 
 ````python
---8 < --"guides/9_output_guard.py:307"
+--8<-- "guides/9_output_guard.py:307"
 ````
 
 ## Run log

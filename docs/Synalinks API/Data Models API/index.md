@@ -17,3 +17,4 @@ Synalinks features four distinct types of data models, each serving a unique pur
 - [The SymbolicDataModel Class](The SymbolicDataModel class.md): The symbolic data models.
 - [The Variable Class](The Variable class.md): The variable data models that the optimizers can act upon.
 - [The Base DataModels](The Base DataModels.md): A collection of basic backend-dependent data models.
+- [Score Data Models](Score Data Models.md): Discretized score scales (`Score`, `FineScore`, `Rating`, `Rating10`, `Rating20`) the language model can pick from, and the helpers to resolve and normalize them.

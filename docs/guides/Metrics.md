@@ -8,5 +8,5 @@
 ## Source
 
 ````python
---8 < --"guides/14_metrics.py:345"
+--8<-- "guides/14_metrics.py:345"
 ````

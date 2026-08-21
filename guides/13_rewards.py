@@ -177,6 +177,22 @@ called `ProgramAsJudge`. The judge sees both `y_true` and
 returns a numeric score that the framework normalizes to
 `[0, 1]`.
 
+By default the judge picks from `synalinks.Score` (eleven values
+from 0.0 to 1.0). If your rubric reads more naturally as a
+rating, pass `score_type=synalinks.Rating` (1 to 5), `Rating10`,
+`Rating20` or `FineScore`:
+
+```python
+reward = synalinks.rewards.LMAsJudge(
+    language_model=judge_model,
+    score_type=synalinks.Rating,
+)
+```
+
+The judge's default instructions and output schema follow the
+chosen scale, and the reward is still normalized to `[0, 1]`,
+so optimizers and metrics see no difference.
+
 Three things to know about LM judges:
 
 - **They are the most flexible reward.** You can grade things

@@ -7,7 +7,7 @@
 ## Source
 
 ````python
---8 < --"guides/30_consul_of_models.py:364"
+--8<-- "guides/30_consul_of_models.py:364"
 ````
 
 ## Run log

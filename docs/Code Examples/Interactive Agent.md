@@ -8,7 +8,7 @@
 ## Source
 
 ````python
---8 < --"examples/11_interactive_agent.py:132"
+--8<-- "examples/11_interactive_agent.py:132"
 ````
 
 ## Run log

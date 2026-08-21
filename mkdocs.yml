@@ -132,6 +132,7 @@ nav:
       - Synalinks API/Data Models API/The Base DataModels.md
       - Synalinks API/Data Models API/Knowledge Data Models.md
       - Synalinks API/Data Models API/Multimodal Data Models.md
+      - Synalinks API/Data Models API/Score Data Models.md
     - Programs API:
       - Synalinks API/Programs API/index.md
       - Synalinks API/Programs API/The Program class.md

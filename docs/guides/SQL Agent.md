@@ -7,7 +7,7 @@
 ## Source
 
 ````python
---8 < --"guides/23_sql_agent.py:207"
+--8<-- "guides/23_sql_agent.py:207"
 ````
 
 ## Run log

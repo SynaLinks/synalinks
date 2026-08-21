@@ -8,7 +8,7 @@
 ## Source
 
 ````python
---8 < --"guides/13_rewards.py:340"
+--8<-- "guides/13_rewards.py:356"
 ````
 
 ## Run log

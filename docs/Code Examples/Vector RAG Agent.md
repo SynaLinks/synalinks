@@ -7,7 +7,7 @@
 ## Source
 
 ````python
---8 < --"examples/14_vector_rag_agent.py:source"
+--8<-- "examples/14_vector_rag_agent.py:source"
 ````
 
 ## Run log

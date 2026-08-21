@@ -8,7 +8,7 @@
 ## Source
 
 ````python
---8 < --"guides/3_programs.py:494"
+--8<-- "guides/3_programs.py:494"
 ````
 
 ## Run log

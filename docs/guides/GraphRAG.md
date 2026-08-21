@@ -7,7 +7,7 @@
 ## Source
 
 ````python
---8 < --"guides/32_graphrag.py:source"
+--8<-- "guides/32_graphrag.py:source"
 ````
 
 ## Run log

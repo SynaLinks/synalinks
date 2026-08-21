@@ -8,7 +8,7 @@
 ## Source
 
 ````python
---8 < --"guides/5_control_flow.py:255"
+--8<-- "guides/5_control_flow.py:255"
 ````
 
 ## Run log

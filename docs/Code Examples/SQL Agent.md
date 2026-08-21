@@ -8,7 +8,7 @@
 ## Source
 
 ````python
---8 < --"examples/16_sql_agent.py:source"
+--8<-- "examples/16_sql_agent.py:source"
 ````
 
 ## Run log

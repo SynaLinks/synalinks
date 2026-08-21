@@ -8,7 +8,7 @@
 ## Source
 
 ````python
---8 < --"guides/8_input_guard.py:294"
+--8<-- "guides/8_input_guard.py:294"
 ````
 
 ## Run log
