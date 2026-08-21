@@ -7,7 +7,7 @@
 ## Source
 
 ````python
---8 < --"guides/26_cypher_agent.py:101"
+--8<-- "guides/26_cypher_agent.py:101"
 ````
 
 ## Run log

@@ -7,7 +7,7 @@
 ## Source
 
 ````python
---8 < --"guides/22_deep_agent.py:243"
+--8<-- "guides/22_deep_agent.py:247"
 ````
 
 ## Run log

@@ -8,7 +8,7 @@
 ## Source
 
 ````python
---8 < --"examples/6_conversational_applications.py:83"
+--8<-- "examples/6_conversational_applications.py:83"
 ````
 
 ## Run log

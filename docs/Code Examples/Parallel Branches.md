@@ -8,7 +8,7 @@
 ## Source
 
 ````python
---8 < --"examples/2_parallel_branches.py:128"
+--8<-- "examples/2_parallel_branches.py:128"
 ````
 
 ## Run log

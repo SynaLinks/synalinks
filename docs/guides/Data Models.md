@@ -8,7 +8,7 @@
 ## Source
 
 ````python
---8 < --"guides/2_data_models.py:558"
+--8<-- "guides/2_data_models.py:558"
 ````
 
 ## Run log

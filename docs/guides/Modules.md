@@ -8,7 +8,7 @@
 ## Source
 
 ````python
---8 < --"guides/4_modules.py:641"
+--8<-- "guides/4_modules.py:641"
 ````
 
 ## Run log

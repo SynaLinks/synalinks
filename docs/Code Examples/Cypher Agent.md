@@ -7,7 +7,7 @@
 ## Source
 
 ````python
---8 < --"examples/23_cypher_agent.py:source"
+--8<-- "examples/23_cypher_agent.py:source"
 ````
 
 ## Run log

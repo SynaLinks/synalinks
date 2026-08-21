@@ -8,7 +8,7 @@
 ## Source
 
 ````python
---8 < --"examples/3_decisions.py:120"
+--8<-- "examples/3_decisions.py:120"
 ````
 
 ## Run log

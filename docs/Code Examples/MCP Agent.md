@@ -8,7 +8,7 @@
 ## Source
 
 ````python
---8 < --"examples/15_mcp_agent.py:100"
+--8<-- "examples/15_mcp_agent.py:100"
 ````
 
 ## Run log

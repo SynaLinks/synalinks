@@ -7,7 +7,7 @@
 ## Source
 
 ````python
---8 < --"guides/29_mixture_of_models.py:396"
+--8<-- "guides/29_mixture_of_models.py:396"
 ````
 
 ## Run log

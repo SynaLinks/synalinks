@@ -8,5 +8,5 @@
 ## Source
 
 ````python
---8 < --"guides/12_trainable_variables.py:500"
+--8<-- "guides/12_trainable_variables.py:500"
 ````

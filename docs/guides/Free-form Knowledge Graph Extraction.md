@@ -7,7 +7,7 @@
 ## Source
 
 ````python
---8 < --"guides/28_free_form_knowledge_graph_extraction.py:source"
+--8<-- "guides/28_free_form_knowledge_graph_extraction.py:source"
 ````
 
 ## Run log

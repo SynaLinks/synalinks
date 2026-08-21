@@ -8,7 +8,7 @@
 ## Source
 
 ````python
---8 < --"examples/1d_mixing_strategy.py:159"
+--8<-- "examples/1d_mixing_strategy.py:159"
 ````
 
 ## Run log
