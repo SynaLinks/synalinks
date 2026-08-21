@@ -145,3 +145,52 @@ class ModuleTest(testing.TestCase):
         # `training` is captured per-call and must not leak between siblings.
         self.assertTrue(a.observed["training_seen"])
         self.assertFalse(b.observed["training_seen"])
+
+    async def test_auto_build_traces_on_symbolic_inputs_for_eager_calls(self):
+        """Auto-build must not run the real forward pass on concrete inputs.
+
+        An eager call on a module with unbuilt sub-modules triggers a trace
+        of `call()` to discover the output schema. That trace has to happen
+        on *symbolic* inputs; otherwise a module like `Generator` would issue
+        a real LM request just to build itself, then another for the actual
+        call.
+        """
+
+        class Query(backend.DataModel):
+            query: str
+
+        class Inner(modules.Module):
+            async def call(self, inputs):
+                return inputs
+
+            async def compute_output_spec(self, inputs):
+                return inputs
+
+        class Outer(modules.Module):
+            def __init__(self, **kwargs):
+                super().__init__(**kwargs)
+                self.inner = Inner()
+                self.concrete_calls = 0
+                self.symbolic_calls = 0
+
+            async def call(self, inputs):
+                if backend.is_symbolic_data_model(inputs):
+                    self.symbolic_calls += 1
+                else:
+                    self.concrete_calls += 1
+                return await self.inner(inputs)
+
+        outer = Outer()
+        self.assertFalse(outer.built)
+        result = await outer(Query(query="a").to_json_data_model())
+        self.assertTrue(outer.built)
+        self.assertTrue(outer.inner.built)
+        self.assertEqual(result.get("query"), "a")
+        # One symbolic trace for the build, one concrete run for the call.
+        self.assertEqual(outer.symbolic_calls, 1)
+        self.assertEqual(outer.concrete_calls, 1)
+
+        # Subsequent eager calls don't re-trace.
+        await outer(Query(query="b").to_json_data_model())
+        self.assertEqual(outer.symbolic_calls, 1)
+        self.assertEqual(outer.concrete_calls, 2)

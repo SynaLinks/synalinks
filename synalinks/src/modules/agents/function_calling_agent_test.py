@@ -2,8 +2,8 @@
 
 import json
 import os
-import warnings
 import tempfile
+import warnings
 from unittest.mock import patch
 
 from synalinks.src import testing
@@ -958,9 +958,10 @@ class FunctionCallingAgentTest(testing.TestCase):
             workdir=workdir,
         )
 
-        # Two interactive turns: the first makes three LM calls (tool call ->
-        # post-tool reply -> final), the second makes two. All five are scripted
-        # so no call falls into the (mocked) retry path.
+        # Two interactive turns: the first makes one LM call (a tool call,
+        # handed back to the caller), the second makes two (post-tool reply ->
+        # final). All three are scripted so no call falls into the (mocked)
+        # retry path. Auto-build traces on symbolic inputs, so it consumes none.
         mock_completion.side_effect = [
             _lm_response(
                 content="Calculating.",
@@ -968,8 +969,6 @@ class FunctionCallingAgentTest(testing.TestCase):
             ),
             _lm_response(content="No more tools."),
             _lm_response(content="Done: 1 + 1 = 2."),
-            _lm_response(content="Following up."),
-            _lm_response(content="Done again."),
         ]
 
         input_messages = ChatMessages(
@@ -979,7 +978,7 @@ class FunctionCallingAgentTest(testing.TestCase):
         # Two interactive turns, feeding the trajectory back into the agent.
         result = await agent(input_messages)
         result = await agent(result)
-        self.assertEqual(mock_completion.call_count, 5)
+        self.assertEqual(mock_completion.call_count, 3)
 
         messages = result.get("messages", [])
         agents_md_count = sum(
@@ -1048,9 +1047,10 @@ class FunctionCallingAgentTest(testing.TestCase):
             skills=[root],
         )
 
-        # Two interactive turns: the first turn makes three LM calls (tool
-        # call -> post-tool reply -> final), the second makes two. All five are
-        # scripted so no call falls into the (mocked) retry path.
+        # Two interactive turns: the first makes one LM call (a tool call,
+        # handed back to the caller), the second makes two (post-tool reply ->
+        # final). All three are scripted so no call falls into the (mocked)
+        # retry path. Auto-build traces on symbolic inputs, so it consumes none.
         mock_completion.side_effect = [
             _lm_response(
                 content="Calculating.",
@@ -1058,8 +1058,6 @@ class FunctionCallingAgentTest(testing.TestCase):
             ),
             _lm_response(content="No more tools."),
             _lm_response(content="Done."),
-            _lm_response(content="Following up."),
-            _lm_response(content="Done again."),
         ]
 
         input_messages = ChatMessages(
@@ -1067,7 +1065,7 @@ class FunctionCallingAgentTest(testing.TestCase):
         )
         result = await agent(input_messages)
         result = await agent(result)
-        self.assertEqual(mock_completion.call_count, 5)
+        self.assertEqual(mock_completion.call_count, 3)
 
         messages = result.get("messages", [])
         skills_count = sum(
@@ -1180,9 +1178,7 @@ class TruncatedGenerationTest(testing.TestCase):
 
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
-            await agent(
-                ChatMessages(messages=[ChatMessage(role="user", content="hi")])
-            )
+            await agent(ChatMessages(messages=[ChatMessage(role="user", content="hi")]))
 
         # One turn (not retried three times), then the final generator.
         self.assertEqual(mock_completion.call_count, 2)

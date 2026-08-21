@@ -1042,8 +1042,8 @@ class RecursiveLanguageModelAgent(FunctionCallingAgent):
                     autonomous=True,
                     name=f"{self.name}_sub{index}",
                 )
-                # Run through a Program (the canonical path) so the subagent's
-                # build is LM-free and it isn't double-invoked.
+                # Run through a Program (the canonical path): it builds once
+                # against a symbolic Input and gets the standard lifecycle.
                 inp = Input(data_model=ChatMessages)
                 out = await subagent(inp)
                 program = Program(
