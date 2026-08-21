@@ -435,6 +435,12 @@ outputs = await synalinks.SelfCritique(
 )(inputs)
 ```
 
+By default the reward is a `synalinks.Score` (eleven values from 0.0 to
+1.0). Pass `score_type=synalinks.Rating` (1 to 5), `Rating10`, `Rating20`
+or `FineScore` to let the model grade on another scale: the module spells
+the scale out in its default instructions and in the output schema, and
+normalizes the picked value back to 0.0..1.0 before returning it.
+
 ## Complete Example
 
 ```python

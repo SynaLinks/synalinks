@@ -183,6 +183,7 @@ trip:
 | `dict`            | object      | `{"key": "value"}`   |
 | `Enum`            | enum        | constrained choices  |
 | `synalinks.Score` | enum        | 0.0 to 1.0, step 0.1 |
+| `synalinks.Rating` | enum       | 1 to 5, integer      |
 
 If a Python type maps cleanly to JSON Schema, you can use it. You can
 also **nest** one data model inside another: the inner schema gets
@@ -261,6 +262,18 @@ Use `Score` for confidence, quality, similarity: anything that lives on
 a normalized scale. Do *not* use it when you genuinely need continuous
 values (for example, the target of a regression task); for that, declare
 the field as `float` and validate the range yourself.
+
+`Score` has a few siblings for when a 0.1 step is not the right grain.
+`synalinks.FineScore` splits the same `[0, 1]` range into twenty-one
+buckets (step 0.05). `synalinks.Rating`, `synalinks.Rating10` and
+`synalinks.Rating20` are integer, Likert-style scales (1 to 5, 1 to 10
+and 1 to 20) for rubrics that read more naturally as "4 out of 5" than
+as `0.8`. All of them are plain enums, so they work as field types exactly
+like `Score`. The modules that grade things (`SelfCritique` and the
+`LMAsJudge` reward) also accept any of them as `score_type` and normalize
+the picked value back to `[0, 1]`, so the rest of the pipeline never sees
+the difference; see [Guide 13](https://synalinks.github.io/synalinks/guides/Rewards/)
+for the reward side.
 
 ## Combining Data Models with Operators
 
@@ -526,7 +539,8 @@ If you remember nothing else from this guide, remember the following:
   whenever the answer should come from a small, fixed alphabet.
 - **`synalinks.Score` splits `[0, 1]` into ten meaningful buckets.**
   Use it for confidence/quality/similarity; reach for plain `float`
-  only when you genuinely need continuous values.
+  only when you genuinely need continuous values. `FineScore` and the
+  integer `Rating`/`Rating10`/`Rating20` scales cover other grains.
 - The **operators** (`+`, `&`, `|`, `^`, `~`) compose schemas without
   hand-written adapter classes, and the **masking helpers** (`in_mask`,
   `out_mask`) project onto subsets of fields.
