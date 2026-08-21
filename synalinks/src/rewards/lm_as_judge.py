@@ -2,6 +2,8 @@
 
 from synalinks.src import ops
 from synalinks.src.api_export import synalinks_export
+from synalinks.src.backend.pydantic.metrics import get_score_type
+from synalinks.src.backend.pydantic.metrics import serialize_score_type
 from synalinks.src.modules import SelfCritique
 from synalinks.src.modules.ttc.self_critique import CritiqueWithReward
 from synalinks.src.programs import Program
@@ -19,6 +21,8 @@ class LMAsJudgeProgram(Program):
         examples (list): The default examples to use in the prompt
             (see `Generator`).
         instructions (list): The default instructions to use (see `Generator`).
+        score_type (type | str): Optional. The scale the judge picks the reward
+            from (see `SelfCritique`); the reward is normalized to 0.0..1.0.
         name (str): Optional. The name of the program.
         description (str): Optional. The description of the program.
         trainable (bool): Whether the program's variables should be trainable.
@@ -30,6 +34,7 @@ class LMAsJudgeProgram(Program):
         prompt_template=None,
         examples=None,
         instructions=None,
+        score_type=None,
         name=None,
         description=None,
         trainable=True,
@@ -39,11 +44,13 @@ class LMAsJudgeProgram(Program):
             description=description,
             trainable=trainable,
         )
+        self.score_type = get_score_type(score_type)
         self.critique = SelfCritique(
             language_model=language_model,
             prompt_template=prompt_template,
             examples=examples,
             instructions=instructions,
+            score_type=self.score_type,
             name="self_critique_" + self.name,
         )
         self.language_model = language_model
@@ -87,6 +94,7 @@ class LMAsJudgeProgram(Program):
             "prompt_template": self.prompt_template,
             "examples": self.examples,
             "instructions": self.instructions,
+            "score_type": serialize_score_type(self.score_type),
             "name": self.name,
             "description": self.description,
             "trainable": self.trainable,
@@ -125,6 +133,10 @@ class LMAsJudge(ProgramAsJudge):
         program.compile(
             reward=synalinks.rewards.LMAsJudge(
                 language_model=language_model,
+                # Optional: let the judge grade on a 1..5 integer scale
+                # instead of the default 0.0..1.0 `Score`. The reward
+                # is normalized back to 0.0..1.0 automatically.
+                score_type=synalinks.Rating,
             )
             optimizer=synalinks.optimizers.RandomFewShot(),
         )
@@ -140,6 +152,11 @@ class LMAsJudge(ProgramAsJudge):
         instructions (list): The default instructions to use (see `Generator`).
         examples (list): The default examples to use in the prompt
             (see `Generator`).
+        score_type (type | str): Optional. The scale the judge picks the reward
+            from: `synalinks.Score` (default), `synalinks.FineScore`,
+            `synalinks.Rating`, `synalinks.Rating10`, `synalinks.Rating20`, any
+            `Enum` whose members are `int` or `float`, or the name of one of them.
+            The reward is always normalized to a float between 0.0 and 1.0.
         name (str): Optional. string name of the reward instance.
         in_mask (list): Optional. list of keys to keep to compute the reward.
         out_mask (list): Optional. list of keys to remove to compute the reward.
@@ -155,6 +172,7 @@ class LMAsJudge(ProgramAsJudge):
         prompt_template=None,
         examples=None,
         instructions=None,
+        score_type=None,
         name="lm_as_judge",
         in_mask=None,
         out_mask=None,
@@ -166,6 +184,7 @@ class LMAsJudge(ProgramAsJudge):
             prompt_template=prompt_template,
             examples=examples,
             instructions=instructions,
+            score_type=score_type,
         )
         super().__init__(
             program=program,

@@ -520,10 +520,8 @@ class DeepAgent(FunctionCallingAgent):
                 name=f"{self.name}_sub{index}",
             )
             # Run the subagent through a Program, the canonical execution
-            # path. A direct eager call would re-run the agent's
-            # `compute_output_spec` on concrete inputs (extra throwaway LM
-            # calls); building once with a symbolic Input keeps that step
-            # LM-free, so the subagent costs the same as a normal DeepAgent.
+            # path: it builds once against a symbolic Input (LM-free) and
+            # gives the subagent the same lifecycle as a top-level DeepAgent.
             inputs = Input(data_model=ChatMessages)
             outputs = await subagent(inputs)
             program = Program(

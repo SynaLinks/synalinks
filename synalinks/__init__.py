@@ -51,6 +51,7 @@ from synalinks.api import EntityRegexSearch
 from synalinks.api import EntitySimilaritySearch
 from synalinks.api import ExactMatch
 from synalinks.api import ExecutionResult
+from synalinks.api import FineScore
 from synalinks.api import FullTextSearch
 from synalinks.api import Function
 from synalinks.api import FunctionCallingAgent
@@ -111,6 +112,9 @@ from synalinks.api import Program
 from synalinks.api import ProgramAsJudge
 from synalinks.api import ProgramOperationalMetric
 from synalinks.api import PythonSynthesis
+from synalinks.api import Rating
+from synalinks.api import Rating10
+from synalinks.api import Rating20
 from synalinks.api import RecursiveLanguageModelAgent
 from synalinks.api import RegexSearch
 from synalinks.api import Relation

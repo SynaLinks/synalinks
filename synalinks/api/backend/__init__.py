@@ -93,5 +93,11 @@ from synalinks.src.backend.pydantic.knowledge import is_relation as is_relation
 from synalinks.src.backend.pydantic.knowledge import is_relations as is_relations
 from synalinks.src.backend.pydantic.media import Audio as Audio
 from synalinks.src.backend.pydantic.media import Image as Image
+from synalinks.src.backend.pydantic.metrics import FineScore as FineScore
+from synalinks.src.backend.pydantic.metrics import Rating as Rating
+from synalinks.src.backend.pydantic.metrics import Rating10 as Rating10
+from synalinks.src.backend.pydantic.metrics import Rating20 as Rating20
 from synalinks.src.backend.pydantic.metrics import Score as Score
+from synalinks.src.backend.pydantic.metrics import get_score_type as get_score_type
+from synalinks.src.backend.pydantic.metrics import normalize_score as normalize_score
 from synalinks.src.utils.naming import get_uid as get_uid

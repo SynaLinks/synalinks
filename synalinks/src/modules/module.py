@@ -854,12 +854,21 @@ class Module(BackendModule, Operation, SynalinksSaveable):
         # Otherwise, attempt to build the module by calling it on symbolic input.
         if might_have_unbuilt_state(self):
             try:
+                # Trace on *symbolic* inputs: an eager call hands us concrete
+                # `JsonDataModel`s, and tracing `call()` on those would run the
+                # real forward pass (e.g. an LM request in `Generator`) just to
+                # discover the output schema. Converting first keeps the build
+                # purely symbolic, exactly like the functional API path.
+                symbolic_arguments = tree.map_structure(
+                    lambda x: (
+                        x.to_symbolic_data_model() if backend.is_json_data_model(x) else x
+                    ),
+                    call_spec.arguments_dict,
+                )
                 if not utils.is_default(self.compute_output_spec):
-                    await self.compute_output_spec(**call_spec.arguments_dict)
+                    await self.compute_output_spec(**symbolic_arguments)
                 else:
-                    await backend.compute_output_spec(
-                        self.call, **call_spec.arguments_dict
-                    )
+                    await backend.compute_output_spec(self.call, **symbolic_arguments)
             except Exception as e:
                 if call_spec.eager:
                     # Will let the actual eager call do state-building
