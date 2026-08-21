@@ -89,7 +89,13 @@ if backend() == "pydantic":
     from synalinks.src.backend.pydantic.media import Audio
     from synalinks.src.backend.pydantic.media import Image
     from synalinks.src.backend.pydantic.media import resolve_content_media
+    from synalinks.src.backend.pydantic.metrics import FineScore
+    from synalinks.src.backend.pydantic.metrics import Rating
+    from synalinks.src.backend.pydantic.metrics import Rating10
+    from synalinks.src.backend.pydantic.metrics import Rating20
     from synalinks.src.backend.pydantic.metrics import Score
+    from synalinks.src.backend.pydantic.metrics import get_score_type
+    from synalinks.src.backend.pydantic.metrics import normalize_score
     from synalinks.src.backend.pydantic.module import PydanticModule
 else:
     raise ValueError(f"Unable to import backend : {backend()}")
