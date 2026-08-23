@@ -5,6 +5,7 @@
 import asyncio
 import inspect
 import json
+import textwrap
 from typing import List
 from typing import Optional
 
@@ -16,14 +17,13 @@ from synalinks.src.api_export import synalinks_export
 from synalinks.src.backend import ChatMessage
 from synalinks.src.backend import ChatMessages
 from synalinks.src.backend import ChatRole
-from synalinks.src.backend import DataModel
-from synalinks.src.backend import Field
 from synalinks.src.backend import JsonDataModel
 from synalinks.src.backend import SymbolicDataModel
 from synalinks.src.backend import is_chat_messages
 from synalinks.src.modules.agents.function_calling_agent import FunctionCallingAgent
 from synalinks.src.modules.agents.utils.agents_utils import InputsSummary
 from synalinks.src.modules.agents.utils.agents_utils import summarize_inputs
+from synalinks.src.modules.core.generator import default_prompt_template
 from synalinks.src.modules.core.tool import Tool
 from synalinks.src.modules.language_models import get as _get_lm
 from synalinks.src.sandboxes.mirage_sandbox import MirageSandbox
@@ -49,11 +49,11 @@ untruncated value. In the prompt you only see an `InputsSummary` with previews
 and sizes; always read the real values through `inputs[field]` inside your
 code, never re-type them from the preview.
 
-Use `print(...)` to log intermediate observations. `submit` and any tools
-bound to the agent are functions available *inside* the sandbox (see the tools
-catalog), not separate tool calls; call them directly, e.g.
-`out = submit(...)`. Reach them only from the code you pass to
-`run_python_code`.
+Use `print(...)` to log intermediate observations. `submit` and any other
+functions bound to the agent are plain Python functions already defined
+*inside* the sandbox; they are NOT native tool calls, never emit a tool call
+for them. Call them directly from your code, e.g. `out = submit(...)`, only
+inside the snippet you pass to `run_python_code`.
 
 A snippet looks like this (note the variable is `inputs`, plural: it is a
 dict; `input` is something else):
@@ -94,7 +94,7 @@ are read with `inputs[field]`. The prompt only shows an
 `InputsSummary` with previews and sizes, never re-type values from
 the preview.
 
-Two recursive helpers are always exposed in the tools catalog:
+Two recursive helpers are always defined in the sandbox:
 
 - `llm_query(prompt)`, query a sub-LM with one prompt; returns
   `{"result": <text>}`. Use it for semantic work on snippets you've
@@ -151,69 +151,256 @@ Working rules:
 
 Termination: call `submit(result={...})` from inside your snippet, with
 `result` matching its schema. `submit`, `llm_query` and `llm_query_batched`
-are functions available *inside* the sandbox (advertised in the tools
-catalog), not separate tool calls; call them directly and reach them only
-from the code you pass to `run_python_code`. `submit` is the only termination
+are plain Python functions already defined *inside* the sandbox; they are
+NOT native tool calls, never emit a tool call for them. Call them directly,
+and only from the code you pass to `run_python_code`. `submit` is the only termination
 path; an empty snippet is a no-op and you'll be reminded to call `submit`.
 Don't run out of iterations without calling it.
 """.strip()
 
 
-class ToolSpec(DataModel):
-    """Description of one tool exposed in the sandbox."""
+_JSON_TO_PY_TYPES = {
+    "string": "str",
+    "integer": "int",
+    "number": "float",
+    "boolean": "bool",
+    "array": "list",
+    "object": "dict",
+    "null": "None",
+}
 
-    name: str = Field(
-        description=(
-            "The function's name in the sandbox. Call it directly as `{name}(**kwargs)`."
-        )
+
+def _annotation_from_schema(param_schema: dict) -> str:
+    """Best-effort Python type annotation for a parameter's JSON schema."""
+    json_type = param_schema.get("type")
+    if isinstance(json_type, list):
+        parts = []
+        for entry in json_type:
+            if isinstance(entry, dict):
+                parts.append(_annotation_from_schema(entry))
+            elif isinstance(entry, str):
+                parts.append(_JSON_TO_PY_TYPES.get(entry, "dict"))
+        return " | ".join(parts) or "dict"
+    if json_type == "array":
+        items = param_schema.get("items") or {}
+        item_type = items.get("type") if isinstance(items, dict) else None
+        if isinstance(item_type, str) and item_type in _JSON_TO_PY_TYPES:
+            return f"list[{_JSON_TO_PY_TYPES[item_type]}]"
+        return "list"
+    return _JSON_TO_PY_TYPES.get(json_type, "dict")
+
+
+def _wrap_doc(text: str, indent: str, width: int = 72) -> list:
+    """Whitespace-collapse and wrap ``text`` as indented docstring lines."""
+    return textwrap.wrap(
+        " ".join(str(text).split()),
+        width=width,
+        initial_indent=indent,
+        subsequent_indent=indent,
     )
-    description: str = Field(
-        description="What the tool does (from the Python docstring).",
-    )
-    parameters: dict = Field(
-        description=(
-            "JSON Schema for keyword arguments: `properties` maps each "
-            "parameter name to its `{type, description}`, and `required` "
-            "lists the parameters that must be passed."
-        ),
-    )
 
 
-class ToolsCatalog(DataModel):
-    """Catalog of tools bound to the sandbox."""
+def _inline_refs_and_strip_noise(schema, defs):
+    """Inline ``$ref``s (against ``$defs``) and drop keywords that only add
+    prompt noise: per-property ``title``s (pydantic stamps one on every
+    field) and ``additionalProperties: false``.
 
-    tools: list[ToolSpec] = Field(
-        default=[],
-        description=(
-            "Tools callable inside the sandbox as global functions: call them "
-            "directly, `result = name(**kwargs)`. Every tool returns a dict: a "
-            "tool wrapping `def f(x) -> int` yields `{'result': <value>}`; a "
-            "tool already returning a dict yields that dict directly."
-        ),
-    )
-
-
-def _build_tools_catalog(tools: dict):
-    """Build a ``ToolsCatalog`` from a ``{name: Tool}`` mapping.
-
-    Returns ``None`` when ``tools`` is empty (the agent's trajectory
-    skips the concat in that case).
+    Validation still runs against the original, untouched schema; this
+    simplified copy exists only for rendering into the instructions.
     """
-    if not tools:
-        return None
-    return ToolsCatalog(
-        tools=[
-            ToolSpec(
-                name=tool.name,
-                description=tool.description or "",
-                parameters={
-                    "properties": tool._params_schema,
-                    "required": tool._required_params,
-                },
+    if isinstance(schema, list):
+        return [_inline_refs_and_strip_noise(entry, defs) for entry in schema]
+    if not isinstance(schema, dict):
+        return schema
+    if "$ref" in schema:
+        ref_name = str(schema["$ref"]).split("/")[-1]
+        merged = {k: v for k, v in schema.items() if k != "$ref"}
+        merged = {**defs.get(ref_name, {}), **merged}
+        return _inline_refs_and_strip_noise(merged, defs)
+    out = {}
+    for key, value in schema.items():
+        if key in ("title", "$defs"):
+            continue
+        if key == "additionalProperties" and value is False:
+            continue
+        out[key] = _inline_refs_and_strip_noise(value, defs)
+    return out
+
+
+def get_sandbox_functions_guidance(schema, tools) -> str:
+    """Render the per-agent sandbox-functions guidance.
+
+    This replaces the old ``ToolsCatalog`` DataModel that was concatenated
+    into the trajectory: a JSON-schema catalog reads like the provider's
+    native tools array and lures the LM into emitting native tool calls for
+    sandbox-only functions. The built-in functions (``submit`` and, in
+    recursive mode, ``llm_query`` / ``llm_query_batched``) are explained by
+    the default instructions prose; this guidance adds only what the prose
+    cannot know at authoring time: the target output shape for ``submit``
+    and the ``def`` stubs of the user's sandbox tools.
+
+    The ``submit`` shape is modeled on DSPy's ``translate_field_type``: the
+    top-level object is decomposed into one bullet per field, a plain
+    ``name (type): description`` line for simple types, enum values inlined,
+    and a JSON schema dumped only for fields whose structure a type name
+    cannot carry. Dumping the raw pydantic schema instead would spend tokens
+    on ``title``s, ``$defs`` indirection, and ``anyOf`` null-wrappers the LM
+    does not need. Validation still runs against the original schema.
+
+    User tools are advertised the way a Python reader would discover them: a
+    ``def`` line plus a docstring, with a JSON schema appended to a
+    parameter's description only when it carries structural keywords
+    (``properties``, ``enum``, ...).
+
+    Returns an empty string when there is nothing to add (schemaless agent
+    with no sandbox tools).
+    """
+    sections = []
+
+    if schema:
+        defs = schema.get("$defs", {})
+        properties = schema.get("properties")
+        if not isinstance(properties, dict) or not properties:
+            sections.append(
+                "The `result` payload passed to `submit(result=...)` must "
+                "match this JSON schema:\n\n"
+                + json.dumps(
+                    _inline_refs_and_strip_noise(schema, defs), ensure_ascii=False
+                )
             )
-            for tool in tools.values()
-        ]
-    )
+        else:
+            required = schema.get("required", [])
+            lines = []
+            for name, field_schema in properties.items():
+                field_schema = _inline_refs_and_strip_noise(field_schema, defs)
+                # Collapse pydantic's `Optional[T]` encoding, `anyOf: [T,
+                # null]`, into `T`: absence is already conveyed by `required`.
+                non_null = [
+                    v
+                    for v in field_schema.get("anyOf") or []
+                    if not (isinstance(v, dict) and v.get("type") == "null")
+                ]
+                if len(non_null) == 1 and isinstance(non_null[0], dict):
+                    field_schema = {
+                        **non_null[0],
+                        **{k: v for k, v in field_schema.items() if k != "anyOf"},
+                    }
+                notes = []
+                description = str(field_schema.get("description") or "")
+                description = description.strip().rstrip(".")
+                if description:
+                    notes.append(description)
+                # A simple type needs no schema in the prompt: the annotation
+                # alone fully conveys the constraint.
+                json_type = field_schema.get("type")
+                items = field_schema.get("items") or {}
+                simple = json_type in (
+                    "string",
+                    "integer",
+                    "number",
+                    "boolean",
+                    "null",
+                ) or (
+                    json_type == "array"
+                    and isinstance(items, dict)
+                    and items.get("type") in ("string", "integer", "number", "boolean")
+                )
+                if "enum" in field_schema:
+                    values = "; ".join(str(v) for v in field_schema["enum"])
+                    notes.append(f"Must be exactly one of: {values}")
+                elif not simple:
+                    body = {
+                        k: v
+                        for k, v in field_schema.items()
+                        if k not in ("description", "default")
+                    }
+                    notes.append(
+                        "Must adhere to this JSON schema: "
+                        + json.dumps(body, ensure_ascii=False)
+                    )
+                qualifier = "" if name in required else ", optional"
+                line = f"- {name} ({_annotation_from_schema(field_schema)}{qualifier})"
+                if notes:
+                    line += ": " + ". ".join(notes)
+                lines.append(line)
+            sections.append(
+                "Call `submit(result={...})` where `result` is a dict with "
+                "these fields:\n\n" + "\n".join(lines)
+            )
+
+    if tools:
+        stubs = []
+        for tool in tools:
+            params = []
+            args_entries = []
+            for param_name, param_schema in tool._params_schema.items():
+                annotation = _annotation_from_schema(param_schema)
+                param = f"{param_name}: {annotation}"
+                if param_name not in tool._required_params:
+                    param += f" = {param_schema.get('default')!r}"
+                params.append(param)
+                description = str(param_schema.get("description") or "").strip()
+                if any(
+                    k in param_schema for k in ("properties", "enum", "anyOf", "oneOf")
+                ):
+                    structural = {
+                        k: v
+                        for k, v in param_schema.items()
+                        if k not in ("title", "description", "default")
+                    }
+                    description += (" " if description else "") + (
+                        "Must match this JSON schema: "
+                        + json.dumps(structural, ensure_ascii=False)
+                    )
+                args_entries.append((param_name, annotation, description))
+
+            docstring = getattr(tool, "_docstring", None)
+            short_description = (
+                (docstring.short_description if docstring else None)
+                or tool.description
+                or ""
+            )
+            long_description = (docstring.long_description or "") if docstring else ""
+            returns_description = ""
+            if docstring is not None and docstring.returns is not None:
+                returns_description = docstring.returns.description or ""
+
+            short_lines = _wrap_doc(short_description, "    ") or ["    "]
+            doc_lines = ['    """' + short_lines[0].lstrip(), *short_lines[1:]]
+            if long_description:
+                doc_lines.append("")
+                doc_lines.extend(_wrap_doc(long_description, "    "))
+            if args_entries:
+                doc_lines.append("")
+                doc_lines.append("    Args:")
+                for param_name, annotation, description in args_entries:
+                    entry = f"{param_name} ({annotation}): {description}"
+                    entry = entry.rstrip().rstrip(":")
+                    doc_lines.extend(
+                        textwrap.wrap(
+                            " ".join(entry.split()),
+                            width=72,
+                            initial_indent="        ",
+                            subsequent_indent="            ",
+                        )
+                    )
+            if returns_description:
+                doc_lines.append("")
+                doc_lines.append("    Returns:")
+                doc_lines.extend(_wrap_doc(returns_description, "        "))
+            doc_lines.append('    """')
+
+            header = f"def {tool.name}({', '.join(params)}) -> dict:"
+            stubs.append("\n".join([header, *doc_lines]))
+        sections.append(
+            "Sandbox functions: besides the built-ins described above, the "
+            "following Python functions are also defined inside the sandbox. "
+            "Call them directly from your snippet, e.g. `out = name(...)`; "
+            "every one returns a dict (a function wrapping `def f(x) -> int` "
+            "yields `{'result': <value>}`, one already returning a dict "
+            "yields that dict directly).\n\n" + "\n\n".join(stubs)
+        )
+    return "\n\n".join(sections)
 
 
 def _build_submit_tool(schema, holder: dict, tool_name: str = "submit"):
@@ -226,10 +413,10 @@ def _build_submit_tool(schema, holder: dict, tool_name: str = "submit"):
     ``holder["value"]`` and the agent stops iterating.
 
     If ``schema`` is provided, the ``result`` parameter's JSON schema is
-    overridden with it so the LM discovers the expected shape directly
-    in ``ToolsCatalog``; the agent then validates the payload against
-    the same schema and feeds validation errors back as retry
-    observations. If ``schema`` is ``None`` (schemaless mode) the
+    overridden with it (the LM discovers the expected shape through the
+    instructions, see ``get_sandbox_functions_guidance``); the agent then
+    validates the payload against the same schema and feeds validation
+    errors back as retry observations. If ``schema`` is ``None`` (schemaless mode) the
     payload is accepted as-is and appended to the trajectory.
     """
 
@@ -464,9 +651,10 @@ class RecursiveLanguageModelAgent(FunctionCallingAgent):
     function definitions) accumulates across turns so the agent can build up
     intermediate values, probe data, and iterate. ``submit``, the recursive
     helpers and any user tools are **not** exposed to the LM as tools: they
-    live *inside* the sandbox as plain synchronous functions (advertised
-    through the tools catalog), reachable only from the code passed to
-    ``run_python_code``.
+    live *inside* the sandbox as plain synchronous functions, advertised in
+    the prompt as Python ``def`` stubs (signature plus docstring, never a
+    JSON tools schema, which the LM would mistake for native tools),
+    reachable only from the code passed to ``run_python_code``.
 
     When ``recursive=True`` (the default), two extra helpers are exposed
     inside the sandbox: ``llm_query(prompt)`` and
@@ -558,7 +746,11 @@ class RecursiveLanguageModelAgent(FunctionCallingAgent):
             code generator. Defaults to either
             `get_recursive_instructions` (when ``recursive=True``,
             with the ``{max_llm_calls}`` placeholder substituted) or
-            `get_default_instructions` otherwise.
+            `get_default_instructions` otherwise. Instructions are the
+            generator's trainable state; the sandbox-functions guidance
+            (the target ``submit`` shape and the user tools' ``def``
+            stubs) is appended to the step generator's prompt template
+            instead, so in-context optimization can never alter it.
         final_instructions (str): Optional. Instructions for the final
             answer generator. Defaults to ``instructions``.
         temperature (float): Optional. Sampling temperature
@@ -603,8 +795,8 @@ class RecursiveLanguageModelAgent(FunctionCallingAgent):
             sandbox when a snippet *composes* with it: when its result
             feeds the next line of Python. Native tools are dispatched
             with the REPL idle, are absent from the sandbox namespace and
-            from the tools catalog, and may not share a name with a
-            sandbox tool.
+            from the sandbox-functions guidance, and may not share a name
+            with a sandbox tool.
         autonomous (bool): Optional. If ``True`` (default), run the
             full code/execute/observe loop until the LM calls
             ``submit`` or ``max_iterations`` is reached, then produce a
@@ -784,8 +976,40 @@ class RecursiveLanguageModelAgent(FunctionCallingAgent):
                 instructions = instructions + "\n\n" + guidance
         resolved_final_instructions = final_instructions or instructions
         sandbox_description = self.sandbox_type.description
-        if sandbox_description:
+        # Guarded like the subagent guidance: a serialized agent round-trips
+        # its post-append instructions back through __init__.
+        if sandbox_description and sandbox_description not in instructions:
             instructions = instructions + "\n\n" + sandbox_description
+
+        # Sandbox functions travel in the step generator's prompt template
+        # (the target `submit` shape plus the user tools' `def` stubs), never
+        # as a JSON catalog concatenated into the trajectory: a schema-shaped
+        # catalog reads like the provider's native tools array and lures the
+        # LM into emitting native calls for sandbox-only functions. The
+        # template, not `instructions`, because instructions are the
+        # generator's trainable state: an in-context optimizer rewriting them
+        # during `fit()` must not be able to drop or mangle the schema, and
+        # the template is static configuration the optimizer never touches.
+        # The base passes the template to the step generator only, so the
+        # final generator is unaffected. `{% raw %}` keeps Jinja2 from
+        # interpreting braces in schemas or docstrings, and the append is
+        # guarded like the ones above so serialization round-trips don't
+        # duplicate it.
+        if not schema and data_model:
+            schema = data_model.get_schema()
+        functions_guidance = get_sandbox_functions_guidance(
+            schema, [*(tools or []), *(sandbox_tools or [])]
+        )
+        if functions_guidance:
+            if not prompt_template:
+                prompt_template = default_prompt_template()
+            if functions_guidance not in prompt_template:
+                prompt_template = (
+                    prompt_template
+                    + "\n<sandbox_functions>\n{% raw %}\n"
+                    + functions_guidance
+                    + "\n{% endraw %}\n</sandbox_functions>"
+                )
 
         super().__init__(
             schema=schema,
@@ -816,9 +1040,9 @@ class RecursiveLanguageModelAgent(FunctionCallingAgent):
 
         # `tools` / `sandbox_tools` are stored by the base constructor in
         # `self.tools` but, for RLM, are exposed *inside* the sandbox
-        # (advertised via the catalog) rather than as native tool calls.
-        # Reject reserved helper names here, after the base's public-name
-        # check.
+        # (advertised as `def` stubs in the instructions) rather than as
+        # native tool calls. Reject reserved helper names here, after the
+        # base's public-name check.
         reserved = self._reserved_tool_names()
         for tool_name in self.tools:
             if tool_name in reserved:
@@ -832,9 +1056,9 @@ class RecursiveLanguageModelAgent(FunctionCallingAgent):
         # with (its result feeds the next line of Python), and wrong for a
         # tool the LM just wants to *consult* — a lookup whose answer shapes
         # the snippet it is about to write. Forcing the latter through the
-        # sandbox costs a round-trip through generated code, and the catalog
-        # advertises names the LM cannot call, which models routinely try
-        # anyway and get `Unknown tool` back.
+        # sandbox costs a round-trip through generated code, and the
+        # instructions advertise names the LM cannot call, which models
+        # routinely try anyway and get `Unknown tool` back.
         self.native_tools = {}
         for tool in native_tools or []:
             if tool.name.startswith("_"):
@@ -856,11 +1080,6 @@ class RecursiveLanguageModelAgent(FunctionCallingAgent):
             if tool.name in self.native_tools:
                 raise ValueError(f"Duplicate native tool name '{tool.name}'.")
             self.native_tools[tool.name] = tool
-
-        # Only sandbox tools go in the catalog: native ones travel in the
-        # provider's own tool schema, so advertising them here would describe
-        # the same tool twice, in two different calling conventions.
-        self.tools_catalog = _build_tools_catalog(self.tools)
 
     def _get_builtin_tools(self):
         # RLM exposes no native tools at construction: its only callable tool,
@@ -1161,7 +1380,6 @@ class RecursiveLanguageModelAgent(FunctionCallingAgent):
         submit_holder = {"value": None}
         call_tools["submit"] = _build_submit_tool(self.schema, submit_holder)
         call_tools.update(self._build_extra_call_tools())
-        call_tools_catalog = _build_tools_catalog(call_tools)
 
         if is_chat_messages(inputs):
             trajectory = inputs
@@ -1172,15 +1390,8 @@ class RecursiveLanguageModelAgent(FunctionCallingAgent):
             # previews and sizes, never the full value. The sandbox gets the
             # complete `inputs_json` rebound on every `run_python_code` call,
             # so `inputs[field]` is always reachable.
-            base = summarize_inputs(inputs_json)
-            if call_tools_catalog is not None:
-                base = await ops.concat(
-                    base,
-                    call_tools_catalog,
-                    name="inputs_with_tools_" + self.name,
-                )
             trajectory = await ops.concat(
-                base,
+                summarize_inputs(inputs_json),
                 ChatMessages(),
                 name="trajectory_" + self.name,
             )
@@ -1202,7 +1413,7 @@ class RecursiveLanguageModelAgent(FunctionCallingAgent):
         # call, the only tool the LM can call, wrapping the sandbox's own
         # `run_python_code`. The sandbox-side tools (submit, llm_query, user
         # tools) are NOT exposed to the LM; they live inside the sandbox as
-        # plain synchronous functions (advertised via the tools catalog). Bind
+        # plain synchronous functions (advertised in the instructions). Bind
         # them onto the sandbox so every `run_python_code` snippet can reach them.
         external_functions = {
             name: _adapt_tool_for_sandbox(t) for name, t in call_tools.items()
@@ -1228,7 +1439,7 @@ class RecursiveLanguageModelAgent(FunctionCallingAgent):
         # provider schema, same `Unknown tool` message listing what is
         # callable. They are deliberately absent from `call_tools`, so they
         # are neither bound into the sandbox namespace nor advertised in the
-        # catalog as snippet-reachable.
+        # instructions as snippet-reachable.
         extra_native_tools = {**extra_native_tools, **self.native_tools}
 
         ctx = {
@@ -1405,7 +1616,8 @@ class RecursiveLanguageModelAgent(FunctionCallingAgent):
                 "ChatMessages-like data model as inputs"
             )
         # Mirror the runtime: the code generator sees a summary of the
-        # input plus the tool catalog, not the raw input DataModel.
+        # input, not the raw input DataModel. Sandbox functions are
+        # advertised in the instructions, so no catalog joins the inputs.
         if is_chat_messages(inputs):
             generator_inputs = inputs
         else:
@@ -1413,12 +1625,6 @@ class RecursiveLanguageModelAgent(FunctionCallingAgent):
                 schema=InputsSummary.get_schema(),
                 name="inputs_summary_" + self.name,
             )
-            if self.tools_catalog is not None:
-                generator_inputs = await ops.concat(
-                    generator_inputs,
-                    self.tools_catalog,
-                    name="inputs_with_tools_" + self.name,
-                )
         # The closure placeholders are never executed during spec tracing;
         # only the tool's signature/docstring shape the prompt.
         spec_tool = self._build_run_python_code_tool(None)

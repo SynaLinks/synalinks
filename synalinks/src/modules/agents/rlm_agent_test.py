@@ -183,7 +183,8 @@ class RecursiveLanguageModelAgentTest(testing.TestCase):
         """A native tool is callable directly, so it is not a sandbox tool.
 
         It must stay out of `self.tools`: that set is what gets bound into the
-        sandbox namespace and advertised in the catalog as snippet-reachable.
+        sandbox namespace and advertised in the instructions as
+        snippet-reachable.
         """
         language_model = LanguageModel(model="ollama/mistral")
         agent = RecursiveLanguageModelAgent(
@@ -333,9 +334,9 @@ class RecursiveLanguageModelAgentTest(testing.TestCase):
         )
 
     @patch("litellm.acompletion")
-    async def test_llm_query_visible_in_prompt_catalog(self, mock_completion):
-        """llm_query and llm_query_batched appear in the per-turn catalog
-        the code generator sees in its prompt."""
+    async def test_llm_query_visible_in_prompt(self, mock_completion):
+        """llm_query and llm_query_batched are explained in the step
+        generator's instructions, so they appear in its prompt."""
         language_model = LanguageModel(model="ollama/mistral")
 
         inputs = Input(data_model=Query)
@@ -359,6 +360,68 @@ class RecursiveLanguageModelAgentTest(testing.TestCase):
         )
         self.assertIn("llm_query", first_prompt)
         self.assertIn("llm_query_batched", first_prompt)
+
+    @patch("litellm.acompletion")
+    async def test_sandbox_functions_advertised_in_prompt(self, mock_completion):
+        """Sandbox tools are advertised as Python `def` stubs in the
+        prompt, never as a catalog in the trajectory.
+
+        A JSON-schema catalog (name/description/parameters entries) reads
+        like the provider's native tools array and lures the LM into
+        emitting native tool calls for sandbox-only functions; the
+        instructions present them as regular Python functions instead, and
+        still carry the target output schema for `submit`, the only place
+        the LM discovers the expected result shape.
+        """
+        language_model = LanguageModel(model="ollama/mistral")
+
+        inputs = Input(data_model=Query)
+        outputs = await RecursiveLanguageModelAgent(
+            data_model=Answer,
+            language_model=language_model,
+            sandbox_tools=[Tool(square)],
+            max_iterations=1,
+        )(inputs)
+        agent = Program(inputs=inputs, outputs=outputs)
+
+        # Single empty turn, enough to inspect the prompt.
+        mock_completion.side_effect = [
+            _exec_tool_call(""),
+            {"choices": [{"message": {"content": json.dumps({"answer": "x"})}}]},
+        ]
+
+        await agent(Query(query="hi"))
+
+        first_prompt = json.dumps(
+            mock_completion.call_args_list[0].kwargs.get("messages", [])
+        )
+        self.assertIn("def square(x: int) -> dict:", first_prompt)
+        # The instructions still advertise the target output shape for
+        # `submit`, as compact per-field lines rather than a raw schema dump.
+        self.assertIn("`result` is a dict with these fields", first_prompt)
+        self.assertIn("- answer (str)", first_prompt)
+        # No catalog DataModel fields left in the trajectory's input turn.
+        self.assertNotIn("'parameters'", first_prompt)
+        self.assertNotIn("'functions':", first_prompt)
+
+    async def test_sandbox_guidance_immune_to_instruction_optimization(self):
+        """The sandbox-functions guidance rides on the step generator's
+        prompt template, not on `instructions`: instructions are the
+        generator's trainable state, so an in-context optimizer rewriting
+        them during `fit()` could otherwise drop the `submit` schema and
+        the tool stubs.
+        """
+        language_model = LanguageModel(model="ollama/mistral")
+        agent = RecursiveLanguageModelAgent(
+            data_model=Answer,
+            language_model=language_model,
+            sandbox_tools=[Tool(square)],
+        )
+        for needle in ("`result` is a dict with these fields", "def square"):
+            self.assertIn(needle, agent.prompt_template)
+            self.assertNotIn(needle, agent.instructions)
+            # The trainable variable itself must be clean too.
+            self.assertNotIn(needle, agent.tool_calls_generator.state.get("instructions"))
 
     @patch("litellm.acompletion")
     async def test_llm_query_round_trip(self, mock_completion):
