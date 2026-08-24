@@ -131,7 +131,7 @@ class Doc(synalinks.DataModel):
 class Answer(synalinks.DataModel):
     answer: str
 
-primary = synalinks.LanguageModel(model="ollama/qwen3:8b", reasoning_effort="disable")
+primary = synalinks.LanguageModel(model="vllm/Qwen/Qwen3.8-27B")
 
 inputs = synalinks.Input(data_model=Doc)
 outputs = await synalinks.RLM(
@@ -347,8 +347,8 @@ production, because the two jobs have very different shapes:
 Pass a separate `sub_language_model` to exploit the asymmetry:
 
 ```python
-primary = synalinks.LanguageModel(model="ollama/qwen3:8b", reasoning_effort="disable")
-cheap   = synalinks.LanguageModel(model="ollama/qwen3:8b", reasoning_effort="disable")
+primary = synalinks.LanguageModel(model="vllm/Qwen/Qwen3.8-27B")
+cheap   = synalinks.LanguageModel(model="vllm/Qwen/Qwen3.8-27B")
 
 agent = synalinks.RLM(
     data_model=Answer,
@@ -485,8 +485,8 @@ async def main():
     load_dotenv()
     synalinks.clear_session()
 
-    primary = synalinks.LanguageModel(model="ollama/qwen3:8b", reasoning_effort="disable")
-    cheap   = synalinks.LanguageModel(model="ollama/qwen3:8b", reasoning_effort="disable")
+    primary = synalinks.LanguageModel(model="vllm/Qwen/Qwen3.8-27B")
+    cheap   = synalinks.LanguageModel(model="vllm/Qwen/Qwen3.8-27B")
 
     inputs = synalinks.Input(data_model=LogReport)
     outputs = await synalinks.RLM(
@@ -718,8 +718,8 @@ async def main():
 
     # A capable primary LM for orchestration; a cheap one for sub-queries.
     # Both default to the same model if you only pass `language_model=`.
-    primary = synalinks.LanguageModel(model="ollama/qwen3:8b", reasoning_effort="disable")
-    cheap = synalinks.LanguageModel(model="ollama/qwen3:8b", reasoning_effort="disable")
+    primary = synalinks.LanguageModel(model="vllm/Qwen/Qwen3.8-27B")
+    cheap = synalinks.LanguageModel(model="vllm/Qwen/Qwen3.8-27B")
 
     # synalinks.enable_observability(
     #     project_name="recursive_language_model_agent_guide",
