@@ -84,9 +84,16 @@ except (ImportError, OSError):  # pragma: no cover - mirage genuinely unusable
 # real bootstrap (argv[1]) so the bootstrap source never has to survive shell
 # quoting. argv[2] is the dill session-state path; argv[3] is a base64 JSON
 # config (per-call ``inputs`` blob, host-tool RPC socket + tool names, and the
-# path to write the result value to). Every arg is non-empty on purpose:
-# Mirage's shell drops empty ``''`` tokens, which would shift ``argv``.
+# path to write the result value to), or ``@<path>`` of a file holding it
+# when the blob would exceed the kernel's per-argument execve limit
+# (MAX_ARG_STRLEN, 128KiB): a large ``inputs`` payload on argv fails the
+# whole exec with ``[Errno 7] Argument list too long``. Every arg is
+# non-empty on purpose: Mirage's shell drops empty ``''`` tokens, which
+# would shift ``argv``.
 _LAUNCHER = "import base64,sys;exec(base64.b64decode(sys.argv[1]))"
+
+# Keep argv[3] safely below MAX_ARG_STRLEN (131072); larger configs go by file.
+_MAX_ARGV_CONFIG = 100_000
 
 # The bootstrap runs inside Mirage's real CPython subprocess. Mirage spawns a
 # fresh ``python3`` per command, so to make variables/imports/functions persist
@@ -620,7 +627,11 @@ state = sys.argv[2]
 config = {}
 if len(sys.argv) > 3 and sys.argv[3]:
     try:
-        config = json.loads(base64.b64decode(sys.argv[3]).decode("utf-8"))
+        _raw = sys.argv[3]
+        if _raw.startswith("@"):
+            with open(_raw[1:], "r") as _fh:
+                _raw = _fh.read()
+        config = json.loads(base64.b64decode(_raw).decode("utf-8"))
     except Exception as exc:
         print("config-warn: " + repr(exc), file=sys.stderr)
 """
@@ -2619,6 +2630,7 @@ class MirageSandbox(Sandbox):
 
         server = None
         sock_path = None
+        config_path = None
         # Result file + RPC socket live in the per-sandbox host dir so they are
         # reachable after the confinement pivot (which binds that dir in).
         result_fd, result_path = tempfile.mkstemp(
@@ -2660,6 +2672,15 @@ class MirageSandbox(Sandbox):
                 b64_config = base64.b64encode(json.dumps(config).encode("utf-8")).decode(
                     "ascii"
                 )
+                if len(b64_config) > _MAX_ARGV_CONFIG:
+                    if config_path is None:
+                        config_fd, config_path = tempfile.mkstemp(
+                            prefix="config_", suffix=".b64", dir=self._hostdir
+                        )
+                        os.close(config_fd)
+                    with open(config_path, "w", encoding="ascii") as fh:
+                        fh.write(b64_config)
+                    b64_config = "@" + config_path
                 command = 'python3 -c "%s" %s %s %s' % (
                     _LAUNCHER,
                     b64_boot,
@@ -2682,7 +2703,7 @@ class MirageSandbox(Sandbox):
                 except Exception:  # noqa: BLE001 - server teardown is best-effort
                     pass
             value = self._read_result(result_path)
-            for path in (result_path, sock_path):
+            for path in (result_path, sock_path, config_path):
                 if path and os.path.exists(path):
                     try:
                         os.unlink(path)

@@ -1433,7 +1433,13 @@ class RecursiveLanguageModelAgent(FunctionCallingAgent):
         # Persist the full input payload as `inputs` in the sandbox namespace.
         # The per-run `inputs=` binding does not persist, so copy it into a real
         # variable once; every snippet then reads it via `inputs[field]`.
-        await sandbox.run("inputs = _rlm_inputs", inputs={"_rlm_inputs": inputs_json})
+        bind = await sandbox.run(
+            "inputs = _rlm_inputs", inputs={"_rlm_inputs": inputs_json}
+        )
+        if not bind.ok:
+            raise RuntimeError(
+                f"failed to bind `inputs` into the sandbox: {bind.error or bind.stderr}"
+            )
         run_tool = self._build_run_python_code_tool(sandbox)
 
         # Subagent tools (spawn / merge / discard) are *native* tools the LM

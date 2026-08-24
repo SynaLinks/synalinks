@@ -56,6 +56,19 @@ class MirageSandboxTest(_SandboxTestCase):
         self.assertTrue(result.ok)
         self.assertIsNone(result.error)
 
+    async def test_run_binds_large_inputs(self):
+        """An `inputs` payload past the execve per-argument limit
+        (MAX_ARG_STRLEN, 128KiB) must still bind: the config travels by
+        file instead of argv. Regression: `Argument list too long` left
+        the RLM's `inputs` variable silently unbound on long documents.
+        """
+        sandbox = MirageSandbox(timeout=_TIMEOUT)
+        payload = {"log": "x" * 300_000}
+        bind = await sandbox.run("inputs = _in", inputs={"_in": payload})
+        self.assertTrue(bind.ok, bind.error)
+        result = await sandbox.run("print(len(inputs['log']))")
+        self.assertIn("300000", result.stdout)
+
     async def test_run_captures_error(self):
         sandbox = MirageSandbox(timeout=_TIMEOUT)
         result = await sandbox.run("1 / 0")
@@ -141,7 +154,9 @@ class MirageSandboxTest(_SandboxTestCase):
         result = await sandbox.run("print(Counter('aab')['a'])")
         self.assertIn("2", result.stdout)
         self.assertFalse(result.error)
-        fresh = await sandbox.run("import collections\nprint(collections.Counter('aab')['a'])")
+        fresh = await sandbox.run(
+            "import collections\nprint(collections.Counter('aab')['a'])"
+        )
         self.assertIn("2", fresh.stdout)
         self.assertFalse(fresh.error)
 
