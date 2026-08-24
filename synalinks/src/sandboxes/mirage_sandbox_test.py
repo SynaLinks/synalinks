@@ -58,9 +58,10 @@ class MirageSandboxTest(_SandboxTestCase):
 
     async def test_run_binds_large_inputs(self):
         """An `inputs` payload past the execve per-argument limit
-        (MAX_ARG_STRLEN, 128KiB) must still bind: the config travels by
-        file instead of argv. Regression: `Argument list too long` left
-        the RLM's `inputs` variable silently unbound on long documents.
+        (MAX_ARG_STRLEN, 128KiB) must still bind: the run config travels
+        by file, never on argv. Regression: `Argument list too long`
+        left the RLM's `inputs` variable silently unbound on long
+        documents.
         """
         sandbox = MirageSandbox(timeout=_TIMEOUT)
         payload = {"log": "x" * 300_000}
