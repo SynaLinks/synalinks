@@ -7,8 +7,6 @@ import os
 import tempfile
 
 from synalinks.src import testing
-from synalinks.src.modules.agents.utils.agents_utils import AgentsMd
-from synalinks.src.modules.agents.utils.agents_utils import agents_md_prompt
 from synalinks.src.modules.agents.utils.agents_utils import discover_agents_md
 from synalinks.src.modules.agents.utils.agents_utils import find_agents_md
 
@@ -54,22 +52,3 @@ class AgentsMdTest(testing.TestCase):
     def test_missing_workdir(self):
         self.assertEqual(discover_agents_md(None), [])
         self.assertEqual(discover_agents_md(os.path.join(self.root, "nope")), [])
-
-    def test_prompt_returns_root_content_verbatim(self):
-        items = [
-            AgentsMd(path="/w/AGENTS.md", content="Always be terse.", directory=""),
-            AgentsMd(path="/w/pkg/AGENTS.md", content="pkg rule", directory="pkg"),
-        ]
-        out = agents_md_prompt(items)
-        # Root body returned verbatim, with no added framing.
-        self.assertEqual(out, "Always be terse.")
-        # Nested files are not surfaced.
-        self.assertNotIn("pkg rule", out)
-        self.assertNotIn("pkg/AGENTS.md", out)
-
-    def test_prompt_no_root_returns_empty(self):
-        items = [AgentsMd(path="/w/pkg/AGENTS.md", content="pkg rule", directory="pkg")]
-        self.assertEqual(agents_md_prompt(items), "")
-
-    def test_prompt_empty(self):
-        self.assertEqual(agents_md_prompt([]), "")

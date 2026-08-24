@@ -82,9 +82,12 @@ except (ImportError, OSError):  # pragma: no cover - mirage genuinely unusable
 
 # The launcher is what ``python3 -c`` actually runs: it decodes and execs the
 # real bootstrap (argv[1]) so the bootstrap source never has to survive shell
-# quoting. argv[2] is the dill session-state path; argv[3] is a base64 JSON
-# config (per-call ``inputs`` blob, host-tool RPC socket + tool names, and the
-# path to write the result value to). Every arg is non-empty on purpose:
+# quoting. argv[2] is the dill session-state path; argv[3] is the path of the
+# per-run JSON config file (per-call ``inputs`` blob, host-tool RPC socket +
+# tool names, and the path to write the result value to). Data always travels
+# by file, never on argv: the kernel caps a single exec argument at
+# MAX_ARG_STRLEN (128KiB), far below real ``inputs`` payloads, and a path
+# needs no encoding to survive quoting. Every arg is non-empty on purpose:
 # Mirage's shell drops empty ``''`` tokens, which would shift ``argv``.
 _LAUNCHER = "import base64,sys;exec(base64.b64decode(sys.argv[1]))"
 
@@ -620,7 +623,8 @@ state = sys.argv[2]
 config = {}
 if len(sys.argv) > 3 and sys.argv[3]:
     try:
-        config = json.loads(base64.b64decode(sys.argv[3]).decode("utf-8"))
+        with open(sys.argv[3], "r") as _fh:
+            config = json.load(_fh)
     except Exception as exc:
         print("config-warn: " + repr(exc), file=sys.stderr)
 """
@@ -2619,12 +2623,17 @@ class MirageSandbox(Sandbox):
 
         server = None
         sock_path = None
-        # Result file + RPC socket live in the per-sandbox host dir so they are
-        # reachable after the confinement pivot (which binds that dir in).
+        # Result, config and RPC socket live in the per-sandbox host dir so
+        # they are reachable after the confinement pivot (which binds that
+        # dir in).
         result_fd, result_path = tempfile.mkstemp(
             prefix="result_", suffix=".json", dir=self._hostdir
         )
         os.close(result_fd)
+        config_fd, config_path = tempfile.mkstemp(
+            prefix="config_", suffix=".json", dir=self._hostdir
+        )
+        os.close(config_fd)
         try:
             base_config: Dict[str, Any] = {"result": result_path}
             if inputs:
@@ -2657,14 +2666,13 @@ class MirageSandbox(Sandbox):
                 self._guard_confinement(confine_cfg)
                 if confine_cfg:
                     config.update(confine_cfg)
-                b64_config = base64.b64encode(json.dumps(config).encode("utf-8")).decode(
-                    "ascii"
-                )
+                with open(config_path, "w", encoding="utf-8") as fh:
+                    json.dump(config, fh)
                 command = 'python3 -c "%s" %s %s %s' % (
                     _LAUNCHER,
                     b64_boot,
                     shlex.quote(state_path),
-                    b64_config,
+                    shlex.quote(config_path),
                 )
                 stdout, stderr, exit_code = await self._execute(
                     command, stdin=code.encode("utf-8"), timeout=self.timeout
@@ -2682,7 +2690,7 @@ class MirageSandbox(Sandbox):
                 except Exception:  # noqa: BLE001 - server teardown is best-effort
                     pass
             value = self._read_result(result_path)
-            for path in (result_path, sock_path):
+            for path in (result_path, sock_path, config_path):
                 if path and os.path.exists(path):
                     try:
                         os.unlink(path)

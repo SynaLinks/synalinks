@@ -921,28 +921,50 @@ class FunctionCallingAgentTest(testing.TestCase):
         shutil.rmtree(tmpdir, ignore_errors=True)
 
     async def test_agents_md_read_once_at_construction(self):
-        """AGENTS.md is read at construction and cached as a user message."""
+        """The root AGENTS.md is read at construction into the
+        `custom_instructions` prompt variable, rendered by the agent prompt
+        template under a Codex-style header (never the trainable
+        instructions); nested AGENTS.md files are ignored."""
         workdir = self._make_workdir_with_agents_md()
+        nested = os.path.join(workdir, "pkg")
+        os.makedirs(nested)
+        with open(os.path.join(nested, "AGENTS.md"), "w", encoding="utf-8") as f:
+            f.write("Nested rule that must NOT be injected.")
         agent = FunctionCallingAgent(
             language_model=LanguageModel(model="ollama/mistral"),
             tools=[Tool(calculate)],
             workdir=workdir,
         )
-        self.assertIsNotNone(agent.agents_md_message)
-        self.assertEqual(agent.agents_md_message.role, "user")
-        self.assertIn(self._AGENTS_MD_MARKER, agent.agents_md_message.content)
+        self.assertIn("<custom_instructions>", agent.prompt_template)
+        self.assertIn(
+            "# AGENTS.md instructions from {{ item.directory }}",
+            agent.prompt_template,
+        )
+        items = agent.prompt_variables["custom_instructions"]
+        self.assertEqual(len(items), 1)
+        self.assertEqual(items[0]["directory"], ".")
+        self.assertIn(self._AGENTS_MD_MARKER, items[0]["content"])
+        self.assertNotIn("Nested rule", items[0]["content"])
+        self.assertNotIn(self._AGENTS_MD_MARKER, agent.instructions)
+        self.assertNotIn(
+            self._AGENTS_MD_MARKER,
+            agent.tool_calls_generator.state.get("instructions"),
+        )
 
-        # Deleting the file after construction must not change the cached value:
+        # Deleting the file after construction must not change the variable:
         # it was read once and is not re-read on subsequent access.
         os.remove(os.path.join(workdir, "AGENTS.md"))
-        self.assertIsNotNone(agent.agents_md_message)
+        self.assertIn(
+            self._AGENTS_MD_MARKER,
+            agent.prompt_variables["custom_instructions"][0]["content"],
+        )
 
-    async def test_no_workdir_means_no_agents_md_message(self):
+    async def test_no_workdir_means_no_custom_instructions_variable(self):
         agent = FunctionCallingAgent(
             language_model=LanguageModel(model="ollama/mistral"),
             tools=[Tool(calculate)],
         )
-        self.assertIsNone(agent.agents_md_message)
+        self.assertNotIn("custom_instructions", agent.prompt_variables)
 
     @patch("litellm.acompletion")
     async def test_agents_md_not_reinjected_across_interactive_steps(
@@ -987,9 +1009,18 @@ class FunctionCallingAgentTest(testing.TestCase):
             if isinstance(m.get("content"), str)
             and self._AGENTS_MD_MARKER in m["content"]
         )
-        self.assertEqual(agents_md_count, 1)
-        # And it stays the first message.
-        self.assertIn(self._AGENTS_MD_MARKER, messages[0]["content"])
+        self.assertEqual(agents_md_count, 0)
+        # The step generator's template carries the conventions instead,
+        # exactly once per call (never stacked).
+        per_call_counts = []
+        for call in mock_completion.call_args_list:
+            system = [
+                m for m in call.kwargs.get("messages", []) if m.get("role") == "system"
+            ]
+            joined = "".join(str(m.get("content")) for m in system)
+            per_call_counts.append(joined.count(self._AGENTS_MD_MARKER))
+        self.assertEqual(per_call_counts[0], 1)
+        self.assertLessEqual(max(per_call_counts), 1)
 
     # -- skills ---------------------------------------------------------------
 
@@ -1006,25 +1037,34 @@ class FunctionCallingAgentTest(testing.TestCase):
         return root
 
     async def test_skills_discovered_once_at_construction(self):
-        """`skills` roots are discovered at construction into a context message."""
+        """`skills` roots are discovered at construction into the
+        `available_skills` prompt variable, rendered by the agent prompt
+        template (not the trainable instructions, so in-context
+        optimization cannot drop the listing)."""
         root = self._make_skills_root()
         agent = FunctionCallingAgent(
             language_model=LanguageModel(model="ollama/mistral"),
             tools=[Tool(calculate)],
             skills=[root],
         )
-        self.assertIsNotNone(agent.skills_message)
-        self.assertEqual(agent.skills_message.role, "user")
-        self.assertIn("<available_skills>", agent.skills_message.content)
-        self.assertIn("pdf-filler", agent.skills_message.content)
-        self.assertIn("Fill PDF forms.", agent.skills_message.content)
+        self.assertIn("<available_skills>", agent.prompt_template)
+        self.assertIn("{{ skill.name }}", agent.prompt_template)
+        self.assertEqual(
+            agent.prompt_variables["available_skills"],
+            [{"name": "pdf-filler", "description": "Fill PDF forms."}],
+        )
+        self.assertNotIn("<available_skills>", agent.instructions)
+        self.assertNotIn(
+            "<available_skills>",
+            agent.tool_calls_generator.state.get("instructions"),
+        )
 
-    async def test_no_skills_means_no_skills_message(self):
+    async def test_no_skills_means_no_skills_variable(self):
         agent = FunctionCallingAgent(
             language_model=LanguageModel(model="ollama/mistral"),
             tools=[Tool(calculate)],
         )
-        self.assertIsNone(agent.skills_message)
+        self.assertNotIn("available_skills", agent.prompt_variables)
         self.assertEqual(agent.skills, [])
 
     async def test_skills_path_must_exist(self):
@@ -1037,7 +1077,9 @@ class FunctionCallingAgentTest(testing.TestCase):
 
     @patch("litellm.acompletion")
     async def test_skills_injected_and_not_reinjected(self, mock_completion):
-        """The available-skills message is injected once and not stacked."""
+        """The available-skills block reaches every LM call's system prompt
+        via the template, and never lands in the trajectory (so feeding a
+        returned trajectory back in cannot stack copies)."""
         root = self._make_skills_root()
         agent = FunctionCallingAgent(
             language_model=LanguageModel(model="ollama/mistral"),
@@ -1073,7 +1115,18 @@ class FunctionCallingAgentTest(testing.TestCase):
             for m in messages
             if isinstance(m.get("content"), str) and "<available_skills>" in m["content"]
         )
-        self.assertEqual(skills_count, 1)
+        self.assertEqual(skills_count, 0)
+        # The step generator's template carries the block (the final-answer
+        # generator keeps the default template), and it never stacks.
+        per_call_counts = []
+        for call in mock_completion.call_args_list:
+            system = [
+                m for m in call.kwargs.get("messages", []) if m.get("role") == "system"
+            ]
+            joined = "".join(str(m.get("content")) for m in system)
+            per_call_counts.append(joined.count("<available_skills>"))
+        self.assertEqual(per_call_counts[0], 1)
+        self.assertLessEqual(max(per_call_counts), 1)
 
 
 class SkillsToolWiringTest(testing.TestCase):
@@ -1140,9 +1193,10 @@ class SkillsToolWiringTest(testing.TestCase):
             language_model=LanguageModel(model="ollama/mistral"),
             skills=[self._make_skills_root()],
         )
-        content = agent.skills_message.content
-        self.assertIn("pdf-processing", content)
-        self.assertNotIn("<location>", content)
+        skills = agent.prompt_variables["available_skills"]
+        self.assertEqual([s["name"] for s in skills], ["pdf-processing"])
+        self.assertEqual(sorted(skills[0]), ["description", "name"])
+        self.assertNotIn("<location>", agent.prompt_template)
 
     async def test_skill_tool_survives_serialization_roundtrip(self):
         root = self._make_skills_root()

@@ -224,6 +224,9 @@ from synalinks.src.modules.agents.deep_agent import DeepAgent as DeepAgent
 from synalinks.src.modules.agents.function_calling_agent import (
     FunctionCallingAgent as FunctionCallingAgent,
 )
+from synalinks.src.modules.agents.function_calling_agent import (
+    default_agent_prompt_template as default_agent_prompt_template,
+)
 from synalinks.src.modules.agents.rlm_agent import RecursiveLanguageModelAgent as RLM
 from synalinks.src.modules.agents.rlm_agent import (
     RecursiveLanguageModelAgent as RecursiveLanguageModelAgent,

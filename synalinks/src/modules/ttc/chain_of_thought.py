@@ -128,6 +128,7 @@ class ChainOfThought(Module):
         data_model=None,
         language_model=None,
         prompt_template=None,
+        prompt_variables=None,
         examples=None,
         instructions=None,
         seed_instructions=None,
@@ -157,6 +158,7 @@ class ChainOfThought(Module):
         self.schema = schema
         self.language_model = _get_lm(language_model)
         self.prompt_template = prompt_template
+        self.prompt_variables = dict(prompt_variables or {})
         self.examples = examples
         self.instructions = instructions
         self.seed_instructions = seed_instructions
@@ -187,6 +189,7 @@ class ChainOfThought(Module):
             data_model=final_data_model,
             language_model=self.language_model,
             prompt_template=self.prompt_template,
+            prompt_variables=self.prompt_variables,
             examples=self.examples,
             instructions=self.instructions,
             seed_instructions=self.seed_instructions,
@@ -213,6 +216,7 @@ class ChainOfThought(Module):
         config = {
             "schema": self.schema,
             "prompt_template": self.prompt_template,
+            "prompt_variables": self.prompt_variables,
             "examples": self.examples,
             "instructions": self.instructions,
             "seed_instructions": self.seed_instructions,
