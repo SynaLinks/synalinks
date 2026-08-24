@@ -46,34 +46,6 @@ def resolve_workdir(workdir: Optional[str]) -> Optional[str]:
     return str(resolved)
 
 
-def prepend_context_message(agent_messages: List, context_message) -> bool:
-    """Insert a context message (AGENTS.md, available skills, …) at the front.
-
-    Idempotent: when a message with the same ``role`` and ``content`` is already
-    present, nothing is inserted. This matters in interactive mode and whenever a
-    returned trajectory is fed back into the agent; otherwise a fresh copy would
-    stack at the front of the messages on every turn.
-
-    Args:
-        agent_messages: The trajectory's list of message dicts, mutated in place.
-        context_message: A ``ChatMessage`` (e.g. from ``read_agents_md`` /
-            ``read_skills``) or ``None``.
-
-    Returns:
-        ``True`` if a message was inserted, ``False`` otherwise.
-    """
-    if context_message is None:
-        return False
-    msg_json = context_message.get_json()
-    for existing in agent_messages:
-        if existing.get("role") == msg_json.get("role") and existing.get(
-            "content"
-        ) == msg_json.get("content"):
-            return False
-    agent_messages.insert(0, msg_json)
-    return True
-
-
 # -- AGENTS.md --------------------------------------------------------------
 #
 # Support for the open AGENTS.md standard (https://agents.md): a project's
@@ -167,18 +139,6 @@ def discover_agents_md(workdir) -> List[AgentsMd]:
         key=lambda a: (a.directory.count(os.sep) if a.directory else -1, a.directory)
     )
     return found
-
-
-def agents_md_prompt(items: List[AgentsMd]) -> str:
-    """Return the working directory's root ``AGENTS.md`` content for the prompt.
-
-    The agents.md spec does not prescribe any wording for how an agent surfaces
-    ``AGENTS.md`` to the model, so the root file's body is returned verbatim with
-    no added framing. Nested (monorepo) files discovered by `discover_agents_md`
-    are not surfaced here. Returns ``""`` when there is no root file.
-    """
-    top = next((item for item in items if not item.directory), None)
-    return top.content if top is not None else ""
 
 
 def merge_tools(builtin_tools: List, extra_tools: Optional[List], *, kind: str) -> List:

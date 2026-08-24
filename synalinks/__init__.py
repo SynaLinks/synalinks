@@ -153,6 +153,7 @@ from synalinks.api import callbacks
 from synalinks.api import clear_session
 from synalinks.api import config
 from synalinks.api import datasets
+from synalinks.api import default_agent_prompt_template
 from synalinks.api import default_embedding_model
 from synalinks.api import default_knowledge_base
 from synalinks.api import default_language_model

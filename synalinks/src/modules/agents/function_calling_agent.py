@@ -11,16 +11,14 @@ from synalinks.src.backend import JsonDataModel
 from synalinks.src.backend import SymbolicDataModel
 from synalinks.src.backend import is_chat_messages
 from synalinks.src.backend.common.op_scope import trajectory_scope
-from synalinks.src.modules.agents.utils.agents_utils import agents_md_prompt
 from synalinks.src.modules.agents.utils.agents_utils import discover_agents_md
 from synalinks.src.modules.agents.utils.agents_utils import merge_tools
-from synalinks.src.modules.agents.utils.agents_utils import prepend_context_message
 from synalinks.src.modules.agents.utils.agents_utils import resolve_workdir
 from synalinks.src.modules.agents.utils.skills_utils import READ_SKILL_TOOL_NAME
 from synalinks.src.modules.agents.utils.skills_utils import build_read_skill_tool
 from synalinks.src.modules.agents.utils.skills_utils import discover_skills_in_roots
+from synalinks.src.modules.agents.utils.skills_utils import load_skill
 from synalinks.src.modules.agents.utils.skills_utils import resolve_skills_paths
-from synalinks.src.modules.agents.utils.skills_utils import skills_prompt
 from synalinks.src.modules.core.generator import Generator
 from synalinks.src.modules.language_models import get as _get_lm
 from synalinks.src.modules.language_models.language_model import StreamingIterator
@@ -29,16 +27,83 @@ from synalinks.src.modules.ttc.chain_of_thought import ChainOfThought
 from synalinks.src.saving import serialization_lib
 
 
+@synalinks_export("synalinks.default_agent_prompt_template")
+def default_agent_prompt_template():
+    """Returns the default agent prompt template.
+
+    Extends `synalinks.default_prompt_template` with the agents' static
+    context sections, each rendered only when the matching prompt variable
+    is set: the working directory's root ``AGENTS.md``
+    (``custom_instructions``, a list of ``{directory, content}`` entries
+    rendered Codex-style under ``# AGENTS.md instructions from <dir>``
+    headers; the agents fill in the root file only), the sandbox-functions
+    guidance (``sandbox_functions``, used by the
+    `RecursiveLanguageModelAgent`) and the Agent Skills listing
+    (``available_skills``, a list of ``{name, description}`` entries).
+    The variables are plain configuration on the step generator (see
+    `Generator`'s ``prompt_variables``), not trainable state, so
+    in-context optimization never rewrites them; a custom template can
+    place the same placeholders wherever it wants.
+
+    Returns:
+        (str): The default agent prompt template.
+    """
+    return """
+<instructions>
+{{ instructions }}
+</instructions>
+{% if inputs_schema %}
+<input_schema>
+{{ inputs_schema }}
+</input_schema>
+{% endif %}{% if outputs_schema %}
+<output_schema>
+{{ outputs_schema }}
+</output_schema>
+{% endif %}{% if examples %}
+<examples>
+{% for example in examples %}
+<example>
+<input>
+{{ example[0] }}
+</input>
+<output>
+{{ example[1] }}
+</output>
+</example>
+{% endfor %}
+</examples>
+{% endif %}{% if custom_instructions %}
+<custom_instructions>
+{% for item in custom_instructions %}
+# AGENTS.md instructions from {{ item.directory }}
+
+{{ item.content }}
+{% endfor %}
+</custom_instructions>
+{% endif %}{% if sandbox_functions %}
+<sandbox_functions>
+{{ sandbox_functions }}
+</sandbox_functions>
+{% endif %}{% if available_skills %}
+<available_skills>
+{% for skill in available_skills %}
+<skill>
+<name>
+{{ skill.name }}
+</name>
+<description>
+{{ skill.description }}
+</description>
+</skill>
+{% endfor %}
+</available_skills>
+{% endif %}""".strip()
+
+
 def get_default_instructions():
     """The default parallel function calling agent instructions."""
-    return """
-Think step by step: Use the thinking field to elaborate what you observe and
-what do you need to accomplish next.
-Reflect on prior steps: Review your previous actions and their outcomes to
-avoid unnecessary repetition.
-Avoid unnecessary actions: If you already have enough information to complete
-the user task, return an empty tool calls array.
-""".strip()
+    return """You are an helpful agent"""
 
 
 @synalinks_export(
@@ -350,7 +415,14 @@ class FunctionCallingAgent(Module):
         data_model (DataModel | SymbolicDataModel | JsonDataModel): The target data
             model for structured output.
         language_model (LanguageModel): The language model to use.
-        prompt_template (str): The jinja2 prompt template.
+        prompt_template (str): The jinja2 prompt template. Defaults to
+            `default_agent_prompt_template`, whose extra sections render
+            the ``custom_instructions``, ``sandbox_functions`` and
+            ``available_skills`` variables the agent derives at
+            construction (from the workdir's root ``AGENTS.md``, the
+            ``skills`` roots, and the sandbox tools); a custom template
+            can place the same ``{{ ... }}`` placeholders wherever it
+            wants.
         examples (list): The default list of examples, the examples
             are a list of tuples containing input/output JSON pairs.
         instructions (str): The default instructions being a string containing
@@ -382,16 +454,21 @@ class FunctionCallingAgent(Module):
             inputs concatenated with the full message trajectory (Default to True).
         max_iterations (int): Optional. The maximum number of tool calling iterations
             in autonomous mode (Default to 5). Ignored in interactive mode.
-        workdir (str): Optional. Path to a working directory. When provided and the
-            directory contains an `AGENTS.md` file, its contents are injected as an
-            additional input message so the agent follows the project conventions
-            declared there (see `read_agents_md`). Must point to an existing
-            directory (Default to None).
+        workdir (str): Optional. Path to a working directory. When provided
+            and it contains a root `AGENTS.md` file, its body is rendered
+            into the step generator's prompt template (the
+            ``custom_instructions`` prompt variable) under a
+            ``# AGENTS.md instructions from .`` header, so the agent follows
+            the project conventions declared there. Nested `AGENTS.md` files
+            are ignored to avoid conflicting instructions. Must point to an
+            existing directory (Default to None).
         skills (list): Optional. A list of folder paths, each a *root* directory
             under which Agent Skills live as ``<root>/<name>/SKILL.md`` (the open
             agentskills.io standard). The discovered skills' names and
-            descriptions are injected as an ``<available_skills>`` context
-            message so the agent knows what is available; per progressive
+            descriptions are rendered as an ``<available_skills>`` block into
+            the step generator's prompt template (the ``available_skills``
+            prompt variable: static configuration, so in-context optimization
+            of the instructions cannot drop the listing); per progressive
             disclosure, each skill's full ``SKILL.md`` body is read on
             demand: setting `skills` also adds a built-in ``read_skill(name)``
             tool, so agents without file/bash tools can still follow their
@@ -444,23 +521,32 @@ class FunctionCallingAgent(Module):
             description=description,
         )
 
-        # `workdir` is optional. When set it must be an existing directory;
-        # an `AGENTS.md` inside it is injected as an extra input message at
-        # call time (see `read_agents_md`).
         self.workdir = resolve_workdir(workdir)
-        # Read AGENTS.md once, here at construction; re-reading it on every
-        # `call()` could pick up a changed/corrupted file and would defeat the
-        # re-injection guard (which compares against this stable message).
-        self.agents_md_message = self.read_agents_md()
-        # `skills` are Agent Skill *root* directories. Discover them once at
-        # construction (same rationale as AGENTS.md) into a stable
-        # `<available_skills>` context message injected at call time.
         self.skills = resolve_skills_paths(skills)
-        self.skills_message = self.read_skills()
+        skill_dirs = discover_skills_in_roots(self.skills) if self.skills else []
+
+        agents_md_items = discover_agents_md(self.workdir) if self.workdir else []
+        # root AGENTS.md only: nested files create conflicting instructions
+        agents_md_items = [item for item in agents_md_items if not item.directory]
+        # internal, derived at construction; subclasses seed it pre-super
+        self.prompt_variables = dict(getattr(self, "_prompt_variables", {}))
+        if agents_md_items:
+            self.prompt_variables["custom_instructions"] = [
+                {"directory": item.directory or ".", "content": item.content}
+                for item in agents_md_items
+            ]
+        if skill_dirs:
+            skills = [load_skill(skill_dir) for skill_dir in skill_dirs]
+            self.prompt_variables["available_skills"] = [
+                {"name": skill.name, "description": skill.description} for skill in skills
+            ]
+
         if not schema and data_model:
             schema = data_model.get_schema()
         self.schema = schema
 
+        if not prompt_template:
+            prompt_template = default_agent_prompt_template()
         self.prompt_template = prompt_template
 
         if not instructions:
@@ -523,6 +609,7 @@ class FunctionCallingAgent(Module):
         tool_calls_generator_cls = ChainOfThought if use_chain_of_thought else Generator
         self.tool_calls_generator = tool_calls_generator_cls(
             prompt_template=self.prompt_template,
+            prompt_variables=self.prompt_variables,
             examples=self.examples,
             instructions=self.instructions,
             temperature=self.temperature,
@@ -601,52 +688,6 @@ class FunctionCallingAgent(Module):
         """
         return True
 
-    def read_agents_md(self):
-        """Convert the workdir's root ``AGENTS.md`` into an input message.
-
-        When a ``workdir`` is configured and contains a non-empty root
-        ``AGENTS.md``, its body is taken verbatim (no added framing; the
-        agents.md spec prescribes no prompt wording) and wrapped in a user
-        ``ChatMessage`` for injection at the front of the trajectory (see
-        `discover_agents_md` / `agents_md_prompt`). No sandbox needed.
-
-        Returns:
-            (ChatMessage | None): A user message carrying the conventions, or
-                ``None`` when no ``workdir`` is set or no non-empty ``AGENTS.md``
-                is found.
-        """
-        if not self.workdir:
-            return None
-        content = agents_md_prompt(discover_agents_md(self.workdir))
-        if not content:
-            return None
-        return ChatMessage(role=ChatRole.USER, content=content)
-
-    def read_skills(self):
-        """Build the ``<available_skills>`` context message from `skills` roots.
-
-        Discovers the Agent Skills under each configured root (deduped by name,
-        first root wins) and renders the ``<available_skills>`` XML block: names
-        and descriptions only (level 1 / progressive disclosure). The block is
-        wrapped in a user ``ChatMessage`` for injection at the front of the
-        trajectory (see `prepend_context_message`).
-
-        Returns:
-            (ChatMessage | None): A user message listing the available skills, or
-                ``None`` when no `skills` roots are set or none contain a skill.
-        """
-        if not self.skills:
-            return None
-        skills = discover_skills_in_roots(self.skills)
-        if not skills:
-            return None
-        # Rendered without <location>: this agent reads skills by name
-        # (the built-in or an overriding `read_skill` tool), so a
-        # filesystem path would only leak an implementation detail.
-        return ChatMessage(
-            role=ChatRole.USER, content=skills_prompt(skills, locations=False)
-        )
-
     async def call(self, inputs, training=False, **kwargs):
         if not inputs:
             return None
@@ -655,8 +696,9 @@ class FunctionCallingAgent(Module):
                 f"In interactive mode, the {type(self).__name__} needs a "
                 "ChatMessages-like data model as inputs"
             )
-        # `call` is a template method: it builds the trajectory, injects
-        # AGENTS.md, then runs the autonomous loop or the interactive step.
+        # `call` is a template method: it builds the trajectory, then runs
+        # the autonomous loop or the interactive step (AGENTS.md and the
+        # available skills travel in the prompt template, see `__init__`).
         # Subclasses (e.g. RLM) specialize behavior by overriding the hooks
         # below (`_begin_call`, `_native_tools`, `_dispatch_tool_calls`,
         # `_final_result`, ...) rather than reimplementing `call`. Extra
@@ -670,17 +712,6 @@ class FunctionCallingAgent(Module):
         with trajectory_scope():
             trajectory, ctx = await self._begin_call(inputs, training, **kwargs)
             agent_messages = trajectory.get("messages")
-
-            # Inject context messages at the front of the trajectory, read once
-            # at construction. Skills are prepended first so that AGENTS.md
-            # (prepended after) ends up as the very first message, keeping
-            # declared project conventions at the top. Both are guarded against
-            # re-injection so feeding a returned trajectory back in (e.g. in
-            # interactive mode) doesn't stack duplicate copies each turn.
-            if prepend_context_message(agent_messages, self.skills_message):
-                trajectory.update({"messages": agent_messages})
-            if prepend_context_message(agent_messages, self.agents_md_message):
-                trajectory.update({"messages": agent_messages})
 
             if self.autonomous:
                 return await self._run_autonomous(

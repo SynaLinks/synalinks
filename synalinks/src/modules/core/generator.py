@@ -156,6 +156,15 @@ class Generator(Module):
             model for structured output.
         language_model (LanguageModel): The language model to use.
         prompt_template (str): The jinja2 prompt template.
+        prompt_variables (dict): Optional. Extra static Jinja2 variables
+            rendered into the prompt template on every call, alongside the
+            built-ins (``instructions``, ``examples``, ``inputs_schema``,
+            ``outputs_schema``, which win on a name clash). Plain
+            configuration, not trainable state, so in-context optimization
+            never rewrites them; agents use this channel for AGENTS.md
+            conventions (``custom_instructions``), the Agent Skills listing
+            (``available_skills``) and RLM's sandbox functions
+            (``sandbox_functions``).
         examples (list): The default list of examples, the examples
             are a list of tuples containing input/output JSON pairs.
         instructions (str): The default instructions being a string containing
@@ -210,6 +219,7 @@ class Generator(Module):
         data_model=None,
         language_model=None,
         prompt_template=None,
+        prompt_variables=None,
         examples=None,
         instructions=None,
         seed_instructions=None,
@@ -240,6 +250,7 @@ class Generator(Module):
         if not prompt_template:
             prompt_template = default_prompt_template()
         self.prompt_template = prompt_template
+        self.prompt_variables = dict(prompt_variables or {})
         if not examples:
             examples = []
         self.examples = examples
@@ -461,13 +472,19 @@ class Generator(Module):
     def _render_system_message(self, inputs):
         template = jinja2.Template(self.prompt_template)
         rendered_prompt = template.render(
-            inputs_schema=inputs.get_schema() if self.use_inputs_schema else None,
-            outputs_schema=self.schema if self.use_outputs_schema else None,
-            examples=[
-                (pred.get("inputs"), pred.get("outputs"))
-                for pred in self.state.get("examples")
-            ],
-            instructions=self.state.get("instructions"),
+            **{
+                # Built-in variables win over a same-named prompt variable.
+                **self.prompt_variables,
+                "inputs_schema": (
+                    inputs.get_schema() if self.use_inputs_schema else None
+                ),
+                "outputs_schema": self.schema if self.use_outputs_schema else None,
+                "examples": [
+                    (pred.get("inputs"), pred.get("outputs"))
+                    for pred in self.state.get("examples")
+                ],
+                "instructions": self.state.get("instructions"),
+            }
         )
         return ChatMessage(role="system", content=rendered_prompt)
 
@@ -475,6 +492,7 @@ class Generator(Module):
         config = {
             "schema": self.schema,
             "prompt_template": self.prompt_template,
+            "prompt_variables": self.prompt_variables,
             "examples": self.examples,
             "instructions": self.instructions,
             "seed_instructions": self.seed_instructions,

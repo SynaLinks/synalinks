@@ -23,10 +23,10 @@ from synalinks.src.backend import is_chat_messages
 from synalinks.src.modules.agents.function_calling_agent import FunctionCallingAgent
 from synalinks.src.modules.agents.utils.agents_utils import InputsSummary
 from synalinks.src.modules.agents.utils.agents_utils import summarize_inputs
-from synalinks.src.modules.core.generator import default_prompt_template
 from synalinks.src.modules.core.tool import Tool
 from synalinks.src.modules.language_models import get as _get_lm
 from synalinks.src.sandboxes.mirage_sandbox import MirageSandbox
+from synalinks.src.sandboxes.sandbox import Sandbox
 from synalinks.src.saving import serialization_lib
 from synalinks.src.saving.object_registration import get_registered_name
 from synalinks.src.saving.object_registration import get_registered_object
@@ -35,7 +35,7 @@ from synalinks.src.saving.object_registration import get_registered_object
 def get_default_instructions():
     """Default instructions for non-recursive Python-snippet reasoning."""
     return """
-You solve the user task by calling a SINGLE tool,
+You solve the user task by calling:
 `run_python_code(code=...)`, which runs your snippet in a
 persistent sandbox and returns `{"stdout": ..., "stderr": ..., "error": ...}`.
 State persists across calls: variables, imports and function definitions stay
@@ -158,6 +158,16 @@ path; an empty snippet is a no-op and you'll be reminded to call `submit`.
 Don't run out of iterations without calling it.
 """.strip()
 
+
+# Same file-tool set as DeepAgent's built-ins.
+_FILE_TOOL_NAMES = (
+    "read_file",
+    "list_files",
+    "search_files",
+    "write_file",
+    "edit_file",
+    "run_bash",
+)
 
 _JSON_TO_PY_TYPES = {
     "string": "str",
@@ -835,12 +845,18 @@ class RecursiveLanguageModelAgent(FunctionCallingAgent):
         workdir (str): Optional. Host directory the agent operates on. When
             building its own sandbox (i.e. no ``sandbox`` instance is supplied),
             the workdir seeds the sandbox filesystem. If it contains an
-            ``AGENTS.md`` file, its contents are also injected as an additional
-            input so the agent follows the declared project conventions (see
-            ``read_agents_md``). Must point to an existing directory. Defaults
-            to ``None``.
+            ``AGENTS.md`` file, its contents are also rendered verbatim into
+            the step generator's prompt template so the agent follows the
+            declared project conventions. Must point to an existing
+            directory. Defaults to ``None``. When a workspace is used (a
+            ``workdir`` here, or a supplied ``sandbox``) and the sandbox
+            type mounts a filesystem,
+            its file tools (``read_file``, ``list_files``, ``search_files``,
+            ``write_file``, ``edit_file``, ``run_bash``) are additionally
+            exposed as sandbox functions, callable from snippets and
+            advertised as ``def`` stubs in the prompt.
         skills (list): Optional. Folder paths (Agent Skill roots) whose skills
-            are listed for the agent as an ``<available_skills>`` context message
+            are rendered for the agent as an ``<available_skills>`` prompt block
             (see `FunctionCallingAgent`). The skill files must also be reachable
             from the agent's sandbox (e.g. under ``workdir``) for their bodies to
             be read on demand. Defaults to ``None``.
@@ -957,6 +973,10 @@ class RecursiveLanguageModelAgent(FunctionCallingAgent):
         else:
             self.sandbox_type = sandbox_type or MirageSandbox
 
+        self._file_tools_enabled = (
+            bool(workdir) or sandbox is not None
+        ) and self.sandbox_type.read_file is not Sandbox.read_file
+
         # Compose instructions before delegating to the base constructor. The
         # final generator keeps the base instructions (recursive/default plus
         # subagent guidance); only the step generator gets the sandbox
@@ -976,40 +996,26 @@ class RecursiveLanguageModelAgent(FunctionCallingAgent):
                 instructions = instructions + "\n\n" + guidance
         resolved_final_instructions = final_instructions or instructions
         sandbox_description = self.sandbox_type.description
-        # Guarded like the subagent guidance: a serialized agent round-trips
-        # its post-append instructions back through __init__.
+        # guarded: serialized agents round-trip post-append instructions
         if sandbox_description and sandbox_description not in instructions:
             instructions = instructions + "\n\n" + sandbox_description
 
-        # Sandbox functions travel in the step generator's prompt template
-        # (the target `submit` shape plus the user tools' `def` stubs), never
-        # as a JSON catalog concatenated into the trajectory: a schema-shaped
-        # catalog reads like the provider's native tools array and lures the
-        # LM into emitting native calls for sandbox-only functions. The
-        # template, not `instructions`, because instructions are the
-        # generator's trainable state: an in-context optimizer rewriting them
-        # during `fit()` must not be able to drop or mangle the schema, and
-        # the template is static configuration the optimizer never touches.
-        # The base passes the template to the step generator only, so the
-        # final generator is unaffected. `{% raw %}` keeps Jinja2 from
-        # interpreting braces in schemas or docstrings, and the append is
-        # guarded like the ones above so serialization round-trips don't
-        # duplicate it.
         if not schema and data_model:
             schema = data_model.get_schema()
-        functions_guidance = get_sandbox_functions_guidance(
-            schema, [*(tools or []), *(sandbox_tools or [])]
-        )
+        guidance_tools = [*(tools or []), *(sandbox_tools or [])]
+        if self._file_tools_enabled:
+            # signature/docstring introspection only, never invoked
+            receiver = self.sandbox or object.__new__(self.sandbox_type)
+            taken = {t.name for t in guidance_tools}
+            taken |= {t.name for t in native_tools or []}
+            guidance_tools += [
+                Tool(getattr(receiver, name))
+                for name in _FILE_TOOL_NAMES
+                if name not in taken
+            ]
+        functions_guidance = get_sandbox_functions_guidance(schema, guidance_tools)
         if functions_guidance:
-            if not prompt_template:
-                prompt_template = default_prompt_template()
-            if functions_guidance not in prompt_template:
-                prompt_template = (
-                    prompt_template
-                    + "\n<sandbox_functions>\n{% raw %}\n"
-                    + functions_guidance
-                    + "\n{% endraw %}\n</sandbox_functions>"
-                )
+            self._prompt_variables = {"sandbox_functions": functions_guidance}
 
         super().__init__(
             schema=schema,
@@ -1408,6 +1414,11 @@ class RecursiveLanguageModelAgent(FunctionCallingAgent):
                 sandbox = self.sandbox_type(workdir=self.workdir, timeout=self.timeout)
             else:
                 sandbox = self.sandbox_type(timeout=self.timeout)
+
+        if self._file_tools_enabled:
+            for name in _FILE_TOOL_NAMES:
+                if name not in call_tools and name not in self.native_tools:
+                    call_tools[name] = Tool(getattr(sandbox, name))
 
         # The per-turn snippet is delivered as a native `run_python_code` tool
         # call, the only tool the LM can call, wrapping the sandbox's own
