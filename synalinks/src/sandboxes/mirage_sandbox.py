@@ -746,20 +746,52 @@ try:
     else:
         exec(compile(tree, "<sandbox>", "exec"), ns)
 finally:
-    keep = {}
-    for key, item in list(ns.items()):
-        if key == "__builtins__":
-            continue
-        try:
-            dill.dumps(item)
-            keep[key] = item
-        except Exception:
-            pass
+    # Persist the namespace with ONE dill.dumps. Pickling item by item is
+    # quadratic: every sandbox-defined function is pickled together with a
+    # copy of its (shared) globals, so N functions cost N full-namespace
+    # pickles (25 functions ~3 s, 100 ~14 s, ~200 hits RecursionError). A
+    # single dump memoizes the shared globals once. Only when that fails do
+    # we fall back to filtering out the unpicklable items one by one.
+    keep = {k: v for k, v in ns.items() if k != "__builtins__"}
     try:
-        with open(state, "wb") as fh:
-            dill.dump(keep, fh)
-    except Exception as exc:
-        print("persist-warn: " + repr(exc), file=sys.stderr)
+        blob = dill.dumps(keep)
+    except Exception:
+        # Something in the namespace is unpicklable (an open file, a
+        # generator, ...). Drop those items, and pickle functions with
+        # ``recurse=True`` so they carry only the globals they reference
+        # rather than the whole namespace: otherwise every sandbox-defined
+        # function would be lost along with the offending item. Restored
+        # functions are re-homed onto the live namespace on the next run
+        # anyway, so the reduced globals are never observable.
+        keep = {}
+        for key, item in list(ns.items()):
+            if key == "__builtins__":
+                continue
+            try:
+                dill.dumps(item, recurse=True)
+                keep[key] = item
+            except Exception:
+                pass
+        try:
+            blob = dill.dumps(keep, recurse=True)
+        except Exception as exc:
+            blob = None
+            print("persist-warn: " + repr(exc), file=sys.stderr)
+    if blob is not None:
+        # Write to a sibling temp file and rename so a run killed mid-write
+        # (host timeout) or a concurrent run can never leave the state file
+        # truncated or half-written.
+        tmp = state + ".tmp." + str(os.getpid())
+        try:
+            with open(tmp, "wb") as fh:
+                fh.write(blob)
+            os.replace(tmp, state)
+        except Exception as exc:
+            print("persist-warn: " + repr(exc), file=sys.stderr)
+            try:
+                os.unlink(tmp)
+            except OSError:
+                pass
     result_path = config.get("result")
     if result_path:
         try:
