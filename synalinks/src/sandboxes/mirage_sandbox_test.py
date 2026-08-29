@@ -97,6 +97,36 @@ class MirageSandboxTest(_SandboxTestCase):
         result = await sandbox.run("print(sq(4), math.floor(2.7), P.v)")
         self.assertIn("16 2 3", result.stdout)
 
+    async def test_many_functions_persist(self):
+        """Persisting must not be quadratic in the number of definitions.
+
+        dill pickles each function together with a copy of its globals, so
+        pickling the namespace item by item re-pickles every sibling function
+        once per function: 120 definitions took ~4 s and a few hundred hit
+        `RecursionError`, silently losing the whole namespace. One dump of the
+        namespace memoizes the shared globals instead."""
+        sandbox = MirageSandbox(timeout=_TIMEOUT)
+        await sandbox.run(
+            "\n".join(f"def f{i}(x):\n    return x + {i}" for i in range(120))
+        )
+        result = await sandbox.run("print(f0(1), f119(1))")
+        self.assertIn("1 120", result.stdout)
+
+    async def test_unpicklable_value_does_not_drop_the_namespace(self):
+        """One unpicklable object must not take the definitions with it.
+
+        A generator (an open socket, a live handle) cannot be pickled. The
+        fallback drops it and pickles the rest with `recurse=True` so each
+        function carries only the globals it references, instead of the
+        offending object along with the whole namespace."""
+        sandbox = MirageSandbox(timeout=_TIMEOUT)
+        await sandbox.run(
+            "gen = (i for i in range(3))\ndef survivor(x):\n    return x * 3"
+        )
+        result = await sandbox.run("print(survivor(5))")
+        self.assertIn("15", result.stdout)
+        self.assertIsNone(result.error)
+
     async def test_function_sees_names_defined_in_later_runs(self):
         """A restored function shares the live namespace, like a real REPL.
 
