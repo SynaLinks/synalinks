@@ -43,6 +43,65 @@ class _SandboxTestCase(testing.TestCase):
         gc.collect()
 
 
+class PinnedNamesTest(_SandboxTestCase):
+    """``__rlm_pinned__`` re-asserts environment names on every run.
+
+    The RLM binds its module input as ``inputs`` once per call; before the
+    pin, a snippet assigning over the name (LLM-written code does) poisoned
+    every later snippet of the call — ``inputs`` stayed ``None`` and every
+    function reading it kept failing until the next call re-bound it."""
+
+    async def test_pinned_name_heals_on_the_next_run(self):
+        sandbox = MirageSandbox(timeout=_TIMEOUT)
+        await sandbox.run(
+            "inputs = _rlm_inputs\n__rlm_pinned__ = {'inputs': _rlm_inputs}",
+            inputs={"_rlm_inputs": {"frames": [1, 2, 3]}},
+        )
+        # The clobbering snippet breaks itself...
+        broken = await sandbox.run("inputs = None\nprint(inputs['frames'])")
+        self.assertIsNotNone(broken.error)
+        # ...and only itself: the next run reads the pinned value again.
+        healed = await sandbox.run("print(inputs['frames'])")
+        self.assertTrue(healed.ok, healed.error)
+        self.assertIn("[1, 2, 3]", healed.stdout)
+
+    async def test_functions_reading_the_pinned_name_recover_too(self):
+        sandbox = MirageSandbox(timeout=_TIMEOUT)
+        await sandbox.run(
+            "inputs = _rlm_inputs\n__rlm_pinned__ = {'inputs': _rlm_inputs}",
+            inputs={"_rlm_inputs": {"frames": [7]}},
+        )
+        await sandbox.run("def first_frame():\n    return inputs['frames'][0]")
+        await sandbox.run("inputs = 'garbage'")
+        result = await sandbox.run("print(first_frame())")
+        self.assertTrue(result.ok, result.error)
+        self.assertIn("7", result.stdout)
+
+    async def test_per_run_binding_still_wins_over_the_pin(self):
+        sandbox = MirageSandbox(timeout=_TIMEOUT)
+        await sandbox.run(
+            "inputs = _rlm_inputs\n__rlm_pinned__ = {'inputs': _rlm_inputs}",
+            inputs={"_rlm_inputs": {"frames": ["old"]}},
+        )
+        result = await sandbox.run(
+            "print(inputs['frames'])", inputs={"inputs": {"frames": ["fresh"]}}
+        )
+        self.assertTrue(result.ok, result.error)
+        self.assertIn("fresh", result.stdout)
+
+    async def test_rebinding_the_pin_replaces_it(self):
+        sandbox = MirageSandbox(timeout=_TIMEOUT)
+        for payload in ({"n": 1}, {"n": 2}):
+            await sandbox.run(
+                "inputs = _rlm_inputs\n__rlm_pinned__ = {'inputs': _rlm_inputs}",
+                inputs={"_rlm_inputs": payload},
+            )
+        await sandbox.run("inputs = None")
+        result = await sandbox.run("print(inputs['n'])")
+        self.assertTrue(result.ok, result.error)
+        self.assertIn("2", result.stdout)
+
+
 class MirageSandboxTest(_SandboxTestCase):
     async def test_is_sandbox_subclass(self):
         sandbox = MirageSandbox(timeout=_TIMEOUT)
