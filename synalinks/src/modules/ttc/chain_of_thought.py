@@ -95,7 +95,7 @@ class ChainOfThought(Module):
         top_k (int): Optional. The top-k sampling cutoff for the LM call.
             Default None (the model's own default).
         reasoning_effort (string): Optional. The reasoning effort for the LM call
-            between ['minimal', 'low', 'medium', 'high', 'disable', 'none'].
+            between ['minimal', 'low', 'medium', 'high', 'xhigh', 'disable', 'none'].
             (Default to 'low'). If reasoning effort is none or disabled, a thinking
             field is automatically added to the output data model. Otherwise,
             the thinking field is automatically populated by the model's

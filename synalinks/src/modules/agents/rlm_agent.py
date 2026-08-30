@@ -775,7 +775,7 @@ class RecursiveLanguageModelAgent(FunctionCallingAgent):
             the generator prompt (Default False).
         use_outputs_schema (bool): Optional. Feed the output schema to
             the generator prompt (Default False).
-        reasoning_effort (str): Optional. One of ``'minimal'``,
+        reasoning_effort (str): Optional. One of ``'xhigh'``, ``'minimal'``,
             ``'low'``, ``'medium'``, ``'high'``, ``'disable'``,
             ``'none'``, ``None``. Default ``None``.
         use_chain_of_thought (bool): Optional. Wrap the per-turn
