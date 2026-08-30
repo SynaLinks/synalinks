@@ -10,7 +10,9 @@ from synalinks.src import testing
 from synalinks.src.sandboxes.mirage_sandbox import _MACOS_CONFINE_SRC
 from synalinks.src.sandboxes.mirage_sandbox import MirageSandbox
 from synalinks.src.sandboxes.mirage_sandbox import _confinement_available
+from synalinks.src.sandboxes.mirage_sandbox import cap_malloc_arenas
 from synalinks.src.sandboxes.mirage_sandbox import confinement_kind
+from synalinks.src.sandboxes.mirage_sandbox import malloc_trim
 from synalinks.src.sandboxes.sandbox import ExecutionResult
 from synalinks.src.sandboxes.sandbox import Sandbox
 
@@ -41,6 +43,92 @@ class _SandboxTestCase(testing.TestCase):
     def tearDown(self):
         super().tearDown()
         gc.collect()
+
+
+class MallocHygieneTest(_SandboxTestCase):
+    """The host-side glibc settings a sandbox applies to its own process."""
+
+    _GLIBC = sys.platform.startswith("linux") and "glibc" in (
+        getattr(__import__("platform"), "libc_ver", lambda: ("", ""))()[0] or ""
+    )
+
+    def test_cap_is_idempotent_and_reports_platform(self):
+        first = cap_malloc_arenas(2)
+        second = cap_malloc_arenas(2)
+        self.assertEqual(first, second)
+        if self._GLIBC:
+            self.assertTrue(first)
+
+    def test_trim_never_raises(self):
+        released = malloc_trim()
+        self.assertIsInstance(released, bool)
+        if not self._GLIBC:
+            self.assertFalse(released)
+
+    async def test_sandbox_caps_arenas_by_default_and_can_opt_out(self):
+        sandbox = MirageSandbox(timeout=_TIMEOUT)
+        self.assertEqual(sandbox._malloc_arena_max, 2)
+        untouched = MirageSandbox(timeout=_TIMEOUT, malloc_arena_max=None)
+        self.assertIsNone(untouched._malloc_arena_max)
+        result = await untouched.run("print('still runs')")
+        self.assertTrue(result.ok)
+
+    @unittest.skipUnless(
+        sys.platform.startswith("linux"), "glibc arenas are a Linux matter"
+    )
+    def test_cap_bounds_arena_mappings(self):
+        """Worker threads churning big buffers must not each keep a 64 MiB heap.
+
+        Runs in a child interpreter and counts how many 64 MiB-class anonymous
+        mappings (what a glibc arena looks like in ``/proc/self/maps``) the
+        churning threads add; imports create arenas of their own before the
+        cap, so only the growth is judged.
+        """
+        import subprocess
+
+        script = (
+            "import json, sys, threading\n"
+            "from synalinks.src.sandboxes.mirage_sandbox import cap_malloc_arenas\n"
+            "def arenas():\n"
+            "    n = 0\n"
+            "    for line in open('/proc/self/maps'):\n"
+            "        parts = line.split()\n"
+            "        if len(parts) != 5:\n"
+            "            continue\n"
+            "        lo, hi = (int(x, 16) for x in parts[0].split('-'))\n"
+            "        n += (60 << 20) <= hi - lo <= (70 << 20)\n"
+            "    return n\n"
+            "if sys.argv[1] == 'cap':\n"
+            "    assert cap_malloc_arenas(2)\n"
+            "before = arenas()\n"
+            "payload = {'rows': [list(range(4096)) for _ in range(300)]}\n"
+            "def churn():\n"
+            "    for _ in range(10):\n"
+            "        json.loads(json.dumps(payload))\n"
+            "threads = [threading.Thread(target=churn) for _ in range(24)]\n"
+            "[t.start() for t in threads]\n"
+            "[t.join() for t in threads]\n"
+            "print(arenas() - before)\n"
+        )
+
+        def arenas(mode):
+            out = subprocess.run(
+                [sys.executable, "-c", script, mode],
+                capture_output=True,
+                text=True,
+                timeout=120,
+                check=True,
+            )
+            return int(out.stdout.strip().splitlines()[-1])
+
+        if not self._GLIBC:
+            self.skipTest("not glibc")
+        # Only the capped bound is a guarantee. How many arenas the *default*
+        # allocator adds depends on how often the threads' mallocs overlap
+        # (the GIL serialises most Python-level churn; the FUSE bridge and
+        # ctypes calls that bloat a real host run outside it), so it is not
+        # asserted here.
+        self.assertLessEqual(arenas("cap"), 2)
 
 
 class MirageSandboxTest(_SandboxTestCase):
