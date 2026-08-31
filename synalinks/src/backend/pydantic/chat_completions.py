@@ -313,9 +313,11 @@ class ChatCompletionRequest(DataModel):
         description="End-user identifier for abuse monitoring",
         default=None,
     )
-    reasoning_effort: Optional[Literal["minimal", "low", "medium", "high"]] = Field(
-        description="Reasoning effort hint for reasoning-capable models",
-        default=None,
+    reasoning_effort: Optional[Literal["minimal", "low", "medium", "high", "xhigh"]] = (
+        Field(
+            description="Reasoning effort hint for reasoning-capable models",
+            default=None,
+        )
     )
     parallel_tool_calls: Optional[bool] = Field(
         description="Whether to allow the model to call multiple tools in parallel",

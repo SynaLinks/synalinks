@@ -287,7 +287,8 @@ class OMEGA(EvolutionaryOptimizer):
         crossover_temperature (float): The temperature for the LM calls of
             the crossover programs.
         reasoning_effort (string): Optional. The reasoning effort for the LM call
-            between ['minimal', 'low', 'medium', 'high', 'disable', 'none', None].
+            between ['minimal', 'low', 'medium', 'high', 'xhigh', 'disable',
+            'none', None].
             Default to None (no reasoning).
         use_chain_of_thought (bool): Whether the mutation/crossover programs use
             a `ChainOfThought` (which first writes a prompt-driven `thinking`

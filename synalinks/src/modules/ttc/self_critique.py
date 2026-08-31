@@ -211,7 +211,8 @@ class SelfCritique(Module):
         top_k (int): Optional. The top-k sampling cutoff for the LM call.
             Default None (the model's own default).
         reasoning_effort (string): Optional. The reasoning effort for the LM call
-            between ['minimal', 'low', 'medium', 'high', 'disable', 'none', None].
+            between ['minimal', 'low', 'medium', 'high', 'xhigh', 'disable',
+            'none', None].
             Default to None (no reasoning).
         use_inputs_schema (bool): Optional. Whether or not use the inputs schema in
             the prompt (Default to False) (see `Generator`).
