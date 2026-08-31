@@ -263,7 +263,7 @@ class Generator(Module):
         self.max_tokens = max_tokens
         self.top_p = top_p
         self.top_k = top_k
-        efforts = ["minimal", "low", "medium", "high", "disable", "none", None]
+        efforts = ["minimal", "low", "medium", "high", "xhigh", "disable", "none", None]
         if reasoning_effort not in efforts:
             raise ValueError(
                 f"The reasoning effort parameter should be one of: {efforts}"

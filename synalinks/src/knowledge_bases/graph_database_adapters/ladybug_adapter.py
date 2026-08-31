@@ -578,13 +578,14 @@ class LadybugAdapter(GraphDatabaseAdapter):
         existing_node = self._existing_tables("NODE")
         existing_rel = self._existing_tables("REL")
 
-        # Per-label record of which columns the FTS index covers, so
-        # ``_rebuild_fts_index`` (called after every ``update_entities``
-        # batch) can drop + recreate the index against the same
-        # columns. Ladybug's FTS index is a snapshot built at
-        # CREATE_FTS_INDEX time, so it must be rebuilt after inserts,
-        # same pattern DuckDB uses with PRAGMA create_fts_index +
-        # overwrite=1 at the end of every ``update``.
+        # Per-label record of which columns the FTS index covers, so a
+        # label's index can be recreated against the same columns when a
+        # table is rebuilt (``_rebuild_fts_index``). Ladybug maintains the
+        # index on insert / update / delete itself, so the write paths never
+        # rebuild it: a drop + create per write is not only redundant, on an
+        # in-memory database the dropped index is never released and a
+        # write-heavy caller leaks its size on every batch (measured at
+        # 19 MB per batch of a few KB of text, 2026-08-30).
         self._fts_columns: Dict[str, List[str]] = {}
 
         # Per-label record of the primary-key column name. ``label`` is
@@ -714,11 +715,9 @@ class LadybugAdapter(GraphDatabaseAdapter):
     def _create_fts_index(self, label: str, columns: List[str]) -> None:
         """Build the FTS index for a label over the given columns.
 
-        Ladybug's FTS index is a snapshot of the table at creation
-        time: inserts after this point don't show up until the
-        index is rebuilt. `update_entities` triggers that
-        rebuild via `_rebuild_fts_index` at write time, so
-        search paths assume the index is current.
+        Ladybug keeps the index current on insert / update / delete, so
+        this runs once per label (at schema setup or on first sight of a
+        free-form label) and the search paths can assume it is current.
 
         Optional build params (``stemmer`` / ``stopwords`` /
         ``tokenizer``) come from the matching ``self.<name>``
@@ -766,9 +765,10 @@ class LadybugAdapter(GraphDatabaseAdapter):
     def _rebuild_fts_index(self, label: str) -> None:
         """Drop and recreate the FTS index for a label.
 
-        Called from the write paths (`update_entities`) after the
-        underlying inserts have committed. Search paths assume the
-        index is current: they never rebuild at query time.
+        Not part of the write path: Ladybug maintains the index itself,
+        and on an in-memory database a dropped index is never released.
+        Kept for the cases where the table underneath changed shape (a
+        label migration) and the index has to be declared afresh.
         """
         if label not in self._fts_columns:
             return
@@ -1301,22 +1301,7 @@ class LadybugAdapter(GraphDatabaseAdapter):
             return None if scalar_in else []
 
         ids = [await self._upsert_entity(e) for e in items]
-
-        # FTS index rebuild is best-effort; data is already committed.
-        # Same shape as the DuckDB adapter: pay the rebuild cost on
-        # the write path so search paths can stay query-only.
-        touched_labels = {sanitize_label(entity.get("label")) for entity in items}
-        for label in touched_labels:
-            if label not in self._fts_columns:
-                continue
-            try:
-                self._rebuild_fts_index(label)
-            except Exception as e:  # noqa: BLE001
-                warnings.warn(
-                    f"FTS index rebuild failed for {label!r}; "
-                    f"entity_fulltext_search results may be stale. ({e})"
-                )
-
+        # No FTS rebuild here: Ladybug updates the index with the rows.
         return ids[0] if scalar_in else ids
 
     async def _upsert_entity(self, entity: Any) -> Optional[Any]:
@@ -1879,17 +1864,8 @@ class LadybugAdapter(GraphDatabaseAdapter):
             {"ids": ids},
         ) as r:
             deleted = len(r.get_all())
-
-        # Best-effort FTS rebuild; failure here just means searches
-        # may report stale hits until the next write triggers a rebuild.
-        if label in self._fts_columns:
-            try:
-                self._rebuild_fts_index(label)
-            except Exception as e:  # noqa: BLE001
-                warnings.warn(
-                    f"FTS index rebuild failed for {label!r} after delete; "
-                    f"entity_fulltext_search results may be stale. ({e})"
-                )
+        # No FTS rebuild here either: the delete drops the rows from the
+        # index as well.
         return deleted
 
     async def delete_relation(

@@ -7,6 +7,8 @@ with a deterministic stub (no LLM calls) so dedup behaviour is
 verifiable.
 """
 
+import sys
+import unittest
 from typing import List
 from typing import Literal
 from unittest.mock import patch
@@ -476,6 +478,87 @@ class LadybugAdapterTest(testing.TestCase):
         with patch.object(adapter, "_rebuild_fts_index", _explode):
             results = await adapter.entity_fulltext_search("Alice", label="Person")
         self.assertEqual(len(results), 1)
+
+    async def test_write_paths_never_rebuild_fts(self):
+        """Ladybug maintains the FTS index on insert / update / delete, so
+        neither update_entities nor delete_entity may drop + recreate it:
+        on an in-memory database a dropped index is never released, and a
+        write-heavy caller leaked its size on every batch. Search must
+        still see every write without a rebuild."""
+        adapter = self._adapter(embedding_model=_StubEmbeddingModel({}))
+
+        def _explode(*a, **kw):
+            raise AssertionError("_rebuild_fts_index must not run on a write path")
+
+        with patch.object(adapter, "_rebuild_fts_index", _explode):
+            await adapter.update_entities(
+                Person(label="Person", name="Alice", embedding=[1.0, 0.0, 0.0])
+            )
+            await adapter.update_entities(
+                [
+                    Person(label="Person", name="Bob", embedding=[0.0, 1.0, 0.0]),
+                    Person(label="Person", name="Carol", embedding=[0.0, 0.0, 1.0]),
+                ]
+            )
+            self.assertEqual(
+                [
+                    r["name"]
+                    for r in await adapter.entity_fulltext_search("Bob", label="Person")
+                ],
+                ["Bob"],
+            )
+            await adapter.delete_entity("Bob", label="Person")
+            self.assertEqual(
+                await adapter.entity_fulltext_search("Bob", label="Person"), []
+            )
+            self.assertEqual(
+                len(await adapter.entity_fulltext_search("Carol", label="Person")), 1
+            )
+
+    @unittest.skipUnless(sys.platform.startswith("linux"), "mallinfo2 is glibc")
+    async def test_repeated_writes_do_not_grow_native_memory(self):
+        """The leak was native (Ladybug's C++ heap), invisible to tracemalloc:
+        judge it by glibc's own in-use byte count. With the per-write rebuild
+        50 batches cost ~1 GB; without it they cost a few MB."""
+        import ctypes
+        import ctypes.util
+
+        libc = ctypes.CDLL(ctypes.util.find_library("c") or "libc.so.6")
+
+        class MallInfo2(ctypes.Structure):
+            _fields_ = [
+                (n, ctypes.c_size_t)
+                for n in (
+                    "arena",
+                    "ordblks",
+                    "smblks",
+                    "hblks",
+                    "hblkhd",
+                    "usmblks",
+                    "fsmblks",
+                    "uordblks",
+                    "fordblks",
+                    "keepcost",
+                )
+            ]
+
+        libc.mallinfo2.restype = MallInfo2
+        adapter = self._adapter(embedding_model=_StubEmbeddingModel({}))
+        await adapter.update_entities(
+            Person(label="Person", name="warmup", embedding=[1.0, 0.0, 0.0])
+        )
+        before = libc.mallinfo2().uordblks
+        for i in range(50):
+            await adapter.update_entities(
+                [
+                    Person(label="Person", name=f"p{i}-{j}", embedding=[1.0, 0.0, 0.0])
+                    for j in range(3)
+                ]
+            )
+        grown_mb = (libc.mallinfo2().uordblks - before) / 1e6
+        self.assertLess(
+            grown_mb, 100, f"native heap grew {grown_mb:.0f} MB over 50 batches"
+        )
 
     async def test_creating_an_existing_fts_index_is_silent(self):
         """Reopening a persistent store re-declares its entity models, so
