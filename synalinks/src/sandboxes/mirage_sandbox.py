@@ -735,6 +735,17 @@ if os.path.exists(state):
             ns.update(dill.load(fh))
     except Exception as exc:
         print("restore-warn: " + repr(exc), file=sys.stderr)
+# Pinned names re-assert themselves on every run, from the persisted
+# ``__rlm_pinned__`` dict, BEFORE the per-run ``inputs=`` binding (so an
+# explicit binding still wins). A caller that persists an environment
+# variable for the agent's code to read (the RLM binds the module input as
+# ``inputs`` once per call) pins it so that a snippet assigning over the
+# name — LLM-written code does — only breaks that one snippet, instead of
+# poisoning every later snippet of the call: the next run restores the pin.
+try:
+    ns.update(ns.get("__rlm_pinned__") or {})
+except Exception as exc:
+    print("pinned-warn: " + repr(exc), file=sys.stderr)
 _inputs = config.get("inputs")
 if _inputs:
     try:

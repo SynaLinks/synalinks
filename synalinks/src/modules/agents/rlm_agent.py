@@ -1432,9 +1432,13 @@ class RecursiveLanguageModelAgent(FunctionCallingAgent):
         sandbox.bind_functions(external_functions)
         # Persist the full input payload as `inputs` in the sandbox namespace.
         # The per-run `inputs=` binding does not persist, so copy it into a real
-        # variable once; every snippet then reads it via `inputs[field]`.
+        # variable once; every snippet then reads it via `inputs[field]`. The
+        # name is also PINNED (``__rlm_pinned__``): the sandbox re-asserts it at
+        # the start of every run, so a snippet that assigns over ``inputs`` —
+        # LLM-written code does — breaks only itself, not the rest of the call.
         bind = await sandbox.run(
-            "inputs = _rlm_inputs", inputs={"_rlm_inputs": inputs_json}
+            "inputs = _rlm_inputs\n__rlm_pinned__ = {'inputs': _rlm_inputs}",
+            inputs={"_rlm_inputs": inputs_json},
         )
         if not bind.ok:
             raise RuntimeError(
