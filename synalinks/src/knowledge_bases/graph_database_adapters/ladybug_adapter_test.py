@@ -599,6 +599,29 @@ class LadybugAdapterTest(testing.TestCase):
         self.assertEqual(adapter._existing_tables("NODE"), set())
         self.assertEqual(adapter._existing_tables("REL"), set())
 
+    async def test_wipe_database_leaves_a_writable_store(self):
+        """A wiped store must take the same label again, on the same adapter.
+
+        Ladybug keeps per-connection catalog state: after a table is dropped
+        and re-created under the same name, the next write to it through the
+        old connection fails ("Cannot find table catalog entry") or segfaults
+        when an FTS index was rebuilt on it. Reproducible with the raw driver.
+        `wipe_database` is the one place the adapter drops tables it will
+        create again, so it has to hand back a connection that can."""
+        adapter = self._adapter()
+        await adapter.update_entities(Person(label="Person", name="Alice"))
+        for name in ("Bob", "Carol"):
+            adapter.wipe_database()
+            self.assertEqual(adapter._existing_tables("NODE"), set())
+            # The label is re-created lazily from the entity, so the registry
+            # must have forgotten the dropped table too.
+            self.assertNotIn("Person", adapter._pk_keys)
+            await adapter.update_entities(Person(label="Person", name=name))
+            rows = adapter._con.execute(
+                "MATCH (p:Person) RETURN p.name AS name"
+            ).get_all()
+            self.assertEqual(rows, [[name]])
+
     async def test_cypher_binds_parameters_safely(self):
         """`$`-parameters bind values, not SQL/Cypher syntax: strings
         containing apostrophes or quotes must round-trip intact."""

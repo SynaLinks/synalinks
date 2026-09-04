@@ -1039,6 +1039,20 @@ class LadybugAdapter(GraphDatabaseAdapter):
         TABLE`` while an FTS or vector index references it. So the
         order is: every FTS / vector index, then every REL table (FK
         to nodes), then the NODE tables themselves.
+
+        Then the connection is replaced. Ladybug keeps per-connection
+        catalog state, and once a table has been dropped and re-created
+        under the same name the *old* connection's next write to it
+        fails (``Cannot find table catalog entry with id N``) or, when an
+        FTS index was rebuilt on the new table, segfaults. That is
+        reproducible with the raw driver, and a wipe is exactly the
+        drop-and-recreate case: every label the adapter sees again is a
+        re-created table. A fresh ``Connection`` on the same ``Database``
+        starts clean and keeps the loaded extensions.
+
+        The per-label registries are cleared for the same reason: they
+        would still describe the dropped tables, and ``_ensure_node_table``
+        trusts them to skip creation.
         """
         for table, name, idx_type in self._existing_indices():
             try:
@@ -1061,6 +1075,12 @@ class LadybugAdapter(GraphDatabaseAdapter):
                     self._con.execute(f"DROP TABLE {name}")
                 except Exception as e:  # noqa: BLE001
                     warnings.warn(f"Failed to drop table {name!r}: {e}")
+
+        self.close()
+        self._con = lb.Connection(self._db)
+        # Absent when called from the constructor, before `_setup_schema`.
+        for registry in ("_pk_keys", "_fts_columns", "_synth_models"):
+            getattr(self, registry, {}).clear()
 
     def _existing_indices(self) -> List[tuple]:
         """Return ``[(table_name, index_name, index_type), ...]``."""
