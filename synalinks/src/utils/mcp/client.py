@@ -12,7 +12,6 @@ from synalinks.src.utils.mcp.sessions import McpHttpClientFactory
 from synalinks.src.utils.mcp.sessions import SSEConnection
 from synalinks.src.utils.mcp.sessions import StdioConnection
 from synalinks.src.utils.mcp.sessions import StreamableHttpConnection
-from synalinks.src.utils.mcp.sessions import WebsocketConnection
 from synalinks.src.utils.mcp.sessions import create_session
 from synalinks.src.utils.mcp.tools import load_mcp_tools
 
@@ -173,5 +172,4 @@ __all__ = [
     "SSEConnection",
     "StdioConnection",
     "StreamableHttpConnection",
-    "WebsocketConnection",
 ]

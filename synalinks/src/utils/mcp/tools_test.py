@@ -22,7 +22,7 @@ class MCPToolsTest(testing.TestCase):
     def test_convert_empty_text_content(self):
         result = CallToolResult(
             content=[],
-            isError=False,
+            is_error=False,
         )
 
         tool_message = _convert_call_tool_result(result)
@@ -32,7 +32,7 @@ class MCPToolsTest(testing.TestCase):
     def test_convert_single_text_content(self):
         result = CallToolResult(
             content=[TextContent(type="text", text="test result")],
-            isError=False,
+            is_error=False,
         )
 
         tool_message = _convert_call_tool_result(result)
@@ -45,7 +45,7 @@ class MCPToolsTest(testing.TestCase):
                 TextContent(type="text", text="result 1"),
                 TextContent(type="text", text="result 2"),
             ],
-            isError=False,
+            is_error=False,
         )
 
         tool_message = _convert_call_tool_result(result)
@@ -54,12 +54,12 @@ class MCPToolsTest(testing.TestCase):
 
     def test_convert_with_non_text_content(self):
         image_content = ImageContent(
-            type="image", mimeType="image/png", data="base64data"
+            type="image", mime_type="image/png", data="base64data"
         )
         resource_content = EmbeddedResource(
             type="resource",
             resource=TextResourceContents(
-                uri="resource://test", mimeType="text/plain", text="hi"
+                uri="resource://test", mime_type="text/plain", text="hi"
             ),
         )
 
@@ -69,7 +69,7 @@ class MCPToolsTest(testing.TestCase):
                 image_content,
                 resource_content,
             ],
-            isError=False,
+            is_error=False,
         )
 
         tool_message = _convert_call_tool_result(result)
@@ -80,7 +80,7 @@ class MCPToolsTest(testing.TestCase):
     def test_convert_with_error(self):
         result = CallToolResult(
             content=[TextContent(type="text", text="error message")],
-            isError=True,
+            is_error=True,
         )
 
         with self.assertRaises(ToolException) as exc_info:
@@ -102,13 +102,13 @@ class MCPToolsTest(testing.TestCase):
         session = AsyncMock()
         session.call_tool.return_value = CallToolResult(
             content=[TextContent(type="text", text="tool result")],
-            isError=False,
+            is_error=False,
         )
 
         mcp_tool = MCPTool(
             name="test_tool",
             description="Test tool description",
-            inputSchema=tool_input_schema,
+            input_schema=tool_input_schema,
         )
 
         synalinks_tool = convert_mcp_tool_to_synalinks_tool(session, mcp_tool)
@@ -142,15 +142,15 @@ class MCPToolsTest(testing.TestCase):
             MCPTool(
                 name="tool1",
                 description="Tool 1 description",
-                inputSchema=tool_input_schema,
+                input_schema=tool_input_schema,
             ),
             MCPTool(
                 name="tool2",
                 description="Tool 2 description",
-                inputSchema=tool_input_schema,
+                input_schema=tool_input_schema,
             ),
         ]
-        session.list_tools.return_value = MagicMock(tools=mcp_tools, nextCursor=None)
+        session.list_tools.return_value = MagicMock(tools=mcp_tools, next_cursor=None)
 
         async def mock_call_tool(tool_name, arguments):
             if tool_name == "tool1":
@@ -158,14 +158,14 @@ class MCPToolsTest(testing.TestCase):
                     content=[
                         TextContent(type="text", text=f"tool1 result with {arguments}")
                     ],
-                    isError=False,
+                    is_error=False,
                 )
             elif tool_name == "tool2":
                 return CallToolResult(
                     content=[
                         TextContent(type="text", text=f"tool2 result with {arguments}")
                     ],
-                    isError=False,
+                    is_error=False,
                 )
             else:
                 raise ValueError(f"Unknown tool: {tool_name}")
@@ -211,15 +211,15 @@ class MCPToolsTest(testing.TestCase):
             MCPTool(
                 name="tool1",
                 description="Tool 1 description",
-                inputSchema=tool_input_schema,
+                input_schema=tool_input_schema,
             ),
             MCPTool(
                 name="tool2",
                 description="Tool 2 description",
-                inputSchema=tool_input_schema,
+                input_schema=tool_input_schema,
             ),
         ]
-        session.list_tools.return_value = MagicMock(tools=mcp_tools, nextCursor=None)
+        session.list_tools.return_value = MagicMock(tools=mcp_tools, next_cursor=None)
 
         async def mock_call_tool(tool_name, arguments):
             if tool_name == "tool1":
@@ -227,14 +227,14 @@ class MCPToolsTest(testing.TestCase):
                     content=[
                         TextContent(type="text", text=f"tool1 result with {arguments}")
                     ],
-                    isError=False,
+                    is_error=False,
                 )
             elif tool_name == "tool2":
                 return CallToolResult(
                     content=[
                         TextContent(type="text", text=f"tool2 result with {arguments}")
                     ],
-                    isError=False,
+                    is_error=False,
                 )
             else:
                 raise ValueError(f"Unknown tool: {tool_name}")
