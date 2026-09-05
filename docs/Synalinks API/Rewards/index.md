@@ -22,6 +22,28 @@ Synalinks ships two flavors of reward base class:
 Both flavors share the same masking, reduction, and serialization machinery, so
 you can mix them freely (including across multi-output programs).
 
+## Custom rewards from a plain function
+
+`compile` accepts a bare function, no wrapper needed. It is auto-wrapped in a
+`RewardFunctionWrapper` named after the function:
+
+```python
+async def answer_matches(y_true, y_pred):
+    return 1.0 if y_true.get("answer") == y_pred.get("answer") else 0.0
+
+program.compile(
+    reward=answer_matches,
+    optimizer=synalinks.optimizers.RandomFewShot(),
+)
+```
+
+The function must be declared with `async def`, since rewards are awaited; a
+synchronous one raises a `TypeError` naming it. Wrap it in
+`RewardFunctionWrapper` yourself when you need masks, a custom `reduction`, or
+extra keyword arguments forwarded to it. Batched functions are never
+auto-wrapped (a `batch -> list[float]` signature is indistinguishable from a
+per-sample one), so they always go through `BatchRewardFunctionWrapper`.
+
 ## Rewards Overview
 
 - [Base Reward class](Base Reward class.md)

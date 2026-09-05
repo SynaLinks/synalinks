@@ -23,6 +23,13 @@ async def batch_normalized(y_true, y_pred, temperature=1.0):
 
 
 class BatchRewardFunctionWrapperTest(testing.TestCase):
+    def test_sync_fn_is_rejected(self):
+        def sync_batch_fn(y_true, y_pred):
+            return [1.0]
+
+        with self.assertRaisesRegex(TypeError, "sync_batch_fn"):
+            BatchRewardFunctionWrapper(fn=sync_batch_fn)
+
     async def test_per_sample_call(self):
         class Answer(DataModel):
             answer: str

@@ -2,6 +2,8 @@
 # Original authors: François Chollet et al. (Keras Team)
 # License Apache 2.0: (c) 2025-2026 Yoan Sallami (Synalinks Team)
 
+import inspect
+
 from synalinks.src import ops
 from synalinks.src import tree
 from synalinks.src.api_export import synalinks_export
@@ -95,6 +97,32 @@ class Reward(SynalinksSaveable):
 
     def _obj_type(self):
         return "Reward"
+
+
+def check_async_reward_fn(fn, cls_name):
+    """Raise a clear error when a reward function is not defined with ``async def``.
+
+    Reward functions are always awaited, so a synchronous one fails deep inside
+    the training loop with an opaque ``object float can't be used in 'await'
+    expression``. Checking at construction time points at the real culprit.
+
+    Args:
+        fn (callable): The reward function to check.
+        cls_name (str): Name of the wrapper class, used in the error message.
+
+    Raises:
+        TypeError: If ``fn`` is not a coroutine function.
+    """
+    if inspect.iscoroutinefunction(fn):
+        return
+    if inspect.iscoroutinefunction(getattr(fn, "__call__", None)):
+        return
+    name = getattr(fn, "__name__", repr(fn))
+    raise TypeError(
+        f"`{cls_name}` expects an async reward function, but `{name}` is "
+        "synchronous. Reward functions are awaited, so declare it with "
+        f"`async def {name}(y_true, y_pred)`."
+    )
 
 
 def apply_masks(

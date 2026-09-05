@@ -4,6 +4,7 @@ from synalinks.src import ops
 from synalinks.src.api_export import synalinks_export
 from synalinks.src.rewards.reward import Reward
 from synalinks.src.rewards.reward import apply_masks
+from synalinks.src.rewards.reward import check_async_reward_fn
 from synalinks.src.rewards.reward import reduce_values
 from synalinks.src.saving import serialization_lib
 
@@ -76,7 +77,12 @@ class BatchRewardFunctionWrapper(BatchReward):
     """Wrap a stateless batched function into a ``BatchReward``.
 
     The wrapped function receives the full batch and must return a
-    ``list[float]`` of length ``batch_size``.
+    ``list[float]`` of length ``batch_size``. It must be declared with
+    ``async def``, since reward functions are awaited.
+
+    Unlike per-sample functions, a batched function is never auto-wrapped by
+    ``compile``: its ``batch -> list[float]`` signature cannot be told apart
+    from a per-sample one, so it always has to be passed wrapped in this class.
 
     Example:
 
@@ -129,6 +135,7 @@ class BatchRewardFunctionWrapper(BatchReward):
             in_mask_pattern=in_mask_pattern,
             out_mask_pattern=out_mask_pattern,
         )
+        check_async_reward_fn(fn, self.__class__.__name__)
         self.fn = fn
         self._fn_kwargs = kwargs
 

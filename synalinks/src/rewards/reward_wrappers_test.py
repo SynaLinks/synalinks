@@ -20,6 +20,21 @@ async def custom_reward_fn(y_true, y_pred, weight=1.0):
 
 
 class RewardFunctionWrapperTest(testing.TestCase):
+    def test_sync_fn_is_rejected(self):
+        def sync_reward_fn(y_true, y_pred):
+            return 1.0
+
+        with self.assertRaisesRegex(TypeError, "sync_reward_fn"):
+            RewardFunctionWrapper(fn=sync_reward_fn)
+
+    def test_async_callable_object_is_accepted(self):
+        class AsyncJudge:
+            async def __call__(self, y_true, y_pred):
+                return 0.5
+
+        wrapper = RewardFunctionWrapper(fn=AsyncJudge(), name="judge")
+        self.assertEqual(wrapper.name, "judge")
+
     async def test_call(self):
         class Answer(DataModel):
             answer: str
