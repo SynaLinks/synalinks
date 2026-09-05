@@ -168,3 +168,92 @@ class ProgramAsJudgeTest(testing.TestCase):
         # A serialized synalinks object is a dict, not a Program.
         self.assertIsInstance(config["program"], dict)
         self.assertIn("class_name", config["program"])
+
+
+class ProgramAsJudgeFromConfigTest(testing.TestCase):
+    """`from_config` has to work for subclasses that build their own program.
+
+    `ProgramAsJudge.get_config` writes the wrapped program, and `Reward`'s
+    writes `reduction`. A subclass like `LMAsJudge` takes neither — it builds
+    its program from a language model and a scale — so handing the config
+    straight to its `__init__` raised `TypeError`, and any program compiled
+    with such a reward could not be loaded.
+    """
+
+    async def judge_program(self):
+        """A real, serializable program to wrap."""
+        from synalinks.src import modules
+        from synalinks.src import programs
+        from synalinks.src.modules.language_models import LanguageModel
+        from synalinks.src.testing.test_utils import AnswerWithRationale
+        from synalinks.src.testing.test_utils import Query
+
+        x0 = modules.Input(data_model=Query)
+        x1 = await modules.Generator(
+            data_model=AnswerWithRationale,
+            language_model=LanguageModel(model="ollama/mistral"),
+        )(x0)
+        return programs.Program(inputs=x0, outputs=x1, name="judge")
+
+    async def test_round_trip_when_the_subclass_takes_no_program(self):
+        program = await self.judge_program()
+
+        @object_registration.register_synalinks_serializable()
+        class BuildsItsOwnProgram(ProgramAsJudge):
+            """Stands in for `LMAsJudge`: builds a program, forwards none."""
+
+            def __init__(self, name="builds_its_own", in_mask=None, out_mask=None):
+                super().__init__(
+                    program=program, name=name, in_mask=in_mask, out_mask=out_mask
+                )
+
+        judge = BuildsItsOwnProgram(in_mask=["answer"])
+        restored = BuildsItsOwnProgram.from_config(judge.get_config())
+
+        self.assertIsInstance(restored, BuildsItsOwnProgram)
+        self.assertEqual(restored.name, "builds_its_own")
+        self.assertEqual(restored.in_mask, ["answer"])
+        self.assertEqual(restored.reduction, judge.reduction)
+        # Rebuilt around the deserialized program, not a freshly built one.
+        self.assertIsNotNone(restored.program)
+
+    async def test_the_restored_judge_still_scores(self):
+        class Answer(DataModel):
+            answer: str
+
+        program = await self.judge_program()
+
+        @object_registration.register_synalinks_serializable()
+        class ScoringJudge(ProgramAsJudge):
+            def __init__(self, name="scoring_judge"):
+                super().__init__(program=program, name=name)
+
+        restored = ScoringJudge.from_config(ScoringJudge().get_config())
+        # The restored wrapper scores through whatever program it holds; swap
+        # in a stub so the assertion is about the wrapper, not an LM call.
+        restored.program = AsyncMock(return_value={"reward": 0.5})
+
+        reward = await restored(Answer(answer="a"), Answer(answer="b"))
+        self.assertEqual(reward, 0.5)
+
+    async def test_a_subclass_that_forwards_program_is_unchanged(self):
+        """Backwards compatibility: `program` in the signature still wins."""
+        program = await self.judge_program()
+
+        @object_registration.register_synalinks_serializable()
+        class ForwardsProgram(ProgramAsJudge):
+            def __init__(self, program=None, name="forwards", **kwargs):
+                self.constructed = True
+                super().__init__(program=program, name=name, **kwargs)
+
+        judge = ForwardsProgram(program=program)
+        restored = ForwardsProgram.from_config(judge.get_config())
+        # Its own `__init__` ran, rather than being bypassed.
+        self.assertTrue(getattr(restored, "constructed", False))
+
+    async def test_program_as_judge_itself_round_trips(self):
+        program = await self.judge_program()
+        judge = ProgramAsJudge(program=program, name="judge", reduction="sum")
+        restored = ProgramAsJudge.from_config(judge.get_config())
+        self.assertEqual(restored.name, "judge")
+        self.assertEqual(restored.reduction, "sum")

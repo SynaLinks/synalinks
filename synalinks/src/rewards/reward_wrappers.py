@@ -2,6 +2,7 @@
 # Original authors: François Chollet et al. (Keras Team)
 # License Apache 2.0: (c) 2025-2026 Yoan Sallami (Synalinks Team)
 
+import inspect
 import warnings
 
 from synalinks.src.api_export import synalinks_export
@@ -170,9 +171,28 @@ class ProgramAsJudge(Reward):
 
     @classmethod
     def from_config(cls, config):
+        """Restore a judge, including subclasses that build their own program.
+
+        `get_config` writes the wrapped program (and `reduction`, from
+        `Reward`), but a subclass such as `LMAsJudge` builds its program from
+        its own arguments and so takes neither. Passing them to its `__init__`
+        raises `TypeError`, which made every such reward impossible to
+        deserialize — and with it any program compiled with one.
+
+        The wrapped program serializes itself completely, so a subclass is
+        restored by rebuilding the wrapper around the deserialized program
+        rather than by re-running the construction that produced it. Classes
+        that do accept `program` — `ProgramAsJudge` itself, and any subclass
+        that forwards it — keep going through their own `__init__` exactly as
+        before.
+        """
         if "program" in config:
             config = serialization_lib.deserialize_synalinks_object(config)
-        return cls(**config)
+        if "program" in inspect.signature(cls.__init__).parameters:
+            return cls(**config)
+        instance = cls.__new__(cls)
+        ProgramAsJudge.__init__(instance, **config)
+        return instance
 
     def __repr__(self):
         return f"<ProgramAsJudge({self.program})>"
