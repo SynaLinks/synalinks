@@ -24,8 +24,9 @@ you can mix them freely (including across multi-output programs).
 
 ## Rewards Overview
 
+- [Base Reward class](Base Reward class.md)
 - [ExactMatch reward](ExactMatch reward.md)
 - [CosineSimilarity reward](CosineSimilarity reward.md)
 - [LMAsJudge reward](LMAsJudge reward.md)
-- [ProgramAsJudge reward](Reward wrappers.md)
+- [RewardFunctionWrapper & ProgramAsJudge](Reward wrappers.md)
 - [BatchReward & BatchRewardFunctionWrapper](Batch reward wrappers.md)

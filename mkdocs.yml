@@ -248,6 +248,7 @@ nav:
       - Synalinks API/Metrics/Program operational metrics.md
     - Rewards:
       - Synalinks API/Rewards/index.md
+      - Synalinks API/Rewards/Base Reward class.md
       - Synalinks API/Rewards/ExactMatch reward.md
       - Synalinks API/Rewards/CosineSimilarity reward.md
       - Synalinks API/Rewards/LMAsJudge reward.md
