@@ -6,6 +6,7 @@ from mcp import ClientSession
 from mcp.types import CallToolResult
 from mcp.types import EmbeddedResource
 from mcp.types import ImageContent
+from mcp.types import PaginatedRequestParams
 from mcp.types import TextContent
 from mcp.types import Tool as MCPTool
 
@@ -49,7 +50,7 @@ def _convert_call_tool_result(
     elif len(text_contents) == 1:
         tool_content = tool_content[0]
 
-    if call_tool_result.isError:
+    if call_tool_result.is_error:
         raise ToolException(tool_content)
 
     tool_message = {
@@ -71,15 +72,20 @@ async def _list_all_tools(session: ClientSession) -> list[MCPTool]:
         if iterations > MAX_ITERATIONS:
             raise RuntimeError("Reached max of 1000 iterations while listing tools.")
 
-        list_tools_page_result = await session.list_tools(cursor=current_cursor)
+        params = (
+            PaginatedRequestParams(cursor=current_cursor)
+            if current_cursor is not None
+            else None
+        )
+        list_tools_page_result = await session.list_tools(params=params)
 
         if list_tools_page_result.tools:
             all_tools.extend(list_tools_page_result.tools)
 
-        if list_tools_page_result.nextCursor is None:
+        if list_tools_page_result.next_cursor is None:
             break
 
-        current_cursor = list_tools_page_result.nextCursor
+        current_cursor = list_tools_page_result.next_cursor
     return all_tools
 
 
@@ -109,12 +115,9 @@ def _create_async_function_from_mcp_tool(
     that can be wrapped by Synalinks tool.
 
     """
-    properties = (
-        mcp_tool.inputSchema.get("properties", {}) if mcp_tool.inputSchema else {}
-    )
-    required_params = (
-        set(mcp_tool.inputSchema.get("required", [])) if mcp_tool.inputSchema else set()
-    )
+    input_schema = mcp_tool.input_schema or {}
+    properties = input_schema.get("properties", {})
+    required_params = set(input_schema.get("required", []))
 
     parameters = []
     annotations = {}

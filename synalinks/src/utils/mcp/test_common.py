@@ -5,11 +5,11 @@ import time
 from collections.abc import Generator
 
 import uvicorn
-from mcp.server.fastmcp import FastMCP
+from mcp.server.mcpserver import MCPServer
 
 
-def run_streamable_server(server: FastMCP, server_port: int) -> None:
-    """Run a FastMCP server in a separate process exposing a streamable HTTP endpoint."""
+def run_streamable_server(server: MCPServer, server_port: int) -> None:
+    """Run an MCPServer in a separate process exposing a streamable HTTP endpoint."""
     app = server.streamable_http_app()
     uvicorn_server = uvicorn.Server(
         config=uvicorn.Config(
@@ -20,20 +20,24 @@ def run_streamable_server(server: FastMCP, server_port: int) -> None:
 
 
 @contextlib.contextmanager
-def run_streamable_server_multiprocessing(server: FastMCP) -> Generator[None, None, None]:
+def run_streamable_server_multiprocessing(
+    server: MCPServer, port: int
+) -> Generator[None, None, None]:
     """Run the server in a separate process exposing a streamable HTTP endpoint.
 
-    The endpoint will be available at `http://localhost:{server.settings.port}/mcp/`.
+    The endpoint will be available at `http://localhost:{port}/mcp/`. The port
+    is explicit because MCP SDK v2's `MCPServer` does not carry one: it belongs
+    to whoever serves the app.
     """
     # Use the "fork" start method explicitly: the child inherits memory, so the
-    # FastMCP server (which holds unpicklable local tool-handler closures) does
+    # MCPServer (which holds unpicklable local tool-handler closures) does
     # not need to be pickled. Python 3.14 changed the default start method on
     # Linux from "fork" to "forkserver"; pinning "fork" keeps the previous
     # behavior on all supported versions (>=3.11) and fixes 3.14.
     ctx = multiprocessing.get_context("fork")
     proc = ctx.Process(
         target=run_streamable_server,
-        kwargs={"server": server, "server_port": server.settings.port},
+        kwargs={"server": server, "server_port": port},
         daemon=True,
     )
     proc.start()
@@ -45,7 +49,7 @@ def run_streamable_server_multiprocessing(server: FastMCP) -> Generator[None, No
     while attempt < max_attempts:
         try:
             with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-                s.connect(("127.0.0.1", server.settings.port))
+                s.connect(("127.0.0.1", port))
                 break
         except ConnectionRefusedError:
             time.sleep(0.1)

@@ -3,8 +3,8 @@
 import platform
 import unittest
 
-import httpx
-from mcp.server import FastMCP
+import httpx2
+from mcp.server.mcpserver import MCPServer
 from mcp.types import ToolAnnotations
 
 from synalinks.src import testing
@@ -23,11 +23,11 @@ class MCPClientIntegrationTest(testing.TestCase):
     def setUpClass(cls):
         """Set up multiple MCP servers for integration testing."""
         # server 1: time server with annotations
-        cls.time_server = FastMCP(port=8181)
+        cls.time_server = MCPServer("time")
 
         @cls.time_server.tool(
             annotations=ToolAnnotations(
-                title="Get Time", readOnlyHint=True, idempotentHint=False
+                title="Get Time", read_only_hint=True, idempotent_hint=False
             )
         )
         def get_time() -> str:
@@ -35,7 +35,7 @@ class MCPClientIntegrationTest(testing.TestCase):
             return "5:20:00 PM EST"
 
         # server 2: status server for custom HTTPX client testing
-        cls.status_server = FastMCP(port=8182)
+        cls.status_server = MCPServer("status")
 
         @cls.status_server.tool()
         def get_status() -> str:
@@ -48,7 +48,7 @@ class MCPClientIntegrationTest(testing.TestCase):
             return "24h 30m 15s"
 
         # server 3: math server for multi-server testing
-        cls.math_server = FastMCP(port=8183)
+        cls.math_server = MCPServer("math")
 
         @cls.math_server.tool()
         def add_numbers(a: int, b: int) -> int:
@@ -60,11 +60,15 @@ class MCPClientIntegrationTest(testing.TestCase):
             """Multiply two numbers together"""
             return a * b
 
-        cls.time_server_context = run_streamable_server_multiprocessing(cls.time_server)
-        cls.status_server_context = run_streamable_server_multiprocessing(
-            cls.status_server
+        cls.time_server_context = run_streamable_server_multiprocessing(
+            cls.time_server, 8181
         )
-        cls.math_server_context = run_streamable_server_multiprocessing(cls.math_server)
+        cls.status_server_context = run_streamable_server_multiprocessing(
+            cls.status_server, 8182
+        )
+        cls.math_server_context = run_streamable_server_multiprocessing(
+            cls.math_server, 8183
+        )
 
         cls.time_server_context.__enter__()
         cls.status_server_context.__enter__()
@@ -119,15 +123,15 @@ class MCPClientIntegrationTest(testing.TestCase):
 
         def custom_httpx_client_factory(
             headers: dict[str, str] | None = None,
-            timeout: httpx.Timeout | None = None,
-            auth: httpx.Auth | None = None,
-        ) -> httpx.AsyncClient:
-            return httpx.AsyncClient(
+            timeout: httpx2.Timeout | None = None,
+            auth: httpx2.Auth | None = None,
+        ) -> httpx2.AsyncClient:
+            return httpx2.AsyncClient(
                 headers=headers,
-                timeout=timeout or httpx.Timeout(30.0),
+                timeout=timeout or httpx2.Timeout(30.0),
                 auth=auth,
                 follow_redirects=True,
-                limits=httpx.Limits(max_keepalive_connections=5, max_connections=10),
+                limits=httpx2.Limits(max_keepalive_connections=5, max_connections=10),
             )
 
         status_connection_with_factory = {
