@@ -1,7 +1,6 @@
 # License Apache 2.0: (c) 2025-2026 Yoan Sallami (Synalinks Team)
 
 import base64
-import copy
 import os
 import warnings
 from unittest.mock import patch
@@ -103,6 +102,92 @@ class LanguageModelTest(testing.TestCase):
             result.get_json(), AnswerWithRationale(**result.get_json()).get_json()
         )
         self.assertEqual(result.get_json(), expected.get_json())
+
+    @patch("litellm.acompletion")
+    async def test_structured_output_via_tool_call_reads_the_arguments(
+        self, mock_completion
+    ):
+        # openrouter (like groq, cohere, bedrock) is asked for structured
+        # output as a forced `structured_output` tool call, so the JSON comes
+        # back as the call's arguments and `content` is empty. It used to be
+        # read from `content`, fail to parse, and score every row as None.
+        language_model = LanguageModel(model="openrouter/anthropic/claude-opus-4.1")
+
+        class Answer(DataModel):
+            answer: str
+
+        mock_completion.return_value = {
+            "choices": [
+                {
+                    "message": {
+                        "content": None,
+                        "tool_calls": [
+                            {
+                                "id": "call_1",
+                                "type": "function",
+                                "function": {
+                                    "name": "structured_output",
+                                    "arguments": '{"answer": "B"}',
+                                },
+                            }
+                        ],
+                    }
+                }
+            ]
+        }
+
+        messages = ChatMessages(
+            messages=[ChatMessage(role=ChatRole.USER, content="Pick a letter.")]
+        )
+        result = await language_model(messages, schema=Answer.get_schema())
+        self.assertEqual(result.get_json(), {"answer": "B"})
+
+        # The tool's `parameters` is the whole JSON Schema object, not its
+        # bare property map.
+        tool = mock_completion.call_args.kwargs["tools"][0]["function"]
+        self.assertEqual(tool["name"], "structured_output")
+        self.assertEqual(tool["parameters"]["type"], "object")
+        self.assertIn("answer", tool["parameters"]["properties"])
+        self.assertEqual(
+            mock_completion.call_args.kwargs["tool_choice"]["function"]["name"],
+            "structured_output",
+        )
+
+    @patch("litellm.acompletion")
+    async def test_structured_output_tool_call_wins_over_a_content_preamble(
+        self, mock_completion
+    ):
+        # Some backends behind openrouter narrate before calling the tool.
+        language_model = LanguageModel(model="openrouter/openai/gpt-4o-mini")
+
+        class Answer(DataModel):
+            answer: str
+
+        mock_completion.return_value = {
+            "choices": [
+                {
+                    "message": {
+                        "content": "I'll answer with the tool.",
+                        "tool_calls": [
+                            {
+                                "id": "call_1",
+                                "type": "function",
+                                "function": {
+                                    "name": "structured_output",
+                                    "arguments": '{"answer": "true"}',
+                                },
+                            }
+                        ],
+                    }
+                }
+            ]
+        }
+
+        messages = ChatMessages(
+            messages=[ChatMessage(role=ChatRole.USER, content="Yes or no?")]
+        )
+        result = await language_model(messages, schema=Answer.get_schema())
+        self.assertEqual(result.get_json(), {"answer": "true"})
 
     @patch("litellm.acompletion")
     async def test_call_api_streaming_mode(self, mock_completion):
@@ -864,9 +949,7 @@ class FinishReasonTest(testing.TestCase):
     @staticmethod
     def _response(content="", finish_reason="stop"):
         return {
-            "choices": [
-                {"message": {"content": content}, "finish_reason": finish_reason}
-            ]
+            "choices": [{"message": {"content": content}, "finish_reason": finish_reason}]
         }
 
     @patch("litellm.acompletion")
@@ -882,7 +965,9 @@ class FinishReasonTest(testing.TestCase):
     @patch("litellm.acompletion")
     async def test_finish_reason_is_cleared_between_calls(self, mock_completion):
         lm = LanguageModel(model="ollama/mistral")
-        mock_completion.return_value = self._response(content="hi", finish_reason="length")
+        mock_completion.return_value = self._response(
+            content="hi", finish_reason="length"
+        )
         await lm(_chat_messages())
         self.assertEqual(lm.last_call_finish_reason, "length")
         mock_completion.return_value = {"choices": [{"message": {"content": "hi"}}]}
@@ -903,9 +988,7 @@ class FinishReasonTest(testing.TestCase):
         self.assertEqual(lm.last_call_finish_reason, "length")
 
     @patch("litellm.acompletion")
-    async def test_blocked_completion_is_reported_once_not_retried(
-        self, mock_completion
-    ):
+    async def test_blocked_completion_is_reported_once_not_retried(self, mock_completion):
         mock_completion.return_value = self._response(finish_reason="content_filter")
         lm = LanguageModel(model="ollama/mistral", retry=3)
         with warnings.catch_warnings():
