@@ -95,6 +95,25 @@ class RewardFunctionWrapperTest(testing.TestCase):
         self.assertIn("fn", config)
         self.assertIn("fn_kwargs", config)
 
+    async def test_from_config_round_trip(self):
+        class Answer(DataModel):
+            answer: str
+
+        wrapper = RewardFunctionWrapper(
+            fn=custom_reward_fn,
+            name="my_wrapper",
+            reduction="sum",
+            in_mask=["answer"],
+            weight=0.5,
+        )
+        restored = RewardFunctionWrapper.from_config(wrapper.get_config())
+        self.assertEqual(restored.name, "my_wrapper")
+        self.assertEqual(restored.reduction, "sum")
+        self.assertEqual(restored.in_mask, ["answer"])
+        # The function and its kwargs survive the round trip.
+        reward = await restored(Answer(answer="hello"), Answer(answer="hello"))
+        self.assertEqual(reward, 0.5)
+
 
 class ProgramAsJudgeTest(testing.TestCase):
     async def test_call(self):
@@ -183,3 +202,28 @@ class ProgramAsJudgeTest(testing.TestCase):
         # A serialized synalinks object is a dict, not a Program.
         self.assertIsInstance(config["program"], dict)
         self.assertIn("class_name", config["program"])
+
+    async def test_from_config_round_trip(self):
+        from synalinks.src import modules
+        from synalinks.src import programs
+        from synalinks.src.modules.language_models import LanguageModel
+        from synalinks.src.testing.test_utils import AnswerWithRationale
+        from synalinks.src.testing.test_utils import Query
+
+        x0 = modules.Input(data_model=Query)
+        x1 = await modules.Generator(
+            data_model=AnswerWithRationale,
+            language_model=LanguageModel(model="ollama/mistral"),
+        )(x0)
+        program = programs.Program(inputs=x0, outputs=x1, name="judge")
+
+        judge = ProgramAsJudge(
+            program=program, name="my_judge", reduction="sum", in_mask=["answer"]
+        )
+        restored = ProgramAsJudge.from_config(judge.get_config())
+        self.assertIsInstance(restored, ProgramAsJudge)
+        self.assertEqual(restored.name, "my_judge")
+        self.assertEqual(restored.reduction, "sum")
+        self.assertEqual(restored.in_mask, ["answer"])
+        self.assertIsInstance(restored.program, programs.Program)
+        self.assertEqual(restored.program.name, "judge")

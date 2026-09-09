@@ -2,6 +2,7 @@
 
 from synalinks.src import ops
 from synalinks.src.api_export import synalinks_export
+from synalinks.src.backend.pydantic.metrics import Rating20
 from synalinks.src.backend.pydantic.metrics import get_score_type
 from synalinks.src.backend.pydantic.metrics import serialize_score_type
 from synalinks.src.modules import SelfCritique
@@ -44,7 +45,7 @@ class LMAsJudgeProgram(Program):
             description=description,
             trainable=trainable,
         )
-        self.score_type = get_score_type(score_type)
+        self.score_type = get_score_type(score_type or Rating20)
         self.critique = SelfCritique(
             language_model=language_model,
             prompt_template=prompt_template,
@@ -133,10 +134,6 @@ class LMAsJudge(ProgramAsJudge):
         program.compile(
             reward=synalinks.rewards.LMAsJudge(
                 language_model=language_model,
-                # Optional: let the judge grade on a 1..5 integer scale
-                # instead of the default 0.0..1.0 `Score`. The reward
-                # is normalized back to 0.0..1.0 automatically.
-                score_type=synalinks.Rating,
             )
             optimizer=synalinks.optimizers.RandomFewShot(),
         )
@@ -153,10 +150,11 @@ class LMAsJudge(ProgramAsJudge):
         examples (list): The default examples to use in the prompt
             (see `Generator`).
         score_type (type | str): Optional. The scale the judge picks the reward
-            from: `synalinks.Score` (default), `synalinks.FineScore`,
-            `synalinks.Rating`, `synalinks.Rating10`, `synalinks.Rating20`, any
+            from: `synalinks.Rating20` (default), `synalinks.Score`,
+            `synalinks.FineScore`, `synalinks.Rating`, `synalinks.Rating10`, any
             `Enum` whose members are `int` or `float`, or the name of one of them.
             The reward is always normalized to a float between 0.0 and 1.0.
+        reduction (str): Optional. The reward reduction (Default to `"mean"`).
         name (str): Optional. string name of the reward instance.
         in_mask (list): Optional. list of keys to keep to compute the reward.
         out_mask (list): Optional. list of keys to remove to compute the reward.
@@ -173,6 +171,7 @@ class LMAsJudge(ProgramAsJudge):
         examples=None,
         instructions=None,
         score_type=None,
+        reduction="mean",
         name="lm_as_judge",
         in_mask=None,
         out_mask=None,
@@ -188,9 +187,23 @@ class LMAsJudge(ProgramAsJudge):
         )
         super().__init__(
             program=program,
+            reduction=reduction,
             name=name,
             in_mask=in_mask,
             out_mask=out_mask,
             in_mask_pattern=in_mask_pattern,
             out_mask_pattern=out_mask_pattern,
+        )
+
+    @classmethod
+    def from_config(cls, config):
+        config = dict(config)
+        program = serialization_lib.deserialize_synalinks_object(config.pop("program"))
+        return cls(
+            language_model=program.language_model,
+            prompt_template=program.prompt_template,
+            examples=program.examples,
+            instructions=program.instructions,
+            score_type=program.score_type,
+            **config,
         )

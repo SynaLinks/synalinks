@@ -3,6 +3,7 @@ import inspect
 from synalinks.src.api_export import synalinks_export
 from synalinks.src.rewards.batch_reward import BatchReward
 from synalinks.src.rewards.batch_reward import BatchRewardFunctionWrapper
+from synalinks.src.rewards.composable_reward import ComposableReward
 from synalinks.src.rewards.cosine_similarity import CosineSimilarity
 from synalinks.src.rewards.cosine_similarity import cosine_similarity
 from synalinks.src.rewards.exact_match import ExactMatch
@@ -11,12 +12,43 @@ from synalinks.src.rewards.reward import Reward
 from synalinks.src.rewards.reward import reduce_rewards
 from synalinks.src.rewards.reward_wrappers import ProgramAsJudge
 from synalinks.src.rewards.reward_wrappers import RewardFunctionWrapper
+from synalinks.src.rewards.rubric_rewards import AgentLoopDetection
+from synalinks.src.rewards.rubric_rewards import AnswerRelevancy
+from synalinks.src.rewards.rubric_rewards import ArgumentCorrectness
+from synalinks.src.rewards.rubric_rewards import Bias
+from synalinks.src.rewards.rubric_rewards import CitationFaithfulness
+from synalinks.src.rewards.rubric_rewards import ContextualPrecision
+from synalinks.src.rewards.rubric_rewards import ContextualRecall
+from synalinks.src.rewards.rubric_rewards import ContextualRelevancy
+from synalinks.src.rewards.rubric_rewards import ConversationCompleteness
+from synalinks.src.rewards.rubric_rewards import Faithfulness
+from synalinks.src.rewards.rubric_rewards import GoalAccuracy
+from synalinks.src.rewards.rubric_rewards import Hallucination
+from synalinks.src.rewards.rubric_rewards import KnowledgeRetention
+from synalinks.src.rewards.rubric_rewards import Misuse
+from synalinks.src.rewards.rubric_rewards import NonAdvice
+from synalinks.src.rewards.rubric_rewards import PIILeakage
+from synalinks.src.rewards.rubric_rewards import PlanAdherence
+from synalinks.src.rewards.rubric_rewards import PlanQuality
+from synalinks.src.rewards.rubric_rewards import PromptAlignment
+from synalinks.src.rewards.rubric_rewards import RoleAdherence
+from synalinks.src.rewards.rubric_rewards import RoleViolation
+from synalinks.src.rewards.rubric_rewards import StepEfficiency
+from synalinks.src.rewards.rubric_rewards import Summarization
+from synalinks.src.rewards.rubric_rewards import TaskCompletion
+from synalinks.src.rewards.rubric_rewards import ToolCorrectness
+from synalinks.src.rewards.rubric_rewards import ToolPermission
+from synalinks.src.rewards.rubric_rewards import ToolUse
+from synalinks.src.rewards.rubric_rewards import TopicAdherence
+from synalinks.src.rewards.rubric_rewards import Toxicity
+from synalinks.src.rewards.rubric_rewards import TurnFaithfulness
+from synalinks.src.rewards.rubric_rewards import TurnRelevancy
+from synalinks.src.rewards.rubrics import get_rubric
+from synalinks.src.rewards.rubrics import list_rubrics
+from synalinks.src.rewards.rubrics_as_judge import RubricsAsJudge
 from synalinks.src.saving import serialization_lib
 from synalinks.src.utils.naming import to_snake_case
 
-# `LMAsJudge` lives in this set but is imported lazily at the bottom of this
-# module to avoid a circular import (`lm_as_judge` -> `programs.Program` ->
-# `trainers.Trainer` -> `synalinks.src.rewards`).
 ALL_OBJECTS = {
     # Base
     Reward,
@@ -27,6 +59,39 @@ ALL_OBJECTS = {
     ExactMatch,
     CosineSimilarity,
     ProgramAsJudge,
+    ComposableReward,
+    RubricsAsJudge,
+    AnswerRelevancy,
+    Faithfulness,
+    Hallucination,
+    Summarization,
+    ArgumentCorrectness,
+    ContextualRelevancy,
+    ContextualPrecision,
+    ContextualRecall,
+    CitationFaithfulness,
+    Bias,
+    Toxicity,
+    PIILeakage,
+    Misuse,
+    NonAdvice,
+    PromptAlignment,
+    TaskCompletion,
+    ToolCorrectness,
+    ToolUse,
+    ToolPermission,
+    GoalAccuracy,
+    RoleAdherence,
+    RoleViolation,
+    PlanQuality,
+    PlanAdherence,
+    StepEfficiency,
+    AgentLoopDetection,
+    ConversationCompleteness,
+    KnowledgeRetention,
+    TopicAdherence,
+    TurnRelevancy,
+    TurnFaithfulness,
 }
 
 ALL_OBJECTS_DICT = {cls.__name__.lower(): cls for cls in ALL_OBJECTS}
@@ -117,8 +182,12 @@ def get(identifier):
 
 # Late import to break a cycle: `lm_as_judge` -> `programs.Program` ->
 # `trainers.Trainer` -> back to `synalinks.src.rewards`.
+from synalinks.src.rewards.agent_as_judge import AgentAsJudge  # noqa: E402
+from synalinks.src.rewards.deep_agent_as_judge import DeepAgentAsJudge  # noqa: E402
 from synalinks.src.rewards.lm_as_judge import LMAsJudge  # noqa: E402
+from synalinks.src.rewards.rlm_as_judge import RLMAsJudge  # noqa: E402
 
-ALL_OBJECTS.add(LMAsJudge)
-ALL_OBJECTS_DICT[LMAsJudge.__name__.lower()] = LMAsJudge
-ALL_OBJECTS_DICT[to_snake_case(LMAsJudge.__name__)] = LMAsJudge
+for _cls in (LMAsJudge, AgentAsJudge, RLMAsJudge, DeepAgentAsJudge):
+    ALL_OBJECTS.add(_cls)
+    ALL_OBJECTS_DICT[_cls.__name__.lower()] = _cls
+    ALL_OBJECTS_DICT[to_snake_case(_cls.__name__)] = _cls
