@@ -190,9 +190,11 @@ from synalinks.src.datasets.markdown_dataset import MarkdownSection as MarkdownS
 from synalinks.src.datasets.markdown_dataset import (
     parse_markdown_sections as parse_markdown_sections,
 )
+from synalinks.src.datasets.mlflow_dataset import MLflowDataset as MLflowDataset
 from synalinks.src.datasets.parquet_dataset import ParquetDataset as ParquetDataset
 from synalinks.src.datasets.text_dataset import TextDataset as TextDataset
 from synalinks.src.datasets.text_dataset import TextDocument as TextDocument
+from synalinks.src.hooks.monitor import trace_context as trace_context
 from synalinks.src.initializers.initializer import Initializer as Initializer
 from synalinks.src.knowledge_bases.knowledge_base import KnowledgeBase as KnowledgeBase
 from synalinks.src.metrics.agents_metrics import GapK as GapK
@@ -354,12 +356,58 @@ from synalinks.src.ops.operation import Operation as Operation
 from synalinks.src.optimizers.omega import OMEGA as OMEGA
 from synalinks.src.programs.program import Program as Program
 from synalinks.src.programs.sequential import Sequential as Sequential
+from synalinks.src.rewards.agent_as_judge import AgentAsJudge as AgentAsJudge
 from synalinks.src.rewards.batch_reward import BatchReward as BatchReward
+from synalinks.src.rewards.composable_reward import ComposableReward as ComposableReward
 from synalinks.src.rewards.cosine_similarity import CosineSimilarity as CosineSimilarity
+from synalinks.src.rewards.deep_agent_as_judge import DeepAgentAsJudge as DeepAgentAsJudge
 from synalinks.src.rewards.exact_match import ExactMatch as ExactMatch
 from synalinks.src.rewards.lm_as_judge import LMAsJudge as LMAsJudge
 from synalinks.src.rewards.reward import Reward as Reward
 from synalinks.src.rewards.reward_wrappers import ProgramAsJudge as ProgramAsJudge
+from synalinks.src.rewards.rlm_as_judge import RLMAsJudge as RLMAsJudge
+from synalinks.src.rewards.rubric_rewards import AgentLoopDetection as AgentLoopDetection
+from synalinks.src.rewards.rubric_rewards import AnswerRelevancy as AnswerRelevancy
+from synalinks.src.rewards.rubric_rewards import (
+    ArgumentCorrectness as ArgumentCorrectness,
+)
+from synalinks.src.rewards.rubric_rewards import Bias as Bias
+from synalinks.src.rewards.rubric_rewards import (
+    CitationFaithfulness as CitationFaithfulness,
+)
+from synalinks.src.rewards.rubric_rewards import (
+    ContextualPrecision as ContextualPrecision,
+)
+from synalinks.src.rewards.rubric_rewards import ContextualRecall as ContextualRecall
+from synalinks.src.rewards.rubric_rewards import (
+    ContextualRelevancy as ContextualRelevancy,
+)
+from synalinks.src.rewards.rubric_rewards import (
+    ConversationCompleteness as ConversationCompleteness,
+)
+from synalinks.src.rewards.rubric_rewards import Faithfulness as Faithfulness
+from synalinks.src.rewards.rubric_rewards import GoalAccuracy as GoalAccuracy
+from synalinks.src.rewards.rubric_rewards import Hallucination as Hallucination
+from synalinks.src.rewards.rubric_rewards import KnowledgeRetention as KnowledgeRetention
+from synalinks.src.rewards.rubric_rewards import Misuse as Misuse
+from synalinks.src.rewards.rubric_rewards import NonAdvice as NonAdvice
+from synalinks.src.rewards.rubric_rewards import PIILeakage as PIILeakage
+from synalinks.src.rewards.rubric_rewards import PlanAdherence as PlanAdherence
+from synalinks.src.rewards.rubric_rewards import PlanQuality as PlanQuality
+from synalinks.src.rewards.rubric_rewards import PromptAlignment as PromptAlignment
+from synalinks.src.rewards.rubric_rewards import RoleAdherence as RoleAdherence
+from synalinks.src.rewards.rubric_rewards import RoleViolation as RoleViolation
+from synalinks.src.rewards.rubric_rewards import StepEfficiency as StepEfficiency
+from synalinks.src.rewards.rubric_rewards import Summarization as Summarization
+from synalinks.src.rewards.rubric_rewards import TaskCompletion as TaskCompletion
+from synalinks.src.rewards.rubric_rewards import ToolCorrectness as ToolCorrectness
+from synalinks.src.rewards.rubric_rewards import ToolPermission as ToolPermission
+from synalinks.src.rewards.rubric_rewards import ToolUse as ToolUse
+from synalinks.src.rewards.rubric_rewards import TopicAdherence as TopicAdherence
+from synalinks.src.rewards.rubric_rewards import Toxicity as Toxicity
+from synalinks.src.rewards.rubric_rewards import TurnFaithfulness as TurnFaithfulness
+from synalinks.src.rewards.rubric_rewards import TurnRelevancy as TurnRelevancy
+from synalinks.src.rewards.rubrics_as_judge import RubricsAsJudge as RubricsAsJudge
 from synalinks.src.sandboxes.mirage_sandbox import MirageSandbox as MirageSandbox
 from synalinks.src.sandboxes.sandbox import ExecutionResult as ExecutionResult
 from synalinks.src.sandboxes.sandbox import Sandbox as Sandbox

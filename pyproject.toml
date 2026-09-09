@@ -132,10 +132,10 @@ filterwarnings = [
 ]
 addopts = "--cov-report xml --cov=synalinks -v"
 
-# Do not run tests in the `build` folders or in the gitignored
-# `synalinks-research` stash (research-only code, not part of the
-# released package).
-norecursedirs = ["build", "synalinks-research"]
+# Do not run tests in the `build` folders or in the gitignored nested
+# projects (`synalinks-research`, `synalinks-gym`, `synalinks-website`):
+# they are not part of the released package.
+norecursedirs = ["build", "synalinks-research", "synalinks-gym", "synalinks-website"]
 
 [tool.coverage.report]
 exclude_lines = [
