@@ -809,7 +809,11 @@ class LanguageModel(Module):
                 # don't support native JSON schema (cohere, most bedrock
                 # models) or proxy heterogeneous backends with mixed
                 # support (openrouter), so tool-call structured output
-                # is the most reliable path.
+                # is the most reliable path. The tool's `parameters` is a
+                # JSON Schema object, so the whole schema goes in (its
+                # `type`, `required` and `additionalProperties` included),
+                # not just the property map. The reply then carries the
+                # JSON as the call's `arguments`; see `_do_call`.
                 kwargs.update(
                     {
                         "tools": [
@@ -817,7 +821,7 @@ class LanguageModel(Module):
                                 "function": {
                                     "name": "structured_output",
                                     "description": "Generate a valid JSON output",
-                                    "parameters": schema.get("properties"),
+                                    "parameters": schema,
                                 },
                                 "type": "function",
                             }
@@ -1092,11 +1096,24 @@ class LanguageModel(Module):
                 audio = _safe_get(response_message, "audio")
                 if audio is not None and hasattr(audio, "model_dump"):
                     audio = audio.model_dump()
-                if self.model.startswith("groq") and schema:
-                    # Groq uses tool_calls for structured output
-                    response_str = response_message["tool_calls"][0]["function"][
-                        "arguments"
-                    ]
+                if schema and wire_tool_calls:
+                    # Structured output requested as a forced tool call
+                    # (groq, cohere, openrouter, bedrock): the JSON is the
+                    # call's `arguments`, while `content` is empty or a
+                    # short preamble. Read it wherever a tool call came
+                    # back, whatever the provider, so the request and the
+                    # parse never disagree on where the JSON lives.
+                    arguments = _safe_get(
+                        _safe_get(wire_tool_calls[0], "function"), "arguments", ""
+                    )
+                    if isinstance(arguments, (dict, list)):
+                        arguments = orjson.dumps(arguments).decode()
+                    response_str = arguments.strip() if arguments else ""
+                    if not response_str:
+                        raise ValueError(
+                            "The language model returned a structured_output tool "
+                            "call without arguments."
+                        )
                 else:
                     # Anthropic and other providers use response_format,
                     # which returns content in message["content"]
