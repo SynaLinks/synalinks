@@ -110,6 +110,7 @@ class Trainer:
         self._compile_reward = None
         self._compile_metrics = None
         self._reward_tracker = None
+        self._per_sample_rewards = None
 
     @tracking.no_automatic_dependency_tracking
     def compile(
@@ -1078,6 +1079,9 @@ class Trainer:
             y_pred=y_pred,
             training=False,
         )
+        # Per-sample rewards of the last test batch, read by callbacks
+        # (e.g. `callbacks.Monitor` logs them as per-trace assessments).
+        self._per_sample_rewards = list(rewards)
         reduction = (
             self._compile_reward.reduction if self._compile_reward is not None else "mean"
         )

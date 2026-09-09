@@ -6,7 +6,11 @@ import os
 import tempfile
 
 from synalinks.src.api_export import synalinks_export
+from synalinks.src.backend.config import is_observability_enabled
+from synalinks.src.backend.config import mlflow_experiment_name
+from synalinks.src.backend.config import mlflow_tracking_uri
 from synalinks.src.callbacks.callback import Callback
+from synalinks.src.hooks import monitor as monitor_hook
 from synalinks.src.utils.async_utils import run_maybe_nested
 
 try:
@@ -27,10 +31,12 @@ class Monitor(Callback):
 
     Args:
         experiment_name (str): Name of the MLflow experiment. If None, uses
-            the program name.
+            the experiment of `synalinks.enable_observability()` when it was
+            called (so runs land next to their traces), else the program name.
         run_name (str): Name of the MLflow run. If None, auto-generated.
         tracking_uri (str): MLflow tracking server URI. If None, uses the
-            default (local ./mlruns directory or MLFLOW_TRACKING_URI env var).
+            value from `synalinks.enable_observability()` or the default
+            (local ./mlruns directory or MLFLOW_TRACKING_URI env var).
         log_batch_metrics (bool): Whether to log metrics at batch level
             (default: False).
         log_epoch_metrics (bool): Whether to log metrics at epoch level
@@ -40,6 +46,19 @@ class Monitor(Callback):
         log_program_model (bool): Whether to log the program as an MLflow model
             at the end of training (default: True).
         tags (dict): Optional tags to add to the MLflow run.
+        run_id (str): Optional. The id of an existing MLflow run to resume
+            instead of starting a new one. Metrics keep being appended to it,
+            the step counter continuing after the last step already logged.
+        resume (bool): Whether to look up an existing run named `run_name`
+            in the experiment and resume it (default: False). Creates the
+            run the first time. This is how repeated `evaluate()` calls
+            draw a chart over time: each evaluation adds one point to the
+            metrics of the same run.
+        log_assessments (bool): Whether to log each evaluated sample's reward
+            as a `reward` feedback assessment on the sample's trace during
+            `evaluate()` (default: True). Requires the traces of
+            `synalinks.enable_observability()`; the assessments show up on
+            the traces of the evaluation run in the MLflow UI.
 
     Example:
 
@@ -66,6 +85,15 @@ class Monitor(Callback):
         epochs=10,
         callbacks=[monitor]
     )
+
+    # Track evaluation results over time: every evaluate() call (in this
+    # process or a later one) appends one point to the same run's charts
+    monitor = synalinks.callbacks.Monitor(
+        experiment_name="my_experiment",
+        run_name="nightly_eval",
+        resume=True,
+    )
+    program.evaluate(x=test_data, y=test_labels, callbacks=[monitor])
     ```
 
     Note:
@@ -91,6 +119,9 @@ class Monitor(Callback):
         log_program_plot=True,
         log_program_model=True,
         tags=None,
+        run_id=None,
+        resume=False,
+        log_assessments=True,
     ):
         super().__init__()
         if not MLFLOW_AVAILABLE:
@@ -101,15 +132,19 @@ class Monitor(Callback):
 
         self.experiment_name = experiment_name
         self.run_name = run_name
-        self.tracking_uri = tracking_uri
+        self.tracking_uri = tracking_uri or mlflow_tracking_uri()
         self.log_batch_metrics = log_batch_metrics
         self.log_epoch_metrics = log_epoch_metrics
         self.log_program_plot = log_program_plot
         self.log_program_model = log_program_model
         self.tags = tags or {}
+        self.run_id = run_id
+        self.resume = resume
+        self.log_assessments = log_assessments
         self.logger = logging.getLogger(__name__)
 
         self._run = None
+        self._trace_mark = None
         self._step = 0
         self._epoch = 0
         # Track if we're inside fit() to avoid ending run during validation
@@ -121,20 +156,39 @@ class Monitor(Callback):
             mlflow.set_tracking_uri(self.tracking_uri)
 
         experiment_name = self.experiment_name
+        if experiment_name is None and is_observability_enabled():
+            experiment_name = mlflow_experiment_name()
         if experiment_name is None and self.program is not None:
             experiment_name = self.program.name or "synalinks_experiment"
 
-        mlflow.set_experiment(experiment_name)
+        self._experiment_id = mlflow.set_experiment(experiment_name).experiment_id
 
     def _start_run(self, run_name_suffix=""):
-        """Start a new MLflow run."""
+        """Start a new MLflow run, or resume one (`run_id` / `resume`)."""
         run_name = self.run_name
         if run_name and run_name_suffix:
             run_name = f"{run_name}_{run_name_suffix}"
         elif run_name_suffix:
             run_name = run_name_suffix
 
-        self._run = mlflow.start_run(run_name=run_name)
+        run_id = self.run_id
+        if run_id is None and self.resume:
+            client = mlflow.MlflowClient()
+            found = client.search_runs(
+                experiment_ids=[self._experiment_id],
+                filter_string=f"tags.mlflow.runName = '{run_name}'",
+                order_by=["attributes.start_time DESC"],
+                max_results=1,
+            )
+            if found:
+                run_id = found[0].info.run_id
+
+        if run_id is not None:
+            self._run = mlflow.start_run(run_id=run_id)
+            self.run_id = run_id
+        else:
+            self._run = mlflow.start_run(run_name=run_name)
+            self.run_id = self._run.info.run_id
 
         tags = dict(self.tags)
         if self.program is not None:
@@ -148,6 +202,11 @@ class Monitor(Callback):
 
         self._step = 0
         self._epoch = 0
+        if run_id is not None:
+            client = mlflow.MlflowClient()
+            for key in client.get_run(run_id).data.metrics:
+                history = client.get_metric_history(run_id, key)
+                self._step = max(self._step, *(m.step + 1 for m in history))
 
     def _end_run(self):
         """End the current MLflow run."""
@@ -166,7 +225,10 @@ class Monitor(Callback):
                 metrics[key] = value
 
         if metrics:
-            await asyncio.to_thread(mlflow.log_metrics, metrics, step=step)
+            # Explicit run_id: MLflow's active run is thread-local, not seen by the worker
+            await asyncio.to_thread(
+                mlflow.log_metrics, metrics, step=step, run_id=self._run.info.run_id
+            )
 
     async def _upload_artifact_via_http(self, local_path, artifact_path, run_id):
         """Upload artifact via HTTP to MLflow server asynchronously.
@@ -323,7 +385,9 @@ class Monitor(Callback):
                     params_to_log[key] = value
 
             if params_to_log:
-                await asyncio.to_thread(mlflow.log_params, params_to_log)
+                await asyncio.to_thread(
+                    mlflow.log_params, params_to_log, run_id=self._run.info.run_id
+                )
                 self.logger.debug(f"Logged params: {params_to_log}")
         except Exception as e:
             self.logger.warning(f"Failed to log params: {e}")
@@ -454,6 +518,8 @@ class Monitor(Callback):
         if self._run is None and not self._in_training:
             self._setup_mlflow()
             self._start_run(run_name_suffix="test")
+            # Same run type as `mlflow.genai.evaluate()` runs
+            mlflow.set_tag("mlflow.runType", "genai_evaluate")
             self.logger.debug("MLflow run started for testing")
 
     def on_test_end(self, logs=None):
@@ -461,20 +527,73 @@ class Monitor(Callback):
         run_maybe_nested(self._log_metrics(logs, step=self._step))
         # Only end the run if we're not in training (standalone evaluate() call)
         if self._run is not None and not self._in_training:
+            self._step += 1
             self._end_run()
             self.logger.debug("MLflow run ended for testing")
 
     def on_test_batch_begin(self, batch, logs=None):
         """Called at the beginning of a test batch."""
-        pass
+        self._trace_mark = monitor_hook.root_trace_mark()
 
     def on_test_batch_end(self, batch, logs=None):
         """Called at the end of a test batch."""
+        if self.log_assessments:
+            run_maybe_nested(self._log_batch_assessments())
+
         if not self.log_batch_metrics:
             return
 
         self._step += 1
         run_maybe_nested(self._log_metrics(logs, step=self._step))
+
+    async def _log_batch_assessments(self):
+        """Log the per-sample rewards of the batch just evaluated as `reward`
+        feedback assessments on the samples' traces.
+
+        Sample i is matched with the i-th root trace started since
+        `on_test_batch_begin`; when the counts differ (tracing disabled, or
+        the batch's predictions came from the auto-build pass that ran before
+        the run started) nothing is logged.
+        """
+        if self._run is None or self.program is None:
+            return
+        rewards = getattr(self.program, "_per_sample_rewards", None)
+        trace_ids = monitor_hook.root_trace_ids_since(self._trace_mark)
+        if not rewards or len(rewards) != len(trace_ids):
+            self.logger.debug(
+                "Skipping assessments: %s rewards for %s traces",
+                None if rewards is None else len(rewards),
+                len(trace_ids),
+            )
+            return
+
+        reward_fn = getattr(self.program, "_compile_reward", None)
+        reward_fn = getattr(reward_fn, "_user_reward", reward_fn)
+        source_id = getattr(reward_fn, "name", None) or "reward"
+        source = mlflow.entities.AssessmentSource(
+            source_type=mlflow.entities.AssessmentSourceType.CODE,
+            source_id=source_id,
+        )
+        run_id = self._run.info.run_id
+
+        def log_one(trace_id, value):
+            try:
+                mlflow.log_feedback(
+                    trace_id=trace_id,
+                    name="reward",
+                    value=float(value),
+                    source=source,
+                    metadata={"mlflow.assessment.sourceRunId": run_id},
+                )
+            except Exception as e:
+                self.logger.warning(f"Failed to log assessment on {trace_id}: {e}")
+
+        await asyncio.gather(
+            *(
+                asyncio.to_thread(log_one, trace_id, value)
+                for trace_id, value in zip(trace_ids, rewards)
+            )
+        )
 
     def on_predict_begin(self, logs=None):
         """Called at the beginning of prediction."""

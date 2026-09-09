@@ -116,7 +116,9 @@ class MonitorLogMetricsTest(testing.TestCase):
         cb._run = _FakeRun()
         with patch.object(monitor_module, "mlflow") as mlf:
             await cb._log_metrics({"a": 1.0, "b": 2, "c": "str", "d": None}, step=4)
-        mlf.log_metrics.assert_called_once_with({"a": 1.0, "b": 2}, step=4)
+        mlf.log_metrics.assert_called_once_with(
+            {"a": 1.0, "b": 2}, step=4, run_id="run-123"
+        )
 
     async def test_log_metrics_skips_when_no_run(self):
         cb = Monitor()
@@ -346,3 +348,167 @@ class MonitorArtifactUploadTest(testing.TestCase):
                     await cb._upload_artifact_via_http(
                         path, artifact_path="x", run_id="r1"
                     )
+
+
+class _FakeMetric:
+    def __init__(self, step):
+        self.step = step
+
+
+class MonitorResumeTest(testing.TestCase):
+    def test_run_id_resumes_run_and_continues_step(self):
+        cb = Monitor(run_id="run-abc")
+        cb.set_program(_FakeProgram())
+        with patch.object(monitor_module, "mlflow") as mlf:
+            mlf.start_run.return_value = _FakeRun(run_id="run-abc")
+            client = mlf.MlflowClient.return_value
+            client.get_run.return_value.data.metrics = {"reward": 0.5, "acc": 0.1}
+            client.get_metric_history.side_effect = lambda run_id, key: {
+                "reward": [_FakeMetric(0), _FakeMetric(4)],
+                "acc": [_FakeMetric(2)],
+            }[key]
+            cb._start_run(run_name_suffix="test")
+        mlf.start_run.assert_called_once_with(run_id="run-abc")
+        self.assertEqual(cb._step, 5)
+        self.assertEqual(cb.run_id, "run-abc")
+
+    def test_resume_looks_up_run_by_name(self):
+        cb = Monitor(run_name="nightly", resume=True)
+        cb.set_program(_FakeProgram())
+        with patch.object(monitor_module, "mlflow") as mlf:
+            mlf.set_experiment.return_value.experiment_id = "exp-1"
+            cb._setup_mlflow()
+            client = mlf.MlflowClient.return_value
+            client.search_runs.return_value = [_FakeRun(run_id="found-1")]
+            client.get_run.return_value.data.metrics = {}
+            mlf.start_run.return_value = _FakeRun(run_id="found-1")
+            cb._start_run(run_name_suffix="test")
+        search_kwargs = client.search_runs.call_args.kwargs
+        self.assertEqual(search_kwargs["experiment_ids"], ["exp-1"])
+        self.assertIn("'nightly_test'", search_kwargs["filter_string"])
+        mlf.start_run.assert_called_once_with(run_id="found-1")
+        self.assertEqual(cb.run_id, "found-1")
+
+    def test_resume_creates_run_when_none_found(self):
+        cb = Monitor(run_name="nightly", resume=True)
+        cb.set_program(_FakeProgram())
+        with patch.object(monitor_module, "mlflow") as mlf:
+            cb._setup_mlflow()
+            mlf.MlflowClient.return_value.search_runs.return_value = []
+            mlf.start_run.return_value = _FakeRun(run_id="new-1")
+            cb._start_run(run_name_suffix="test")
+        mlf.start_run.assert_called_once_with(run_name="nightly_test")
+        self.assertEqual(cb.run_id, "new-1")
+        self.assertEqual(cb._step, 0)
+
+    def test_standalone_evaluate_tags_run_and_advances_step(self):
+        cb = Monitor(run_name="nightly", resume=True)
+        cb.set_program(_FakeProgram())
+        cb.set_params({})
+        with patch.object(monitor_module, "mlflow") as mlf:
+            client = mlf.MlflowClient.return_value
+            client.search_runs.return_value = []
+            client.get_run.return_value.data.metrics = {}
+            mlf.start_run.return_value = _FakeRun(run_id="r1")
+            cb.on_test_begin()
+            cb.on_test_end(logs={"reward": 0.3})
+            # second evaluate() in the same process resumes the run found by name
+            client.search_runs.return_value = [_FakeRun(run_id="r1")]
+            client.get_metric_history.return_value = [_FakeMetric(0)]
+            client.get_run.return_value.data.metrics = {"reward": 0.3}
+            cb.on_test_begin()
+            cb.on_test_end(logs={"reward": 0.6})
+        mlf.set_tag.assert_called_with("mlflow.runType", "genai_evaluate")
+        steps = [c.kwargs["step"] for c in mlf.log_metrics.call_args_list]
+        self.assertEqual(steps, [0, 1])
+        self.assertEqual(mlf.end_run.call_count, 2)
+
+    def test_experiment_defaults_to_observability_experiment(self):
+        cb = Monitor()
+        cb.set_program(_FakeProgram(name="my_prog"))
+        with (
+            patch.object(monitor_module, "mlflow") as mlf,
+            patch.object(monitor_module, "is_observability_enabled", return_value=True),
+            patch.object(monitor_module, "mlflow_experiment_name", return_value="obs"),
+        ):
+            cb._setup_mlflow()
+        mlf.set_experiment.assert_called_once_with("obs")
+
+
+class MonitorThreadSafetyTest(testing.TestCase):
+    """`log_metrics` / `log_params` run in a worker thread where MLflow's
+    thread-local active run is not visible: without an explicit `run_id`
+    MLflow silently starts a stray run and logs there."""
+
+    async def test_log_metrics_passes_run_id(self):
+        cb = Monitor()
+        cb._run = _FakeRun(run_id="run-xyz")
+        with patch.object(monitor_module, "mlflow") as mlf:
+            await cb._log_metrics({"reward": 0.5}, step=3)
+        mlf.log_metrics.assert_called_once_with({"reward": 0.5}, step=3, run_id="run-xyz")
+
+    async def test_log_params_passes_run_id(self):
+        cb = Monitor()
+        cb._run = _FakeRun(run_id="run-xyz")
+        cb.set_params({"epochs": 2})
+        with patch.object(monitor_module, "mlflow") as mlf:
+            await cb._log_params()
+        self.assertEqual(mlf.log_params.call_args.kwargs["run_id"], "run-xyz")
+
+
+class MonitorAssessmentsTest(testing.TestCase):
+    def _monitor_with_run(self, **kwargs):
+        cb = Monitor(**kwargs)
+        program = _FakeProgram()
+        program._per_sample_rewards = [1.0, 0.0]
+        cb.set_program(program)
+        cb._run = _FakeRun(run_id="run-1")
+        return cb
+
+    def test_batch_rewards_logged_as_feedback_on_traces(self):
+        cb = self._monitor_with_run()
+        with (
+            patch.object(monitor_module, "mlflow") as mlf,
+            patch.object(monitor_module.monitor_hook, "root_trace_mark", return_value=7),
+            patch.object(
+                monitor_module.monitor_hook,
+                "root_trace_ids_since",
+                return_value=["tr-a", "tr-b"],
+            ) as since,
+        ):
+            cb.on_test_batch_begin(0)
+            cb.on_test_batch_end(0, logs={"reward": 0.5})
+        since.assert_called_once_with(7)
+        calls = sorted(
+            (c.kwargs["trace_id"], c.kwargs["value"], c.kwargs["name"])
+            for c in mlf.log_feedback.call_args_list
+        )
+        self.assertEqual(calls, [("tr-a", 1.0, "reward"), ("tr-b", 0.0, "reward")])
+        metadata = mlf.log_feedback.call_args.kwargs["metadata"]
+        self.assertEqual(metadata["mlflow.assessment.sourceRunId"], "run-1")
+
+    def test_count_mismatch_skips_assessments(self):
+        cb = self._monitor_with_run()
+        with (
+            patch.object(monitor_module, "mlflow") as mlf,
+            patch.object(
+                monitor_module.monitor_hook, "root_trace_ids_since", return_value=["tr-a"]
+            ),
+        ):
+            cb.on_test_batch_begin(0)
+            cb.on_test_batch_end(0, logs={"reward": 0.5})
+        mlf.log_feedback.assert_not_called()
+
+    def test_log_assessments_false_disables(self):
+        cb = self._monitor_with_run(log_assessments=False)
+        with (
+            patch.object(monitor_module, "mlflow") as mlf,
+            patch.object(
+                monitor_module.monitor_hook,
+                "root_trace_ids_since",
+                return_value=["tr-a", "tr-b"],
+            ),
+        ):
+            cb.on_test_batch_begin(0)
+            cb.on_test_batch_end(0, logs={"reward": 0.5})
+        mlf.log_feedback.assert_not_called()
