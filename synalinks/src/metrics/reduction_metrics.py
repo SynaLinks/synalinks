@@ -33,6 +33,17 @@ class Sum(Metric):
     This metric creates one variable, `total`.
     This is ultimately returned as the sum value.
 
+
+    Compilation example:
+
+    ```python
+    program.compile(
+        metrics=[
+            synalinks.metrics.Sum(),
+        ],
+    )
+    ```
+
     Args:
         name (str): (Optional) string name of the metric instance.
         in_mask (list): (Optional) list of keys to keep to compute the metric.
@@ -97,6 +108,17 @@ class Mean(Metric):
 
     This metric creates two variables, `total` and `count`.
     The mean value returned is simply `total` divided by `count`.
+
+
+    Compilation example:
+
+    ```python
+    program.compile(
+        metrics=[
+            synalinks.metrics.Mean(),
+        ],
+    )
+    ```
 
     Args:
         name (str): (Optional) string name of the metric instance.
@@ -167,6 +189,17 @@ class MeanMetricWrapper(Mean):
     function needs to have the signature `fn(y_true, y_pred)` and return a
     per-sample reward array. `MeanMetricWrapper.result()` will return
     the average metric value across all samples seen so far.
+
+
+    Example:
+
+    ```python
+    program.compile(
+        metrics=[
+            synalinks.metrics.MeanMetricWrapper(),
+        ],
+    )
+    ```
 
     Args:
         fn (callable): The metric function to wrap, with signature

@@ -44,6 +44,17 @@ class FBetaScore(Metric):
     The JSON object's fields are flattened and the score
     computed for each one independently.
 
+
+    Example:
+
+    ```python
+    program.compile(
+        metrics=[
+            synalinks.metrics.FBetaScore(),
+        ],
+    )
+    ```
+
     Args:
         average (str): Type of averaging to be performed across per-field results
             in the multi-field case.
@@ -304,6 +315,17 @@ class F1Score(FBetaScore):
     The JSON object's fields are flattened and the score
     computed for each one independently before being averaged.
 
+
+    Example:
+
+    ```python
+    program.compile(
+        metrics=[
+            synalinks.metrics.F1Score(),
+        ],
+    )
+    ```
+
     Args:
         average (str): Type of averaging to be performed across per-field results
             in the multi-field case.
@@ -408,6 +430,17 @@ class BinaryFBetaScore(FBetaScore):
             description="The third label",
         )
 
+    ```
+
+
+    Compilation example:
+
+    ```python
+    program.compile(
+        metrics=[
+            synalinks.metrics.BinaryFBetaScore(),
+        ],
+    )
     ```
 
     Args:
@@ -611,6 +644,17 @@ class BinaryF1Score(BinaryFBetaScore):
     If the fields are floats, it uses the threshold for deciding
     if the values are 0 or 1.
 
+
+    Example:
+
+    ```python
+    program.compile(
+        metrics=[
+            synalinks.metrics.BinaryF1Score(),
+        ],
+    )
+    ```
+
     Args:
         average (str): Type of averaging to be performed across per-class results
             in the multi-class case.
@@ -729,6 +773,17 @@ class CategoricalFBetaScore(FBetaScore):
         sources: List[str]
         answer: str
 
+    ```
+
+
+    Compilation example:
+
+    ```python
+    program.compile(
+        metrics=[
+            synalinks.metrics.CategoricalFBetaScore(),
+        ],
+    )
     ```
 
     Args:
@@ -962,6 +1017,17 @@ class CategoricalF1Score(CategoricalFBetaScore):
         class AnswerWithReferences(synalinks.DataModel):
             sources: List[str]
             answer: str
+    ```
+
+
+    Compilation example:
+
+    ```python
+    program.compile(
+        metrics=[
+            synalinks.metrics.CategoricalF1Score(),
+        ],
+    )
     ```
 
     Args:

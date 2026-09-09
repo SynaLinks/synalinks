@@ -1,0 +1,3 @@
+# Precision metric
+
+::: synalinks.src.metrics.precision_recall_metrics.Precision

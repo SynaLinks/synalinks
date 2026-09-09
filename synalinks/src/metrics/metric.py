@@ -14,6 +14,17 @@ from synalinks.src.utils.tracking import Tracker
 class Metric(SynalinksSaveable):
     """Metric base class: all synalinks metrics inherit from this class.
 
+
+    Example:
+
+    ```python
+    program.compile(
+        metrics=[
+            synalinks.metrics.Metric(),
+        ],
+    )
+    ```
+
     Args:
         name (str): (Optional) string name of the metric instance.
         in_mask (list): (Optional) list of keys to keep to compute the metric.

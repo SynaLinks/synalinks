@@ -37,6 +37,16 @@ class ProgramOperationalMetric(Metric):
     ``"optimizer"`` to read the corresponding counter set. Counters are
     populated based on the active ``op_scope`` (contextvar) the trainer
     sets for each phase.
+
+    Example:
+
+    ```python
+    program.compile(
+        metrics=[
+            synalinks.metrics.ProgramOperationalMetric(),
+        ],
+    )
+    ```
     """
 
     _phase = "inference"
@@ -112,6 +122,16 @@ class ProgramCalls(ProgramOperationalMetric):
 
     One increment per call to `program(...)`, regardless of how many LM
     or EM calls the program makes internally.
+
+    Example:
+
+    ```python
+    program.compile(
+        metrics=[
+            synalinks.metrics.ProgramCalls(),
+        ],
+    )
+    ```
     """
 
     def __init__(self, name="program_calls"):
@@ -126,6 +146,16 @@ class ProgramElapsedTime(ProgramOperationalMetric):
     """End-to-end wall-clock seconds spent inside `program(...)` during
     this run. Sums per-invocation wall-clock; does not double-count
     nested LM/EM calls.
+
+    Example:
+
+    ```python
+    program.compile(
+        metrics=[
+            synalinks.metrics.ProgramElapsedTime(),
+        ],
+    )
+    ```
     """
 
     def __init__(self, name="program_elapsed_time"):
@@ -137,7 +167,18 @@ class ProgramElapsedTime(ProgramOperationalMetric):
 
 @synalinks_export("synalinks.metrics.ProgramCallsPerSecond")
 class ProgramCallsPerSecond(ProgramOperationalMetric):
-    """Throughput: program invocations per wall-clock second."""
+    """Throughput: program invocations per wall-clock second.
+
+    Example:
+
+    ```python
+    program.compile(
+        metrics=[
+            synalinks.metrics.ProgramCallsPerSecond(),
+        ],
+    )
+    ```
+    """
 
     def __init__(self, name="program_calls_per_second"):
         super().__init__(name=name)
@@ -154,6 +195,16 @@ class ProgramCost(ProgramOperationalMetric):
     """Total provider cost (USD, as reported by litellm) across every LM
     and EM reached from the program for this run. The program object
     itself doesn't pay providers; cost is summed from its bound models.
+
+    Example:
+
+    ```python
+    program.compile(
+        metrics=[
+            synalinks.metrics.ProgramCost(),
+        ],
+    )
+    ```
     """
 
     def __init__(self, name="program_cost"):
@@ -165,7 +216,18 @@ class ProgramCost(ProgramOperationalMetric):
 
 @synalinks_export("synalinks.metrics.ProgramAvgCostPerInvocation")
 class ProgramAvgCostPerInvocation(ProgramOperationalMetric):
-    """Average provider cost per program invocation."""
+    """Average provider cost per program invocation.
+
+    Example:
+
+    ```python
+    program.compile(
+        metrics=[
+            synalinks.metrics.ProgramAvgCostPerInvocation(),
+        ],
+    )
+    ```
+    """
 
     def __init__(self, name="program_avg_cost_per_invocation"):
         super().__init__(name=name)
