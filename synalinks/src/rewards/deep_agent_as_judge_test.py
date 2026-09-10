@@ -74,6 +74,8 @@ class DeepAgentAsJudgeTest(testing.TestCase):
 
         mock_completion.side_effect = [
             # Turn 1: the judge runs the predicted code from the inputs file.
+            # The shell feeds the file to python: a spawned python3 cannot open
+            # the sandbox filesystem itself on every platform (no FUSE on macOS).
             _lm_response(
                 content="Running the prediction.",
                 tool_calls=[
@@ -81,8 +83,8 @@ class DeepAgentAsJudgeTest(testing.TestCase):
                         "name": "run_bash",
                         "arguments": {
                             "command": (
-                                "python3 -c \"import json; "
-                                "exec(json.load(open('/inputs.json'))['code'])\""
+                                "cat /inputs.json | python3 -c \"import json, sys; "
+                                "exec(json.load(sys.stdin)['code'])\""
                             )
                         },
                     }
@@ -114,7 +116,7 @@ class DeepAgentAsJudgeTest(testing.TestCase):
         # to them and runs them.
         workdir = self._workdir()
         Path(workdir, "test_solution.py").write_text(
-            "from solution import add\n\nassert add(2, 3) == 5\nprint('PASS')\n"
+            "assert add(2, 3) == 5\nprint('PASS')\n"
         )
         language_model = LanguageModel(model="ollama/mistral")
         reward = DeepAgentAsJudge(
@@ -125,7 +127,9 @@ class DeepAgentAsJudgeTest(testing.TestCase):
         y_pred = Solution(code="def add(a, b):\n    return b + a\n")
 
         mock_completion.side_effect = [
-            # Turn 1: write the prediction as `solution.py` and run the tests.
+            # Turn 1: write the prediction as `solution.py`, then run the tests
+            # against it. The shell moves the files: a spawned python3 cannot
+            # open the sandbox filesystem itself on every platform.
             _lm_response(
                 content="Running the tests against the prediction.",
                 tool_calls=[
@@ -133,9 +137,10 @@ class DeepAgentAsJudgeTest(testing.TestCase):
                         "name": "run_bash",
                         "arguments": {
                             "command": (
-                                "python3 -c \"import json; open('/solution.py', 'w')"
-                                ".write(json.load(open('/inputs.json'))['code'])\""
-                                " && python3 /test_solution.py"
+                                "cat /inputs.json | python3 -c \"import json, sys; "
+                                "print(json.load(sys.stdin)['code'])\" > /solution.py"
+                                " && cat /solution.py /test_solution.py | python3 -c "
+                                "\"import sys; exec(sys.stdin.read())\""
                             )
                         },
                     }
