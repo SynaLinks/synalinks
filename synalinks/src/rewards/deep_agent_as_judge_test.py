@@ -82,7 +82,7 @@ class DeepAgentAsJudgeTest(testing.TestCase):
                         "arguments": {
                             "command": (
                                 "python3 -c \"import json; "
-                                "exec(json.load(open('inputs.json'))['code'])\""
+                                "exec(json.load(open('/inputs.json'))['code'])\""
                             )
                         },
                     }
@@ -133,9 +133,9 @@ class DeepAgentAsJudgeTest(testing.TestCase):
                         "name": "run_bash",
                         "arguments": {
                             "command": (
-                                "python3 -c \"import json; open('solution.py', 'w')"
-                                ".write(json.load(open('inputs.json'))['code'])\""
-                                " && python3 test_solution.py"
+                                "python3 -c \"import json; open('/solution.py', 'w')"
+                                ".write(json.load(open('/inputs.json'))['code'])\""
+                                " && python3 /test_solution.py"
                             )
                         },
                     }
