@@ -562,7 +562,7 @@ class Trainer:
         """
         self._assert_compile_called("fit")
         self._eval_epoch_iterator = None
-        val_y, val_y = None, None
+        val_x, val_y = None, None
 
         if self._optimizer is None:
             # No optimizer ⇒ no parameter updates possible. Iterating the
