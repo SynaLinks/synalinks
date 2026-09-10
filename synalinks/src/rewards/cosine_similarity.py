@@ -7,9 +7,9 @@ from synalinks.src.api_export import synalinks_export
 from synalinks.src.backend import EmbeddingRequest
 from synalinks.src.backend.common import numpy as np
 from synalinks.src.modules.embedding_models import get as _get_em
-from synalinks.src.rewards.reward import Reward
 from synalinks.src.rewards.reward import squeeze_or_expand_to_same_rank
 from synalinks.src.rewards.reward_wrappers import RewardFunctionWrapper
+from synalinks.src.saving import serialization_lib
 
 
 @synalinks_export("synalinks.rewards.cosine_similarity")
@@ -126,19 +126,26 @@ class CosineSimilarity(RewardFunctionWrapper):
             axis=axis,
             embedding_model=embedding_model,
         )
+        self.embedding_model = embedding_model
+        self.axis = axis
 
     def get_config(self):
-        config = Reward.get_config()
-        from synalinks.src.saving.serialization_lib import serialize_synalinks_object
-
-        embedding_model_config = {
-            "embedding_model": serialize_synalinks_object(self.embedding_model)
+        return {
+            "embedding_model": serialization_lib.serialize_synalinks_object(
+                self.embedding_model
+            ),
+            "axis": self.axis,
+            "name": self.name,
+            "in_mask": self.in_mask,
+            "out_mask": self.out_mask,
+            "in_mask_pattern": self.in_mask_pattern,
+            "out_mask_pattern": self.out_mask_pattern,
         }
-        return {**config, **embedding_model_config}
 
     @classmethod
     def from_config(cls, config):
-        from synalinks.saving.serialization_lib import deserialize_synalinks_object
-
-        embedding_model = deserialize_synalinks_object(config.pop("embedding_model"))
+        config = dict(config)
+        embedding_model = serialization_lib.deserialize_synalinks_object(
+            config.pop("embedding_model")
+        )
         return cls(embedding_model=embedding_model, **config)

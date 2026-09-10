@@ -28,6 +28,16 @@ class BatchMetric(Metric):
         With the "whole batch = one problem's k samples" convention, set
         ``batch_size = k`` so each batch handed to the metric is the ``k``
         samples of a single problem.
+
+    Example:
+
+    ```python
+    program.compile(
+        metrics=[
+            synalinks.metrics.BatchMetric(),
+        ],
+    )
+    ```
     """
 
     async def update_state(self, y_true, y_pred):

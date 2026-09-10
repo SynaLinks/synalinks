@@ -79,6 +79,16 @@ class EmbeddingModelOperationalMetric(Metric):
 
     Binds itself automatically to every `EmbeddingModel` reachable from
     the program (and their `.fallback` chains) on `program.compile()`.
+
+    Example:
+
+    ```python
+    program.compile(
+        metrics=[
+            synalinks.metrics.EmbeddingModelOperationalMetric(),
+        ],
+    )
+    ```
     """
 
     _phase = "inference"
@@ -134,7 +144,18 @@ class EmbeddingModelOperationalMetric(Metric):
 
 @synalinks_export("synalinks.metrics.EmbeddingTokens")
 class EmbeddingTokens(EmbeddingModelOperationalMetric):
-    """Cumulated tokens consumed by embedding calls during this run."""
+    """Cumulated tokens consumed by embedding calls during this run.
+
+    Example:
+
+    ```python
+    program.compile(
+        metrics=[
+            synalinks.metrics.EmbeddingTokens(),
+        ],
+    )
+    ```
+    """
 
     def __init__(self, name="embedding_tokens"):
         super().__init__(name=name)
@@ -145,7 +166,18 @@ class EmbeddingTokens(EmbeddingModelOperationalMetric):
 
 @synalinks_export("synalinks.metrics.EmbeddingVectors")
 class EmbeddingVectors(EmbeddingModelOperationalMetric):
-    """Cumulated vectors produced by embedding calls during this run."""
+    """Cumulated vectors produced by embedding calls during this run.
+
+    Example:
+
+    ```python
+    program.compile(
+        metrics=[
+            synalinks.metrics.EmbeddingVectors(),
+        ],
+    )
+    ```
+    """
 
     def __init__(self, name="embedding_vectors"):
         super().__init__(name=name)
@@ -156,7 +188,18 @@ class EmbeddingVectors(EmbeddingModelOperationalMetric):
 
 @synalinks_export("synalinks.metrics.EmbeddingCost")
 class EmbeddingCost(EmbeddingModelOperationalMetric):
-    """Cumulated embedding-provider cost (USD) for this run."""
+    """Cumulated embedding-provider cost (USD) for this run.
+
+    Example:
+
+    ```python
+    program.compile(
+        metrics=[
+            synalinks.metrics.EmbeddingCost(),
+        ],
+    )
+    ```
+    """
 
     def __init__(self, name="embedding_cost"):
         super().__init__(name=name)
@@ -167,7 +210,18 @@ class EmbeddingCost(EmbeddingModelOperationalMetric):
 
 @synalinks_export("synalinks.metrics.EmbeddingThroughput")
 class EmbeddingThroughput(EmbeddingModelOperationalMetric):
-    """Embedding calls per second (RPS) over this run."""
+    """Embedding calls per second (RPS) over this run.
+
+    Example:
+
+    ```python
+    program.compile(
+        metrics=[
+            synalinks.metrics.EmbeddingThroughput(),
+        ],
+    )
+    ```
+    """
 
     def __init__(self, name="embedding_throughput"):
         super().__init__(name=name)
@@ -188,6 +242,16 @@ class AvgEmbeddingLatency(EmbeddingModelOperationalMetric):
     concurrency -- unlike `EmbeddingThroughput`, which divides by the phase's
     wall-clock span. The two coincide (latency = 1 / throughput) only when
     calls run serially.
+
+    Example:
+
+    ```python
+    program.compile(
+        metrics=[
+            synalinks.metrics.AvgEmbeddingLatency(),
+        ],
+    )
+    ```
     """
 
     def __init__(self, name="avg_embedding_latency"):
@@ -202,7 +266,18 @@ class AvgEmbeddingLatency(EmbeddingModelOperationalMetric):
 
 @synalinks_export("synalinks.metrics.EmbeddingTokensPerSecond")
 class EmbeddingTokensPerSecond(EmbeddingModelOperationalMetric):
-    """Embedded tokens per second over this run."""
+    """Embedded tokens per second over this run.
+
+    Example:
+
+    ```python
+    program.compile(
+        metrics=[
+            synalinks.metrics.EmbeddingTokensPerSecond(),
+        ],
+    )
+    ```
+    """
 
     def __init__(self, name="embedding_tokens_per_second"):
         super().__init__(name=name)
@@ -216,7 +291,18 @@ class EmbeddingTokensPerSecond(EmbeddingModelOperationalMetric):
 
 @synalinks_export("synalinks.metrics.EmbeddingVectorsPerSecond")
 class EmbeddingVectorsPerSecond(EmbeddingModelOperationalMetric):
-    """Vectors produced per second over this run."""
+    """Vectors produced per second over this run.
+
+    Example:
+
+    ```python
+    program.compile(
+        metrics=[
+            synalinks.metrics.EmbeddingVectorsPerSecond(),
+        ],
+    )
+    ```
+    """
 
     def __init__(self, name="embedding_vectors_per_second"):
         super().__init__(name=name)
@@ -230,7 +316,18 @@ class EmbeddingVectorsPerSecond(EmbeddingModelOperationalMetric):
 
 @synalinks_export("synalinks.metrics.AvgEmbeddingTokensPerCall")
 class AvgEmbeddingTokensPerCall(EmbeddingModelOperationalMetric):
-    """Average tokens per embedding call over this run."""
+    """Average tokens per embedding call over this run.
+
+    Example:
+
+    ```python
+    program.compile(
+        metrics=[
+            synalinks.metrics.AvgEmbeddingTokensPerCall(),
+        ],
+    )
+    ```
+    """
 
     def __init__(self, name="avg_embedding_tokens_per_call"):
         super().__init__(name=name)
@@ -244,7 +341,18 @@ class AvgEmbeddingTokensPerCall(EmbeddingModelOperationalMetric):
 
 @synalinks_export("synalinks.metrics.AvgEmbeddingVectorsPerCall")
 class AvgEmbeddingVectorsPerCall(EmbeddingModelOperationalMetric):
-    """Average vectors (i.e. batch size) per embedding call over this run."""
+    """Average vectors (i.e. batch size) per embedding call over this run.
+
+    Example:
+
+    ```python
+    program.compile(
+        metrics=[
+            synalinks.metrics.AvgEmbeddingVectorsPerCall(),
+        ],
+    )
+    ```
+    """
 
     def __init__(self, name="avg_embedding_vectors_per_call"):
         super().__init__(name=name)
@@ -258,7 +366,18 @@ class AvgEmbeddingVectorsPerCall(EmbeddingModelOperationalMetric):
 
 @synalinks_export("synalinks.metrics.AvgEmbeddingCostPerCall")
 class AvgEmbeddingCostPerCall(EmbeddingModelOperationalMetric):
-    """Average embedding-provider cost per call over this run."""
+    """Average embedding-provider cost per call over this run.
+
+    Example:
+
+    ```python
+    program.compile(
+        metrics=[
+            synalinks.metrics.AvgEmbeddingCostPerCall(),
+        ],
+    )
+    ```
+    """
 
     def __init__(self, name="avg_embedding_cost_per_call"):
         super().__init__(name=name)
@@ -272,7 +391,18 @@ class AvgEmbeddingCostPerCall(EmbeddingModelOperationalMetric):
 
 @synalinks_export("synalinks.metrics.AvgEmbeddingCachedTokensPerCall")
 class AvgEmbeddingCachedTokensPerCall(EmbeddingModelOperationalMetric):
-    """Average cached prompt tokens per embedding call over this run."""
+    """Average cached prompt tokens per embedding call over this run.
+
+    Example:
+
+    ```python
+    program.compile(
+        metrics=[
+            synalinks.metrics.AvgEmbeddingCachedTokensPerCall(),
+        ],
+    )
+    ```
+    """
 
     def __init__(self, name="avg_embedding_cached_tokens_per_call"):
         super().__init__(name=name)
@@ -286,7 +416,18 @@ class AvgEmbeddingCachedTokensPerCall(EmbeddingModelOperationalMetric):
 
 @synalinks_export("synalinks.metrics.EmbeddingCachedTokens")
 class EmbeddingCachedTokens(EmbeddingModelOperationalMetric):
-    """Prompt tokens served from cache during embedding inference."""
+    """Prompt tokens served from cache during embedding inference.
+
+    Example:
+
+    ```python
+    program.compile(
+        metrics=[
+            synalinks.metrics.EmbeddingCachedTokens(),
+        ],
+    )
+    ```
+    """
 
     def __init__(self, name="embedding_cached_tokens"):
         super().__init__(name=name)
@@ -297,7 +438,18 @@ class EmbeddingCachedTokens(EmbeddingModelOperationalMetric):
 
 @synalinks_export("synalinks.metrics.EmbeddingCacheHitRate")
 class EmbeddingCacheHitRate(EmbeddingModelOperationalMetric):
-    """Cache hit rate for embedding inputs: cached_tokens / prompt_tokens."""
+    """Cache hit rate for embedding inputs: cached_tokens / prompt_tokens.
+
+    Example:
+
+    ```python
+    program.compile(
+        metrics=[
+            synalinks.metrics.EmbeddingCacheHitRate(),
+        ],
+    )
+    ```
+    """
 
     def __init__(self, name="embedding_cache_hit_rate"):
         super().__init__(name=name)
@@ -311,7 +463,18 @@ class EmbeddingCacheHitRate(EmbeddingModelOperationalMetric):
 
 @synalinks_export("synalinks.metrics.EmbeddingFailedCalls")
 class EmbeddingFailedCalls(EmbeddingModelOperationalMetric):
-    """Embedding calls that exhausted all retries and failed this run."""
+    """Embedding calls that exhausted all retries and failed this run.
+
+    Example:
+
+    ```python
+    program.compile(
+        metrics=[
+            synalinks.metrics.EmbeddingFailedCalls(),
+        ],
+    )
+    ```
+    """
 
     def __init__(self, name="embedding_failed_calls"):
         super().__init__(name=name)
@@ -322,7 +485,18 @@ class EmbeddingFailedCalls(EmbeddingModelOperationalMetric):
 
 @synalinks_export("synalinks.metrics.EmbeddingFallbackActivations")
 class EmbeddingFallbackActivations(EmbeddingModelOperationalMetric):
-    """Times a failed embedding call triggered its `fallback` chain."""
+    """Times a failed embedding call triggered its `fallback` chain.
+
+    Example:
+
+    ```python
+    program.compile(
+        metrics=[
+            synalinks.metrics.EmbeddingFallbackActivations(),
+        ],
+    )
+    ```
+    """
 
     def __init__(self, name="embedding_fallback_activations"):
         super().__init__(name=name)
@@ -333,7 +507,18 @@ class EmbeddingFallbackActivations(EmbeddingModelOperationalMetric):
 
 @synalinks_export("synalinks.metrics.EmbeddingErrorRate")
 class EmbeddingErrorRate(EmbeddingModelOperationalMetric):
-    """Fraction of embedding calls that failed: failed / (succeeded + failed)."""
+    """Fraction of embedding calls that failed: failed / (succeeded + failed).
+
+    Example:
+
+    ```python
+    program.compile(
+        metrics=[
+            synalinks.metrics.EmbeddingErrorRate(),
+        ],
+    )
+    ```
+    """
 
     def __init__(self, name="embedding_error_rate"):
         super().__init__(name=name)
@@ -358,14 +543,36 @@ class EmbeddingErrorRate(EmbeddingModelOperationalMetric):
     ]
 )
 class EmbeddingModelRewardsOperationalMetric(EmbeddingModelOperationalMetric):
-    """Base for embedding metrics scoped to the reward-computation phase."""
+    """Base for embedding metrics scoped to the reward-computation phase.
+
+    Example:
+
+    ```python
+    program.compile(
+        metrics=[
+            synalinks.metrics.EmbeddingModelRewardsOperationalMetric(),
+        ],
+    )
+    ```
+    """
 
     _phase = "reward"
 
 
 @synalinks_export("synalinks.metrics.RewardEmbeddingTokens")
 class RewardEmbeddingTokens(EmbeddingModelRewardsOperationalMetric):
-    """Tokens consumed by embedding calls during reward computation."""
+    """Tokens consumed by embedding calls during reward computation.
+
+    Example:
+
+    ```python
+    program.compile(
+        metrics=[
+            synalinks.metrics.RewardEmbeddingTokens(),
+        ],
+    )
+    ```
+    """
 
     def __init__(self, name="reward_embedding_tokens"):
         super().__init__(name=name)
@@ -376,7 +583,18 @@ class RewardEmbeddingTokens(EmbeddingModelRewardsOperationalMetric):
 
 @synalinks_export("synalinks.metrics.RewardEmbeddingVectors")
 class RewardEmbeddingVectors(EmbeddingModelRewardsOperationalMetric):
-    """Vectors produced by embedding calls during reward computation."""
+    """Vectors produced by embedding calls during reward computation.
+
+    Example:
+
+    ```python
+    program.compile(
+        metrics=[
+            synalinks.metrics.RewardEmbeddingVectors(),
+        ],
+    )
+    ```
+    """
 
     def __init__(self, name="reward_embedding_vectors"):
         super().__init__(name=name)
@@ -387,7 +605,18 @@ class RewardEmbeddingVectors(EmbeddingModelRewardsOperationalMetric):
 
 @synalinks_export("synalinks.metrics.RewardEmbeddingCost")
 class RewardEmbeddingCost(EmbeddingModelRewardsOperationalMetric):
-    """Provider cost of embedding calls during reward computation."""
+    """Provider cost of embedding calls during reward computation.
+
+    Example:
+
+    ```python
+    program.compile(
+        metrics=[
+            synalinks.metrics.RewardEmbeddingCost(),
+        ],
+    )
+    ```
+    """
 
     def __init__(self, name="reward_embedding_cost"):
         super().__init__(name=name)
@@ -398,7 +627,18 @@ class RewardEmbeddingCost(EmbeddingModelRewardsOperationalMetric):
 
 @synalinks_export("synalinks.metrics.RewardEmbeddingThroughput")
 class RewardEmbeddingThroughput(EmbeddingModelRewardsOperationalMetric):
-    """Embedding calls per second during reward computation."""
+    """Embedding calls per second during reward computation.
+
+    Example:
+
+    ```python
+    program.compile(
+        metrics=[
+            synalinks.metrics.RewardEmbeddingThroughput(),
+        ],
+    )
+    ```
+    """
 
     def __init__(self, name="reward_embedding_throughput"):
         super().__init__(name=name)
@@ -412,7 +652,18 @@ class RewardEmbeddingThroughput(EmbeddingModelRewardsOperationalMetric):
 
 @synalinks_export("synalinks.metrics.AvgRewardEmbeddingLatency")
 class AvgRewardEmbeddingLatency(EmbeddingModelRewardsOperationalMetric):
-    """Average latency (s) per embedding call during reward computation."""
+    """Average latency (s) per embedding call during reward computation.
+
+    Example:
+
+    ```python
+    program.compile(
+        metrics=[
+            synalinks.metrics.AvgRewardEmbeddingLatency(),
+        ],
+    )
+    ```
+    """
 
     def __init__(self, name="avg_reward_embedding_latency"):
         super().__init__(name=name)
@@ -426,7 +677,18 @@ class AvgRewardEmbeddingLatency(EmbeddingModelRewardsOperationalMetric):
 
 @synalinks_export("synalinks.metrics.RewardEmbeddingTokensPerSecond")
 class RewardEmbeddingTokensPerSecond(EmbeddingModelRewardsOperationalMetric):
-    """Embedded tokens per second during reward computation."""
+    """Embedded tokens per second during reward computation.
+
+    Example:
+
+    ```python
+    program.compile(
+        metrics=[
+            synalinks.metrics.RewardEmbeddingTokensPerSecond(),
+        ],
+    )
+    ```
+    """
 
     def __init__(self, name="reward_embedding_tokens_per_second"):
         super().__init__(name=name)
@@ -440,7 +702,18 @@ class RewardEmbeddingTokensPerSecond(EmbeddingModelRewardsOperationalMetric):
 
 @synalinks_export("synalinks.metrics.RewardEmbeddingVectorsPerSecond")
 class RewardEmbeddingVectorsPerSecond(EmbeddingModelRewardsOperationalMetric):
-    """Vectors produced per second during reward computation."""
+    """Vectors produced per second during reward computation.
+
+    Example:
+
+    ```python
+    program.compile(
+        metrics=[
+            synalinks.metrics.RewardEmbeddingVectorsPerSecond(),
+        ],
+    )
+    ```
+    """
 
     def __init__(self, name="reward_embedding_vectors_per_second"):
         super().__init__(name=name)
@@ -454,7 +727,18 @@ class RewardEmbeddingVectorsPerSecond(EmbeddingModelRewardsOperationalMetric):
 
 @synalinks_export("synalinks.metrics.AvgRewardEmbeddingTokensPerCall")
 class AvgRewardEmbeddingTokensPerCall(EmbeddingModelRewardsOperationalMetric):
-    """Average tokens per embedding call during reward computation."""
+    """Average tokens per embedding call during reward computation.
+
+    Example:
+
+    ```python
+    program.compile(
+        metrics=[
+            synalinks.metrics.AvgRewardEmbeddingTokensPerCall(),
+        ],
+    )
+    ```
+    """
 
     def __init__(self, name="avg_reward_embedding_tokens_per_call"):
         super().__init__(name=name)
@@ -468,7 +752,18 @@ class AvgRewardEmbeddingTokensPerCall(EmbeddingModelRewardsOperationalMetric):
 
 @synalinks_export("synalinks.metrics.AvgRewardEmbeddingVectorsPerCall")
 class AvgRewardEmbeddingVectorsPerCall(EmbeddingModelRewardsOperationalMetric):
-    """Average batch size of embedding calls during reward computation."""
+    """Average batch size of embedding calls during reward computation.
+
+    Example:
+
+    ```python
+    program.compile(
+        metrics=[
+            synalinks.metrics.AvgRewardEmbeddingVectorsPerCall(),
+        ],
+    )
+    ```
+    """
 
     def __init__(self, name="avg_reward_embedding_vectors_per_call"):
         super().__init__(name=name)
@@ -482,7 +777,18 @@ class AvgRewardEmbeddingVectorsPerCall(EmbeddingModelRewardsOperationalMetric):
 
 @synalinks_export("synalinks.metrics.AvgRewardEmbeddingCostPerCall")
 class AvgRewardEmbeddingCostPerCall(EmbeddingModelRewardsOperationalMetric):
-    """Average embedding-call cost during reward computation."""
+    """Average embedding-call cost during reward computation.
+
+    Example:
+
+    ```python
+    program.compile(
+        metrics=[
+            synalinks.metrics.AvgRewardEmbeddingCostPerCall(),
+        ],
+    )
+    ```
+    """
 
     def __init__(self, name="avg_reward_embedding_cost_per_call"):
         super().__init__(name=name)
@@ -496,7 +802,18 @@ class AvgRewardEmbeddingCostPerCall(EmbeddingModelRewardsOperationalMetric):
 
 @synalinks_export("synalinks.metrics.AvgRewardEmbeddingCachedTokensPerCall")
 class AvgRewardEmbeddingCachedTokensPerCall(EmbeddingModelRewardsOperationalMetric):
-    """Average cached prompt tokens per embedding call during reward computation."""
+    """Average cached prompt tokens per embedding call during reward computation.
+
+    Example:
+
+    ```python
+    program.compile(
+        metrics=[
+            synalinks.metrics.AvgRewardEmbeddingCachedTokensPerCall(),
+        ],
+    )
+    ```
+    """
 
     def __init__(self, name="avg_reward_embedding_cached_tokens_per_call"):
         super().__init__(name=name)
@@ -510,7 +827,18 @@ class AvgRewardEmbeddingCachedTokensPerCall(EmbeddingModelRewardsOperationalMetr
 
 @synalinks_export("synalinks.metrics.RewardEmbeddingCachedTokens")
 class RewardEmbeddingCachedTokens(EmbeddingModelRewardsOperationalMetric):
-    """Prompt tokens served from cache during reward-phase embeddings."""
+    """Prompt tokens served from cache during reward-phase embeddings.
+
+    Example:
+
+    ```python
+    program.compile(
+        metrics=[
+            synalinks.metrics.RewardEmbeddingCachedTokens(),
+        ],
+    )
+    ```
+    """
 
     def __init__(self, name="reward_embedding_cached_tokens"):
         super().__init__(name=name)
@@ -521,7 +849,18 @@ class RewardEmbeddingCachedTokens(EmbeddingModelRewardsOperationalMetric):
 
 @synalinks_export("synalinks.metrics.RewardEmbeddingCacheHitRate")
 class RewardEmbeddingCacheHitRate(EmbeddingModelRewardsOperationalMetric):
-    """Cache hit rate for reward-phase embedding inputs."""
+    """Cache hit rate for reward-phase embedding inputs.
+
+    Example:
+
+    ```python
+    program.compile(
+        metrics=[
+            synalinks.metrics.RewardEmbeddingCacheHitRate(),
+        ],
+    )
+    ```
+    """
 
     def __init__(self, name="reward_embedding_cache_hit_rate"):
         super().__init__(name=name)
@@ -535,7 +874,18 @@ class RewardEmbeddingCacheHitRate(EmbeddingModelRewardsOperationalMetric):
 
 @synalinks_export("synalinks.metrics.RewardEmbeddingFailedCalls")
 class RewardEmbeddingFailedCalls(EmbeddingModelRewardsOperationalMetric):
-    """Embedding calls that failed during reward computation."""
+    """Embedding calls that failed during reward computation.
+
+    Example:
+
+    ```python
+    program.compile(
+        metrics=[
+            synalinks.metrics.RewardEmbeddingFailedCalls(),
+        ],
+    )
+    ```
+    """
 
     def __init__(self, name="reward_embedding_failed_calls"):
         super().__init__(name=name)
@@ -546,7 +896,18 @@ class RewardEmbeddingFailedCalls(EmbeddingModelRewardsOperationalMetric):
 
 @synalinks_export("synalinks.metrics.RewardEmbeddingFallbackActivations")
 class RewardEmbeddingFallbackActivations(EmbeddingModelRewardsOperationalMetric):
-    """Embedding fallback activations during reward computation."""
+    """Embedding fallback activations during reward computation.
+
+    Example:
+
+    ```python
+    program.compile(
+        metrics=[
+            synalinks.metrics.RewardEmbeddingFallbackActivations(),
+        ],
+    )
+    ```
+    """
 
     def __init__(self, name="reward_embedding_fallback_activations"):
         super().__init__(name=name)
@@ -557,7 +918,18 @@ class RewardEmbeddingFallbackActivations(EmbeddingModelRewardsOperationalMetric)
 
 @synalinks_export("synalinks.metrics.RewardEmbeddingErrorRate")
 class RewardEmbeddingErrorRate(EmbeddingModelRewardsOperationalMetric):
-    """Fraction of embedding calls that failed during reward computation."""
+    """Fraction of embedding calls that failed during reward computation.
+
+    Example:
+
+    ```python
+    program.compile(
+        metrics=[
+            synalinks.metrics.RewardEmbeddingErrorRate(),
+        ],
+    )
+    ```
+    """
 
     def __init__(self, name="reward_embedding_error_rate"):
         super().__init__(name=name)
@@ -582,14 +954,36 @@ class RewardEmbeddingErrorRate(EmbeddingModelRewardsOperationalMetric):
     ]
 )
 class EmbeddingModelOptimizersOperationalMetric(EmbeddingModelOperationalMetric):
-    """Base for embedding metrics scoped to the optimizer phase."""
+    """Base for embedding metrics scoped to the optimizer phase.
+
+    Example:
+
+    ```python
+    program.compile(
+        metrics=[
+            synalinks.metrics.EmbeddingModelOptimizersOperationalMetric(),
+        ],
+    )
+    ```
+    """
 
     _phase = "optimizer"
 
 
 @synalinks_export("synalinks.metrics.OptimizerEmbeddingTokens")
 class OptimizerEmbeddingTokens(EmbeddingModelOptimizersOperationalMetric):
-    """Tokens consumed by embedding calls during the optimizer step."""
+    """Tokens consumed by embedding calls during the optimizer step.
+
+    Example:
+
+    ```python
+    program.compile(
+        metrics=[
+            synalinks.metrics.OptimizerEmbeddingTokens(),
+        ],
+    )
+    ```
+    """
 
     def __init__(self, name="optimizer_embedding_tokens"):
         super().__init__(name=name)
@@ -600,7 +994,18 @@ class OptimizerEmbeddingTokens(EmbeddingModelOptimizersOperationalMetric):
 
 @synalinks_export("synalinks.metrics.OptimizerEmbeddingVectors")
 class OptimizerEmbeddingVectors(EmbeddingModelOptimizersOperationalMetric):
-    """Vectors produced by embedding calls during the optimizer step."""
+    """Vectors produced by embedding calls during the optimizer step.
+
+    Example:
+
+    ```python
+    program.compile(
+        metrics=[
+            synalinks.metrics.OptimizerEmbeddingVectors(),
+        ],
+    )
+    ```
+    """
 
     def __init__(self, name="optimizer_embedding_vectors"):
         super().__init__(name=name)
@@ -611,7 +1016,18 @@ class OptimizerEmbeddingVectors(EmbeddingModelOptimizersOperationalMetric):
 
 @synalinks_export("synalinks.metrics.OptimizerEmbeddingCost")
 class OptimizerEmbeddingCost(EmbeddingModelOptimizersOperationalMetric):
-    """Provider cost of embedding calls during the optimizer step."""
+    """Provider cost of embedding calls during the optimizer step.
+
+    Example:
+
+    ```python
+    program.compile(
+        metrics=[
+            synalinks.metrics.OptimizerEmbeddingCost(),
+        ],
+    )
+    ```
+    """
 
     def __init__(self, name="optimizer_embedding_cost"):
         super().__init__(name=name)
@@ -622,7 +1038,18 @@ class OptimizerEmbeddingCost(EmbeddingModelOptimizersOperationalMetric):
 
 @synalinks_export("synalinks.metrics.OptimizerEmbeddingThroughput")
 class OptimizerEmbeddingThroughput(EmbeddingModelOptimizersOperationalMetric):
-    """Embedding calls per second during the optimizer step."""
+    """Embedding calls per second during the optimizer step.
+
+    Example:
+
+    ```python
+    program.compile(
+        metrics=[
+            synalinks.metrics.OptimizerEmbeddingThroughput(),
+        ],
+    )
+    ```
+    """
 
     def __init__(self, name="optimizer_embedding_throughput"):
         super().__init__(name=name)
@@ -636,7 +1063,18 @@ class OptimizerEmbeddingThroughput(EmbeddingModelOptimizersOperationalMetric):
 
 @synalinks_export("synalinks.metrics.AvgOptimizerEmbeddingLatency")
 class AvgOptimizerEmbeddingLatency(EmbeddingModelOptimizersOperationalMetric):
-    """Average latency (s) per embedding call during the optimizer step."""
+    """Average latency (s) per embedding call during the optimizer step.
+
+    Example:
+
+    ```python
+    program.compile(
+        metrics=[
+            synalinks.metrics.AvgOptimizerEmbeddingLatency(),
+        ],
+    )
+    ```
+    """
 
     def __init__(self, name="avg_optimizer_embedding_latency"):
         super().__init__(name=name)
@@ -650,7 +1088,18 @@ class AvgOptimizerEmbeddingLatency(EmbeddingModelOptimizersOperationalMetric):
 
 @synalinks_export("synalinks.metrics.OptimizerEmbeddingTokensPerSecond")
 class OptimizerEmbeddingTokensPerSecond(EmbeddingModelOptimizersOperationalMetric):
-    """Embedded tokens per second during the optimizer step."""
+    """Embedded tokens per second during the optimizer step.
+
+    Example:
+
+    ```python
+    program.compile(
+        metrics=[
+            synalinks.metrics.OptimizerEmbeddingTokensPerSecond(),
+        ],
+    )
+    ```
+    """
 
     def __init__(self, name="optimizer_embedding_tokens_per_second"):
         super().__init__(name=name)
@@ -664,7 +1113,18 @@ class OptimizerEmbeddingTokensPerSecond(EmbeddingModelOptimizersOperationalMetri
 
 @synalinks_export("synalinks.metrics.OptimizerEmbeddingVectorsPerSecond")
 class OptimizerEmbeddingVectorsPerSecond(EmbeddingModelOptimizersOperationalMetric):
-    """Vectors produced per second during the optimizer step."""
+    """Vectors produced per second during the optimizer step.
+
+    Example:
+
+    ```python
+    program.compile(
+        metrics=[
+            synalinks.metrics.OptimizerEmbeddingVectorsPerSecond(),
+        ],
+    )
+    ```
+    """
 
     def __init__(self, name="optimizer_embedding_vectors_per_second"):
         super().__init__(name=name)
@@ -678,7 +1138,18 @@ class OptimizerEmbeddingVectorsPerSecond(EmbeddingModelOptimizersOperationalMetr
 
 @synalinks_export("synalinks.metrics.AvgOptimizerEmbeddingTokensPerCall")
 class AvgOptimizerEmbeddingTokensPerCall(EmbeddingModelOptimizersOperationalMetric):
-    """Average tokens per embedding call during the optimizer step."""
+    """Average tokens per embedding call during the optimizer step.
+
+    Example:
+
+    ```python
+    program.compile(
+        metrics=[
+            synalinks.metrics.AvgOptimizerEmbeddingTokensPerCall(),
+        ],
+    )
+    ```
+    """
 
     def __init__(self, name="avg_optimizer_embedding_tokens_per_call"):
         super().__init__(name=name)
@@ -692,7 +1163,18 @@ class AvgOptimizerEmbeddingTokensPerCall(EmbeddingModelOptimizersOperationalMetr
 
 @synalinks_export("synalinks.metrics.AvgOptimizerEmbeddingVectorsPerCall")
 class AvgOptimizerEmbeddingVectorsPerCall(EmbeddingModelOptimizersOperationalMetric):
-    """Average batch size of embedding calls during the optimizer step."""
+    """Average batch size of embedding calls during the optimizer step.
+
+    Example:
+
+    ```python
+    program.compile(
+        metrics=[
+            synalinks.metrics.AvgOptimizerEmbeddingVectorsPerCall(),
+        ],
+    )
+    ```
+    """
 
     def __init__(self, name="avg_optimizer_embedding_vectors_per_call"):
         super().__init__(name=name)
@@ -706,7 +1188,18 @@ class AvgOptimizerEmbeddingVectorsPerCall(EmbeddingModelOptimizersOperationalMet
 
 @synalinks_export("synalinks.metrics.AvgOptimizerEmbeddingCostPerCall")
 class AvgOptimizerEmbeddingCostPerCall(EmbeddingModelOptimizersOperationalMetric):
-    """Average embedding-call cost during the optimizer step."""
+    """Average embedding-call cost during the optimizer step.
+
+    Example:
+
+    ```python
+    program.compile(
+        metrics=[
+            synalinks.metrics.AvgOptimizerEmbeddingCostPerCall(),
+        ],
+    )
+    ```
+    """
 
     def __init__(self, name="avg_optimizer_embedding_cost_per_call"):
         super().__init__(name=name)
@@ -719,8 +1212,21 @@ class AvgOptimizerEmbeddingCostPerCall(EmbeddingModelOptimizersOperationalMetric
 
 
 @synalinks_export("synalinks.metrics.AvgOptimizerEmbeddingCachedTokensPerCall")
-class AvgOptimizerEmbeddingCachedTokensPerCall(EmbeddingModelOptimizersOperationalMetric):
-    """Average cached prompt tokens per embedding call during the optimizer step."""
+class AvgOptimizerEmbeddingCachedTokensPerCall(
+    EmbeddingModelOptimizersOperationalMetric
+):
+    """Average cached prompt tokens per embedding call during the optimizer step.
+
+    Example:
+
+    ```python
+    program.compile(
+        metrics=[
+            synalinks.metrics.AvgOptimizerEmbeddingCachedTokensPerCall(),
+        ],
+    )
+    ```
+    """
 
     def __init__(self, name="avg_optimizer_embedding_cached_tokens_per_call"):
         super().__init__(name=name)
@@ -734,7 +1240,18 @@ class AvgOptimizerEmbeddingCachedTokensPerCall(EmbeddingModelOptimizersOperation
 
 @synalinks_export("synalinks.metrics.OptimizerEmbeddingCachedTokens")
 class OptimizerEmbeddingCachedTokens(EmbeddingModelOptimizersOperationalMetric):
-    """Prompt tokens served from cache during optimizer-phase embeddings."""
+    """Prompt tokens served from cache during optimizer-phase embeddings.
+
+    Example:
+
+    ```python
+    program.compile(
+        metrics=[
+            synalinks.metrics.OptimizerEmbeddingCachedTokens(),
+        ],
+    )
+    ```
+    """
 
     def __init__(self, name="optimizer_embedding_cached_tokens"):
         super().__init__(name=name)
@@ -745,7 +1262,18 @@ class OptimizerEmbeddingCachedTokens(EmbeddingModelOptimizersOperationalMetric):
 
 @synalinks_export("synalinks.metrics.OptimizerEmbeddingCacheHitRate")
 class OptimizerEmbeddingCacheHitRate(EmbeddingModelOptimizersOperationalMetric):
-    """Cache hit rate for optimizer-phase embedding inputs."""
+    """Cache hit rate for optimizer-phase embedding inputs.
+
+    Example:
+
+    ```python
+    program.compile(
+        metrics=[
+            synalinks.metrics.OptimizerEmbeddingCacheHitRate(),
+        ],
+    )
+    ```
+    """
 
     def __init__(self, name="optimizer_embedding_cache_hit_rate"):
         super().__init__(name=name)
@@ -759,7 +1287,18 @@ class OptimizerEmbeddingCacheHitRate(EmbeddingModelOptimizersOperationalMetric):
 
 @synalinks_export("synalinks.metrics.OptimizerEmbeddingFailedCalls")
 class OptimizerEmbeddingFailedCalls(EmbeddingModelOptimizersOperationalMetric):
-    """Embedding calls that failed during the optimizer step."""
+    """Embedding calls that failed during the optimizer step.
+
+    Example:
+
+    ```python
+    program.compile(
+        metrics=[
+            synalinks.metrics.OptimizerEmbeddingFailedCalls(),
+        ],
+    )
+    ```
+    """
 
     def __init__(self, name="optimizer_embedding_failed_calls"):
         super().__init__(name=name)
@@ -770,7 +1309,18 @@ class OptimizerEmbeddingFailedCalls(EmbeddingModelOptimizersOperationalMetric):
 
 @synalinks_export("synalinks.metrics.OptimizerEmbeddingFallbackActivations")
 class OptimizerEmbeddingFallbackActivations(EmbeddingModelOptimizersOperationalMetric):
-    """Embedding fallback activations during the optimizer step."""
+    """Embedding fallback activations during the optimizer step.
+
+    Example:
+
+    ```python
+    program.compile(
+        metrics=[
+            synalinks.metrics.OptimizerEmbeddingFallbackActivations(),
+        ],
+    )
+    ```
+    """
 
     def __init__(self, name="optimizer_embedding_fallback_activations"):
         super().__init__(name=name)
@@ -781,7 +1331,18 @@ class OptimizerEmbeddingFallbackActivations(EmbeddingModelOptimizersOperationalM
 
 @synalinks_export("synalinks.metrics.OptimizerEmbeddingErrorRate")
 class OptimizerEmbeddingErrorRate(EmbeddingModelOptimizersOperationalMetric):
-    """Fraction of embedding calls that failed during the optimizer step."""
+    """Fraction of embedding calls that failed during the optimizer step.
+
+    Example:
+
+    ```python
+    program.compile(
+        metrics=[
+            synalinks.metrics.OptimizerEmbeddingErrorRate(),
+        ],
+    )
+    ```
+    """
 
     def __init__(self, name="optimizer_embedding_error_rate"):
         super().__init__(name=name)

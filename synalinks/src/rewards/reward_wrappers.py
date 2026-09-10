@@ -6,6 +6,7 @@ import warnings
 
 from synalinks.src.api_export import synalinks_export
 from synalinks.src.rewards.reward import Reward
+from synalinks.src.rewards.reward import check_async_reward_fn
 from synalinks.src.saving import serialization_lib
 
 
@@ -14,7 +15,9 @@ class RewardFunctionWrapper(Reward):
     """Wrap a stateless function into a `Reward`.
 
     You can use this to quickly build a reward from a function. The function needs
-    to have the signature `fn(y_true, y_pred)`.
+    to have the signature `fn(y_true, y_pred)` and to be declared with
+    `async def`, since reward functions are awaited: a synchronous one raises a
+    `TypeError` here rather than failing later inside the training loop.
 
     Example:
 
@@ -25,6 +28,25 @@ class RewardFunctionWrapper(Reward):
 
     program.compile(
         reward=synalinks.rewards.RewardFunctionWrapper(fn=my_reward),
+        optimizer=synalinks.optimizers.RandomFewShot(),
+    )
+    ```
+
+    Wrapping is optional: `compile(reward=my_reward)` accepts the bare function
+    and wraps it for you, naming the reward after the function. Reach for this
+    class explicitly when you need masks, a custom `reduction`, or extra keyword
+    arguments forwarded to `fn`:
+
+    ```python
+    async def length_under(y_true, y_pred, limit=100):
+        return 1.0 if len(y_pred.get("answer")) < limit else 0.0
+
+    program.compile(
+        reward=synalinks.rewards.RewardFunctionWrapper(
+            fn=length_under,
+            limit=200,
+            in_mask=["answer"],
+        ),
         optimizer=synalinks.optimizers.RandomFewShot(),
     )
     ```
@@ -61,6 +83,7 @@ class RewardFunctionWrapper(Reward):
             in_mask_pattern=in_mask_pattern,
             out_mask_pattern=out_mask_pattern,
         )
+        check_async_reward_fn(fn, self.__class__.__name__)
         self.fn = fn
         self._fn_kwargs = kwargs
 

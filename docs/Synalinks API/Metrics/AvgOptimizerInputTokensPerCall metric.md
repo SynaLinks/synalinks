@@ -1,0 +1,3 @@
+# AvgOptimizerInputTokensPerCall metric
+
+::: synalinks.src.metrics.lm_metrics.AvgOptimizerInputTokensPerCall

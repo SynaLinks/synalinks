@@ -238,6 +238,57 @@ When a module call fails, the span automatically records an exception event with
 - `exception.type`: The exception class name
 - `exception.message`: The exception message
 
+### Users and Sessions
+
+MLflow can associate traces with a user and a chat session, which is useful for
+analyzing multi-turn conversations: you can then filter the traces of one
+session in the UI and inspect what happened at each turn. MLflow reads two
+reserved metadata keys for that, `mlflow.trace.user` and `mlflow.trace.session`.
+
+Synalinks creates its spans outside of MLflow's fluent context (nested module
+calls are linked explicitly), so `mlflow.update_current_trace()` does not see
+them. Use `synalinks.trace_context()` instead: every trace started inside the
+block carries the given user and session.
+
+```python
+import synalinks
+
+synalinks.enable_observability()
+
+# ... build your program ...
+
+with synalinks.trace_context(user_id="user-123", session_id="session-123"):
+    result = await program(inputs)
+```
+
+The context is stored in a `contextvars.ContextVar`, so it is safe to set per
+request in an async server: concurrent requests each see their own value, and
+the tasks spawned inside the block (parallel branches, agent tool calls)
+inherit it. Nested blocks merge with the enclosing one, the innermost value
+winning.
+
+```python
+@app.post("/chat")
+async def chat(request: ChatRequest):
+    with synalinks.trace_context(
+        user_id=request.user_id, session_id=request.session_id
+    ):
+        return await program(request.messages)
+```
+
+You can also attach free-form trace `metadata` (immutable once the trace is
+logged) and `tags` (editable afterwards in the MLflow UI):
+
+```python
+with synalinks.trace_context(
+    user_id="user-123",
+    session_id="session-123",
+    metadata={"turn": "3"},
+    tags={"env": "production"},
+):
+    result = await program(inputs)
+```
+
 ### Viewing Traces
 
 1. Open MLflow UI at `http://localhost:5000`
@@ -339,6 +390,9 @@ This is useful for:
 | `log_program_plot` | `True` | Save program visualization as artifact |
 | `log_program_model` | `True` | Save program trainable state as artifact |
 | `tags` | `{}` | Additional tags for the run |
+| `run_id` | `None` | Existing run to resume instead of starting a new one; the step counter continues after the last logged step |
+| `resume` | `False` | Look up a run named `run_name` in the experiment and resume it, creating it the first time |
+| `log_assessments` | `True` | Log each evaluated sample's reward as a feedback assessment on its trace |
 
 ### Example with Full Configuration
 
@@ -358,16 +412,61 @@ monitor = synalinks.callbacks.Monitor(
 program.fit(x=train_questions, y=train_answers, epochs=5, callbacks=[monitor])
 ```
 
+## Evaluation Results Over Time
+
+`program.evaluate()` with the `Monitor` callback logs the reward and metrics of that
+evaluation to an MLflow run. Runs without a logged model are listed in the experiment's
+**Evaluation runs** tab (`/#/experiments/<id>/evaluation-runs`), where the charts view
+compares the metrics of every evaluation. The run is tagged `mlflow.runType =
+genai_evaluate`, like the runs created by `mlflow.genai.evaluate()`, and the traces of
+the evaluated calls are linked to it. Each evaluated sample's reward is also logged as
+a `reward` feedback assessment on the sample's trace, so the run's traces can be
+sorted and filtered by score (disable with `log_assessments=False`).
+
+When `synalinks.enable_observability()` was called, a `Monitor` callback created without
+`experiment_name` uses that same experiment, so the evaluation runs appear next to the
+traces:
+
+```python
+import synalinks
+
+synalinks.enable_observability(
+    tracking_uri="http://localhost:5000", experiment_name="my_app"
+)
+
+# ... build and compile your program ...
+
+monitor = synalinks.callbacks.Monitor(run_name="eval")
+await program.evaluate(x=test_x, y=test_y, callbacks=[monitor])
+```
+
+Each `evaluate()` call creates one run, so the Evaluation runs charts show one point per
+evaluation. To draw the metrics as a curve inside a single run instead, like the epoch
+curves of `fit()`, resume the same run on every evaluation with `resume=True`: the
+callback looks up the run named `run_name` in the experiment (creating it the first
+time), and logs each evaluation at the next step. This works across processes, so a
+scheduled evaluation appends one point per execution:
+
+```python
+monitor = synalinks.callbacks.Monitor(run_name="nightly_eval", resume=True)
+await program.evaluate(x=test_x, y=test_y, callbacks=[monitor])
+```
+
+In the MLflow UI, open the run and plot the metric against its step, or against wall
+time to see the results over time. Pass `run_id` instead of `resume` to resume a
+specific run; `monitor.run_id` holds the id of the run in use.
+
 ## Combining Tracing with Training
 
-When using both `enable_observability()` and the `Monitor` callback for training, traces
-are created in different experiments depending on the context:
+When using both `enable_observability()` and the `Monitor` callback for training:
 
 1. **During program building** (symbolic calls): Traces go to the experiment specified
    in `enable_observability()`
 
 2. **During training** (`fit()`): Traces are associated with the training run and go to
-   the experiment specified in the `Monitor` callback
+   the experiment of the `Monitor` callback. When the callback has no
+   `experiment_name`, that is the experiment of `enable_observability()`, so traces and
+   runs stay together; give the callback its own `experiment_name` to keep them apart.
 
 ### Full Example
 

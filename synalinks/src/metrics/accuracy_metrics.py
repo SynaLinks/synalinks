@@ -38,6 +38,17 @@ class Accuracy(Metric):
     fields are flattened and the score computed for each one
     independently before being averaged.
 
+
+    Example:
+
+    ```python
+    program.compile(
+        metrics=[
+            synalinks.metrics.Accuracy(),
+        ],
+    )
+    ```
+
     Args:
         average (str): Type of averaging to be performed across per-field results
             in the multi-field case.
@@ -276,6 +287,17 @@ class BinaryAccuracy(Accuracy):
 
     ```
 
+
+    Compilation example:
+
+    ```python
+    program.compile(
+        metrics=[
+            synalinks.metrics.BinaryAccuracy(),
+        ],
+    )
+    ```
+
     Args:
         average (str): Type of averaging to be performed across per-class results
             in the multi-class case.
@@ -500,6 +522,17 @@ class CategoricalAccuracy(Accuracy):
         sources: List[str]
         answer: str
 
+    ```
+
+
+    Compilation example:
+
+    ```python
+    program.compile(
+        metrics=[
+            synalinks.metrics.CategoricalAccuracy(),
+        ],
+    )
     ```
 
     Args:

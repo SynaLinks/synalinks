@@ -3,9 +3,11 @@
 from synalinks.src import testing
 from synalinks.src import tree
 from synalinks.src.backend import DataModel
+from synalinks.src.backend.common import numpy as np
 from synalinks.src.rewards.reward import apply_masks
 from synalinks.src.rewards.reward import reduce_rewards
 from synalinks.src.rewards.reward import reduce_values
+from synalinks.src.rewards.reward import squeeze_or_expand_to_same_rank
 
 
 class ReduceValuesTest(testing.TestCase):
@@ -117,3 +119,42 @@ class ReduceRewardsTest(testing.TestCase):
 
     def test_python_none_falls_back_to_mean(self):
         self.assertAlmostEqual(reduce_rewards([0.0, 1.0], None), 0.5)
+
+
+class SqueezeOrExpandToSameRankTest(testing.TestCase):
+    def test_same_rank_passthrough(self):
+        x1 = np.convert_to_tensor([[1.0, 2.0]])
+        x2 = np.convert_to_tensor([[3.0, 4.0]])
+        y1, y2 = squeeze_or_expand_to_same_rank(x1, x2)
+        self.assertIs(y1, x1)
+        self.assertIs(y2, x2)
+
+    def test_squeezes_trailing_unit_dim(self):
+        # (2, 1) against (2,): the unit dim is squeezed away.
+        x1 = np.convert_to_tensor([[1.0], [2.0]])
+        x2 = np.convert_to_tensor([3.0, 4.0])
+        y1, y2 = squeeze_or_expand_to_same_rank(x1, x2, expand_rank_1=False)
+        self.assertEqual(y1.shape, (2,))
+        self.assertEqual(y2.shape, (2,))
+        y1, y2 = squeeze_or_expand_to_same_rank(x2, x1, expand_rank_1=False)
+        self.assertEqual(y1.shape, (2,))
+        self.assertEqual(y2.shape, (2,))
+
+    def test_expands_rank_one(self):
+        # (2, 1) against (2,): by default the vector grows a unit dim instead.
+        x1 = np.convert_to_tensor([[1.0], [2.0]])
+        x2 = np.convert_to_tensor([3.0, 4.0])
+        y1, y2 = squeeze_or_expand_to_same_rank(x1, x2)
+        self.assertEqual(y1.shape, (2, 1))
+        self.assertEqual(y2.shape, (2, 1))
+        y1, y2 = squeeze_or_expand_to_same_rank(x2, x1)
+        self.assertEqual(y1.shape, (2, 1))
+        self.assertEqual(y2.shape, (2, 1))
+
+    def test_leaves_other_rank_gaps_alone(self):
+        # A rank gap of one without a unit trailing dim is not touched.
+        x1 = np.convert_to_tensor([[1.0, 2.0], [3.0, 4.0]])
+        x2 = np.convert_to_tensor([5.0, 6.0])
+        y1, y2 = squeeze_or_expand_to_same_rank(x1, x2)
+        self.assertEqual(y1.shape, (2, 2))
+        self.assertEqual(y2.shape, (2,))

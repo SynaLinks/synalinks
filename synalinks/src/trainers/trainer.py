@@ -110,6 +110,7 @@ class Trainer:
         self._compile_reward = None
         self._compile_metrics = None
         self._reward_tracker = None
+        self._per_sample_rewards = None
 
     @tracking.no_automatic_dependency_tracking
     def compile(
@@ -145,6 +146,16 @@ class Trainer:
                 `y_true` should be a list of batch size length `[d0, .. dN]`.
                 `y_pred` should be a list of batch size length `[d0, .. dN]`.
                 The reward function should return a float.
+                A bare function can be passed directly: it is auto-wrapped in a
+                `synalinks.rewards.RewardFunctionWrapper` named after the
+                function. Wrap it yourself only when you need masks, a custom
+                `reduction`, or extra keyword arguments forwarded to it.
+                It must be declared with `async def`, since reward functions
+                are awaited; a synchronous one raises a `TypeError`.
+                Batched functions are never auto-wrapped, because a
+                `batch -> list[float]` signature cannot be told apart from a
+                per-sample one at that point: pass those as an explicit
+                `synalinks.rewards.BatchRewardFunctionWrapper`.
             reward_weights (list): Optional list specifying scalar coefficients
                 (Python floats) to weight the reward contributions of
                 different program outputs. The reward value that will be maximized
@@ -551,7 +562,7 @@ class Trainer:
         """
         self._assert_compile_called("fit")
         self._eval_epoch_iterator = None
-        val_y, val_y = None, None
+        val_x, val_y = None, None
 
         if self._optimizer is None:
             # No optimizer ⇒ no parameter updates possible. Iterating the
@@ -1068,6 +1079,9 @@ class Trainer:
             y_pred=y_pred,
             training=False,
         )
+        # Per-sample rewards of the last test batch, read by callbacks
+        # (e.g. `callbacks.Monitor` logs them as per-trace assessments).
+        self._per_sample_rewards = list(rewards)
         reduction = (
             self._compile_reward.reduction if self._compile_reward is not None else "mean"
         )

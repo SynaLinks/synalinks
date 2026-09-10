@@ -99,13 +99,22 @@ class EpochIterator:
 
     @contextlib.contextmanager
     def catch_stop_iteration(self):
-        """Catches errors when an iterator runs out of data."""
+        """Catches errors when an iterator runs out of data.
+
+        Running out is only worth a warning when more data was promised: a
+        `steps_per_epoch` was given, or the source declared its length. A
+        source of unknown length (a streaming dataset without a limit) ends
+        whenever it ends; that is the normal end of the epoch, so its length
+        is recorded and no warning is emitted.
+        """
         try:
             yield
         except StopIteration:
             if self._num_batches is None:
-                self._num_batches = self._steps_seen
-            self._interrupted_warning()
+                # `_steps_seen` counts the step that just failed to produce data.
+                self._num_batches = max(self._steps_seen - self.steps_per_execution, 0)
+            if self.steps_per_epoch or self.data_adapter.num_batches is not None:
+                self._interrupted_warning()
             self._current_iterator = None
             self.data_adapter.on_epoch_end()
 

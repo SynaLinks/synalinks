@@ -43,3 +43,31 @@ class CosineSimilarityTest(testing.TestCase):
         cosine_similarity = CosineSimilarity(embedding_model=embedding_model)
         reward = await cosine_similarity(y_true, y_pred)
         self.assertEqual(reward, 1.0)
+
+    @patch("litellm.aembedding")
+    async def test_empty_prediction(self, mock_embedding):
+        embedding_model = EmbeddingModel(model="ollama/all-minilm")
+
+        class Answer(DataModel):
+            answer: str
+
+        cosine_similarity = CosineSimilarity(embedding_model=embedding_model)
+        reward = await cosine_similarity(Answer(answer="Paris"), None)
+        # Nothing to compare: score 0.0 without embedding anything.
+        self.assertEqual(reward, 0.0)
+        mock_embedding.assert_not_called()
+
+    def test_config_round_trip(self):
+        embedding_model = EmbeddingModel(model="ollama/all-minilm")
+        cosine_similarity = CosineSimilarity(
+            embedding_model=embedding_model,
+            in_mask=["answer"],
+            name="my_similarity",
+        )
+        config = cosine_similarity.get_config()
+        self.assertIn("embedding_model", config)
+
+        restored = CosineSimilarity.from_config(config)
+        self.assertEqual(restored.name, "my_similarity")
+        self.assertEqual(restored.in_mask, ["answer"])
+        self.assertEqual(restored.embedding_model.model, embedding_model.model)

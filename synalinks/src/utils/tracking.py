@@ -2,6 +2,7 @@
 # Original authors: François Chollet et al. (Keras Team)
 # License Apache 2.0: (c) 2025-2026 Yoan Sallami (Synalinks Team)
 
+import copy
 from functools import wraps
 
 from synalinks.src import tree
@@ -188,6 +189,10 @@ class TrackedList(list):
         if self.tracker:
             self.tracker.untrack(value)
 
+    def __deepcopy__(self, memo):
+        # A copy belongs to no module: drop the tracker, keep the values.
+        return [copy.deepcopy(value, memo) for value in self]
+
     def tree_flatten(self):
         # For optree / dmtree
         return (self, None)
@@ -237,6 +242,10 @@ class TrackedDict(dict):
                 self.tracker.untrack(value)
         super().clear()
 
+    def __deepcopy__(self, memo):
+        # A copy belongs to no module: drop the tracker, keep the values.
+        return {key: copy.deepcopy(value, memo) for key, value in self.items()}
+
     def tree_flatten(self):
         # For optree / dmtree
         keys = sorted(list(self.keys()))
@@ -271,6 +280,10 @@ class TrackedSet(set):
         if self.tracker:
             self.tracker.untrack(value)
         super().remove(value)
+
+    def __deepcopy__(self, memo):
+        # A copy belongs to no module: drop the tracker, keep the values.
+        return {copy.deepcopy(value, memo) for value in self}
 
     def pop(self):
         value = super().pop()

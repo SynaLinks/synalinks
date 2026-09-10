@@ -6,9 +6,11 @@ from synalinks.src.metrics.accuracy_metrics import Accuracy
 from synalinks.src.metrics.agents_metrics import PassAtK
 from synalinks.src.metrics.reduction_metrics import Mean
 from synalinks.src.rewards.exact_match import ExactMatch
+from synalinks.src.rewards.reward_wrappers import RewardFunctionWrapper
 from synalinks.src.trainers.compile_utils import CompileMetrics
 from synalinks.src.trainers.compile_utils import CompileReward
 from synalinks.src.trainers.compile_utils import MetricsList
+from synalinks.src.trainers.compile_utils import get_reward
 from synalinks.src.trainers.compile_utils import is_function_like
 
 
@@ -184,6 +186,36 @@ class CompileRewardValidationTest(testing.TestCase):
     async def test_has_batch_rewards_false_before_build(self):
         cr = CompileReward(reward=ExactMatch())
         self.assertFalse(cr.has_batch_rewards)
+
+
+class BareRewardCallableTest(testing.TestCase):
+    """`compile(reward=fn)` accepts a bare async function and wraps it."""
+
+    def test_bare_async_fn_is_auto_wrapped_and_named(self):
+        async def answer_matches(y_true, y_pred):
+            return 1.0
+
+        y = Answer(answer="42").to_json_data_model()
+        reward = get_reward(answer_matches, y, y)
+
+        self.assertIsInstance(reward, RewardFunctionWrapper)
+        self.assertEqual(reward.name, "answer_matches")
+
+    async def test_auto_wrapped_fn_is_awaited(self):
+        async def always_one(y_true, y_pred):
+            return 1.0
+
+        y = Answer(answer="42").to_json_data_model()
+        reward = get_reward(always_one, y, y)
+        self.assertEqual(await reward(y, y), 1.0)
+
+    def test_bare_sync_fn_raises_naming_the_function(self):
+        def always_one(y_true, y_pred):
+            return 1.0
+
+        y = Answer(answer="42").to_json_data_model()
+        with self.assertRaisesRegex(TypeError, "always_one"):
+            get_reward(always_one, y, y)
 
 
 class CompileRewardMultiOutputTest(testing.TestCase):

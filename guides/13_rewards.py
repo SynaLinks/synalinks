@@ -227,6 +227,21 @@ keyword arguments you pass to the wrapper are forwarded to the
 function on every call. The function must be `async` because
 the wrapper awaits it.
 
+When you need none of that (no forwarded arguments, no mask, no
+custom `reduction`), skip the wrapper and hand the function
+straight to `compile`:
+
+```python
+program.compile(
+    reward=length_under,
+    optimizer=synalinks.optimizers.RandomFewShot(),
+)
+```
+
+Synalinks wraps it for you and names the reward after the
+function. Forget the `async` and you get a `TypeError` naming
+your function, instead of a puzzling failure mid-training.
+
 The decorator
 `@synalinks.saving.register_synalinks_serializable()` is what
 lets your custom reward survive `program.save(...)` /

@@ -23,6 +23,17 @@ class CosineSimilarity(MeanMetricWrapper):
     but scaled to [0.0, 1.0] and adjusted to have a reward that tend
     towards 1.0 if the two objects are similar (and 0.0 otherwise).
 
+
+    Example:
+
+    ```python
+    program.compile(
+        metrics=[
+            synalinks.metrics.CosineSimilarity(),
+        ],
+    )
+    ```
+
     Args:
         embedding_model (EmbeddingModel): The embedding model to use to compute the
             cosine similarity.

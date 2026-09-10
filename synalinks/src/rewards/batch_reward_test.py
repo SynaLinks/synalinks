@@ -23,6 +23,13 @@ async def batch_normalized(y_true, y_pred, temperature=1.0):
 
 
 class BatchRewardFunctionWrapperTest(testing.TestCase):
+    def test_sync_fn_is_rejected(self):
+        def sync_batch_fn(y_true, y_pred):
+            return [1.0]
+
+        with self.assertRaisesRegex(TypeError, "sync_batch_fn"):
+            BatchRewardFunctionWrapper(fn=sync_batch_fn)
+
     async def test_per_sample_call(self):
         class Answer(DataModel):
             answer: str
@@ -58,6 +65,32 @@ class BatchRewardFunctionWrapperTest(testing.TestCase):
         rewards = await wrapper.compute_batch(y_true, y_pred)
         self.assertAlmostEqual(rewards[0], 0.25, places=4)
         self.assertAlmostEqual(rewards[1], 0.25, places=4)
+
+    async def test_config_round_trip(self):
+        class Score(DataModel):
+            score: float
+
+        wrapper = BatchRewardFunctionWrapper(
+            fn=batch_normalized, name="my_batch", reduction="none", temperature=2.0
+        )
+        config = wrapper.get_config()
+        self.assertEqual(config["name"], "my_batch")
+        self.assertIn("fn", config)
+        self.assertIn("fn_kwargs", config)
+
+        restored = BatchRewardFunctionWrapper.from_config(config)
+        self.assertEqual(restored.name, "my_batch")
+        self.assertEqual(restored.reduction, "none")
+        # The function and its kwargs survive the round trip.
+        y_true = [Score(score=0.0), Score(score=0.0)]
+        y_pred = [Score(score=2.0), Score(score=2.0)]
+        rewards = await restored.compute_batch(y_true, y_pred)
+        self.assertAlmostEqual(rewards[0], 0.25, places=4)
+
+    def test_repr(self):
+        wrapper = BatchRewardFunctionWrapper(fn=batch_normalized, temperature=2.0)
+        self.assertIn("BatchRewardFunctionWrapper", repr(wrapper))
+        self.assertIn("temperature", repr(wrapper))
 
     async def test_wrong_length_raises(self):
         class Answer(DataModel):

@@ -351,9 +351,7 @@ class OperationalMetricsAutoBindTest(testing.TestCase):
         # independent of this collector) was still counted correctly.
         primary_lm = _stub_lm()
         sub_lm = _stub_lm()
-        program = _FakeProgram(
-            modules=[_FakeModule(lm=primary_lm, sub_lm=sub_lm)]
-        )
+        program = _FakeProgram(modules=[_FakeModule(lm=primary_lm, sub_lm=sub_lm)])
         lms = _collect_language_models(program)
         ids = [id(lm) for lm in lms]
         self.assertIn(id(primary_lm), ids)
@@ -366,9 +364,7 @@ class OperationalMetricsAutoBindTest(testing.TestCase):
         # recorded on it.
         primary_lm = _stub_lm()
         sub_lm = _stub_lm()
-        program = _FakeProgram(
-            modules=[_FakeModule(lm=primary_lm, sub_lm=sub_lm)]
-        )
+        program = _FakeProgram(modules=[_FakeModule(lm=primary_lm, sub_lm=sub_lm)])
         m = TotalTokens()
         m.bind_program(program)
         _record(primary_lm, prompt=100, completion=20, elapsed=0.1, cost=0.001)
@@ -404,9 +400,13 @@ class LMPhaseRoutingTest(testing.TestCase):
         m_rew = _bind(RewardTotalTokens(), [lm])
         m_opt = _bind(OptimizerTotalTokens(), [lm])
 
-        _record(lm, prompt=100, completion=20, elapsed=0.0, cost=0.001, phase="inference")
+        _record(
+            lm, prompt=100, completion=20, elapsed=0.0, cost=0.001, phase="inference"
+        )
         _record(lm, prompt=50, completion=10, elapsed=0.0, cost=0.0005, phase="reward")
-        _record(lm, prompt=200, completion=40, elapsed=0.0, cost=0.002, phase="optimizer")
+        _record(
+            lm, prompt=200, completion=40, elapsed=0.0, cost=0.002, phase="optimizer"
+        )
 
         self.assertEqual(m_inf.result(), 120)
         self.assertEqual(m_rew.result(), 60)
@@ -416,7 +416,9 @@ class LMPhaseRoutingTest(testing.TestCase):
         lm = _stub_lm()
         m = _bind(RewardInputTokens(), [lm])
         _record(lm, prompt=300, completion=10, elapsed=0.0, cost=0.0, phase="reward")
-        _record(lm, prompt=999, completion=999, elapsed=0.0, cost=0.0, phase="inference")
+        _record(
+            lm, prompt=999, completion=999, elapsed=0.0, cost=0.0, phase="inference"
+        )
         self.assertEqual(m.result(), 300)
 
     def test_optimizer_input_tokens(self):
@@ -686,8 +688,12 @@ class LMExtraAveragesPerPhaseTest(testing.TestCase):
                 self.assertEqual(m_reasoning.result(), 0.0)
                 # 2 calls, 500 total tokens, 60 cached, 40 cache-creation,
                 # 30 reasoning.
-                _record(lm, prompt=100, completion=20, elapsed=0.1, cost=0.0, phase=phase)
-                _record(lm, prompt=300, completion=80, elapsed=0.1, cost=0.0, phase=phase)
+                _record(
+                    lm, prompt=100, completion=20, elapsed=0.1, cost=0.0, phase=phase
+                )
+                _record(
+                    lm, prompt=300, completion=80, elapsed=0.1, cost=0.0, phase=phase
+                )
                 _bump(lm, "cached_tokens", 60, phase=phase)
                 _bump(lm, "cache_creation_tokens", 40, phase=phase)
                 _bump(lm, "reasoning_tokens", 30, phase=phase)

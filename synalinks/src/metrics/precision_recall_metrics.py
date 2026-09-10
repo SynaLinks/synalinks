@@ -21,6 +21,17 @@ class Precision(FBetaScore):
     to report precision as a separate signal alongside `Recall` and
     `F1Score`.
 
+
+    Example:
+
+    ```python
+    program.compile(
+        metrics=[
+            synalinks.metrics.Precision(),
+        ],
+    )
+    ```
+
     Args:
         average (str): Type of averaging across per-field results.
             One of `None`, `"micro"`, `"macro"`, `"weighted"`.
@@ -72,6 +83,17 @@ class Recall(FBetaScore):
     Mirrors `F1Score`: tokenization, masking and `average` modes behave
     identically; only the result formula differs.
 
+
+    Example:
+
+    ```python
+    program.compile(
+        metrics=[
+            synalinks.metrics.Recall(),
+        ],
+    )
+    ```
+
     Args:
         average (str): Type of averaging across per-field results.
             One of `None`, `"micro"`, `"macro"`, `"weighted"`.
@@ -119,6 +141,17 @@ class BinaryPrecision(BinaryFBetaScore):
     `threshold`. Per-field precision is `TP / (TP + FP)`, aggregated via
     `average`.
 
+
+    Example:
+
+    ```python
+    program.compile(
+        metrics=[
+            synalinks.metrics.BinaryPrecision(),
+        ],
+    )
+    ```
+
     Args:
         average (str): One of `None`, `"micro"`, `"macro"`, `"weighted"`.
         threshold (float): Threshold for deciding whether a float value is
@@ -164,6 +197,17 @@ class BinaryRecall(BinaryFBetaScore):
 
     Mirrors `BinaryF1Score`. Per-field recall is `TP / (TP + FN)`,
     aggregated via `average`.
+
+
+    Example:
+
+    ```python
+    program.compile(
+        metrics=[
+            synalinks.metrics.BinaryRecall(),
+        ],
+    )
+    ```
 
     Args:
         average (str): One of `None`, `"micro"`, `"macro"`, `"weighted"`.
@@ -211,6 +255,17 @@ class CategoricalPrecision(CategoricalFBetaScore):
     when provided, accumulation is per-label (sklearn-style) and
     `result()` returns a `{label: precision}` dict for `average=None`.
 
+
+    Example:
+
+    ```python
+    program.compile(
+        metrics=[
+            synalinks.metrics.CategoricalPrecision(),
+        ],
+    )
+    ```
+
     Args:
         average (str): One of `None`, `"micro"`, `"macro"`, `"weighted"`.
         labels (list): (Optional) Explicit list of label names to track.
@@ -256,6 +311,17 @@ class CategoricalRecall(CategoricalFBetaScore):
     Mirrors `CategoricalF1Score`. Supports the optional `labels=` parameter:
     when provided, accumulation is per-label (sklearn-style) and
     `result()` returns a `{label: recall}` dict for `average=None`.
+
+
+    Example:
+
+    ```python
+    program.compile(
+        metrics=[
+            synalinks.metrics.CategoricalRecall(),
+        ],
+    )
+    ```
 
     Args:
         average (str): One of `None`, `"micro"`, `"macro"`, `"weighted"`.

@@ -1,6 +1,9 @@
 # License Apache 2.0: (c) 2025-2026 Yoan Sallami (Synalinks Team)
 
 import asyncio
+import collections
+import contextvars
+import itertools
 import logging
 import time
 from typing import Any
@@ -37,6 +40,120 @@ _LOGGER = logging.getLogger(__name__)
 
 # Global registry to track spans across hook instances for parent-child relationships
 _GLOBAL_SPANS_REGISTRY: Dict[str, Any] = {}
+
+# Root (non-symbolic) traces in call order: (sequence number, trace id).
+_ROOT_TRACES = collections.deque(maxlen=100_000)
+_ROOT_TRACE_SEQ = itertools.count()
+
+
+def root_trace_mark():
+    """Returns a mark to pass to `root_trace_ids_since()` later."""
+    return next(_ROOT_TRACE_SEQ)
+
+
+def root_trace_ids_since(mark):
+    """Returns the ids of the root traces (top-level, non-symbolic module
+    calls) started since `mark`, in call order.
+
+    The order is the order in which the calls began, which is the order of
+    the inputs when a batch is run through `asyncio.gather` (the trainer's
+    `predict_on_batch`). `callbacks.Monitor` uses this to attach each
+    sample's reward to its trace.
+    """
+    return [tid for seq, tid in sorted(_ROOT_TRACES) if seq > mark]
+
+
+# ContextVar (not a global) so concurrent async requests each see their own value
+_TRACE_CONTEXT = contextvars.ContextVar("synalinks_trace_context", default=None)
+
+# Reserved MLflow metadata keys, used by the UI to group traces per user/session
+MLFLOW_TRACE_USER_KEY = "mlflow.trace.user"
+MLFLOW_TRACE_SESSION_KEY = "mlflow.trace.session"
+
+
+@synalinks_export(["synalinks.hooks.trace_context", "synalinks.trace_context"])
+class trace_context:
+    """Attach a user, a session and free-form metadata to the MLflow traces
+    created inside the block.
+
+    MLflow groups traces by user and by chat session (a multi-turn
+    conversation) through two reserved metadata keys, `mlflow.trace.user`
+    and `mlflow.trace.session`, which lets you inspect what happened at each
+    turn of a conversation in the MLflow UI. The `Monitor` hook creates its
+    spans outside of MLflow's fluent context (nested module calls are linked
+    explicitly), so `mlflow.update_current_trace()` cannot see them. This
+    context manager is the Synalinks way to set that metadata: every trace
+    started inside the block carries the user, session, tags and metadata
+    given here.
+
+    The state lives in a `contextvars.ContextVar`, so it is copied into the
+    concurrent tasks spawned inside the block and it is safe to use per
+    request in an async server: concurrent requests each see their own value.
+    Nested blocks merge with the enclosing one, the innermost value winning.
+
+    Args:
+        user_id (str): Optional. The user the traces belong to.
+        session_id (str): Optional. The chat session (conversation) the
+            traces belong to.
+        metadata (dict): Optional. Extra trace metadata (immutable once the
+            trace is logged).
+        tags (dict): Optional. Extra trace tags (editable afterwards in the
+            MLflow UI).
+
+    Example:
+
+    ```python
+    import synalinks
+
+    synalinks.enable_observability()
+
+    # ... build your program ...
+
+    with synalinks.trace_context(user_id="user-123", session_id="session-123"):
+        result = await program(inputs)
+    ```
+
+    In a FastAPI/FastMCP server, wrap each request handler so that the user
+    and session ids coming from the client end up on the traces:
+
+    ```python
+    @app.post("/chat")
+    async def chat(request: ChatRequest):
+        with synalinks.trace_context(
+            user_id=request.user_id, session_id=request.session_id
+        ):
+            return await program(request.messages)
+    ```
+    """
+
+    def __init__(self, user_id=None, session_id=None, metadata=None, tags=None):
+        self.metadata = {str(k): str(v) for k, v in (metadata or {}).items()}
+        if user_id is not None:
+            self.metadata[MLFLOW_TRACE_USER_KEY] = str(user_id)
+        if session_id is not None:
+            self.metadata[MLFLOW_TRACE_SESSION_KEY] = str(session_id)
+        self.tags = {str(k): str(v) for k, v in (tags or {}).items()}
+        self._token = None
+
+    def __enter__(self):
+        outer = _TRACE_CONTEXT.get() or {"metadata": {}, "tags": {}}
+        self._token = _TRACE_CONTEXT.set(
+            {
+                "metadata": {**outer["metadata"], **self.metadata},
+                "tags": {**outer["tags"], **self.tags},
+            }
+        )
+        return self
+
+    def __exit__(self, *exc_info):
+        _TRACE_CONTEXT.reset(self._token)
+        return False
+
+
+def current_trace_context():
+    """Returns the `{"metadata": ..., "tags": ...}` set by the innermost
+    active `trace_context`, or `None` when no trace context is active."""
+    return _TRACE_CONTEXT.get()
 
 
 @synalinks_export("synalinks.callbacks.monitor.Span")
@@ -158,6 +275,9 @@ class Monitor(Hook):
         is_symbolic,
         span_name,
         span_type,
+        metadata=None,
+        tags=None,
+        root_seq=None,
     ):
         """Async implementation of span creation."""
         global _GLOBAL_SPANS_REGISTRY
@@ -174,12 +294,16 @@ class Monitor(Hook):
             name=span_name,
             span_type=span_type,
             parent_span=parent_span_obj,
+            metadata=metadata or None,
+            tags=tags or None,
         )
 
         # Store only in the module-level registry. Storing the span on the
         # hook instance would expose mlflow's internal `_thread.lock` state
         # through the tracker graph (see comment on `_LOGGER` above).
         _GLOBAL_SPANS_REGISTRY[call_id] = span
+        if root_seq is not None:
+            _ROOT_TRACES.append((root_seq, span.trace_id))
 
         span.set_attributes(
             {
@@ -241,6 +365,14 @@ class Monitor(Hook):
         # Get the appropriate span type for this module
         span_type = self._get_span_type()
 
+        # Read the ContextVar in the caller's context, not inside the coroutine
+        trace_ctx = current_trace_context() or {}
+        # Sequence taken synchronously here so it follows the call order, not
+        # the completion order of the threaded span creation.
+        root_seq = None
+        if parent_call_id is None and not is_symbolic:
+            root_seq = next(_ROOT_TRACE_SEQ)
+
         run_maybe_nested(
             self._begin_span_async(
                 call_id=call_id,
@@ -250,6 +382,9 @@ class Monitor(Hook):
                 is_symbolic=is_symbolic,
                 span_name=span_name,
                 span_type=span_type,
+                metadata=trace_ctx.get("metadata"),
+                tags=trace_ctx.get("tags"),
+                root_seq=root_seq,
             )
         )
 
