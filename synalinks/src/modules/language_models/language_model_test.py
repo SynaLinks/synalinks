@@ -111,7 +111,9 @@ class LanguageModelTest(testing.TestCase):
         # output as a forced `structured_output` tool call, so the JSON comes
         # back as the call's arguments and `content` is empty. It used to be
         # read from `content`, fail to parse, and score every row as None.
-        language_model = LanguageModel(model="openrouter/anthropic/claude-opus-4.1")
+        # Anthropic-backed ids are the one exception to the forced choice and
+        # have their own test below; any other vendor exercises this path.
+        language_model = LanguageModel(model="openrouter/openai/gpt-4o-mini")
 
         class Answer(DataModel):
             answer: str
@@ -152,6 +154,89 @@ class LanguageModelTest(testing.TestCase):
             mock_completion.call_args.kwargs["tool_choice"]["function"]["name"],
             "structured_output",
         )
+
+    @patch("litellm.acompletion")
+    async def test_anthropic_via_openrouter_is_not_forced_to_call_the_tool(
+        self, mock_completion
+    ):
+        # Anthropic's newest models reject a forced tool choice with a 400
+        # ("type `tool` and `any` are not supported for this model"), so every
+        # cell of a sweep over `openrouter/anthropic/...` failed. They still
+        # call the tool when allowed to choose it, so the tool itself stays.
+        language_model = LanguageModel(model="openrouter/anthropic/claude-sonnet-4.5")
+
+        class Answer(DataModel):
+            answer: str
+
+        mock_completion.return_value = {
+            "choices": [
+                {
+                    "message": {
+                        "content": None,
+                        "tool_calls": [
+                            {
+                                "id": "call_1",
+                                "type": "function",
+                                "function": {
+                                    "name": "structured_output",
+                                    "arguments": '{"answer": "B"}',
+                                },
+                            }
+                        ],
+                    }
+                }
+            ]
+        }
+
+        messages = ChatMessages(
+            messages=[ChatMessage(role=ChatRole.USER, content="Pick a letter.")]
+        )
+        result = await language_model(messages, schema=Answer.get_schema())
+        self.assertEqual(result.get_json(), {"answer": "B"})
+
+        self.assertEqual(mock_completion.call_args.kwargs["tool_choice"], "auto")
+        tool = mock_completion.call_args.kwargs["tools"][0]["function"]
+        self.assertEqual(tool["name"], "structured_output")
+
+    @patch("litellm.acompletion")
+    async def test_a_caller_can_override_the_structured_output_payload(
+        self, mock_completion
+    ):
+        # The branch picks a payload per provider, but a model it guesses wrong
+        # about was impossible to drive: the branch overwrote whatever the
+        # caller passed. Now it only fills in what is unset.
+        language_model = LanguageModel(
+            model="openrouter/openai/gpt-4o-mini", tool_choice="auto"
+        )
+
+        class Answer(DataModel):
+            answer: str
+
+        mock_completion.return_value = {
+            "choices": [
+                {
+                    "message": {
+                        "content": None,
+                        "tool_calls": [
+                            {
+                                "id": "call_1",
+                                "type": "function",
+                                "function": {
+                                    "name": "structured_output",
+                                    "arguments": '{"answer": "B"}',
+                                },
+                            }
+                        ],
+                    }
+                }
+            ]
+        }
+
+        messages = ChatMessages(
+            messages=[ChatMessage(role=ChatRole.USER, content="Pick a letter.")]
+        )
+        await language_model(messages, schema=Answer.get_schema())
+        self.assertEqual(mock_completion.call_args.kwargs["tool_choice"], "auto")
 
     @patch("litellm.acompletion")
     async def test_structured_output_tool_call_wins_over_a_content_preamble(
