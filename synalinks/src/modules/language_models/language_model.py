@@ -246,6 +246,42 @@ def _cached_message_to_chunks(json_instance):
     return iter([{"choices": [{"delta": delta}]}])
 
 
+# Anthropic's newest models refuse a forced tool choice outright ("tool_choice:
+# type `tool` and `any` are not supported for this model"), which is how every
+# `openrouter/...` id asks for structured output. Letting them choose the tool
+# works: they still call it, and the JSON still arrives as the call arguments.
+#
+# `response_format` is deliberately not the answer here. OpenRouter accepts it
+# and returns 200, but does not constrain the reply — both claude-opus-4.1 and
+# claude-fable-5.1 answer in prose — so the schema is silently lost rather than
+# refused, which is worse in a harness that scores the output.
+_FORCED_TOOL_CHOICE_REFUSED = ("openrouter/anthropic/",)
+
+
+def _structured_output_tool_choice(model):
+    """How to ask `model` for the `structured_output` tool.
+
+    Forced everywhere it is accepted, so a model cannot answer around the
+    schema; `"auto"` only for the ids known to reject being forced.
+    """
+    if model.startswith(_FORCED_TOOL_CHOICE_REFUSED):
+        return "auto"
+    return {"type": "function", "function": {"name": "structured_output"}}
+
+
+def _set_if_unset(kwargs, values):
+    """Fill in `values` the caller did not set.
+
+    The structured-output branches pick a payload per provider, but a caller
+    who passed `response_format` or `tool_choice` of their own meant it: a
+    model the branch guesses wrong about is otherwise impossible to drive
+    without patching the library. Keys already present are left alone, so the
+    default behaviour is unchanged.
+    """
+    for key, value in values.items():
+        kwargs.setdefault(key, value)
+
+
 @synalinks_export(
     [
         "synalinks.LanguageModel",
@@ -814,7 +850,8 @@ class LanguageModel(Module):
                 # `type`, `required` and `additionalProperties` included),
                 # not just the property map. The reply then carries the
                 # JSON as the call's `arguments`; see `_do_call`.
-                kwargs.update(
+                _set_if_unset(
+                    kwargs,
                     {
                         "tools": [
                             {
@@ -826,10 +863,7 @@ class LanguageModel(Module):
                                 "type": "function",
                             }
                         ],
-                        "tool_choice": {
-                            "type": "function",
-                            "function": {"name": "structured_output"},
-                        },
+                        "tool_choice": _structured_output_tool_choice(self.model),
                     }
                 )
             elif self.model.startswith("anthropic"):
@@ -837,7 +871,8 @@ class LanguageModel(Module):
                 # - For newer models (sonnet-4.5, opus-4.1): uses native output_format
                 # - For older models: uses tool call with proper tool_choice handling
                 #   (auto when thinking is enabled, forced otherwise)
-                kwargs.update(
+                _set_if_unset(
+                    kwargs,
                     {
                         "response_format": {
                             "type": "json_schema",
@@ -849,7 +884,8 @@ class LanguageModel(Module):
                 )
             elif self.model.startswith("ollama") or self.model.startswith("mistral"):
                 # Use constrained structured output for ollama/mistral
-                kwargs.update(
+                _set_if_unset(
+                    kwargs,
                     {
                         "response_format": {
                             "type": "json_schema",
@@ -873,7 +909,8 @@ class LanguageModel(Module):
                     for prop_key, prop_value in schema["properties"].items():
                         if "$ref" in prop_value and "description" in prop_value:
                             del prop_value["description"]
-                kwargs.update(
+                _set_if_unset(
+                    kwargs,
                     {
                         "response_format": {
                             "type": "json_schema",
@@ -886,7 +923,8 @@ class LanguageModel(Module):
                     }
                 )
             elif self.model.startswith("gemini"):
-                kwargs.update(
+                _set_if_unset(
+                    kwargs,
                     {
                         "response_format": {
                             "type": "json_schema",
@@ -898,7 +936,8 @@ class LanguageModel(Module):
                     }
                 )
             elif self.model.startswith("xai"):
-                kwargs.update(
+                _set_if_unset(
+                    kwargs,
                     {
                         "response_format": {
                             "type": "json_schema",
@@ -910,7 +949,8 @@ class LanguageModel(Module):
                     }
                 )
             elif self.model.startswith("hosted_vllm"):
-                kwargs.update(
+                _set_if_unset(
+                    kwargs,
                     {
                         "response_format": {
                             "type": "json_schema",
