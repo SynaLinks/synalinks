@@ -63,6 +63,7 @@ class RandomFewShot(GreedyOptimizer):
         sampling="softmax",
         sampling_temperature=0.3,
         population_size=10,
+        reward_uncertainty=0.25,
         name=None,
         description=None,
     ):
@@ -72,6 +73,7 @@ class RandomFewShot(GreedyOptimizer):
             sampling=sampling,
             sampling_temperature=sampling_temperature,
             population_size=population_size,
+            reward_uncertainty=reward_uncertainty,
             name=name,
             description=description,
         )
@@ -86,6 +88,7 @@ class RandomFewShot(GreedyOptimizer):
         x=None,
         y=None,
         y_pred=None,
+        rewards=None,
         training=False,
     ):
         variable_name_to_update = await self.select_variable_name_to_update(

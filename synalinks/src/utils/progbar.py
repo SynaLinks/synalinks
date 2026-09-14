@@ -38,10 +38,12 @@ class Progbar:
         self.interval = interval
         self.unit_name = unit_name
 
+        # Interactive terminals and notebooks get the in-place animated bar;
+        # anything else (a log file, a pipe, CI output) gets one plain text
+        # line per update, with no escape sequences.
         self._dynamic_display = (
             (hasattr(sys.stdout, "isatty") and sys.stdout.isatty())
             or "ipykernel" in sys.modules
-            or "posix" in sys.modules
             or "PYCHARM_HOSTED" in os.environ
         )
         self._seen_so_far = 0
@@ -77,108 +79,102 @@ class Progbar:
             self._values[k] = [v, 1]
         self._seen_so_far = current
 
-        message = ""
-        special_char_len = 0
         now = time.time()
         time_per_unit = self._estimate_step_duration(current, now)
 
         if self.verbose == 1:
             if now - self._last_update < self.interval and not finalize:
                 return
-
             if self._dynamic_display:
-                message += "\b" * self._prev_total_width
-                message += "\r"
+                self._print_dynamic(current, now, time_per_unit, finalize)
             else:
-                message += "\n"
-
-            if self.target is not None:
-                numdigits = int(math.log10(self.target)) + 1
-                bar = ("%" + str(numdigits) + "d/%d") % (current, self.target)
-                bar = f"\x1b[1m{bar}\x1b[0m "
-                special_char_len += 8
-                prog = float(current) / self.target
-                prog_width = int(self.width * prog)
-
-                if prog_width > 0:
-                    bar += "\33[32m" + "━" * prog_width + "\x1b[0m"
-                    special_char_len += 9
-                bar += "\33[37m" + "━" * (self.width - prog_width) + "\x1b[0m"
-                special_char_len += 9
-
-            else:
-                bar = "%7d/Unknown" % current
-            message += bar
-
-            # Add ETA if applicable
-            if self.target is not None and not finalize:
-                eta = time_per_unit * (self.target - current)
-                if eta > 3600:
-                    eta_format = "%d:%02d:%02d" % (
-                        eta // 3600,
-                        (eta % 3600) // 60,
-                        eta % 60,
-                    )
-                elif eta > 60:
-                    eta_format = "%d:%02d" % (eta // 60, eta % 60)
-                else:
-                    eta_format = "%ds" % eta
-                info = f" \x1b[1m{eta_format}\x1b[0m"
-            else:
-                # Time elapsed since start, in seconds
-                info = f" \x1b[1m{now - self._start:.0f}s\x1b[0m"
-            special_char_len += 8
-
-            # Add time/step
-            info += self._format_time(time_per_unit, self.unit_name)
-
-            # Add metrics
-            for k in self._values_order:
-                info += f" - {k}:"
-                if isinstance(self._values[k], list):
-                    avg = numpy.convert_to_numpy(
-                        numpy.mean(self._values[k][0] / max(1, self._values[k][1]))
-                    )
-                    avg = float(avg)
-                    if abs(avg) > 1e-3:
-                        info += f" {avg:.4f}"
-                    else:
-                        info += f" {avg:.4e}"
-                else:
-                    info += f" {self._values[k]}"
-            message += info
-
-            total_width = len(bar) + len(info) - special_char_len
-            if self._prev_total_width > total_width:
-                message += " " * (self._prev_total_width - total_width)
-            if finalize:
-                message += "\n"
-
-            io_utils.print_msg(message, line_break=False)
-            self._prev_total_width = total_width
-            message = ""
-
+                self._print_plain(current, now, time_per_unit, finalize)
         elif self.verbose == 2:
             if finalize:
-                numdigits = int(math.log10(self.target)) + 1
-                count = ("%" + str(numdigits) + "d/%d") % (current, self.target)
-                info = f"{count} - {now - self._start:.0f}s"
-                info += " -" + self._format_time(time_per_unit, self.unit_name)
-                for k in self._values_order:
-                    info += f" - {k}:"
-                    avg = numpy.convert_to_numpy(
-                        numpy.mean(self._values[k][0] / max(1, self._values[k][1]))
-                    )
-                    if avg > 1e-3:
-                        info += f" {avg:.4f}"
-                    else:
-                        info += f" {avg:.4e}"
-                info += "\n"
-                message += info
-                io_utils.print_msg(message, line_break=False)
-                message = ""
+                io_utils.print_msg(
+                    self._plain_line(current, now, time_per_unit, finalize=True),
+                    line_break=True,
+                )
 
         self._last_update = now
+
+    def _count(self, current):
+        """`current/target`, right-aligned, or `current/?` when the target is unknown."""
+        if self.target is not None:
+            numdigits = int(math.log10(self.target)) + 1
+            return ("%" + str(numdigits) + "d/%d") % (current, self.target)
+        return "%7d/?" % current
+
+    def _time_info(self, current, now, time_per_unit, finalize):
+        """ETA while running, elapsed time once finalized, then the time per unit."""
+        if self.target is not None and not finalize:
+            eta = time_per_unit * (self.target - current)
+            if eta > 3600:
+                eta_format = "%d:%02d:%02d" % (eta // 3600, (eta % 3600) // 60, eta % 60)
+            elif eta > 60:
+                eta_format = "%d:%02d" % (eta // 60, eta % 60)
+            else:
+                eta_format = "%ds" % eta
+            head = eta_format
+        else:
+            head = f"{now - self._start:.0f}s"
+        return head, self._format_time(time_per_unit, self.unit_name)
+
+    def _metrics_info(self):
+        """` - name: value` for each metric, averaged over the updates seen so far."""
+        info = ""
+        for k in self._values_order:
+            info += f" - {k}:"
+            avg = numpy.convert_to_numpy(
+                numpy.mean(self._values[k][0] / max(1, self._values[k][1]))
+            )
+            avg = float(avg)
+            if abs(avg) > 1e-3:
+                info += f" {avg:.4f}"
+            else:
+                info += f" {avg:.4e}"
+        return info
+
+    def _plain_line(self, current, now, time_per_unit, finalize):
+        """One line of plain text: no escape sequences, no bar, no padding."""
+        head, per_unit = self._time_info(current, now, time_per_unit, finalize)
+        return (
+            f"{self._count(current).strip()} - {head} -{per_unit}{self._metrics_info()}"
+        )
+
+    def _print_plain(self, current, now, time_per_unit, finalize):
+        io_utils.print_msg(
+            self._plain_line(current, now, time_per_unit, finalize), line_break=True
+        )
+
+    def _print_dynamic(self, current, now, time_per_unit, finalize):
+        """The animated bar, redrawn in place with backspaces and a carriage return."""
+        message = "\b" * self._prev_total_width + "\r"
+        special_char_len = 0
+        bar = f"\x1b[1m{self._count(current)}\x1b[0m "
+        special_char_len += 8
+        if self.target is not None:
+            prog = float(current) / self.target
+            prog_width = int(self.width * prog)
+            if prog_width > 0:
+                bar += "\33[32m" + "━" * prog_width + "\x1b[0m"
+                special_char_len += 9
+            bar += "\33[37m" + "━" * (self.width - prog_width) + "\x1b[0m"
+            special_char_len += 9
+        message += bar
+        head, per_unit = self._time_info(current, now, time_per_unit, finalize)
+        info = f" \x1b[1m{head}\x1b[0m"
+        special_char_len += 8
+        info += per_unit
+        info += self._metrics_info()
+        message += info
+        total_width = len(bar) + len(info) - special_char_len
+        if self._prev_total_width > total_width:
+            message += " " * (self._prev_total_width - total_width)
+        if finalize:
+            message += "\n"
+        io_utils.print_msg(message, line_break=False)
+        self._prev_total_width = total_width
 
     def add(self, n, values=None):
         self.update(self._seen_so_far + n, values)

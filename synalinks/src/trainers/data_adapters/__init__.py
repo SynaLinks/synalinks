@@ -42,7 +42,7 @@ def get_data_adapter(
             num_batches = len(x)
         except (TypeError, NotImplementedError):
             num_batches = None
-        return GeneratorDataAdapter(iter(x), num_batches=num_batches)
+        return GeneratorDataAdapter(x, num_batches=num_batches)
 
     else:
         raise ValueError(f"Unrecognized data type: x={x} (of type {type(x)})")
