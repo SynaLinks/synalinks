@@ -3,6 +3,8 @@
 import json
 from unittest.mock import patch
 
+import numpy as np
+
 from synalinks.src import metrics
 from synalinks.src import modules
 from synalinks.src import optimizers
@@ -146,9 +148,7 @@ class TestTrainer(testing.TestCase):
         )
 
     @patch("litellm.acompletion")
-    async def test_evaluate_predicts_each_sample_once_when_unbuilt(
-        self, mock_completion
-    ):
+    async def test_evaluate_predicts_each_sample_once_when_unbuilt(self, mock_completion):
         """An unbuilt program must not be run twice on the batch it builds on.
 
         Building a program means calling it, and `evaluate` builds on the first
@@ -216,9 +216,7 @@ class TestTrainer(testing.TestCase):
         # predicted once, not twice. The one extra pass is `_auto_build`'s own
         # spec pass for the metric and reward state; it is paid once per
         # program, not once per sample, and is not what this reuse addresses.
-        self.assertLessEqual(
-            ProgramWithAnUntakenPath.forward_passes, len(x_test) + 1
-        )
+        self.assertLessEqual(ProgramWithAnUntakenPath.forward_passes, len(x_test) + 1)
 
         # `fallback` is still unbuilt, so the next `evaluate` auto-builds again
         # — and must again cost exactly one pass per sample. This is what makes
@@ -226,9 +224,7 @@ class TestTrainer(testing.TestCase):
         before = ProgramWithAnUntakenPath.forward_passes
         _ = await program.evaluate(x=x_test, y=y_test)
         self.assertFalse(all(module.built for module in program._flatten_modules()))
-        self.assertEqual(
-            ProgramWithAnUntakenPath.forward_passes - before, len(x_test)
-        )
+        self.assertEqual(ProgramWithAnUntakenPath.forward_passes - before, len(x_test))
 
     @patch("litellm.acompletion")
     async def test_predict(self, mock_completion):
@@ -451,3 +447,49 @@ class TestCompileStringIdentifiers(testing.TestCase):
             reward=rewards.ExactMatch(),
         )
         self.assertIsInstance(program.optimizer, optimizers.RandomFewShot)
+
+
+class StratifiedMinibatchTest(testing.TestCase):
+    def _targets(self, labels):
+        return np.array(
+            [
+                JsonDataModel(json={"reward": r}, schema={"type": "object"})
+                for r in labels
+            ],
+            dtype="object",
+        )
+
+    def test_minibatch_spans_the_target_classes(self):
+        from synalinks.src.trainers.trainer import stratified_minibatch_indices
+
+        y = self._targets([0.0] * 10 + [0.5] * 10 + [1.0] * 10)
+        rng = np.random.default_rng(0)
+        for _ in range(20):
+            idx = stratified_minibatch_indices(y, 3, rng=rng)
+            self.assertEqual(len(idx), 3)
+            self.assertEqual(len(set(idx.tolist())), 3)
+            self.assertEqual(sorted(y[i].get("reward") for i in idx), [0.0, 0.5, 1.0])
+
+    def test_round_robin_when_size_exceeds_number_of_classes(self):
+        from synalinks.src.trainers.trainer import stratified_minibatch_indices
+
+        y = self._targets([0.0] * 10 + [1.0] * 10)
+        idx = stratified_minibatch_indices(y, 4, rng=np.random.default_rng(1))
+        labels = sorted(y[i].get("reward") for i in idx)
+        self.assertEqual(labels, [0.0, 0.0, 1.0, 1.0])
+        self.assertEqual(len(set(idx.tolist())), 4)
+
+    def test_falls_back_to_random_when_targets_do_not_repeat(self):
+        from synalinks.src.trainers.trainer import stratified_minibatch_indices
+
+        y = self._targets([i / 100 for i in range(30)])
+        idx = stratified_minibatch_indices(y, 4, rng=np.random.default_rng(2))
+        self.assertEqual(len(idx), 4)
+        self.assertEqual(len(set(idx.tolist())), 4)
+
+    def test_size_is_capped_at_population(self):
+        from synalinks.src.trainers.trainer import stratified_minibatch_indices
+
+        y = self._targets([0.0, 1.0, 0.0])
+        idx = stratified_minibatch_indices(y, 10, rng=np.random.default_rng(3))
+        self.assertEqual(sorted(idx.tolist()), [0, 1, 2])

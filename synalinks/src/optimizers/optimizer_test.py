@@ -157,3 +157,247 @@ class OptimizerRewardAssignmentTest(testing.TestCase):
         await optimizer.assign_reward_to_predictions([var], rewards=[0.5])
         self.assertEqual(var.get("nb_visit"), 2)
         self.assertEqual(var.get("cumulative_reward"), 1.0)
+
+
+class _ConcreteOptimizer(Optimizer):
+    async def propose_new_candidates(self, *args, **kwargs):
+        return None
+
+
+class MaybeAddCandidateTest(testing.TestCase):
+    def _variable(self, best_candidates=None):
+        return JsonDataModel(
+            json={
+                "instructions": "seed",
+                "examples": [],
+                "candidates": [],
+                "best_candidates": best_candidates or [],
+            },
+            schema={
+                "type": "object",
+                "properties": {
+                    "instructions": {"type": "string"},
+                    "examples": {"type": "array"},
+                    "candidates": {"type": "array"},
+                    "best_candidates": {"type": "array"},
+                },
+            },
+        )
+
+    async def test_new_candidate_starts_with_one_measurement(self):
+        optimizer = _ConcreteOptimizer()
+        variable = self._variable()
+        variable.update({"instructions": "v1"})
+        await optimizer.maybe_add_candidate(0, variable, reward=0.2)
+        (candidate,) = variable.get("candidates")
+        self.assertEqual(candidate["instructions"], "v1")
+        self.assertEqual(candidate["reward"], 0.2)
+        self.assertEqual(candidate["reward_count"], 1)
+
+    async def test_repeated_candidate_updates_running_mean(self):
+        optimizer = _ConcreteOptimizer()
+        variable = self._variable()
+        variable.update({"instructions": "v1"})
+        await optimizer.maybe_add_candidate(0, variable, reward=0.2)
+        await optimizer.maybe_add_candidate(1, variable, reward=0.6)
+        await optimizer.maybe_add_candidate(2, variable, reward=1.0)
+        candidates = variable.get("candidates")
+        self.assertEqual(len(candidates), 1)
+        self.assertAlmostEqual(candidates[0]["reward"], 0.6)
+        self.assertEqual(candidates[0]["reward_count"], 3)
+
+    async def test_repeated_candidate_in_best_candidates_is_updated_in_place(self):
+        optimizer = _ConcreteOptimizer()
+        variable = self._variable(
+            best_candidates=[
+                {"instructions": "v1", "examples": [], "reward": 0.5, "reward_count": 1}
+            ]
+        )
+        variable.update({"instructions": "v1"})
+        await optimizer.maybe_add_candidate(0, variable, reward=0.9)
+        self.assertEqual(variable.get("candidates"), [])
+        (best,) = variable.get("best_candidates")
+        self.assertAlmostEqual(best["reward"], 0.7)
+        self.assertEqual(best["reward_count"], 2)
+
+    async def test_metadata_never_leaks_into_the_variable(self):
+        optimizer = _ConcreteOptimizer()
+        variable = self._variable(
+            best_candidates=[
+                {"instructions": "best", "examples": [], "reward": 0.9, "reward_count": 3}
+            ]
+        )
+        await optimizer.on_batch_end(0, 1, [variable])
+        self.assertEqual(variable.get("instructions"), "best")
+        self.assertNotIn("reward", variable.get_json())
+        self.assertNotIn("reward_count", variable.get_json())
+
+
+class CandidateScoreTest(testing.TestCase):
+    def test_lower_confidence_bound(self):
+        optimizer = _ConcreteOptimizer(reward_uncertainty=0.2)
+        self.assertAlmostEqual(
+            optimizer.candidate_score({"reward": 0.9, "reward_count": 4}), 0.9 - 0.1
+        )
+        self.assertAlmostEqual(
+            optimizer.candidate_score({"reward": 0.9, "reward_count": 100}), 0.9 - 0.02
+        )
+        # A candidate without a count is treated as a single measurement.
+        self.assertAlmostEqual(optimizer.candidate_score({"reward": 0.9}), 0.7)
+
+    def test_zero_uncertainty_ranks_by_raw_reward(self):
+        optimizer = _ConcreteOptimizer(reward_uncertainty=0.0)
+        self.assertEqual(
+            optimizer.candidate_score({"reward": 0.9, "reward_count": 1}), 0.9
+        )
+
+    async def test_promotion_prefers_well_measured_candidate_on_near_tie(self):
+        """A fresh 0.95 on 4 samples must not beat a 0.90 measured on 60."""
+        optimizer = _ConcreteOptimizer(reward_uncertainty=0.25)
+        variable = JsonDataModel(
+            json={
+                "instructions": "seed",
+                "examples": [],
+                "candidates": [
+                    {
+                        "instructions": "lucky",
+                        "examples": [],
+                        "reward": 0.95,
+                        "reward_count": 4,
+                    },
+                ],
+                "best_candidates": [
+                    {
+                        "instructions": "solid",
+                        "examples": [],
+                        "reward": 0.90,
+                        "reward_count": 60,
+                    },
+                ],
+            },
+            schema={
+                "type": "object",
+                "properties": {
+                    "instructions": {"type": "string"},
+                    "examples": {"type": "array"},
+                    "candidates": {"type": "array"},
+                    "best_candidates": {"type": "array"},
+                },
+            },
+        )
+        await optimizer.on_batch_end(0, 1, [variable])
+        self.assertEqual(variable.get("instructions"), "solid")
+
+
+class SampleWeightedRewardTest(testing.TestCase):
+    def _variable(self, **extra):
+        return JsonDataModel(
+            json={
+                "instructions": "seed",
+                "examples": [],
+                "candidates": [],
+                "best_candidates": [],
+                "history": [],
+                **extra,
+            },
+            schema={
+                "type": "object",
+                "properties": {
+                    "instructions": {"type": "string"},
+                    "examples": {"type": "array"},
+                    "candidates": {"type": "array"},
+                    "best_candidates": {"type": "array"},
+                    "history": {"type": "array"},
+                },
+            },
+        )
+
+    async def test_weight_is_the_number_of_samples(self):
+        optimizer = _ConcreteOptimizer()
+        variable = self._variable()
+        variable.update({"instructions": "v1"})
+        await optimizer.maybe_add_candidate(0, variable, reward=0.5, weight=4)
+        await optimizer.maybe_add_candidate(1, variable, reward=1.0, weight=12)
+        (candidate,) = variable.get("candidates")
+        self.assertEqual(candidate["reward_count"], 16)
+        self.assertAlmostEqual(candidate["reward"], (0.5 * 4 + 1.0 * 12) / 16)
+
+    async def test_validation_reward_is_folded_into_the_promoted_candidate(self):
+        optimizer = _ConcreteOptimizer()
+        variable = self._variable(
+            best_candidates=[
+                {
+                    "instructions": "promoted",
+                    "examples": [],
+                    "reward": 1.0,
+                    "reward_count": 4,
+                },
+                {
+                    "instructions": "other",
+                    "examples": [],
+                    "reward": 0.8,
+                    "reward_count": 4,
+                },
+            ]
+        )
+        variable.update({"instructions": "promoted"})  # what the trainer validated
+        optimizer.assign_validation_reward(
+            [variable], logs={"reward": 0.7, "val_reward": 0.6}, val_size=60
+        )
+        promoted, other = variable.get("best_candidates")
+        self.assertEqual(promoted["reward_count"], 64)
+        self.assertAlmostEqual(promoted["reward"], (1.0 * 4 + 0.6 * 60) / 64)
+        self.assertEqual(other["reward"], 0.8)
+        self.assertEqual(other["reward_count"], 4)
+
+    async def test_validation_feedback_is_a_no_op_without_val_reward(self):
+        optimizer = _ConcreteOptimizer()
+        variable = self._variable(
+            best_candidates=[
+                {
+                    "instructions": "promoted",
+                    "examples": [],
+                    "reward": 1.0,
+                    "reward_count": 4,
+                }
+            ]
+        )
+        variable.update({"instructions": "promoted"})
+        optimizer.assign_validation_reward([variable], logs={"reward": 0.7}, val_size=60)
+        optimizer.assign_validation_reward([variable], logs=None, val_size=60)
+        (promoted,) = variable.get("best_candidates")
+        self.assertEqual(promoted["reward"], 1.0)
+        self.assertEqual(promoted["reward_count"], 4)
+
+    async def test_on_epoch_end_folds_validation_then_ranks_by_confidence(self):
+        """The lucky promoted candidate is corrected by the full validation and
+        loses the top spot to the solidly measured one."""
+        optimizer = _ConcreteOptimizer(reward_uncertainty=0.25, population_size=2)
+        variable = self._variable(
+            candidates=[
+                {
+                    "instructions": "lucky",
+                    "examples": [],
+                    "reward": 1.0,
+                    "reward_count": 4,
+                },
+            ],
+            best_candidates=[
+                {
+                    "instructions": "solid",
+                    "examples": [],
+                    "reward": 0.85,
+                    "reward_count": 60,
+                },
+            ],
+        )
+        variable.update({"instructions": "lucky"})
+        await optimizer.on_epoch_end(
+            0, [variable], logs={"reward": 0.9, "val_reward": 0.7}, val_size=60
+        )
+        best = variable.get("best_candidates")
+        self.assertEqual(best[0]["instructions"], "solid")
+        self.assertEqual(variable.get("instructions"), "solid")
+        lucky = next(c for c in best if c["instructions"] == "lucky")
+        self.assertEqual(lucky["reward_count"], 64)
+        self.assertAlmostEqual(lucky["reward"], (1.0 * 4 + 0.7 * 60) / 64)

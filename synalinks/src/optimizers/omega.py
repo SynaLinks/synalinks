@@ -1,5 +1,7 @@
 # License Apache 2.0: (c) 2025-2026 Yoan Sallami (Synalinks Team)
 
+import hashlib
+import json
 import warnings
 from typing import TYPE_CHECKING
 from typing import Any
@@ -11,6 +13,7 @@ if TYPE_CHECKING:
     from synalinks.src.backend.common.variables import Variable
     from synalinks.src.modules.embedding_models.embedding_model import EmbeddingModel
 
+import numpy as _np
 
 from synalinks.src import tree
 from synalinks.src.api_export import synalinks_export
@@ -25,22 +28,51 @@ from synalinks.src.modules.core.input_module import Input
 from synalinks.src.modules.embedding_models import get as _get_em
 from synalinks.src.modules.ttc.chain_of_thought import ChainOfThought
 from synalinks.src.optimizers.evolutionary_optimizer import EvolutionaryOptimizer
-from synalinks.src.rewards.reward import squeeze_or_expand_to_same_rank
+from synalinks.src.optimizers.optimizer import CANDIDATE_METADATA_KEYS
 from synalinks.src.saving import serialization_lib
+
+
+class ScoredPrediction(DataModel):
+    inputs: Any = Field(
+        description="The program input",
+    )
+    predicted_output: Optional[Any] = Field(
+        description="What the program predicted for this input with the current variable",
+        default=None,
+    )
+    ground_truth: Optional[Any] = Field(
+        description="The expected output, when known",
+        default=None,
+    )
+    reward: Optional[float] = Field(
+        description="The reward of the prediction (higher is better), when known",
+        default=None,
+    )
+    nb_observations: Optional[int] = Field(
+        description=(
+            "For recurring hard examples: how many times this input was judged so "
+            "far; `reward` is then the mean over those judgements"
+        ),
+        default=None,
+    )
 
 
 class MutationInputs(DataModel):
     program_description: str = Field(
         description="The program description",
     )
-    program_inputs: List[Any] = Field(
-        description="The inputs of the program",
+    good_predictions: List[ScoredPrediction] = Field(
+        description=(
+            "The predictions of the batch with the highest rewards: what the current "
+            "variable already handles well and must keep working"
+        ),
     )
-    program_predicted_outputs: List[Any] = Field(
-        description="The program's predicted outputs",
-    )
-    program_ground_truth: List[Optional[Any]] = Field(
-        description="The program's ground truth",
+    bad_predictions: List[ScoredPrediction] = Field(
+        description=(
+            "The predictions of the batch with the lowest rewards, followed by the "
+            "inputs the program keeps getting wrong across batches (recurring hard "
+            "examples): what the current variable handles worst and should be fixed"
+        ),
     )
     variable_description: str = Field(
         description="The description of the variable to optimize within that program"
@@ -54,14 +86,17 @@ class CrossoverInputs(DataModel):
     program_description: str = Field(
         description="The program description",
     )
-    program_inputs: List[Any] = Field(
-        description="The inputs of the program",
+    good_predictions: List[ScoredPrediction] = Field(
+        description=(
+            "The predictions of the batch with the highest rewards under the current "
+            "variable: what must keep working"
+        ),
     )
-    program_predicted_outputs: List[Any] = Field(
-        description="The program's predicted outputs",
-    )
-    program_ground_truth: List[Optional[Any]] = Field(
-        description="The program's ground truth",
+    bad_predictions: List[ScoredPrediction] = Field(
+        description=(
+            "The predictions of the batch with the lowest rewards under the current "
+            "variable: what the merge should fix"
+        ),
     )
     variable_description: str = Field(
         description="The description of the variable to optimize within that program",
@@ -110,10 +145,17 @@ Guidelines:
   and the desired output.
 - If no ground truth is provided, the goal is to critically enhance the
   predicted output.
+- `bad_predictions` are the inputs the current variable handles worst: work
+  out what the variable gets wrong on them and fix that. `good_predictions`
+  are handled well: preserve whatever makes them work, do not regress them.
 - If you have to optimize a variable containing code, provide a generalizable
   algorithm.
 - Always focus on ONLY one aspect at the time.
 - If the instructions/prompt contains general information, keep it.
+- Keep the variable about the same length as the current one: do not add text
+  without removing or merging something. Prefer rewording an existing rule
+  over adding a new one, and drop rules that proved redundant or unhelpful.
+  Longer is not better; a compact variable generalizes better and costs less.
 """.strip()
 
 
@@ -141,10 +183,16 @@ Guidelines:
   better performance or alignment with the ground truth.
 - If no ground truth is provided, the goal is to critically enhance the
   predicted output.
+- `bad_predictions` are the inputs the current variable handles worst: take
+  from the other variable what would fix them. `good_predictions` are handled
+  well: keep whatever makes them work.
 - If you have to optimize a variable containing code, provide a generalizable
   algorithm.
 - Always focus on ONLY one aspect at the time.
 - If the instructions/prompt contains general information, keep it.
+- The combined variable must not be longer than the longer of the two inputs:
+  merge overlapping rules into one instead of concatenating them, and keep
+  only the strongest formulation of each idea. Longer is not better.
 """.strip()
 
 
@@ -154,11 +202,13 @@ async def similarity_distance(
     embedding_model: Optional["EmbeddingModel"] = None,
     axis: int = -1,
 ) -> float:
-    """Compute distance between two candidates using embeddings.
+    """Cosine distance between two candidates, from their content only.
 
-    This function computes the cosine distance between the mean embeddings
-    of two candidate JSON objects. Each field of the JSON is embedded
-    separately, normalized to unit length, then averaged.
+    Each trainable field of a candidate is embedded separately; the unit
+    vectors are averaged and the mean is renormalized, so two candidates with
+    the same content are at distance 0 whatever their number of fields.
+    Candidate metadata (`reward`, `reward_count`) is not part of the content
+    and is ignored.
 
     Args:
         candidate1 (dict): First candidate (dict or JSON-serializable object)
@@ -167,25 +217,60 @@ async def similarity_distance(
         axis (int): The axis along which to compute the similarity (default: -1)
 
     Returns:
-        float: Cosine distance between candidates (0 = identical, 1 = orthogonal)
+        float: Cosine distance between candidates (0 = identical, 1 = orthogonal).
+            The maximal distance 1.0 is returned when an embedding call fails.
     """
-    embeddings1 = await embedding_model(
-        EmbeddingRequest(texts=[str(x) for x in tree.flatten(candidate1)])
-    )
-    embeddings2 = await embedding_model(
-        EmbeddingRequest(texts=[str(x) for x in tree.flatten(candidate2)])
-    )
-    embeddings1 = embeddings1["embeddings"]
-    embeddings2 = embeddings2["embeddings"]
-    embeddings1 = np.convert_to_tensor(embeddings1)
-    embeddings2 = np.convert_to_tensor(embeddings2)
-    embeddings1, embeddings2 = squeeze_or_expand_to_same_rank(embeddings1, embeddings2)
-    embeddings1 = np.normalize(embeddings1, axis=axis)
-    embeddings2 = np.normalize(embeddings2, axis=axis)
-    embeddings1 = np.mean(embeddings1, axis=0)
-    embeddings2 = np.mean(embeddings2, axis=0)
-    similarity = (np.sum(embeddings1 * embeddings2, axis=axis) + 1) / 2
-    return 1 - similarity
+    vector1 = await _candidate_vector(candidate1, embedding_model, axis=axis)
+    vector2 = await _candidate_vector(candidate2, embedding_model, axis=axis)
+    if vector1 is None or vector2 is None:
+        return 1.0
+    similarity = float(_np.sum(vector1 * vector2))
+    return max(0.0, 1.0 - similarity)
+
+
+def candidate_content_texts(candidate: Dict[str, Any]) -> List[str]:
+    """The string leaves of a candidate's trainable content, metadata excluded."""
+    content = out_mask_json(candidate, mask=CANDIDATE_METADATA_KEYS)
+    return [str(leaf) for leaf in tree.flatten(content)]
+
+
+async def _candidate_vector(candidate, embedding_model, axis=-1):
+    texts = candidate_content_texts(candidate)
+    if not texts:
+        texts = [""]
+    result = await embedding_model(EmbeddingRequest(texts=texts))
+    if result is None:
+        return None
+    embeddings = result["embeddings"]
+    if embeddings is None or len(embeddings) == 0:
+        return None
+    vectors = _np.asarray(embeddings, dtype=float)
+    if vectors.ndim == 1:
+        vectors = vectors[None, :]
+    vectors = np.normalize(vectors, axis=axis)
+    mean = _np.mean(vectors, axis=0)
+    norm = _np.linalg.norm(mean)
+    if norm == 0:
+        return mean
+    return mean / norm
+
+
+def _without_echoed_inputs(predicted_output, inputs):
+    """Drop from a prediction the fields that merely repeat the input.
+
+    Modules that return their inputs concatenated with their outputs (e.g.
+    `SelfCritique`, `Generator(return_inputs=True)`) would otherwise show every
+    sample twice to the mutation/crossover programs. Only fields whose value is
+    identical to the input's are removed, so genuine outputs are kept even when
+    they share a key name with an input field.
+    """
+    if not isinstance(predicted_output, dict) or not isinstance(inputs, dict):
+        return predicted_output
+    return {
+        key: value
+        for key, value in predicted_output.items()
+        if not (key in inputs and inputs[key] == value)
+    }
 
 
 @synalinks_export(
@@ -279,6 +364,20 @@ class OMEGA(EvolutionaryOptimizer):
             Search.
         k_nearest_fitter (int): The K nearest fitter used by Dominated
             Novelty Search.
+        nb_best_predictions (int): How many of the batch's highest-reward
+            predictions are shown to the mutation/crossover programs as
+            `good_predictions` (what must keep working). Default 1.
+        nb_worst_predictions (int): How many of the batch's lowest-reward
+            predictions are shown as `bad_predictions` (what to fix). Default 3.
+            Predictions without a reward count as worst.
+        nb_hard_examples (int): How many recurring hard examples are appended
+            to `bad_predictions`: inputs judged at least
+            `hard_example_min_observations` times during training whose mean
+            reward is the lowest, excluding inputs already in the batch. They
+            carry their last judged output and `nb_observations`. Default 1;
+            0 disables the memory.
+        hard_example_min_observations (int): Minimum number of judgements
+            before an input can be a recurring hard example. Default 2.
         distance_function (callable): Optional. The distance function to use
             by Dominated Novelty Search. If no function is provided, use
             the default cosine distance.
@@ -307,8 +406,10 @@ class OMEGA(EvolutionaryOptimizer):
             Used only when `selection='softmax'`. Lower values concentrate
             selection on high-reward candidates, higher values make selection
             more uniform (Default 0.3).
-        merging_rate (float): Rate at which crossover vs mutation is selected.
-            (Default to 0.02).
+        merging_rate (float): Probability that a proposal is a crossover rather
+            than a mutation, constant over training.
+            Default 0.05: about one proposal in twenty is a crossover of two
+            candidates once the population holds at least two; mutation otherwise.
         population_size (int): The maximum number of best candidates to keep
             during the optimization process.
         name (str): Optional name for the optimizer instance.
@@ -326,11 +427,16 @@ class OMEGA(EvolutionaryOptimizer):
         crossover_temperature=0.3,
         reasoning_effort=None,
         use_chain_of_thought=True,
-        merging_rate=0.02,
+        merging_rate=0.05,
         algorithm="dns",
         selection="softmax",
         selection_temperature=0.3,
         population_size=10,
+        reward_uncertainty=0.25,
+        nb_best_predictions=1,
+        nb_worst_predictions=3,
+        nb_hard_examples=1,
+        hard_example_min_observations=2,
         name=None,
         description=None,
         **kwargs,
@@ -343,6 +449,7 @@ class OMEGA(EvolutionaryOptimizer):
             selection_temperature=selection_temperature,
             merging_rate=merging_rate,
             population_size=population_size,
+            reward_uncertainty=reward_uncertainty,
             name=name,
             description=description,
             **kwargs,
@@ -352,6 +459,22 @@ class OMEGA(EvolutionaryOptimizer):
         self.instructions = instructions
         self.reasoning_effort = reasoning_effort
         self.use_chain_of_thought = use_chain_of_thought
+        if int(nb_best_predictions) < 0 or int(nb_worst_predictions) < 0:
+            raise ValueError(
+                "`nb_best_predictions` and `nb_worst_predictions` must be >= 0"
+            )
+        self.nb_best_predictions = int(nb_best_predictions)
+        self.nb_worst_predictions = int(nb_worst_predictions)
+        if int(nb_hard_examples) < 0 or int(hard_example_min_observations) < 1:
+            raise ValueError(
+                "`nb_hard_examples` must be >= 0 and "
+                "`hard_example_min_observations` must be >= 1"
+            )
+        self.nb_hard_examples = int(nb_hard_examples)
+        self.hard_example_min_observations = int(hard_example_min_observations)
+        # Per-input difficulty memory, fed by `observe_training_batch`:
+        # key -> {"inputs", "ground_truth", "last_output", "rewards"}.
+        self._difficulty = {}
 
         # DNS-specific parameters
         self.embedding_model = _get_em(embedding_model)
@@ -456,6 +579,128 @@ class OMEGA(EvolutionaryOptimizer):
 
         self.built = True
 
+    @staticmethod
+    def _input_key(inputs):
+        try:
+            payload = json.dumps(inputs, sort_keys=True, default=str)
+        except TypeError:
+            payload = repr(inputs)
+        return hashlib.md5(payload.encode("utf-8")).hexdigest()
+
+    def observe_training_batch(self, x=None, y=None, y_pred=None, rewards=None):
+        """Record each judged training sample in the difficulty memory."""
+        if self.nb_hard_examples <= 0 or x is None or rewards is None:
+            return
+        x = list(x)
+        y = list(y) if y is not None else [None] * len(x)
+        y_pred = list(y_pred) if y_pred is not None else [None] * len(x)
+        rewards = list(rewards)
+        for i, inp in enumerate(x):
+            if i >= len(rewards) or rewards[i] is None:
+                continue
+            inputs = inp.get_json() if hasattr(inp, "get_json") else inp
+            predicted = y_pred[i] if i < len(y_pred) else None
+            predicted = (
+                predicted.get_json() if hasattr(predicted, "get_json") else predicted
+            )
+            target = y[i] if i < len(y) else None
+            target = target.get_json() if hasattr(target, "get_json") else target
+            entry = self._difficulty.setdefault(
+                self._input_key(inputs),
+                {
+                    "inputs": inputs,
+                    "ground_truth": target,
+                    "last_output": None,
+                    "rewards": [],
+                },
+            )
+            entry["last_output"] = _without_echoed_inputs(predicted, inputs)
+            entry["ground_truth"] = target
+            entry["rewards"].append(float(rewards[i]))
+
+    def hard_examples(self, exclude_keys=()):
+        """The recurring hard examples: lowest mean reward first.
+
+        Args:
+            exclude_keys (iterable): Input keys to skip (the current batch).
+
+        Returns:
+            (list): Up to `nb_hard_examples` `ScoredPrediction` dicts with
+                `nb_observations` set.
+        """
+        if self.nb_hard_examples <= 0:
+            return []
+        exclude = set(exclude_keys)
+        eligible = [
+            (sum(e["rewards"]) / len(e["rewards"]), -len(e["rewards"]), key, e)
+            for key, e in self._difficulty.items()
+            if key not in exclude
+            and len(e["rewards"]) >= self.hard_example_min_observations
+        ]
+        eligible.sort(key=lambda t: (t[0], t[1]))
+        return [
+            {
+                "inputs": e["inputs"],
+                "predicted_output": e["last_output"],
+                "ground_truth": e["ground_truth"],
+                "reward": mean,
+                "nb_observations": len(e["rewards"]),
+            }
+            for mean, _neg_count, _key, e in eligible[: self.nb_hard_examples]
+        ]
+
+    def split_predictions(self, x=None, y=None, y_pred=None, rewards=None):
+        """Split a batch into the best and worst predictions by reward.
+
+        Args:
+            x (list): The batch inputs.
+            y (list): The batch ground truth (optional).
+            y_pred (list): The predictions for the batch (optional).
+            rewards (list): The per-sample rewards (optional). A missing reward
+                ranks the sample as worst.
+
+        Returns:
+            (tuple): `(good, bad)`, two lists of `ScoredPrediction` dicts. `good`
+                holds the `nb_best_predictions` highest rewards, `bad` the
+                `nb_worst_predictions` lowest among the remaining samples, so a
+                sample is never in both, followed by up to `nb_hard_examples`
+                recurring hard examples from earlier batches. Worst-first in
+                `bad`, best-first in `good`.
+        """
+        x = list(x) if x is not None else []
+        y = list(y) if y is not None else [None] * len(x)
+        y_pred = list(y_pred) if y_pred is not None else [None] * len(x)
+        rewards = list(rewards) if rewards is not None else [None] * len(x)
+
+        def as_json(value):
+            return value.get_json() if hasattr(value, "get_json") else value
+
+        scored = []
+        for i, inp in enumerate(x):
+            reward = rewards[i] if i < len(rewards) else None
+            inputs = as_json(inp)
+            predicted = as_json(y_pred[i]) if i < len(y_pred) else None
+            scored.append(
+                {
+                    "inputs": inputs,
+                    "predicted_output": _without_echoed_inputs(predicted, inputs),
+                    "ground_truth": as_json(y[i]) if i < len(y) else None,
+                    "reward": None if reward is None else float(reward),
+                    "nb_observations": None,
+                }
+            )
+        # Unknown rewards rank as worst; ties keep batch order.
+        ordered = sorted(
+            scored,
+            key=lambda p: (p["reward"] is None, -(p["reward"] or 0.0)),
+        )
+        good = [p for p in ordered[: self.nb_best_predictions] if p["reward"] is not None]
+        rest = ordered[len(good) :]
+        bad = list(reversed(rest))[: self.nb_worst_predictions]
+        batch_keys = [self._input_key(p["inputs"]) for p in scored]
+        bad = bad + self.hard_examples(exclude_keys=batch_keys)
+        return good, bad
+
     async def mutate_candidate(
         self,
         step: int,
@@ -464,6 +709,7 @@ class OMEGA(EvolutionaryOptimizer):
         x: Optional[List[Any]] = None,
         y: Optional[List[Any]] = None,
         y_pred: Optional[List[Any]] = None,
+        rewards: Optional[List[float]] = None,
         training: bool = False,
     ) -> Dict[str, Any]:
         """Apply mutation to generate a new candidate using LLM.
@@ -478,6 +724,8 @@ class OMEGA(EvolutionaryOptimizer):
             x (list): Input data batch
             y (list): Ground truth data batch
             y_pred (list): Predicted outputs from the current model
+            rewards (list): Per-sample rewards of `y_pred`, used to split the
+                batch into `good_predictions` / `bad_predictions`
             training (bool): Whether in training mode
 
         Returns:
@@ -489,13 +737,11 @@ class OMEGA(EvolutionaryOptimizer):
             selected_candidate,
             mask=mask,
         )
+        good, bad = self.split_predictions(x=x, y=y, y_pred=y_pred, rewards=rewards)
         inputs = MutationInputs(
             program_description=self.program.description,
-            program_inputs=[inp.get_json() for inp in x],
-            program_predicted_outputs=[
-                pred.get_json() if pred else None for pred in y_pred
-            ],
-            program_ground_truth=([gt.get_json() for gt in y] if y is not None else []),
+            good_predictions=good,
+            bad_predictions=bad,
             variable_description=trainable_variable.description,
             current_variable=masked_variable,
         )
@@ -522,6 +768,7 @@ class OMEGA(EvolutionaryOptimizer):
         x: Optional[List[Any]] = None,
         y: Optional[List[Any]] = None,
         y_pred: Optional[List[Any]] = None,
+        rewards: Optional[List[float]] = None,
         training: bool = False,
     ) -> Dict[str, Any]:
         """Apply crossover to merge two selected candidates.
@@ -537,6 +784,8 @@ class OMEGA(EvolutionaryOptimizer):
             x (list): Input data batch
             y (list): Ground truth data batch
             y_pred (list): Predicted outputs from the current model
+            rewards (list): Per-sample rewards of `y_pred`, used to split the
+                batch into `good_predictions` / `bad_predictions`
             training (bool): Whether in training mode
 
         Returns:
@@ -552,13 +801,11 @@ class OMEGA(EvolutionaryOptimizer):
             other_candidate,
             mask=mask,
         )
+        good, bad = self.split_predictions(x=x, y=y, y_pred=y_pred, rewards=rewards)
         inputs = CrossoverInputs(
             program_description=self.program.description,
-            program_inputs=[inp.get_json() for inp in x],
-            program_predicted_outputs=[
-                pred.get_json() if pred else None for pred in y_pred
-            ],
-            program_ground_truth=([gt.get_json() for gt in y] if y is not None else []),
+            good_predictions=good,
+            bad_predictions=bad,
             variable_description=trainable_variable.description,
             other_variable=other_variable,
             current_variable=current_variable,
@@ -577,83 +824,115 @@ class OMEGA(EvolutionaryOptimizer):
             )
             return None
 
-    async def competition(self, candidates: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-        """Apply Dominated Novelty Search (DNS) competition.
+    async def competition_fitness(self, candidates: List[Dict[str, Any]]) -> List[float]:
+        """Dominated Novelty Search competition fitness of each candidate.
 
-        DNS filters candidates by removing those that are both:
-        - Inferior in reward (dominated)
-        - Similar to existing candidates (not novel)
-
-        This maintains diversity while focusing on high-performing candidates.
+        Following Bahlous-Boldi et al. (2025), a candidate's competition
+        fitness is the mean distance to its `k_nearest_fitter` nearest
+        candidates with a strictly higher reward, or infinity when no
+        candidate is fitter. A candidate is penalized when it sits close to
+        better ones, whatever its own reward; the best candidate and the
+        candidates alone in their region score highest.
 
         Args:
             candidates (list): List of candidate dictionaries with 'reward' key
 
         Returns:
-            list: Filtered list of candidates that passed the DNS competition
+            list: One competition fitness per candidate, in input order.
         """
-        if len(candidates) <= 1:
-            return candidates
-
         distance_function = (
             self.distance_function if self.distance_function else similarity_distance
         )
+        rewards = [self.candidate_score(c) for c in candidates]
+        distances = {}
 
-        selected_candidates = []
-        for candidate in candidates:
-            is_dominated = False
-            for other in candidates:
-                if other is candidate:
-                    continue
-                distance = await distance_function(
-                    candidate,
-                    other,
+        async def distance(i, j):
+            key = (min(i, j), max(i, j))
+            if key not in distances:
+                distances[key] = await distance_function(
+                    candidates[key[0]],
+                    candidates[key[1]],
                     embedding_model=self.embedding_model,
                 )
-                # Check if within k-nearest neighborhood
-                if distance < 1.0 / self.k_nearest_fitter:
-                    # Check if dominated (lower reward)
-                    if candidate.get("reward", 0) < other.get("reward", 0):
-                        is_dominated = True
-                        break
-            if not is_dominated:
-                selected_candidates.append(candidate)
+            return distances[key]
 
-        return selected_candidates if selected_candidates else [candidates[0]]
+        k = max(1, int(self.k_nearest_fitter))
+        fitness = []
+        for i in range(len(candidates)):
+            fitter = [j for j, r in enumerate(rewards) if r > rewards[i]]
+            if not fitter:
+                fitness.append(float("inf"))
+                continue
+            nearest = sorted([await distance(i, j) for j in fitter])[:k]
+            fitness.append(sum(nearest) / len(nearest))
+        return fitness
 
-    async def on_epoch_end(self, epoch, trainable_variables):
+    async def competition(self, candidates: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """Rank candidates by DNS competition fitness.
+
+        There is no distance threshold: the population is truncated by rank
+        on the competition fitness (see `on_epoch_end`), so the outcome does
+        not depend on the scale of the distance function.
+
+        Args:
+            candidates (list): List of candidate dictionaries with 'reward' key
+
+        Returns:
+            list: The same candidates ranked by decreasing competition fitness,
+                ties broken by decreasing reward. No candidate is removed.
+        """
+        if len(candidates) <= 1:
+            return list(candidates)
+        fitness = await self.competition_fitness(candidates)
+        rewards = [self.candidate_score(c) for c in candidates]
+        order = sorted(
+            range(len(candidates)),
+            key=lambda i: (fitness[i], rewards[i]),
+            reverse=True,
+        )
+        return [candidates[i] for i in order]
+
+    async def on_epoch_end(self, epoch, trainable_variables, logs=None, val_size=None):
         """Called at the end of each epoch.
 
-        Applies DNS competition (if algorithm='dns') to filter candidates,
-        then selects the top candidates based on population_size.
+        With `algorithm="dns"`, the candidates of the epoch and the current
+        best candidates are ranked by DNS competition fitness and the top
+        `population_size` survive. With `algorithm="ga"`, the top
+        `population_size` by reward survive. Before that, the epoch-end
+        validation reward is folded into the promoted candidate. The base class
+        then writes the best survivor into the variable and records the history.
 
         Args:
             epoch (int): The epoch number
             trainable_variables (list): The list of trainable variables
         """
+        self.assign_validation_reward(trainable_variables, logs=logs, val_size=val_size)
         for trainable_variable in trainable_variables:
             candidates = trainable_variable.get("candidates")
             best_candidates = trainable_variable.get("best_candidates")
-
-            # Combine current candidates with best candidates
             all_candidates = candidates + best_candidates
-
-            # Apply DNS competition if enabled
-            if self.algorithm == "dns" and len(all_candidates) > 1:
-                all_candidates = await self.competition(all_candidates)
-
-            # Sort by reward and keep top population_size candidates
-            all_candidates = sorted(
-                all_candidates,
-                key=lambda x: x.get("reward", 0),
-                reverse=True,
-            )
+            if not all_candidates:
+                continue
+            if self.algorithm == "dns":
+                ranked = await self.competition(all_candidates)
+                survivors = ranked[: self.population_size]
+            else:
+                survivors = sorted(
+                    all_candidates,
+                    key=self.candidate_score,
+                    reverse=True,
+                )[: self.population_size]
             trainable_variable.update(
                 {
                     "candidates": [],
-                    "best_candidates": all_candidates[: self.population_size],
+                    "best_candidates": sorted(
+                        survivors,
+                        key=self.candidate_score,
+                        reverse=True,
+                    ),
                 }
             )
+        await super().on_epoch_end(epoch, trainable_variables)
 
     def get_config(self):
         config = super().get_config()
@@ -664,6 +943,10 @@ class OMEGA(EvolutionaryOptimizer):
                 "use_chain_of_thought": self.use_chain_of_thought,
                 "k_nearest_fitter": self.k_nearest_fitter,
                 "algorithm": self.algorithm,
+                "nb_best_predictions": self.nb_best_predictions,
+                "nb_worst_predictions": self.nb_worst_predictions,
+                "nb_hard_examples": self.nb_hard_examples,
+                "hard_example_min_observations": self.hard_example_min_observations,
             }
         )
         if self.embedding_model:

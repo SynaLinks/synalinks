@@ -4,6 +4,7 @@
 
 import asyncio
 import inspect
+import json
 import warnings
 
 import numpy as np
@@ -91,6 +92,53 @@ def _own_metrics(metrics):
         return m
 
     return tree.map_structure(clone, metrics)
+
+
+def _target_key(target):
+    """A hashable key identifying a target's value, for stratification."""
+    value = target.get_json() if hasattr(target, "get_json") else target
+    try:
+        return json.dumps(value, sort_keys=True, default=str)
+    except TypeError:
+        return repr(value)
+
+
+def stratified_minibatch_indices(y, size, rng=None):
+    """Indices of a validation minibatch that spans the target classes.
+
+    Samples are grouped by target value and drawn round-robin across the
+    groups (groups and their members in random order), so a minibatch of
+    `size` covers up to `size` distinct targets instead of a random draw that
+    may fall on a single class. When targets do not repeat (every sample has
+    its own target, e.g. free text) or all are identical, this is a plain
+    random draw without replacement.
+
+    Args:
+        y (array-like): The targets, one per sample.
+        size (int): Number of indices to draw (capped at `len(y)`).
+        rng (np.random.Generator): Optional random generator.
+
+    Returns:
+        (np.ndarray): The selected indices, in draw order.
+    """
+    rng = rng if rng is not None else np.random.default_rng()
+    n = len(y)
+    size = min(int(size), n)
+    if size <= 0:
+        return np.array([], dtype=int)
+    groups = {}
+    for index in range(n):
+        groups.setdefault(_target_key(y[index]), []).append(index)
+    if len(groups) <= 1 or len(groups) == n:
+        return rng.choice(n, size=size, replace=False)
+    buckets = [list(rng.permutation(members)) for members in groups.values()]
+    rng.shuffle(buckets)
+    selected = []
+    while len(selected) < size:
+        for bucket in buckets:
+            if bucket and len(selected) < size:
+                selected.append(int(bucket.pop()))
+    return np.array(selected, dtype=int)
 
 
 class Trainer:
@@ -471,8 +519,10 @@ class Trainer:
                 Do not specify the `batch_size` if your input data `x` is a
                 Python generator function since they generate batches.
             minibatch_size (int): Integer or `None`.
-                Number of randomly selected samples per batch validation.
-                If unspecified, `minibatch_size` will default to 4.
+                Number of validation samples drawn per training step to score
+                the candidates. The draw is stratified by target value when
+                targets repeat (see `stratified_minibatch_indices`), random
+                otherwise. If unspecified, `minibatch_size` will default to 4.
                 If `None`, the whole validation set will be used.
             epochs (int): Integer. Number of epochs to train the program.
                 An epoch is an iteration over the entire `x` and `y`
@@ -678,10 +728,9 @@ class Trainer:
                     mini_val_y = None
                     if minibatch_size:
                         if len(val_x) > minibatch_size:
-                            indices = np.random.choice(
-                                len(val_x),
-                                size=minibatch_size,
-                                replace=False,
+                            indices = stratified_minibatch_indices(
+                                val_y,
+                                minibatch_size,
                             )
                             mini_val_x = val_x[indices]
                             mini_val_y = val_y[indices]
@@ -693,15 +742,6 @@ class Trainer:
                         val_x=mini_val_x if mini_val_x is not None else val_x,
                         val_y=mini_val_y if mini_val_y is not None else val_y,
                         return_dict=True,
-                    )
-
-                    val_logs = await self.evaluate(
-                        x=val_x,
-                        y=val_y,
-                        batch_size=validation_batch_size or batch_size,
-                        steps=validation_steps,
-                        callbacks=callbacks,
-                        _use_cached_eval_dataset=False,
                     )
 
                     if self.trainable_variables and isinstance(
@@ -750,6 +790,8 @@ class Trainer:
                 await self.optimizer.on_epoch_end(
                     epoch,
                     self.trainable_variables,
+                    logs=epoch_logs,
+                    val_size=len(val_x) if val_x is not None else None,
                 )
 
             callbacks.on_epoch_end(epoch, epoch_logs)

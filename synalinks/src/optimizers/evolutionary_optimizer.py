@@ -1,5 +1,6 @@
 # License Apache 2.0: (c) 2025-2026 Yoan Sallami (Synalinks Team)
 
+import inspect
 import random
 
 import numpy as np
@@ -7,6 +8,7 @@ import numpy as np
 from synalinks.src.api_export import synalinks_export
 from synalinks.src.backend import out_mask_json
 from synalinks.src.backend.common import numpy as np_backend
+from synalinks.src.optimizers.optimizer import CANDIDATE_METADATA_KEYS
 from synalinks.src.optimizers.optimizer import Optimizer
 from synalinks.src.saving import serialization_lib
 
@@ -37,8 +39,10 @@ class EvolutionaryOptimizer(Optimizer):
             Used only when `selection='softmax'`. Lower values concentrate
             selection on high-reward candidates, higher values make selection
             more uniform (Default 0.3).
-        merging_rate (float): Rate at which crossover vs mutation is selected.
-            (Default to 0.02).
+        merging_rate (float): Probability that a proposal is a crossover rather
+            than a mutation, constant over training.
+            Default 0.05: about one proposal in twenty is a crossover of two
+            candidates once the population holds at least two; mutation otherwise.
         population_size (int): The maximum number of best candidates to keep
             during the optimization process.
         name (str): Optional name for the optimizer instance.
@@ -52,14 +56,16 @@ class EvolutionaryOptimizer(Optimizer):
         crossover_temperature=0.3,
         selection="softmax",
         selection_temperature=0.3,
-        merging_rate=0.02,
+        merging_rate=0.05,
         population_size=10,
+        reward_uncertainty=0.25,
         name=None,
         description=None,
         **kwargs,
     ):
         super().__init__(
             population_size=population_size,
+            reward_uncertainty=reward_uncertainty,
             name=name,
             description=description,
         )
@@ -96,12 +102,12 @@ class EvolutionaryOptimizer(Optimizer):
         elif self.selection == "best":
             return sorted(
                 candidates,
-                key=lambda x: x.get("reward", 0),
+                key=self.candidate_score,
                 reverse=True,
             )[0]
         elif self.selection == "softmax":
             rewards = np_backend.convert_to_tensor(
-                [candidate.get("reward", 0) for candidate in candidates]
+                [self.candidate_score(candidate) for candidate in candidates]
             )
             scaled_rewards = rewards / self.selection_temperature
             exp_rewards = np_backend.exp(scaled_rewards - np_backend.max(scaled_rewards))
@@ -144,7 +150,7 @@ class EvolutionaryOptimizer(Optimizer):
                     best_candidate = self.select_candidate(best_candidates)
                     best_candidate = out_mask_json(
                         best_candidate,
-                        mask=["reward"],
+                        mask=CANDIDATE_METADATA_KEYS,
                     )
                     trainable_variable.update(
                         {
@@ -167,6 +173,18 @@ class EvolutionaryOptimizer(Optimizer):
                 },
             )
 
+    def _operator_kwargs(self, method, rewards):
+        """Keyword arguments for `mutate_candidate` / `merge_candidate`.
+
+        `rewards` is forwarded only when the implementation accepts it, so
+        subclasses written against the older signature keep working.
+        """
+        parameters = inspect.signature(method).parameters
+        accepts = "rewards" in parameters or any(
+            p.kind is inspect.Parameter.VAR_KEYWORD for p in parameters.values()
+        )
+        return {"rewards": rewards} if accepts else {}
+
     async def propose_new_candidates(
         self,
         step,
@@ -174,6 +192,7 @@ class EvolutionaryOptimizer(Optimizer):
         x=None,
         y=None,
         y_pred=None,
+        rewards=None,
         training=False,
     ):
         """Generate new candidates using mutation or crossover strategy.
@@ -187,6 +206,7 @@ class EvolutionaryOptimizer(Optimizer):
             x: Input data batch
             y: Ground truth data batch
             y_pred: Predicted outputs from the current model
+            rewards: Per-sample rewards of `y_pred` (optional)
             training (bool): Whether in training mode
         """
         variable_name_to_update = await self.select_variable_name_to_update(
@@ -218,6 +238,7 @@ class EvolutionaryOptimizer(Optimizer):
                         x=x,
                         y=y,
                         y_pred=y_pred,
+                        **self._operator_kwargs(self.mutate_candidate, rewards),
                         training=training,
                     )
                 elif strategy == "crossover":
@@ -235,6 +256,7 @@ class EvolutionaryOptimizer(Optimizer):
                             x=x,
                             y=y,
                             y_pred=y_pred,
+                            **self._operator_kwargs(self.merge_candidate, rewards),
                             training=training,
                         )
                     else:
@@ -246,6 +268,7 @@ class EvolutionaryOptimizer(Optimizer):
                             x=x,
                             y=y,
                             y_pred=y_pred,
+                            **self._operator_kwargs(self.mutate_candidate, rewards),
                             training=training,
                         )
 
@@ -262,6 +285,7 @@ class EvolutionaryOptimizer(Optimizer):
         x=None,
         y=None,
         y_pred=None,
+        rewards=None,
         training=False,
     ):
         """Apply mutation to generate a new candidate.
@@ -293,6 +317,7 @@ class EvolutionaryOptimizer(Optimizer):
         x=None,
         y=None,
         y_pred=None,
+        rewards=None,
         training=False,
     ):
         """Apply crossover to merge two selected candidates.
@@ -317,16 +342,19 @@ class EvolutionaryOptimizer(Optimizer):
         )
 
     async def select_evolving_strategy(self):
-        """Select between mutation and crossover based on merging_rate.
+        """Select between mutation and crossover.
+
+        Crossover is chosen with probability `merging_rate`, mutation
+        otherwise. (An earlier version scaled the probability by the number of
+        completed epochs, which made crossover certain after `1 / merging_rate`
+        epochs.)
 
         Returns:
             str: Either "mutation" or "crossover"
         """
-        rand = random.random()
-        if rand > (self.merging_rate * self.epochs):
-            return "mutation"
-        else:
+        if random.random() < self.merging_rate:
             return "crossover"
+        return "mutation"
 
     def get_config(self):
         base_config = super().get_config()

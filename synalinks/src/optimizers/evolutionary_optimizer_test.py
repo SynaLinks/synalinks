@@ -23,7 +23,7 @@ class EvolutionaryOptimizerTest(testing.TestCase):
         self.assertEqual(optimizer.crossover_temperature, 0.3)
         self.assertEqual(optimizer.selection, "softmax")
         self.assertEqual(optimizer.selection_temperature, 0.3)
-        self.assertEqual(optimizer.merging_rate, 0.02)
+        self.assertEqual(optimizer.merging_rate, 0.05)
         self.assertEqual(optimizer.population_size, 10)
 
     def test_init_custom_parameters(self):
@@ -293,3 +293,31 @@ class EvolutionaryOptimizerTest(testing.TestCase):
         ]
         name = await optimizer.select_variable_name_to_update(variables)
         self.assertIn(name, {"v0", "v1"})
+
+
+class EvolvingStrategyTest(testing.TestCase):
+    async def test_crossover_probability_is_the_merging_rate_and_epoch_independent(self):
+        import random
+
+        from synalinks.src.optimizers.evolutionary_optimizer import EvolutionaryOptimizer
+
+        class _Evo(EvolutionaryOptimizer):
+            async def mutate_candidate(self, *a, **k):
+                return None
+
+            async def merge_candidate(self, *a, **k):
+                return None
+
+        for merging_rate in (0.0, 0.05, 0.5, 1.0):
+            optimizer = _Evo(merging_rate=merging_rate)
+            for _ in range(30):  # a long training would have saturated the old ramp
+                optimizer.increment_epochs()
+            random.seed(0)
+            n = 4000
+            crossovers = sum(
+                [
+                    (await optimizer.select_evolving_strategy()) == "crossover"
+                    for _ in range(n)
+                ]
+            )
+            self.assertAlmostEqual(crossovers / n, merging_rate, delta=0.03)
