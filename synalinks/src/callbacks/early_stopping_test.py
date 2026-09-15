@@ -98,6 +98,29 @@ class EarlyStoppingModeTest(testing.TestCase):
         self.assertTrue(program.stop_training)
         self.assertIs(cb.monitor_op, np.greater)
 
+    def test_auto_resolves_direction_from_plain_metric(self):
+        """The trainer's reward tracker sits directly in `program.metrics`
+        (not inside a `CompileMetrics`), tagged `direction="up"`: the default
+        `monitor="val_reward"` resolves to max without an explicit mode."""
+        import types
+
+        cb = EarlyStopping(monitor="val_reward", patience=1)
+        program = _FakeProgram()
+        program.metrics = [types.SimpleNamespace(name="reward", direction="up")]
+        _run(cb, [0.1, 0.2, 0.2, 0.2], program=program)
+        self.assertTrue(program.stop_training)
+        self.assertIs(cb.monitor_op, np.greater)
+
+    def test_missing_monitor_with_stop_at_does_not_crash(self):
+        cb = EarlyStopping(monitor="val_reward", mode="max", stop_at=0.9)
+        program = _FakeProgram()
+        cb.set_program(program)
+        cb.on_train_begin()
+        with warnings.catch_warnings(record=True):
+            warnings.simplefilter("always")
+            cb.on_epoch_end(0, logs={"reward": 0.5})
+        self.assertFalse(program.stop_training)
+
     def test_auto_unknown_metric_raises(self):
         cb = EarlyStopping(monitor="val_mystery")
         cb.set_program(_FakeProgram())

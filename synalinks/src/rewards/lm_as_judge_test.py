@@ -7,6 +7,7 @@ from synalinks.src import rewards
 from synalinks.src import testing
 from synalinks.src.backend import DataModel
 from synalinks.src.backend import Field
+from synalinks.src.backend import FineScore
 from synalinks.src.backend import Rating10
 from synalinks.src.modules.language_models import LanguageModel
 from synalinks.src.rewards.lm_as_judge import LMAsJudge
@@ -124,7 +125,8 @@ class LMAsJudgeTest(testing.TestCase):
         self.assertIn("an integer between 1 and 10", instructions)
         self.assertIn("10 very good", instructions)
         reward = LMAsJudge(language_model=language_model)
-        self.assertIn("an integer between 1 and 20", reward.program.critique.instructions)
+        self.assertIs(reward.program.score_type, FineScore)
+        self.assertIn("a float between 0.0 and 1.0", reward.program.critique.instructions)
 
     def test_lm_as_judge_score_type_config_round_trip(self):
         language_model = LanguageModel(model="ollama/mistral")

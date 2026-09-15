@@ -6,11 +6,18 @@ Synalinks provides built-in observability through MLflow, enabling you to trace 
 
 The observability system automatically creates spans for each module call, capturing:
 
-- **Inputs and outputs** of each module
-- **Duration** of each call
-- **Cost** information (when available from the language model)
-- **Success/failure status**
+- **Inputs and outputs** of each module; language model spans carry the chat
+  messages and tools in OpenAI format, so the MLflow UI renders the conversation
+- **Token usage and cost** on language model spans, using MLflow's standard
+  `mlflow.chat.tokenUsage`, `mlflow.llm.cost`, `mlflow.llm.model` and
+  `mlflow.llm.provider` attributes, so the trace-level token and cost roll-ups work
+- **Duration** and **success/failure status** of each call
 - **Parent-child relationships** between nested module calls
+- **Phase tags**: every trace is tagged `synalinks.program` and `synalinks.phase`
+  (`inference`, `reward` or `optimizer`), so the calls made by rewards and optimizers
+  during training can be filtered out of production views
+- **Linked prompts**: calls of a module whose prompt was registered in the Prompt
+  Registry link the trace to that prompt version
 
 ## Quick Start
 
@@ -332,7 +339,25 @@ generator = synalinks.Generator(data_model=Answer, hooks=[monitor])
 
 ## Training Metrics and Artifacts
 
-The `Monitor` callback logs training metrics and program artifacts to MLflow during `fit()`.
+The `Monitor` callback logs each `fit()` run to MLflow. When `enable_observability()`
+was called it is added to every `fit()` and `evaluate()` automatically; pass one in
+`callbacks=[...]` to customize it. A training run holds:
+
+- **Metrics**, one point per epoch: the training metrics, the `val_*` validation
+  metrics, the spend of the epoch (`epoch_cost`, `epoch_tokens`, `epoch_calls`, and
+  `epoch_cost_inference` / `epoch_cost_reward` / `epoch_cost_optimizer` when non-zero),
+  the running spend of the fit (`fit_cost`, `fit_tokens`), the all-time in-process
+  spend (`total_cost`, `total_tokens`), `epoch_duration_s`, and `fit_duration_s` at the
+  end. With `log_batch_metrics=True`, batch metrics are logged as `train_batch_*` and
+  `val_batch_*` with their own step counters.
+- **Params**: the fit arguments (epochs, batch and minibatch size, validation split and
+  frequency, dataset sizes), the compile configuration (reward, metrics, optimizer and
+  its config), the program (name, class, number of modules and trainable variables)
+  and every language or embedding model reachable from the program
+  (`lm.<name>.model`, api base, sampling settings).
+- **Datasets**: the train and validation sets as MLflow dataset inputs of the run, one
+  row per sample with JSON `inputs` and `expectations` columns (`log_inputs`).
+- **The program plot**, **the program model** and **its prompts**, described below.
 
 ### Basic Usage
 
@@ -364,19 +389,65 @@ The plot is saved under `program_plots/` in the artifacts folder and includes:
 
 You can view the program plot in the MLflow UI under the "Artifacts" tab of your run.
 
-### Program Model Artifact
+### Program Model
 
-When `log_program_model=True` (the default), the Monitor callback saves the program's
-trainable state at the end of training. This includes:
+When `log_program_model=True` (the default), the Monitor callback logs the whole
+program (architecture and trained variables, the JSON written by `Program.save()`) as
+an MLflow **pyfunc model** wrapped in `synalinks.callbacks.SynalinksProgramModel`.
+Each logged model is an MLflow 3 **LoggedModel** version of type `synalinks_program`,
+linked to the training run and carrying the epoch metrics logged at that step, so the
+Versions view of the experiment compares training runs side by side.
 
-- **`model/state_tree.json`**: Contains all trainable variables (few-shot examples, optimized prompts, etc.)
-- **`model/model_info.json`**: Metadata about the program (name, description, number of trainable variables)
+- `log_model_freq="end"` (default) logs one model at the end of training,
+  `"improvement"` logs one every time `model_monitor` (default `val_reward`) improves,
+  `"epoch"` logs one per epoch. The best model of the run is tagged `synalinks.best`.
+- `registered_model_name="my-program"` registers every logged model as a new version
+  in the Model Registry.
+- The model can be loaded and served anywhere `synalinks` is installed:
 
-This is useful for:
+```python
+import mlflow
 
-- Checkpointing learned parameters during optimization
-- Comparing different training runs
-- Restoring program state for inference
+model = mlflow.pyfunc.load_model(f"models:/{model_id}")
+model.predict({"question": "What is the capital of France?"})
+# [{"answer": "Paris"}]
+```
+
+or with `mlflow models serve -m models:/<model_id>`. The model's signature is derived
+from the program's input and output JSON schemas (`model_signature="schema"`; use
+`"infer"` to infer it from the first training sample, or `None`). Programs using custom
+`DataModel`, `Module` or `Program` subclasses need the code that declares them: pass
+`code_paths=[...]` to package it and `custom_object_modules=["my_package.models"]` so
+it is imported before the program is loaded.
+
+The model id is written into the saved program (`program._mlflow_model_id`, persisted
+by `Program.save()` under the `mlflow` key). A later `evaluate()` of that program, even
+in another process after `Program.load()`, links its metrics and traces to that model
+version and nests its run under the training run.
+
+### Prompt Registry
+
+When `register_prompts=True` (the default), the prompts of the program's trainable
+modules (`Generator`, `ChainOfThought`, ... every module holding an `Instructions`
+variable) are registered in the MLflow **Prompt Registry** under the name
+`<program>.<module>`. Each registered version is a chat prompt: the system turn is the
+module's prompt rendered from its optimized instructions and few-shot examples, the
+user turn holds the `{{ inputs }}` template variable, `response_format` is the module's
+output JSON schema and `model_config` its language model settings, so the version can
+be replayed in the MLflow Playground and evaluated with `mlflow.genai.evaluate()`.
+
+A new version is created at every epoch where the rendered prompt changed. Its commit
+message and `val_reward` tag record the validation reward of that epoch (the state the
+validation scored is the one registered), along with the epoch, run id, program, module
+and optimizer. At the end of training the best-scoring version receives the `best`
+alias:
+
+```python
+prompt = mlflow.genai.load_prompt("prompts:/my_program.generator@best")
+```
+
+Versions are linked to the training run, to the logged model (`prompts=` of the model,
+shown on the model page) and to every later trace of the module (`mlflow.linkedPrompts`).
 
 ### Callback Parameters
 
@@ -388,7 +459,16 @@ This is useful for:
 | `log_batch_metrics` | `False` | Log metrics at batch level |
 | `log_epoch_metrics` | `True` | Log metrics at epoch level |
 | `log_program_plot` | `True` | Save program visualization as artifact |
-| `log_program_model` | `True` | Save program trainable state as artifact |
+| `log_program_model` | `True` | Log the program as an MLflow pyfunc model and LoggedModel version |
+| `log_model_freq` | `"end"` | When to log the model: `"end"`, `"improvement"` of `model_monitor`, or every `"epoch"` |
+| `model_monitor` | `"val_reward"` | Metric watched by `log_model_freq="improvement"` and recorded on prompt versions |
+| `model_mode` | `"auto"` | `"auto"`, `"min"` or `"max"` for `model_monitor` |
+| `registered_model_name` | `None` | Register each logged model as a version of this Model Registry name |
+| `code_paths` | `None` | Files or directories to package with the model |
+| `custom_object_modules` | `None` | Modules to import before loading the program back from the model |
+| `model_signature` | `"schema"` | `"schema"`, `"infer"` or `None` |
+| `register_prompts` | `True` | Register the program's prompts in the Prompt Registry, one version per changed epoch |
+| `log_inputs` | `True` | Log the train, validation and evaluation data as dataset inputs |
 | `tags` | `{}` | Additional tags for the run |
 | `run_id` | `None` | Existing run to resume instead of starting a new one; the step counter continues after the last logged step |
 | `resume` | `False` | Look up a run named `run_name` in the experiment and resume it, creating it the first time |
@@ -420,8 +500,15 @@ evaluation to an MLflow run. Runs without a logged model are listed in the exper
 compares the metrics of every evaluation. The run is tagged `mlflow.runType =
 genai_evaluate`, like the runs created by `mlflow.genai.evaluate()`, and the traces of
 the evaluated calls are linked to it. Each evaluated sample's reward is also logged as
-a `reward` feedback assessment on the sample's trace, so the run's traces can be
-sorted and filtered by score (disable with `log_assessments=False`).
+a `reward` feedback assessment on the sample's trace, with the ground truth as an
+`expected_output` expectation, so the run's traces can be sorted and filtered by score
+(disable with `log_assessments=False`). The run also logs `eval_cost`, `eval_tokens`,
+`eval_duration_s` and the evaluated dataset.
+
+When the evaluated program was trained with a `Monitor` (or loaded from a program saved
+after such a training), the evaluation run is nested under the training run
+(`mlflow.parentRunId`) and its metrics and traces are linked to the logged model
+version, so the Versions view shows evaluation results per model version.
 
 When `synalinks.enable_observability()` was called, a `Monitor` callback created without
 `experiment_name` uses that same experiment, so the evaluation runs appear next to the

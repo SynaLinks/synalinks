@@ -351,3 +351,64 @@ class ProgramTest(testing.TestCase):
                     var2.path
                 ):
                     self.assertEqual(var1.get_json(), var2.get_json())
+
+
+class ProgramMLflowLineageTest(testing.TestCase):
+    async def test_save_and_load_round_trip_mlflow_lineage(self):
+        class Query(DataModel):
+            query: str
+
+        class Answer(DataModel):
+            answer: str
+
+        x0 = Input(data_model=Query)
+        x1 = await Generator(
+            data_model=Answer,
+            language_model=LanguageModel(model="ollama/mistral"),
+        )(x0)
+        program = Program(inputs=x0, outputs=x1, name="lineage")
+
+        filepath = os.path.join(tempfile.gettempdir(), "lineage_plain.json")
+        program.save(filepath)
+        with open(filepath, "r") as f:
+            self.assertNotIn("mlflow", orjson.loads(f.read()))
+
+        program._mlflow_model_id = "m-123"
+        program._mlflow_run_id = "run-abc"
+        program._mlflow_experiment_id = "exp-1"
+        filepath = os.path.join(tempfile.gettempdir(), "lineage.json")
+        program.save(filepath)
+        with open(filepath, "r") as f:
+            saved = orjson.loads(f.read())
+        self.assertEqual(
+            saved["mlflow"],
+            {
+                "model_id": "m-123",
+                "run_id": "run-abc",
+                "experiment_id": "exp-1",
+                "prompts": {},
+            },
+        )
+
+        loaded = Program.load(filepath)
+        self.assertEqual(loaded._mlflow_model_id, "m-123")
+        self.assertEqual(loaded._mlflow_run_id, "run-abc")
+        self.assertEqual(loaded._mlflow_experiment_id, "exp-1")
+
+        program._mlflow_prompts = {
+            "generator": {
+                "name": "lineage.generator",
+                "version": 2,
+                "uri": "prompts:/x/2",
+            }
+        }
+        program.save(filepath)
+        loaded = Program.load(filepath)
+        generator = [
+            m
+            for m in loaded._flatten_modules(include_self=False)
+            if m.name == "generator"
+        ]
+        self.assertEqual(len(generator), 1)
+        self.assertEqual(generator[0]._mlflow_prompt_version.name, "lineage.generator")
+        self.assertEqual(generator[0]._mlflow_prompt_version.version, 2)

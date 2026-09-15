@@ -230,6 +230,8 @@ class ProgramCheckpoint(Callback):
                     (compile_utils.CompileMetrics, compile_utils.MetricsList),
                 ):
                     all_metrics.extend(m.metrics)
+                else:
+                    all_metrics.append(m)
             for m in all_metrics:
                 if m.name == metric_name and getattr(m, "direction", None):
                     self.monitor_op = np.greater if m.direction == "up" else np.less

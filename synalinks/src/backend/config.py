@@ -37,6 +37,15 @@ _MLFLOW_TRACKING_URI = None
 # MLflow experiment name for observability
 _MLFLOW_EXPERIMENT_NAME = "synalinks_traces"
 
+# Defaults of the `callbacks.Monitor` created by `enable_observability()`
+_MLFLOW_MONITOR_DEFAULTS = {
+    "run_name": None,
+    "registered_model_name": None,
+    "log_program_model": True,
+    "register_prompts": True,
+    "log_inputs": True,
+}
+
 # Enable trace recording (LM calls written to JSONL files)
 _ENABLE_TRACE_RECORDING = False
 
@@ -346,12 +355,23 @@ def set_api_base(api_base):
         "synalinks.enable_observability",
     ]
 )
-def enable_observability(tracking_uri=None, experiment_name=None):
+def enable_observability(
+    tracking_uri=None,
+    experiment_name=None,
+    run_name=None,
+    registered_model_name=None,
+    log_program_model=True,
+    register_prompts=True,
+    log_inputs=True,
+):
     """
     Configures and enables observability for the application using MLflow.
 
     This function sets up the observability configuration for the application,
-    enabling tracing of module calls via MLflow.
+    enabling tracing of module calls via MLflow (the `Monitor` hook) and the
+    logging of every `fit()` / `evaluate()` run (the `Monitor` callback, added
+    automatically): metrics, params, datasets, the trained program as an MLflow
+    model and its prompts in the Prompt Registry.
 
     Args:
         tracking_uri (str): Optional. The MLflow tracking server URI.
@@ -359,6 +379,17 @@ def enable_observability(tracking_uri=None, experiment_name=None):
             directory or MLFLOW_TRACKING_URI environment variable).
         experiment_name (str): Optional. The MLflow experiment name.
             Defaults to "synalinks_traces".
+        run_name (str): Optional. Base name of the runs created by the
+            automatic `Monitor` callback (suffixed `_train` / `_test`).
+        registered_model_name (str): Optional. Register each trained program
+            logged by the automatic `Monitor` callback as a new version of this
+            Model Registry name.
+        log_program_model (bool): Whether the automatic `Monitor` callback logs
+            the trained program as an MLflow model (default: True).
+        register_prompts (bool): Whether the automatic `Monitor` callback
+            registers the program's prompts in the Prompt Registry (default: True).
+        log_inputs (bool): Whether the automatic `Monitor` callback logs the
+            train, validation and evaluation data as dataset inputs (default: True).
 
     Example:
 
@@ -383,6 +414,13 @@ def enable_observability(tracking_uri=None, experiment_name=None):
         _MLFLOW_TRACKING_URI = tracking_uri
     if experiment_name:
         _MLFLOW_EXPERIMENT_NAME = experiment_name
+    _MLFLOW_MONITOR_DEFAULTS.update(
+        run_name=run_name,
+        registered_model_name=registered_model_name,
+        log_program_model=log_program_model,
+        register_prompts=register_prompts,
+        log_inputs=log_inputs,
+    )
     _ENABLE_OBSERVABILITY = True
 
 
@@ -490,6 +528,22 @@ def mlflow_experiment_name():
         (str): The MLflow experiment name.
     """
     return _MLFLOW_EXPERIMENT_NAME
+
+
+@synalinks_export(
+    [
+        "synalinks.config.mlflow_monitor_defaults",
+        "synalinks.backend.mlflow_monitor_defaults",
+    ]
+)
+def mlflow_monitor_defaults():
+    """Returns the `callbacks.Monitor` defaults set by `enable_observability()`.
+
+    Returns:
+        (dict): `run_name`, `registered_model_name`, `log_program_model`,
+            `register_prompts` and `log_inputs`.
+    """
+    return dict(_MLFLOW_MONITOR_DEFAULTS)
 
 
 @synalinks_export(

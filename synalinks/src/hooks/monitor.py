@@ -4,6 +4,7 @@ import asyncio
 import collections
 import contextvars
 import itertools
+import json
 import logging
 import time
 from typing import Any
@@ -16,6 +17,7 @@ from synalinks.src import tree
 from synalinks.src.api_export import synalinks_export
 from synalinks.src.backend import DataModel
 from synalinks.src.backend import any_symbolic_data_models
+from synalinks.src.backend.common.op_scope import current_op_scope
 from synalinks.src.backend.config import mlflow_experiment_name
 from synalinks.src.backend.config import mlflow_tracking_uri
 from synalinks.src.hooks.hook import Hook
@@ -29,6 +31,72 @@ try:
 except ImportError:
     MLFLOW_AVAILABLE = False
     SpanType = None
+
+# Standard MLflow span attribute keys (`mlflow.tracing.constant`), read by
+# the UI for chat rendering and by the trace-level token/cost roll-ups.
+_ATTR_CHAT_USAGE = "mlflow.chat.tokenUsage"
+_ATTR_LLM_COST = "mlflow.llm.cost"
+_ATTR_LLM_MODEL = "mlflow.llm.model"
+_ATTR_LLM_PROVIDER = "mlflow.llm.provider"
+_ATTR_MESSAGE_FORMAT = "mlflow.message.format"
+_ATTR_LINKED_PROMPTS = "mlflow.linkedPrompts"
+_USAGE_KEYS = (
+    "input_tokens",
+    "output_tokens",
+    "total_tokens",
+    "cache_read_input_tokens",
+    "cache_creation_input_tokens",
+)
+
+
+def _chat_messages_of(inputs):
+    """OpenAI-format message list of a `LanguageModel` call's inputs, or `None`."""
+    if not inputs:
+        return None
+    first = inputs[0]
+    if hasattr(first, "get_json"):
+        data = first.get_json()
+    elif isinstance(first, dict):
+        data = first
+    else:
+        return None
+    messages = data.get("messages") if isinstance(data, dict) else None
+    if not isinstance(messages, list):
+        return None
+    return [
+        {k: v for k, v in m.items() if v is not None} if isinstance(m, dict) else m
+        for m in messages
+    ]
+
+
+def _chat_tools_of(kwargs):
+    """Wire tool declarations of a `LanguageModel` call, or an empty list."""
+    tools = []
+    for tool in kwargs.get("tools") or []:
+        try:
+            from synalinks.src.modules.language_models.language_model import _tool_to_wire
+
+            tools.append(_tool_to_wire(tool))
+        except Exception:
+            continue
+    tools.extend(kwargs.get("tool_schemas") or [])
+    return tools
+
+
+def _chat_output_of(serialized_outputs, usage):
+    """OpenAI-style `choices` for a `LanguageModel` span's outputs."""
+    if not serialized_outputs:
+        return None
+    payload = serialized_outputs[0]
+    if isinstance(payload, dict) and "role" in payload:
+        message = {k: v for k, v in payload.items() if v is not None}
+    else:
+        message = {"role": "assistant", "content": json.dumps(payload)}
+    choice = {"index": 0, "message": message}
+    if usage and usage.get("finish_reason"):
+        choice["finish_reason"] = usage["finish_reason"]
+    return [choice]
+
 
 # Module-level logger. Keeping the logger off the `Monitor` instance is
 # load-bearing: the hook is attached to a Module and reachable from every
@@ -278,6 +346,8 @@ class Monitor(Hook):
         metadata=None,
         tags=None,
         root_seq=None,
+        chat_messages=None,
+        chat_tools=None,
     ):
         """Async implementation of span creation."""
         global _GLOBAL_SPANS_REGISTRY
@@ -305,18 +375,48 @@ class Monitor(Hook):
         if root_seq is not None:
             _ROOT_TRACES.append((root_seq, span.trace_id))
 
-        span.set_attributes(
-            {
-                "synalinks.call_id": call_id,
-                "synalinks.parent_call_id": parent_call_id or "",
-                "synalinks.module": str(self.module.__class__.__name__),
-                "synalinks.module_name": self.module.name or "",
-                "synalinks.module_description": self.module.description or "",
-                "synalinks.is_symbolic": is_symbolic,
-            }
-        )
+        attributes = {
+            "synalinks.call_id": call_id,
+            "synalinks.parent_call_id": parent_call_id or "",
+            "synalinks.module": str(self.module.__class__.__name__),
+            "synalinks.module_name": self.module.name or "",
+            "synalinks.module_description": self.module.description or "",
+            "synalinks.is_symbolic": is_symbolic,
+        }
+        if span_type == SpanType.CHAT_MODEL:
+            model = getattr(self.module, "model", None) or ""
+            attributes[_ATTR_LLM_MODEL] = model
+            attributes[_ATTR_LLM_PROVIDER] = model.split("/")[0] if model else ""
+            attributes[_ATTR_MESSAGE_FORMAT] = "openai"
+        prompt_version = getattr(self.module, "_mlflow_prompt_version", None)
+        if prompt_version is not None:
+            attributes[_ATTR_LINKED_PROMPTS] = json.dumps(
+                [{"name": prompt_version.name, "version": str(prompt_version.version)}]
+            )
+            try:
+                from mlflow.entities.model_registry import PromptVersion
+                from mlflow.tracing.trace_manager import InMemoryTraceManager
+
+                # A version restored by `Program.load()` is a plain record; only
+                # a registry object can be attached to the trace itself.
+                if isinstance(prompt_version, PromptVersion):
+                    InMemoryTraceManager.get_instance().register_prompt(
+                        trace_id=span.trace_id, prompt=prompt_version
+                    )
+            except Exception as e:
+                _LOGGER.debug(f"Failed to link prompt to trace: {e}")
+        span.set_attributes(attributes)
+        if chat_tools:
+            try:
+                from mlflow.tracing.utils import set_span_chat_tools
+
+                set_span_chat_tools(span, chat_tools)
+            except Exception as e:
+                _LOGGER.debug(f"Failed to set chat tools on span: {e}")
 
         inputs_dict = {"data": serialized_inputs}
+        if chat_messages is not None:
+            inputs_dict = {"messages": chat_messages, **inputs_dict}
         if serialized_kwargs:
             inputs_dict["kwargs"] = serialized_kwargs
         span.set_inputs(inputs_dict)
@@ -367,11 +467,22 @@ class Monitor(Hook):
 
         # Read the ContextVar in the caller's context, not inside the coroutine
         trace_ctx = current_trace_context() or {}
+        tags = dict(trace_ctx.get("tags") or {})
         # Sequence taken synchronously here so it follows the call order, not
         # the completion order of the threaded span creation.
         root_seq = None
         if parent_call_id is None and not is_symbolic:
             root_seq = next(_ROOT_TRACE_SEQ)
+            # Trace-level tags of the root span: which program ran, in which
+            # phase (inference, reward or optimizer), so traces can be filtered.
+            tags.setdefault("synalinks.program", self.module.name or "")
+            tags.setdefault("synalinks.phase", current_op_scope() or "inference")
+
+        chat_messages = None
+        chat_tools = None
+        if span_type == SpanType.CHAT_MODEL:
+            chat_messages = _chat_messages_of(inputs)
+            chat_tools = _chat_tools_of(kwargs or {})
 
         run_maybe_nested(
             self._begin_span_async(
@@ -383,8 +494,10 @@ class Monitor(Hook):
                 span_name=span_name,
                 span_type=span_type,
                 metadata=trace_ctx.get("metadata"),
-                tags=trace_ctx.get("tags"),
+                tags=tags or None,
                 root_seq=root_seq,
+                chat_messages=chat_messages,
+                chat_tools=chat_tools,
             )
         )
 
@@ -396,15 +509,25 @@ class Monitor(Hook):
         duration,
         cost,
         exception,
+        usage=None,
     ):
         """Async implementation of span ending."""
-        span.set_attributes(
-            {
-                "synalinks.duration": duration,
-                "synalinks.success": exception is None,
-                "synalinks.cost": cost or 0.0,
+        attributes = {
+            "synalinks.duration": duration,
+            "synalinks.success": exception is None,
+            "synalinks.cost": cost or 0.0,
+        }
+        if usage and "input_tokens" in usage:
+            attributes[_ATTR_CHAT_USAGE] = {
+                key: usage[key]
+                for key in _USAGE_KEYS
+                if usage.get(key) or key in _USAGE_KEYS[:3]
             }
-        )
+            if usage.get("cost") is not None:
+                attributes[_ATTR_LLM_COST] = {"total_cost": usage["cost"]}
+        if usage and usage.get("cache_hit"):
+            attributes["synalinks.cache_hit"] = True
+        span.set_attributes(attributes)
 
         if exception:
             span.set_attributes({"synalinks.exception": str(exception)})
@@ -422,7 +545,12 @@ class Monitor(Hook):
         else:
             span.set_status("OK")
 
-        span.set_outputs({"data": serialized_outputs})
+        outputs_dict = {"data": serialized_outputs}
+        if usage is not None and exception is None:
+            choices = _chat_output_of(serialized_outputs, usage)
+            if choices is not None:
+                outputs_dict = {"choices": choices, **outputs_dict}
+        span.set_outputs(outputs_dict)
 
         await asyncio.to_thread(span.end)
 
@@ -464,6 +592,15 @@ class Monitor(Hook):
         if self.module._get_call_context():
             cost = self.module._get_call_context().cost
 
+        usage = None
+        if self.module.__class__.__name__ == "LanguageModel":
+            from synalinks.src.modules.language_models.language_model import (
+                current_call_usage,
+            )
+
+            # Read in the caller's task: the ContextVar was set by `call()`.
+            usage = current_call_usage() or {}
+
         run_maybe_nested(
             self._end_span_async(
                 call_id=call_id,
@@ -472,6 +609,7 @@ class Monitor(Hook):
                 duration=duration,
                 cost=cost,
                 exception=exception,
+                usage=usage,
             )
         )
 

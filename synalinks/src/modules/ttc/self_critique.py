@@ -6,8 +6,8 @@ import copy
 from synalinks.src.api_export import synalinks_export
 from synalinks.src.backend import DataModel
 from synalinks.src.backend import Field
+from synalinks.src.backend import FineScore
 from synalinks.src.backend import JsonDataModel
-from synalinks.src.backend import Score
 from synalinks.src.backend import SymbolicDataModel
 from synalinks.src.backend import is_symbolic_data_model
 from synalinks.src.backend.pydantic.metrics import get_score_type
@@ -31,7 +31,7 @@ class CritiqueWithReward(DataModel):
     critique: str = Field(
         description="The elaborated critique of the provided inputs",
     )
-    reward: Score = Field(
+    reward: FineScore = Field(
         description=(
             "The reward value corresponding to the critique"
             "  (a float between 0.0 and 1.0)"
@@ -113,10 +113,10 @@ def _normalized_reward_schema(schema):
     """Return a copy of `schema` whose `reward` property is a 0..1 float."""
     schema = copy.deepcopy(schema)
     schema.setdefault("properties", {})["reward"] = dict(_NORMALIZED_REWARD_SCHEMA)
-    # Drop the default `Score` definition if nothing references it anymore.
+    # Drop the default `FineScore` definition if nothing references it anymore.
     defs = schema.get("$defs")
-    if defs and "Score" in defs:
-        defs.pop("Score")
+    if defs and "FineScore" in defs:
+        defs.pop("FineScore")
         if not defs:
             schema.pop("$defs")
     return schema
@@ -138,8 +138,8 @@ class SelfCritique(Module):
     using the `return_reward` flag (default to True).
 
     The scale the language model picks the reward from is controlled by
-    `score_type`: `synalinks.Score` (default, 11 float levels), a finer
-    `synalinks.FineScore` (21 levels), or an integer Likert-style
+    `score_type`: `synalinks.FineScore` (default, 21 float levels), a
+    coarser `synalinks.Score` (11 levels), or an integer Likert-style
     `synalinks.Rating` (1 to 5), `synalinks.Rating10` (1 to 10) or
     `synalinks.Rating20` (1 to 20). Whatever the scale, the `reward` in
     the module's output is automatically normalized to a float between
@@ -220,7 +220,7 @@ class SelfCritique(Module):
             the prompt (Default to False) (see `Generator`).
         return_reward (bool): Optional. Whether or not to compute an intermediate reward.
         score_type (type | str): Optional. The scale the language model picks the
-            reward from: `synalinks.Score` (default), `synalinks.FineScore`,
+            reward from: `synalinks.FineScore` (default), `synalinks.Score`,
             `synalinks.Rating`, `synalinks.Rating10`, `synalinks.Rating20`, any
             `Enum` whose members are `int` or `float`, or the name of one of them.
             The output `reward` is always normalized to a float between 0.0 and 1.0.
@@ -259,7 +259,7 @@ class SelfCritique(Module):
             trainable=trainable,
         )
         self.language_model = _get_lm(language_model)
-        self.score_type = get_score_type(score_type)
+        self.score_type = get_score_type(score_type or FineScore)
         self.prompt_template = prompt_template
         self.examples = examples
         if instructions is None:

@@ -81,8 +81,12 @@ them, or all three.
    experiment_name=...)`** sends the same span data to an **MLflow**
    server. MLflow is a popular open-source service for storing ML
    experiments, metrics, and traces. It stores, indexes, and shows
-   the trace as an interactive tree in a web UI, and it also
-   captures training metrics and saved artifacts.
+   the trace as an interactive tree in a web UI, with token usage and
+   cost per call. It also turns every `fit()` into an MLflow run:
+   training and validation metrics and cost per epoch, the run's
+   parameters and datasets, the trained program as a loadable MLflow
+   model version, and the optimized prompts as versions in the Prompt
+   Registry; later evaluations link back to that model version.
 
 3. **`synalinks.record_traces(base_dir=...)`** writes every
    `LanguageModel` call to JSONL files on disk: the chat messages

@@ -8,12 +8,14 @@ from synalinks.api.callbacks import monitor as monitor
 from synalinks.src.callbacks.backup_and_restore import (
     BackupAndRestore as BackupAndRestore,
 )
+from synalinks.src.callbacks.budget_stopping import BudgetStopping as BudgetStopping
 from synalinks.src.callbacks.callback import Callback as Callback
 from synalinks.src.callbacks.callback_list import CallbackList as CallbackList
 from synalinks.src.callbacks.csv_logger import CSVLogger as CSVLogger
 from synalinks.src.callbacks.early_stopping import EarlyStopping as EarlyStopping
 from synalinks.src.callbacks.history import History as History
 from synalinks.src.callbacks.monitor import Monitor as Monitor
+from synalinks.src.callbacks.monitor import SynalinksProgramModel as SynalinksProgramModel
 from synalinks.src.callbacks.progbar_logger import ProgbarLogger as ProgbarLogger
 from synalinks.src.callbacks.program_checkpoint import (
     ProgramCheckpoint as ProgramCheckpoint,

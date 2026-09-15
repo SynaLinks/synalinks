@@ -26,8 +26,9 @@ everything in this guide will feel familiar; the names match.
 By the end of this guide you will be able to:
 
 - attach one or more callbacks to `program.fit(...)`,
-- use the built-ins for the four jobs you actually want done
-  (early-stopping, checkpointing, fault-tolerance, CSV logging),
+- use the built-ins for the five jobs you actually want done
+  (early-stopping, budget capping, checkpointing, fault-tolerance,
+  CSV logging),
 - read the lifecycle hooks well enough to write your own,
 - recognize the `Monitor` callback as the bridge between training
   and the observability story from [Guide 10](https://synalinks.github.io/synalinks/guides/Observability/).
@@ -87,10 +88,10 @@ in the list. For most callbacks the order does not matter; when it
 does, it is usually because one callback writes a file and the
 next one reads it.
 
-## The Four Built-Ins You Will Actually Use
+## The Five Built-Ins You Will Actually Use
 
-Synalinks ships five callbacks. One of them (`Monitor`) belongs in
-the observability story and is covered in [Guide 10](https://synalinks.github.io/synalinks/guides/Observability/); the other four
+Synalinks ships six callbacks. One of them (`Monitor`) belongs in
+the observability story and is covered in [Guide 10](https://synalinks.github.io/synalinks/guides/Observability/); the other five
 solve concrete operational problems that come up on almost every
 non-trivial run.
 
@@ -125,6 +126,47 @@ Use it on every run that takes more than a few minutes. The cost
 of a false positive (stopping a hair too early) is one epoch of
 training; the cost of running thirteen useless epochs at $0.01 per
 LM call adds up fast.
+
+### `BudgetStopping`: Stop When the Money Runs Out
+
+**The problem.** `EarlyStopping` protects you from *useless*
+epochs, but not from *expensive* ones. A larger dataset, a
+chattier agent, or an optimizer that samples many candidates can
+push a run past what you were willing to pay long before the
+reward plateaus. You find out when the invoice arrives.
+
+**The fix.** `BudgetStopping` tracks what the run has spent so far
+and halts training as soon as a cap is reached. It sums the
+`cumulated_cost` and `cumulated_tokens` counters of every language
+model and embedding model reachable from the program (fallbacks
+included), so inference, reward, and optimizer calls all count.
+
+```python
+budget = synalinks.callbacks.BudgetStopping(
+    max_cost=5.0,        # stop once the run has spent $5
+    max_tokens=2_000_000,  # or once it has consumed 2M tokens
+    verbose=1,           # print why training stopped
+)
+```
+
+Two details matter in practice:
+
+- **It checks after every batch**, not only at epoch end, so a run
+  that hits its budget mid-epoch stops right there instead of
+  finishing the epoch. Validation batches inside `fit()` count
+  toward the same budget, and the callback also caps a standalone
+  `program.evaluate(...)` or `program.predict(...)` when passed
+  there. Both budgets are optional; whichever one is reached first
+  wins.
+- **Local providers report no cost.** The dollar figure comes from
+  the provider's response (via LiteLLM). Ollama or vLLM return
+  nothing, so `max_cost` would never trigger; the callback warns
+  once when it notices this. Use `max_tokens` with local models.
+
+Pair it with `EarlyStopping(restore_best_variables=True)` or
+`ProgramCheckpoint(save_best_only=True)`: a budget stop leaves the
+program at whatever variables the *last* batch produced, and those
+two are what roll it back to the best ones seen.
 
 ### `ProgramCheckpoint`: Save the Best Program
 
@@ -235,7 +277,7 @@ covers the observability story end-to-end.
 
 ## Putting Them Together
 
-In production you usually run all four operational callbacks at
+In production you usually run all five operational callbacks at
 once. The list is short and the order does not matter much (each
 one does its own thing on `on_epoch_end`):
 
@@ -259,15 +301,17 @@ history = await program.fit(
             patience=3,
             restore_best_variables=True,
         ),
+        synalinks.callbacks.BudgetStopping(max_cost=10.0),
         synalinks.callbacks.CSVLogger(filepath="run.csv"),
     ],
 )
 ```
 
-That four-line list captures the operational reality of training
+That five-line list captures the operational reality of training
 something at LM-call cost: *back up so a crash does not lose work;
 checkpoint so the peak is preserved; stop early so we do not burn
-budget after improvement plateaus; log to CSV for the post-mortem*.
+budget after improvement plateaus; cap the spend so a surprise never
+reaches the invoice; log to CSV for the post-mortem*.
 
 ## Writing a Custom Callback
 
@@ -374,11 +418,12 @@ already have values when `on_epoch_end` runs.
 - **Callbacks are pluggable side-effects** the trainer fires at
   specific points in `fit()`: epoch begin/end, batch begin/end,
   train begin/end.
-- **Four built-ins cover the bread-and-butter operational
+- **Five built-ins cover the bread-and-butter operational
   needs**: `EarlyStopping` (stop when plateaued),
+  `BudgetStopping` (stop when the cost or token cap is hit),
   `ProgramCheckpoint` (preserve the best), `BackupAndRestore`
   (resume after crashes), `CSVLogger` (log per-epoch metrics).
-  Most real runs use all four.
+  Most real runs use all five.
 - **`Monitor`** is the MLflow bridge; configure it via
   `synalinks.enable_observability(...)` rather than instantiating
   it directly ([Guide 10](https://synalinks.github.io/synalinks/guides/Observability/)).
@@ -392,6 +437,7 @@ already have values when `on_epoch_end` runs.
 
 - [synalinks.callbacks.Callback](https://synalinks.github.io/synalinks/Synalinks%20API/Callbacks%20API/Base%20Callback%20class/)
 - [synalinks.callbacks.EarlyStopping](https://synalinks.github.io/synalinks/Synalinks%20API/Callbacks%20API/EarlyStopping/)
+- [synalinks.callbacks.BudgetStopping](https://synalinks.github.io/synalinks/Synalinks%20API/Callbacks%20API/BudgetStopping/)
 - [synalinks.callbacks.ProgramCheckpoint](https://synalinks.github.io/synalinks/Synalinks%20API/Callbacks%20API/ProgramCheckpoint/)
 - [synalinks.callbacks.BackupAndRestore](https://synalinks.github.io/synalinks/Synalinks%20API/Callbacks%20API/BackUpAndRestore/)
 - [synalinks.callbacks.CSVLogger](https://synalinks.github.io/synalinks/Synalinks%20API/Callbacks%20API/CSVLogger/)

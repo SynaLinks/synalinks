@@ -1,5 +1,6 @@
 # License Apache 2.0: (c) 2025-2026 Yoan Sallami (Synalinks Team)
 
+import contextvars
 import copy
 import logging
 import os
@@ -154,6 +155,25 @@ def _extract_lm_extras(usage, response):
     if overhead is not None:
         extras["litellm_overhead_time_ms"] = overhead
     return cached, cache_creation, reasoning, extras
+
+
+# Usage of the LM call running in the current task, read by hooks (the MLflow
+# `Monitor` hook writes it as span attributes). A ContextVar rather than an
+# instance attribute so concurrent calls on one LM never see each other's.
+_CURRENT_CALL_USAGE = contextvars.ContextVar("synalinks_lm_call_usage", default=None)
+
+
+def current_call_usage():
+    """Return the usage of the `LanguageModel` call that just ran in this task.
+
+    `None` before any call and for streamed calls (usage is only known once
+    the stream is consumed), `{"cache_hit": True}` when the response came from
+    the file cache, otherwise a dict with `input_tokens`, `output_tokens`,
+    `total_tokens`, `cache_read_input_tokens`, `cache_creation_input_tokens`,
+    `reasoning_tokens`, `cost` (`None` when the provider reports none),
+    `elapsed_s` and `finish_reason`.
+    """
+    return _CURRENT_CALL_USAGE.get()
 
 
 def _accumulate(obj, phase_prefix, increments, extras):
@@ -770,6 +790,7 @@ class LanguageModel(Module):
         # Cleared per call: a cache hit or a streamed call has no choice to
         # read it from and must not report the previous call's reason.
         self.last_call_finish_reason = None
+        _CURRENT_CALL_USAGE.set(None)
         input_kwargs = copy.deepcopy(kwargs)
         # Merge instance-level defaults; per-call kwargs win.
         kwargs = {**self.default_kwargs, **kwargs}
@@ -864,7 +885,7 @@ class LanguageModel(Module):
                             }
                         ],
                         "tool_choice": _structured_output_tool_choice(self.model),
-                    }
+                    },
                 )
             elif self.model.startswith("anthropic"):
                 # Use response_format for Anthropic - LiteLLM handles this correctly:
@@ -880,7 +901,7 @@ class LanguageModel(Module):
                                 "schema": schema,
                             },
                         },
-                    }
+                    },
                 )
             elif self.model.startswith("ollama") or self.model.startswith("mistral"):
                 # Use constrained structured output for ollama/mistral
@@ -892,7 +913,7 @@ class LanguageModel(Module):
                             "json_schema": {"schema": schema},
                             "strict": True,
                         },
-                    }
+                    },
                 )
             elif (
                 self.model.startswith("openai")
@@ -920,7 +941,7 @@ class LanguageModel(Module):
                                 "schema": schema,
                             },
                         }
-                    }
+                    },
                 )
             elif self.model.startswith("gemini"):
                 _set_if_unset(
@@ -933,7 +954,7 @@ class LanguageModel(Module):
                             },
                             "strict": True,
                         }
-                    }
+                    },
                 )
             elif self.model.startswith("xai"):
                 _set_if_unset(
@@ -946,7 +967,7 @@ class LanguageModel(Module):
                             },
                             "strict": True,
                         }
-                    }
+                    },
                 )
             elif self.model.startswith("hosted_vllm"):
                 _set_if_unset(
@@ -960,7 +981,7 @@ class LanguageModel(Module):
                             },
                             "strict": True,
                         }
-                    }
+                    },
                 )
             else:
                 provider = self.model.split("/")[0]
@@ -1008,6 +1029,7 @@ class LanguageModel(Module):
                 cached_json = self._file_cache.get(cache_key)
                 if cached_json is not None:
                     self._record_event("cache_hits")
+                    _CURRENT_CALL_USAGE.set({"cache_hit": True})
                     if streaming:
                         return StreamingIterator(_cached_message_to_chunks(cached_json))
                     return JsonDataModel(
@@ -1113,6 +1135,19 @@ class LanguageModel(Module):
                     }
                     if response_cost is not None:
                         flat_increments["cost"] = response_cost
+                    _CURRENT_CALL_USAGE.set(
+                        {
+                            "input_tokens": prompt_tokens,
+                            "output_tokens": completion_tokens,
+                            "total_tokens": total_tokens,
+                            "cache_read_input_tokens": cached,
+                            "cache_creation_input_tokens": cache_creation,
+                            "reasoning_tokens": reasoning,
+                            "cost": response_cost,
+                            "elapsed_s": elapsed_s,
+                            "finish_reason": None,
+                        }
+                    )
                     _accumulate(self, "", flat_increments, extras)
                     if op_scope is not None:
                         _accumulate(self, f"{op_scope}_", flat_increments, extras)
@@ -1131,6 +1166,8 @@ class LanguageModel(Module):
                 response_message = response["choices"][0]["message"]
                 finish_reason = _safe_get(response["choices"][0], "finish_reason")
                 self.last_call_finish_reason = finish_reason
+                if _CURRENT_CALL_USAGE.get():
+                    _CURRENT_CALL_USAGE.get()["finish_reason"] = finish_reason
                 wire_tool_calls = _safe_get(response_message, "tool_calls", None)
                 refusal = _safe_get(response_message, "refusal")
                 audio = _safe_get(response_message, "audio")

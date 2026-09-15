@@ -5,6 +5,7 @@
 import inspect
 import typing
 import warnings
+from types import SimpleNamespace
 
 import orjson
 
@@ -475,6 +476,14 @@ class Program(Trainer, Module):
         program_config = {"synalinks_version": __version__, **program_config}
         variables_config = self.get_state_tree()
         program_config.update({"variables": variables_config})
+        if getattr(self, "_mlflow_model_id", None):
+            # Lineage written by `callbacks.Monitor`, read back by `load()`.
+            program_config["mlflow"] = {
+                "model_id": self._mlflow_model_id,
+                "run_id": getattr(self, "_mlflow_run_id", None),
+                "experiment_id": getattr(self, "_mlflow_experiment_id", None),
+                "prompts": getattr(self, "_mlflow_prompts", None) or {},
+            }
         program_config_string = orjson.dumps(
             program_config, option=orjson.OPT_INDENT_2
         ).decode()
@@ -842,10 +851,23 @@ def program_from_json(json_string, custom_objects=None):
 
     program_config = orjson.loads(json_string)
     variables_config = program_config.get("variables")
+    mlflow_config = program_config.pop("mlflow", None) or {}
     program = serialization_lib.deserialize_synalinks_object(
         program_config, custom_objects=custom_objects
     )
     program.set_state_tree(variables_config)
+    if mlflow_config.get("model_id"):
+        program._mlflow_model_id = mlflow_config["model_id"]
+        program._mlflow_run_id = mlflow_config.get("run_id")
+        program._mlflow_experiment_id = mlflow_config.get("experiment_id")
+        prompts = mlflow_config.get("prompts") or {}
+        program._mlflow_prompts = prompts
+        # Re-attach each module's registered prompt version so its traces
+        # keep linking to it (`hooks.Monitor`).
+        for module in program._flatten_modules(include_self=False, recursive=True):
+            prompt = prompts.get(module.name)
+            if prompt:
+                module._mlflow_prompt_version = SimpleNamespace(**prompt)
     return program
 
 
