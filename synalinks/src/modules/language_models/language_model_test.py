@@ -1104,3 +1104,46 @@ class FinishReasonTest(testing.TestCase):
         self.assertIn("finish_reason='length'", messages)
         self.assertIn("completion token budget was exhausted", messages)
         self.assertIn("max_tokens", messages)
+
+
+class CurrentCallUsageTest(testing.TestCase):
+    @patch("litellm.acompletion")
+    async def test_usage_of_the_call_in_this_task(self, mock_completion):
+        from synalinks.src.modules.language_models.language_model import (
+            current_call_usage,
+        )
+
+        mock_completion.return_value = _lm_response(
+            prompt_tokens=10, completion_tokens=4, cost=0.5
+        )
+        lm = LanguageModel(model="ollama/mistral")
+        await lm(_chat_messages())
+        usage = current_call_usage()
+        self.assertEqual(usage["input_tokens"], 10)
+        self.assertEqual(usage["output_tokens"], 4)
+        self.assertEqual(usage["total_tokens"], 14)
+        self.assertEqual(usage["cost"], 0.5)
+        self.assertIn("finish_reason", usage)
+
+    @patch("litellm.acompletion")
+    async def test_concurrent_calls_see_their_own_usage(self, mock_completion):
+        import asyncio
+
+        from synalinks.src.modules.language_models.language_model import (
+            current_call_usage,
+        )
+
+        responses = [
+            _lm_response(prompt_tokens=1, completion_tokens=1),
+            _lm_response(prompt_tokens=2, completion_tokens=2),
+            _lm_response(prompt_tokens=3, completion_tokens=3),
+        ]
+        mock_completion.side_effect = responses
+        lm = LanguageModel(model="ollama/mistral")
+
+        async def one():
+            await lm(_chat_messages())
+            return current_call_usage()["input_tokens"]
+
+        seen = await asyncio.gather(one(), one(), one())
+        self.assertEqual(sorted(seen), [1, 2, 3])

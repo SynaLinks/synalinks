@@ -177,10 +177,10 @@ called `ProgramAsJudge`. The judge sees both `y_true` and
 returns a numeric score that the framework normalizes to
 `[0, 1]`.
 
-By default the judge picks from `synalinks.Score` (eleven values
-from 0.0 to 1.0). If your rubric reads more naturally as a
-rating, pass `score_type=synalinks.Rating` (1 to 5), `Rating10`,
-`Rating20` or `FineScore`:
+By default the judge picks from `synalinks.FineScore` (twenty-one
+values from 0.0 to 1.0, step 0.05). If your rubric reads more
+naturally as a rating, pass `score_type=synalinks.Rating` (1 to 5),
+`Rating10`, `Rating20`, or the coarser `Score`:
 
 ```python
 reward = synalinks.rewards.LMAsJudge(

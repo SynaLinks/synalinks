@@ -9,7 +9,6 @@ from synalinks.src.backend import Field
 from synalinks.src.backend import FineScore
 from synalinks.src.backend import Rating
 from synalinks.src.backend import Rating20
-from synalinks.src.backend import Score
 from synalinks.src.modules.core.input_module import Input
 from synalinks.src.modules.language_models import LanguageModel
 from synalinks.src.modules.ttc.chain_of_thought import ChainOfThought
@@ -171,12 +170,12 @@ class SelfCritiqueModuleTest(testing.TestCase):
     def test_self_critique_default_score_type(self):
         language_model = LanguageModel(model="ollama/mistral")
         critique = SelfCritique(language_model=language_model)
-        self.assertIs(critique.score_type, Score)
-        self.assertEqual(critique.get_config()["score_type"], "Score")
+        self.assertIs(critique.score_type, FineScore)
+        self.assertEqual(critique.get_config()["score_type"], "FineScore")
 
     def test_self_critique_default_instructions_spell_out_scale(self):
         language_model = LanguageModel(model="ollama/mistral")
-        # Default 0.0..1.0 `Score`.
+        # Default 0.0..1.0 `FineScore`.
         critique = SelfCritique(language_model=language_model)
         self.assertIn("a float between 0.0 and 1.0", critique.instructions)
         self.assertIn("1.0 very good", critique.instructions)

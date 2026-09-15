@@ -2,7 +2,7 @@
 
 from synalinks.src import ops
 from synalinks.src.api_export import synalinks_export
-from synalinks.src.backend.pydantic.metrics import Rating20
+from synalinks.src.backend.pydantic.metrics import FineScore
 from synalinks.src.backend.pydantic.metrics import get_score_type
 from synalinks.src.backend.pydantic.metrics import serialize_score_type
 from synalinks.src.modules import SelfCritique
@@ -45,7 +45,7 @@ class LMAsJudgeProgram(Program):
             description=description,
             trainable=trainable,
         )
-        self.score_type = get_score_type(score_type or Rating20)
+        self.score_type = get_score_type(score_type or FineScore)
         self.critique = SelfCritique(
             language_model=language_model,
             prompt_template=prompt_template,
@@ -150,8 +150,8 @@ class LMAsJudge(ProgramAsJudge):
         examples (list): The default examples to use in the prompt
             (see `Generator`).
         score_type (type | str): Optional. The scale the judge picks the reward
-            from: `synalinks.Rating20` (default), `synalinks.Score`,
-            `synalinks.FineScore`, `synalinks.Rating`, `synalinks.Rating10`, any
+            from: `synalinks.FineScore` (default), `synalinks.Score`,
+            `synalinks.Rating`, `synalinks.Rating10`, `synalinks.Rating20`, any
             `Enum` whose members are `int` or `float`, or the name of one of them.
             The reward is always normalized to a float between 0.0 and 1.0.
         reduction (str): Optional. The reward reduction (Default to `"mean"`).

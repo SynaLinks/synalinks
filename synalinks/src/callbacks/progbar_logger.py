@@ -71,14 +71,17 @@ class ProgbarLogger(Callback):
         self._update_progbar(batch, None)
 
     def on_epoch_end(self, epoch, logs=None):
-        self._finalize_progbar(logs)
+        self._finalize_progbar(logs, stopped=self._stopped("stop_training"))
 
     def on_test_end(self, logs=None):
         if not self._called_in_fit:
-            self._finalize_progbar(logs)
+            self._finalize_progbar(logs, stopped=self._stopped("stop_evaluating"))
 
     def on_predict_end(self, logs=None):
-        self._finalize_progbar(logs)
+        self._finalize_progbar(logs, stopped=self._stopped("stop_predicting"))
+
+    def _stopped(self, flag):
+        return bool(getattr(self.program, flag, False))
 
     def _reset_progbar(self):
         self.seen = 0
@@ -101,10 +104,19 @@ class ProgbarLogger(Callback):
         if self.verbose == 1:
             self.progbar.update(self.seen, list(logs.items()), finalize=False)
 
-    def _finalize_progbar(self, logs):
+    def _finalize_progbar(self, logs, stopped=False):
+        """Print the final line of the bar.
+
+        A loop stopped early by a callback (`BudgetStopping`, `EarlyStopping`
+        mid-epoch, ...) is finalized at the steps actually run, e.g. `2/6`,
+        instead of jumping to the full target.
+        """
         logs = logs or {}
         if self.target is None:
             self.target = self.seen
             self.progbar.target = self.target
+        current = self.target
+        if stopped and self.seen < self.target:
+            current = self.seen
         if self.verbose == 1:
-            self.progbar.update(self.target, list(logs.items()), finalize=True)
+            self.progbar.update(current, list(logs.items()), finalize=True)

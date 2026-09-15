@@ -269,6 +269,9 @@ class Trainer:
         self.stop_training = False
         self.compiled = True
         self._reward_tracker = metrics_module.Mean(name="reward")
+        # Rewards are maximized: lets callbacks resolve `mode="auto"` for
+        # `reward` / `val_reward` without an explicit `mode`.
+        self._reward_tracker.direction = "up"
         self.steps_per_execution = steps_per_execution
 
         self._compile_config = serialization_lib.SerializableDict(
@@ -677,13 +680,29 @@ class Trainer:
                 add_progbar=verbose != 0,
                 verbose=verbose,
                 epochs=epochs,
-                steps=steps_per_epoch,
+                steps=steps_per_epoch or epoch_iterator.num_batches,
                 batch_size=batch_size,
+                minibatch_size=minibatch_size,
                 optimizer=optimizer_name,
+                validation_split=validation_split if validation_data is None else 0,
+                validation_freq=validation_freq,
+                validation_batch_size=validation_batch_size,
+                validation_steps=validation_steps,
+                initial_epoch=initial_epoch,
+                train_size=len(x) if hasattr(x, "__len__") else None,
+                val_size=len(val_x) if validation_data is not None else 0,
                 program=self,
             )
 
         self.stop_training = False
+        # Exposed to callbacks (e.g. `callbacks.Monitor` logs them as MLflow
+        # dataset inputs) for the duration of the training loop.
+        self._fit_inputs = {
+            "x": x,
+            "y": y,
+            "val_x": val_x if validation_data is not None else None,
+            "val_y": val_y if validation_data is not None else None,
+        }
         callbacks.on_train_begin()
         training_logs = None
         logs = {}
@@ -809,6 +828,7 @@ class Trainer:
             await self.optimizer.on_train_end(self.trainable_variables)
 
         callbacks.on_train_end(logs=training_logs)
+        self._fit_inputs = None
         return self.history
 
     async def evaluate(
@@ -911,10 +931,13 @@ class Trainer:
                 verbose=verbose,
                 epochs=1,
                 steps=epoch_iterator.num_batches,
+                batch_size=batch_size,
+                test_size=len(x) if hasattr(x, "__len__") else None,
                 program=self,
             )
 
         self.stop_evaluating = False
+        self._eval_inputs = {"x": x, "y": y}
         callbacks.on_test_begin()
         logs = {}
         self.reset_metrics()
@@ -936,6 +959,7 @@ class Trainer:
                 break
         logs = self.get_metrics_result()
         callbacks.on_test_end(logs)
+        self._eval_inputs = None
 
         if return_dict:
             return logs
@@ -1005,11 +1029,11 @@ class Trainer:
                 verbose=verbose,
                 epochs=1,
                 steps=epoch_iterator.num_batches,
-                model=self,
+                program=self,
             )
 
         self.stop_predicting = False
-        callbacks.on_test_begin()
+        callbacks.on_predict_begin()
         outputs = []
         for step, iterator in epoch_iterator:
             callbacks.on_predict_batch_begin(step)
@@ -1124,6 +1148,7 @@ class Trainer:
         # Per-sample rewards of the last test batch, read by callbacks
         # (e.g. `callbacks.Monitor` logs them as per-trace assessments).
         self._per_sample_rewards = list(rewards)
+        self._per_sample_targets = [t.get_json() for t in y] if y is not None else None
         reduction = (
             self._compile_reward.reduction if self._compile_reward is not None else "mean"
         )

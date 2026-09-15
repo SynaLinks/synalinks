@@ -351,7 +351,10 @@ def enable_observability(tracking_uri=None, experiment_name=None):
     Configures and enables observability for the application using MLflow.
 
     This function sets up the observability configuration for the application,
-    enabling tracing of module calls via MLflow.
+    enabling tracing of module calls via MLflow (the `Monitor` hook) and the
+    logging of every `fit()` / `evaluate()` run (the `Monitor` callback, added
+    automatically): metrics, params, datasets, the trained program as a
+    registered MLflow model and its prompts in the Prompt Registry.
 
     Args:
         tracking_uri (str): Optional. The MLflow tracking server URI.
@@ -359,7 +362,6 @@ def enable_observability(tracking_uri=None, experiment_name=None):
             directory or MLFLOW_TRACKING_URI environment variable).
         experiment_name (str): Optional. The MLflow experiment name.
             Defaults to "synalinks_traces".
-
     Example:
 
     ```python

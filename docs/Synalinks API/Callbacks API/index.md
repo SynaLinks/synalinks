@@ -39,4 +39,7 @@ if __name__ == "__main__":
 - [Base Callback class](Base Callback class.md)
 - [CSVLogger callback](CSVLogger.md)
 - [ProgramCheckPoint callback](ProgramCheckpoint.md)
+- [BackupAndRestore callback](BackUpAndRestore.md)
+- [EarlyStopping callback](EarlyStopping.md)
+- [BudgetStopping callback](BudgetStopping.md)
 - [Monitor callback](Monitor.md)

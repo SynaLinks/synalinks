@@ -144,7 +144,10 @@ class MonitorEndToEndTest(testing.TestCase):
         await lm(messages)
         kwargs = mock_mlflow.start_span_no_context.call_args.kwargs
         self.assertIsNone(kwargs["metadata"])
-        self.assertIsNone(kwargs["tags"])
+        self.assertEqual(
+            kwargs["tags"],
+            {"synalinks.program": "language_model", "synalinks.phase": "inference"},
+        )
 
         with trace_context(
             user_id="user-123", session_id="session-123", tags={"env": "test"}
@@ -158,7 +161,14 @@ class MonitorEndToEndTest(testing.TestCase):
                 MLFLOW_TRACE_SESSION_KEY: "session-123",
             },
         )
-        self.assertEqual(kwargs["tags"], {"env": "test"})
+        self.assertEqual(
+            kwargs["tags"],
+            {
+                "env": "test",
+                "synalinks.program": "language_model",
+                "synalinks.phase": "inference",
+            },
+        )
 
 
 class TraceContextTest(testing.TestCase):
@@ -243,3 +253,150 @@ class RootTraceRegistryTest(testing.TestCase):
         self.assertEqual(root_trace_ids_since(mark), ["tr-1", "tr-2", "tr-3"])
         self.assertEqual(len(root_trace_ids_since(before)), 4)
         self.assertEqual(root_trace_ids_since(root_trace_mark()), [])
+
+
+class _RecordingSpan:
+    """Fake live span that records what the hook sets on it."""
+
+    def __init__(self):
+        self.attributes = {}
+        self.inputs = None
+        self.outputs = None
+        self.status = None
+        self.trace_id = "tr-1"
+
+    def set_attributes(self, attributes):
+        self.attributes.update(attributes)
+
+    def set_inputs(self, inputs):
+        self.inputs = inputs
+
+    def set_outputs(self, outputs):
+        self.outputs = outputs
+
+    def set_status(self, status):
+        self.status = status
+
+    def add_event(self, event):
+        pass
+
+    def end(self):
+        pass
+
+
+class MonitorStandardAttributesTest(testing.TestCase):
+    def _make_monitor(self):
+        monitor = Monitor.__new__(Monitor)
+        monitor.tracking_uri = None
+        monitor.experiment_name = "test"
+        monitor.call_start_times = {}
+        monitor._setup_done = True
+        return monitor
+
+    @patch("synalinks.src.hooks.monitor.mlflow")
+    @patch("litellm.acompletion")
+    async def test_language_model_span_carries_usage_cost_model_and_chat(
+        self, mock_completion, mock_mlflow
+    ):
+        from litellm.types.utils import Choices
+        from litellm.types.utils import Message
+        from litellm.types.utils import ModelResponse
+        from litellm.types.utils import Usage
+
+        response = ModelResponse(
+            choices=[Choices(message=Message(content="Hi there"), finish_reason="stop")],
+            usage=Usage(prompt_tokens=12, completion_tokens=3, total_tokens=15),
+        )
+        response._hidden_params = {"response_cost": 0.0021}
+        mock_completion.return_value = response
+        span = _RecordingSpan()
+        mock_mlflow.start_span_no_context.return_value = span
+
+        lm = LanguageModel(model="openai/gpt-4o-mini", hooks=[self._make_monitor()])
+        messages = ChatMessages(
+            messages=[ChatMessage(role=ChatRole.USER, content="Hello")]
+        )
+        await lm(messages)
+
+        self.assertEqual(span.attributes["mlflow.llm.model"], "openai/gpt-4o-mini")
+        self.assertEqual(span.attributes["mlflow.llm.provider"], "openai")
+        self.assertEqual(span.attributes["mlflow.message.format"], "openai")
+        self.assertEqual(
+            span.attributes["mlflow.chat.tokenUsage"],
+            {"input_tokens": 12, "output_tokens": 3, "total_tokens": 15},
+        )
+        self.assertEqual(span.attributes["mlflow.llm.cost"], {"total_cost": 0.0021})
+        self.assertEqual(span.inputs["messages"], [{"role": "user", "content": "Hello"}])
+        self.assertIn("data", span.inputs)
+        choice = span.outputs["choices"][0]
+        self.assertEqual(choice["message"]["content"], "Hi there")
+        self.assertEqual(choice["message"]["role"], "assistant")
+        self.assertEqual(choice["finish_reason"], "stop")
+        tags = mock_mlflow.start_span_no_context.call_args.kwargs["tags"]
+        self.assertEqual(tags["synalinks.phase"], "inference")
+
+    @patch("synalinks.src.hooks.monitor.mlflow")
+    @patch("litellm.acompletion")
+    async def test_usage_without_cost_sets_no_cost_attribute(
+        self, mock_completion, mock_mlflow
+    ):
+        from litellm.types.utils import Choices
+        from litellm.types.utils import Message
+        from litellm.types.utils import ModelResponse
+        from litellm.types.utils import Usage
+
+        mock_completion.return_value = ModelResponse(
+            choices=[Choices(message=Message(content="ok"))],
+            usage=Usage(prompt_tokens=5, completion_tokens=1, total_tokens=6),
+        )
+        span = _RecordingSpan()
+        mock_mlflow.start_span_no_context.return_value = span
+        lm = LanguageModel(model="ollama/mistral", hooks=[self._make_monitor()])
+        await lm(ChatMessages(messages=[ChatMessage(role=ChatRole.USER, content="x")]))
+        self.assertIn("mlflow.chat.tokenUsage", span.attributes)
+        self.assertNotIn("mlflow.llm.cost", span.attributes)
+
+    @patch("synalinks.src.hooks.monitor.mlflow")
+    async def test_module_with_registered_prompt_links_it_on_span(self, mock_mlflow):
+        from synalinks.src.backend import DataModel
+        from synalinks.src.modules import Module
+
+        class Query(DataModel):
+            query: str
+
+        class Echo(Module):
+            async def call(self, inputs, training=False):
+                return inputs
+
+        from mlflow.entities.model_registry import PromptVersion
+
+        span = _RecordingSpan()
+        mock_mlflow.start_span_no_context.return_value = span
+        module = Echo(name="echo", hooks=[self._make_monitor()])
+        module._mlflow_prompt_version = PromptVersion(
+            name="prog.echo", version=3, template="hello {{ inputs }}"
+        )
+        with patch("mlflow.tracing.trace_manager.InMemoryTraceManager") as manager:
+            await module(Query(query="q"))
+        self.assertEqual(
+            span.attributes["mlflow.linkedPrompts"],
+            '[{"name": "prog.echo", "version": "3"}]',
+        )
+        manager.get_instance.return_value.register_prompt.assert_called_once()
+        self.assertNotIn("mlflow.llm.model", span.attributes)
+        self.assertNotIn("mlflow.chat.tokenUsage", span.attributes)
+
+        # A version restored by `Program.load()` is a plain record: the span
+        # attribute is still set, the trace-level registration skipped.
+        span = _RecordingSpan()
+        mock_mlflow.start_span_no_context.return_value = span
+        module._mlflow_prompt_version = type(
+            "PV", (), {"name": "prog.echo", "version": 4, "uri": "prompts:/prog.echo/4"}
+        )()
+        with patch("mlflow.tracing.trace_manager.InMemoryTraceManager") as manager:
+            await module(Query(query="q"))
+        self.assertEqual(
+            span.attributes["mlflow.linkedPrompts"],
+            '[{"name": "prog.echo", "version": "4"}]',
+        )
+        manager.get_instance.return_value.register_prompt.assert_not_called()

@@ -124,6 +124,8 @@ class EarlyStopping(Callback):
                         ),
                     ):
                         all_metrics.extend(m.metrics)
+                    else:
+                        all_metrics.append(m)
                 for m in all_metrics:
                     if m.name == metric_name and getattr(m, "direction", None):
                         if m.direction == "up":
@@ -156,7 +158,7 @@ class EarlyStopping(Callback):
             self._set_monitor_op()
 
         current = self.get_monitor_value(logs)
-        if current >= self.stop_at:
+        if current is not None and current >= self.stop_at:
             self.program.stop_training = True
             return
         if current is None or epoch < self.start_from_epoch:

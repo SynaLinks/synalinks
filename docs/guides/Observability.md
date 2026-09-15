@@ -8,7 +8,7 @@
 ## Source
 
 ````python
---8<-- "guides/10_observability.py:387"
+--8<-- "guides/10_observability.py:391"
 ````
 
 ## Run log

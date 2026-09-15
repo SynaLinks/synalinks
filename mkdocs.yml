@@ -222,6 +222,7 @@ nav:
       - Synalinks API/Callbacks API/CSVLogger.md
       - Synalinks API/Callbacks API/BackUpAndRestore.md
       - Synalinks API/Callbacks API/EarlyStopping.md
+      - Synalinks API/Callbacks API/BudgetStopping.md
       - Synalinks API/Callbacks API/Monitor.md
     - Hooks API:
       - Synalinks API/Hooks API/index.md
