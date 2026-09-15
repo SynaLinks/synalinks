@@ -623,16 +623,9 @@ class MonitorParamsAndDatasetTest(testing.TestCase):
         self.assertEqual(client.log_inputs.call_count, 2)
         self.assertEqual(client.log_inputs.call_args.args[0], "r-ds")
 
-    def test_dataset_logging_disabled_and_failures_swallowed(self):
+    def test_dataset_logging_failures_are_swallowed(self):
         program = _FakeProgram()
         program._fit_inputs = {"x": [], "y": None, "val_x": None, "val_y": None}
-        cb = Monitor(log_program_plot=False, log_program_model=False, log_inputs=False)
-        cb.set_program(program)
-        cb.set_params({})
-        with patch.object(monitor_module, "mlflow") as mlf:
-            mlf.start_run.return_value = _FakeRun()
-            cb.on_train_begin()
-        mlf.data.from_pandas.assert_not_called()
         cb = Monitor(log_program_plot=False, log_program_model=False)
         cb.set_program(program)
         cb.set_params({})
@@ -680,7 +673,6 @@ class _Item:
 class MonitorModelLoggingTest(testing.TestCase):
     def _monitor(self, program=None, **kwargs):
         kwargs.setdefault("log_program_plot", False)
-        kwargs.setdefault("log_inputs", False)
         cb = Monitor(**kwargs)
         program = program or _SavingProgram(name="qa")
         program._fit_inputs = {"x": [_Item(question="q")], "y": None}
@@ -694,18 +686,21 @@ class MonitorModelLoggingTest(testing.TestCase):
         mlf.initialize_logged_model.return_value.model_id = model_id
         return mlf
 
-    def test_model_logged_once_at_train_end_by_default(self):
+    def test_model_logged_on_each_reward_improvement(self):
         cb, program = self._monitor()
         with patch.object(monitor_module, "mlflow") as mlf:
             self._mlf(mlf)
             cb.on_train_begin()
             cb.on_epoch_begin(0)
             cb.on_epoch_end(0, logs={"reward": 0.4, "val_reward": 0.5})
+            self.assertEqual(mlf.models.Model.log.call_count, 1)
             cb.on_epoch_begin(1)
             cb.on_epoch_end(1, logs={"reward": 0.6, "val_reward": 0.7})
-            self.assertFalse(mlf.models.Model.log.called)
+            self.assertEqual(mlf.models.Model.log.call_count, 2)
             cb.on_train_end(logs={"reward": 0.6, "val_reward": 0.7})
-        mlf.initialize_logged_model.assert_called_once()
+        # No extra model at train end: the last improvement is the final one.
+        self.assertEqual(mlf.models.Model.log.call_count, 2)
+        self.assertEqual(mlf.initialize_logged_model.call_count, 2)
         init_kwargs = mlf.initialize_logged_model.call_args.kwargs
         self.assertEqual(init_kwargs["source_run_id"], "run-train")
         self.assertEqual(init_kwargs["model_type"], "synalinks_program")
@@ -714,13 +709,14 @@ class MonitorModelLoggingTest(testing.TestCase):
         self.assertEqual(log_kwargs["model_id"], "m-1")
         self.assertEqual(log_kwargs["step"], 1)
         self.assertEqual(log_kwargs["model_type"], "synalinks_program")
+        self.assertEqual(log_kwargs["registered_model_name"], "qa")
         self.assertEqual(log_kwargs["pip_requirements"], [f"synalinks=={__version__}"])
-        self.assertEqual(log_kwargs["artifacts"], {"program": program.saved_paths[0]})
+        self.assertEqual(log_kwargs["artifacts"], {"program": program.saved_paths[-1]})
         self.assertIsInstance(log_kwargs["python_model"], SynalinksProgramModel)
         self.assertEqual(log_kwargs["input_example"], {"question": "q"})
         self.assertIsNotNone(log_kwargs["signature"])
         self.assertIsNone(log_kwargs["prompts"])
-        mlf.finalize_logged_model.assert_called_once_with("m-1", "READY")
+        mlf.finalize_logged_model.assert_called_with("m-1", "READY")
         self.assertEqual(program._mlflow_model_id, "m-1")
         self.assertEqual(program._mlflow_run_id, "run-train")
         self.assertEqual(program._mlflow_experiment_id, "exp-1")
@@ -731,8 +727,8 @@ class MonitorModelLoggingTest(testing.TestCase):
             "m-1", {"synalinks.best": "true"}
         )
 
-    def test_model_logged_on_improvement_only(self):
-        cb, program = self._monitor(log_model_freq="improvement")
+    def test_model_not_logged_when_reward_does_not_improve(self):
+        cb, program = self._monitor()
         with patch.object(monitor_module, "mlflow") as mlf:
             self._mlf(mlf)
             mlf.initialize_logged_model.return_value.model_id = "m-a"
@@ -768,7 +764,7 @@ class MonitorModelLoggingTest(testing.TestCase):
             cb.on_test_begin()
             cb.on_test_end(logs={"reward": 0.3})
         mlf.start_run.assert_called_once_with(
-            run_name="test", tags={"mlflow.parentRunId": "run-train"}
+            run_name="qa_test", tags={"mlflow.parentRunId": "run-train"}
         )
         mlf.set_active_model.assert_called_once_with(model_id="m-9")
         self.assertEqual(mlf.log_metrics.call_args.kwargs["model_id"], "m-9")
@@ -782,7 +778,7 @@ class MonitorModelLoggingTest(testing.TestCase):
             self._mlf(mlf)
             cb.on_test_begin()
             cb.on_test_end(logs={"reward": 0.3})
-        mlf.start_run.assert_called_once_with(run_name="test")
+        mlf.start_run.assert_called_once_with(run_name="qa_test")
 
     def test_expectations_logged_next_to_rewards(self):
         cb = Monitor()
@@ -873,8 +869,8 @@ class PyfuncModelTest(testing.TestCase):
         outputs = model.predict(None, [{"q": "hi"}])
         self.assertEqual(outputs, [{"answer": "HI"}, None])
 
-    def test_load_context_imports_custom_modules_and_loads_program(self):
-        model = SynalinksProgramModel(custom_object_modules=["json"])
+    def test_load_context_loads_program(self):
+        model = SynalinksProgramModel()
         context = type("Ctx", (), {"artifacts": {"program": "/tmp/p.json"}})()
         with (
             patch.object(monitor_module, "_BackgroundLoop"),
@@ -916,9 +912,7 @@ class _FakeGenerator:
 class MonitorPromptRegistryTest(testing.TestCase):
     def _monitor(self, module, **kwargs):
         program = _FakeMonitoredProgram([module], name="qa prog")
-        cb = Monitor(
-            log_program_plot=False, log_program_model=False, log_inputs=False, **kwargs
-        )
+        cb = Monitor(log_program_plot=False, log_program_model=False, **kwargs)
         cb.set_program(program)
         cb.set_params({"epochs": 3, "optimizer": "OMEGA"})
         return cb, program
@@ -1008,7 +1002,7 @@ class MonitorPromptRegistryTest(testing.TestCase):
         module = _FakeGenerator("generator", "Answer briefly.")
         program = _FakeMonitoredProgram([module], name="qa")
         program.save = lambda path, overwrite=True: open(path, "w").write("{}")
-        cb = Monitor(log_program_plot=False, log_inputs=False)
+        cb = Monitor(log_program_plot=False)
         cb.set_program(program)
         cb.set_params({"epochs": 1})
         with patch.object(monitor_module, "mlflow") as mlf:
@@ -1040,56 +1034,6 @@ class MonitorPromptRegistryTest(testing.TestCase):
         messages = monitor_module._render_prompt_messages(module)
         self.assertEqual(messages[0]["role"], "system")
 
-    def test_register_prompts_disabled(self):
-        module = _FakeGenerator("generator", "Answer briefly.")
-        cb, _ = self._monitor(module, register_prompts=False)
-        with patch.object(monitor_module, "mlflow") as mlf:
-            self._mlf(mlf)
-            cb.on_train_begin()
-            cb.on_epoch_end(0, logs={"reward": 0.4, "val_reward": 0.5})
-            cb.on_train_end(logs={"reward": 0.4})
-        mlf.genai.register_prompt.assert_not_called()
-        mlf.genai.set_prompt_alias.assert_not_called()
-
     def test_prompt_name_sanitized(self):
         self.assertEqual(monitor_module._prompt_name("my prog", "gen/1"), "my_prog.gen_1")
         self.assertEqual(monitor_module._prompt_name(None, "gen"), "program.gen")
-
-
-class MonitorObservabilityDefaultsTest(testing.TestCase):
-    def test_defaults_come_from_enable_observability(self):
-        defaults = {
-            "run_name": "nightly",
-            "registered_model_name": "qa-prod",
-            "log_program_model": False,
-            "register_prompts": False,
-            "log_inputs": False,
-        }
-        with patch.object(
-            monitor_module, "mlflow_monitor_defaults", return_value=defaults
-        ):
-            cb = Monitor()
-            explicit = Monitor(log_program_model=True, run_name="mine")
-        self.assertEqual(cb.run_name, "nightly")
-        self.assertEqual(cb.registered_model_name, "qa-prod")
-        self.assertFalse(cb.log_program_model)
-        self.assertFalse(cb.register_prompts)
-        self.assertFalse(cb.log_inputs)
-        self.assertTrue(explicit.log_program_model)
-        self.assertEqual(explicit.run_name, "mine")
-
-    def test_enable_observability_records_monitor_defaults(self):
-        from synalinks.src.backend import config
-
-        saved = config.mlflow_monitor_defaults()
-        try:
-            config.enable_observability(
-                experiment_name="obs", run_name="r", register_prompts=False
-            )
-            defaults = config.mlflow_monitor_defaults()
-            self.assertEqual(defaults["run_name"], "r")
-            self.assertFalse(defaults["register_prompts"])
-            self.assertTrue(defaults["log_program_model"])
-        finally:
-            config._MLFLOW_MONITOR_DEFAULTS.update(saved)
-            config._ENABLE_OBSERVABILITY = False

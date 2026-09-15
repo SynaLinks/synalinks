@@ -9,7 +9,6 @@ import re
 import tempfile
 import threading
 import time
-import warnings
 
 import numpy as np
 
@@ -18,13 +17,11 @@ from synalinks.src.backend import JsonDataModel
 from synalinks.src.backend import SymbolicDataModel
 from synalinks.src.backend.config import is_observability_enabled
 from synalinks.src.backend.config import mlflow_experiment_name
-from synalinks.src.backend.config import mlflow_monitor_defaults
 from synalinks.src.backend.config import mlflow_tracking_uri
 from synalinks.src.callbacks.callback import Callback
 from synalinks.src.hooks import monitor as monitor_hook
 from synalinks.src.metrics.em_metrics import _collect_embedding_models
 from synalinks.src.metrics.lm_metrics import _collect_language_models
-from synalinks.src.trainers import compile_utils
 from synalinks.src.utils.async_utils import run_maybe_nested
 from synalinks.src.version import __version__
 
@@ -130,26 +127,18 @@ class SynalinksProgramModel(mlflow.pyfunc.PythonModel if MLFLOW_AVAILABLE else o
     of dicts or a DataFrame with one column per field) and outputs are the
     program's output JSON dicts (`None` for a failed sample).
 
-    Args:
-        custom_object_modules (list): Optional import paths of the modules
-            declaring the user's custom `DataModel`, `Module` or `Program`
-            subclasses (decorated with
-            `synalinks.saving.register_synalinks_serializable`), imported
-            before the program is loaded.
+    Custom `DataModel`, `Module` or `Program` subclasses are resolved by
+    `Program.load()` from their import path, so the code declaring them only
+    needs to be importable where the model is loaded.
     """
 
-    def __init__(self, custom_object_modules=None):
-        self.custom_object_modules = list(custom_object_modules or [])
+    def __init__(self):
         self.program = None
         self._loop = None
 
     def load_context(self, context):
-        import importlib
-
         from synalinks.src.programs import Program
 
-        for module_name in self.custom_object_modules:
-            importlib.import_module(module_name)
         self.program = Program.load(context.artifacts["program"])
         self._loop = _BackgroundLoop()
 
@@ -289,25 +278,25 @@ class Monitor(Callback):
       number of modules and trainable variables) and every language or
       embedding model reachable from the program (`lm.<name>.model`, api
       base, sampling settings).
-    - **Datasets**: the train and validation sets as MLflow dataset inputs
-      (`log_inputs=True`), one row per sample with JSON `inputs` and
-      `expectations` columns.
+    - **Datasets**: the train and validation sets as MLflow dataset inputs,
+      one row per sample with JSON `inputs` and `expectations` columns.
     - **Model**: the program (architecture and trained variables, the JSON
-      of `Program.save()`) as an MLflow pyfunc model (`log_program_model=True`)
-      wrapped in `SynalinksProgramModel`, so it can be loaded with
-      `mlflow.pyfunc.load_model()`, served with `mlflow models serve`, and
-      registered in the Model Registry (`registered_model_name`). Each logged
-      model is an MLflow LoggedModel version linked to the run; its id is
-      written into the saved program (`program._mlflow_model_id`) so later
-      `evaluate()` runs of the same program link their traces and metrics to
-      that version and nest under the training run. `log_model_freq`
-      chooses when to log: `"end"` (default), `"improvement"` of
-      `model_monitor`, or every `"epoch"`.
+      of `Program.save()`) as an MLflow pyfunc model wrapped in
+      `SynalinksProgramModel`, so it can be loaded with
+      `mlflow.pyfunc.load_model()` and served with `mlflow models serve`. A
+      new version is logged every time `val_reward` improves (`reward` when
+      there is no validation data, the end of training when neither is
+      available), registered in the Model Registry under the program's name;
+      the best one is tagged `synalinks.best`. Each is an MLflow LoggedModel
+      linked to the run; its id is written into the saved program
+      (`program._mlflow_model_id`) so later `evaluate()` runs of the same
+      program link their traces and metrics to that version and nest under
+      the training run.
     - **Prompts**: each trainable `Generator`-like module's prompt (the
       system turn rendered from its optimized instructions and examples, plus
       a `{{ inputs }}` user turn, the module's output schema as
       `response_format`, and its LM settings as `model_config`) is registered
-      in the MLflow Prompt Registry (`register_prompts=True`) under
+      in the MLflow Prompt Registry under
       `<program>.<module>`. A new version is created at every epoch where the
       rendered prompt changed, its commit message and `val_reward` tag
       recording that epoch's validation reward; the best version gets the
@@ -324,8 +313,8 @@ class Monitor(Callback):
         experiment_name (str): Name of the MLflow experiment. If None, uses
             the experiment of `synalinks.enable_observability()` when it was
             called (so runs land next to their traces), else the program name.
-        run_name (str): Name of the MLflow run. If None, uses the `run_name` of
-            `synalinks.enable_observability()`, else auto-generated.
+        run_name (str): Name of the MLflow run. If None, the program's name,
+            suffixed `_train` or `_test`.
         tracking_uri (str): MLflow tracking server URI. If None, uses the
             value from `synalinks.enable_observability()` or the default
             (local ./mlruns directory or MLFLOW_TRACKING_URI env var).
@@ -335,34 +324,8 @@ class Monitor(Callback):
             (default: True).
         log_program_plot (bool): Whether to log the program plot as an artifact
             at the beginning of training (default: True).
-        log_program_model (bool): Whether to log the program as an MLflow pyfunc
-            model (default: the value given to `synalinks.enable_observability()`,
-            else True).
-        log_model_freq (str): When to log the model: `"end"` of training
-            (default), on every `"improvement"` of `model_monitor`, or every
-            `"epoch"`. The best model of the run is tagged `synalinks.best`.
-        model_monitor (str): Metric watched by `log_model_freq="improvement"`
-            (default: `"val_reward"`; falls back to `"reward"` when absent).
-        model_mode (str): One of `{"auto", "min", "max"}` for `model_monitor`
-            (default: `"auto"`, inferred from the metric's direction).
-        registered_model_name (str): Optional. Register each logged model as a
-            new version of this Model Registry name (default: the value given to
-            `synalinks.enable_observability()`).
-        code_paths (list): Optional. Local files or directories to package with
-            the model (the code declaring custom DataModels or modules).
-        custom_object_modules (list): Optional. Import paths imported before
-            the program is loaded back from the model (modules registering
-            custom objects with `register_synalinks_serializable`).
-        model_signature (str): `"schema"` (default) derives the model signature
-            from the program's input/output JSON schemas, `"infer"` infers it
-            from the first training sample, `None` logs no signature.
-        register_prompts (bool): Whether to register the prompts of the
-            program's trainable modules in the MLflow Prompt Registry, one
-            version per epoch where the prompt changed (default: the value given
-            to `synalinks.enable_observability()`, else True).
-        log_inputs (bool): Whether to log the train, validation and evaluation
-            data as MLflow dataset inputs of the run (default: the value given to
-            `synalinks.enable_observability()`, else True).
+        log_program_model (bool): Whether to log the program as an MLflow model
+            (default: True).
         tags (dict): Optional tags to add to the MLflow run.
         run_id (str): Optional. The id of an existing MLflow run to resume
             instead of starting a new one. Metrics keep being appended to it,
@@ -435,50 +398,18 @@ class Monitor(Callback):
         log_batch_metrics=False,
         log_epoch_metrics=True,
         log_program_plot=True,
-        log_program_model=None,
-        log_model_freq="end",
-        model_monitor="val_reward",
-        model_mode="auto",
-        registered_model_name=None,
-        code_paths=None,
-        custom_object_modules=None,
-        model_signature="schema",
-        register_prompts=None,
-        log_inputs=None,
+        log_program_model=True,
         tags=None,
         run_id=None,
         resume=False,
         log_assessments=True,
     ):
         super().__init__()
-        if log_model_freq not in ("end", "improvement", "epoch"):
-            raise ValueError(
-                "`log_model_freq` must be 'end', 'improvement' or 'epoch', "
-                f"got {log_model_freq!r}."
-            )
-        if model_mode not in ("auto", "min", "max"):
-            warnings.warn(
-                f"Monitor model_mode {model_mode} is unknown, fallback to auto mode.",
-                stacklevel=2,
-            )
-            model_mode = "auto"
         if not MLFLOW_AVAILABLE:
             raise ImportError(
                 "mlflow is required for the Monitor callback. "
                 "Install it with: pip install mlflow"
             )
-
-        defaults = mlflow_monitor_defaults()
-        if log_program_model is None:
-            log_program_model = defaults["log_program_model"]
-        if register_prompts is None:
-            register_prompts = defaults["register_prompts"]
-        if log_inputs is None:
-            log_inputs = defaults["log_inputs"]
-        if registered_model_name is None:
-            registered_model_name = defaults["registered_model_name"]
-        if run_name is None:
-            run_name = defaults["run_name"]
 
         self.experiment_name = experiment_name
         self.run_name = run_name
@@ -487,15 +418,6 @@ class Monitor(Callback):
         self.log_epoch_metrics = log_epoch_metrics
         self.log_program_plot = log_program_plot
         self.log_program_model = log_program_model
-        self.log_model_freq = log_model_freq
-        self.model_monitor = model_monitor
-        self.model_mode = model_mode
-        self.registered_model_name = registered_model_name
-        self.code_paths = code_paths
-        self.custom_object_modules = custom_object_modules
-        self.model_signature = model_signature
-        self.register_prompts = register_prompts
-        self.log_inputs = log_inputs
         self.tags = tags or {}
         self.run_id = run_id
         self.resume = resume
@@ -512,8 +434,7 @@ class Monitor(Callback):
         self._epoch_counters = None
         self._fit_t0 = None
         self._epoch_t0 = None
-        self._model_monitor_op = None
-        self._model_best = None
+        self._model_best = -np.inf
         self._logged_models = []
         self._active_model = None
         self._prompt_versions = {}
@@ -540,6 +461,8 @@ class Monitor(Callback):
     def _start_run(self, run_name_suffix="", tags=None):
         """Start a new MLflow run, or resume one (`run_id` / `resume`)."""
         run_name = self.run_name
+        if run_name is None and self.program is not None and self.program.name:
+            run_name = self.program.name
         if run_name and run_name_suffix:
             run_name = f"{run_name}_{run_name_suffix}"
         elif run_name_suffix:
@@ -737,7 +660,7 @@ class Monitor(Callback):
         Rows hold JSON strings (not dicts) so MLflow's pandas digest covers
         the data. Only the schema, digest and size are stored on the run.
         """
-        if self._run is None or x is None or not self.log_inputs:
+        if self._run is None or x is None:
             return
         try:
             import pandas as pd
@@ -878,12 +801,12 @@ class Monitor(Callback):
                         "run_id": run_id,
                     }
                     if value is not None:
-                        tags[self.model_monitor] = str(value)
+                        tags["val_reward"] = str(value)
                     if optimizer:
                         tags["optimizer"] = str(optimizer)
                     commit_message = f"epoch {epoch}"
                     if value is not None:
-                        commit_message += f": {self.model_monitor}={value:.4f}"
+                        commit_message += f": val_reward={value:.4f}"
                     prompt_version = await asyncio.to_thread(
                         mlflow.genai.register_prompt,
                         name=name,
@@ -918,62 +841,28 @@ class Monitor(Callback):
             version = history[-1][0]
             scored = [h for h in history if h[1] is not None]
             if scored:
-                pick = max if self._model_monitor_op is np.greater else min
-                version = pick(scored, key=lambda h: h[1])[0]
+                version = max(scored, key=lambda h: h[1])[0]
             try:
                 mlflow.genai.set_prompt_alias(name, "best", version)
             except Exception as e:
                 self.logger.debug(f"Failed to set the best alias of {name}: {e}")
 
-    def _set_model_monitor_op(self):
-        """Resolve `model_mode="auto"` from the monitored metric's direction."""
-        if self.model_mode == "min":
-            self._model_monitor_op = np.less
-        elif self.model_mode == "max":
-            self._model_monitor_op = np.greater
-        else:
-            metric_name = self.model_monitor.removeprefix("val_")
-            all_metrics = []
-            for m in getattr(self.program, "metrics", None) or []:
-                if isinstance(
-                    m, (compile_utils.CompileMetrics, compile_utils.MetricsList)
-                ):
-                    all_metrics.extend(m.metrics)
-                else:
-                    all_metrics.append(m)
-            for metric in all_metrics:
-                if metric.name == metric_name and getattr(metric, "direction", None):
-                    self._model_monitor_op = (
-                        np.greater if metric.direction == "up" else np.less
-                    )
-        if self._model_monitor_op is None:
-            self._model_monitor_op = np.greater
-        self._model_best = -np.inf if self._model_monitor_op is np.greater else np.inf
-
     def _monitored_value(self, logs):
+        """The epoch's `val_reward`, else `reward`, else `None`."""
         logs = logs or {}
-        value = logs.get(self.model_monitor)
+        value = logs.get("val_reward")
         if value is None:
-            value = logs.get(self.model_monitor.removeprefix("val_"))
+            value = logs.get("reward")
         return value
 
     def _maybe_log_model(self, epoch, logs):
-        """Log the program model at epoch end according to `log_model_freq`."""
-        if not self.log_program_model or self.log_model_freq == "end":
+        """Log a new model version when the reward improved this epoch."""
+        if not self.log_program_model:
             return
         value = self._monitored_value(logs)
-        if self.log_model_freq == "improvement":
-            if value is None:
-                warnings.warn(
-                    f"Monitor can log the model on improvement only with "
-                    f"{self.model_monitor} available, skipping.",
-                    stacklevel=2,
-                )
-                return
-            if not self._model_monitor_op(value, self._model_best):
-                return
-        if value is not None and self._model_monitor_op(value, self._model_best):
-            self._model_best = value
+        if value is None or value <= self._model_best:
+            return
+        self._model_best = value
         self._log_model(step=epoch, value=value)
 
     def _input_example(self):
@@ -998,7 +887,7 @@ class Monitor(Callback):
         name = self.program.name or "program"
         tags = {"synalinks.program": name, "synalinks.epoch": str(step)}
         if value is not None:
-            tags[f"synalinks.{self.model_monitor}"] = str(value)
+            tags["synalinks.reward"] = str(value)
         try:
             logged_model = mlflow.initialize_logged_model(
                 name=name, source_run_id=run_id, model_type=_MODEL_TYPE, tags=tags
@@ -1018,15 +907,11 @@ class Monitor(Callback):
                 if pv is not None
             }
             input_example = self._input_example()
-            signature = None
-            if self.model_signature == "schema":
-                signature = build_signature(
-                    getattr(self.program, "input_schema", None),
-                    getattr(self.program, "output_schema", None),
-                    input_example=input_example,
-                )
-            elif self.model_signature == "infer" and input_example is not None:
-                signature = build_signature(None, None, input_example=input_example)
+            signature = build_signature(
+                getattr(self.program, "input_schema", None),
+                getattr(self.program, "output_schema", None),
+                input_example=input_example,
+            )
             with tempfile.TemporaryDirectory() as tmpdir:
                 path = os.path.join(tmpdir, "program.json")
                 self.program.save(path)
@@ -1040,13 +925,12 @@ class Monitor(Callback):
                     step=step,
                     tags=tags,
                     prompts=[pv.uri for pv in self._prompt_versions.values()] or None,
-                    registered_model_name=self.registered_model_name,
-                    python_model=SynalinksProgramModel(self.custom_object_modules),
+                    registered_model_name=name,
+                    python_model=SynalinksProgramModel(),
                     artifacts={"program": path},
                     signature=signature,
                     input_example=input_example,
                     pip_requirements=[f"synalinks=={__version__}"],
-                    code_paths=self.code_paths,
                 )
             mlflow.finalize_logged_model(model_id, "READY")
             self._logged_models.append((step, model_id, value))
@@ -1063,11 +947,7 @@ class Monitor(Callback):
         best = self._logged_models[-1]
         scored = [m for m in self._logged_models if m[2] is not None]
         if scored:
-            best = (
-                max(scored, key=lambda m: m[2])
-                if (self._model_monitor_op is np.greater)
-                else min(scored, key=lambda m: m[2])
-            )
+            best = max(scored, key=lambda m: m[2])
         try:
             mlflow.MlflowClient().set_logged_model_tags(
                 best[1], {"synalinks.best": "true"}
@@ -1084,11 +964,11 @@ class Monitor(Callback):
         self._fit_t0 = time.perf_counter()
         self._fit_counters = self._snapshot_counters()
         self._logged_models = []
+        self._model_best = -np.inf
         self._prompt_versions = {}
         self._prompt_hashes = {}
         self._prompt_history = {}
         self._prompt_snapshot = {}
-        self._set_model_monitor_op()
 
         run_maybe_nested(self._log_params())
 
@@ -1111,13 +991,10 @@ class Monitor(Callback):
                 )
             )
 
-        if self.log_program_model and (
-            self.log_model_freq == "end" or not self._logged_models
-        ):
+        if self.log_program_model and not self._logged_models:
             self._log_model(step=self._epoch, value=self._monitored_value(logs))
         self._tag_best_model()
-        if self.register_prompts:
-            self._set_prompt_aliases()
+        self._set_prompt_aliases()
 
         self._end_run()
         self._in_training = False
@@ -1145,13 +1022,12 @@ class Monitor(Callback):
             metrics["epoch_duration_s"] = time.perf_counter() - self._epoch_t0
         run_maybe_nested(self._log_metrics(metrics, step=epoch))
         self.logger.debug(f"Logged metrics for epoch {epoch}")
-        if self.register_prompts:
-            # Snapshot taken when validation began; without validation the
-            # state at epoch end is the one to register.
-            if not self._prompt_snapshot:
-                self._prompt_snapshot = self._snapshot_prompts()
-            run_maybe_nested(self._register_prompts(epoch, logs))
-            self._prompt_snapshot = {}
+        # Snapshot taken when validation began; without validation the
+        # state at epoch end is the one to register.
+        if not self._prompt_snapshot:
+            self._prompt_snapshot = self._snapshot_prompts()
+        run_maybe_nested(self._register_prompts(epoch, logs))
+        self._prompt_snapshot = {}
         self._maybe_log_model(epoch, logs)
 
     def on_train_batch_begin(self, batch, logs=None):
@@ -1169,7 +1045,7 @@ class Monitor(Callback):
 
     def on_test_begin(self, logs=None):
         """Called at the beginning of evaluation or validation."""
-        if self._in_training and self.register_prompts:
+        if self._in_training:
             # The state being validated is the one whose reward we record.
             self._prompt_snapshot = self._snapshot_prompts()
         # Only start a new run if we're not already in a training run

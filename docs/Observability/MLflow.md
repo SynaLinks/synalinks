@@ -356,7 +356,7 @@ was called it is added to every `fit()` and `evaluate()` automatically; pass one
   and every language or embedding model reachable from the program
   (`lm.<name>.model`, api base, sampling settings).
 - **Datasets**: the train and validation sets as MLflow dataset inputs of the run, one
-  row per sample with JSON `inputs` and `expectations` columns (`log_inputs`).
+  row per sample with JSON `inputs` and `expectations` columns.
 - **The program plot**, **the program model** and **its prompts**, described below.
 
 ### Basic Usage
@@ -394,15 +394,14 @@ You can view the program plot in the MLflow UI under the "Artifacts" tab of your
 When `log_program_model=True` (the default), the Monitor callback logs the whole
 program (architecture and trained variables, the JSON written by `Program.save()`) as
 an MLflow **pyfunc model** wrapped in `synalinks.callbacks.SynalinksProgramModel`.
-Each logged model is an MLflow 3 **LoggedModel** version of type `synalinks_program`,
-linked to the training run and carrying the epoch metrics logged at that step, so the
-Versions view of the experiment compares training runs side by side.
+A new model is logged every time `val_reward` improves (`reward` without validation
+data, the end of training when neither is available). Each is an MLflow 3
+**LoggedModel** version of type `synalinks_program`, linked to the training run and
+carrying the epoch metrics logged at that step, so the Versions view of the experiment
+compares them side by side; the best one is tagged `synalinks.best`. Every logged
+model is also registered in the **Model Registry** under the program's name, so
+`models:/<program name>/<version>` and registry aliases work out of the box.
 
-- `log_model_freq="end"` (default) logs one model at the end of training,
-  `"improvement"` logs one every time `model_monitor` (default `val_reward`) improves,
-  `"epoch"` logs one per epoch. The best model of the run is tagged `synalinks.best`.
-- `registered_model_name="my-program"` registers every logged model as a new version
-  in the Model Registry.
 - The model can be loaded and served anywhere `synalinks` is installed:
 
 ```python
@@ -414,11 +413,10 @@ model.predict({"question": "What is the capital of France?"})
 ```
 
 or with `mlflow models serve -m models:/<model_id>`. The model's signature is derived
-from the program's input and output JSON schemas (`model_signature="schema"`; use
-`"infer"` to infer it from the first training sample, or `None`). Programs using custom
-`DataModel`, `Module` or `Program` subclasses need the code that declares them: pass
-`code_paths=[...]` to package it and `custom_object_modules=["my_package.models"]` so
-it is imported before the program is loaded.
+from the program's input and output JSON schemas (inferred from the first training
+sample when the schema cannot be expressed). Custom `DataModel`, `Module` or `Program`
+subclasses are resolved by `Program.load()` from their import path, so the code
+declaring them only needs to be importable where the model is loaded.
 
 The model id is written into the saved program (`program._mlflow_model_id`, persisted
 by `Program.save()` under the `mlflow` key). A later `evaluate()` of that program, even
@@ -427,7 +425,7 @@ version and nests its run under the training run.
 
 ### Prompt Registry
 
-When `register_prompts=True` (the default), the prompts of the program's trainable
+The prompts of the program's trainable
 modules (`Generator`, `ChainOfThought`, ... every module holding an `Instructions`
 variable) are registered in the MLflow **Prompt Registry** under the name
 `<program>.<module>`. Each registered version is a chat prompt: the system turn is the
@@ -454,21 +452,12 @@ shown on the model page) and to every later trace of the module (`mlflow.linkedP
 | Parameter | Default | Description |
 |-----------|---------|-------------|
 | `experiment_name` | Program name | MLflow experiment name |
-| `run_name` | Auto-generated | MLflow run name |
+| `run_name` | Program name | MLflow run name, suffixed `_train` / `_test` |
 | `tracking_uri` | Local `./mlruns` | MLflow tracking server URI |
 | `log_batch_metrics` | `False` | Log metrics at batch level |
 | `log_epoch_metrics` | `True` | Log metrics at epoch level |
 | `log_program_plot` | `True` | Save program visualization as artifact |
-| `log_program_model` | `True` | Log the program as an MLflow pyfunc model and LoggedModel version |
-| `log_model_freq` | `"end"` | When to log the model: `"end"`, `"improvement"` of `model_monitor`, or every `"epoch"` |
-| `model_monitor` | `"val_reward"` | Metric watched by `log_model_freq="improvement"` and recorded on prompt versions |
-| `model_mode` | `"auto"` | `"auto"`, `"min"` or `"max"` for `model_monitor` |
-| `registered_model_name` | `None` | Register each logged model as a version of this Model Registry name |
-| `code_paths` | `None` | Files or directories to package with the model |
-| `custom_object_modules` | `None` | Modules to import before loading the program back from the model |
-| `model_signature` | `"schema"` | `"schema"`, `"infer"` or `None` |
-| `register_prompts` | `True` | Register the program's prompts in the Prompt Registry, one version per changed epoch |
-| `log_inputs` | `True` | Log the train, validation and evaluation data as dataset inputs |
+| `log_program_model` | `True` | Log the program as a registered MLflow model, a new version per reward improvement |
 | `tags` | `{}` | Additional tags for the run |
 | `run_id` | `None` | Existing run to resume instead of starting a new one; the step counter continues after the last logged step |
 | `resume` | `False` | Look up a run named `run_name` in the experiment and resume it, creating it the first time |
