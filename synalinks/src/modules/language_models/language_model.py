@@ -302,6 +302,27 @@ def _set_if_unset(kwargs, values):
         kwargs.setdefault(key, value)
 
 
+SUPPORTED_PROVIDERS = (
+    "anthropic",
+    "azure",
+    "bedrock",
+    "cohere",
+    "deepseek",
+    "doubleword",
+    "gemini",
+    "groq",
+    "huggingface",
+    "mirai",
+    "mistral",
+    "ollama",
+    "openai",
+    "openrouter",
+    "together_ai",
+    "vllm",
+    "xai",
+)
+
+
 @synalinks_export(
     [
         "synalinks.LanguageModel",
@@ -321,6 +342,8 @@ class LanguageModel(Module):
     allow to constrain the use of a specific tool like Groq or Anthropic.
 
     For the complete list of models, please refer to the providers documentation.
+    The provider prefixes accepted in `model` (the part before the `/`) are
+    returned by `LanguageModel.supported_providers()`.
 
     **Using OpenAI models**
 
@@ -512,6 +535,32 @@ class LanguageModel(Module):
     )
     ```
 
+    **Using Mirai models**
+
+    Mirai is an on-device inference engine for Apple silicon, similar to
+    Ollama but faster (`brew install mirai`). Start the server first with the
+    model registry id; it downloads the model if needed and serves an
+    OpenAI-compatible API on `http://localhost:8000/v1`:
+
+    ```bash
+    mirai server --model trymirai/Qwen3.8-27B-M
+    ```
+
+    The server hosts that one model and ignores the `model` field of
+    requests, so the name after `mirai/` is informational. The `mirai/`
+    prefix is rewritten to `hosted_vllm/` internally (same wire format, no
+    API key) and `api_base` is defaulted to the local server, so structured
+    outputs flow through the JSON schema path. Pass `api_base` explicitly
+    for another host or port (`--host`/`--port` on the server side).
+
+    ```python
+    import synalinks
+
+    language_model = synalinks.LanguageModel(
+        model="mirai/Qwen3.8-27B-M",
+    )
+    ```
+
     To cascade models in case there is anything wrong with
     the model provider (hence making your pipelines more robust).
     Use the `fallback` argument like in this example:
@@ -631,6 +680,13 @@ class LanguageModel(Module):
             model = model.replace("doubleword", "openai", 1)
             if not api_base:
                 api_base = "https://api.doubleword.ai/v1"
+        if model_provider == "mirai":
+            # Mirai serves a local OpenAI-compatible API without an API
+            # key; `hosted_vllm` speaks that wire format and never asks
+            # for one.
+            model = model.replace("mirai", "hosted_vllm", 1)
+            if not api_base:
+                api_base = "http://localhost:8000/v1"
         self.model = model
         if fallback is not None:
             # Lazy import: `get` lives in the package __init__ which imports
@@ -920,10 +976,12 @@ class LanguageModel(Module):
                 or self.model.startswith("azure")
                 or self.model.startswith("deepseek")
                 or self.model.startswith("together_ai")
+                or self.model.startswith("huggingface")
             ):
                 # Use constrained structured output for openai/azure
-                # plus deepseek and together_ai which expose
-                # OpenAI-compatible APIs that honor the same payload.
+                # plus deepseek, together_ai and huggingface (TGI and
+                # Inference Providers) which expose OpenAI-compatible APIs
+                # that honor the same payload.
                 # OpenAI/Azure require the field  "additionalProperties"
                 # Also OpenAI/Azure disallow the field "description" in $ref
                 if "properties" in schema:
@@ -988,6 +1046,7 @@ class LanguageModel(Module):
                 raise ValueError(
                     f"LM provider '{provider}' not supported yet, please ensure that"
                     " they support constrained structured output and fill an issue."
+                    f" Supported providers: {', '.join(SUPPORTED_PROVIDERS)}."
                 )
 
         if self.api_base:
@@ -1267,6 +1326,29 @@ class LanguageModel(Module):
                 raise
 
         return await _do_call()
+
+    @classmethod
+    def supported_providers(cls):
+        """Returns the provider prefixes supported for structured output.
+
+        These are the values accepted before the `/` in `model`, e.g.
+        `"openai"` in `"openai/gpt-4o-mini"`. Some are routed to a different
+        litellm provider internally (`ollama` to `ollama_chat`, `vllm` to
+        `hosted_vllm`, `doubleword` to `openai`, `mirai` to `hosted_vllm`); the
+        names listed here are the
+        ones to write in `model`. Other litellm providers can still be used
+        for plain chat completion, but structured output raises for them.
+
+        ```python
+        import synalinks
+
+        print(synalinks.LanguageModel.supported_providers())
+        ```
+
+        Returns:
+            (list): The sorted list of supported provider prefixes.
+        """
+        return list(SUPPORTED_PROVIDERS)
 
     def _obj_type(self):
         return "LanguageModel"

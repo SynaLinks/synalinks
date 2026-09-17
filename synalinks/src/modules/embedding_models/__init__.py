@@ -46,6 +46,24 @@ def deserialize(config, custom_objects=None):
     )
 
 
+@synalinks_export("synalinks.embedding_models.supported_providers")
+def supported_providers():
+    """Returns the supported embedding provider prefixes.
+
+    Shortcut for `EmbeddingModel.supported_providers()`.
+
+    ```python
+    import synalinks
+
+    print(synalinks.embedding_models.supported_providers())
+    ```
+
+    Returns:
+        (list): The sorted list of supported provider prefixes.
+    """
+    return EmbeddingModel.supported_providers()
+
+
 @synalinks_export("synalinks.embedding_models.get")
 def get(identifier):
     """Retrieves a Synalinks EmbeddingModel instance.

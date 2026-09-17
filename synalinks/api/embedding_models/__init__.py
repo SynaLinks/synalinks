@@ -7,6 +7,9 @@ since your modifications would be overwritten.
 from synalinks.src.modules.embedding_models import deserialize as deserialize
 from synalinks.src.modules.embedding_models import get as get
 from synalinks.src.modules.embedding_models import serialize as serialize
+from synalinks.src.modules.embedding_models import (
+    supported_providers as supported_providers,
+)
 from synalinks.src.modules.embedding_models.embedding_model import (
     EmbeddingModel as EmbeddingModel,
 )
