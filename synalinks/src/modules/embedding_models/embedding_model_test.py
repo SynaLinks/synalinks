@@ -8,6 +8,7 @@ from litellm.types.utils import EmbeddingResponse
 from litellm.types.utils import PromptTokensDetailsWrapper
 from litellm.types.utils import Usage
 
+import synalinks
 from synalinks.src import testing
 from synalinks.src.backend import EmbeddingRequest
 from synalinks.src.backend import Embeddings
@@ -200,6 +201,25 @@ class EMCounterPopulationTest(testing.TestCase):
         self.assertEqual(em.cumulated_tokens, 0)
         self.assertEqual(em.cumulated_vectors, 2)
         self.assertEqual(em.inference_cumulated_vectors, 2)
+
+
+class SupportedProvidersTest(testing.TestCase):
+    def test_lists_every_provider_prefix(self):
+        providers = EmbeddingModel.supported_providers()
+        self.assertEqual(providers, sorted(providers))
+        for provider in ("azure", "gemini", "ollama", "openai", "vertex_ai"):
+            self.assertIn(provider, providers)
+
+    def test_package_level_function_matches_classmethod(self):
+        self.assertEqual(
+            synalinks.embedding_models.supported_providers(),
+            EmbeddingModel.supported_providers(),
+        )
+
+    def test_returns_a_fresh_list(self):
+        providers = EmbeddingModel.supported_providers()
+        providers.append("nope")
+        self.assertNotIn("nope", EmbeddingModel.supported_providers())
 
 
 class EMFileCacheTest(testing.TestCase):

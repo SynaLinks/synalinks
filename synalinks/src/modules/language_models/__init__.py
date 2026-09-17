@@ -46,6 +46,24 @@ def deserialize(config, custom_objects=None):
     )
 
 
+@synalinks_export("synalinks.language_models.supported_providers")
+def supported_providers():
+    """Returns the provider prefixes supported for structured output.
+
+    Shortcut for `LanguageModel.supported_providers()`.
+
+    ```python
+    import synalinks
+
+    print(synalinks.language_models.supported_providers())
+    ```
+
+    Returns:
+        (list): The sorted list of supported provider prefixes.
+    """
+    return LanguageModel.supported_providers()
+
+
 @synalinks_export("synalinks.language_models.get")
 def get(identifier):
     """Retrieves a Synalinks LanguageModel instance.

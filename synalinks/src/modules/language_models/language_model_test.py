@@ -956,6 +956,98 @@ class LMFileCacheTest(testing.TestCase):
         self.assertIsNotNone(restored._file_cache)
 
 
+class SupportedProvidersTest(testing.TestCase):
+    def test_lists_every_provider_prefix(self):
+        providers = LanguageModel.supported_providers()
+        self.assertEqual(providers, sorted(providers))
+        for provider in (
+            "anthropic",
+            "azure",
+            "bedrock",
+            "cohere",
+            "deepseek",
+            "doubleword",
+            "gemini",
+            "groq",
+            "huggingface",
+            "mirai",
+            "mistral",
+            "ollama",
+            "openai",
+            "openrouter",
+            "together_ai",
+            "vllm",
+            "xai",
+        ):
+            self.assertIn(provider, providers)
+        # Internal litellm aliases are not what users write in `model`.
+        self.assertNotIn("ollama_chat", providers)
+        self.assertNotIn("hosted_vllm", providers)
+
+    def test_package_level_function_matches_classmethod(self):
+        self.assertEqual(
+            synalinks.language_models.supported_providers(),
+            LanguageModel.supported_providers(),
+        )
+
+    def test_returns_a_fresh_list(self):
+        providers = LanguageModel.supported_providers()
+        providers.append("nope")
+        self.assertNotIn("nope", LanguageModel.supported_providers())
+
+    @patch("litellm.acompletion")
+    async def test_mirai_routes_to_local_hosted_vllm(self, mock_completion):
+        class Answer(DataModel):
+            answer: str
+
+        lm = LanguageModel(model="mirai/Qwen3.8-27B-M")
+        self.assertEqual(lm.model, "hosted_vllm/Qwen3.8-27B-M")
+        self.assertEqual(lm.api_base, "http://localhost:8000/v1")
+        mock_completion.return_value = {
+            "choices": [{"message": {"content": '{"answer": "B"}'}}]
+        }
+        result = await lm(_chat_messages(), schema=Answer.get_schema())
+        self.assertEqual(result.get_json(), {"answer": "B"})
+        called = mock_completion.call_args.kwargs
+        self.assertEqual(called["api_base"], "http://localhost:8000/v1")
+        self.assertEqual(called["response_format"]["type"], "json_schema")
+        self.assertEqual(
+            called["response_format"]["json_schema"]["schema"], Answer.get_schema()
+        )
+
+    def test_mirai_keeps_an_explicit_api_base(self):
+        lm = LanguageModel(
+            model="mirai/Qwen3.8-27B-M", api_base="http://10.0.0.2:8080/v1"
+        )
+        self.assertEqual(lm.api_base, "http://10.0.0.2:8080/v1")
+
+    @patch("litellm.acompletion")
+    async def test_huggingface_uses_native_json_schema(self, mock_completion):
+        class Answer(DataModel):
+            answer: str
+
+        lm = LanguageModel(model="huggingface/together/Qwen/Qwen3-8B")
+        mock_completion.return_value = {
+            "choices": [{"message": {"content": '{"answer": "B"}'}}]
+        }
+        result = await lm(_chat_messages(), schema=Answer.get_schema())
+        self.assertEqual(result.get_json(), {"answer": "B"})
+        response_format = mock_completion.call_args.kwargs["response_format"]
+        self.assertEqual(response_format["type"], "json_schema")
+        self.assertEqual(response_format["json_schema"]["name"], "structured_output")
+        self.assertTrue(response_format["json_schema"]["strict"])
+        self.assertEqual(response_format["json_schema"]["schema"], Answer.get_schema())
+        self.assertNotIn("tools", mock_completion.call_args.kwargs)
+
+    async def test_unsupported_provider_error_lists_supported_ones(self):
+        class Answer(DataModel):
+            answer: str
+
+        lm = LanguageModel(model="unknown_provider/some-model")
+        with self.assertRaisesRegex(ValueError, "Supported providers: anthropic"):
+            await lm(_chat_messages(), schema=Answer.get_schema())
+
+
 class ToolWireFormatTest(testing.TestCase):
     """A wire-format tool declaration must be plain, self-contained data.
 

@@ -91,7 +91,7 @@ Synalinks 是一个开源的神经符号框架，可以轻松地创建、训练�
 - **内嵌、免容器的沙箱**：智能体在一个[安全、隔离的运行时](https://synalinks.github.io/synalinks/guides/Agents/)中运行不可信代码和工具，**无需 Docker 或外部沙箱服务**。整个技术栈是纯 Python 且可嵌入的，非常适合脚本编写、研究、无服务器/云端部署（S3、Lambda、notebook 等），甚至可以用来打造 CLI 工具！
 - **内嵌数据库支持**：基于内嵌图数据库构建[基于图的 RAG 和智能体记忆](https://synalinks.github.io/synalinks/guides/Knowledge%20Base/)，支持**受约束的知识图谱抽取**和**自动语义去重**，无需运行独立的图数据库服务器。此外，还提供快速的内嵌 **SQL 知识库**，用于存储关系型数据并构建向量/SQL RAG。
 - **用上下文内 RL 优化你的提示词（以及其他一切）**：使用熟悉的 `.compile()` / `.fit()` / `.evaluate()` / `.predict()` API，为每个模块[训练和优化](https://synalinks.github.io/synalinks/guides/Training/)提示词、少样本示例以及[任何可训练变量](https://synalinks.github.io/synalinks/guides/Trainable%20Variables/)，**完全不触碰模型权重**。
-- **轻松切换模型**：通过 `synalinks.set_default_language_model(...)` 一次性设置默认值，或传入字符串标识符，即可借助 [LiteLLM](https://docs.litellm.ai/docs/) 在 Ollama、vLLM、OpenAI、Azure、Anthropic、Mistral、Groq、Gemini、xAI、Cohere、DeepSeek、Together AI、OpenRouter、AWS Bedrock 和 Doubleword 之间自由切换，还包括[多目标模型选择](https://synalinks.github.io/synalinks/guides/Multi-Objective%20LM%20Selection/)，帮你在成本/质量之间挑选最佳模型。
+- **轻松切换模型**：通过 `synalinks.set_default_language_model(...)` 一次性设置默认值，或传入字符串标识符，即可借助 [LiteLLM](https://docs.litellm.ai/docs/) 在 Ollama、vLLM、OpenAI、Azure、Anthropic、Mistral、Groq、Gemini、xAI、Cohere、DeepSeek、Together AI、OpenRouter、AWS Bedrock、Doubleword 和 Mirai 之间自由切换，还包括[多目标模型选择](https://synalinks.github.io/synalinks/guides/Multi-Objective%20LM%20Selection/)，帮你在成本/质量之间挑选最佳模型。
 - **一条命令搭建脚手架，自带编码智能体也没问题**：用 `synalinks init` 引导创建一个生产就绪的项目（内置脚本、智能体和训练模板），再装上官方的 [Synalinks 技能](https://github.com/SynaLinks/synalinks-skills)，让 Claude Code、Cursor、Copilot 等从一开始就写出地道的 Synalinks 代码。
 
 此外，还有你对一个生产级框架所期待的一切：

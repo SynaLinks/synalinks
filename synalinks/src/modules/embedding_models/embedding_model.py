@@ -86,6 +86,21 @@ def _accumulate(obj, phase_prefix, increments, extras):
             details[k] = details.get(k, 0) + v
 
 
+SUPPORTED_PROVIDERS = (
+    "azure",
+    "bedrock",
+    "cohere",
+    "gemini",
+    "huggingface",
+    "mistral",
+    "ollama",
+    "openai",
+    "together_ai",
+    "vertex_ai",
+    "voyage",
+)
+
+
 @synalinks_export(
     [
         "synalinks.EmbeddingModel",
@@ -101,7 +116,9 @@ class EmbeddingModel(Module):
     within the data. These vector representations, known as embeddings,
     allow for more efficient and effective processing in various tasks.
 
-    Many providers are available like Gemini, Azure, Vertex AI or Ollama.
+    Many providers are available like Gemini, Azure, Vertex AI or Ollama;
+    the provider prefixes accepted in `model` (the part before the `/`) are
+    returned by `EmbeddingModel.supported_providers()`.
 
     For the complete list of models, please refer to the providers documentation.
 
@@ -408,6 +425,27 @@ class EmbeddingModel(Module):
                 raise
 
         return await _do_call()
+
+    @classmethod
+    def supported_providers(cls):
+        """Returns the supported embedding provider prefixes.
+
+        These are the values accepted before the `/` in `model`, e.g.
+        `"gemini"` in `"gemini/text-embedding-004"`. Embedding requests are
+        forwarded to litellm as-is, so any litellm embedding provider works;
+        the names listed here are the ones documented and verified with
+        synalinks.
+
+        ```python
+        import synalinks
+
+        print(synalinks.EmbeddingModel.supported_providers())
+        ```
+
+        Returns:
+            (list): The sorted list of supported provider prefixes.
+        """
+        return list(SUPPORTED_PROVIDERS)
 
     def _obj_type(self):
         return "EmbeddingModel"
