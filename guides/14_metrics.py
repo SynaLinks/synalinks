@@ -203,8 +203,9 @@ source.
 - **`CachedTokens`**, **`CacheCreationTokens`**,
   **`CacheHitRate`**: for providers that support prompt
   caching, how often the cache is hitting.
-- **`Throughput`**, **`TokensPerSecond`**: speed of the
-  pipeline.
+- **`Throughput`** (output tokens per second),
+  **`TokensPerSecond`** (input + output tokens per second):
+  speed of the pipeline.
 
 #### Embedding-model metrics
 

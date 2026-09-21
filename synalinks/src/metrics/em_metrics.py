@@ -98,6 +98,8 @@ class EmbeddingModelOperationalMetric(Metric):
         self._embedding_models = []
         self._baselines = {suffix: 0 for suffix in _TRACKED_SUFFIXES}
         self._wall_baseline = 0.0
+        # The bound program's own phase clock (thread default when unbound).
+        self._phase_clock = None
 
     @property
     def embedding_models(self):
@@ -105,6 +107,7 @@ class EmbeddingModelOperationalMetric(Metric):
 
     def bind_program(self, program):
         self._embedding_models = _collect_embedding_models(program)
+        self._phase_clock = getattr(program, "_phase_clock", None)
         self._snapshot()
 
     def _attr(self, suffix):
@@ -117,7 +120,7 @@ class EmbeddingModelOperationalMetric(Metric):
     def _snapshot(self):
         for suffix in _TRACKED_SUFFIXES:
             self._baselines[suffix] = self._read(suffix)
-        self._wall_baseline = read_phase_wall_clock_s(self._phase)
+        self._wall_baseline = read_phase_wall_clock_s(self._phase, self._phase_clock)
 
     def _delta(self, suffix):
         return self._read(suffix) - self._baselines.get(suffix, 0)
@@ -127,7 +130,9 @@ class EmbeddingModelOperationalMetric(Metric):
         the last snapshot: the throughput denominator (concurrency-safe,
         unlike summed `elapsed_s`).
         """
-        return read_phase_wall_clock_s(self._phase) - self._wall_baseline
+        return (
+            read_phase_wall_clock_s(self._phase, self._phase_clock) - self._wall_baseline
+        )
 
     def reset_state(self):
         self._snapshot()
