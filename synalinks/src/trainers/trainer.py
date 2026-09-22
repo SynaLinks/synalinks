@@ -16,6 +16,7 @@ from synalinks.src import optimizers as optimizers_module
 from synalinks.src import rewards as rewards_module
 from synalinks.src import tree
 from synalinks.src.backend.common import numpy
+from synalinks.src.backend.common.op_scope import PhaseClock
 from synalinks.src.backend.common.op_scope import op_scope
 from synalinks.src.saving import serialization_lib
 from synalinks.src.trainers.compile_utils import CompileMetrics
@@ -159,6 +160,10 @@ class Trainer:
         self._compile_metrics = None
         self._reward_tracker = None
         self._per_sample_rewards = None
+        # Wall-clock per phase for this program only: the throughput metrics'
+        # denominator. Kept per program so programs evaluated concurrently on
+        # one event loop don't share (and corrupt) a single clock.
+        self._phase_clock = PhaseClock()
 
     @tracking.no_automatic_dependency_tracking
     def compile(
@@ -378,7 +383,7 @@ class Trainer:
         del x
         del training
         rewards = []
-        with op_scope("reward"):
+        with op_scope("reward", clock=self._phase_clock):
             if self._compile_reward is not None:
                 if not self._compile_reward.built:
                     self._compile_reward.build(y[0], y_pred[0])
@@ -1077,7 +1082,7 @@ class Trainer:
         if self.trainable_variables and isinstance(
             self.optimizer, optimizers_module.Optimizer
         ):
-            with op_scope("optimizer"):
+            with op_scope("optimizer", clock=self._phase_clock):
                 metrics = await self.optimizer.optimize(
                     step,
                     self.trainable_variables,
@@ -1175,7 +1180,7 @@ class Trainer:
         # attribute token / latency / cost to the program's forward pass
         # only. See synalinks.src.backend.common.op_scope; the active phase
         # is one of "inference", "reward", "optimizer", or None.
-        with op_scope("inference"):
+        with op_scope("inference", clock=self._phase_clock):
             tasks = []
             for inputs in x:
                 tasks.append(self(inputs, training=training))

@@ -117,6 +117,8 @@ class LMOperationalMetric(Metric):
         self._language_models = []
         self._baselines = {suffix: 0 for suffix in _TRACKED_SUFFIXES}
         self._wall_baseline = 0.0
+        # The bound program's own phase clock (thread default when unbound).
+        self._phase_clock = None
 
     @property
     def language_models(self):
@@ -124,6 +126,7 @@ class LMOperationalMetric(Metric):
 
     def bind_program(self, program):
         self._language_models = _collect_language_models(program)
+        self._phase_clock = getattr(program, "_phase_clock", None)
         self._snapshot()
 
     def _attr(self, suffix):
@@ -136,7 +139,7 @@ class LMOperationalMetric(Metric):
     def _snapshot(self):
         for suffix in _TRACKED_SUFFIXES:
             self._baselines[suffix] = self._read(suffix)
-        self._wall_baseline = read_phase_wall_clock_s(self._phase)
+        self._wall_baseline = read_phase_wall_clock_s(self._phase, self._phase_clock)
 
     def _delta(self, suffix):
         return self._read(suffix) - self._baselines.get(suffix, 0)
@@ -146,7 +149,9 @@ class LMOperationalMetric(Metric):
         the last snapshot. Used as the throughput denominator so concurrent
         (overlapping) calls don't inflate it the way summed `elapsed_s` does.
         """
-        return read_phase_wall_clock_s(self._phase) - self._wall_baseline
+        return (
+            read_phase_wall_clock_s(self._phase, self._phase_clock) - self._wall_baseline
+        )
 
     def reset_state(self):
         self._snapshot()
@@ -404,7 +409,10 @@ class TokensPerSecond(LMOperationalMetric):
 
 @synalinks_export("synalinks.metrics.Throughput")
 class Throughput(LMOperationalMetric):
-    """Throughput in LM calls per second (RPS) over this run.
+    """Throughput in output (completion) tokens per second over this run.
+
+    Divides by the phase's wall-clock span, so it reflects concurrency.
+    See `TokensPerSecond` for input + output tokens.
 
     Example:
 
@@ -424,7 +432,7 @@ class Throughput(LMOperationalMetric):
         wall = self._wall_clock_delta()
         if wall <= 0.0:
             return 0.0
-        return self._delta("calls") / wall
+        return self._delta("completion_tokens") / wall
 
 
 @synalinks_export("synalinks.metrics.AvgLatency")
@@ -433,9 +441,9 @@ class AvgLatency(LMOperationalMetric):
 
     Computed as ``elapsed_s / calls``. Because ``elapsed_s`` accumulates each
     call's own duration, this reports the mean per-call latency regardless of
-    how many calls ran concurrently -- unlike `Throughput`, which divides by
-    the phase's wall-clock span and so does reflect concurrency. The two
-    coincide (latency = 1 / throughput) only when calls run serially.
+    how many calls ran concurrently -- unlike `Throughput`, which divides
+    output tokens by the phase's wall-clock span and so does reflect
+    concurrency.
 
     Example:
 
@@ -1080,8 +1088,7 @@ class RewardTokensPerSecond(LMRewardsOperationalMetric):
 
 @synalinks_export("synalinks.metrics.RewardThroughput")
 class RewardThroughput(LMRewardsOperationalMetric):
-    """LM calls per second (RPS) during reward computation.
-
+    """Output (completion) tokens per second during reward computation.
     Example:
 
     ```python
@@ -1100,7 +1107,7 @@ class RewardThroughput(LMRewardsOperationalMetric):
         wall = self._wall_clock_delta()
         if wall <= 0.0:
             return 0.0
-        return self._delta("calls") / wall
+        return self._delta("completion_tokens") / wall
 
 
 @synalinks_export("synalinks.metrics.AvgRewardLatency")
@@ -1637,8 +1644,7 @@ class OptimizerTokensPerSecond(LMOptimizersOperationalMetric):
 
 @synalinks_export("synalinks.metrics.OptimizerThroughput")
 class OptimizerThroughput(LMOptimizersOperationalMetric):
-    """LM calls per second (RPS) during the optimizer step.
-
+    """Output (completion) tokens per second during the optimizer step.
     Example:
 
     ```python
@@ -1657,7 +1663,7 @@ class OptimizerThroughput(LMOptimizersOperationalMetric):
         wall = self._wall_clock_delta()
         if wall <= 0.0:
             return 0.0
-        return self._delta("calls") / wall
+        return self._delta("completion_tokens") / wall
 
 
 @synalinks_export("synalinks.metrics.AvgOptimizerLatency")

@@ -167,16 +167,16 @@ class OperationalMetricsResultTest(testing.TestCase):
     def test_throughput_and_tokens_per_second(self):
         lm = _stub_lm()
         m_tps = _bind(TokensPerSecond(), [lm])
-        m_rps = _bind(Throughput(), [lm])
+        m_out_tps = _bind(Throughput(), [lm])
         # Two calls of 2s each (summed elapsed = 4s) that ran concurrently in
-        # a 2s wall-clock window. Throughput divides by wall-clock, so it
-        # reflects real RPS (2/2) rather than the deflated 2/4 the old
-        # summed-elapsed denominator would give.
+        # a 2s wall-clock window. Both rates divide by wall-clock, so they
+        # reflect the real rate rather than one deflated by summed elapsed.
+        # Throughput counts output tokens only; TokensPerSecond counts all.
         _add_phase_wall_clock_s("inference", 2.0)
         _record(lm, prompt=400, completion=100, elapsed=2.0, cost=0.0)
         _record(lm, prompt=400, completion=100, elapsed=2.0, cost=0.0)
         self.assertEqual(m_tps.result(), 1000 / 2.0)
-        self.assertEqual(m_rps.result(), 2 / 2.0)
+        self.assertEqual(m_out_tps.result(), 200 / 2.0)
 
     def test_avg_latency(self):
         lm = _stub_lm()
@@ -247,13 +247,13 @@ class OperationalMetricsResultTest(testing.TestCase):
         lm = _stub_lm()
         m_avg_in = _bind(AvgInputTokensPerCall(), [lm])
         m_tps = _bind(TokensPerSecond(), [lm])
-        m_rps = _bind(Throughput(), [lm])
+        m_out_tps = _bind(Throughput(), [lm])
         m_lat = _bind(AvgLatency(), [lm])
         m_avg_total = _bind(AvgTotalTokensPerCall(), [lm])
         m_error = _bind(ErrorRate(), [lm])
         self.assertEqual(m_avg_in.result(), 0.0)
         self.assertEqual(m_tps.result(), 0.0)
-        self.assertEqual(m_rps.result(), 0.0)
+        self.assertEqual(m_out_tps.result(), 0.0)
         self.assertEqual(m_lat.result(), 0.0)
         self.assertEqual(m_avg_total.result(), 0.0)
         self.assertEqual(m_error.result(), 0.0)
@@ -577,7 +577,7 @@ class LMRatesAndCachePerPhaseTest(testing.TestCase):
         for (
             phase,
             Tps,
-            Rps,
+            OutTps,
             Lat,
             AvgIn,
             AvgOut,
@@ -592,7 +592,7 @@ class LMRatesAndCachePerPhaseTest(testing.TestCase):
                 lm = _stub_lm_with_extras()
                 metrics = {
                     "tps": _bind(Tps(), [lm]),
-                    "rps": _bind(Rps(), [lm]),
+                    "out_tps": _bind(OutTps(), [lm]),
                     "lat": _bind(Lat(), [lm]),
                     "avg_in": _bind(AvgIn(), [lm]),
                     "avg_out": _bind(AvgOut(), [lm]),
@@ -606,7 +606,7 @@ class LMRatesAndCachePerPhaseTest(testing.TestCase):
                 # Zero-state: every divisor-guarded metric returns 0(.0).
                 ratio_keys = (
                     "tps",
-                    "rps",
+                    "out_tps",
                     "lat",
                     "avg_in",
                     "avg_out",
@@ -633,7 +633,7 @@ class LMRatesAndCachePerPhaseTest(testing.TestCase):
                 _add_phase_wall_clock_s(phase, 4.0)  # throughput denominator
 
                 self.assertEqual(metrics["tps"].result(), 500 / 4.0)
-                self.assertEqual(metrics["rps"].result(), 2 / 4.0)
+                self.assertEqual(metrics["out_tps"].result(), 100 / 4.0)
                 self.assertEqual(metrics["lat"].result(), 4.0 / 2)
                 self.assertEqual(metrics["avg_in"].result(), 200.0)
                 self.assertEqual(metrics["avg_out"].result(), 50.0)
