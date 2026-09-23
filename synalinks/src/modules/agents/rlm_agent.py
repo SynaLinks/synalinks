@@ -1436,7 +1436,7 @@ class RecursiveLanguageModelAgent(FunctionCallingAgent):
         # name is also PINNED (``__rlm_pinned__``): the sandbox re-asserts it at
         # the start of every run, so a snippet that assigns over ``inputs`` —
         # LLM-written code does — breaks only itself, not the rest of the call.
-        bind = await sandbox.run(
+        bind = await sandbox.run_code(
             "inputs = _rlm_inputs\n__rlm_pinned__ = {'inputs': _rlm_inputs}",
             inputs={"_rlm_inputs": inputs_json},
         )

@@ -9,6 +9,8 @@ from synalinks.src.sandboxes.mirage_sandbox import MirageSandbox
 from synalinks.src.sandboxes.mirage_sandbox import _confinement_available
 from synalinks.src.sandboxes.mirage_sandbox import cap_malloc_arenas
 from synalinks.src.sandboxes.mirage_sandbox import malloc_trim
+from synalinks.src.sandboxes.sandbox import CommandResult
+from synalinks.src.sandboxes.sandbox import EntryInfo
 from synalinks.src.sandboxes.sandbox import ExecutionResult
 from synalinks.src.sandboxes.sandbox import Sandbox
 
@@ -44,37 +46,37 @@ class PinnedNamesTest(_SandboxTestCase):
 
     async def test_pinned_name_heals_on_the_next_run(self):
         sandbox = MirageSandbox(timeout=_TIMEOUT)
-        await sandbox.run(
+        await sandbox.run_code(
             "inputs = _rlm_inputs\n__rlm_pinned__ = {'inputs': _rlm_inputs}",
             inputs={"_rlm_inputs": {"frames": [1, 2, 3]}},
         )
         # The clobbering snippet breaks itself...
-        broken = await sandbox.run("inputs = None\nprint(inputs['frames'])")
+        broken = await sandbox.run_code("inputs = None\nprint(inputs['frames'])")
         self.assertIsNotNone(broken.error)
         # ...and only itself: the next run reads the pinned value again.
-        healed = await sandbox.run("print(inputs['frames'])")
+        healed = await sandbox.run_code("print(inputs['frames'])")
         self.assertTrue(healed.ok, healed.error)
         self.assertIn("[1, 2, 3]", healed.stdout)
 
     async def test_functions_reading_the_pinned_name_recover_too(self):
         sandbox = MirageSandbox(timeout=_TIMEOUT)
-        await sandbox.run(
+        await sandbox.run_code(
             "inputs = _rlm_inputs\n__rlm_pinned__ = {'inputs': _rlm_inputs}",
             inputs={"_rlm_inputs": {"frames": [7]}},
         )
-        await sandbox.run("def first_frame():\n    return inputs['frames'][0]")
-        await sandbox.run("inputs = 'garbage'")
-        result = await sandbox.run("print(first_frame())")
+        await sandbox.run_code("def first_frame():\n    return inputs['frames'][0]")
+        await sandbox.run_code("inputs = 'garbage'")
+        result = await sandbox.run_code("print(first_frame())")
         self.assertTrue(result.ok, result.error)
         self.assertIn("7", result.stdout)
 
     async def test_per_run_binding_still_wins_over_the_pin(self):
         sandbox = MirageSandbox(timeout=_TIMEOUT)
-        await sandbox.run(
+        await sandbox.run_code(
             "inputs = _rlm_inputs\n__rlm_pinned__ = {'inputs': _rlm_inputs}",
             inputs={"_rlm_inputs": {"frames": ["old"]}},
         )
-        result = await sandbox.run(
+        result = await sandbox.run_code(
             "print(inputs['frames'])", inputs={"inputs": {"frames": ["fresh"]}}
         )
         self.assertTrue(result.ok, result.error)
@@ -83,12 +85,12 @@ class PinnedNamesTest(_SandboxTestCase):
     async def test_rebinding_the_pin_replaces_it(self):
         sandbox = MirageSandbox(timeout=_TIMEOUT)
         for payload in ({"n": 1}, {"n": 2}):
-            await sandbox.run(
+            await sandbox.run_code(
                 "inputs = _rlm_inputs\n__rlm_pinned__ = {'inputs': _rlm_inputs}",
                 inputs={"_rlm_inputs": payload},
             )
-        await sandbox.run("inputs = None")
-        result = await sandbox.run("print(inputs['n'])")
+        await sandbox.run_code("inputs = None")
+        result = await sandbox.run_code("print(inputs['n'])")
         self.assertTrue(result.ok, result.error)
         self.assertIn("2", result.stdout)
 
@@ -118,7 +120,7 @@ class MallocHygieneTest(_SandboxTestCase):
         self.assertEqual(sandbox._malloc_arena_max, 2)
         untouched = MirageSandbox(timeout=_TIMEOUT, malloc_arena_max=None)
         self.assertIsNone(untouched._malloc_arena_max)
-        result = await untouched.run("print('still runs')")
+        result = await untouched.run_code("print('still runs')")
         self.assertTrue(result.ok)
 
     @unittest.skipUnless(
@@ -179,6 +181,78 @@ class MallocHygieneTest(_SandboxTestCase):
         self.assertLessEqual(arenas("cap"), 2)
 
 
+class E2BCompatTest(_SandboxTestCase):
+    """The E2B-named surface: create / files / commands / kill."""
+
+    async def test_create_and_kill(self):
+        sandbox = await MirageSandbox.create(timeout=_TIMEOUT, confine=False)
+        self.assertIsInstance(sandbox, MirageSandbox)
+        self.assertTrue(await sandbox.is_running())
+        self.assertTrue(await sandbox.kill())
+        self.assertFalse(await sandbox.is_running())
+
+    async def test_files_roundtrip(self):
+        sandbox = MirageSandbox(timeout=_TIMEOUT, confine=False)
+        info = await sandbox.files.write("/src/a.txt", "hello")
+        self.assertEqual(info.path, "/src/a.txt")
+        self.assertEqual(info.name, "a.txt")
+        self.assertEqual(await sandbox.files.read("/src/a.txt"), "hello")
+        self.assertTrue(await sandbox.files.exists("/src/a.txt"))
+        self.assertFalse(await sandbox.files.exists("/src/missing.txt"))
+        with self.assertRaises(FileNotFoundError):
+            await sandbox.files.read("/src/missing.txt")
+
+    async def test_files_bytes_are_exact(self):
+        sandbox = MirageSandbox(timeout=_TIMEOUT, confine=False)
+        payload = bytes([0, 255, 1, 2, 128])
+        await sandbox.files.write("/b.bin", payload)
+        self.assertEqual(await sandbox.files.read("/b.bin", format="bytes"), payload)
+
+    async def test_files_list_and_info(self):
+        sandbox = MirageSandbox(timeout=_TIMEOUT, confine=False)
+        await sandbox.files.write("/d/a.txt", "abc")
+        await sandbox.files.write("/d/sub/b.txt", "b")
+        top = await sandbox.files.list("/d")
+        self.assertEqual([e.path for e in top], ["/d/a.txt", "/d/sub"])
+        self.assertEqual([e.type for e in top], ["file", "dir"])
+        deep = await sandbox.files.list("/d", depth=2)
+        self.assertIn("/d/sub/b.txt", [e.path for e in deep])
+        info = await sandbox.files.get_info("/d/a.txt")
+        self.assertIsInstance(info, EntryInfo)
+        self.assertEqual((info.type, info.size), ("file", 3))
+
+    async def test_files_rename_remove_make_dir(self):
+        sandbox = MirageSandbox(timeout=_TIMEOUT, confine=False)
+        await sandbox.files.write("/a.txt", "x")
+        moved = await sandbox.files.rename("/a.txt", "/sub/b.txt")
+        self.assertEqual(moved.path, "/sub/b.txt")
+        self.assertFalse(await sandbox.files.exists("/a.txt"))
+        self.assertEqual(await sandbox.files.read("/sub/b.txt"), "x")
+        await sandbox.files.remove("/sub")
+        self.assertFalse(await sandbox.files.exists("/sub/b.txt"))
+        self.assertTrue(await sandbox.files.make_dir("/new"))
+        self.assertFalse(await sandbox.files.make_dir("/new"))
+        self.assertEqual((await sandbox.files.get_info("/new")).type, "dir")
+
+    async def test_commands_run(self):
+        sandbox = MirageSandbox(timeout=_TIMEOUT, confine=False)
+        await sandbox.files.write("/hello.txt", "hi")
+        result = await sandbox.commands.run("cat /hello.txt")
+        self.assertIsInstance(result, CommandResult)
+        self.assertEqual((result.stdout, result.exit_code), ("hi", 0))
+        self.assertTrue(result.ok)
+        failed = await sandbox.commands.run("cat /nope.txt")
+        self.assertNotEqual(failed.exit_code, 0)
+        self.assertFalse(failed.ok)
+        self.assertIsNotNone(failed.error)
+
+    async def test_run_is_a_deprecated_alias(self):
+        sandbox = MirageSandbox(timeout=_TIMEOUT, confine=False)
+        with self.assertWarns(DeprecationWarning):
+            result = await sandbox.run("1 + 1")
+        self.assertEqual(result.result, 2)
+
+
 class MirageSandboxTest(_SandboxTestCase):
     async def test_is_sandbox_subclass(self):
         sandbox = MirageSandbox(timeout=_TIMEOUT)
@@ -186,7 +260,7 @@ class MirageSandboxTest(_SandboxTestCase):
 
     async def test_run_returns_execution_result(self):
         sandbox = MirageSandbox(timeout=_TIMEOUT)
-        result = await sandbox.run("print('hello')")
+        result = await sandbox.run_code("print('hello')")
         self.assertIsInstance(result, ExecutionResult)
         self.assertIn("hello", result.stdout)
         self.assertTrue(result.ok)
@@ -201,20 +275,20 @@ class MirageSandboxTest(_SandboxTestCase):
         """
         sandbox = MirageSandbox(timeout=_TIMEOUT)
         payload = {"log": "x" * 300_000}
-        bind = await sandbox.run("inputs = _in", inputs={"_in": payload})
+        bind = await sandbox.run_code("inputs = _in", inputs={"_in": payload})
         self.assertTrue(bind.ok, bind.error)
-        result = await sandbox.run("print(len(inputs['log']))")
+        result = await sandbox.run_code("print(len(inputs['log']))")
         self.assertIn("300000", result.stdout)
 
     async def test_run_captures_error(self):
         sandbox = MirageSandbox(timeout=_TIMEOUT)
-        result = await sandbox.run("1 / 0")
+        result = await sandbox.run_code("1 / 0")
         self.assertFalse(result.ok)
         self.assertIn("ZeroDivisionError", result.error)
 
     async def test_traceback_is_trimmed_to_user_frames(self):
         sandbox = MirageSandbox(timeout=_TIMEOUT)
-        result = await sandbox.run("1 / 0")
+        result = await sandbox.run_code("1 / 0")
         # Bootstrap/launcher frames are hidden; only the user frame remains.
         self.assertIn('"<sandbox>"', result.stderr)
         self.assertNotIn("dill", result.stderr)
@@ -222,15 +296,15 @@ class MirageSandboxTest(_SandboxTestCase):
 
     async def test_state_persists_across_run_calls(self):
         sandbox = MirageSandbox(timeout=_TIMEOUT)
-        await sandbox.run("x = 7")
-        result = await sandbox.run("print(x * 6)")
+        await sandbox.run_code("x = 7")
+        result = await sandbox.run_code("print(x * 6)")
         self.assertIn("42", result.stdout)
 
     async def test_functions_and_classes_persist(self):
         sandbox = MirageSandbox(timeout=_TIMEOUT)
-        await sandbox.run("def sq(n):\n    return n * n")
-        await sandbox.run("import math\nclass P:\n    v = 3")
-        result = await sandbox.run("print(sq(4), math.floor(2.7), P.v)")
+        await sandbox.run_code("def sq(n):\n    return n * n")
+        await sandbox.run_code("import math\nclass P:\n    v = 3")
+        result = await sandbox.run_code("print(sq(4), math.floor(2.7), P.v)")
         self.assertIn("16 2 3", result.stdout)
 
     async def test_many_functions_persist(self):
@@ -242,10 +316,10 @@ class MirageSandboxTest(_SandboxTestCase):
         `RecursionError`, silently losing the whole namespace. One dump of the
         namespace memoizes the shared globals instead."""
         sandbox = MirageSandbox(timeout=_TIMEOUT)
-        await sandbox.run(
+        await sandbox.run_code(
             "\n".join(f"def f{i}(x):\n    return x + {i}" for i in range(120))
         )
-        result = await sandbox.run("print(f0(1), f119(1))")
+        result = await sandbox.run_code("print(f0(1), f119(1))")
         self.assertIn("1 120", result.stdout)
 
     async def test_unpicklable_value_does_not_drop_the_namespace(self):
@@ -256,10 +330,10 @@ class MirageSandboxTest(_SandboxTestCase):
         function carries only the globals it references, instead of the
         offending object along with the whole namespace."""
         sandbox = MirageSandbox(timeout=_TIMEOUT)
-        await sandbox.run(
+        await sandbox.run_code(
             "gen = (i for i in range(3))\ndef survivor(x):\n    return x * 3"
         )
-        result = await sandbox.run("print(survivor(5))")
+        result = await sandbox.run_code("print(survivor(5))")
         self.assertIn("15", result.stdout)
         self.assertIsNone(result.error)
 
@@ -272,28 +346,28 @@ class MirageSandboxTest(_SandboxTestCase):
         though ``helper`` is defined (top-down design: call first, fill in
         after)."""
         sandbox = MirageSandbox(timeout=_TIMEOUT)
-        await sandbox.run("def f(x):\n    return helper(x) + 1")
-        await sandbox.run("def helper(x):\n    return x * 10")
-        result = await sandbox.run("print(f(4))")
+        await sandbox.run_code("def f(x):\n    return helper(x) + 1")
+        await sandbox.run_code("def helper(x):\n    return x * 10")
+        result = await sandbox.run_code("print(f(4))")
         self.assertIn("41", result.stdout)
 
     async def test_method_sees_names_defined_in_later_runs(self):
         sandbox = MirageSandbox(timeout=_TIMEOUT)
-        await sandbox.run("class G:\n    def area(self):\n        return helper(3)")
-        await sandbox.run("def helper(x):\n    return x * 10")
-        result = await sandbox.run("print(G().area())")
+        await sandbox.run_code("class G:\n    def area(self):\n        return helper(3)")
+        await sandbox.run_code("def helper(x):\n    return x * 10")
+        result = await sandbox.run_code("print(G().area())")
         self.assertIn("30", result.stdout)
 
     async def test_rehomed_function_keeps_closure_and_kwdefaults(self):
         sandbox = MirageSandbox(timeout=_TIMEOUT)
-        await sandbox.run(
+        await sandbox.run_code(
             "def make_adder(n):\n"
             "    def add(x, *, scale=2):\n"
             "        return (x + n) * scale\n"
             "    return add\n"
             "add5 = make_adder(5)"
         )
-        result = await sandbox.run("print(add5(1), add5(1, scale=1))")
+        result = await sandbox.run_code("print(add5(1), add5(1, scale=1))")
         self.assertIn("12 6", result.stdout)
 
     async def test_imported_function_keeps_its_own_module_globals(self):
@@ -303,8 +377,8 @@ class MirageSandboxTest(_SandboxTestCase):
         names in them at call time. Rebuilding it on the sandbox namespace
         strips those: ``os.path.join`` re-homed this way loses ``sep``."""
         sandbox = MirageSandbox(timeout=_TIMEOUT)
-        await sandbox.run("from os.path import join")
-        result = await sandbox.run("print(join('a', 'b'))")
+        await sandbox.run_code("from os.path import join")
+        result = await sandbox.run_code("print(join('a', 'b'))")
         self.assertIn("a/b", result.stdout)
         self.assertFalse(result.error)
 
@@ -317,11 +391,11 @@ class MirageSandboxTest(_SandboxTestCase):
         the one that imported it. Worse, the class is re-homed *in place*, so
         a later plain ``import collections`` inherited the damage."""
         sandbox = MirageSandbox(timeout=_TIMEOUT)
-        await sandbox.run("from collections import Counter")
-        result = await sandbox.run("print(Counter('aab')['a'])")
+        await sandbox.run_code("from collections import Counter")
+        result = await sandbox.run_code("print(Counter('aab')['a'])")
         self.assertIn("2", result.stdout)
         self.assertFalse(result.error)
-        fresh = await sandbox.run(
+        fresh = await sandbox.run_code(
             "import collections\nprint(collections.Counter('aab')['a'])"
         )
         self.assertIn("2", fresh.stdout)
@@ -329,25 +403,25 @@ class MirageSandboxTest(_SandboxTestCase):
 
     async def test_state_survives_error(self):
         sandbox = MirageSandbox(timeout=_TIMEOUT)
-        await sandbox.run("keep = 11")
-        await sandbox.run("raise ValueError('boom')")
-        result = await sandbox.run("print(keep)")
+        await sandbox.run_code("keep = 11")
+        await sandbox.run_code("raise ValueError('boom')")
+        result = await sandbox.run_code("print(keep)")
         self.assertIn("11", result.stdout)
 
     async def test_inputs_are_bound(self):
         sandbox = MirageSandbox(timeout=_TIMEOUT)
-        result = await sandbox.run("print(given + 1)", inputs={"given": 41})
+        result = await sandbox.run_code("print(given + 1)", inputs={"given": 41})
         self.assertIn("42", result.stdout)
         self.assertTrue(result.ok)
 
     async def test_last_expression_is_captured_as_result(self):
         sandbox = MirageSandbox(timeout=_TIMEOUT)
-        result = await sandbox.run("a = 10\nb = 32\na + b")
+        result = await sandbox.run_code("a = 10\nb = 32\na + b")
         self.assertEqual(result.result, 42)
 
     async def test_result_variable_convention(self):
         sandbox = MirageSandbox(timeout=_TIMEOUT)
-        result = await sandbox.run("result = {'k': 5}\nresult")
+        result = await sandbox.run_code("result = {'k': 5}\nresult")
         self.assertEqual(result.result, {"k": 5})
 
     async def test_external_functions_bridge_into_sandbox(self):
@@ -359,7 +433,7 @@ class MirageSandboxTest(_SandboxTestCase):
         # Bound tools are called *synchronously* inside the sandbox: no
         # `await` / `asyncio.run(...)` ceremony.
         code = "out = adder(x=3, y=4)\nprint(out['sum'])\n"
-        result = await sandbox.run(code, external_functions={"adder": adder})
+        result = await sandbox.run_code(code, external_functions={"adder": adder})
         self.assertTrue(result.ok, msg=result.error)
         self.assertIn("7", result.stdout)
 
@@ -374,7 +448,7 @@ class MirageSandboxTest(_SandboxTestCase):
 
         sandbox = MirageSandbox(timeout=_TIMEOUT)
         # Last expression is the bare sync call result (the `result` convention).
-        result = await sandbox.run(
+        result = await sandbox.run_code(
             "adder(x=2, y=5)['sum']",
             external_functions={"adder": adder},
         )
@@ -392,7 +466,7 @@ class MirageSandboxTest(_SandboxTestCase):
             return {"sum": x + y}
 
         sandbox = MirageSandbox(timeout=_TIMEOUT)
-        result = await sandbox.run(
+        result = await sandbox.run_code(
             "out = adder(3, 4)\nprint(out['sum'])\n",
             external_functions={"adder": adder},
         )
@@ -407,7 +481,7 @@ class MirageSandboxTest(_SandboxTestCase):
             return {"submitted": result}
 
         sandbox = MirageSandbox(timeout=_TIMEOUT, external_functions={"submit": submit})
-        result = await sandbox.run("submit(result={'answer': 'done'})")
+        result = await sandbox.run_code("submit(result={'answer': 'done'})")
         self.assertTrue(result.ok, msg=result.error)
         self.assertEqual(captured["value"], {"answer": "done"})
 
@@ -446,8 +520,8 @@ class MirageSandboxTest(_SandboxTestCase):
 
     async def test_history_records_runs(self):
         sandbox = MirageSandbox(timeout=_TIMEOUT)
-        await sandbox.run("a = 1")
-        await sandbox.run("print(a)")
+        await sandbox.run_code("a = 1")
+        await sandbox.run_code("print(a)")
         history = sandbox.history()
         self.assertEqual(len(history), 2)
         self.assertEqual(history[0]["code"], "a = 1")
@@ -455,16 +529,16 @@ class MirageSandboxTest(_SandboxTestCase):
 
     async def test_reset_clears_state_and_history(self):
         sandbox = MirageSandbox(timeout=_TIMEOUT)
-        await sandbox.run("secret = 123")
+        await sandbox.run_code("secret = 123")
         sandbox.reset()
         self.assertEqual(sandbox.history(), [])
-        result = await sandbox.run("print(secret)")
+        result = await sandbox.run_code("print(secret)")
         self.assertFalse(result.ok)
         self.assertIn("NameError", result.error)
 
     async def test_timeout_surfaces_as_error(self):
         sandbox = MirageSandbox(timeout=1.0)
-        result = await sandbox.run("import time\ntime.sleep(5)")
+        result = await sandbox.run_code("import time\ntime.sleep(5)")
         self.assertFalse(result.ok)
         self.assertIn("TimeoutError", result.error)
 
@@ -863,22 +937,22 @@ class MirageSandboxTest(_SandboxTestCase):
 
     async def test_dump_load_round_trip(self):
         sandbox = MirageSandbox(timeout=_TIMEOUT)
-        await sandbox.run("secret = 1234")
+        await sandbox.run_code("secret = 1234")
         await sandbox.write_file("/keep.txt", "persisted")
         blob = sandbox.dump()
         restored = MirageSandbox.load(blob)
-        result = await restored.run("print(secret)")
+        result = await restored.run_code("print(secret)")
         self.assertIn("1234", result.stdout)
         read = await restored.read_file("/keep.txt")
         self.assertEqual(read["content"], "persisted")
 
     async def test_get_config_from_config_round_trip(self):
         sandbox = MirageSandbox(timeout=_TIMEOUT, name="cfg")
-        await sandbox.run("token = 'abc'")
+        await sandbox.run_code("token = 'abc'")
         config = sandbox.get_config()
         restored = MirageSandbox.from_config(config)
         self.assertEqual(restored.name, "cfg")
-        result = await restored.run("print(token)")
+        result = await restored.run_code("print(token)")
         self.assertIn("abc", result.stdout)
 
     async def test_fork_isolates_filesystem(self):
@@ -896,13 +970,13 @@ class MirageSandboxTest(_SandboxTestCase):
 
     async def test_fork_copy_repl_inherits_namespace(self):
         sandbox = MirageSandbox(timeout=_TIMEOUT)
-        await sandbox.run("base = 5")
+        await sandbox.run_code("base = 5")
         child = sandbox.fork(copy_repl=True)
-        result = await child.run("print(base * 2)")
+        result = await child.run_code("print(base * 2)")
         self.assertIn("10", result.stdout)
         # Child mutations do not leak back to the parent.
-        await child.run("base = 999")
-        parent_result = await sandbox.run("print(base)")
+        await child.run_code("base = 999")
+        parent_result = await sandbox.run_code("print(base)")
         self.assertIn("5", parent_result.stdout)
 
     async def test_diff_and_changes(self):
@@ -1038,14 +1112,14 @@ class MirageSandboxConfineTest(_SandboxTestCase):
                 timeout=_TIMEOUT, confine=True, extra_binds=[host_dir]
             )
             try:
-                result = await sandbox.run(
+                result = await sandbox.run_code(
                     f"import sys\nsys.path.insert(0, {host_dir!r})\n"
                     "import hostlibxyz\nprint(hostlibxyz.VALUE)\n"
                 )
                 self.assertTrue(result.ok, msg=result.error)
                 self.assertIn("4242", result.stdout)
                 # ...and it's read-only (host import-poisoning guard holds).
-                ro = await sandbox.run(
+                ro = await sandbox.run_code(
                     f"try:\n"
                     f"    open({os.path.join(host_dir, 'hostlibxyz.py')!r}, 'a')"
                     f".write('x')\n"
@@ -1063,12 +1137,12 @@ class MirageSandboxConfineTest(_SandboxTestCase):
         sandbox = MirageSandbox(timeout=_TIMEOUT, confine=True)
         try:
             self.assertTrue(sandbox._confine)
-            await sandbox.run("x = 41")
-            result = await sandbox.run("print(x + 1)")
+            await sandbox.run_code("x = 41")
+            result = await sandbox.run_code("print(x + 1)")
             self.assertTrue(result.ok, msg=result.error)
             self.assertIn("42", result.stdout)
             # third-party / stdlib imports still resolve inside the pivot
-            imp = await sandbox.run("import json, math\nprint(math.floor(2.5))")
+            imp = await sandbox.run_code("import json, math\nprint(math.floor(2.5))")
             self.assertTrue(imp.ok, msg=imp.error)
             self.assertIn("2", imp.stdout)
         finally:
@@ -1077,7 +1151,9 @@ class MirageSandboxConfineTest(_SandboxTestCase):
     async def test_confine_hides_host_filesystem(self):
         sandbox = MirageSandbox(timeout=_TIMEOUT, confine=True)
         try:
-            result = await sandbox.run("import os\nprint(os.path.exists('/etc/passwd'))")
+            result = await sandbox.run_code(
+                "import os\nprint(os.path.exists('/etc/passwd'))"
+            )
             self.assertIn("False", result.stdout)
         finally:
             sandbox.close()
@@ -1088,7 +1164,7 @@ class MirageSandboxConfineTest(_SandboxTestCase):
         # depth so host /proc/<pid>/root and /environ aren't even reachable).
         sandbox = MirageSandbox(timeout=_TIMEOUT, confine=True)
         try:
-            result = await sandbox.run(
+            result = await sandbox.run_code(
                 "import os\n"
                 "pids = [int(p) for p in os.listdir('/proc') if p.isdigit()]\n"
                 "print('mypid', os.getpid())\n"
@@ -1107,7 +1183,7 @@ class MirageSandboxConfineTest(_SandboxTestCase):
     async def test_confine_cuts_network(self):
         sandbox = MirageSandbox(timeout=_TIMEOUT, confine=True)
         try:
-            result = await sandbox.run(
+            result = await sandbox.run_code(
                 "import socket\n"
                 "try:\n"
                 "    socket.create_connection(('1.1.1.1', 80), 2)\n"
@@ -1124,10 +1200,10 @@ class MirageSandboxConfineTest(_SandboxTestCase):
         try:
             # a file written via the tool is visible to python at the same path
             await sandbox.write_file("/data.txt", "virtual-content")
-            read = await sandbox.run("print(open('/data.txt').read().strip())")
+            read = await sandbox.run_code("print(open('/data.txt').read().strip())")
             self.assertIn("virtual-content", read.stdout)
             # a file python writes is visible to the tool
-            await sandbox.run("open('/out.txt', 'w').write('from-python')")
+            await sandbox.run_code("open('/out.txt', 'w').write('from-python')")
             tool = await sandbox.read_file("/out.txt")
             self.assertEqual(tool["content"], "from-python")
         finally:
@@ -1142,7 +1218,7 @@ class MirageSandboxConfineTest(_SandboxTestCase):
         try:
             # The host-tool bridge must also work synchronously under confinement.
             code = "print(adder(x=2, y=3)['sum'])\n"
-            result = await sandbox.run(code, external_functions={"adder": adder})
+            result = await sandbox.run_code(code, external_functions={"adder": adder})
             self.assertTrue(result.ok, msg=result.error)
             self.assertIn("5", result.stdout)
         finally:
@@ -1195,7 +1271,7 @@ class MirageSandboxConfineTest(_SandboxTestCase):
             import os as _os
 
             target = _os.path.join(_os.path.dirname(_os.__file__), "os.py")
-            result = await sandbox.run(
+            result = await sandbox.run_code(
                 "import os\n"
                 f"try:\n"
                 f"    open({target!r}, 'a').write('x')\n"
@@ -1214,7 +1290,7 @@ class MirageSandboxConfineTest(_SandboxTestCase):
         sandbox = MirageSandbox(timeout=_TIMEOUT, confine=True, seccomp=True)
         try:
             self.assertTrue(sandbox.granted_capabilities()["seccomp"])
-            result = await sandbox.run(
+            result = await sandbox.run_code(
                 "import os\n"
                 "try:\n"
                 "    os.unshare(0)\n"
@@ -1233,7 +1309,7 @@ class MirageSandboxConfineTest(_SandboxTestCase):
         sandbox = MirageSandbox(timeout=_TIMEOUT, confine=True, seccomp=False)
         try:
             self.assertFalse(sandbox.granted_capabilities()["seccomp"])
-            result = await sandbox.run(
+            result = await sandbox.run_code(
                 "import os\n"
                 "try:\n"
                 "    os.unshare(0)\n"
@@ -1264,7 +1340,7 @@ class MirageSandboxConfineTest(_SandboxTestCase):
         sandbox = MirageSandbox(timeout=_TIMEOUT, confine=True, require_confinement=True)
         try:
             self.assertTrue(sandbox._confine)
-            result = await sandbox.run("print(40 + 2)")
+            result = await sandbox.run_code("print(40 + 2)")
             self.assertTrue(result.ok, msg=result.error)
             self.assertIn("42", result.stdout)
         finally:
@@ -1311,7 +1387,7 @@ class MirageSandboxConfineTest(_SandboxTestCase):
             self.assertEqual(child._extra_binds, ["/usr/share"])
             self.assertTrue(child._block_private_egress)
             # and it is genuinely confined to ITS OWN fork (host hidden)
-            r = await child.run("import os\nprint(os.path.exists('/etc/passwd'))")
+            r = await child.run_code("import os\nprint(os.path.exists('/etc/passwd'))")
             self.assertIn("False", r.stdout)
         finally:
             parent.close()
@@ -1328,7 +1404,7 @@ class MirageSandboxConfineTest(_SandboxTestCase):
             child = parent.fork(confine=True, name="sub")
             self.assertTrue(child._confine)
             # child sees the forked copy at the same path, host hidden
-            r = await child.run(
+            r = await child.run_code(
                 "import os\n"
                 "print('shared', open('/shared.txt').read().strip())\n"
                 "print('passwd', os.path.exists('/etc/passwd'))\n"
@@ -1336,10 +1412,10 @@ class MirageSandboxConfineTest(_SandboxTestCase):
             self.assertIn("shared parent-data", r.stdout)
             self.assertIn("passwd False", r.stdout)
             # child writes stay in the child fork; the parent never sees them
-            await child.run("open('/childonly.txt', 'w').write('x')")
+            await child.run_code("open('/childonly.txt', 'w').write('x')")
             self.assertIn("error", await parent.read_file("/childonly.txt"))
             # the parent itself is unconfined
-            rp = await parent.run("import os\nprint(os.path.exists('/etc/passwd'))")
+            rp = await parent.run_code("import os\nprint(os.path.exists('/etc/passwd'))")
             self.assertIn("True", rp.stdout)
         finally:
             parent.close()
@@ -1432,7 +1508,7 @@ class InfraSelfHealTest(_SandboxTestCase):
             "rebuild", calls["rebuild"] + 1
         )
         try:
-            result = await sandbox.run("print('x')")
+            result = await sandbox.run_code("print('x')")
         finally:
             sandbox.close()
         # exactly one rebuild, two execute attempts, and the healed run wins.
@@ -1454,7 +1530,7 @@ class InfraSelfHealTest(_SandboxTestCase):
             "rebuild", calls["rebuild"] + 1
         )
         try:
-            result = await sandbox.run("print('x')")
+            result = await sandbox.run_code("print('x')")
         finally:
             sandbox.close()
         # one heal, two attempts, then the infra error surfaces (no infinite loop).
@@ -1499,7 +1575,7 @@ class InfraSelfHealTest(_SandboxTestCase):
             "rebuild", calls["rebuild"] + 1
         )
         try:
-            result = await sandbox.run("raise ValueError('boom')")
+            result = await sandbox.run_code("raise ValueError('boom')")
         finally:
             sandbox.close()
         # a genuine snippet error must not trigger a rebuild/retry.

@@ -1,10 +1,13 @@
 # License Apache 2.0: (c) 2025-2026 Yoan Sallami (Synalinks Team)
 
+import warnings
 from typing import Any
 from typing import Callable
 from typing import Dict
 from typing import List
+from typing import Literal
 from typing import Optional
+from typing import Union
 
 from synalinks.src.api_export import synalinks_export
 from synalinks.src.backend import DataModel
@@ -50,6 +53,131 @@ class ExecutionResult(DataModel):
 
 @synalinks_export(
     [
+        "synalinks.sandboxes.CommandResult",
+        "synalinks.CommandResult",
+    ]
+)
+class CommandResult(DataModel):
+    """Result of a shell command run with ``sandbox.commands.run``.
+
+    Mirrors E2B's ``CommandResult``.
+    """
+
+    stdout: str = Field(default="", description="Captured stdout of the command.")
+    stderr: str = Field(default="", description="Captured stderr of the command.")
+    exit_code: int = Field(default=0, description="Exit code; 0 means success.")
+    error: Optional[str] = Field(
+        default=None,
+        description="Error message when the command failed, else null.",
+    )
+
+    @property
+    def ok(self) -> bool:
+        """True when the command exited with code 0."""
+        return self.exit_code == 0 and self.error is None
+
+
+@synalinks_export(
+    [
+        "synalinks.sandboxes.EntryInfo",
+        "synalinks.EntryInfo",
+    ]
+)
+class EntryInfo(DataModel):
+    """A file or directory in a sandbox filesystem (E2B's ``EntryInfo``)."""
+
+    name: str = Field(description="Base name of the entry.")
+    path: str = Field(description="Absolute path of the entry.")
+    type: Literal["file", "dir"] = Field(description="Entry kind.")
+    size: int = Field(default=0, description="Size in bytes (0 for directories).")
+
+
+@synalinks_export(
+    [
+        "synalinks.sandboxes.WriteInfo",
+        "synalinks.WriteInfo",
+    ]
+)
+class WriteInfo(DataModel):
+    """What ``sandbox.files.write`` wrote (E2B's ``WriteInfo``)."""
+
+    name: str = Field(description="Base name of the written file.")
+    path: str = Field(description="Absolute path of the written file.")
+    type: Literal["file", "dir"] = Field(default="file", description="Entry kind.")
+
+
+class Filesystem:
+    """The ``sandbox.files`` namespace, named after E2B's ``Filesystem``.
+
+    Backends with a filesystem subclass this and point
+    ``Sandbox._filesystem_class`` at the subclass. This default has no
+    filesystem, so every method raises ``NotImplementedError``.
+    """
+
+    def __init__(self, sandbox: "Sandbox"):
+        self._sandbox = sandbox
+
+    def _unsupported(self):
+        raise NotImplementedError("This sandbox has no filesystem.")
+
+    async def read(
+        self, path: str, format: Literal["text", "bytes"] = "text"
+    ) -> Union[str, bytes]:
+        """Read the file at ``path`` as text (default) or bytes."""
+        self._unsupported()
+
+    async def write(self, path: str, data: Union[str, bytes]) -> WriteInfo:
+        """Write ``data`` to ``path``, creating parent directories."""
+        self._unsupported()
+
+    async def list(self, path: str = "/", depth: int = 1) -> List[EntryInfo]:
+        """List the entries under the directory ``path``, ``depth`` levels deep."""
+        self._unsupported()
+
+    async def exists(self, path: str) -> bool:
+        """Whether a file or directory exists at ``path``."""
+        self._unsupported()
+
+    async def get_info(self, path: str) -> EntryInfo:
+        """Describe the entry at ``path``; raises ``FileNotFoundError`` if absent."""
+        self._unsupported()
+
+    async def remove(self, path: str) -> None:
+        """Delete the file or directory (recursively) at ``path``."""
+        self._unsupported()
+
+    async def rename(self, old_path: str, new_path: str) -> EntryInfo:
+        """Move ``old_path`` to ``new_path``; returns the new entry."""
+        self._unsupported()
+
+    async def make_dir(self, path: str) -> bool:
+        """Create ``path`` (and parents); ``False`` if it already existed."""
+        self._unsupported()
+
+
+class Commands:
+    """The ``sandbox.commands`` namespace, named after E2B's ``Commands``.
+
+    Backends with a shell subclass this and point
+    ``Sandbox._commands_class`` at the subclass. This default has no shell.
+    """
+
+    def __init__(self, sandbox: "Sandbox"):
+        self._sandbox = sandbox
+
+    async def run(self, cmd: str, timeout: Optional[float] = None) -> CommandResult:
+        """Run the shell command ``cmd`` and wait for it to finish.
+
+        Args:
+            cmd (str): The shell command line.
+            timeout (float): Optional. Seconds before the command is killed;
+                defaults to the sandbox's ``timeout``.
+        """
+        raise NotImplementedError("This sandbox has no shell.")
+
+
+@synalinks_export(
+    [
         "synalinks.sandboxes.Sandbox",
         "synalinks.Sandbox",
     ]
@@ -62,15 +190,30 @@ class Sandbox(SynalinksSaveable):
         release.
 
     A sandbox is a **stateful**, **restricted** Python environment:
-    subsequent ``run`` calls see variables, imports and function
+    subsequent ``run_code`` calls see variables, imports and function
     definitions from previous runs.
+
+    ## E2B-compatible surface
+
+    Method names follow the [E2B](https://e2b.dev/docs) ``AsyncSandbox``
+    SDK, so code written against one ports to the other:
+
+    ```python
+    sandbox = await synalinks.MirageSandbox.create()
+    execution = await sandbox.run_code("x = 1 + 1\nx")
+    await sandbox.files.write("/hello.txt", "hi")
+    text = await sandbox.files.read("/hello.txt")
+    entries = await sandbox.files.list("/")
+    result = await sandbox.commands.run("ls -l /")
+    await sandbox.kill()
+    ```
 
     ## The contract
 
     A backend (Mirage, Pyodide, Docker, subprocess) is defined by
     overriding these primitives:
 
-    - `run`: execute a snippet, return an `ExecutionResult`.
+    - `run_code`: execute a snippet, return an `ExecutionResult`.
     - `reset`: wipe execution state back to empty.
     - `dump` / `load`: serialize / restore the namespace as
       an opaque byte string.
@@ -81,7 +224,7 @@ class Sandbox(SynalinksSaveable):
     shares, so subclasses neither reimplement nor diverge on it:
 
     - **Run history** (`history`): an ordered, JSON-safe log of the
-      code each `run` executed and its outcome. Implementations
+      code each `run_code` executed and its outcome. Implementations
       record an entry by routing their result through `_record_run`,
       and drop it on `reset` via `clear_history`.
     - **Bound functions** (`bind_functions`, `bound_functions`):
@@ -127,6 +270,11 @@ class Sandbox(SynalinksSaveable):
     # prompt-friendly description of what code they can run.
     description: str = ""
 
+    # The ``files`` / ``commands`` namespaces. Backends with a filesystem or
+    # a shell override these with their own subclasses.
+    _filesystem_class = Filesystem
+    _commands_class = Commands
+
     def __init__(
         self,
         timeout: float = 5.0,
@@ -139,9 +287,44 @@ class Sandbox(SynalinksSaveable):
         self._history: List[Dict[str, Any]] = []
         self._functions: Dict[str, Callable] = dict(external_functions or {})
 
+    # -- lifecycle (E2B-compatible) -------------------------------------
+
+    @classmethod
+    async def create(cls, **kwargs) -> "Sandbox":
+        """Construct a sandbox; ``kwargs`` go to the constructor.
+
+        The async factory E2B code expects (``await Sandbox.create()``).
+        Calling the constructor directly is equivalent.
+        """
+        return cls(**kwargs)
+
+    async def kill(self) -> bool:
+        """Shut the sandbox down and release its resources.
+
+        Returns ``True``. Backends holding resources (mounts, temp dirs)
+        override this to release them.
+        """
+        self._killed = True
+        return True
+
+    async def is_running(self) -> bool:
+        """Whether the sandbox is still usable (``kill`` not yet called)."""
+        return not getattr(self, "_killed", False)
+
+    @property
+    def files(self) -> Filesystem:
+        """The filesystem namespace: ``read``, ``write``, ``list``, ``exists``,
+        ``get_info``, ``remove``, ``rename``, ``make_dir``."""
+        return self._filesystem_class(self)
+
+    @property
+    def commands(self) -> Commands:
+        """The shell namespace: ``run``."""
+        return self._commands_class(self)
+
     # -- execution primitives (abstract) --------------------------------
 
-    async def run(
+    async def run_code(
         self,
         code: str,
         *,
@@ -168,7 +351,16 @@ class Sandbox(SynalinksSaveable):
             ExecutionResult: stdout, stderr, last-expression result and
             (if any) an error string.
         """
-        raise NotImplementedError("Sandbox subclasses must implement `run`.")
+        raise NotImplementedError("Sandbox subclasses must implement `run_code`.")
+
+    async def run(self, code: str, **kwargs) -> ExecutionResult:
+        """Deprecated alias of `run_code`."""
+        warnings.warn(
+            "`Sandbox.run` is deprecated, use `Sandbox.run_code` instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return await self.run_code(code, **kwargs)
 
     def reset(self) -> None:
         """Wipe execution state and start over with an empty sandbox.
@@ -279,7 +471,7 @@ class Sandbox(SynalinksSaveable):
     # -- run history (provided) -----------------------------------------
 
     def history(self) -> List[Dict[str, Any]]:
-        """Ordered, JSON-safe log of snippets executed via `run`.
+        """Ordered, JSON-safe log of snippets executed via `run_code`.
 
         Each entry records the ``code`` that ran and its outcome
         (``ok``, ``stdout``, ``stderr``, ``error``), in execution order,
@@ -297,7 +489,7 @@ class Sandbox(SynalinksSaveable):
 
         The raw last-expression ``result.result`` is intentionally not
         stored: it may not be JSON-safe and would break ``get_config``.
-        Subclasses call this from `run` and return its value.
+        Subclasses call this from `run_code` and return its value.
         """
         self._history.append(
             {
@@ -321,7 +513,7 @@ class Sandbox(SynalinksSaveable):
         """Persistently expose ``functions`` inside the sandbox.
 
         Each ``name -> callable`` is merged into the bound set and made
-        available on every subsequent `run`, so a recurring toolset
+        available on every subsequent `run_code`, so a recurring toolset
         need not be re-passed via ``external_functions`` each call.
         Re-binding a name replaces it. Bound functions survive
         `reset` but are not serialized (callables are not JSON-safe).
@@ -350,7 +542,7 @@ class Sandbox(SynalinksSaveable):
             dict: ``ok`` (bool), ``stdout`` and ``stderr`` (captured
             output), and ``error`` (a message string, or null on success).
         """
-        result = await self.run(code)
+        result = await self.run_code(code)
         return {
             "ok": result.ok,
             "stdout": result.stdout,

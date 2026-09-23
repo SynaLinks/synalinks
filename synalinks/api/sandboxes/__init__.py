@@ -5,5 +5,8 @@ since your modifications would be overwritten.
 """
 
 from synalinks.src.sandboxes.mirage_sandbox import MirageSandbox as MirageSandbox
+from synalinks.src.sandboxes.sandbox import CommandResult as CommandResult
+from synalinks.src.sandboxes.sandbox import EntryInfo as EntryInfo
 from synalinks.src.sandboxes.sandbox import ExecutionResult as ExecutionResult
 from synalinks.src.sandboxes.sandbox import Sandbox as Sandbox
+from synalinks.src.sandboxes.sandbox import WriteInfo as WriteInfo

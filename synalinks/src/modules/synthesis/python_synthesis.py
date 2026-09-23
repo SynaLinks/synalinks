@@ -124,7 +124,7 @@ async def _run_script(
         else None
     )
 
-    execution = await sandbox.run(
+    execution = await sandbox.run_code(
         code,
         inputs={"inputs": inputs_json},
         external_functions=external_functions,

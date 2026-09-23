@@ -31,6 +31,7 @@ from synalinks.api import ChatMessage
 from synalinks.api import ChatMessages
 from synalinks.api import ChatRole
 from synalinks.api import CitationFaithfulness
+from synalinks.api import CommandResult
 from synalinks.api import ComposableReward
 from synalinks.api import Concat
 from synalinks.api import Concatenate
@@ -61,6 +62,7 @@ from synalinks.api import EntityHybridFTSSearch
 from synalinks.api import EntityHybridRegexSearch
 from synalinks.api import EntityRegexSearch
 from synalinks.api import EntitySimilaritySearch
+from synalinks.api import EntryInfo
 from synalinks.api import ExactMatch
 from synalinks.api import ExecutionResult
 from synalinks.api import Faithfulness
@@ -186,6 +188,7 @@ from synalinks.api import TurnFaithfulness
 from synalinks.api import TurnRelevancy
 from synalinks.api import UpdateKnowledge
 from synalinks.api import VectorRAGAgent
+from synalinks.api import WriteInfo
 from synalinks.api import Xor
 from synalinks.api import __version__
 from synalinks.api import api_base

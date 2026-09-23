@@ -409,8 +409,11 @@ from synalinks.src.rewards.rubric_rewards import TurnFaithfulness as TurnFaithfu
 from synalinks.src.rewards.rubric_rewards import TurnRelevancy as TurnRelevancy
 from synalinks.src.rewards.rubrics_as_judge import RubricsAsJudge as RubricsAsJudge
 from synalinks.src.sandboxes.mirage_sandbox import MirageSandbox as MirageSandbox
+from synalinks.src.sandboxes.sandbox import CommandResult as CommandResult
+from synalinks.src.sandboxes.sandbox import EntryInfo as EntryInfo
 from synalinks.src.sandboxes.sandbox import ExecutionResult as ExecutionResult
 from synalinks.src.sandboxes.sandbox import Sandbox as Sandbox
+from synalinks.src.sandboxes.sandbox import WriteInfo as WriteInfo
 from synalinks.src.saving.object_registration import (
     register_synalinks_serializable as register_synalinks_serializable,
 )

@@ -802,14 +802,14 @@ class RLMSubagentTest(testing.TestCase):
     async def test_merge_subagent_files_and_repl(self):
         agent = self._agent(max_subagent_depth=1)
         sandbox = MirageSandbox()
-        await sandbox.run("x = 1")
+        await sandbox.run_code("x = 1")
         await sandbox.write_file("/base.txt", "base")
         registry = {}
         tools = agent._build_subagent_tools(sandbox, registry, [0], {"adopted": False})
 
         # Stand in for a finished subagent: a fork that changed REPL + files.
         fork = sandbox.fork(copy_repl=True)
-        await fork.run("y = 99")
+        await fork.run_code("y = 99")
         await fork.write_file("/new.txt", "child")
         registry["subagent_0"] = fork
 
@@ -821,17 +821,17 @@ class RLMSubagentTest(testing.TestCase):
         # Files merged...
         self.assertEqual((await sandbox.read_file("/new.txt"))["content"], "child")
         # ...and the subagent's REPL var, alongside the parent's own.
-        self.assertIn("99", (await sandbox.run("print(y)")).stdout)
-        self.assertIn("1", (await sandbox.run("print(x)")).stdout)
+        self.assertIn("99", (await sandbox.run_code("print(y)")).stdout)
+        self.assertIn("1", (await sandbox.run_code("print(x)")).stdout)
 
     async def test_merge_subagent_files_only_leaves_repl(self):
         agent = self._agent(max_subagent_depth=1)
         sandbox = MirageSandbox()
-        await sandbox.run("x = 1")
+        await sandbox.run_code("x = 1")
         registry = {}
         tools = agent._build_subagent_tools(sandbox, registry, [0], {"adopted": False})
         fork = sandbox.fork(copy_repl=True)
-        await fork.run("x = 999")
+        await fork.run_code("x = 999")
         await fork.write_file("/f.txt", "child")
         registry["subagent_0"] = fork
 
@@ -839,7 +839,7 @@ class RLMSubagentTest(testing.TestCase):
         self.assertFalse(out["repl_adopted"])
         self.assertIn("/f.txt", out["written"])
         # REPL untouched (no adoption).
-        self.assertIn("1", (await sandbox.run("print(x)")).stdout)
+        self.assertIn("1", (await sandbox.run_code("print(x)")).stdout)
 
     async def test_only_one_repl_adoption_per_turn(self):
         agent = self._agent(max_subagent_depth=1)
@@ -848,10 +848,10 @@ class RLMSubagentTest(testing.TestCase):
         repl_state = {"adopted": False}
         tools = agent._build_subagent_tools(sandbox, registry, [0], repl_state)
         fa = sandbox.fork(copy_repl=True)
-        await fa.run("a = 1")
+        await fa.run_code("a = 1")
         registry["subagent_0"] = fa
         fb = sandbox.fork(copy_repl=True)
-        await fb.run("b = 2")
+        await fb.run_code("b = 2")
         registry["subagent_1"] = fb
 
         r1 = (
@@ -864,8 +864,8 @@ class RLMSubagentTest(testing.TestCase):
         self.assertFalse(r2["repl_adopted"])
         self.assertIn("repl_warning", r2)
         # First adoption's var is present; the second's is not (REPL-wise).
-        self.assertIn("1", (await sandbox.run("print(a)")).stdout)
-        self.assertFalse((await sandbox.run("print(b)")).ok)
+        self.assertIn("1", (await sandbox.run_code("print(a)")).stdout)
+        self.assertFalse((await sandbox.run_code("print(b)")).ok)
 
     async def test_merge_and_discard_unknown_handle(self):
         agent = self._agent(max_subagent_depth=1)
@@ -897,7 +897,7 @@ class RLMSubagentTest(testing.TestCase):
 
         agent = self._agent(max_subagent_depth=1)
         sandbox = MirageSandbox()
-        await sandbox.run("parentvar = 1")
+        await sandbox.run_code("parentvar = 1")
         registry = {}
         tools = agent._build_subagent_tools(sandbox, registry, [0], {"adopted": False})
 
@@ -908,7 +908,7 @@ class RLMSubagentTest(testing.TestCase):
         self.assertEqual(sub["handle"], "subagent_0")
         self.assertEqual(sub["result"], "computed subvar")
         # Parent REPL is untouched until merge: `subvar` is not defined there.
-        self.assertFalse((await sandbox.run("print(subvar)")).ok)
+        self.assertFalse((await sandbox.run_code("print(subvar)")).ok)
         # The fork carries the subagent's REPL var.
         fork = registry["subagent_0"]
-        self.assertIn("7", (await fork.run("print(subvar)")).stdout)
+        self.assertIn("7", (await fork.run_code("print(subvar)")).stdout)

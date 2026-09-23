@@ -9,6 +9,7 @@ import inspect
 import io
 import json
 import os
+import posixpath
 import re
 import shlex
 import struct
@@ -24,8 +25,13 @@ from typing import Optional
 from typing import Tuple
 
 from synalinks.src.api_export import synalinks_export
+from synalinks.src.sandboxes.sandbox import CommandResult
+from synalinks.src.sandboxes.sandbox import Commands
+from synalinks.src.sandboxes.sandbox import EntryInfo
 from synalinks.src.sandboxes.sandbox import ExecutionResult
+from synalinks.src.sandboxes.sandbox import Filesystem
 from synalinks.src.sandboxes.sandbox import Sandbox
+from synalinks.src.sandboxes.sandbox import WriteInfo
 from synalinks.src.saving.object_registration import register_synalinks_serializable
 
 # ---------------------------------------------------------------------------
@@ -35,7 +41,7 @@ from synalinks.src.saving.object_registration import register_synalinks_serializ
 # heap mapping, up to 8 x cores of them) and never returns an arena's freed
 # memory to the OS. A sandbox host is exactly the process that suffers from
 # it: the asyncio default executor, the FUSE bridge, the tool-RPC loop and the
-# HTTP client all allocate from worker threads, and every ``run`` churns
+# HTTP client all allocate from worker threads, and every ``run_code`` churns
 # multi-megabyte buffers through them (the dill-and-base64 ``inputs`` blob,
 # the persisted namespace, file contents crossing FUSE). After an hour of
 # snippets a host was measured at 2.2 GB resident with 14 MB of live Python
@@ -178,7 +184,7 @@ _LAUNCHER = "import base64,sys;exec(base64.b64decode(sys.argv[1]))"
 
 # The bootstrap runs inside Mirage's real CPython subprocess. Mirage spawns a
 # fresh ``python3`` per command, so to make variables/imports/functions persist
-# across ``run`` calls we serialize the user namespace with ``dill`` after each
+# across ``run_code`` calls we serialize the user namespace with ``dill`` after each
 # snippet and restore it before the next: true REPL state without replaying
 # earlier snippets (and their side effects). The namespace lives in a dedicated
 # dict (``ns``) the snippet runs in, pickled with explicit file I/O:
@@ -194,7 +200,7 @@ _LAUNCHER = "import base64,sys;exec(base64.b64decode(sys.argv[1]))"
 # frames; its last *expression* (the ``result`` convention) is JSON-encoded
 # to the result file so the host can surface it as ``ExecutionResult.result``.
 
-# Rootless in-process confinement, shared by the ``run`` bootstrap and the
+# Rootless in-process confinement, shared by the ``run_code`` bootstrap and the
 # ``run_bash`` ``_run_python`` patch: enter fresh user/mount/PID(/net)
 # namespaces, fork (PID namespaces only apply to children) so the child is PID 1
 # of the new namespace, bind the Python runtime into the FUSE-mounted virtual
@@ -915,7 +921,7 @@ def _confinement_smoke_test() -> "Tuple[bool, str]":
     host process; the child only ever ``os._exit``s. Without this, environments
     that allow ``unshare`` but deny the map writes (GitHub Actions, some
     containers) pass the cheap probes, so the documented graceful fallback to
-    unconfined never fires and every confined ``run`` dies with
+    unconfined never fires and every confined ``run_code`` dies with
     ``confine-error: PermissionError(13) ... /proc/self/setgroups``. Cached:
     the answer is constant for the process lifetime.
     """
@@ -1287,7 +1293,7 @@ def _make_egress_tool(patterns: List[str], timeout: float, block_private: bool):
 # Confinement config for the *currently executing* ``run_bash`` of a confined
 # sandbox, read by the ``_run_python`` patch below. ``None`` (the default) means
 # "not in a confined run_bash", so the patch is a no-op; every other code path,
-# including ``run`` (which confines via its own bootstrap) and unconfined
+# including ``run_code`` (which confines via its own bootstrap) and unconfined
 # sandboxes, is unaffected.
 _active_confine: contextvars.ContextVar[Optional[Dict[str, Any]]] = (
     contextvars.ContextVar("mirage_active_confine", default=None)
@@ -1313,7 +1319,7 @@ _RUN_PYTHON_TARGETS = (
 def _install_run_python_patch() -> bool:
     """Patch Mirage's python runner so ``run_bash``'s ``python3`` self-confines.
 
-    Mirage spawns ``python3`` directly (not through our ``run`` bootstrap), so a
+    Mirage spawns ``python3`` directly (not through our ``run_code`` bootstrap), so a
     shell ``python3`` would otherwise run unconfined. This wraps that one
     function to prepend the confinement prologue to the executed code whenever
     `_active_confine` is set (i.e. inside a confined ``run_bash``). The runner's
@@ -1396,7 +1402,7 @@ def _install_run_python_patch() -> bool:
 # serve none of that, so ``local`` (host CPython subprocess) is selected here
 # and *this* module supplies the isolation: `_install_run_python_patch` prepends
 # the namespace/seccomp prologue to every ``python3`` the shell spawns, exactly
-# as ``run``'s own bootstrap self-confines.
+# as ``run_code``'s own bootstrap self-confines.
 _DEFAULT_RUNTIMES = ("local",)
 
 # Runtimes that keep execution inside a sandbox of Mirage's own: ``monty`` (a
@@ -1517,14 +1523,14 @@ def _error_from(stderr: str, exit_code: int) -> Optional[str]:
 # ``confine-error: ...`` and exits 99) and a dead FUSE backing whose userspace
 # daemon went away (``OSError(107, 'Transport endpoint is not connected')``,
 # ENOTCONN). Once the mount is dead, *every* subsequent run repeats the error,
-# so an agent calling ``run`` would loop on it until its wall-clock budget runs
-# out. `run` detects these, rebuilds the workspace, and retries once.
+# so an agent calling ``run_code`` would loop on it until its wall-clock budget runs
+# out. `run_code` detects these, rebuilds the workspace, and retries once.
 _INFRA_FAILURE_MARKERS = (
     "confine-error",
     "Transport endpoint is not connected",
 )
 
-# How many times `run` will rebuild the workspace and retry on an infrastructure
+# How many times `run_code` will rebuild the workspace and retry on an infrastructure
 # failure before giving up and returning the error. One heal clears the observed
 # transient (a stale/dead FUSE mount left by an earlier run); a failure that
 # survives a fresh mount is a real environment problem, not worth looping on.
@@ -1537,6 +1543,109 @@ def _is_infra_failure(stderr: str, exit_code: int) -> bool:
     if exit_code == 0:
         return False
     return any(marker in (stderr or "") for marker in _INFRA_FAILURE_MARKERS)
+
+
+def _entry_info(path: str, st) -> EntryInfo:
+    """Build an `EntryInfo` from a Mirage ``FileStat``."""
+    is_dir = str(getattr(st.type, "value", st.type)) == "directory"
+    return EntryInfo(
+        name=posixpath.basename(path.rstrip("/")) or "/",
+        path=path,
+        type="dir" if is_dir else "file",
+        size=0 if is_dir else int(st.size or 0),
+    )
+
+
+class _MirageFilesystem(Filesystem):
+    """``sandbox.files`` over the Mirage virtual filesystem."""
+
+    async def _stat(self, path: str):
+        st = self._sandbox._ws.stat(path)
+        return await st if inspect.isawaitable(st) else st
+
+    async def _shell(self, command: str, stdin: Optional[bytes] = None):
+        _, stderr, exit_code = await self._sandbox._execute(command, stdin=stdin)
+        if exit_code != 0:
+            raise OSError(stderr.strip() or f"command failed: {command}")
+
+    async def read(self, path, format="text"):
+        ws = self._sandbox._ws
+        result = await ws.execute(
+            "cat -- %s" % shlex.quote(path), session_id=self._sandbox._session
+        )
+        if result.exit_code != 0:
+            raise FileNotFoundError(path)
+        if format == "bytes":
+            data = result.stdout
+            data = await data if inspect.isawaitable(data) else data
+            return bytes(data)
+        text = result.stdout_str()
+        return await text if inspect.isawaitable(text) else text
+
+    async def write(self, path, data):
+        if isinstance(data, str):
+            data = data.encode("utf-8")
+        parent = posixpath.dirname(path.rstrip("/")) or "/"
+        await self._shell(
+            "mkdir -p %s && cat > %s" % (shlex.quote(parent), shlex.quote(path)),
+            stdin=bytes(data),
+        )
+        return WriteInfo(name=posixpath.basename(path), path=path, type="file")
+
+    async def list(self, path="/", depth=1):
+        ws = self._sandbox._ws
+        entries: List[EntryInfo] = []
+        stack = [(path, 1)]
+        while stack:
+            directory, level = stack.pop()
+            children = ws.readdir(directory)
+            children = await children if inspect.isawaitable(children) else children
+            for child in children:
+                entry = _entry_info(child, await self._stat(child))
+                entries.append(entry)
+                if entry.type == "dir" and level < depth:
+                    stack.append((child, level + 1))
+        return sorted(entries, key=lambda e: e.path)
+
+    async def exists(self, path):
+        try:
+            await self._stat(path)
+        except FileNotFoundError:
+            return False
+        return True
+
+    async def get_info(self, path):
+        return _entry_info(path, await self._stat(path))
+
+    async def remove(self, path):
+        await self._shell("rm -rf -- %s" % shlex.quote(path))
+
+    async def rename(self, old_path, new_path):
+        parent = posixpath.dirname(new_path.rstrip("/")) or "/"
+        await self._shell(
+            "mkdir -p %s && mv -- %s %s"
+            % (shlex.quote(parent), shlex.quote(old_path), shlex.quote(new_path))
+        )
+        return await self.get_info(new_path)
+
+    async def make_dir(self, path):
+        if await self.exists(path):
+            return False
+        await self._shell("mkdir -p -- %s" % shlex.quote(path))
+        return True
+
+
+class _MirageCommands(Commands):
+    """``sandbox.commands`` over the Mirage shell (confined like `run_bash`)."""
+
+    async def run(self, cmd, timeout=None):
+        stdout, stderr, exit_code = await self._sandbox._run_shell(cmd, timeout)
+        return CommandResult(
+            stdout=stdout,
+            stderr=stderr,
+            exit_code=exit_code,
+            error=None if exit_code == 0 else (stderr.strip() or f"exit {exit_code}"),
+        )
 
 
 @register_synalinks_serializable()
@@ -1555,7 +1664,7 @@ class MirageSandbox(Sandbox):
 
     Wraps a Mirage ``Workspace``: a virtual filesystem that mounts resources
     (RAM, disk, S3, Postgres, SSH, ...) under virtual paths and runs shell
-    commands against them. ``run`` executes Python through Mirage's ``python3``
+    commands against them. ``run_code`` executes Python through Mirage's ``python3``
     builtin, and the file tools (`read_file`, `write_file`, ...) operate
     on the mounted virtual filesystem.
 
@@ -1565,8 +1674,8 @@ class MirageSandbox(Sandbox):
     import synalinks
 
     sandbox = synalinks.MirageSandbox(timeout=10)
-    await sandbox.run("x = 6 * 7")
-    result = await sandbox.run("print(x)")
+    await sandbox.run_code("x = 6 * 7")
+    result = await sandbox.run_code("print(x)")
     print(result.stdout)                    # -> "42\\n"
 
     # Snapshot + restore (workspace + interpreter state)
@@ -1577,16 +1686,16 @@ class MirageSandbox(Sandbox):
     ## Python state persistence
 
     Mirage spawns a **fresh** ``python3`` process per command, so Python
-    variables would not normally survive between ``run`` calls. The sandbox
+    variables would not normally survive between ``run_code`` calls. The sandbox
     bridges this by serializing the interpreter namespace (variables, imports,
     user-defined functions and classes) with ``dill`` after each snippet and
-    restoring it before the next. State therefore persists across ``run`` calls
+    restoring it before the next. State therefore persists across ``run_code`` calls
     just like a REPL (without replaying earlier snippets), and a snippet that
     raises does not wipe the accumulated namespace.
 
     ## Confinement (the default; `confine=True`, Linux only)
 
-    By default each ``run`` (and any ``python3`` spawned by `run_bash`) is
+    By default each ``run_code`` (and any ``python3`` spawned by `run_bash`) is
     **confined**: it enters a fresh user / mount / PID / network namespace and
     ``pivot_root``s into the FUSE-mounted virtual filesystem, so the snippet
     sees **only** the virtual sandbox at ``/`` (and, via the PID namespace, only
@@ -1631,7 +1740,7 @@ class MirageSandbox(Sandbox):
       `run_python_file`), where mounted S3 buckets, disks, etc. live.
 
     They are separate spaces, so use the file tools / shell for the mounts and
-    ``run`` for computation. Choose this only for trusted code that must reach
+    ``run_code`` for computation. Choose this only for trusted code that must reach
     the host filesystem or network.
 
     ## Bound tools and mounts are the real boundary
@@ -1678,7 +1787,7 @@ class MirageSandbox(Sandbox):
             ``MountMode.EXEC`` to make every bare mount read/write/exec.
         session_id (str): Optional. Mirage session whose working directory and
             environment persist across commands. Defaults to ``"default"``.
-        confine (bool): Optional. When ``True`` (Linux only), each ``run``
+        confine (bool): Optional. When ``True`` (Linux only), each ``run_code``
             executes the snippet in a fresh user / mount / network namespace
             pivoted into the FUSE-mounted virtual filesystem: the snippet sees
             **only** the virtual sandbox at ``/`` (its ``open()`` lands on the
@@ -1696,7 +1805,7 @@ class MirageSandbox(Sandbox):
             otherwise silently fall back to *unconfined* execution (confinement
             unavailable on the host, the FUSE mount failing to come up, or a
             ``fork(confine=True)`` that cannot confine) raises instead of
-            warning, and a `run` / `run_bash` whose confinement is not active is
+            warning, and a `run_code` / `run_bash` whose confinement is not active is
             refused. Use this for untrusted (e.g. LM-generated) code, where a
             missing isolation boundary must be a hard error rather than a warning
             that scrolls past. Defaults to ``False`` (graceful fallback).
@@ -1766,6 +1875,9 @@ class MirageSandbox(Sandbox):
             persistently and exposed inside the sandbox on every run (see
             above).
     """
+
+    _filesystem_class = _MirageFilesystem
+    _commands_class = _MirageCommands
 
     description: str = (
         "Code runs in a real Python 3 interpreter (CPython) with the full "
@@ -1840,7 +1952,7 @@ class MirageSandbox(Sandbox):
         self._resources = self._resolve_mount_modes(raw_resources, mode)
         self._workdir = workdir
 
-        # Confinement: when enabled, ``run`` executes the snippet in a fresh
+        # Confinement: when enabled, ``run_code`` executes the snippet in a fresh
         # user/mount/net namespace pivoted into the FUSE-mounted virtual
         # filesystem (no host fs, no network). Gated on platform support; on an
         # unsupported host it is disabled with a warning (graceful fallback).
@@ -1926,7 +2038,7 @@ class MirageSandbox(Sandbox):
                 self._confine = False
             else:
                 # Confine ``python3`` spawned via ``run_bash`` (Mirage's
-                # builtin), not just ``run``'s bootstrap. The FUSE mount the
+                # builtin), not just ``run_code``'s bootstrap. The FUSE mount the
                 # snippet pivots into is set up by ``_new_workspace``.
                 self._run_python_patched = _install_run_python_patch()
 
@@ -1987,7 +2099,7 @@ class MirageSandbox(Sandbox):
         # still resolve after the pivot.
         self._hostdir = os.path.realpath(tempfile.mkdtemp(prefix="mirage_sandbox_"))
         # Host file holding the dill-serialized interpreter namespace; created
-        # lazily on the first ``run`` and reused (so state accumulates).
+        # lazily on the first ``run_code`` and reused (so state accumulates).
         self._state_path: Optional[str] = None
         # Snapshot of the filesystem at the branch point (``{vpath: text}``).
         # Seeded from ``workdir``; replaced by `fork` with the parent's
@@ -2240,7 +2352,7 @@ class MirageSandbox(Sandbox):
 
     # -- execution primitives ------------------------------------------------
 
-    async def run(
+    async def run_code(
         self,
         code: str,
         *,
@@ -2421,21 +2533,32 @@ class MirageSandbox(Sandbox):
             ``exit_code``.
         """
         # Heal-and-retry on an infrastructure failure (dead FUSE mount /
-        # confinement abort), same as ``run``; otherwise every shell call would
+        # confinement abort), same as ``run_code``; otherwise every shell call would
         # repeat the error and an agent would loop on it. The confinement config
         # (with the mount point) is recomputed each attempt since a rebuild
         # creates a fresh mount; when confined we advertise it via
         # ``_active_confine`` so any ``python3`` the command spawns (through the
-        # patched runner) self-confines like ``run`` does.
+        # patched runner) self-confines like ``run_code`` does.
+        stdout, stderr, exit_code = await self._run_shell(command)
+        return {
+            "ok": exit_code == 0,
+            "stdout": stdout,
+            "stderr": stderr,
+            "exit_code": exit_code,
+        }
+
+    async def _run_shell(self, command: str, timeout: Optional[float] = None):
+        """Run ``command`` with confinement and self-healing; return
+        ``(stdout, stderr, exit_code)``. Shared by `run_bash` and
+        ``commands.run``."""
+        timeout = self.timeout if timeout is None else timeout
         heals = 0
         while True:
             confine_cfg = self._confine_config()
             self._guard_confinement(confine_cfg)
             token = _active_confine.set(confine_cfg) if confine_cfg else None
             try:
-                stdout, stderr, exit_code = await self._execute(
-                    command, timeout=self.timeout
-                )
+                stdout, stderr, exit_code = await self._execute(command, timeout=timeout)
             finally:
                 if token is not None:
                     _active_confine.reset(token)
@@ -2444,12 +2567,7 @@ class MirageSandbox(Sandbox):
                 self._rebuild_workspace()
                 continue
             break
-        return {
-            "ok": exit_code == 0,
-            "stdout": stdout,
-            "stderr": stderr,
-            "exit_code": exit_code,
-        }
+        return stdout, stderr, exit_code
 
     async def _write(self, path: str, content: str) -> int:
         """Write ``content`` to ``path`` in the virtual filesystem (mkdir -p)."""
@@ -2554,8 +2672,14 @@ class MirageSandbox(Sandbox):
         if getattr(self, "_ws_state", None) is not None:
             self._ws_state["ws"] = None
 
+    async def kill(self) -> bool:
+        """Release the FUSE mount, workspace and host state (E2B ``kill``)."""
+        await self.aclose()
+        return True
+
     async def aclose(self) -> None:
         """Async release of the workspace and host state directory."""
+        self._killed = True
         self._discard_state()
         ws = getattr(self, "_ws", None)
         if ws is not None:
@@ -2573,6 +2697,7 @@ class MirageSandbox(Sandbox):
         ``_close_parts`` when a loop is already running, and via the full async
         ``close`` otherwise. Teardown never raises.
         """
+        self._killed = True
         self._discard_state()
         _sync_close_workspace(getattr(self, "_ws", None))
         _rmtree(getattr(self, "_hostdir", "") or "")
@@ -2738,7 +2863,7 @@ class MirageSandbox(Sandbox):
             name (str): Optional name for the child sandbox.
             copy_repl (bool): Also inherit this sandbox's Python namespace.
             confine (bool): Whether the child is confined to **its own fork**
-                (its ``run`` / ``run_bash`` python sees only the child's virtual
+                (its ``run_code`` / ``run_bash`` python sees only the child's virtual
                 filesystem, host hidden, network cut; see ``confine`` on the
                 constructor). ``None`` (default) inherits this sandbox's
                 setting; ``True`` / ``False`` override. A confined child gets
