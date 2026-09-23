@@ -67,10 +67,14 @@ class ExecutionError:
 class Result:
     """A displayable value produced by the code (E2B's ``Result``).
 
-    The value of the code's last expression is the *main result*: ``text`` is
-    its ``repr`` and ``json`` its JSON value when it is JSON-serializable. The
-    rich formats (``html``, ``png``, ...) are kept for E2B parity and are
-    ``None`` for this sandbox.
+    The value of the code's last expression is the *main result*
+    (``is_main_result``); ``display(obj)`` calls, ``plt.show()`` and figures
+    still open at the end add the others, in that order (Jupyter's). ``text``
+    is always the ``repr``; the rich formats are what the object's
+    ``_repr_html_`` / ``_repr_png_`` / ... methods return, and a matplotlib
+    figure is a base64 ``png``. Beyond E2B, a JSON-serializable main result
+    also carries its value as ``json``. ``data`` and ``chart`` (E2B's
+    extracted chart data) are not produced.
     """
 
     text: Optional[str] = None

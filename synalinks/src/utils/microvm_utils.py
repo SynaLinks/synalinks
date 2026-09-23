@@ -54,6 +54,7 @@ import tempfile
 import threading
 import urllib.request
 import uuid
+import zipfile
 from typing import Any
 from typing import Dict
 from typing import Optional
@@ -93,6 +94,56 @@ LIBFUSE_DEB = (
 LIBFUSE_DEB_SHA256 = "66793b6b9a559e95a5ff853cbbff337076ef900c4b0d927f57fd986b3b1bea09"
 GUEST_LIBFUSE = "/usr/lib/aarch64-linux-gnu/libfuse3.so.4"
 GUEST_FS = "/opt/synalinks/fs.py"
+# Plotting in the guest: matplotlib and what it needs, as Linux arm64 wheels
+# for the image's Python 3.12, at the versions synalinks' own lock resolves
+# (so the guest runs what the host tests). Pinned by URL and sha256 from PyPI;
+# ``run_code`` captures their figures as PNG results.
+GUEST_WHEELS = (
+    (
+        "https://files.pythonhosted.org/packages/88/90/4e10e033d9b66589d8ed98b84c95cdbb57033d57c1f41339d7393dbd2f2e/matplotlib-3.11.1-cp312-cp312-manylinux_2_26_aarch64.manylinux_2_28_aarch64.whl",
+        "c52f7ad20ef476806ed212380b1d54d20310c8b86bdc2c9a68b51f0024a44472",
+    ),
+    (
+        "https://files.pythonhosted.org/packages/e5/21/4947e0e9d6c9fc2e2ff15b8949049ee44f63adb9cacc729ab8793f97e712/numpy-2.5.2-cp312-cp312-manylinux_2_27_aarch64.manylinux_2_28_aarch64.whl",
+        "8ee9c4eeb8454b3660a8b53493563c3e121c2fc94fbd72b848ef814ed7b676a9",
+    ),
+    (
+        "https://files.pythonhosted.org/packages/d4/1c/a12359b9b2ca3a845e8f7f9ac08bdf776114eb931392fcad91743e2ea17b/contourpy-1.3.3-cp312-cp312-manylinux_2_26_aarch64.manylinux_2_28_aarch64.whl",
+        "92d9abc807cf7d0e047b95ca5d957cf4792fcd04e920ca70d48add15c1a90ea7",
+    ),
+    (
+        "https://files.pythonhosted.org/packages/e7/05/c19819d5e3d95294a6f5947fb9b9629efb316b96de511b418c53d245aae6/cycler-0.12.1-py3-none-any.whl",
+        "85cef7cff222d8644161529808465972e51340599459b8ac3ccbac5a854e0d30",
+    ),
+    (
+        "https://files.pythonhosted.org/packages/44/04/0b91d8e916e92ad1fac9e4624760baf0fd5ff2ead614c2f68fb21373f03f/fonttools-4.63.0-cp312-cp312-manylinux2014_aarch64.manylinux_2_17_aarch64.manylinux_2_28_aarch64.whl",
+        "ef3048ef05dbb552b89817713d9cac912e00d0fde4a3105c00d29e52e10c89af",
+    ),
+    (
+        "https://files.pythonhosted.org/packages/c8/2f/cebfcdb60fd6a9b0f6b47a9337198bcbad6fbe15e68189b7011fd914911f/kiwisolver-1.5.0-cp312-cp312-manylinux_2_24_aarch64.manylinux_2_28_aarch64.whl",
+        "b2af221f268f5af85e776a73d62b0845fc8baf8ef0abfae79d29c77d0e776aaf",
+    ),
+    (
+        "https://files.pythonhosted.org/packages/63/34/ba1c580383c9eada3711951fef0795c80b829a078d72188184bcab9dd527/packaging-26.3-py3-none-any.whl",
+        "d7193f7c8e4e93f444fde0262bf90af30e16fa0ad0ad44cb553c87339b23cd1c",
+    ),
+    (
+        "https://files.pythonhosted.org/packages/25/27/ac8f99618ffd3dde21db0f4d4b1d2ab00c0880595bfd17df103f7f39fd0c/pillow-12.3.0-cp312-cp312-manylinux_2_27_aarch64.manylinux_2_28_aarch64.whl",
+        "d9c7f76c0673154f044e9d78c8655fb4213f6ca31a836df48b40fe5d187717b9",
+    ),
+    (
+        "https://files.pythonhosted.org/packages/10/bd/c038d7cc38edc1aa5bf91ab8068b63d4308c66c4c8bb3cbba7dfbc049f9c/pyparsing-3.3.2-py3-none-any.whl",
+        "850ba148bd908d7e2411587e247a1e4f0327839c40e2e5e6d05a007ecc69911d",
+    ),
+    (
+        "https://files.pythonhosted.org/packages/ec/57/56b9bcc3c9c6a792fcbaf139543cee77261f3651ca9da0c93f5c1221264b/python_dateutil-2.9.0.post0-py2.py3-none-any.whl",
+        "a8b2bc7bffae282281c8140a97d3aa9c14da0b136dfe83f850eea9a5f7470427",
+    ),
+    (
+        "https://files.pythonhosted.org/packages/b7/ce/149a00dd41f10bc29e5921b496af8b574d8413afcd5e30dfa0ed46c2cc5e/six-1.17.0-py2.py3-none-any.whl",
+        "4721f391ed90541fddacab5acf947aa0d3dc7d27b2e1e8eda2be8970586c3274",
+    ),
+)
 # MirageFS operations the bridge forwards. The macFUSE-only entry points
 # (renamex, setattr_x, ...) are not needed by a Linux guest and not exposed.
 FS_OPS = (
@@ -510,7 +561,14 @@ def rootfs_key() -> str:
     """Cache key: the image plus everything this module adds to it."""
     import dill
 
-    extras = ENTRY_SRC + FS_SRC + dill.__version__ + IMAGE_DIGEST + LIBFUSE_DEB_SHA256
+    extras = (
+        ENTRY_SRC
+        + FS_SRC
+        + dill.__version__
+        + IMAGE_DIGEST
+        + LIBFUSE_DEB_SHA256
+        + "".join(sha for _, sha in GUEST_WHEELS)
+    )
     return hashlib.sha256(extras.encode("utf-8")).hexdigest()[:16]
 
 
@@ -553,6 +611,10 @@ def provision_rootfs(helper: str, libdir: str) -> str:
             ignore=shutil.ignore_patterns("__pycache__"),
         )
         shutil.copy(mfusepy.__file__, os.path.join(staging, GUEST_SITE))
+        for url, sha256 in GUEST_WHEELS:
+            wheel = verified_sha256(fetch(url), sha256)
+            with zipfile.ZipFile(io.BytesIO(wheel)) as archive:
+                archive.extractall(os.path.join(staging, GUEST_SITE))
         # Precompile the bytecode, in the guest so it matches the guest's
         # Python whatever the host runs: the root is read-only at run time, so
         # without this every run recompiles each module it imports.
@@ -671,10 +733,7 @@ def helper_profile(vm: Dict[str, Any], hostdir: str) -> str:
         "(allow sysctl-read)",
         '(allow file-read-data (literal "/"))',
         *(f"(allow file-read-metadata (literal {sbpl(a)}))" for a in sorted(ancestors)),
-        *(
-            f"(allow file-read* file-map-executable (subpath {sbpl(p)}))"
-            for p in runtime
-        ),
+        *(f"(allow file-read* file-map-executable (subpath {sbpl(p)}))" for p in runtime),
         f"(allow file-read* file-map-executable (literal {sbpl(vm['helper'])}))",
         f"(allow file-read* (subpath {sbpl(vm['rootfs'])}))",
         *(f"(allow file-read* (subpath {sbpl(d)}))" for d in ro_shares(vm)),

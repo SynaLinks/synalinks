@@ -62,6 +62,109 @@ if config.get("cwd") and config.get("cwd_root") is not None:
         os.chdir(config["cwd_root"] + config["cwd"])
     except OSError as exc:
         print("cwd-warn: " + repr(exc), file=sys.stderr)
+# Installed before the namespace is restored: restoring it re-imports
+# the snippet's modules (``plt``), and matplotlib picks its backend then.
+# Rich results, as E2B's Jupyter kernel produces them: every displayed object
+# becomes a result with its repr as ``text`` plus each format its
+# ``_repr_*_`` methods offer, and matplotlib figures become PNGs. matplotlib
+# renders through an in-process backend whose ``show()`` emits the open
+# figures (Jupyter's inline backend); figures still open at the end are
+# emitted after the main result. Its font cache lives in the sandbox's dir.
+_displays = []
+
+
+def _figure_png(fig):
+    import io as _io
+
+    buffer = _io.BytesIO()
+    fig.savefig(buffer, format="png", bbox_inches="tight")
+    return base64.b64encode(buffer.getvalue()).decode("ascii")
+
+
+def _rich(obj, main=False):
+    out = {"is_main_result": main}
+    try:
+        out["text"] = repr(obj)
+    except Exception:
+        out["text"] = object.__repr__(obj)
+    for attr, key, binary in (
+        ("_repr_html_", "html", False),
+        ("_repr_markdown_", "markdown", False),
+        ("_repr_svg_", "svg", False),
+        ("_repr_png_", "png", True),
+        ("_repr_jpeg_", "jpeg", True),
+        ("_repr_pdf_", "pdf", True),
+        ("_repr_latex_", "latex", False),
+        ("_repr_json_", "json", False),
+        ("_repr_javascript_", "javascript", False),
+    ):
+        method = getattr(obj, attr, None)
+        if not callable(method) or isinstance(obj, type):
+            continue
+        try:
+            data = method()
+        except Exception:
+            continue
+        if isinstance(data, tuple):  # (data, metadata)
+            data = data[0]
+        if data is None:
+            continue
+        if binary and isinstance(data, (bytes, bytearray)):
+            data = base64.b64encode(bytes(data)).decode("ascii")
+        out[key] = data
+    figure_module = sys.modules.get("matplotlib.figure")
+    if figure_module is not None and isinstance(obj, figure_module.Figure):
+        out["png"] = _figure_png(obj)
+    return out
+
+
+def _flush_figures():
+    pyplot = sys.modules.get("matplotlib.pyplot")
+    if pyplot is None:
+        return []
+    flushed = [_rich(pyplot.figure(number)) for number in pyplot.get_fignums()]
+    pyplot.close("all")
+    return flushed
+
+
+def display(*objs, **kwargs):
+    # Show ``objs`` as results of this run (Jupyter's ``display``).
+    for obj in objs:
+        _displays.append(_rich(obj))
+
+
+class _DisplayBackend:
+    # Import hook for the ``synalinks_display`` matplotlib backend: the Agg
+    # backend with a ``show()`` that emits the open figures. Built when
+    # matplotlib first asks for it (so a run that never plots never imports
+    # matplotlib), with Agg's names copied in: matplotlib reads a backend
+    # through ``vars(module)``, so they must really be in the module.
+    @classmethod
+    def find_spec(cls, name, path=None, target=None):
+        if name != "synalinks_display":
+            return None
+        import importlib.util as _util
+
+        return _util.spec_from_loader(name, cls)
+
+    @staticmethod
+    def create_module(spec):
+        return None
+
+    @staticmethod
+    def exec_module(module):
+        from matplotlib.backends import backend_agg
+
+        module.__dict__.update(
+            {k: v for k, v in vars(backend_agg).items() if not k.startswith("__")}
+        )
+        module.show = lambda *args, **kwargs: _displays.extend(_flush_figures())
+
+
+sys.meta_path.insert(0, _DisplayBackend)
+os.environ["MPLBACKEND"] = "module://synalinks_display"
+if config.get("mplconfigdir"):
+    os.environ["MPLCONFIGDIR"] = config["mplconfigdir"]
 ns = {"__name__": "__main__", "__builtins__": __builtins__}
 if os.path.exists(state):
     try:
@@ -69,6 +172,11 @@ if os.path.exists(state):
             ns.update(dill.load(fh))
     except Exception as exc:
         print("restore-warn: " + repr(exc), file=sys.stderr)
+# A figure kept in a variable comes back from the pickle registered as an open
+# pyplot figure; it was displayed already, so close it, as Jupyter has: the
+# next ``plt.plot`` then starts a new figure instead of drawing into it.
+if "matplotlib.pyplot" in sys.modules:
+    sys.modules["matplotlib.pyplot"].close("all")
 # Pinned names re-assert themselves on every run, from the persisted
 # ``__rlm_pinned__`` dict, BEFORE the per-run ``inputs=`` binding (so an
 # explicit binding still wins). A caller that persists an environment
@@ -168,6 +276,7 @@ if _sock and config.get("tools"):
         return _stub
     for _tool_name in config["tools"]:
         ns[_tool_name] = _make_stub(_tool_name)
+ns.setdefault("display", display)
 user = sys.stdin.buffer.read().decode("utf-8")
 value = None
 error = None
@@ -202,7 +311,7 @@ finally:
     # pickles (25 functions ~3 s, 100 ~14 s, ~200 hits RecursionError). A
     # single dump memoizes the shared globals once. Only when that fails do
     # we fall back to filtering out the unpicklable items one by one.
-    keep = {k: v for k, v in ns.items() if k != "__builtins__"}
+    keep = {k: v for k, v in ns.items() if k != "__builtins__" and v is not display}
     try:
         blob = dill.dumps(keep)
     except Exception:
@@ -215,7 +324,7 @@ finally:
         # anyway, so the reduced globals are never observable.
         keep = {}
         for key, item in list(ns.items()):
-            if key == "__builtins__":
+            if key == "__builtins__" or item is display:
                 continue
             try:
                 dill.dumps(item, recurse=True)
@@ -246,17 +355,25 @@ finally:
     if result_path:
         # The last expression's value as E2B reports a main result: its repr
         # as ``text`` and, when JSON-serializable, the value as ``json``.
-        report = {"error": error, "text": None, "json": None}
+        results = list(_displays)
         if value is not None:
-            try:
-                report["text"] = repr(value)
-            except Exception:
-                report["text"] = object.__repr__(value)
-            try:
-                json.dumps(value)
-                report["json"] = value
-            except Exception:
-                pass
+            main = _rich(value, main=True)
+            # Beyond E2B: a JSON-serializable value is also its ``json``.
+            if "json" not in main:
+                try:
+                    json.dumps(value)
+                    main["json"] = value
+                except Exception:
+                    pass
+            figure_module = sys.modules.get("matplotlib.figure")
+            if figure_module is not None and isinstance(value, figure_module.Figure):
+                sys.modules["matplotlib.pyplot"].close(value)
+            results.append(main)
+        try:
+            results.extend(_flush_figures())
+        except Exception as exc:
+            print("display-warn: " + repr(exc), file=sys.stderr)
+        report = {"error": error, "results": results}
         try:
             with open(result_path, "w") as fh:
                 json.dump(report, fh)

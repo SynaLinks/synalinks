@@ -278,6 +278,76 @@ class E2BBehaviourTest(testing.TestCase):
         with self.assertRaises(ours.InvalidArgumentException):
             await sandbox.run_code("console.log(1)", language="javascript")
 
+    # -- rich results ----------------------------------------------------
+
+    @staticmethod
+    def is_png(result):
+        import base64
+
+        return result.png is not None and base64.b64decode(result.png).startswith(
+            bytes([137, 80, 78, 71])
+        )
+
+    async def test_matplotlib_figures_come_back_as_png_in_jupyter_order(self):
+        sandbox = await self.sandbox()
+        seen = []
+        execution = await sandbox.run_code(
+            "import matplotlib.pyplot as plt\n"
+            "plt.plot([1, 2, 3])\n"
+            "plt.show()\n"  # displayed here
+            "plt.figure()\n"
+            "plt.bar(['a'], [1])\n"  # still open at the end: after the main result
+            "'done'",
+            on_result=seen.append,
+        )
+        self.assertIsNone(execution.error)
+        shown, main, flushed = execution.results
+        self.assertTrue(self.is_png(shown) and not shown.is_main_result)
+        self.assertTrue(main.is_main_result)
+        self.assertEqual(main.text, "'done'")
+        self.assertTrue(self.is_png(flushed) and not flushed.is_main_result)
+        self.assertIn("Figure", shown.text)
+        self.assertEqual(len(seen), 3)
+
+    async def test_figure_as_last_expression_is_the_main_png(self):
+        sandbox = await self.sandbox()
+        execution = await sandbox.run_code(
+            "import matplotlib.pyplot as plt\n"
+            "fig, ax = plt.subplots()\n"
+            "ax.plot([1, 2])\n"
+            "fig"
+        )
+        (main,) = execution.results  # not repeated as an open figure
+        self.assertTrue(main.is_main_result and self.is_png(main))
+
+    async def test_kept_figure_does_not_leak_into_the_next_run(self):
+        sandbox = await self.sandbox()
+        await sandbox.run_code(
+            "import matplotlib.pyplot as plt\nkept = plt.figure()\nplt.bar(['a'], [1])"
+        )
+        execution = await sandbox.run_code("plt.plot([1, 2])\nplt.show()")
+        (shown,) = execution.results
+        self.assertTrue(self.is_png(shown))
+        count = await sandbox.run_code("len(plt.get_fignums())")
+        self.assertEqual(count.text, "0")
+
+    async def test_display_and_repr_methods_give_rich_formats(self):
+        sandbox = await self.sandbox()
+        execution = await sandbox.run_code(
+            "class Table:\n"
+            "    def _repr_html_(self):\n"
+            "        return '<table></table>'\n"
+            "    def _repr_markdown_(self):\n"
+            "        return '| a |'\n"
+            "display(Table(), 'plain')\n"
+            "Table()"
+        )
+        table, plain, main = execution.results
+        self.assertEqual((table.html, table.markdown), ("<table></table>", "| a |"))
+        self.assertEqual(list(plain.formats()), ["text"])
+        self.assertTrue(main.is_main_result)
+        self.assertEqual(main.html, "<table></table>")
+
     # -- code contexts ---------------------------------------------------
 
     async def test_code_contexts_have_their_own_namespace(self):

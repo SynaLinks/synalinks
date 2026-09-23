@@ -4,6 +4,7 @@ import asyncio
 import base64
 import contextvars
 import dataclasses
+import glob
 import inspect
 import io
 import json
@@ -1345,6 +1346,25 @@ class MirageSandbox(Sandbox):
         self.hostdir = os.path.realpath(tempfile.mkdtemp(prefix="mirage_sandbox_"))
         # Code contexts made by `create_code_context`, by id.
         self.contexts: Dict[str, Dict[str, Any]] = {}
+        # matplotlib's font cache (``mplconfigdir`` of `run_code`), seeded
+        # with the one the host's own matplotlib built, when there is one: a
+        # snippet then plots at once instead of first indexing every system
+        # font (seconds on macOS), in every new sandbox. A private copy, so
+        # no sandbox can alter what another reads. Not for the microVM, whose
+        # Linux guest has other fonts at other paths.
+        mplconfig = os.path.join(self.hostdir, "mplconfig")
+        os.makedirs(mplconfig, exist_ok=True)
+        if getattr(self, "backend", None) != "microvm":
+            host_cache = os.environ.get("MPLCONFIGDIR") or (
+                os.path.expanduser("~/.matplotlib")
+                if sys.platform == "darwin"
+                else os.path.join(
+                    os.environ.get("XDG_CACHE_HOME") or os.path.expanduser("~/.cache"),
+                    "matplotlib",
+                )
+            )
+            for cached in glob.glob(os.path.join(host_cache, "fontlist-*.json")):
+                shutil.copy(cached, mplconfig)
         if self.vm is not None:
             self.vm["hostdir"] = self.hostdir
         self.state_path: Optional[str] = None
@@ -1813,6 +1833,9 @@ class MirageSandbox(Sandbox):
             base_config: Dict[str, Any] = {
                 "result": result_path,
                 "envs": {**self.envs, **(envs or {})},
+                # matplotlib's font cache: built once per sandbox, in its own
+                # (writable, confined-visible) host dir.
+                "mplconfigdir": os.path.join(self.hostdir, "mplconfig"),
             }
             if context is not None:
                 base_config["cwd"] = context.cwd
@@ -1949,11 +1972,13 @@ class MirageSandbox(Sandbox):
             # by now; give their pages back instead of keeping them in the
             # arenas for the next hour.
             malloc_trim()
-        results = []
-        if report.get("text") is not None:
-            results.append(
-                Result(text=report["text"], json=report.get("json"), is_main_result=True)
-            )
+        # What the code displayed (``display``, ``plt.show``, open figures)
+        # and its last expression, as E2B results (see the bootstrap).
+        fields = {f.name for f in dataclasses.fields(Result)}
+        results = [
+            Result(**{k: v for k, v in item.items() if k in fields})
+            for item in report.get("results") or []
+        ]
         execution = self.record_run(
             code,
             Execution(
