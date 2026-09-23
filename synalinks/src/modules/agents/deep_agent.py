@@ -499,7 +499,11 @@ class DeepAgent(FunctionCallingAgent):
             # its OWN fork (host hidden, network cut, isolated filesystem, and
             # the parent's egress/mount/seccomp posture); when the parent runs
             # unconfined, so does the subagent.
-            fork = self.sandbox.fork(name=f"{self.name}_sub{index}", confine=None)
+            (fork,) = await self.sandbox.fork(
+                name=f"{self.name}_sub{index}", copy_repl=False, confine=None
+            )
+            if isinstance(fork, Exception):  # E2B's fork returns failures
+                raise fork
             subagent = DeepAgent(
                 sandbox=fork,
                 language_model=self.sub_language_model,

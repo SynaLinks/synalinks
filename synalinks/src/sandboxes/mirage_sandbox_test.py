@@ -696,8 +696,9 @@ class MirageSandboxTest(_SandboxTestCase):
             "confinement_backend",
             return_value=(None, "simulated: unavailable"),
         ):
-            with self.assertRaises(RuntimeError):
-                parent.fork(confine=True)
+            # As in E2B, a failed child comes back in place of the sandbox.
+            (child,) = await parent.fork(confine=True)
+            self.assertIsInstance(child, RuntimeError)
 
     # -- security surface ---------------------------------------------------
 
@@ -1096,7 +1097,7 @@ class MirageSandboxTest(_SandboxTestCase):
     async def test_fork_isolates_filesystem(self):
         sandbox = MirageSandbox(timeout=_TIMEOUT)
         await sandbox.write_file("/f.txt", "parent")
-        child = sandbox.fork()
+        (child,) = await sandbox.fork()
         await child.write_file("/f.txt", "child")
         await child.write_file("/only_child.txt", "x")
         parent_read = await sandbox.read_file("/f.txt")
@@ -1109,7 +1110,7 @@ class MirageSandboxTest(_SandboxTestCase):
     async def test_fork_copy_repl_inherits_namespace(self):
         sandbox = MirageSandbox(timeout=_TIMEOUT)
         await sandbox.run_code("base = 5")
-        child = sandbox.fork(copy_repl=True)
+        (child,) = await sandbox.fork(copy_repl=True)
         result = await child.run_code("print(base * 2)")
         self.assertIn("10", _stdout(result))
         # Child mutations do not leak back to the parent.
@@ -1157,7 +1158,7 @@ class MirageSandboxTest(_SandboxTestCase):
         sandbox = MirageSandbox(timeout=_TIMEOUT)
         await sandbox.write_file("/app/main.py", "def f():\n    return 1\n")
         await sandbox.write_file("/old.txt", "delete me\n")
-        child = sandbox.fork()
+        (child,) = await sandbox.fork()
         await child.write_file("/app/main.py", "def f():\n    return 2\n")
         await child.write_file("/new.txt", "new")
         await child.files.remove("/old.txt")
@@ -1181,7 +1182,7 @@ class MirageSandboxTest(_SandboxTestCase):
     async def test_merge_applies_child_changes(self):
         sandbox = MirageSandbox(timeout=_TIMEOUT)
         await sandbox.write_file("/base.txt", "base")
-        child = sandbox.fork()
+        (child,) = await sandbox.fork()
         await child.write_file("/new.txt", "from_child")
         report = sandbox.merge(child)
         self.assertIn("/new.txt", report["written"])
@@ -1191,7 +1192,7 @@ class MirageSandboxTest(_SandboxTestCase):
 
     async def test_merge_reports_failed_writes(self):
         sandbox = MirageSandbox(timeout=_TIMEOUT)
-        child = sandbox.fork()
+        (child,) = await sandbox.fork()
         await child.write_file("/ok.txt", "ok")
         await child.write_file("/bad.txt", "bad")
         real_write = sandbox.write
@@ -1209,7 +1210,7 @@ class MirageSandboxTest(_SandboxTestCase):
     async def test_merge_conflict_refused_without_force(self):
         sandbox = MirageSandbox(timeout=_TIMEOUT)
         await sandbox.write_file("/shared.txt", "original")
-        child = sandbox.fork()
+        (child,) = await sandbox.fork()
         await child.write_file("/shared.txt", "child_version")
         # Parent diverges on the same path after the fork.
         await sandbox.write_file("/shared.txt", "parent_version")
@@ -1508,8 +1509,8 @@ class MirageSandboxConfineTest(_SandboxTestCase):
         unconfined = MirageSandbox(timeout=_TIMEOUT, confine=False)
         c_child = u_child = None
         try:
-            c_child = confined.fork(confine=None)
-            u_child = unconfined.fork(confine=None)
+            (c_child,) = await confined.fork(confine=None)
+            (u_child,) = await unconfined.fork(confine=None)
             self.assertTrue(c_child.confine)
             self.assertFalse(u_child.confine)
         finally:
@@ -1531,7 +1532,7 @@ class MirageSandboxConfineTest(_SandboxTestCase):
         )
         child = None
         try:
-            child = parent.fork(name="sub", confine=True)
+            (child,) = await parent.fork(name="sub", confine=True)
             self.assertTrue(child.confine)
             pcaps = parent.granted_capabilities()
             ccaps = child.granted_capabilities()
@@ -1556,7 +1557,7 @@ class MirageSandboxConfineTest(_SandboxTestCase):
         child = None
         try:
             await parent.write_file("/shared.txt", "parent-data")
-            child = parent.fork(confine=True, name="sub")
+            (child,) = await parent.fork(confine=True, name="sub")
             self.assertTrue(child.confine)
             # child sees the forked copy at the same path, host hidden
             r = await child.run_code(

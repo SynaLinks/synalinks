@@ -1243,9 +1243,11 @@ class RecursiveLanguageModelAgent(FunctionCallingAgent):
                 # OWN fork (host hidden, network cut, isolated filesystem, and
                 # the parent's egress/mount/seccomp posture); when the parent
                 # runs unconfined, so does the subagent.
-                fork = sandbox.fork(
+                (fork,) = await sandbox.fork(
                     copy_repl=True, name=f"{self.name}_sub{index}", confine=None
                 )
+                if isinstance(fork, Exception):
+                    raise fork
                 subagent = RecursiveLanguageModelAgent(
                     language_model=self.sub_language_model,
                     sub_language_model=self.sub_language_model,

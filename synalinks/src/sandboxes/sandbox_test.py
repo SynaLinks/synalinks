@@ -27,9 +27,13 @@ class _EchoSandbox(Sandbox):
 
 class SandboxBaseTest(testing.TestCase):
     async def test_create_builds_the_subclass(self):
-        sandbox = await _EchoSandbox.create(timeout=2.0, name="echo")
+        # E2B's `timeout` is the sandbox lifetime; other keyword arguments go
+        # to the constructor.
+        sandbox = await _EchoSandbox.create(timeout=60, name="echo")
+        self.addAsyncCleanup(sandbox.kill)
         self.assertIsInstance(sandbox, _EchoSandbox)
-        self.assertEqual((sandbox.timeout, sandbox.name), (2.0, "echo"))
+        self.assertEqual(sandbox.name, "echo")
+        self.assertIsNotNone((await sandbox.get_info()).end_at)
 
     async def test_kill_stops_running(self):
         sandbox = _EchoSandbox()
@@ -67,7 +71,7 @@ class SandboxBaseTest(testing.TestCase):
         with self.assertRaises(NotImplementedError):
             await sandbox.files.read("/a.txt")
         with self.assertRaises(NotImplementedError):
-            await sandbox.files.list()
+            await sandbox.files.list("/")
         with self.assertRaises(NotImplementedError):
             await sandbox.commands.run("ls")
 

@@ -4,6 +4,7 @@
 
 import binascii
 import codecs
+import functools
 import marshal
 import os
 import types as python_types
@@ -179,3 +180,47 @@ def pythonify_logs(logs):
                 pass
             result[key] = value
     return result
+
+
+class class_method_variant:
+    """A method callable on an instance *and* on the class, as E2B's SDK does.
+
+    ``instance.method(...)`` calls the decorated method. ``Class.method(key,
+    ...)`` calls the classmethod named ``class_method_name`` instead, which
+    locates the instance itself (E2B's ``AsyncSandbox.kill(sandbox_id)``).
+    ``Class.method(instance, ...)`` is treated as an instance call.
+
+    Example:
+
+    ```python
+    class Box:
+        @classmethod
+        async def class_kill(cls, box_id):
+            ...
+
+        @class_method_variant("class_kill")
+        async def kill(self):
+            ...
+    ```
+    """
+
+    def __init__(self, class_method_name):
+        self.class_method_name = class_method_name
+        self.method = None
+
+    def __call__(self, method):
+        self.method = method
+        return self
+
+    def __get__(self, obj, objtype=None):
+        method, name = self.method, self.class_method_name
+
+        @functools.wraps(method)
+        def wrapper(*args, **kwargs):
+            if obj is not None:
+                return method(obj, *args, **kwargs)
+            if args and objtype is not None and isinstance(args[0], objtype):
+                return method(args[0], *args[1:], **kwargs)
+            return getattr(objtype, name)(*args, **kwargs)
+
+        return wrapper

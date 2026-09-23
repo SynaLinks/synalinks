@@ -16,33 +16,47 @@ import struct
 import subprocess
 import sys
 import tempfile
+import time
 import uuid
 import warnings
 import weakref
 import zipfile
 from datetime import datetime
 from datetime import timezone
+from typing import IO
 from typing import Any
 from typing import Callable
 from typing import Dict
 from typing import List
+from typing import Literal
 from typing import Optional
+from typing import Union
 
 from synalinks.src.api_export import synalinks_export
 from synalinks.src.sandboxes.sandbox import CommandExitException
+from synalinks.src.sandboxes.sandbox import CommandHandle
 from synalinks.src.sandboxes.sandbox import CommandResult
 from synalinks.src.sandboxes.sandbox import Commands
+from synalinks.src.sandboxes.sandbox import Context
 from synalinks.src.sandboxes.sandbox import EntryInfo
 from synalinks.src.sandboxes.sandbox import Execution
 from synalinks.src.sandboxes.sandbox import ExecutionError
+from synalinks.src.sandboxes.sandbox import FileNotFoundException
 from synalinks.src.sandboxes.sandbox import Filesystem
+from synalinks.src.sandboxes.sandbox import FilesystemEvent
+from synalinks.src.sandboxes.sandbox import FilesystemEventType
 from synalinks.src.sandboxes.sandbox import FileType
+from synalinks.src.sandboxes.sandbox import InvalidArgumentException
 from synalinks.src.sandboxes.sandbox import Logs
 from synalinks.src.sandboxes.sandbox import NotFoundException
+from synalinks.src.sandboxes.sandbox import OutputMessage
 from synalinks.src.sandboxes.sandbox import Result
 from synalinks.src.sandboxes.sandbox import Sandbox
 from synalinks.src.sandboxes.sandbox import TimeoutException
+from synalinks.src.sandboxes.sandbox import WatchHandle
 from synalinks.src.sandboxes.sandbox import WriteInfo
+from synalinks.src.sandboxes.sandbox import call_back
+from synalinks.src.sandboxes.sandbox import output_lines
 from synalinks.src.saving.object_registration import register_synalinks_serializable
 from synalinks.src.utils.confinement_utils import CONFINE_PROLOGUE_SRC
 from synalinks.src.utils.confinement_utils import build_seccomp_filter
@@ -55,6 +69,7 @@ from synalinks.src.utils.microvm_utils import GUEST_MOUNT
 from synalinks.src.utils.microvm_utils import GUEST_SOCK_DIR
 from synalinks.src.utils.microvm_utils import prepare_microvm
 from synalinks.src.utils.microvm_utils import run_in_microvm
+from synalinks.src.utils.python_utils import class_method_variant
 from synalinks.src.utils.sandbox_bootstrap_utils import BOOTSTRAP
 from synalinks.src.utils.sandbox_bootstrap_utils import LAUNCHER
 from synalinks.src.utils.sandbox_fs_utils import glob_to_regex
@@ -78,6 +93,8 @@ except (ImportError, OSError):  # pragma: no cover - mirage genuinely unusable
 
 
 DEFAULT_MOUNT = "/"
+# The sandbox's own namespace, as E2B lists it among the code contexts.
+DEFAULT_CONTEXT = Context(id="default", language="python", cwd="/")
 
 # Mirage-internal views that are not the agent's files: devices, persisted
 # sessions and the shell history view (mirage-ai 0.0.6+). Skipped by file
@@ -213,8 +230,8 @@ def finalize_workspace(state: dict) -> None:
 # untouched. It is a context variable rather than a sandbox attribute because
 # ``run_code`` also launches its bootstrap through the same runtime (and
 # confines itself), possibly concurrently with a ``run_bash`` on one sandbox.
-active_confine: contextvars.ContextVar[Optional[Dict[str, Any]]] = (
-    contextvars.ContextVar("mirage_active_confine", default=None)
+active_confine: contextvars.ContextVar[Optional[Dict[str, Any]]] = contextvars.ContextVar(
+    "mirage_active_confine", default=None
 )
 
 
@@ -327,9 +344,7 @@ def host_escaping_runtimes(runtimes, patched: bool = False) -> List[str]:
         allowed.add("local")
     entries = runtimes if runtimes else DEFAULT_RUNTIMES
     return [
-        name
-        for name in (runtime_name(entry) for entry in entries)
-        if name not in allowed
+        name for name in (runtime_name(entry) for entry in entries) if name not in allowed
     ]
 
 
@@ -466,24 +481,32 @@ def entry_info(path: str, st) -> EntryInfo:
 
 
 class MirageFilesystem(Filesystem):
-    """``sandbox.files`` over the Mirage virtual filesystem."""
+    """``sandbox.files`` over the Mirage virtual filesystem (E2B signatures)."""
 
     async def stat(self, path: str):
         try:
             return await maybe_await(self.sandbox.workspace.stat(path))
         except FileNotFoundError as exc:
-            raise NotFoundException(str(exc) or path) from exc
+            raise FileNotFoundException(str(exc) or path) from exc
 
     async def shell(self, command: str) -> None:
         _, stderr, exit_code = await self.sandbox.execute(command)
         if exit_code != 0:
             raise OSError(stderr.strip() or f"command failed: {command}")
 
-    async def read(self, path, format="text"):
-        if format != "bytes":
+    async def read(
+        self,
+        path: str,
+        format: Literal["text", "bytes", "stream"] = "text",
+        user: Optional[str] = None,
+        request_timeout: Optional[float] = None,
+        gzip: bool = False,
+        stream_idle_timeout: Optional[float] = None,
+    ):
+        if format == "text":
             data = await self.sandbox.read_text(path)
             if data is None:
-                raise NotFoundException(path)
+                raise FileNotFoundException(path)
             return data
         result = await self.sandbox.workspace.execute(
             "cat -- %s" % shlex.quote(path),
@@ -491,16 +514,46 @@ class MirageFilesystem(Filesystem):
             record=False,
         )
         if result.exit_code != 0:
-            raise NotFoundException(path)
-        return bytearray(await maybe_await(result.stdout))
+            raise FileNotFoundException(path)
+        data = bytearray(await maybe_await(result.stdout))
+        if format == "bytes":
+            return data
 
-    async def write(self, path, data):
+        async def chunks():
+            for start in range(0, len(data), 65536):
+                yield bytes(data[start : start + 65536])
+
+        return chunks()
+
+    async def write(
+        self,
+        path: str,
+        data: Union[str, bytes, IO],
+        user: Optional[str] = None,
+        request_timeout: Optional[float] = None,
+        gzip: bool = False,
+        use_octet_stream: Optional[bool] = None,
+        metadata: Optional[Dict[str, str]] = None,
+    ) -> WriteInfo:
+        if hasattr(data, "read"):
+            data = data.read()
         error = await self.sandbox.write(path, data)
         if error:
             raise OSError(error)
-        return WriteInfo(name=posixpath.basename(path), type=FileType.FILE, path=path)
+        return WriteInfo(
+            name=posixpath.basename(path),
+            type=FileType.FILE,
+            path=path,
+            metadata=metadata,
+        )
 
-    async def list(self, path="/", depth=1):
+    async def list(
+        self,
+        path: str,
+        depth: Optional[int] = 1,
+        user: Optional[str] = None,
+        request_timeout: Optional[float] = None,
+    ) -> List[EntryInfo]:
         entries: List[EntryInfo] = []
         stack = [(path, 1)]
         while stack:
@@ -508,24 +561,45 @@ class MirageFilesystem(Filesystem):
             for child in await maybe_await(self.sandbox.workspace.readdir(directory)):
                 entry = entry_info(child, await self.stat(child))
                 entries.append(entry)
-                if entry.type is FileType.DIR and level < depth:
+                if entry.type is FileType.DIR and (depth is None or level < depth):
                     stack.append((child, level + 1))
         return sorted(entries, key=lambda e: e.path)
 
-    async def exists(self, path):
+    async def exists(
+        self,
+        path: str,
+        user: Optional[str] = None,
+        request_timeout: Optional[float] = None,
+    ) -> bool:
         try:
             await self.stat(path)
         except FileNotFoundError:
             return False
         return True
 
-    async def get_info(self, path):
+    async def get_info(
+        self,
+        path: str,
+        user: Optional[str] = None,
+        request_timeout: Optional[float] = None,
+    ) -> EntryInfo:
         return entry_info(path, await self.stat(path))
 
-    async def remove(self, path):
+    async def remove(
+        self,
+        path: str,
+        user: Optional[str] = None,
+        request_timeout: Optional[float] = None,
+    ) -> None:
         await self.shell("rm -rf -- %s" % shlex.quote(path))
 
-    async def rename(self, old_path, new_path):
+    async def rename(
+        self,
+        old_path: str,
+        new_path: str,
+        user: Optional[str] = None,
+        request_timeout: Optional[float] = None,
+    ) -> EntryInfo:
         parent = posixpath.dirname(new_path.rstrip("/")) or "/"
         await self.shell(
             "mkdir -p %s && mv -- %s %s"
@@ -533,18 +607,143 @@ class MirageFilesystem(Filesystem):
         )
         return await self.get_info(new_path)
 
-    async def make_dir(self, path):
+    async def make_dir(
+        self,
+        path: str,
+        user: Optional[str] = None,
+        request_timeout: Optional[float] = None,
+    ) -> bool:
         if await self.exists(path):
             return False
         await self.shell("mkdir -p -- %s" % shlex.quote(path))
         return True
 
+    async def watch_dir(
+        self,
+        path: str,
+        on_event: Callable[[FilesystemEvent], Any],
+        on_exit: Optional[Callable[[Optional[Exception]], Any]] = None,
+        user: Optional[str] = None,
+        request_timeout: Optional[float] = None,
+        timeout: Optional[float] = 60,
+        recursive: bool = False,
+        include_entry: bool = False,
+        allow_network_mounts: bool = False,
+    ) -> WatchHandle:
+        """Poll ``path`` and report creations, writes and removals.
+
+        The virtual filesystem has no change notifications, so the tree is
+        compared with its previous state every 0.1 s: an entry that appears
+        is a ``CREATE``, one whose size or modification time changes a
+        ``WRITE``, one that disappears a ``REMOVE``.
+        """
+        await self.get_info(path)  # a missing directory fails now, as on E2B
+        root = path.rstrip("/") or "/"
+
+        async def snapshot() -> Dict[str, EntryInfo]:
+            entries = await self.list(root, depth=None if recursive else 1)
+            return {entry.path: entry for entry in entries}
+
+        # Taken before returning, as E2B's watch is live once this returns: a
+        # change made right after the call is seen.
+        initial = await snapshot()
+
+        async def watch():
+            error = None
+            deadline = time.monotonic() + timeout if timeout else None
+            before = initial
+            try:
+                while deadline is None or time.monotonic() < deadline:
+                    await asyncio.sleep(0.1)
+                    after = await snapshot()
+                    changes = (
+                        [
+                            (p, FilesystemEventType.CREATE)
+                            for p in after
+                            if p not in before
+                        ]
+                        + [
+                            (p, FilesystemEventType.WRITE)
+                            for p in after
+                            if p in before
+                            and (after[p].size, after[p].modified_time)
+                            != (before[p].size, before[p].modified_time)
+                        ]
+                        + [
+                            (p, FilesystemEventType.REMOVE)
+                            for p in before
+                            if p not in after
+                        ]
+                    )
+                    for changed, kind in changes:
+                        await call_back(
+                            on_event,
+                            FilesystemEvent(
+                                name=posixpath.relpath(changed, root),
+                                type=kind,
+                                entry=after.get(changed) if include_entry else None,
+                            ),
+                        )
+                    before = after
+            except asyncio.CancelledError:
+                raise
+            except Exception as exc:  # noqa: BLE001 - reported through on_exit
+                error = exc
+            await call_back(on_exit, error)
+
+        return WatchHandle(asyncio.ensure_future(watch()))
+
 
 class MirageCommands(Commands):
-    """``sandbox.commands`` over the Mirage shell (confined like `run_bash`)."""
+    """``sandbox.commands`` over the Mirage shell, confined like `run_bash`
+    (E2B signatures). ``envs`` and ``cwd`` apply to the one command: it runs
+    in a subshell, so they do not leak into the session."""
 
-    async def run(self, cmd, timeout=None):
-        stdout, stderr, exit_code = await self.sandbox.run_shell(cmd, timeout)
+    async def run(
+        self,
+        cmd: str,
+        background: Optional[bool] = None,
+        envs: Optional[Dict[str, str]] = None,
+        user: Optional[str] = None,
+        cwd: Optional[str] = None,
+        on_stdout: Optional[Callable[[str], Any]] = None,
+        on_stderr: Optional[Callable[[str], Any]] = None,
+        stdin: Optional[bool] = None,
+        timeout: Optional[float] = 60,
+        request_timeout: Optional[float] = None,
+    ):
+        environment = {**self.sandbox.envs, **(envs or {})}
+        for key in environment:
+            if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", key):
+                raise InvalidArgumentException(f"invalid environment variable {key!r}")
+        prefix = "".join(f"export {k}={shlex.quote(v)}; " for k, v in environment.items())
+        if cwd:
+            prefix += f"cd {shlex.quote(cwd)} && "
+        line = f"( {prefix}{cmd}\n)" if prefix else cmd
+
+        async def execute(stdin_data: bytes):
+            return await self.sandbox.run_shell(line, timeout, stdin=stdin_data or None)
+
+        if background:
+            pid = self.sandbox.new_pid()
+            handle = CommandHandle(
+                pid,
+                execute,
+                stdin=bool(stdin),
+                on_stdout=on_stdout,
+                on_stderr=on_stderr,
+                on_exit=lambda done: self.sandbox.processes.pop(done.pid, None),
+                cmd=cmd,
+                envs=environment,
+                cwd=cwd,
+            )
+            self.sandbox.processes[pid] = handle
+            return handle
+        stdout, stderr, exit_code = await execute(b"")
+        for line_out in output_lines(stdout):
+            await call_back(on_stdout, line_out)
+        for line_err in output_lines(stderr):
+            await call_back(on_stderr, line_err)
         # As in E2B: a timeout and a non-zero exit raise instead of returning.
         if exit_code == 124 and stderr.startswith("TimeoutError: execution exceeded"):
             raise TimeoutException(stderr)
@@ -924,9 +1123,13 @@ class MirageSandbox(Sandbox):
                 if isinstance(value, tuple)
                 else (
                     value,
-                    mode
-                    if mode is not None
-                    else (MountMode.EXEC if prefix == DEFAULT_MOUNT else MountMode.READ),
+                    (
+                        mode
+                        if mode is not None
+                        else (
+                            MountMode.EXEC if prefix == DEFAULT_MOUNT else MountMode.READ
+                        )
+                    ),
                 )
             )
             for prefix, value in raw_resources.items()
@@ -1127,6 +1330,8 @@ class MirageSandbox(Sandbox):
         fork point).
         """
         self.hostdir = os.path.realpath(tempfile.mkdtemp(prefix="mirage_sandbox_"))
+        # Code contexts made by `create_code_context`, by id.
+        self.contexts: Dict[str, Dict[str, Any]] = {}
         if self.vm is not None:
             self.vm["hostdir"] = self.hostdir
         self.state_path: Optional[str] = None
@@ -1523,9 +1728,7 @@ class MirageSandbox(Sandbox):
                 )
             command = make_command(confine_cfg)
             token = (
-                active_confine.set(confine_cfg)
-                if confine_shell and confine_cfg
-                else None
+                active_confine.set(confine_cfg) if confine_shell and confine_cfg else None
             )
             try:
                 stdout, stderr, exit_code = await self.execute(
@@ -1548,13 +1751,29 @@ class MirageSandbox(Sandbox):
     async def run_code(
         self,
         code: str,
+        language: Optional[str] = None,
+        context: Optional[Context] = None,
+        on_stdout: Optional[Callable[[OutputMessage], Any]] = None,
+        on_stderr: Optional[Callable[[OutputMessage], Any]] = None,
+        on_result: Optional[Callable[[Result], Any]] = None,
+        on_error: Optional[Callable[[ExecutionError], Any]] = None,
+        envs: Optional[Dict[str, str]] = None,
+        timeout: Optional[float] = None,
+        request_timeout: Optional[float] = None,
         *,
         inputs: Optional[Dict[str, Any]] = None,
         external_functions: Optional[Dict[str, Callable]] = None,
     ) -> Execution:
         import dill
 
-        state_path = self.ensure_state_path()
+        if language not in (None, "python", "python3"):
+            raise InvalidArgumentException(
+                f"language {language!r} is not supported: this sandbox runs Python"
+            )
+        if context is not None and context.id != DEFAULT_CONTEXT.id:
+            state_path = self.context_entry(context)["state_path"]
+        else:
+            state_path = self.ensure_state_path()
         # Persistently bound functions, plus this call's, exposed in-sandbox.
         functions = {**self.functions, **(external_functions or {})}
 
@@ -1572,7 +1791,13 @@ class MirageSandbox(Sandbox):
         )
         os.close(config_fd)
         try:
-            base_config: Dict[str, Any] = {"result": result_path}
+            base_config: Dict[str, Any] = {
+                "result": result_path,
+                "envs": {**self.envs, **(envs or {})},
+            }
+            if context is not None:
+                base_config["cwd"] = context.cwd
+                base_config["cwd_root"] = self.virtual_root()
             if inputs:
                 base_config["inputs"] = base64.b64encode(dill.dumps(inputs)).decode(
                     "ascii"
@@ -1583,9 +1808,7 @@ class MirageSandbox(Sandbox):
                 # host dir (not the workspace), so it survives a workspace heal.
                 # Short name on purpose: AF_UNIX paths cap at 104 bytes on
                 # macOS, and the temp dir already uses most of that.
-                sock_path = os.path.join(
-                    self.hostdir, f"rpc_{uuid.uuid4().hex[:8]}.sock"
-                )
+                sock_path = os.path.join(self.hostdir, f"rpc_{uuid.uuid4().hex[:8]}.sock")
 
                 # One length-prefixed JSON request ``{"name", "args", "kwargs"}``
                 # per connection; the host callable runs (awaited if async) and
@@ -1652,7 +1875,9 @@ class MirageSandbox(Sandbox):
                 )
 
             stdout, stderr, exit_code = await self.execute_healing(
-                make_command, stdin=code.encode("utf-8"), timeout=self.timeout
+                make_command,
+                stdin=code.encode("utf-8"),
+                timeout=self.timeout if timeout is None else timeout,
             )
         finally:
             if server is not None:
@@ -1697,7 +1922,7 @@ class MirageSandbox(Sandbox):
             results.append(
                 Result(text=report["text"], json=report.get("json"), is_main_result=True)
             )
-        return self.record_run(
+        execution = self.record_run(
             code,
             Execution(
                 results=results,
@@ -1708,6 +1933,72 @@ class MirageSandbox(Sandbox):
                 error=error,
             ),
         )
+        return await self.notify(execution, on_stdout, on_stderr, on_result, on_error)
+
+    # -- code contexts (E2B) ------------------------------------------------
+
+    def virtual_root(self) -> Optional[str]:
+        """Where the virtual filesystem's "/" is from inside a run, or ``None``.
+
+        ``""`` once confinement pivoted into it (namespaces, microVM), the host
+        mount under Seatbelt, and ``None`` unconfined, where the snippet's
+        own file I/O does not reach it.
+        """
+        if not self.confine:
+            return None
+        if self.backend == "seatbelt":
+            return self.fuse_mountpoint and os.path.realpath(self.fuse_mountpoint)
+        return ""
+
+    def context_entry(self, context: Union[Context, str]) -> Dict[str, Any]:
+        """The record of a context made by `create_code_context`."""
+        context_id = context.id if isinstance(context, Context) else context
+        entry = self.contexts.get(context_id)
+        if entry is None:
+            raise NotFoundException(f"Context {context_id} not found")
+        return entry
+
+    async def create_code_context(
+        self,
+        cwd: Optional[str] = None,
+        language: Optional[str] = None,
+        request_timeout: Optional[float] = None,
+    ) -> Context:
+        """Create a code context: its own Python namespace, and ``cwd`` (a
+        virtual path, default ``/``) as working directory for its runs."""
+        if language not in (None, "python", "python3"):
+            raise InvalidArgumentException(
+                f"language {language!r} is not supported: this sandbox runs Python"
+            )
+        context = Context(id=uuid.uuid4().hex, language="python", cwd=cwd or "/")
+        self.contexts[context.id] = {
+            "context": context,
+            "state_path": os.path.join(self.hostdir, f"context_{context.id}.dill"),
+        }
+        return context
+
+    async def list_code_contexts(self) -> List[Context]:
+        """The default context, then those made by `create_code_context`."""
+        return [DEFAULT_CONTEXT] + [entry["context"] for entry in self.contexts.values()]
+
+    async def restart_code_context(self, context: Union[Context, str]) -> None:
+        """Wipe a context's namespace; restarting the default one wipes the
+        sandbox's own namespace (its variables, imports, definitions)."""
+        context_id = context.id if isinstance(context, Context) else context
+        if context_id == DEFAULT_CONTEXT.id:
+            self.discard_state()
+            return
+        path = self.context_entry(context)["state_path"]
+        if os.path.exists(path):
+            os.unlink(path)
+
+    async def remove_code_context(self, context: Union[Context, str]) -> None:
+        """Delete a context and its namespace (the default one cannot be)."""
+        context_id = context.id if isinstance(context, Context) else context
+        if context_id == DEFAULT_CONTEXT.id:
+            raise InvalidArgumentException("The default context cannot be removed")
+        await self.restart_code_context(context)
+        del self.contexts[context_id]
 
     async def run_bash(self, command: str) -> dict:
         """Run a shell command in the sandbox's isolated Mirage shell.
@@ -1735,7 +2026,12 @@ class MirageSandbox(Sandbox):
             "exit_code": exit_code,
         }
 
-    async def run_shell(self, command: str, timeout: Optional[float] = None):
+    async def run_shell(
+        self,
+        command: str,
+        timeout: Optional[float] = None,
+        stdin: Optional[bytes] = None,
+    ):
         """Run a shell command confined and self-healing, like `run_code`.
 
         Shared by `run_bash` and ``commands.run``; returns
@@ -1743,6 +2039,7 @@ class MirageSandbox(Sandbox):
         """
         return await self.execute_healing(
             lambda _cfg: command,
+            stdin=stdin,
             # ``None`` means the sandbox default; ``0`` means no limit (E2B).
             timeout=self.timeout if timeout is None else (timeout or None),
             confine_shell=True,
@@ -1795,9 +2092,7 @@ class MirageSandbox(Sandbox):
         # Called from inside `run_code` / `run_bash`, i.e. with a loop running,
         # which `sync_close_workspace` handles (a blocking close would not).
         sync_close_workspace(getattr(self, "workspace", None))
-        self.set_workspace(
-            self.new_workspace(), when=" after an infrastructure failure"
-        )
+        self.set_workspace(self.new_workspace(), when=" after an infrastructure failure")
 
     def disarm_finalizer(self) -> None:
         """Cancel the GC/exit finalizer after an explicit close, and forget the
@@ -1808,14 +2103,41 @@ class MirageSandbox(Sandbox):
         if getattr(self, "workspace_state", None) is not None:
             self.workspace_state["ws"] = None
 
-    async def kill(self) -> bool:
-        """Release the FUSE mount, workspace and host state (E2B ``kill``)."""
+    @classmethod
+    def network_options(
+        cls, allow_internet_access: Optional[bool], network: Optional[Any]
+    ) -> Dict[str, Any]:
+        """Map `create`'s E2B network options onto this sandbox's own.
+
+        ``allow_internet_access=True`` opens the network (``confine_network``);
+        ``network={"allow_out": [...]}`` becomes the ``allowed_hosts`` egress
+        allowlist (only these hosts, through ``http_fetch``). E2B rules with no
+        local equivalent (``deny_out``, ...) raise rather than being dropped.
+        """
+        options: Dict[str, Any] = {}
+        if allow_internet_access:
+            options["confine_network"] = True
+        if network:
+            rules = dict(network)
+            allow_out = rules.pop("allow_out", None)
+            unsupported = [key for key, value in rules.items() if value]
+            if unsupported:
+                raise InvalidArgumentException(
+                    f"network rules {unsupported} are not supported locally; "
+                    "use allow_out (an egress allowlist)"
+                )
+            if allow_out:
+                options["allowed_hosts"] = list(allow_out)
+        return options
+
+    async def release(self) -> None:
+        """Release the FUSE mount, workspace and host state (for ``kill``)."""
         await self.aclose()
-        return True
 
     async def aclose(self) -> None:
         """Async release of the workspace and host state directory."""
         self.killed = True
+        Sandbox.live_sandboxes.pop(self.identifier, None)
         self.discard_state()
         ws = getattr(self, "workspace", None)
         if ws is not None:
@@ -1833,6 +2155,7 @@ class MirageSandbox(Sandbox):
         ``close`` otherwise. Teardown never raises.
         """
         self.killed = True
+        Sandbox.live_sandboxes.pop(getattr(self, "identifier", None), None)
         self.discard_state()
         sync_close_workspace(getattr(self, "workspace", None))
         rmtree(getattr(self, "hostdir", None))
@@ -1911,9 +2234,7 @@ class MirageSandbox(Sandbox):
         # Same as `fork`: a loaded workspace comes back without the runtime
         # world, so ``python3`` would not be the CPython the bootstrap needs.
         adopt_runtimes(ws, (workspace_kwargs or {}).get("runtimes") or DEFAULT_RUNTIMES)
-        instance = cls.bare(
-            timeout=payload.get("timeout", 5.0), name=payload.get("name")
-        )
+        instance = cls.bare(timeout=payload.get("timeout", 5.0), name=payload.get("name"))
         instance.session_id = payload.get("session_id", "default")
         if mode is not None:
             instance.mode = mode
@@ -1954,85 +2275,107 @@ class MirageSandbox(Sandbox):
 
     # -- branching -----------------------------------------------------------
 
-    def fork(
+    @class_method_variant("class_fork")
+    async def fork(
         self,
+        timeout: Optional[int] = None,
+        count: Optional[int] = None,
         *,
         name: Optional[str] = None,
         copy_repl: bool = False,
         confine: Optional[bool] = None,
-    ) -> "MirageSandbox":
-        """Return an isolated child branched off this sandbox's current state.
+        **opts,
+    ) -> List[Union["MirageSandbox", Exception]]:
+        """Branch ``count`` (default 1) isolated children off this sandbox's
+        current state (E2B's ``fork``); returns them in a list, with the
+        exception in place of any child that failed.
 
-        The child gets an isolated copy of the Mirage workspace (its virtual
-        filesystem), so the child's writes never touch the parent and vice
-        versa. By default the child starts from a clean interpreter; pass
+        Each child gets an isolated copy of the Mirage workspace (its virtual
+        filesystem), so its writes never touch the parent and vice versa. By
+        default a child starts from a clean interpreter; pass
         ``copy_repl=True`` to also inherit this sandbox's Python namespace
-        (variables, imports, definitions).
+        (variables, imports, definitions), as an E2B fork does.
 
         Args:
-            name (str): Optional name for the child sandbox.
+            timeout (int): Optional. Lifetime of the children in seconds
+                (E2B's; see `set_timeout`).
+            count (int): Optional. How many children; defaults to 1.
+            name (str): Optional name for the child (numbered when
+                ``count`` > 1).
             copy_repl (bool): Also inherit this sandbox's Python namespace.
             confine (bool): Whether the child is confined to **its own fork**
-                (its ``run_code`` / ``run_bash`` python sees only the child's virtual
-                filesystem, host hidden, network cut; see ``confine`` on the
-                constructor). ``None`` (default) inherits this sandbox's
-                setting; ``True`` / ``False`` override. A confined child gets
-                its own FUSE mount; if confinement can't be set up it falls back
-                to unconfined with a warning.
+                (its ``run_code`` / ``run_bash`` python sees only the child's
+                virtual filesystem, host hidden, network cut; see ``confine``
+                on the constructor). ``None`` (default) inherits this
+                sandbox's setting; ``True`` / ``False`` override. An explicit
+                ``True`` fails closed when confinement cannot be set up.
         """
-        child = self.bare(
-            timeout=self.timeout,
-            name=(
-                name if name is not None else (f"{self.name}_fork" if self.name else None)
-            ),
+        children: List[Union["MirageSandbox", Exception]] = []
+        base_name = (
+            name if name is not None else (f"{self.name}_fork" if self.name else None)
         )
-        child.session_id = self.session_id
-        child.mode = self.mode
-        child.workspace_kwargs = dict(self.workspace_kwargs)
-        child.resources = self.resources
-        child.workdir = self.workdir
-        child.confine_network = self.confine_network
-        child.seccomp_blob = self.seccomp_blob
-        child.allowed_hosts = self.allowed_hosts
-        child.block_private_egress = self.block_private_egress
-        child.extra_binds = list(self.extra_binds)
-        # Bound functions (incl. the egress ``http_fetch`` tool) carry to the
-        # child, so a confined fork keeps the same allowlisted capabilities.
-        child.functions = dict(self.functions)
-        child.rlimits = dict(self.rlimits)
-        ws = resolve_sync(self.workspace.copy())
-        # ``copy`` rebuilds through Mirage's ``_from_state``, which drops the
-        # runtime world; without this the child's ``python3`` is not CPython.
-        adopt_runtimes(ws, self.workspace_kwargs.get("runtimes") or DEFAULT_RUNTIMES)
-        # Confine the child to its *own* fork: it needs its own FUSE mount
-        # (``copy()`` does not carry one over) so the child's snippet pivots
-        # into the child's filesystem, not the parent's. A child only requires
-        # confinement (fail-closed) when it is asked to confine at all; an
-        # explicit ``confine=False`` fork opts out cleanly.
-        want = self.confine if confine is None else bool(confine)
-        # Inheriting keeps the parent's fail-closed setting; an explicit
-        # ``confine=True`` fails closed like a new sandbox.
-        child.require_confinement = (
-            self.require_confinement and want if confine is None else want
-        )
-        if want:
-            # Same backend as the parent; a fork of an unconfined parent picks
-            # the strongest available, as a new sandbox would.
-            child.start_confined(
-                ws,
-                "MirageSandbox.fork(confine=True)",
-                backend=self.backend if self.confine else None,
-                vm=self.vm,
-                seccomp_blob=self.seccomp_blob,
-            )
-        child.set_workspace(ws)
-        child.init_host_state()
-        # The child branches from the parent's *current* tree, so the child's
-        # `diff` reports exactly what it changes from here (a clean boundary).
-        child.fork_base = run_async_from_sync(self.read_tree())
-        if copy_repl:
-            child.write_state_bytes(self.read_state_bytes())
-        return child
+        for index in range(count or 1):
+            try:
+                child_name = (
+                    f"{base_name}_{index}"
+                    if base_name and (count or 1) > 1
+                    else base_name
+                )
+                child = self.bare(timeout=self.timeout, name=child_name)
+                child.session_id = self.session_id
+                child.mode = self.mode
+                child.workspace_kwargs = dict(self.workspace_kwargs)
+                child.resources = self.resources
+                child.workdir = self.workdir
+                child.confine_network = self.confine_network
+                child.seccomp_blob = self.seccomp_blob
+                child.allowed_hosts = self.allowed_hosts
+                child.block_private_egress = self.block_private_egress
+                child.extra_binds = list(self.extra_binds)
+                # Bound functions (incl. the egress ``http_fetch`` tool) carry to the
+                # child, so a confined fork keeps the same allowlisted capabilities.
+                child.functions = dict(self.functions)
+                child.rlimits = dict(self.rlimits)
+                ws = resolve_sync(self.workspace.copy())
+                # ``copy`` rebuilds through Mirage's ``_from_state``, which drops the
+                # runtime world; without this the child's ``python3`` is not CPython.
+                adopt_runtimes(
+                    ws, self.workspace_kwargs.get("runtimes") or DEFAULT_RUNTIMES
+                )
+                # Confine the child to its *own* fork: it needs its own FUSE mount
+                # (``copy()`` does not carry one over) so the child's snippet pivots
+                # into the child's filesystem, not the parent's. A child only requires
+                # confinement (fail-closed) when it is asked to confine at all; an
+                # explicit ``confine=False`` fork opts out cleanly.
+                want = self.confine if confine is None else bool(confine)
+                # Inheriting keeps the parent's fail-closed setting; an explicit
+                # ``confine=True`` fails closed like a new sandbox.
+                child.require_confinement = (
+                    self.require_confinement and want if confine is None else want
+                )
+                if want:
+                    # Same backend as the parent; a fork of an unconfined parent picks
+                    # the strongest available, as a new sandbox would.
+                    child.start_confined(
+                        ws,
+                        "MirageSandbox.fork(confine=True)",
+                        backend=self.backend if self.confine else None,
+                        vm=self.vm,
+                        seccomp_blob=self.seccomp_blob,
+                    )
+                child.set_workspace(ws)
+                child.init_host_state()
+                # The child branches from the parent's *current* tree, so the child's
+                # `diff` reports exactly what it changes from here (a clean boundary).
+                child.fork_base = await self.read_tree()
+                if copy_repl:
+                    child.write_state_bytes(self.read_state_bytes())
+                if timeout:
+                    await child.set_timeout(timeout)
+                children.append(child)
+            except Exception as exc:  # noqa: BLE001 - E2B reports per-child failures
+                children.append(exc)
+        return children
 
     def diff(self) -> dict:
         """Filesystem changes this sandbox made relative to its branch base.

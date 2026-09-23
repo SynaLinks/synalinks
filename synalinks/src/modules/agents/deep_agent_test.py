@@ -340,7 +340,7 @@ class DeepAgentSubagentTest(testing.TestCase):
         agent = DeepAgent(language_model=self._lm(), max_subagent_depth=1, name="m")
         await agent.sandbox.write_file("/keep.txt", "base")
         # Stand in for a finished subagent: a fork that changed some files.
-        fork = agent.sandbox.fork()
+        (fork,) = await agent.sandbox.fork()
         await fork.write_file("/new.txt", "child")
         await fork.write_file("/keep.txt", "edited by child")
         agent._subagents["subagent_0"] = fork
@@ -355,7 +355,7 @@ class DeepAgentSubagentTest(testing.TestCase):
 
     async def test_merge_subagent_paths_subset(self):
         agent = DeepAgent(language_model=self._lm(), max_subagent_depth=1, name="ms")
-        fork = agent.sandbox.fork()
+        (fork,) = await agent.sandbox.fork()
         await fork.write_file("/wanted.txt", "yes")
         await fork.write_file("/skipped.txt", "no")
         agent._subagents["subagent_0"] = fork
@@ -371,7 +371,7 @@ class DeepAgentSubagentTest(testing.TestCase):
 
     async def test_discard_subagent_drops_branch(self):
         agent = DeepAgent(language_model=self._lm(), max_subagent_depth=1, name="d")
-        agent._subagents["subagent_0"] = agent.sandbox.fork()
+        agent._subagents["subagent_0"] = (await agent.sandbox.fork())[0]
         self.assertEqual(
             await agent.discard_subagent("subagent_0"), {"discarded": "subagent_0"}
         )

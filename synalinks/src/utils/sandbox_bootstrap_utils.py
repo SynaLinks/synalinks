@@ -53,6 +53,15 @@ if config.get("confine"):
     except Exception as exc:
         print("confine-error: " + repr(exc), file=sys.stderr)
         sys.exit(99)
+# E2B's per-run environment variables, and the working directory of the code
+# context. ``cwd_root`` is where the virtual filesystem's "/" is from here:
+# "" once confinement pivoted into it, the mount otherwise.
+os.environ.update(config.get("envs") or {})
+if config.get("cwd") and config.get("cwd_root") is not None:
+    try:
+        os.chdir(config["cwd_root"] + config["cwd"])
+    except OSError as exc:
+        print("cwd-warn: " + repr(exc), file=sys.stderr)
 ns = {"__name__": "__main__", "__builtins__": __builtins__}
 if os.path.exists(state):
     try:

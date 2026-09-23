@@ -163,4 +163,6 @@ dev = [
     "keras-tuner>=1.4",
     "mkdocstrings[python]>=1.0.4",
     "zensical>=0.0.46",
+    # Only to check the sandbox against E2B's own SDK (e2b_compatibility_test).
+    "e2b-code-interpreter>=2.10.0",
 ]
