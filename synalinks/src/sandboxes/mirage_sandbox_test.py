@@ -1107,10 +1107,12 @@ class MirageSandboxTest(_SandboxTestCase):
         parent_only = await sandbox.read_file("/only_child.txt")
         self.assertIn("error", parent_only)
 
-    async def test_fork_copy_repl_inherits_namespace(self):
+    async def test_fork_inherits_namespace(self):
+        # As an E2B fork copies the whole sandbox, the child starts with the
+        # parent's variables, imports and definitions.
         sandbox = MirageSandbox(timeout=_TIMEOUT)
         await sandbox.run_code("base = 5")
-        (child,) = await sandbox.fork(copy_repl=True)
+        (child,) = await sandbox.fork()
         result = await child.run_code("print(base * 2)")
         self.assertIn("10", _stdout(result))
         # Child mutations do not leak back to the parent.

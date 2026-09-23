@@ -2282,7 +2282,6 @@ class MirageSandbox(Sandbox):
         count: Optional[int] = None,
         *,
         name: Optional[str] = None,
-        copy_repl: bool = False,
         confine: Optional[bool] = None,
         **opts,
     ) -> List[Union["MirageSandbox", Exception]]:
@@ -2291,10 +2290,9 @@ class MirageSandbox(Sandbox):
         exception in place of any child that failed.
 
         Each child gets an isolated copy of the Mirage workspace (its virtual
-        filesystem), so its writes never touch the parent and vice versa. By
-        default a child starts from a clean interpreter; pass
-        ``copy_repl=True`` to also inherit this sandbox's Python namespace
-        (variables, imports, definitions), as an E2B fork does.
+        filesystem) and of the Python namespace (variables, imports,
+        definitions), as an E2B fork copies the whole sandbox: from then on,
+        neither side's writes or assignments reach the other.
 
         Args:
             timeout (int): Optional. Lifetime of the children in seconds
@@ -2302,7 +2300,6 @@ class MirageSandbox(Sandbox):
             count (int): Optional. How many children; defaults to 1.
             name (str): Optional name for the child (numbered when
                 ``count`` > 1).
-            copy_repl (bool): Also inherit this sandbox's Python namespace.
             confine (bool): Whether the child is confined to **its own fork**
                 (its ``run_code`` / ``run_bash`` python sees only the child's
                 virtual filesystem, host hidden, network cut; see ``confine``
@@ -2368,8 +2365,7 @@ class MirageSandbox(Sandbox):
                 # The child branches from the parent's *current* tree, so the child's
                 # `diff` reports exactly what it changes from here (a clean boundary).
                 child.fork_base = await self.read_tree()
-                if copy_repl:
-                    child.write_state_bytes(self.read_state_bytes())
+                child.write_state_bytes(self.read_state_bytes())
                 if timeout:
                     await child.set_timeout(timeout)
                 children.append(child)

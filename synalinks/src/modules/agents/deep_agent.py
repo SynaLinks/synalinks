@@ -270,9 +270,10 @@ class DeepAgent(FunctionCallingAgent):
             backward-compatible). Requires a fork-capable sandbox
             (``MirageSandbox`` is).
 
-            Subagent forks here are **filesystem branches** (each gets a
-            fresh interpreter), so across parallel subagents you can fold
-            back **all** their file changes. Folding back Python REPL state
+            A subagent's fork starts from this agent's files and Python
+            state, and only its **file changes** are folded back, so across
+            parallel subagents you can merge **all** of them. Folding back
+            Python REPL state
             (variables/functions/imports) across subagents is a
             `RecursiveLanguageModelAgent` feature, and limited to one
             subagent there, because the REPL namespace serializes only
@@ -500,7 +501,7 @@ class DeepAgent(FunctionCallingAgent):
             # the parent's egress/mount/seccomp posture); when the parent runs
             # unconfined, so does the subagent.
             (fork,) = await self.sandbox.fork(
-                name=f"{self.name}_sub{index}", copy_repl=False, confine=None
+                name=f"{self.name}_sub{index}", confine=None
             )
             if isinstance(fork, Exception):  # E2B's fork returns failures
                 raise fork

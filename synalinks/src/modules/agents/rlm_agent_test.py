@@ -808,7 +808,7 @@ class RLMSubagentTest(testing.TestCase):
         tools = agent._build_subagent_tools(sandbox, registry, [0], {"adopted": False})
 
         # Stand in for a finished subagent: a fork that changed REPL + files.
-        (fork,) = await sandbox.fork(copy_repl=True)
+        (fork,) = await sandbox.fork()
         await fork.run_code("y = 99")
         await fork.write_file("/new.txt", "child")
         registry["subagent_0"] = fork
@@ -830,7 +830,7 @@ class RLMSubagentTest(testing.TestCase):
         await sandbox.run_code("x = 1")
         registry = {}
         tools = agent._build_subagent_tools(sandbox, registry, [0], {"adopted": False})
-        (fork,) = await sandbox.fork(copy_repl=True)
+        (fork,) = await sandbox.fork()
         await fork.run_code("x = 999")
         await fork.write_file("/f.txt", "child")
         registry["subagent_0"] = fork
@@ -847,10 +847,10 @@ class RLMSubagentTest(testing.TestCase):
         registry = {}
         repl_state = {"adopted": False}
         tools = agent._build_subagent_tools(sandbox, registry, [0], repl_state)
-        (fa,) = await sandbox.fork(copy_repl=True)
+        (fa,) = await sandbox.fork()
         await fa.run_code("a = 1")
         registry["subagent_0"] = fa
-        (fb,) = await sandbox.fork(copy_repl=True)
+        (fb,) = await sandbox.fork()
         await fb.run_code("b = 2")
         registry["subagent_1"] = fb
 
@@ -879,7 +879,7 @@ class RLMSubagentTest(testing.TestCase):
     async def test_discard_subagent_drops_fork(self):
         agent = self._agent(max_subagent_depth=1)
         sandbox = MirageSandbox()
-        registry = {"subagent_0": (await sandbox.fork(copy_repl=True))[0]}
+        registry = {"subagent_0": (await sandbox.fork())[0]}
         tools = agent._build_subagent_tools(sandbox, registry, [0], {"adopted": False})
         out = (await tools["discard_subagent"](handle="subagent_0")).get_json()
         self.assertEqual(out, {"discarded": "subagent_0"})
