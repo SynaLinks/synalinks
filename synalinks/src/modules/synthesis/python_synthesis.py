@@ -130,31 +130,27 @@ async def _run_script(
         external_functions=external_functions,
     )
 
-    if execution.error:
-        relabelled = _relabel_error(execution.error)
+    stdout = "".join(execution.logs.stdout)
+    stderr = "".join(execution.logs.stderr)
+    error = execution.error
+    if error:
+        relabelled = _relabel_error(f"{error.name}: {error.value}")
         # Syntax errors happen at compile time; no script output precedes them.
-        if execution.error.startswith("SyntaxError"):
+        if error.name == "SyntaxError":
             return None, "", f"{relabelled}\n"
-        return (
-            None,
-            execution.stdout,
-            execution.stderr + f"{relabelled}\n",
-        )
+        return None, stdout, stderr + error.traceback + f"{relabelled}\n"
 
-    result = execution.result
+    main = next((r for r in execution.results if r.is_main_result), None)
+    result = main.json if main else None
     if not result:
-        return None, execution.stdout, execution.stderr
+        return None, stdout, stderr
 
     try:
         jsonschema.validate(result, schema)
     except ValidationError as validation_error:
-        return (
-            None,
-            execution.stdout,
-            execution.stderr + f"Validation Error: {validation_error}\n",
-        )
+        return None, stdout, stderr + f"Validation Error: {validation_error}\n"
 
-    return result, execution.stdout, execution.stderr
+    return result, stdout, stderr
 
 
 @synalinks_export(

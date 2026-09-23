@@ -821,8 +821,8 @@ class RLMSubagentTest(testing.TestCase):
         # Files merged...
         self.assertEqual((await sandbox.read_file("/new.txt"))["content"], "child")
         # ...and the subagent's REPL var, alongside the parent's own.
-        self.assertIn("99", (await sandbox.run_code("print(y)")).stdout)
-        self.assertIn("1", (await sandbox.run_code("print(x)")).stdout)
+        self.assertIn("99", "".join((await sandbox.run_code("print(y)")).logs.stdout))
+        self.assertIn("1", "".join((await sandbox.run_code("print(x)")).logs.stdout))
 
     async def test_merge_subagent_files_only_leaves_repl(self):
         agent = self._agent(max_subagent_depth=1)
@@ -839,7 +839,7 @@ class RLMSubagentTest(testing.TestCase):
         self.assertFalse(out["repl_adopted"])
         self.assertIn("/f.txt", out["written"])
         # REPL untouched (no adoption).
-        self.assertIn("1", (await sandbox.run_code("print(x)")).stdout)
+        self.assertIn("1", "".join((await sandbox.run_code("print(x)")).logs.stdout))
 
     async def test_only_one_repl_adoption_per_turn(self):
         agent = self._agent(max_subagent_depth=1)
@@ -864,8 +864,8 @@ class RLMSubagentTest(testing.TestCase):
         self.assertFalse(r2["repl_adopted"])
         self.assertIn("repl_warning", r2)
         # First adoption's var is present; the second's is not (REPL-wise).
-        self.assertIn("1", (await sandbox.run_code("print(a)")).stdout)
-        self.assertFalse((await sandbox.run_code("print(b)")).ok)
+        self.assertIn("1", "".join((await sandbox.run_code("print(a)")).logs.stdout))
+        self.assertIsNotNone((await sandbox.run_code("print(b)")).error)
 
     async def test_merge_and_discard_unknown_handle(self):
         agent = self._agent(max_subagent_depth=1)
@@ -908,7 +908,7 @@ class RLMSubagentTest(testing.TestCase):
         self.assertEqual(sub["handle"], "subagent_0")
         self.assertEqual(sub["result"], "computed subvar")
         # Parent REPL is untouched until merge: `subvar` is not defined there.
-        self.assertFalse((await sandbox.run_code("print(subvar)")).ok)
+        self.assertIsNotNone((await sandbox.run_code("print(subvar)")).error)
         # The fork carries the subagent's REPL var.
         fork = registry["subagent_0"]
-        self.assertIn("7", (await fork.run_code("print(subvar)")).stdout)
+        self.assertIn("7", "".join((await fork.run_code("print(subvar)")).logs.stdout))

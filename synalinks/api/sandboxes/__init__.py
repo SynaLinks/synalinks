@@ -5,8 +5,17 @@ since your modifications would be overwritten.
 """
 
 from synalinks.src.sandboxes.mirage_sandbox import MirageSandbox as MirageSandbox
+from synalinks.src.sandboxes.sandbox import CommandExitException as CommandExitException
 from synalinks.src.sandboxes.sandbox import CommandResult as CommandResult
 from synalinks.src.sandboxes.sandbox import EntryInfo as EntryInfo
+from synalinks.src.sandboxes.sandbox import Execution as Execution
+from synalinks.src.sandboxes.sandbox import ExecutionError as ExecutionError
 from synalinks.src.sandboxes.sandbox import ExecutionResult as ExecutionResult
+from synalinks.src.sandboxes.sandbox import FileType as FileType
+from synalinks.src.sandboxes.sandbox import Logs as Logs
+from synalinks.src.sandboxes.sandbox import NotFoundException as NotFoundException
+from synalinks.src.sandboxes.sandbox import Result as Result
 from synalinks.src.sandboxes.sandbox import Sandbox as Sandbox
+from synalinks.src.sandboxes.sandbox import SandboxException as SandboxException
+from synalinks.src.sandboxes.sandbox import TimeoutException as TimeoutException
 from synalinks.src.sandboxes.sandbox import WriteInfo as WriteInfo

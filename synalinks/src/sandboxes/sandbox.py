@@ -1,6 +1,11 @@
 # License Apache 2.0: (c) 2025-2026 Yoan Sallami (Synalinks Team)
 
+import json
 import warnings
+from dataclasses import dataclass
+from dataclasses import field
+from datetime import datetime
+from enum import Enum
 from typing import Any
 from typing import Callable
 from typing import Dict
@@ -14,6 +19,206 @@ from synalinks.src.backend import DataModel
 from synalinks.src.backend import Field
 from synalinks.src.saving.synalinks_saveable import SynalinksSaveable
 
+# -- E2B-compatible result types ------------------------------------------
+#
+# Mirrors of the types E2B's SDK returns (``e2b_code_interpreter.models`` and
+# ``e2b.sandbox``), with the same field names, types and helpers, so code
+# written against E2B's ``AsyncSandbox`` reads results the same way here.
+
+
+@synalinks_export(["synalinks.sandboxes.ExecutionError", "synalinks.ExecutionError"])
+@dataclass
+class ExecutionError:
+    """An exception raised by the executed code (E2B's ``ExecutionError``)."""
+
+    name: str
+    """The exception class name, e.g. ``"ValueError"``."""
+    value: str
+    """The exception message."""
+    traceback: str
+    """The formatted traceback, trimmed to the executed code's own frames."""
+
+    def to_json(self) -> str:
+        return json.dumps(
+            {"name": self.name, "value": self.value, "traceback": self.traceback}
+        )
+
+
+@synalinks_export(["synalinks.sandboxes.Result", "synalinks.Result"])
+@dataclass
+class Result:
+    """A displayable value produced by the code (E2B's ``Result``).
+
+    The value of the code's last expression is the *main result*: ``text`` is
+    its ``repr`` and ``json`` its JSON value when it is JSON-serializable. The
+    rich formats (``html``, ``png``, ...) are kept for E2B parity and are
+    ``None`` for this sandbox.
+    """
+
+    text: Optional[str] = None
+    html: Optional[str] = None
+    markdown: Optional[str] = None
+    svg: Optional[str] = None
+    png: Optional[str] = None
+    jpeg: Optional[str] = None
+    pdf: Optional[str] = None
+    latex: Optional[str] = None
+    json: Optional[Any] = None
+    javascript: Optional[str] = None
+    data: Optional[dict] = None
+    chart: Optional[Any] = None
+    is_main_result: bool = False
+    extra: Optional[dict] = None
+
+    def __getitem__(self, item):
+        return getattr(self, item)
+
+    def formats(self) -> List[str]:
+        """The formats this result carries, e.g. ``["text", "json"]``."""
+        names = [
+            "text", "html", "markdown", "svg", "png", "jpeg", "pdf",
+            "latex", "json", "javascript", "data", "chart",
+        ]  # fmt: skip
+        return [n for n in names if getattr(self, n)] + list(self.extra or {})
+
+    def __repr__(self) -> str:
+        if self.text:
+            return f"Result({self.text})"
+        return "Result(Formats: " + ", ".join(self.formats()) + ")"
+
+    __str__ = __repr__
+
+
+@synalinks_export(["synalinks.sandboxes.Logs", "synalinks.Logs"])
+@dataclass(repr=False)
+class Logs:
+    """Output the code printed, as chunks (E2B's ``Logs``)."""
+
+    stdout: List[str] = field(default_factory=list)
+    stderr: List[str] = field(default_factory=list)
+
+    def __repr__(self) -> str:
+        return f"Logs(stdout: {self.stdout}, stderr: {self.stderr})"
+
+    def to_json(self) -> str:
+        return json.dumps({"stdout": self.stdout, "stderr": self.stderr})
+
+
+@synalinks_export(["synalinks.sandboxes.Execution", "synalinks.Execution"])
+@dataclass(repr=False)
+class Execution:
+    """What `Sandbox.run_code` returns (E2B's ``Execution``).
+
+    ``error`` is set when the code raised; ``logs`` and ``results`` then hold
+    whatever happened before the failure.
+    """
+
+    results: List[Result] = field(default_factory=list)
+    logs: Logs = field(default_factory=Logs)
+    error: Optional[ExecutionError] = None
+    execution_count: Optional[int] = None
+
+    @property
+    def text(self) -> Optional[str]:
+        """The ``text`` of the main result (the last expression's ``repr``)."""
+        for result in self.results:
+            if result.is_main_result:
+                return result.text
+        return None
+
+    def __repr__(self) -> str:
+        return (
+            f"Execution(Results: {self.results}, Logs: {self.logs}, Error: {self.error})"
+        )
+
+    def to_json(self) -> str:
+        return json.dumps(
+            {
+                "results": [
+                    {**{k: r[k] for k in r.formats() if k != "chart"}, "text": r.text}
+                    for r in self.results
+                ],
+                "logs": self.logs.to_json(),
+                "error": self.error.to_json() if self.error else None,
+            }
+        )
+
+
+@synalinks_export(["synalinks.sandboxes.FileType", "synalinks.FileType"])
+class FileType(Enum):
+    """Kind of a filesystem entry (E2B's ``FileType``)."""
+
+    FILE = "file"
+    DIR = "dir"
+    SYMLINK = "symlink"
+
+
+@synalinks_export(["synalinks.sandboxes.WriteInfo", "synalinks.WriteInfo"])
+@dataclass
+class WriteInfo:
+    """What ``sandbox.files.write`` wrote (E2B's ``WriteInfo``)."""
+
+    name: str
+    type: Optional[FileType]
+    path: str
+    metadata: Optional[Dict[str, str]] = field(default=None, kw_only=True)
+
+
+@synalinks_export(["synalinks.sandboxes.EntryInfo", "synalinks.EntryInfo"])
+@dataclass
+class EntryInfo(WriteInfo):
+    """A file or directory in the sandbox filesystem (E2B's ``EntryInfo``)."""
+
+    size: int
+    mode: int
+    permissions: str
+    owner: str
+    group: str
+    modified_time: datetime
+    symlink_target: Optional[str] = None
+
+
+@synalinks_export(["synalinks.sandboxes.CommandResult", "synalinks.CommandResult"])
+@dataclass
+class CommandResult:
+    """Result of ``sandbox.commands.run`` (E2B's ``CommandResult``)."""
+
+    stderr: str
+    stdout: str
+    exit_code: int
+    error: Optional[str]
+
+
+@synalinks_export(["synalinks.sandboxes.SandboxException", "synalinks.SandboxException"])
+class SandboxException(Exception):
+    """Base class of the errors the sandbox API raises (E2B's name)."""
+
+
+@synalinks_export(
+    ["synalinks.sandboxes.NotFoundException", "synalinks.NotFoundException"]
+)
+class NotFoundException(SandboxException, FileNotFoundError):
+    """A path does not exist. Also a ``FileNotFoundError``."""
+
+
+@synalinks_export(["synalinks.sandboxes.TimeoutException", "synalinks.TimeoutException"])
+class TimeoutException(SandboxException, TimeoutError):
+    """A command ran past its timeout. Also a ``TimeoutError``."""
+
+
+@synalinks_export(
+    ["synalinks.sandboxes.CommandExitException", "synalinks.CommandExitException"]
+)
+@dataclass
+class CommandExitException(SandboxException, CommandResult):
+    """Raised by ``commands.run`` when the command exits non-zero, as in E2B.
+
+    Carries the full `CommandResult` (``stdout``, ``stderr``, ``exit_code``).
+    """
+
+    def __str__(self) -> str:
+        return f"Command exited with code {self.exit_code} and error:\n{self.stderr}"
+
 
 @synalinks_export(
     [
@@ -22,156 +227,109 @@ from synalinks.src.saving.synalinks_saveable import SynalinksSaveable
     ]
 )
 class ExecutionResult(DataModel):
-    """Structured result of running a snippet in a ``Sandbox``."""
+    """Result of the deprecated `Sandbox.run`; `run_code` returns `Execution`."""
 
-    stdout: str = Field(
-        default="",
-        description="Concatenated bytes written to stdout by the snippet.",
-    )
+    stdout: str = Field(default="", description="Everything written to stdout.")
     stderr: str = Field(
-        default="",
-        description="Concatenated bytes written to stderr by the snippet.",
+        default="", description="Everything written to stderr, then the traceback."
     )
     result: Optional[Any] = Field(
-        default=None,
-        description="Value of the snippet's last expression, or null.",
+        default=None, description="JSON value of the last expression, or null."
     )
     error: Optional[str] = Field(
-        default=None,
-        description=(
-            "Formatted error message when execution failed, else null. "
-            "A non-null `error` means stdout / stderr / result captured "
-            "whatever happened before the failure."
-        ),
+        default=None, description="``Name: message`` of the raised error, or null."
     )
 
     @property
     def ok(self) -> bool:
-        """True when the snippet ran to completion without an error."""
         return self.error is None
 
 
-@synalinks_export(
-    [
-        "synalinks.sandboxes.CommandResult",
-        "synalinks.CommandResult",
-    ]
-)
-class CommandResult(DataModel):
-    """Result of a shell command run with ``sandbox.commands.run``.
-
-    Mirrors E2B's ``CommandResult``.
-    """
-
-    stdout: str = Field(default="", description="Captured stdout of the command.")
-    stderr: str = Field(default="", description="Captured stderr of the command.")
-    exit_code: int = Field(default=0, description="Exit code; 0 means success.")
-    error: Optional[str] = Field(
-        default=None,
-        description="Error message when the command failed, else null.",
+def flat_output(execution: Execution):
+    """``(stdout, stderr, error)`` strings of an `Execution`: stderr ends with
+    the traceback and ``error`` is ``"Name: message"`` (or ``None``)."""
+    error = execution.error
+    stderr = "".join(execution.logs.stderr) + (error.traceback if error else "")
+    return (
+        "".join(execution.logs.stdout),
+        stderr,
+        f"{error.name}: {error.value}" if error else None,
     )
-
-    @property
-    def ok(self) -> bool:
-        """True when the command exited with code 0."""
-        return self.exit_code == 0 and self.error is None
-
-
-@synalinks_export(
-    [
-        "synalinks.sandboxes.EntryInfo",
-        "synalinks.EntryInfo",
-    ]
-)
-class EntryInfo(DataModel):
-    """A file or directory in a sandbox filesystem (E2B's ``EntryInfo``)."""
-
-    name: str = Field(description="Base name of the entry.")
-    path: str = Field(description="Absolute path of the entry.")
-    type: Literal["file", "dir"] = Field(description="Entry kind.")
-    size: int = Field(default=0, description="Size in bytes (0 for directories).")
-
-
-@synalinks_export(
-    [
-        "synalinks.sandboxes.WriteInfo",
-        "synalinks.WriteInfo",
-    ]
-)
-class WriteInfo(DataModel):
-    """What ``sandbox.files.write`` wrote (E2B's ``WriteInfo``)."""
-
-    name: str = Field(description="Base name of the written file.")
-    path: str = Field(description="Absolute path of the written file.")
-    type: Literal["file", "dir"] = Field(default="file", description="Entry kind.")
 
 
 class Filesystem:
     """The ``sandbox.files`` namespace, named after E2B's ``Filesystem``.
 
     Backends with a filesystem subclass this and point
-    ``Sandbox._filesystem_class`` at the subclass. This default has no
+    ``Sandbox.filesystem_class`` at the subclass. This default has no
     filesystem, so every method raises ``NotImplementedError``.
     """
 
     def __init__(self, sandbox: "Sandbox"):
-        self._sandbox = sandbox
+        self.sandbox = sandbox
 
-    def _unsupported(self):
+    def unsupported(self):
         raise NotImplementedError("This sandbox has no filesystem.")
 
     async def read(
         self, path: str, format: Literal["text", "bytes"] = "text"
-    ) -> Union[str, bytes]:
-        """Read the file at ``path`` as text (default) or bytes."""
-        self._unsupported()
+    ) -> Union[str, bytearray]:
+        """Read the file at ``path`` as text (default) or ``bytearray``.
+
+        Raises `NotFoundException` when ``path`` does not exist.
+        """
+        self.unsupported()
 
     async def write(self, path: str, data: Union[str, bytes]) -> WriteInfo:
         """Write ``data`` to ``path``, creating parent directories."""
-        self._unsupported()
+        self.unsupported()
 
     async def list(self, path: str = "/", depth: int = 1) -> List[EntryInfo]:
         """List the entries under the directory ``path``, ``depth`` levels deep."""
-        self._unsupported()
+        self.unsupported()
 
     async def exists(self, path: str) -> bool:
         """Whether a file or directory exists at ``path``."""
-        self._unsupported()
+        self.unsupported()
 
     async def get_info(self, path: str) -> EntryInfo:
-        """Describe the entry at ``path``; raises ``FileNotFoundError`` if absent."""
-        self._unsupported()
+        """Describe the entry at ``path``; raises `NotFoundException` if absent."""
+        self.unsupported()
 
     async def remove(self, path: str) -> None:
         """Delete the file or directory (recursively) at ``path``."""
-        self._unsupported()
+        self.unsupported()
 
     async def rename(self, old_path: str, new_path: str) -> EntryInfo:
         """Move ``old_path`` to ``new_path``; returns the new entry."""
-        self._unsupported()
+        self.unsupported()
 
     async def make_dir(self, path: str) -> bool:
         """Create ``path`` (and parents); ``False`` if it already existed."""
-        self._unsupported()
+        self.unsupported()
 
 
 class Commands:
     """The ``sandbox.commands`` namespace, named after E2B's ``Commands``.
 
     Backends with a shell subclass this and point
-    ``Sandbox._commands_class`` at the subclass. This default has no shell.
+    ``Sandbox.commands_class`` at the subclass. This default has no shell.
     """
 
     def __init__(self, sandbox: "Sandbox"):
-        self._sandbox = sandbox
+        self.sandbox = sandbox
 
     async def run(self, cmd: str, timeout: Optional[float] = None) -> CommandResult:
         """Run the shell command ``cmd`` and wait for it to finish.
 
+        As in E2B, a non-zero exit raises `CommandExitException` (which
+        carries the `CommandResult`) and running past ``timeout`` raises
+        `TimeoutException`.
+
         Args:
             cmd (str): The shell command line.
             timeout (float): Optional. Seconds before the command is killed;
-                defaults to the sandbox's ``timeout``.
+                ``None`` uses the sandbox's ``timeout``, ``0`` means no limit.
         """
         raise NotImplementedError("This sandbox has no shell.")
 
@@ -201,6 +359,9 @@ class Sandbox(SynalinksSaveable):
     ```python
     sandbox = await synalinks.MirageSandbox.create()
     execution = await sandbox.run_code("x = 1 + 1\nx")
+    execution.text             # "2"
+    execution.logs.stdout      # ["..."] chunks printed to stdout
+    execution.error            # ExecutionError(name, value, traceback) or None
     await sandbox.files.write("/hello.txt", "hi")
     text = await sandbox.files.read("/hello.txt")
     entries = await sandbox.files.list("/")
@@ -213,23 +374,23 @@ class Sandbox(SynalinksSaveable):
     A backend (Mirage, Pyodide, Docker, subprocess) is defined by
     overriding these primitives:
 
-    - `run_code`: execute a snippet, return an `ExecutionResult`.
+    - `run_code`: execute a snippet, return an `Execution`.
     - `reset`: wipe execution state back to empty.
     - `dump` / `load`: serialize / restore the namespace as
       an opaque byte string.
-    - `get_config` / `from_config` / `_obj_type`: the
-      JSON-safe round-trip for Synalinks' saving pipeline.
+    - `get_config` / `from_config`: the JSON-safe round-trip for
+      Synalinks' saving pipeline.
 
     Everything else here is **provided** machinery that every backend
     shares, so subclasses neither reimplement nor diverge on it:
 
     - **Run history** (`history`): an ordered, JSON-safe log of the
       code each `run_code` executed and its outcome. Implementations
-      record an entry by routing their result through `_record_run`,
+      record an entry by routing their result through `record_run`,
       and drop it on `reset` via `clear_history`.
     - **Bound functions** (`bind_functions`, `bound_functions`):
       host callables exposed inside the sandbox, set once and reused on
-      every run. Implementations read `_functions` when dispatching.
+      every run. Implementations read `functions` when dispatching.
     - **Tool methods** (`run_python_code`, `run_python_file`,
       `list_files`, `read_file`, `write_file`,
       `edit_file`, `search_files`): async, dict-returning
@@ -272,8 +433,8 @@ class Sandbox(SynalinksSaveable):
 
     # The ``files`` / ``commands`` namespaces. Backends with a filesystem or
     # a shell override these with their own subclasses.
-    _filesystem_class = Filesystem
-    _commands_class = Commands
+    filesystem_class = Filesystem
+    commands_class = Commands
 
     def __init__(
         self,
@@ -284,8 +445,8 @@ class Sandbox(SynalinksSaveable):
     ):
         self.timeout = float(timeout)
         self.name = name
-        self._history: List[Dict[str, Any]] = []
-        self._functions: Dict[str, Callable] = dict(external_functions or {})
+        self.run_history: List[Dict[str, Any]] = []
+        self.functions: Dict[str, Callable] = dict(external_functions or {})
 
     # -- lifecycle (E2B-compatible) -------------------------------------
 
@@ -304,23 +465,23 @@ class Sandbox(SynalinksSaveable):
         Returns ``True``. Backends holding resources (mounts, temp dirs)
         override this to release them.
         """
-        self._killed = True
+        self.killed = True
         return True
 
     async def is_running(self) -> bool:
         """Whether the sandbox is still usable (``kill`` not yet called)."""
-        return not getattr(self, "_killed", False)
+        return not getattr(self, "killed", False)
 
     @property
     def files(self) -> Filesystem:
         """The filesystem namespace: ``read``, ``write``, ``list``, ``exists``,
         ``get_info``, ``remove``, ``rename``, ``make_dir``."""
-        return self._filesystem_class(self)
+        return self.filesystem_class(self)
 
     @property
     def commands(self) -> Commands:
         """The shell namespace: ``run``."""
-        return self._commands_class(self)
+        return self.commands_class(self)
 
     # -- execution primitives (abstract) --------------------------------
 
@@ -334,8 +495,8 @@ class Sandbox(SynalinksSaveable):
         """Execute ``code`` and return a structured result.
 
         Implementations should route their result through
-        `_record_run` so the snippet lands in `history`, and
-        expose `_functions` (merged with any per-call
+        `record_run` so the snippet lands in `history`, and
+        expose `functions` (merged with any per-call
         ``external_functions``) as callables inside the sandbox.
 
         Args:
@@ -348,19 +509,44 @@ class Sandbox(SynalinksSaveable):
                 for this call, on top of the persistently bound set.
 
         Returns:
-            ExecutionResult: stdout, stderr, last-expression result and
-            (if any) an error string.
+            Execution: the printed output as ``logs``, the last expression as
+            the main entry of ``results``, and ``error`` if the code raised.
         """
-        raise NotImplementedError("Sandbox subclasses must implement `run_code`.")
+        if type(self).run is Sandbox.run:
+            raise NotImplementedError("Sandbox subclasses must implement `run_code`.")
+        # A backend written before `run_code` existed implements `run` and
+        # returns the old `ExecutionResult`.
+        old = await self.run(code, inputs=inputs, external_functions=external_functions)
+        error = None
+        if old.error is not None:
+            name, _, value = old.error.partition(": ")
+            error = ExecutionError(name=name, value=value, traceback=old.stderr)
+        return Execution(
+            results=(
+                [Result(text=repr(old.result), json=old.result, is_main_result=True)]
+                if old.result is not None
+                else []
+            ),
+            logs=Logs(stdout=[old.stdout] if old.stdout else []),
+            error=error,
+        )
 
     async def run(self, code: str, **kwargs) -> ExecutionResult:
-        """Deprecated alias of `run_code`."""
+        """Deprecated: use `run_code`, which returns an E2B-style `Execution`."""
         warnings.warn(
             "`Sandbox.run` is deprecated, use `Sandbox.run_code` instead.",
             DeprecationWarning,
             stacklevel=2,
         )
-        return await self.run_code(code, **kwargs)
+        execution = await self.run_code(code, **kwargs)
+        main = next((r for r in execution.results if r.is_main_result), None)
+        stdout, stderr, error = flat_output(execution)
+        return ExecutionResult(
+            stdout=stdout,
+            stderr=stderr,
+            result=main.json if main else None,
+            error=error,
+        )
 
     def reset(self) -> None:
         """Wipe execution state and start over with an empty sandbox.
@@ -444,7 +630,7 @@ class Sandbox(SynalinksSaveable):
         merge to a chosen subset of virtual paths. With ``repl=True`` the
         backend also adopts ``other``'s whole execution-state namespace
         (where it has one). Returns a JSON-safe report of what was applied,
-        what conflicted, and what was skipped.
+        what conflicted, what was skipped, and what failed to apply.
         """
         raise NotImplementedError("This sandbox does not support `merge`.")
 
@@ -478,36 +664,39 @@ class Sandbox(SynalinksSaveable):
         for inspection or replay. Returns a defensive copy; cleared by
         `clear_history` / `reset`.
         """
-        return [dict(entry) for entry in self._history]
+        return [dict(entry) for entry in self.run_history]
 
     def clear_history(self) -> None:
         """Drop all recorded run history."""
-        self._history = []
+        self.run_history = []
 
-    def _record_run(self, code: str, result: ExecutionResult) -> ExecutionResult:
-        """Append a standard history entry for a finished run; returns ``result``.
+    def record_run(self, code: str, execution: Execution) -> Execution:
+        """Append a history entry for a finished run; returns ``execution``.
 
-        The raw last-expression ``result.result`` is intentionally not
-        stored: it may not be JSON-safe and would break ``get_config``.
+        Also numbers the run (``execution_count``, as a notebook kernel
+        does, restarting at 1 after `reset`). The results are intentionally
+        not stored: they may not be JSON-safe and would break ``get_config``.
         Subclasses call this from `run_code` and return its value.
         """
-        self._history.append(
+        stdout, stderr, error = flat_output(execution)
+        self.run_history.append(
             {
                 "code": code,
-                "ok": result.ok,
-                "stdout": result.stdout,
-                "stderr": result.stderr,
-                "error": result.error,
+                "ok": error is None,
+                "stdout": stdout,
+                "stderr": stderr,
+                "error": error,
             }
         )
-        return result
+        execution.execution_count = len(self.run_history)
+        return execution
 
     # -- bound functions (provided) -------------------------------------
 
     @property
     def bound_functions(self) -> Dict[str, Callable]:
         """Copy of the persistently bound ``name -> callable`` mapping."""
-        return dict(self._functions)
+        return dict(self.functions)
 
     def bind_functions(self, functions: Dict[str, Callable]) -> None:
         """Persistently expose ``functions`` inside the sandbox.
@@ -518,7 +707,7 @@ class Sandbox(SynalinksSaveable):
         Re-binding a name replaces it. Bound functions survive
         `reset` but are not serialized (callables are not JSON-safe).
         """
-        self._functions.update(functions)
+        self.functions.update(functions)
 
     # -- tool methods ---------------------------------------------------
     #
@@ -540,15 +729,11 @@ class Sandbox(SynalinksSaveable):
 
         Returns:
             dict: ``ok`` (bool), ``stdout`` and ``stderr`` (captured
-            output), and ``error`` (a message string, or null on success).
+            output, with the traceback when the code raised), and ``error``
+            (``"ErrorName: message"``, or null on success).
         """
-        result = await self.run_code(code)
-        return {
-            "ok": result.ok,
-            "stdout": result.stdout,
-            "stderr": result.stderr,
-            "error": result.error,
-        }
+        stdout, stderr, error = flat_output(await self.run_code(code))
+        return {"ok": error is None, "stdout": stdout, "stderr": stderr, "error": error}
 
     async def run_python_file(self, path: str) -> dict:
         """Run a Python script file from the sandbox filesystem.

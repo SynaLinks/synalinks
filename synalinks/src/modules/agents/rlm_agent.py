@@ -1440,9 +1440,10 @@ class RecursiveLanguageModelAgent(FunctionCallingAgent):
             "inputs = _rlm_inputs\n__rlm_pinned__ = {'inputs': _rlm_inputs}",
             inputs={"_rlm_inputs": inputs_json},
         )
-        if not bind.ok:
+        if bind.error:
             raise RuntimeError(
-                f"failed to bind `inputs` into the sandbox: {bind.error or bind.stderr}"
+                "failed to bind `inputs` into the sandbox: "
+                f"{bind.error.name}: {bind.error.value}"
             )
         run_tool = self._build_run_python_code_tool(sandbox)
 

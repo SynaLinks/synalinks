@@ -108,51 +108,31 @@ Plus everything you'd expect from a production-grade framework:
 
 # Requirements
 
-- Python 3.12 or more
-- Linux: `libfuse` (Debian/Ubuntu: `sudo apt install fuse3 libfuse3-3`)
-- macOS: [macFUSE](https://macfuse.github.io/) (see below)
-- Windows: WSL2 (see below)
+Python 3.12 or newer, plus the code sandbox's system dependency for your OS.
 
-### macOS: installing macFUSE
+**Linux** (Debian / Ubuntu):
 
-The code sandbox mounts its virtual filesystem through FUSE, which macOS does
-not ship. Install macFUSE once per machine:
+```shell
+sudo apt install fuse3 libfuse3-3
+# Ubuntu 23.10+ only: allow the unprivileged user namespaces the sandbox needs
+sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+```
 
-1. Download the latest `.dmg` from the [macFUSE releases page](https://github.com/macfuse/macfuse/releases)
-   (or run `brew install --cask macfuse`) and run the installer.
-2. Open **System Settings → Privacy & Security**. Near the bottom you will see
-   *"System software from developer 'Benjamin Fleischer' was blocked"*. Click
-   **Allow**, enter your password, and restart when asked.
-3. **Apple Silicon only (M1/M2/M3/M4):** if there is no *Allow* button, you
-   first have to enable third-party kernel extensions:
-   - Shut down, then hold the power button until *"Loading startup options"*
-     appears, and choose **Options** to enter Recovery.
-   - Open **Utilities → Startup Security Utility**, select your disk, click
-     **Security Policy…**, choose **Reduced Security** and tick **Allow user
-     management of kernel extensions from identified developers**.
-   - Restart, then do step 2.
-4. Give your terminal access to FUSE volumes: in **System Settings → Privacy &
-   Security → Files and Folders**, enable **Network Volumes** for the app you
-   run Python from (Terminal, iTerm, VS Code, ...). If you skip this, mounts
-   succeed but every read fails with `Operation not permitted`.
-5. Check the install:
+**macOS** (Apple silicon):
 
-   ```shell
-   ls /Library/Filesystems/macfuse.fs && ls /usr/local/lib/libfuse*.dylib
-   ```
+```shell
+xcode-select --install
+brew tap slp/krun
+brew trust --formula slp/krun/libkrun slp/krun/libkrunfw  # recent Homebrew only
+brew install slp/krun/libkrun
+```
 
-> [!NOTE]
-> On macOS the sandbox runs **unconfined**. Confinement (namespaces,
-> `pivot_root`, seccomp) needs a Linux kernel. To run untrusted, LM-generated
-> code with full isolation, use Linux, a Linux container or VM, or pass
-> `require_confinement=True` so the sandbox refuses to run instead of silently
-> running unconfined.
+**Windows:** install [WSL2](https://learn.microsoft.com/windows/wsl/install)
+(`wsl --install`), then run the Linux commands inside it.
 
-### Windows: WSL2
-
-Confinement needs a Linux kernel, so on Windows run synalinks inside
-[WSL2](https://learn.microsoft.com/windows/wsl/install) (`wsl --install`),
-where the sandbox works exactly as on Linux.
+The sandbox always uses the strongest isolation your machine supports and
+refuses to run code it cannot confine (on Macs without libkrun, such as Intel
+Macs, it falls back to a weaker macOS sandbox).
 
 ## Quickstart in 3s with `uv` (recommended)
 
