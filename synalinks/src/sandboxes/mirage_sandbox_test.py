@@ -597,11 +597,15 @@ class MirageSandboxTest(_SandboxTestCase):
         self.assertIsNotNone(result.error)
         self.assertEqual(result.error.name, "NameError")
 
-    async def test_timeout_surfaces_as_error(self):
+    async def test_timeout_raises_like_e2b(self):
         sandbox = MirageSandbox(timeout=1.0)
-        result = await sandbox.run_code("import time\ntime.sleep(5)")
-        self.assertIsNotNone(result.error)
-        self.assertEqual(result.error.name, "TimeoutError")
+        with self.assertRaisesRegex(TimeoutException, "Execution timed out"):
+            await sandbox.run_code("import time\ntime.sleep(5)")
+        # Still recorded, and the tool method reports it as an error.
+        self.assertEqual(sandbox.history()[-1]["error"].split(":")[0], "TimeoutError")
+        tool = await sandbox.run_python_code("import time\ntime.sleep(5)")
+        self.assertFalse(tool["ok"])
+        self.assertIn("TimeoutError", tool["error"])
 
     async def test_require_confinement_needs_confine(self):
         # require_confinement is incompatible with an explicit confine=False.
@@ -2413,8 +2417,8 @@ class MicrovmConfineTest(_SandboxTestCase):
     async def test_timeout_kills_the_vm(self):
         sandbox = self.sandbox()
         sandbox.timeout = 3
-        execution = await sandbox.run_code("import time\ntime.sleep(60)")
-        self.assertIsNotNone(execution.error)
+        with self.assertRaises(TimeoutException):
+            await sandbox.run_code("import time\ntime.sleep(60)")
         sandbox.timeout = _TIMEOUT
         after = await sandbox.run_code("1 + 1")
         self.assertEqual(after.text, "2")
@@ -2437,9 +2441,7 @@ class MountLeakTest(_SandboxTestCase):
         # A host FUSE mount backs Seatbelt on macOS and namespaces on Linux.
         backend = ("seatbelt", "forced") if sys.platform == "darwin" else None
         patcher = (
-            mock.patch.object(
-                mirage_sandbox, "confinement_backend", return_value=backend
-            )
+            mock.patch.object(mirage_sandbox, "confinement_backend", return_value=backend)
             if backend
             else mock.MagicMock()
         )

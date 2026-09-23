@@ -33,6 +33,7 @@ from typing import Optional
 from typing import Union
 
 from synalinks.src.api_export import synalinks_export
+from synalinks.src.sandboxes.sandbox import DEFAULT_TIMEOUT
 from synalinks.src.sandboxes.sandbox import CommandExitException
 from synalinks.src.sandboxes.sandbox import CommandHandle
 from synalinks.src.sandboxes.sandbox import CommandResult
@@ -56,7 +57,9 @@ from synalinks.src.sandboxes.sandbox import TimeoutException
 from synalinks.src.sandboxes.sandbox import WatchHandle
 from synalinks.src.sandboxes.sandbox import WriteInfo
 from synalinks.src.sandboxes.sandbox import call_back
+from synalinks.src.sandboxes.sandbox import execution_timeout_error
 from synalinks.src.sandboxes.sandbox import output_lines
+from synalinks.src.sandboxes.sandbox import request_deadline
 from synalinks.src.saving.object_registration import register_synalinks_serializable
 from synalinks.src.utils.confinement_utils import CONFINE_PROLOGUE_SRC
 from synalinks.src.utils.confinement_utils import build_seccomp_filter
@@ -494,6 +497,7 @@ class MirageFilesystem(Filesystem):
         if exit_code != 0:
             raise OSError(stderr.strip() or f"command failed: {command}")
 
+    @request_deadline
     async def read(
         self,
         path: str,
@@ -525,6 +529,7 @@ class MirageFilesystem(Filesystem):
 
         return chunks()
 
+    @request_deadline
     async def write(
         self,
         path: str,
@@ -547,6 +552,7 @@ class MirageFilesystem(Filesystem):
             metadata=metadata,
         )
 
+    @request_deadline
     async def list(
         self,
         path: str,
@@ -565,6 +571,7 @@ class MirageFilesystem(Filesystem):
                     stack.append((child, level + 1))
         return sorted(entries, key=lambda e: e.path)
 
+    @request_deadline
     async def exists(
         self,
         path: str,
@@ -577,6 +584,7 @@ class MirageFilesystem(Filesystem):
             return False
         return True
 
+    @request_deadline
     async def get_info(
         self,
         path: str,
@@ -585,6 +593,7 @@ class MirageFilesystem(Filesystem):
     ) -> EntryInfo:
         return entry_info(path, await self.stat(path))
 
+    @request_deadline
     async def remove(
         self,
         path: str,
@@ -593,6 +602,7 @@ class MirageFilesystem(Filesystem):
     ) -> None:
         await self.shell("rm -rf -- %s" % shlex.quote(path))
 
+    @request_deadline
     async def rename(
         self,
         old_path: str,
@@ -607,6 +617,7 @@ class MirageFilesystem(Filesystem):
         )
         return await self.get_info(new_path)
 
+    @request_deadline
     async def make_dir(
         self,
         path: str,
@@ -618,6 +629,7 @@ class MirageFilesystem(Filesystem):
         await self.shell("mkdir -p -- %s" % shlex.quote(path))
         return True
 
+    @request_deadline
     async def watch_dir(
         self,
         path: str,
@@ -931,9 +943,10 @@ class MirageSandbox(Sandbox):
     returns its JSON-marshalable result synchronously.
 
     Args:
-        timeout (float): Per-snippet execution budget in seconds (Default 5).
-            Enforced around the underlying Mirage command; on expiry the run
-            returns a ``TimeoutError`` in ``error``.
+        timeout (float): Per-snippet execution budget in seconds, what
+            ``run_code(timeout=None)`` uses (Default 300, as on E2B). Enforced
+            around the underlying Mirage command; on expiry ``run_code``
+            raises `TimeoutException`, as on E2B.
         name (str): Optional. Human-readable name for the sandbox.
         workdir (str): Optional. Host directory whose files seed the virtual
             filesystem at construction. The files are copied **into** the mount
@@ -1075,7 +1088,7 @@ class MirageSandbox(Sandbox):
 
     def __init__(
         self,
-        timeout: float = 5.0,
+        timeout: float = DEFAULT_TIMEOUT,
         name: Optional[str] = None,
         *,
         workdir: Optional[str] = None,
@@ -1766,10 +1779,16 @@ class MirageSandbox(Sandbox):
     ) -> Execution:
         import dill
 
+        if context is not None and language is not None:
+            raise InvalidArgumentException(
+                "You can provide context or language, but not both at the same time."
+            )
         if language not in (None, "python", "python3"):
             raise InvalidArgumentException(
                 f"language {language!r} is not supported: this sandbox runs Python"
             )
+        # As on E2B: ``None`` is the default (the sandbox's), ``0`` no limit.
+        timeout = None if timeout == 0 else (timeout or self.timeout or None)
         if context is not None and context.id != DEFAULT_CONTEXT.id:
             state_path = self.context_entry(context)["state_path"]
         else:
@@ -1877,7 +1896,7 @@ class MirageSandbox(Sandbox):
             stdout, stderr, exit_code = await self.execute_healing(
                 make_command,
                 stdin=code.encode("utf-8"),
-                timeout=self.timeout if timeout is None else timeout,
+                timeout=timeout,
             )
         finally:
             if server is not None:
@@ -1903,6 +1922,19 @@ class MirageSandbox(Sandbox):
         error = report.get("error")
         if error is not None:
             error = ExecutionError(**error)
+        elif exit_code == 124 and stderr.startswith("TimeoutError: execution exceeded"):
+            # As on E2B, a run past its timeout raises rather than returning an
+            # `Execution`; it still lands in the history.
+            self.record_run(
+                code,
+                Execution(
+                    logs=Logs(stdout=[stdout] if stdout else []),
+                    error=ExecutionError(
+                        name="TimeoutError", value=stderr.strip(), traceback=""
+                    ),
+                ),
+            )
+            raise execution_timeout_error()
         elif exit_code != 0:
             # Died without reaching the bootstrap's handler: a timeout, a
             # confinement abort, ``sys.exit(n)`` or a crash.
@@ -1958,6 +1990,7 @@ class MirageSandbox(Sandbox):
             raise NotFoundException(f"Context {context_id} not found")
         return entry
 
+    @request_deadline
     async def create_code_context(
         self,
         cwd: Optional[str] = None,

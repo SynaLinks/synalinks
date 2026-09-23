@@ -2,6 +2,7 @@
 
 import asyncio
 import dataclasses
+import functools
 import inspect
 import json
 import logging
@@ -552,6 +553,48 @@ def flat_output(execution: Execution):
     )
 
 
+# E2B's defaults: an execution may run 300 s, an API request 60 s.
+DEFAULT_TIMEOUT = 300.0
+REQUEST_TIMEOUT = 60.0
+
+
+def execution_timeout_error() -> "TimeoutException":
+    """The error a run past its ``timeout`` raises (E2B's wording)."""
+    return TimeoutException(
+        "Execution timed out — the 'timeout' option can be used to increase this "
+        "timeout"
+    )
+
+
+def request_deadline(method: Callable) -> Callable:
+    """Bound an async ``method`` by its ``request_timeout`` argument, as E2B does.
+
+    For E2B's quick operations (file I/O, listing, killing, stdin, ...) the
+    request timeout is the deadline of the whole call: the argument when
+    given, ``REQUEST_TIMEOUT`` (60 s) when ``None``, none for ``0``. Past it,
+    raises E2B's "Request timed out" `TimeoutException`.
+    """
+    signature = inspect.signature(method)
+
+    @functools.wraps(method)
+    async def wrapper(*args, **kwargs):
+        request_timeout = signature.bind_partial(*args, **kwargs).arguments.get(
+            "request_timeout"
+        )
+        deadline = None if request_timeout == 0 else (request_timeout or REQUEST_TIMEOUT)
+        try:
+            return await asyncio.wait_for(method(*args, **kwargs), deadline)
+        except TimeoutException:
+            raise  # the operation's own timeout, not the request's
+        except asyncio.TimeoutError:
+            raise TimeoutException(
+                "Request timed out — the 'request_timeout' option can be used to "
+                "increase this timeout"
+            ) from None
+
+    return wrapper
+
+
 async def call_back(callback: Optional[Callable], value: Any) -> None:
     """Invoke an E2B-style callback, awaiting it when it is a coroutine."""
     if callback is None:
@@ -709,6 +752,7 @@ class CommandHandle:
                 self.on_exit(self)
         return True
 
+    @request_deadline
     async def send_stdin(
         self, data: Union[str, bytes], request_timeout: Optional[float] = None
     ) -> None:
@@ -720,6 +764,7 @@ class CommandHandle:
             )
         self.stdin_chunks.append(data.encode("utf-8") if isinstance(data, str) else data)
 
+    @request_deadline
     async def close_stdin(self, request_timeout: Optional[float] = None) -> None:
         """Close stdin: the command runs with everything sent so far."""
         self.stdin_closed.set()
@@ -1148,6 +1193,7 @@ class Filesystem:
         """Write ``data`` to ``path``, creating parent directories."""
         self.unsupported()
 
+    @request_deadline
     async def write_files(
         self,
         files: List[WriteEntry],
@@ -1286,6 +1332,7 @@ class Commands:
             raise NotFoundException(f"Process with pid {pid} not found")
         return handle
 
+    @request_deadline
     async def list(self, request_timeout: Optional[float] = None) -> List[ProcessInfo]:
         """The background commands still running."""
         return [
@@ -1293,17 +1340,20 @@ class Commands:
             for pid, h in sorted(self.sandbox.processes.items())
         ]
 
+    @request_deadline
     async def kill(self, pid: int, request_timeout: Optional[float] = None) -> bool:
         """Kill the background command ``pid``; ``False`` if it is not running."""
         handle = self.sandbox.processes.get(pid)
         return await handle.kill() if handle is not None else False
 
+    @request_deadline
     async def send_stdin(
         self, pid: int, data: Union[str, bytes], request_timeout: Optional[float] = None
     ) -> None:
         """Send ``data`` to the stdin of the background command ``pid``."""
         await self.handle(pid).send_stdin(data)
 
+    @request_deadline
     async def close_stdin(
         self, pid: int, request_timeout: Optional[float] = None
     ) -> None:
@@ -1403,10 +1453,11 @@ class Sandbox(SynalinksSaveable):
     conversation. The consuming module stays stateless.
 
     Args:
-        timeout (float): Per-snippet execution budget in seconds
-            (Default 5). Backends that cannot enforce this should treat
-            it as advisory; modules that instantiate sandboxes (e.g.
-            ``RecursiveLanguageModelAgent``) pass this through.
+        timeout (float): Per-snippet execution budget in seconds, what
+            ``run_code(timeout=None)`` uses (Default 300, as on E2B). A run
+            past it raises `TimeoutException`. Backends that cannot enforce
+            this should treat it as advisory; modules that instantiate
+            sandboxes (e.g. ``RecursiveLanguageModelAgent``) pass this through.
         name (str): Optional. Human-readable name for the sandbox.
         external_functions (dict): Optional. ``name -> callable`` mapping
             bound persistently and exposed inside the sandbox on every
@@ -1459,7 +1510,7 @@ class Sandbox(SynalinksSaveable):
 
     def __init__(
         self,
-        timeout: float = 5.0,
+        timeout: float = DEFAULT_TIMEOUT,
         name: Optional[str] = None,
         *,
         external_functions: Optional[Dict[str, Callable]] = None,
@@ -1655,6 +1706,7 @@ class Sandbox(SynalinksSaveable):
         await self.release()
         return True
 
+    @request_deadline
     async def is_running(self, request_timeout: Optional[float] = None) -> bool:
         """Whether the sandbox is still usable (``kill`` not yet called)."""
         return not getattr(self, "killed", False)
@@ -2103,7 +2155,10 @@ class Sandbox(SynalinksSaveable):
             DeprecationWarning,
             stacklevel=2,
         )
-        execution = await self.run_code(code, **kwargs)
+        try:
+            execution = await self.run_code(code, **kwargs)
+        except TimeoutException as exc:
+            return ExecutionResult(error=f"TimeoutError: {exc}")
         main = next((r for r in execution.results if r.is_main_result), None)
         stdout, stderr, error = flat_output(execution)
         return ExecutionResult(
@@ -2286,7 +2341,16 @@ class Sandbox(SynalinksSaveable):
             output, with the traceback when the code raised), and ``error``
             (``"ErrorName: message"``, or null on success).
         """
-        stdout, stderr, error = flat_output(await self.run_code(code))
+        try:
+            stdout, stderr, error = flat_output(await self.run_code(code))
+        except TimeoutException as exc:
+            # Reported to the caller (an agent's model) like any other error.
+            return {
+                "ok": False,
+                "stdout": "",
+                "stderr": "",
+                "error": f"TimeoutError: {exc}",
+            }
         return {"ok": error is None, "stdout": stdout, "stderr": stderr, "error": error}
 
     async def run_python_file(self, path: str) -> dict:

@@ -27,6 +27,7 @@ from synalinks.src.modules.core.tool import Tool
 from synalinks.src.modules.language_models import get as _get_lm
 from synalinks.src.sandboxes.mirage_sandbox import MirageSandbox
 from synalinks.src.sandboxes.sandbox import Sandbox
+from synalinks.src.sandboxes.sandbox import TimeoutException
 from synalinks.src.saving import serialization_lib
 from synalinks.src.saving.object_registration import get_registered_name
 from synalinks.src.saving.object_registration import get_registered_object
@@ -1436,10 +1437,15 @@ class RecursiveLanguageModelAgent(FunctionCallingAgent):
         # name is also PINNED (``__rlm_pinned__``): the sandbox re-asserts it at
         # the start of every run, so a snippet that assigns over ``inputs`` —
         # LLM-written code does — breaks only itself, not the rest of the call.
-        bind = await sandbox.run_code(
-            "inputs = _rlm_inputs\n__rlm_pinned__ = {'inputs': _rlm_inputs}",
-            inputs={"_rlm_inputs": inputs_json},
-        )
+        try:
+            bind = await sandbox.run_code(
+                "inputs = _rlm_inputs\n__rlm_pinned__ = {'inputs': _rlm_inputs}",
+                inputs={"_rlm_inputs": inputs_json},
+            )
+        except TimeoutException as exc:
+            raise RuntimeError(
+                f"failed to bind `inputs` into the sandbox: {exc}"
+            ) from exc
         if bind.error:
             raise RuntimeError(
                 "failed to bind `inputs` into the sandbox: "

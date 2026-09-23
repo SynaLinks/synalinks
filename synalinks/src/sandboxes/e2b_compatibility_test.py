@@ -242,10 +242,36 @@ class E2BBehaviourTest(testing.TestCase):
         )
         self.assertEqual(execution.text, "('1', '2')")
 
-    async def test_run_code_timeout_overrides_the_sandbox_timeout(self):
+    async def test_run_code_timeout_raises_like_e2b(self):
         sandbox = await self.sandbox()
-        execution = await sandbox.run_code("import time\ntime.sleep(30)", timeout=1)
-        self.assertIsNotNone(execution.error)
+        self.assertEqual(sandbox.timeout, 300)  # E2B's run_code default
+        with self.assertRaisesRegex(ours.TimeoutException, "Execution timed out"):
+            await sandbox.run_code("import time\ntime.sleep(30)", timeout=1)
+        # 0 means no limit, as on E2B.
+        self.assertEqual((await sandbox.run_code("1 + 1", timeout=0)).text, "2")
+
+    async def test_run_code_rejects_context_and_language_together(self):
+        sandbox = await self.sandbox()
+        context = await sandbox.create_code_context()
+        with self.assertRaises(ours.InvalidArgumentException):
+            await sandbox.run_code("1", context=context, language="python")
+
+    async def test_request_timeout_bounds_quick_operations(self):
+        import asyncio
+
+        sandbox = await self.sandbox()
+        await sandbox.files.write("/slow.txt", "x")
+        real_read_text = sandbox.read_text
+
+        async def slow_read_text(path):
+            await asyncio.sleep(1)
+            return await real_read_text(path)
+
+        sandbox.read_text = slow_read_text
+        with self.assertRaisesRegex(ours.TimeoutException, "Request timed out"):
+            await sandbox.files.read("/slow.txt", request_timeout=0.2)
+        # 0 disables it, as on E2B.
+        self.assertEqual(await sandbox.files.read("/slow.txt", request_timeout=0), "x")
 
     async def test_run_code_rejects_other_languages(self):
         sandbox = await self.sandbox()

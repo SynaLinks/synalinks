@@ -12,6 +12,7 @@ from synalinks.src.backend import SymbolicDataModel
 from synalinks.src.backend import Trainable
 from synalinks.src.modules.module import Module
 from synalinks.src.sandboxes.mirage_sandbox import MirageSandbox
+from synalinks.src.sandboxes.sandbox import TimeoutException
 from synalinks.src.saving import serialization_lib
 from synalinks.src.saving.object_registration import get_registered_name
 from synalinks.src.saving.object_registration import get_registered_object
@@ -124,11 +125,15 @@ async def _run_script(
         else None
     )
 
-    execution = await sandbox.run_code(
-        code,
-        inputs={"inputs": inputs_json},
-        external_functions=external_functions,
-    )
+    try:
+        execution = await sandbox.run_code(
+            code,
+            inputs={"inputs": inputs_json},
+            external_functions=external_functions,
+        )
+    except TimeoutException as exc:
+        # E2B raises on a timeout; the script's output is an error like any.
+        return None, "", f"{_relabel_error(f'TimeoutError: {exc}')}\n"
 
     stdout = "".join(execution.logs.stdout)
     stderr = "".join(execution.logs.stderr)
