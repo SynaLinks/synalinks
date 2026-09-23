@@ -4502,7 +4502,7 @@ requires-dist = [
     { name = "matplotlib" },
     { name = "mcp", specifier = ">=2" },
     { name = "mirage-ai", extras = ["fuse"], specifier = ">=0.0.6" },
-    { name = "mlflow", specifier = ">=3.11.1" },
+    { name = "mlflow", specifier = ">=3.16.1" },
     { name = "namex" },
     { name = "numpy" },
     { name = "optree" },
