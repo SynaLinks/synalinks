@@ -109,7 +109,50 @@ Plus everything you'd expect from a production-grade framework:
 # Requirements
 
 - Python 3.12 or more
-- WSL2 for windows users
+- Linux: `libfuse` (Debian/Ubuntu: `sudo apt install fuse3 libfuse3-3`)
+- macOS: [macFUSE](https://macfuse.github.io/) (see below)
+- Windows: WSL2 (see below)
+
+### macOS: installing macFUSE
+
+The code sandbox mounts its virtual filesystem through FUSE, which macOS does
+not ship. Install macFUSE once per machine:
+
+1. Download the latest `.dmg` from the [macFUSE releases page](https://github.com/macfuse/macfuse/releases)
+   (or run `brew install --cask macfuse`) and run the installer.
+2. Open **System Settings → Privacy & Security**. Near the bottom you will see
+   *"System software from developer 'Benjamin Fleischer' was blocked"*. Click
+   **Allow**, enter your password, and restart when asked.
+3. **Apple Silicon only (M1/M2/M3/M4):** if there is no *Allow* button, you
+   first have to enable third-party kernel extensions:
+   - Shut down, then hold the power button until *"Loading startup options"*
+     appears, and choose **Options** to enter Recovery.
+   - Open **Utilities → Startup Security Utility**, select your disk, click
+     **Security Policy…**, choose **Reduced Security** and tick **Allow user
+     management of kernel extensions from identified developers**.
+   - Restart, then do step 2.
+4. Give your terminal access to FUSE volumes: in **System Settings → Privacy &
+   Security → Files and Folders**, enable **Network Volumes** for the app you
+   run Python from (Terminal, iTerm, VS Code, ...). If you skip this, mounts
+   succeed but every read fails with `Operation not permitted`.
+5. Check the install:
+
+   ```shell
+   ls /Library/Filesystems/macfuse.fs && ls /usr/local/lib/libfuse*.dylib
+   ```
+
+> [!NOTE]
+> On macOS the sandbox runs **unconfined**. Confinement (namespaces,
+> `pivot_root`, seccomp) needs a Linux kernel. To run untrusted, LM-generated
+> code with full isolation, use Linux, a Linux container or VM, or pass
+> `require_confinement=True` so the sandbox refuses to run instead of silently
+> running unconfined.
+
+### Windows: WSL2
+
+Confinement needs a Linux kernel, so on Windows run synalinks inside
+[WSL2](https://learn.microsoft.com/windows/wsl/install) (`wsl --install`),
+where the sandbox works exactly as on Linux.
 
 ## Quickstart in 3s with `uv` (recommended)
 
