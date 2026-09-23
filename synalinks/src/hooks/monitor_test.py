@@ -357,6 +357,49 @@ class MonitorStandardAttributesTest(testing.TestCase):
         self.assertNotIn("mlflow.llm.cost", span.attributes)
 
     @patch("synalinks.src.hooks.monitor.mlflow")
+    @patch("litellm.acompletion")
+    async def test_collecting_another_monitor_keeps_live_spans(
+        self, mock_completion, mock_mlflow
+    ):
+        # Every monitor shares the span registry. A stale monitor (say, from an
+        # earlier program) garbage-collected while another's call is in flight
+        # must end only its own spans, not wipe the live call's.
+        import gc
+
+        from litellm.types.utils import Choices
+        from litellm.types.utils import Message
+        from litellm.types.utils import ModelResponse
+        from litellm.types.utils import Usage
+
+        from synalinks.src.hooks import monitor as monitor_module
+
+        stale = self._make_monitor()
+        stale_span = _RecordingSpan()
+        stale_span.ended = False
+        stale_span.end = lambda *args, **kwargs: setattr(stale_span, "ended", True)
+        stale.call_start_times["stale-call"] = 0.0
+        monitor_module._GLOBAL_SPANS_REGISTRY["stale-call"] = stale_span
+
+        async def completion(*args, **kwargs):
+            nonlocal stale
+            stale = None
+            gc.collect()  # the stale monitor is collected mid-call
+            return ModelResponse(
+                choices=[Choices(message=Message(content="ok"))],
+                usage=Usage(prompt_tokens=5, completion_tokens=1, total_tokens=6),
+            )
+
+        mock_completion.side_effect = completion
+        span = _RecordingSpan()
+        mock_mlflow.start_span_no_context.return_value = span
+        lm = LanguageModel(model="ollama/mistral", hooks=[self._make_monitor()])
+        await lm(ChatMessages(messages=[ChatMessage(role=ChatRole.USER, content="x")]))
+        self.assertIn("mlflow.chat.tokenUsage", span.attributes)
+        # ...while the stale monitor's own unfinished span was ended.
+        self.assertTrue(stale_span.ended)
+        self.assertNotIn("stale-call", monitor_module._GLOBAL_SPANS_REGISTRY)
+
+    @patch("synalinks.src.hooks.monitor.mlflow")
     async def test_module_with_registered_prompt_links_it_on_span(self, mock_mlflow):
         from synalinks.src.backend import DataModel
         from synalinks.src.modules import Module

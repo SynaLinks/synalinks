@@ -614,10 +614,19 @@ class Monitor(Hook):
         )
 
     def __del__(self):
-        """Cleanup any open spans."""
-        for call_id, span in list(_GLOBAL_SPANS_REGISTRY.items()):
+        """End the spans this monitor opened and never closed.
+
+        Only its own: the registry is shared by every monitor in the process
+        (a child span finds its parent there), so clearing it all would end
+        the in-flight spans of any other live monitor whenever this one
+        happens to be garbage-collected. The calls this monitor opened and
+        has not ended yet are exactly the keys of ``call_start_times``.
+        """
+        for call_id in list(getattr(self, "call_start_times", {})):
+            span = _GLOBAL_SPANS_REGISTRY.pop(call_id, None)
+            if span is None:
+                continue
             try:
                 span.end()
             except Exception:
                 pass
-        _GLOBAL_SPANS_REGISTRY.clear()
