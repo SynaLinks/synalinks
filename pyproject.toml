@@ -34,6 +34,8 @@ dependencies = [
   # links libnetworkit/libarrow/libomp by rpaths to ladybug's build machine
   # and does not ship them, so `LOAD algo` fails on every Mac.
   "ladybug>=0.19.1,<0.20",
+  # E2B's chart extraction for the sandbox's Result.chart (MIT).
+  "e2b-charts>=1.0.0",
   "lancedb>=0.30.2",
   "litellm>=1.84.0",
   "markdown-it-py",

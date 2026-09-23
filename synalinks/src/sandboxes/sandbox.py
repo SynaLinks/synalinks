@@ -1,5 +1,6 @@
 # License Apache 2.0: (c) 2025-2026 Yoan Sallami (Synalinks Team)
 
+import ast
 import asyncio
 import dataclasses
 import functools
@@ -34,6 +35,7 @@ from typing import Union
 from synalinks.src.api_export import synalinks_export
 from synalinks.src.backend import DataModel
 from synalinks.src.backend import Field
+from synalinks.src.sandboxes.charts import Chart
 from synalinks.src.saving.synalinks_saveable import SynalinksSaveable
 from synalinks.src.utils.python_utils import class_method_variant
 
@@ -69,12 +71,14 @@ class Result:
 
     The value of the code's last expression is the *main result*
     (``is_main_result``); ``display(obj)`` calls, ``plt.show()`` and figures
-    still open at the end add the others, in that order (Jupyter's). ``text``
-    is always the ``repr``; the rich formats are what the object's
-    ``_repr_html_`` / ``_repr_png_`` / ... methods return, and a matplotlib
-    figure is a base64 ``png``. Beyond E2B, a JSON-serializable main result
-    also carries its value as ``json``. ``data`` and ``chart`` (E2B's
-    extracted chart data) are not produced.
+    still open at the end add the others, in that order (Jupyter's). Each
+    field is filled as E2B's kernel fills it: ``text`` is the ``repr`` (a
+    string's without its quotes); the rich formats are what the object's
+    ``_repr_html_`` / ``_repr_png_`` / ... / ``_repr_mimebundle_`` return
+    (unknown MIME types in ``extra``); ``json`` is a list's or dict's own
+    value; ``data`` a pandas DataFrame's columns (``to_dict("list")``); and a
+    matplotlib figure is a base64 ``png`` with its data as ``chart`` (see
+    `synalinks.sandboxes.Chart`), extracted by E2B's own ``e2b_charts``.
     """
 
     text: Optional[str] = None
@@ -88,7 +92,7 @@ class Result:
     json: Optional[Any] = None
     javascript: Optional[str] = None
     data: Optional[dict] = None
-    chart: Optional[Any] = None
+    chart: Optional[Chart] = None
     is_main_result: bool = False
     extra: Optional[dict] = None
 
@@ -2165,12 +2169,17 @@ class Sandbox(SynalinksSaveable):
             return ExecutionResult(error=f"TimeoutError: {exc}")
         main = next((r for r in execution.results if r.is_main_result), None)
         stdout, stderr, error = flat_output(execution)
-        return ExecutionResult(
-            stdout=stdout,
-            stderr=stderr,
-            result=main.json if main else None,
-            error=error,
-        )
+        value = None
+        if main is not None:
+            # E2B gives ``json`` only to lists and dicts; a scalar's value is
+            # recovered from its text (a string's text is the string itself).
+            value = main.json
+            if value is None and main.text is not None:
+                try:
+                    value = ast.literal_eval(main.text)
+                except (ValueError, SyntaxError):
+                    value = main.text
+        return ExecutionResult(stdout=stdout, stderr=stderr, result=value, error=error)
 
     def reset(self) -> None:
         """Wipe execution state and start over with an empty sandbox.

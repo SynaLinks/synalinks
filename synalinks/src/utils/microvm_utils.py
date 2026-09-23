@@ -94,10 +94,12 @@ LIBFUSE_DEB = (
 LIBFUSE_DEB_SHA256 = "66793b6b9a559e95a5ff853cbbff337076ef900c4b0d927f57fd986b3b1bea09"
 GUEST_LIBFUSE = "/usr/lib/aarch64-linux-gnu/libfuse3.so.4"
 GUEST_FS = "/opt/synalinks/fs.py"
-# Plotting in the guest: matplotlib and what it needs, as Linux arm64 wheels
-# for the image's Python 3.12, at the versions synalinks' own lock resolves
-# (so the guest runs what the host tests). Pinned by URL and sha256 from PyPI;
-# ``run_code`` captures their figures as PNG results.
+# Scientific Python in the guest, as E2B's image has it: numpy, scipy, pandas,
+# polars and matplotlib (``run_code`` captures its figures as PNG results) with
+# e2b-charts (E2B's extractor for ``Result.chart``) and their dependencies.
+# Linux arm64 wheels for the image's Python 3.12, at the versions synalinks'
+# own lock resolves (so the guest runs what the host tests), pinned by URL and
+# sha256 from PyPI.
 GUEST_WHEELS = (
     (
         "https://files.pythonhosted.org/packages/88/90/4e10e033d9b66589d8ed98b84c95cdbb57033d57c1f41339d7393dbd2f2e/matplotlib-3.11.1-cp312-cp312-manylinux_2_26_aarch64.manylinux_2_28_aarch64.whl",
@@ -142,6 +144,54 @@ GUEST_WHEELS = (
     (
         "https://files.pythonhosted.org/packages/b7/ce/149a00dd41f10bc29e5921b496af8b574d8413afcd5e30dfa0ed46c2cc5e/six-1.17.0-py2.py3-none-any.whl",
         "4721f391ed90541fddacab5acf947aa0d3dc7d27b2e1e8eda2be8970586c3274",
+    ),
+    (
+        "https://files.pythonhosted.org/packages/3c/23/21f5e703643d66f21faa6b4c73195bfcad70c55efcb4f1ab327cd7c4101a/scipy-1.18.0-cp312-cp312-manylinux_2_27_aarch64.manylinux_2_28_aarch64.whl",
+        "52a96e21517c7292375c0e27dd796a811f03fcea5fd4d108fdfea8145dcf17ab",
+    ),
+    (
+        "https://files.pythonhosted.org/packages/57/56/cf2dbe1a3f5271370669475ead12ce77c61726ffd19a35546e31aa8edf4e/pandas-2.3.3-cp312-cp312-manylinux_2_24_aarch64.manylinux_2_28_aarch64.whl",
+        "ecaf1e12bdc03c86ad4a7ea848d66c685cb6851d807a26aa245ca3d2017a1908",
+    ),
+    (
+        "https://files.pythonhosted.org/packages/0f/7b/39c34ca613b0b198cb866466651b26b045e2009864c5183c979a3b83f383/pytz-2026.3.post1-py2.py3-none-any.whl",
+        "dd95840dd199baea12d9cc096a1d452caa6596a1c1e4b5f3dbd1541855d5e815",
+    ),
+    (
+        "https://files.pythonhosted.org/packages/e5/6d/b53b99a9f2766d095985947a5782f1702cabb129a34f7a802d7197af832f/tzdata-2026.3-py2.py3-none-any.whl",
+        "dc096730c87af6cab1b171c9d532be840741ff5d459015e7f6947bd7d7e54931",
+    ),
+    (
+        "https://files.pythonhosted.org/packages/5d/dd/f821e80e1240d5125b3fb66f54c11fa7dc1f72da9584a9066b95fcd5049f/e2b_charts-1.0.0-py3-none-any.whl",
+        "c5a9ae62bd33a3cba0f7efd0fe10938f2909bf948e54029bb7b67c0fd8ca782c",
+    ),
+    (
+        "https://files.pythonhosted.org/packages/fd/7b/122376b1fd3c62c1ed9dc80c931ace4844b3c55407b6fb2d199377c9736f/pydantic-2.13.4-py3-none-any.whl",
+        "45a282cde31d808236fd7ea9d919b128653c8b38b393d1c4ab335c62924d9aba",
+    ),
+    (
+        "https://files.pythonhosted.org/packages/8e/bc/f47d1ff9cbb1620e1b5b697eef06010035735f07820180e74178226b27b3/pydantic_core-2.46.4-cp312-cp312-manylinux_2_17_aarch64.manylinux2014_aarch64.whl",
+        "8233f2947cf85404441fd7e0085f53b10c93e0ee78611099b5c7237e36aacbf7",
+    ),
+    (
+        "https://files.pythonhosted.org/packages/99/91/8acff4f5e50511b911bbccb72b8628a49c68ce14148cd9f6431094859a90/annotated_types-0.8.0-py3-none-any.whl",
+        "f072f4d804ea359e4eaf198b1af7a8b0943881a87f31bb764f8bf219bb9419e0",
+    ),
+    (
+        "https://files.pythonhosted.org/packages/49/d3/b8441a820a491ddfc024b0b0cf0393375b75ea13866d9c66727e54c2fc80/typing_extensions-4.16.0-py3-none-any.whl",
+        "481caa481374e813c1b176ada14e97f1f67a4539ce9cfeb3f350d78d6370c2e8",
+    ),
+    (
+        "https://files.pythonhosted.org/packages/67/81/4add07e5172b7ac40d8ed5ff580409a7801a4fe26d529bdd915401dabfbe/typing_inspection-0.4.4-py3-none-any.whl",
+        "65b8397ba37ccbce054456aaccddfc91e6e3083c92824df348d96ca832f3f147",
+    ),
+    (
+        "https://files.pythonhosted.org/packages/51/6d/3014112c7f717d1253223faa13b6db3ac3a64ed00ab2a3bc1b942bc9cdd4/polars-1.44.2-py3-none-any.whl",
+        "1bb331f17a40d9d931101533dcd33637b66edc61eb377b07020dac16a0f0377b",
+    ),
+    (
+        "https://files.pythonhosted.org/packages/4e/4f/076626ce93ddd622203c4b27be2a96d034cf5b24110c52e96e6029f0ea33/polars_runtime_32-1.44.2-cp310-abi3-manylinux_2_17_aarch64.manylinux2014_aarch64.whl",
+        "bbf9b45040291dc1c6c588c837019c33557bde25ec536562a9cca9e1f6dfcc45",
     ),
 )
 # MirageFS operations the bridge forwards. The macFUSE-only entry points

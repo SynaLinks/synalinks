@@ -11,6 +11,7 @@ import inspect
 import unittest
 
 from synalinks.src import testing
+from synalinks.src.sandboxes import charts as ours_charts
 from synalinks.src.sandboxes import sandbox as ours
 from synalinks.src.sandboxes.mirage_sandbox import MirageCommands
 from synalinks.src.sandboxes.mirage_sandbox import MirageFilesystem
@@ -19,6 +20,7 @@ from synalinks.src.sandboxes.mirage_sandbox import MirageSandbox
 try:
     import e2b
     import e2b_code_interpreter
+    import e2b_code_interpreter.charts as e2b_charts_sdk
     from e2b.sandbox.commands.main import ProcessInfo
     from e2b.sandbox.filesystem.filesystem import WriteEntry
     from e2b.sandbox.filesystem.watch_handle import FilesystemEvent
@@ -73,6 +75,23 @@ def model_pairs():
         (SandboxQuery, ours.SandboxQuery),
         (FilesystemEvent, ours.FilesystemEvent),
         (WriteEntry, ours.WriteEntry),
+    ] + [
+        (getattr(e2b_charts_sdk, name), getattr(ours_charts, name))
+        for name in (
+            "Chart",
+            "Chart2D",
+            "PointData",
+            "PointChart",
+            "LineChart",
+            "ScatterChart",
+            "BarData",
+            "BarChart",
+            "PieData",
+            "PieChart",
+            "BoxAndWhiskerData",
+            "BoxAndWhiskerChart",
+            "SuperChart",
+        )
     ]
 
 
@@ -182,6 +201,8 @@ class E2BInterfaceTest(testing.TestCase):
         for theirs, mine in (
             (e2b.FileType, ours.FileType),
             (FilesystemEventType, ours.FilesystemEventType),
+            (e2b_charts_sdk.ChartType, ours_charts.ChartType),
+            (e2b_charts_sdk.ScaleType, ours_charts.ScaleType),
         ):
             self.assertEqual(
                 {m.name: m.value for m in theirs}, {m.name: m.value for m in mine}
@@ -304,7 +325,7 @@ class E2BBehaviourTest(testing.TestCase):
         shown, main, flushed = execution.results
         self.assertTrue(self.is_png(shown) and not shown.is_main_result)
         self.assertTrue(main.is_main_result)
-        self.assertEqual(main.text, "'done'")
+        self.assertEqual(main.text, "done")  # E2B strips a string's quotes
         self.assertTrue(self.is_png(flushed) and not flushed.is_main_result)
         self.assertIn("Figure", shown.text)
         self.assertEqual(len(seen), 3)
@@ -348,6 +369,83 @@ class E2BBehaviourTest(testing.TestCase):
         self.assertTrue(main.is_main_result)
         self.assertEqual(main.html, "<table></table>")
 
+    async def test_figures_carry_e2b_chart_data(self):
+        sandbox = await self.sandbox()
+        execution = await sandbox.run_code(
+            "import matplotlib.pyplot as plt\n"
+            "plt.plot([1, 2, 3], [1, 4, 9], label='squares')\n"
+            "plt.title('growth')\n"
+            "plt.show()\n"
+            "plt.bar(['a', 'b'], [3, 5])\n"
+            "plt.show()\n"
+            "fig, (left, right) = plt.subplots(1, 2)\n"
+            "left.plot([1, 2])\n"
+            "right.plot([2, 1])\n"
+            "fig"
+        )
+        line, bar, grid = (r.chart for r in execution.results)
+        self.assertIsInstance(line, ours_charts.LineChart)
+        self.assertEqual(line.title, "growth")
+        self.assertEqual(line.elements[0].label, "squares")
+        self.assertEqual(line.elements[0].points, [(1, 1), (2, 4), (3, 9)])
+        self.assertIsInstance(bar, ours_charts.BarChart)
+        self.assertEqual([e.value for e in bar.elements], [3, 5])
+        self.assertIsInstance(grid, ours_charts.SuperChart)
+        self.assertEqual(len(grid.elements), 2)
+        self.assertEqual(line.to_dict()["type"], "line")
+
+    async def test_dataframe_data_json_and_mimebundle_as_e2b(self):
+        sandbox = await self.sandbox()
+        frame = await sandbox.run_code(
+            "import pandas as pd\n"
+            "dates = pd.to_datetime(['2026-01-01', '2026-01-02'])\n"
+            "pd.DataFrame({'a': [1, 2], 't': dates})"
+        )
+        (main,) = frame.results
+        self.assertEqual(
+            main.data, {"a": [1, 2], "t": ["2026-01-01T00:00:00", "2026-01-02T00:00:00"]}
+        )
+        self.assertIn("<table", main.html)
+        listed = await sandbox.run_code("import numpy as np\n[1, np.arange(2)]")
+        self.assertEqual(listed.results[0].json, [1, [0, 1]])
+        self.assertEqual((await sandbox.run_code("{'k': 1}")).results[0].json, {"k": 1})
+        self.assertIsNone((await sandbox.run_code("5")).results[0].json)
+        bundled = await sandbox.run_code(
+            "class Viz:\n"
+            "    def _repr_mimebundle_(self, **kwargs):\n"
+            "        return {'text/html': '<b>x</b>', 'application/vnd.custom': 1}\n"
+            "Viz()"
+        )
+        (viz,) = bundled.results
+        self.assertEqual(
+            (viz.html, viz.extra), ("<b>x</b>", {"application/vnd.custom": 1})
+        )
+
+    async def test_saving_a_pil_image_displays_it(self):
+        sandbox = await self.sandbox()
+        execution = await sandbox.run_code(
+            "from PIL import Image\n"
+            "image = Image.new('RGB', (4, 4), 'red')\n"
+            "image.show()\n"  # no screen: a no-op, as on E2B
+            "image.save('red.png')"
+        )
+        self.assertIsNone(execution.error)
+        (shown,) = execution.results
+        self.assertTrue(self.is_png(shown))
+
+    async def test_scientific_stack_in_the_microvm(self):
+        sandbox = await self.sandbox()
+        if sandbox.granted_capabilities()["backend"] != "microvm":
+            self.skipTest("the guest image is the microVM's")
+        execution = await sandbox.run_code(
+            "import scipy, polars, pandas, numpy\n"
+            "from scipy import stats\n"
+            "total = polars.DataFrame({'a': [1, 2]})['a'].sum()\n"
+            "(round(float(stats.norm.cdf(0)), 2), total)"
+        )
+        self.assertIsNone(execution.error)
+        self.assertEqual(execution.text, "(0.5, 3)")
+
     # -- code contexts ---------------------------------------------------
 
     async def test_code_contexts_have_their_own_namespace(self):
@@ -355,8 +453,8 @@ class E2BBehaviourTest(testing.TestCase):
         context = await sandbox.create_code_context(cwd="/")
         await sandbox.run_code("x = 'default'")
         await sandbox.run_code("x = 'context'", context=context)
-        self.assertEqual((await sandbox.run_code("x")).text, "'default'")
-        self.assertEqual((await sandbox.run_code("x", context=context)).text, "'context'")
+        self.assertEqual((await sandbox.run_code("x")).text, "default")
+        self.assertEqual((await sandbox.run_code("x", context=context)).text, "context")
         ids = [c.id for c in await sandbox.list_code_contexts()]
         self.assertEqual(ids, ["default", context.id])
         await sandbox.restart_code_context(context)

@@ -323,7 +323,7 @@ class MirageSandboxTest(_SandboxTestCase):
         self.assertEqual(result.text, "42")
         self.assertEqual(len(result.results), 1)
         self.assertTrue(result.results[0].is_main_result)
-        self.assertEqual(result.results[0].formats(), ["text", "json"])
+        self.assertEqual(result.results[0].formats(), ["text"])
         self.assertEqual(result.execution_count, 1)
         self.assertEqual((await sandbox.run_code("None")).results, [])
 
@@ -478,7 +478,8 @@ class MirageSandboxTest(_SandboxTestCase):
     async def test_last_expression_is_captured_as_result(self):
         sandbox = MirageSandbox(timeout=_TIMEOUT)
         result = await sandbox.run_code("a = 10\nb = 32\na + b")
-        self.assertEqual(result.results[0].json, 42)
+        # As on E2B: a scalar is its text; only lists and dicts get ``json``.
+        self.assertEqual((result.results[0].text, result.results[0].json), ("42", None))
 
     async def test_result_variable_convention(self):
         sandbox = MirageSandbox(timeout=_TIMEOUT)
@@ -514,7 +515,7 @@ class MirageSandboxTest(_SandboxTestCase):
             external_functions={"adder": adder},
         )
         self.assertIsNone(result.error)
-        self.assertEqual(result.results[0].json, 7)
+        self.assertEqual(result.results[0].text, "7")
         self.assertEqual(called["n"], 1)
 
     async def test_external_function_accepts_positional_args(self):
@@ -2367,7 +2368,7 @@ class MicrovmConfineTest(_SandboxTestCase):
     async def test_code_runs_in_a_linux_guest(self):
         execution = await self.sandbox().run_code("import platform\nplatform.system()")
         self.assertIsNone(execution.error)
-        self.assertEqual(execution.text, "'Linux'")
+        self.assertEqual(execution.text, "Linux")
 
     async def test_host_environment_does_not_reach_the_guest(self):
         os.environ["SYNALINKS_TEST_SECRET"] = "leak"
@@ -2388,7 +2389,7 @@ class MicrovmConfineTest(_SandboxTestCase):
         self.assertEqual((await sandbox.read_file("/note.txt"))["content"], "from-guest")
         await sandbox.write_file("/host.txt", "from-host")
         execution = await sandbox.run_code("open('/host.txt').read()")
-        self.assertEqual(execution.text, "'from-host'")
+        self.assertEqual(execution.text, "from-host")
 
     async def test_host_tools_are_reachable_over_vsock(self):
         async def add(a: int, b: int) -> int:
@@ -2412,7 +2413,7 @@ class MicrovmConfineTest(_SandboxTestCase):
             "outcome"
         )
         execution = await self.sandbox().run_code(probe)
-        self.assertEqual(execution.text, "'blocked'")
+        self.assertEqual(execution.text, "blocked")
 
     async def test_timeout_kills_the_vm(self):
         sandbox = self.sandbox()

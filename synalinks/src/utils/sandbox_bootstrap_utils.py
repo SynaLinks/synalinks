@@ -57,9 +57,9 @@ if config.get("confine"):
 # context. ``cwd_root`` is where the virtual filesystem's "/" is from here:
 # "" once confinement pivoted into it, the mount otherwise.
 os.environ.update(config.get("envs") or {})
-if config.get("cwd") and config.get("cwd_root") is not None:
+if config.get("context_cwd") and config.get("cwd_root") is not None:
     try:
-        os.chdir(config["cwd_root"] + config["cwd"])
+        os.chdir(config["cwd_root"] + config["context_cwd"])
     except OSError as exc:
         print("cwd-warn: " + repr(exc), file=sys.stderr)
 # Installed before the namespace is restored: restoring it re-imports
@@ -81,12 +81,42 @@ def _figure_png(fig):
     return base64.b64encode(buffer.getvalue()).decode("ascii")
 
 
+def _plain(value):
+    # numpy and pandas scalars / arrays as plain JSON values (E2B's orjson).
+    if hasattr(value, "tolist"):
+        return value.tolist()
+    if hasattr(value, "isoformat"):
+        return value.isoformat()
+    raise TypeError(type(value).__name__)
+
+
+_MIME_FIELDS = {
+    "text/plain": "text",
+    "text/html": "html",
+    "text/markdown": "markdown",
+    "image/svg+xml": "svg",
+    "image/png": "png",
+    "image/jpeg": "jpeg",
+    "application/pdf": "pdf",
+    "text/latex": "latex",
+    "application/json": "json",
+    "application/javascript": "javascript",
+    "e2b/data": "data",
+    "e2b/chart": "chart",
+}
+
+
 def _rich(obj, main=False):
+    # One E2B result for ``obj``, field by field as E2B's kernel fills it.
     out = {"is_main_result": main}
     try:
-        out["text"] = repr(obj)
+        text = repr(obj)
     except Exception:
-        out["text"] = object.__repr__(obj)
+        text = object.__repr__(obj)
+    # E2B's server strips the quotes of a string's repr.
+    if len(text) >= 2 and text[0] == text[-1] and text[0] in "'\"":
+        text = text[1:-1]
+    out["text"] = text
     for attr, key, binary in (
         ("_repr_html_", "html", False),
         ("_repr_markdown_", "markdown", False),
@@ -97,6 +127,8 @@ def _rich(obj, main=False):
         ("_repr_latex_", "latex", False),
         ("_repr_json_", "json", False),
         ("_repr_javascript_", "javascript", False),
+        ("_repr_e2b_data_", "data", False),
+        ("_repr_e2b_chart_", "chart", False),
     ):
         method = getattr(obj, attr, None)
         if not callable(method) or isinstance(obj, type):
@@ -112,9 +144,40 @@ def _rich(obj, main=False):
         if binary and isinstance(data, (bytes, bytearray)):
             data = base64.b64encode(bytes(data)).decode("ascii")
         out[key] = data
+    bundle = getattr(obj, "_repr_mimebundle_", None)
+    if callable(bundle) and not isinstance(obj, type):
+        try:
+            mimes = bundle()
+            mimes = mimes[0] if isinstance(mimes, tuple) else mimes
+            for mime, data in (mimes or {}).items():
+                if mime in _MIME_FIELDS:
+                    out.setdefault(_MIME_FIELDS[mime], data)
+                else:
+                    out.setdefault("extra", {})[mime] = data
+        except Exception:
+            pass
+    # E2B's JSON formatter: a list or dict is its own JSON (numpy converted).
+    if "json" not in out and isinstance(obj, (list, dict)):
+        try:
+            out["json"] = json.loads(json.dumps(obj, default=_plain))
+        except (TypeError, ValueError):
+            pass
+    pandas = sys.modules.get("pandas")
+    if "data" not in out and pandas is not None and isinstance(obj, pandas.DataFrame):
+        data = obj.to_dict(orient="list")
+        out["data"] = {
+            key: [v.isoformat() if isinstance(v, pandas.Timestamp) else v for v in value]
+            for key, value in data.items()
+        }
     figure_module = sys.modules.get("matplotlib.figure")
     if figure_module is not None and isinstance(obj, figure_module.Figure):
         out["png"] = _figure_png(obj)
+        try:
+            from e2b_charts import chart_figure_to_dict
+
+            out["chart"] = chart_figure_to_dict(obj)
+        except Exception:
+            out["chart"] = {}
     return out
 
 
@@ -161,7 +224,39 @@ class _DisplayBackend:
         module.show = lambda *args, **kwargs: _displays.extend(_flush_figures())
 
 
+class _PillowHooks:
+    # E2B's image hooks, applied when ``PIL.Image`` is imported: saving an
+    # image to a path also displays it, and ``Image.show()`` (no screen in a
+    # sandbox) does nothing.
+    @classmethod
+    def find_spec(cls, name, path=None, target=None):
+        if name != "PIL.Image":
+            return None
+        import importlib.machinery as _machinery
+
+        spec = _machinery.PathFinder.find_spec(name, path)
+        if spec is None or spec.loader is None:
+            return spec
+        load = spec.loader.exec_module
+
+        def exec_module(module):
+            load(module)
+            save = module.Image.save
+
+            def save_and_display(image, fp, format=None, **options):
+                if isinstance(fp, str):
+                    display(image)
+                return save(image, fp, format, **options)
+
+            module.Image.save = save_and_display
+            module.Image.show = lambda image, *args, **kwargs: None
+
+        spec.loader.exec_module = exec_module
+        return spec
+
+
 sys.meta_path.insert(0, _DisplayBackend)
+sys.meta_path.insert(0, _PillowHooks)
 os.environ["MPLBACKEND"] = "module://synalinks_display"
 if config.get("mplconfigdir"):
     os.environ["MPLCONFIGDIR"] = config["mplconfigdir"]
@@ -358,13 +453,6 @@ finally:
         results = list(_displays)
         if value is not None:
             main = _rich(value, main=True)
-            # Beyond E2B: a JSON-serializable value is also its ``json``.
-            if "json" not in main:
-                try:
-                    json.dumps(value)
-                    main["json"] = value
-                except Exception:
-                    pass
             figure_module = sys.modules.get("matplotlib.figure")
             if figure_module is not None and isinstance(value, figure_module.Figure):
                 sys.modules["matplotlib.pyplot"].close(value)
@@ -376,7 +464,7 @@ finally:
         report = {"error": error, "results": results}
         try:
             with open(result_path, "w") as fh:
-                json.dump(report, fh)
+                json.dump(report, fh, default=_plain)
         except Exception as exc:
             print("result-warn: " + repr(exc), file=sys.stderr)
 if error is not None:

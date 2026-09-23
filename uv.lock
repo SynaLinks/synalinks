@@ -1048,6 +1048,20 @@ wheels = [
 ]
 
 [[package]]
+name = "e2b-charts"
+version = "1.0.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "matplotlib" },
+    { name = "numpy" },
+    { name = "pydantic" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/8a/ab/192bc610e8b4bb547fe93d1b1f2a009d353fc63cc1de03903c08b59636bc/e2b_charts-1.0.0.tar.gz", hash = "sha256:95aecbd4b62cf0998c3460a5b2e40412696f03cb7b17176ddd8d4e08c50a9572", size = 6010, upload-time = "2026-03-12T10:17:37.564Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/5d/dd/f821e80e1240d5125b3fb66f54c11fa7dc1f72da9584a9066b95fcd5049f/e2b_charts-1.0.0-py3-none-any.whl", hash = "sha256:c5a9ae62bd33a3cba0f7efd0fe10938f2909bf948e54029bb7b67c0fd8ca782c", size = 9068, upload-time = "2026-03-12T10:17:36.648Z" },
+]
+
+[[package]]
 name = "e2b-code-interpreter"
 version = "2.10.0"
 source = { registry = "https://pypi.org/simple" }
@@ -4635,6 +4649,7 @@ dependencies = [
     { name = "dill" },
     { name = "docstring-parser" },
     { name = "duckdb" },
+    { name = "e2b-charts" },
     { name = "fastmcp" },
     { name = "graphviz" },
     { name = "greenlet" },
@@ -4681,6 +4696,7 @@ requires-dist = [
     { name = "dill" },
     { name = "docstring-parser" },
     { name = "duckdb" },
+    { name = "e2b-charts", specifier = ">=1.0.0" },
     { name = "fastmcp", specifier = ">=4" },
     { name = "graphviz" },
     { name = "greenlet" },

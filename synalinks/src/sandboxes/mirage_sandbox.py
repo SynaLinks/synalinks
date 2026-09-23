@@ -34,6 +34,7 @@ from typing import Optional
 from typing import Union
 
 from synalinks.src.api_export import synalinks_export
+from synalinks.src.sandboxes.charts import deserialize_chart
 from synalinks.src.sandboxes.sandbox import DEFAULT_TIMEOUT
 from synalinks.src.sandboxes.sandbox import CommandExitException
 from synalinks.src.sandboxes.sandbox import CommandHandle
@@ -1838,7 +1839,8 @@ class MirageSandbox(Sandbox):
                 "mplconfigdir": os.path.join(self.hostdir, "mplconfig"),
             }
             if context is not None:
-                base_config["cwd"] = context.cwd
+                # Not ``cwd``: that key is Seatbelt's (where it stands).
+                base_config["context_cwd"] = context.cwd
                 base_config["cwd_root"] = self.virtual_root()
             if inputs:
                 base_config["inputs"] = base64.b64encode(dill.dumps(inputs)).decode(
@@ -1976,7 +1978,10 @@ class MirageSandbox(Sandbox):
         # and its last expression, as E2B results (see the bootstrap).
         fields = {f.name for f in dataclasses.fields(Result)}
         results = [
-            Result(**{k: v for k, v in item.items() if k in fields})
+            Result(
+                **{k: v for k, v in item.items() if k in fields and k != "chart"},
+                chart=deserialize_chart(item.get("chart")),
+            )
             for item in report.get("results") or []
         ]
         execution = self.record_run(
