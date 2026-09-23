@@ -34,6 +34,8 @@ from typing import Optional
 from typing import Union
 
 from synalinks.src.api_export import synalinks_export
+from synalinks.src.backend import Audio
+from synalinks.src.backend import Image
 from synalinks.src.sandboxes.charts import deserialize_chart
 from synalinks.src.sandboxes.sandbox import DEFAULT_TIMEOUT
 from synalinks.src.sandboxes.sandbox import CommandExitException
@@ -63,12 +65,14 @@ from synalinks.src.sandboxes.sandbox import execution_timeout_error
 from synalinks.src.sandboxes.sandbox import output_lines
 from synalinks.src.sandboxes.sandbox import request_deadline
 from synalinks.src.saving.object_registration import register_synalinks_serializable
+from synalinks.src.utils.audio_utils import fit_audio
 from synalinks.src.utils.confinement_utils import CONFINE_PROLOGUE_SRC
 from synalinks.src.utils.confinement_utils import build_seccomp_filter
 from synalinks.src.utils.confinement_utils import confinement_backend
 from synalinks.src.utils.egress_utils import make_egress_tool
 from synalinks.src.utils.heap_utils import cap_malloc_arenas
 from synalinks.src.utils.heap_utils import malloc_trim
+from synalinks.src.utils.image_utils import fit_image
 from synalinks.src.utils.microvm_utils import GUEST_BINDS
 from synalinks.src.utils.microvm_utils import GUEST_MOUNT
 from synalinks.src.utils.microvm_utils import GUEST_SOCK_DIR
@@ -2697,6 +2701,78 @@ class MirageSandbox(Sandbox):
             "end_line": start + len(page) - 1,
             "total_lines": len(lines),
             "truncated": truncated,
+        }
+
+    async def read_image(self, path: str) -> dict:
+        """Look at an image file from the mounted virtual filesystem.
+
+        Reach for this to see an image, e.g. a chart a script saved: it is
+        shown to you with the result. A large image is scaled down to what
+        you can read.
+
+        Args:
+            path (str): Absolute virtual path of the image, e.g.
+                ``'/plots/loss.png'``.
+
+        Returns:
+            dict: ``path``, ``mime_type``, ``width``, ``height`` and
+            ``image`` (the image), plus ``original_width`` and
+            ``original_height`` when it was scaled down; or ``error`` if the
+            file is missing or is not an image.
+        """
+        try:
+            data = bytes(await self.files.read(path, format="bytes"))
+        except FileNotFoundException:
+            return {"error": f"file not found: {path}"}
+        try:
+            fitted = fit_image(data)
+        except ValueError:
+            return {"error": f"not an image: {path}"}
+        encoded = base64.b64encode(fitted.pop("data")).decode("ascii")
+        return {
+            "path": path,
+            **fitted,
+            "image": Image(data=encoded, mime_type=fitted["mime_type"]),
+        }
+
+    async def read_audio(
+        self, path: str, offset: float = 0.0, duration: float = 0.0
+    ) -> dict:
+        """Listen to an audio file from the mounted virtual filesystem.
+
+        Reach for this to hear a recording or a sound a script generated: the
+        clip is played to you with the result. Any common format (WAV, MP3,
+        FLAC, OGG, ...).
+
+        Args:
+            path (str): Absolute virtual path of the audio file, e.g.
+                ``'/recordings/call.wav'``.
+            offset (float): Where to start listening, in seconds. Defaults
+                to 0.
+            duration (float): How many seconds to listen to; 0 (the default)
+                for the rest of the file. At most 300 seconds per call: raise
+                ``offset`` to listen further in.
+
+        Returns:
+            dict: ``path``, ``format``, ``offset`` and ``duration`` of the
+            clip, ``total_duration`` of the file, ``truncated`` (whether
+            audio remains after the clip) and ``audio`` (the clip); or
+            ``error`` if the file is missing, is not audio or ``offset`` is
+            past its end.
+        """
+        try:
+            data = bytes(await self.files.read(path, format="bytes"))
+        except FileNotFoundException:
+            return {"error": f"file not found: {path}"}
+        try:
+            clip = fit_audio(data, offset, duration)
+        except ValueError as exc:
+            return {"error": f"{path}: {exc}"}
+        encoded = base64.b64encode(clip.pop("data")).decode("ascii")
+        return {
+            "path": path,
+            **clip,
+            "audio": Audio(data=encoded, format=clip["format"]),
         }
 
     async def write_file(self, path: str, content: str) -> dict:

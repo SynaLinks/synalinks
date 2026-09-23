@@ -1,10 +1,16 @@
 # License Apache 2.0: (c) 2025-2026 Yoan Sallami (Synalinks Team)
 
+import base64
 import gc
+import io
 import os
 import sys
 import tempfile
 import unittest
+
+import numpy as np
+import PIL.Image
+import soundfile
 
 from synalinks.src import testing
 from synalinks.src.sandboxes.mirage_sandbox import MirageSandbox
@@ -973,6 +979,64 @@ class MirageSandboxTest(_SandboxTestCase):
         sandbox = MirageSandbox(timeout=_TIMEOUT)
         read = await sandbox.read_file("/nope.txt")
         self.assertIn("error", read)
+
+    async def test_read_image(self):
+        sandbox = MirageSandbox(timeout=_TIMEOUT)
+        png = io.BytesIO()
+        PIL.Image.new("RGB", (40, 30), "red").save(png, format="PNG")
+        await sandbox.files.write("/plot.png", png.getvalue())
+        read = await sandbox.read_image("/plot.png")
+        self.assertEqual(read["mime_type"], "image/png")
+        self.assertEqual((read["width"], read["height"]), (40, 30))
+        self.assertNotIn("original_width", read)
+        self.assertEqual(base64.b64decode(read["image"].data), png.getvalue())
+        await sandbox.write_file("/notes.txt", "hello")
+        self.assertIn("not an image", (await sandbox.read_image("/notes.txt"))["error"])
+        self.assertIn("not found", (await sandbox.read_image("/nope.png"))["error"])
+
+    async def test_read_image_scales_a_large_image_down(self):
+        sandbox = MirageSandbox(timeout=_TIMEOUT)
+        bmp = io.BytesIO()
+        PIL.Image.new("RGB", (4000, 1000), "blue").save(bmp, format="BMP")
+        await sandbox.files.write("/scan.bmp", bmp.getvalue())
+        read = await sandbox.read_image("/scan.bmp")
+        self.assertEqual(read["mime_type"], "image/png")
+        self.assertEqual((read["width"], read["height"]), (1568, 392))
+        self.assertEqual((read["original_width"], read["original_height"]), (4000, 1000))
+
+    async def test_read_audio(self):
+        sandbox = MirageSandbox(timeout=_TIMEOUT)
+        wav = io.BytesIO()
+        soundfile.write(wav, np.zeros(8000 * 3), 8000, format="WAV")
+        await sandbox.files.write("/beep.wav", wav.getvalue())
+        read = await sandbox.read_audio("/beep.wav")
+        self.assertEqual((read["format"], read["total_duration"]), ("wav", 3.0))
+        self.assertEqual(base64.b64decode(read["audio"].data), wav.getvalue())
+        clip = await sandbox.read_audio("/beep.wav", offset=1, duration=1)
+        self.assertEqual((clip["offset"], clip["duration"]), (1, 1))
+        self.assertTrue(clip["truncated"])
+        self.assertIn("past the end", (await sandbox.read_audio("/beep.wav", 9))["error"])
+        await sandbox.write_file("/notes.txt", "hello")
+        self.assertIn("not a readable", (await sandbox.read_audio("/notes.txt"))["error"])
+        self.assertIn("not found", (await sandbox.read_audio("/nope.wav"))["error"])
+
+    async def test_run_python_code_returns_displayed_images(self):
+        sandbox = MirageSandbox(timeout=_TIMEOUT)
+        result = await sandbox.run_python_code(
+            "import matplotlib.pyplot as plt\nplt.plot([1, 2, 3])\nplt.show()"
+        )
+        self.assertTrue(result["ok"], result)
+        (image,) = result["images"]
+        self.assertEqual(image.mime_type, "image/png")
+        self.assertTrue(base64.b64decode(image.data).startswith(b"\x89PNG"))
+        self.assertNotIn("images", await sandbox.run_python_code("print(1)"))
+        # A high-dpi figure comes back scaled down to what a model reads.
+        result = await sandbox.run_python_code(
+            "plt.figure(dpi=400)\nplt.plot([1, 2, 3])\nplt.show()"
+        )
+        (image,) = result["images"]
+        width, height = PIL.Image.open(io.BytesIO(base64.b64decode(image.data))).size
+        self.assertEqual(max(width, height), 1568)
 
     async def test_read_file_pagination(self):
         sandbox = MirageSandbox(timeout=_TIMEOUT)

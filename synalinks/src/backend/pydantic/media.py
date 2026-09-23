@@ -314,3 +314,68 @@ async def resolve_content_media(messages):
             elif part.get("type") == "input_audio":
                 await _resolve_audio_part(part)
     return messages
+
+
+def place_tool_result_media(messages, native, vision, audio):
+    """Put the images and audio of tool results where the provider takes them.
+
+    `messages` is a list of chat-completion wire dicts. A tool message whose
+    content lists `image_url` / `input_audio` parts (a tool that returned
+    media) keeps its images when the provider accepts images in a tool result
+    (`native`, e.g. Anthropic or Gemini) and the model reads images
+    (`vision`). Every other part is taken out of the tool result, which
+    becomes plain text: media the model takes moves to a `user` message
+    right after the run of tool messages (the only role that takes it on
+    the OpenAI-style APIs, and the only one litellm maps audio from), media
+    it does not take is dropped, with a note in the tool result either way.
+
+    Args:
+        messages (list): The chat-completion wire messages.
+        native (bool): Whether the provider accepts images in tool results.
+        vision (bool): Whether the model accepts images at all.
+        audio (bool): Whether the model accepts audio at all.
+
+    Returns:
+        (list): The adapted messages; `messages` itself is left untouched.
+    """
+    adapted = []
+    moved = []
+    for message in messages:
+        if moved and message.get("role") != "tool":
+            adapted.append({"role": "user", "content": moved})
+            moved = []
+        content = message.get("content")
+        if message.get("role") != "tool" or not isinstance(content, list):
+            adapted.append(message)
+            continue
+        images = [part for part in content if part.get("type") == "image_url"]
+        clips = [part for part in content if part.get("type") == "input_audio"]
+        if not clips and not (images and not (native and vision)):
+            adapted.append(message)
+            continue
+        notes = []
+        for parts, kind, accepted in (
+            (images, "image", vision),
+            (clips, "audio clip", audio),
+        ):
+            if not parts:
+                continue
+            if accepted:
+                if not moved:
+                    moved.append(
+                        {
+                            "type": "text",
+                            "text": "The media returned by the tool calls above:",
+                        }
+                    )
+                moved.extend(parts)
+                notes.append(f"[{len(parts)} {kind}(s) attached in the next message]")
+            else:
+                notes.append(
+                    f"[{len(parts)} {kind}(s) omitted: this model does not accept them]"
+                )
+        text = "".join(part.get("text", "") for part in content)
+        adapted.append({**message, "content": "\n".join([text, *notes])})
+    if moved:
+        adapted.append({"role": "user", "content": moved})
+    return adapted

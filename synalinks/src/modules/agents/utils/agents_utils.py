@@ -11,6 +11,7 @@ Agent); the summary's ``inputs_file`` field names that file when the file route
 is used. Agent Skills helpers live in ``skills_utils``.
 """
 
+import json
 import os
 from dataclasses import dataclass
 from pathlib import Path
@@ -171,6 +172,38 @@ def merge_tools(builtin_tools: List, extra_tools: Optional[List], *, kind: str) 
             )
         merged.append(extra_tool)
     return merged
+
+
+def tool_message_content(result):
+    """The content of the tool message reporting a tool's JSON `result`.
+
+    Media the tool returned (image / audio content parts, as top-level values
+    or in top-level lists) is taken out of the JSON, which marks its place
+    with ``<image N>`` / ``<audio N>``, and attached after it as content
+    parts, so the language model gets it and the trajectory keeps it for the
+    user. A result without media is returned unchanged.
+    """
+    if not isinstance(result, dict):
+        return result
+    media = []
+    kinds = {"image_url": "image", "input_audio": "audio"}
+    counts = {"image": 0, "audio": 0}
+
+    def mark(value):
+        kind = kinds.get(value.get("type")) if isinstance(value, dict) else None
+        if kind is None:
+            return value
+        media.append(value)
+        counts[kind] += 1
+        return f"<{kind} {counts[kind]}>"
+
+    marked = {
+        key: [mark(v) for v in value] if isinstance(value, list) else mark(value)
+        for key, value in result.items()
+    }
+    if not media:
+        return result
+    return [json.dumps(marked, ensure_ascii=False, default=str), *media]
 
 
 class InputsSummary(DataModel):

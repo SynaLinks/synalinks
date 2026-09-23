@@ -54,10 +54,14 @@ dependencies = [
   "mirage-ai[fuse]>=0.0.6",
   "optree",
   "orjson",
+  "pillow",
   "pydantic",
   "pydotplus",
   "rich",
   "skills-ref>=0.1.1",
+  # Decodes the audio files `read_audio` sends (WAV, FLAC, OGG, MP3); the
+  # wheels bundle libsndfile.
+  "soundfile>=0.12",
   "synaops>=0.2.1",
   "tenacity",
 ]

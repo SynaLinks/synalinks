@@ -23,6 +23,7 @@ from synalinks.src.backend import is_chat_messages
 from synalinks.src.modules.agents.function_calling_agent import FunctionCallingAgent
 from synalinks.src.modules.agents.utils.agents_utils import InputsSummary
 from synalinks.src.modules.agents.utils.agents_utils import summarize_inputs
+from synalinks.src.modules.agents.utils.agents_utils import tool_message_content
 from synalinks.src.modules.core.tool import Tool
 from synalinks.src.modules.language_models import get as _get_lm
 from synalinks.src.sandboxes.mirage_sandbox import MirageSandbox
@@ -1182,7 +1183,8 @@ class RecursiveLanguageModelAgent(FunctionCallingAgent):
             `inputs`; read full values via `inputs[field]`. Other tools
             (`submit`, `llm_query`, ...) are pre-imported functions; call them
             directly, e.g. `out = llm_query(prompt)`. Call `submit(result={...})`
-            to end the run.
+            to end the run. Images the snippet displays (`plt.show()`,
+            `display(image)`) are shown to you with the output.
 
             Args:
                 code (str): The Python snippet to execute in the
@@ -1195,6 +1197,9 @@ class RecursiveLanguageModelAgent(FunctionCallingAgent):
                 observation["stderr"] = stderr
             if result.get("error"):
                 observation["error"] = result["error"]
+            if result.get("images"):
+                # Shown to the model next to the output (e.g. plt.show()).
+                observation["images"] = result["images"]
             return observation
 
         return Tool(run_python_code, name="run_python_code")
@@ -1570,7 +1575,7 @@ class RecursiveLanguageModelAgent(FunctionCallingAgent):
                 ChatMessage(
                     role=ChatRole.TOOL,
                     tool_call_id=tool_call_id,
-                    content=content,
+                    content=tool_message_content(content),
                 ).get_json()
             )
             if ctx["submitted_final"] is not None:

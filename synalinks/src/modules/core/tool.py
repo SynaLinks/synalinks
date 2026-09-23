@@ -13,6 +13,8 @@ from tenacity import wait_exponential
 from synalinks.src.api_export import synalinks_export
 from synalinks.src.backend import JsonDataModel
 from synalinks.src.backend import SymbolicDataModel
+from synalinks.src.backend.pydantic.media import Audio
+from synalinks.src.backend.pydantic.media import Image
 from synalinks.src.modules.module import Module
 from synalinks.src.saving import serialization_lib
 
@@ -162,6 +164,22 @@ class Tool(Module):
             \"\"\"
             # Implementation here
             return {"results": [...]}
+        ```
+
+        **Images and audio**: A tool can show images to the language model,
+        or play it audio, by returning `synalinks.Image` / `synalinks.Audio`
+        values in its dict (alone, or in a list). The agents attach them to
+        the tool result so a model that takes them gets them, and they stay
+        in the returned trajectory for the user:
+
+        ```python
+        async def render(path: str):
+            \"\"\"Render a chart.
+
+            Args:
+                path (str): The chart file.
+            \"\"\"
+            return {"path": path, "image": synalinks.Image(path=path)}
         ```
 
     Args:
@@ -333,6 +351,16 @@ class Tool(Module):
         if result is None:
             return None
         if isinstance(result, dict):
+            # Returned media become their content parts, to stay JSON.
+            result = dict(result)
+            for key, value in result.items():
+                if isinstance(value, (Image, Audio)):
+                    result[key] = value.to_content_part()
+                elif isinstance(value, list):
+                    result[key] = [
+                        v.to_content_part() if isinstance(v, (Image, Audio)) else v
+                        for v in value
+                    ]
             return JsonDataModel(
                 json=result,
                 schema=self._build_output_schema(),

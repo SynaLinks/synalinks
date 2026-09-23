@@ -2,6 +2,7 @@
 
 import ast
 import asyncio
+import base64
 import dataclasses
 import functools
 import inspect
@@ -35,8 +36,10 @@ from typing import Union
 from synalinks.src.api_export import synalinks_export
 from synalinks.src.backend import DataModel
 from synalinks.src.backend import Field
+from synalinks.src.backend import Image
 from synalinks.src.sandboxes.charts import Chart
 from synalinks.src.saving.synalinks_saveable import SynalinksSaveable
+from synalinks.src.utils.image_utils import fit_image
 from synalinks.src.utils.python_utils import class_method_variant
 
 # -- E2B-compatible result types ------------------------------------------
@@ -569,8 +572,7 @@ REQUEST_TIMEOUT = 60.0
 def execution_timeout_error() -> "TimeoutException":
     """The error a run past its ``timeout`` raises (E2B's wording)."""
     return TimeoutException(
-        "Execution timed out — the 'timeout' option can be used to increase this "
-        "timeout"
+        "Execution timed out — the 'timeout' option can be used to increase this timeout"
     )
 
 
@@ -2351,11 +2353,14 @@ class Sandbox(SynalinksSaveable):
 
         Returns:
             dict: ``ok`` (bool), ``stdout`` and ``stderr`` (captured
-            output, with the traceback when the code raised), and ``error``
-            (``"ErrorName: message"``, or null on success).
+            output, with the traceback when the code raised), ``error``
+            (``"ErrorName: message"``, or null on success), and ``images``
+            (the images the code displayed, e.g. matplotlib figures, as
+            `synalinks.Image`, scaled down to what a language model reads)
+            when it displayed any.
         """
         try:
-            stdout, stderr, error = flat_output(await self.run_code(code))
+            execution = await self.run_code(code)
         except TimeoutException as exc:
             # Reported to the caller (an agent's model) like any other error.
             return {
@@ -2364,7 +2369,31 @@ class Sandbox(SynalinksSaveable):
                 "stderr": "",
                 "error": f"TimeoutError: {exc}",
             }
-        return {"ok": error is None, "stdout": stdout, "stderr": stderr, "error": error}
+        stdout, stderr, error = flat_output(execution)
+        observation = {
+            "ok": error is None,
+            "stdout": stdout,
+            "stderr": stderr,
+            "error": error,
+        }
+        images = []
+        for result in execution.results:
+            for data in (result.png, result.jpeg):
+                if not data:
+                    continue
+                try:
+                    fitted = fit_image(base64.b64decode(data))
+                except ValueError:
+                    continue
+                images.append(
+                    Image(
+                        data=base64.b64encode(fitted["data"]).decode("ascii"),
+                        mime_type=fitted["mime_type"],
+                    )
+                )
+        if images:
+            observation["images"] = images
+        return observation
 
     async def run_python_file(self, path: str) -> dict:
         """Run a Python script file from the sandbox filesystem.
@@ -2437,6 +2466,51 @@ class Sandbox(SynalinksSaveable):
             ``end_line`` (1-based, inclusive), ``total_lines`` and
             ``truncated``, or ``error`` if the file is missing / this
             sandbox has no filesystem.
+        """
+        return {"error": "this sandbox has no filesystem"}
+
+    async def read_image(self, path: str) -> dict:
+        """Look at an image file from the sandbox filesystem.
+
+        The image is shown to you with the result, e.g. a chart a script
+        saved. A large image is scaled down to what you can read.
+
+        Args:
+            path (str): Absolute virtual path of the image, e.g.
+                ``'/plots/loss.png'``.
+
+        Returns:
+            dict: ``path``, ``mime_type``, ``width``, ``height`` and
+            ``image`` (the image), plus ``original_width`` and
+            ``original_height`` when it was scaled down; or ``error`` if the
+            file is missing, is not an image, or this sandbox has no
+            filesystem.
+        """
+        return {"error": "this sandbox has no filesystem"}
+
+    async def read_audio(
+        self, path: str, offset: float = 0.0, duration: float = 0.0
+    ) -> dict:
+        """Listen to an audio file from the sandbox filesystem.
+
+        The clip is played to you with the result, e.g. a recording or a
+        sound a script generated.
+
+        Args:
+            path (str): Absolute virtual path of the audio file, e.g.
+                ``'/recordings/call.wav'``.
+            offset (float): Where to start listening, in seconds. Defaults
+                to 0.
+            duration (float): How many seconds to listen to; 0 (the default)
+                for the rest of the file. At most 300 seconds per call: raise
+                ``offset`` to listen further in.
+
+        Returns:
+            dict: ``path``, ``format``, ``offset`` and ``duration`` of the
+            clip, ``total_duration`` of the file, ``truncated`` (whether
+            audio remains after the clip) and ``audio`` (the clip); or
+            ``error`` if the file is missing, is not audio, or this sandbox
+            has no filesystem.
         """
         return {"error": "this sandbox has no filesystem"}
 

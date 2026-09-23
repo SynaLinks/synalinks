@@ -160,6 +160,24 @@ class DeepAgentInstantiationTest(testing.TestCase):
             },
         )
 
+    @patch.object(LanguageModel, "supports_audio", return_value=True)
+    @patch.object(LanguageModel, "supports_vision", return_value=True)
+    async def test_media_tools_follow_the_model_capabilities(self, vision, audio):
+        lm = LanguageModel(model="ollama/gemma3")
+        agent = DeepAgent(language_model=lm, name="media")
+        self.assertIn("read_image", agent.tools)
+        self.assertIn("read_audio", agent.tools)
+        self.assertIn("read_image", agent.instructions)
+        self.assertIn("read_audio", agent.instructions)
+        audio.return_value = False
+        agent = DeepAgent(language_model=lm, name="images_only")
+        self.assertIn("read_image", agent.tools)
+        self.assertNotIn("read_audio", agent.tools)
+        self.assertNotIn("read_audio", agent.instructions)
+        subagent = DeepAgent(language_model=lm, _subagent_depth=1, name="sub")
+        self.assertIn("read_image", subagent.instructions)
+        self.assertIn("subagent", subagent.instructions)
+
     async def test_agent_appends_user_tools(self):
         wd = self._workdir()
         lm = LanguageModel(model="ollama/mistral")
