@@ -321,9 +321,9 @@ def place_tool_result_media(messages, native, vision, audio):
 
     `messages` is a list of chat-completion wire dicts. A tool message whose
     content lists `image_url` / `input_audio` parts (a tool that returned
-    media) keeps its images when the provider accepts images in a tool result
-    (`native`, e.g. Anthropic or Gemini) and the model reads images
-    (`vision`). Every other part is taken out of the tool result, which
+    media) keeps its images when the model takes images in a tool result
+    (`native`: Claude, Gemini 3) and reads images at all (`vision`). Every
+    other part is taken out of the tool result, which
     becomes plain text: media the model takes moves to a `user` message
     right after the run of tool messages (the only role that takes it on
     the OpenAI-style APIs, and the only one litellm maps audio from), media
@@ -331,7 +331,7 @@ def place_tool_result_media(messages, native, vision, audio):
 
     Args:
         messages (list): The chat-completion wire messages.
-        native (bool): Whether the provider accepts images in tool results.
+        native (bool): Whether the model takes images in tool results.
         vision (bool): Whether the model accepts images at all.
         audio (bool): Whether the model accepts audio at all.
 
@@ -350,12 +350,13 @@ def place_tool_result_media(messages, native, vision, audio):
             continue
         images = [part for part in content if part.get("type") == "image_url"]
         clips = [part for part in content if part.get("type") == "input_audio"]
-        if not clips and not (images and not (native and vision)):
+        kept = images if native and vision else []
+        if not clips and len(kept) == len(images):
             adapted.append(message)
             continue
         notes = []
         for parts, kind, accepted in (
-            (images, "image", vision),
+            ([] if kept else images, "image", vision),
             (clips, "audio clip", audio),
         ):
             if not parts:
@@ -375,7 +376,13 @@ def place_tool_result_media(messages, native, vision, audio):
                     f"[{len(parts)} {kind}(s) omitted: this model does not accept them]"
                 )
         text = "".join(part.get("text", "") for part in content)
-        adapted.append({**message, "content": "\n".join([text, *notes])})
+        text = "\n".join([text, *notes])
+        adapted.append(
+            {
+                **message,
+                "content": [{"type": "text", "text": text}, *kept] if kept else text,
+            }
+        )
     if moved:
         adapted.append({"role": "user", "content": moved})
     return adapted

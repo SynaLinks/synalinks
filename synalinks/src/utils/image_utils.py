@@ -14,10 +14,11 @@ MAX_IMAGE_EDGE = 1568
 # and Gemini take 20 MB), counts the base64 payload: 4/3 of the raw bytes.
 MAX_IMAGE_BYTES = 5 * 1024 * 1024 * 3 // 4
 
+# The formats every provider takes, in a message and in a tool result (Gemini
+# 3's function responses take no GIF, which is re-encoded).
 MIME_TYPES = {
     "PNG": "image/png",
     "JPEG": "image/jpeg",
-    "GIF": "image/gif",
     "WEBP": "image/webp",
 }
 
@@ -25,8 +26,8 @@ MIME_TYPES = {
 def fit_image(data: bytes) -> dict:
     """Downscale an image to what a language model reads.
 
-    An image within `MAX_IMAGE_EDGE` and `MAX_IMAGE_BYTES`, in a format the
-    providers take (PNG, JPEG, GIF, WebP), is returned as is. Any other image
+    An image within `MAX_IMAGE_EDGE` and `MAX_IMAGE_BYTES`, in a format all
+    the providers take (PNG, JPEG, WebP), is returned as is. Any other image
     Pillow reads is scaled down to fit and re-encoded: as PNG, which keeps
     charts and screenshots sharp, or as JPEG when the source is a JPEG or the
     PNG would still be too large.

@@ -55,6 +55,11 @@ class FitImageTest(testing.TestCase):
         self.assertEqual(fitted["mime_type"], "image/jpeg")
         self.assertLessEqual(len(fitted["data"]), MAX_IMAGE_BYTES)
 
+    def test_gif_becomes_png(self):
+        # Gemini 3's function responses take no GIF.
+        fitted = fit_image(encode(PIL.Image.new("RGB", (10, 10)), "GIF"))
+        self.assertEqual(fitted["mime_type"], "image/png")
+
     def test_non_image_raises(self):
         with self.assertRaises(ValueError):
             fit_image(b"hello")

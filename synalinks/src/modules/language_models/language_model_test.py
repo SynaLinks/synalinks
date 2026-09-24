@@ -1327,6 +1327,23 @@ class ToolResultImagesTest(testing.TestCase):
         self.assertEqual(sent[2]["content"][1]["type"], "image_url")
 
     @patch("litellm.acompletion")
+    async def test_gemini_3_keeps_images_in_the_tool_result(self, mock_completion):
+        mock_completion.return_value = {"choices": [{"message": {"content": "ok"}}]}
+        await LanguageModel(model="gemini/gemini-3-flash-preview")(self._messages())
+        sent = mock_completion.call_args.kwargs["messages"]
+        self.assertEqual(len(sent), 3)
+        self.assertEqual(sent[2]["content"][1]["type"], "image_url")
+
+    @patch("litellm.acompletion")
+    async def test_gemini_2_moves_images_to_a_user_message(self, mock_completion):
+        # Multimodal function responses are Gemini 3 only.
+        mock_completion.return_value = {"choices": [{"message": {"content": "ok"}}]}
+        await LanguageModel(model="gemini/gemini-2.5-flash")(self._messages())
+        sent = mock_completion.call_args.kwargs["messages"]
+        self.assertEqual(len(sent), 4)
+        self.assertEqual(sent[3]["content"][1]["type"], "image_url")
+
+    @patch("litellm.acompletion")
     async def test_openai_moves_images_to_a_user_message(self, mock_completion):
         mock_completion.return_value = {"choices": [{"message": {"content": "ok"}}]}
         await LanguageModel(model="openai/gpt-4o-mini")(self._messages())
@@ -1382,6 +1399,22 @@ class ToolResultAudioTest(testing.TestCase):
         self.assertIn("1 audio clip(s) attached", sent[2]["content"])
         self.assertEqual(sent[3]["role"], "user")
         self.assertEqual(sent[3]["content"][1]["input_audio"]["data"], "QUJD")
+
+    @patch("litellm.acompletion")
+    async def test_images_stay_in_the_tool_result_next_to_dropped_audio(
+        self, mock_completion
+    ):
+        mock_completion.return_value = {"choices": [{"message": {"content": "ok"}}]}
+        messages = self._messages()
+        messages.messages[2].content.append(
+            Image(data="QUJD", mime_type="image/png").to_content_part()
+        )
+        await LanguageModel(model="anthropic/claude-sonnet-4-5")(messages)
+        sent = mock_completion.call_args.kwargs["messages"]
+        self.assertEqual(len(sent), 3)
+        text, image = sent[2]["content"]
+        self.assertIn("1 audio clip(s) omitted", text["text"])
+        self.assertEqual(image["type"], "image_url")
 
     @patch("litellm.acompletion")
     async def test_model_without_audio_gets_a_note(self, mock_completion):

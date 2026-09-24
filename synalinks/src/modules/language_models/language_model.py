@@ -874,9 +874,10 @@ class LanguageModel(Module):
         # batch only. Content already inlined at construction is left untouched.
         formatted_messages = await resolve_content_media(formatted_messages)
         # Media returned by tools (a sandbox plot, a `read_image`, a
-        # `read_audio`): images stay inside the tool result where litellm maps
-        # them natively, the rest goes to a follow-up user message, the only
-        # role the OpenAI-style APIs take it in.
+        # `read_audio`): images stay inside the tool result for the models
+        # that take them there (Claude's `tool_result`, Gemini 3's multimodal
+        # function responses; litellm maps both), the rest goes to a
+        # follow-up user message, the only role the other APIs take it in.
         media_kinds = {
             part.get("type")
             for message in formatted_messages
@@ -886,7 +887,11 @@ class LanguageModel(Module):
         if media_kinds & {"image_url", "input_audio"}:
             formatted_messages = place_tool_result_media(
                 formatted_messages,
-                native=provider in ("anthropic", "gemini", "vertex_ai", "bedrock"),
+                native=(
+                    provider in ("anthropic", "vertex_ai", "bedrock")
+                    and "claude" in self.model
+                )
+                or (provider in ("gemini", "vertex_ai") and "gemini-3" in self.model),
                 vision="image_url" in media_kinds and self.supports_vision(),
                 audio="input_audio" in media_kinds and self.supports_audio(),
             )
