@@ -51,6 +51,7 @@ References:
 
 import re
 import threading
+import time
 import uuid
 import warnings
 from contextlib import contextmanager
@@ -93,6 +94,14 @@ METRICS = ("cosine", "l2sq", "l2", "dotproduct")
 # test. Bounding it here turns a hang into the same "extension unavailable"
 # warning the surrounding `except` already produces for a real failure.
 _EXTENSION_INSTALL_TIMEOUT_SECONDS = 15
+
+# A failed `INSTALL` (a dropped connection, a CDN error) is retried this many
+# times in all, waiting 1 s, then 2 s, ... between attempts: one network blip
+# otherwise leaves the extension missing for the whole process (every
+# full-text search of a CI job failed on a single failed download). A timeout
+# is not retried: its fetch may still be running, and a second one would race
+# it writing the shared on-disk extension cache.
+_EXTENSION_INSTALL_ATTEMPTS = 3
 
 # Whether `INSTALL {ext}` has already succeeded (True) or failed (False) once
 # this process, keyed by extension name; unset means "not attempted yet". Same
@@ -539,7 +548,10 @@ class LadybugAdapter(GraphDatabaseAdapter):
         self._setup_schema()
 
     def _install_extension(self, ext: str) -> None:
-        """Run ``INSTALL {ext}`` off-thread, bounded by a hard timeout.
+        """Run ``INSTALL {ext}``, retrying a failure (see
+        `_EXTENSION_INSTALL_ATTEMPTS`).
+
+        Each attempt runs off-thread, bounded by a hard timeout.
 
         Through a throwaway in-memory connection, never ``self._con``: if the
         network stalls there is no way to cancel the call from Python, so the
@@ -550,24 +562,28 @@ class LadybugAdapter(GraphDatabaseAdapter):
         on disk, so a later ``LOAD`` on ``self._con`` still finds it once it
         lands — this only bounds how long ``__init__`` waits for that.
         """
-        error: Dict[str, BaseException] = {}
+        for attempt in range(1, _EXTENSION_INSTALL_ATTEMPTS + 1):
+            error: Dict[str, BaseException] = {}
 
-        def _target():
-            try:
-                lb.Connection(lb.Database(":memory:")).execute(f"INSTALL {ext}")
-            except Exception as exc:  # noqa: BLE001
-                error["exc"] = exc
+            def _target():
+                try:
+                    lb.Connection(lb.Database(":memory:")).execute(f"INSTALL {ext}")
+                except Exception as exc:  # noqa: BLE001
+                    error["exc"] = exc
 
-        thread = threading.Thread(target=_target, daemon=True)
-        thread.start()
-        thread.join(timeout=_EXTENSION_INSTALL_TIMEOUT_SECONDS)
-        if thread.is_alive():
-            raise TimeoutError(
-                f"INSTALL {ext} did not complete within "
-                f"{_EXTENSION_INSTALL_TIMEOUT_SECONDS}s"
-            )
-        if "exc" in error:
-            raise error["exc"]
+            thread = threading.Thread(target=_target, daemon=True)
+            thread.start()
+            thread.join(timeout=_EXTENSION_INSTALL_TIMEOUT_SECONDS)
+            if thread.is_alive():
+                raise TimeoutError(
+                    f"INSTALL {ext} did not complete within "
+                    f"{_EXTENSION_INSTALL_TIMEOUT_SECONDS}s"
+                )
+            if "exc" not in error:
+                return
+            if attempt == _EXTENSION_INSTALL_ATTEMPTS:
+                raise error["exc"]
+            time.sleep(attempt)
 
     # ------------------------------------------------------------------
     # Schema
