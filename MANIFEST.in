@@ -1,5 +1,6 @@
 # Bundle the project templates used by `synalinks init` so they ship in both
 # the sdist and the wheel (graft captures dotfiles like .gitignore too).
 graft synalinks/cli/templates
+include synalinks/src/utils/krun/krun_helper.c
 global-exclude __pycache__ *.py[cod]
 prune synalinks/cli/templates/*/.venv

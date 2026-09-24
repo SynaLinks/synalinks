@@ -1,32 +1,55 @@
 # License Apache 2.0: (c) 2025-2026 Yoan Sallami (Synalinks Team)
 
+import base64
 import gc
+import io
 import os
 import sys
 import tempfile
 import unittest
 
+import numpy as np
+import PIL.Image
+import soundfile
+
 from synalinks.src import testing
-from synalinks.src.sandboxes.mirage_sandbox import _MACOS_CONFINE_SRC
 from synalinks.src.sandboxes.mirage_sandbox import MirageSandbox
-from synalinks.src.sandboxes.mirage_sandbox import _confinement_available
 from synalinks.src.sandboxes.mirage_sandbox import cap_malloc_arenas
-from synalinks.src.sandboxes.mirage_sandbox import confinement_kind
 from synalinks.src.sandboxes.mirage_sandbox import malloc_trim
+from synalinks.src.sandboxes.sandbox import CommandExitException
+from synalinks.src.sandboxes.sandbox import CommandResult
+from synalinks.src.sandboxes.sandbox import EntryInfo
+from synalinks.src.sandboxes.sandbox import Execution
 from synalinks.src.sandboxes.sandbox import ExecutionResult
+from synalinks.src.sandboxes.sandbox import FileType
+from synalinks.src.sandboxes.sandbox import NotFoundException
 from synalinks.src.sandboxes.sandbox import Sandbox
+from synalinks.src.sandboxes.sandbox import TimeoutException
+from synalinks.src.utils.confinement_utils import MACOS_CONFINE_SRC
+from synalinks.src.utils.confinement_utils import confinement_available
+from synalinks.src.utils.confinement_utils import confinement_backend
 
 _TIMEOUT = 30.0
-_CONFINE_OK, _CONFINE_REASON = _confinement_available()
-# The tests below assert namespace-specific behaviour (PID namespaces, seccomp,
-# the pivot_root filesystem swap), so they gate on the *backend* rather than on
-# confinement being available at all. macOS now reports confinement available
-# too, via Seatbelt, which enforces a deliberately different and weaker set;
-# `MacosSeatbeltConfineTest` covers what it does guarantee.
-_KIND = confinement_kind()
-_NAMESPACES_OK = _CONFINE_OK and _KIND == "namespaces"
-_SEATBELT_OK = _CONFINE_OK and _KIND == "seatbelt"
-_NS_REASON = f"namespace confinement unavailable: {_CONFINE_REASON or _KIND}"
+
+
+def _stdout(execution):
+    """Everything an `Execution` printed to stdout, as one string."""
+    return "".join(execution.logs.stdout)
+
+
+_CONFINE_OK, _CONFINE_REASON = confinement_available()
+_BACKEND, _BACKEND_REASON = confinement_backend()
+# The namespace suite asserts the Linux backend's behaviour (PID namespaces,
+# seccomp, the pivot_root filesystem swap). It runs where that backend runs:
+# on Linux, and inside the macOS microVM, which confines with the very same
+# code behind a guest kernel.
+_NAMESPACES_OK = _BACKEND in ("namespaces", "microvm")
+_NS_REASON = f"namespace confinement unavailable: {_CONFINE_REASON or _BACKEND_REASON}"
+_MICROVM_OK = _BACKEND == "microvm"
+_VM_REASON = f"microVM backend unavailable: {_BACKEND_REASON or sys.platform}"
+# Seatbelt is the macOS floor; its suite forces it even where a microVM runs.
+_SEATBELT_OK = _CONFINE_OK and sys.platform == "darwin"
+_SB_REASON = f"seatbelt confinement unavailable: {_CONFINE_REASON or sys.platform}"
 
 
 class _SandboxTestCase(testing.TestCase):
@@ -55,53 +78,55 @@ class PinnedNamesTest(_SandboxTestCase):
 
     async def test_pinned_name_heals_on_the_next_run(self):
         sandbox = MirageSandbox(timeout=_TIMEOUT)
-        await sandbox.run(
+        await sandbox.run_code(
             "inputs = _rlm_inputs\n__rlm_pinned__ = {'inputs': _rlm_inputs}",
             inputs={"_rlm_inputs": {"frames": [1, 2, 3]}},
         )
         # The clobbering snippet breaks itself...
-        broken = await sandbox.run("inputs = None\nprint(inputs['frames'])")
+        broken = await sandbox.run_code("inputs = None\nprint(inputs['frames'])")
         self.assertIsNotNone(broken.error)
         # ...and only itself: the next run reads the pinned value again.
-        healed = await sandbox.run("print(inputs['frames'])")
-        self.assertTrue(healed.ok, healed.error)
-        self.assertIn("[1, 2, 3]", healed.stdout)
+        healed = await sandbox.run_code("print(inputs['frames'])")
+        self.assertIsNone(healed.error)
+        self.assertIn("[1, 2, 3]", _stdout(healed))
 
     async def test_functions_reading_the_pinned_name_recover_too(self):
         sandbox = MirageSandbox(timeout=_TIMEOUT)
-        await sandbox.run(
+        await sandbox.run_code(
             "inputs = _rlm_inputs\n__rlm_pinned__ = {'inputs': _rlm_inputs}",
             inputs={"_rlm_inputs": {"frames": [7]}},
         )
-        await sandbox.run("def first_frame():\n    return inputs['frames'][0]")
-        await sandbox.run("inputs = 'garbage'")
-        result = await sandbox.run("print(first_frame())")
-        self.assertTrue(result.ok, result.error)
-        self.assertIn("7", result.stdout)
+        await sandbox.run_code("def first_frame():\n    return inputs['frames'][0]")
+        await sandbox.run_code("inputs = 'garbage'")
+        result = await sandbox.run_code("print(first_frame())")
+        self.assertIsNone(result.error)
+        self.assertIn("7", _stdout(result))
 
     async def test_per_run_binding_still_wins_over_the_pin(self):
         sandbox = MirageSandbox(timeout=_TIMEOUT)
-        await sandbox.run(
+        await sandbox.run_code(
             "inputs = _rlm_inputs\n__rlm_pinned__ = {'inputs': _rlm_inputs}",
             inputs={"_rlm_inputs": {"frames": ["old"]}},
         )
-        result = await sandbox.run(
+        result = await sandbox.run_code(
             "print(inputs['frames'])", inputs={"inputs": {"frames": ["fresh"]}}
         )
-        self.assertTrue(result.ok, result.error)
-        self.assertIn("fresh", result.stdout)
+        self.assertIsNone(result.error)
+        self.assertIn("fresh", _stdout(result))
 
     async def test_rebinding_the_pin_replaces_it(self):
         sandbox = MirageSandbox(timeout=_TIMEOUT)
         for payload in ({"n": 1}, {"n": 2}):
-            await sandbox.run(
+            await sandbox.run_code(
                 "inputs = _rlm_inputs\n__rlm_pinned__ = {'inputs': _rlm_inputs}",
                 inputs={"_rlm_inputs": payload},
             )
-        await sandbox.run("inputs = None")
-        result = await sandbox.run("print(inputs['n'])")
-        self.assertTrue(result.ok, result.error)
-        self.assertIn("2", result.stdout)
+        await sandbox.run_code("inputs = None")
+        result = await sandbox.run_code("print(inputs['n'])")
+        self.assertIsNone(result.error)
+        self.assertIn("2", _stdout(result))
+
+
 class MallocHygieneTest(_SandboxTestCase):
     """The host-side glibc settings a sandbox applies to its own process."""
 
@@ -124,11 +149,11 @@ class MallocHygieneTest(_SandboxTestCase):
 
     async def test_sandbox_caps_arenas_by_default_and_can_opt_out(self):
         sandbox = MirageSandbox(timeout=_TIMEOUT)
-        self.assertEqual(sandbox._malloc_arena_max, 2)
+        self.assertEqual(sandbox.malloc_arena_max, 2)
         untouched = MirageSandbox(timeout=_TIMEOUT, malloc_arena_max=None)
-        self.assertIsNone(untouched._malloc_arena_max)
-        result = await untouched.run("print('still runs')")
-        self.assertTrue(result.ok)
+        self.assertIsNone(untouched.malloc_arena_max)
+        result = await untouched.run_code("print('still runs')")
+        self.assertIsNone(result.error)
 
     @unittest.skipUnless(
         sys.platform.startswith("linux"), "glibc arenas are a Linux matter"
@@ -188,6 +213,107 @@ class MallocHygieneTest(_SandboxTestCase):
         self.assertLessEqual(arenas("cap"), 2)
 
 
+class E2BCompatTest(_SandboxTestCase):
+    """The E2B-named surface: create / files / commands / kill."""
+
+    async def test_create_and_kill(self):
+        sandbox = await MirageSandbox.create(timeout=_TIMEOUT, confine=False)
+        self.assertIsInstance(sandbox, MirageSandbox)
+        self.assertTrue(await sandbox.is_running())
+        self.assertTrue(await sandbox.kill())
+        self.assertFalse(await sandbox.is_running())
+
+    async def test_files_roundtrip(self):
+        sandbox = MirageSandbox(timeout=_TIMEOUT, confine=False)
+        info = await sandbox.files.write("/src/a.txt", "hello")
+        self.assertEqual(info.path, "/src/a.txt")
+        self.assertEqual(info.name, "a.txt")
+        self.assertEqual(await sandbox.files.read("/src/a.txt"), "hello")
+        self.assertTrue(await sandbox.files.exists("/src/a.txt"))
+        self.assertFalse(await sandbox.files.exists("/src/missing.txt"))
+        with self.assertRaises(FileNotFoundError):
+            await sandbox.files.read("/src/missing.txt")
+
+    async def test_files_bytes_are_exact(self):
+        sandbox = MirageSandbox(timeout=_TIMEOUT, confine=False)
+        payload = bytes([0, 255, 1, 2, 128])
+        await sandbox.files.write("/b.bin", payload)
+        self.assertEqual(await sandbox.files.read("/b.bin", format="bytes"), payload)
+
+    async def test_files_list_and_info(self):
+        sandbox = MirageSandbox(timeout=_TIMEOUT, confine=False)
+        await sandbox.files.write("/d/a.txt", "abc")
+        await sandbox.files.write("/d/sub/b.txt", "b")
+        top = await sandbox.files.list("/d")
+        self.assertEqual([e.path for e in top], ["/d/a.txt", "/d/sub"])
+        self.assertEqual([e.type for e in top], [FileType.FILE, FileType.DIR])
+        deep = await sandbox.files.list("/d", depth=2)
+        self.assertIn("/d/sub/b.txt", [e.path for e in deep])
+        info = await sandbox.files.get_info("/d/a.txt")
+        self.assertIsInstance(info, EntryInfo)
+        self.assertEqual((info.type, info.size), (FileType.FILE, 3))
+        self.assertEqual((info.mode, info.permissions), (0o644, "rw-r--r--"))
+
+    async def test_files_rename_remove_make_dir(self):
+        sandbox = MirageSandbox(timeout=_TIMEOUT, confine=False)
+        await sandbox.files.write("/a.txt", "x")
+        moved = await sandbox.files.rename("/a.txt", "/sub/b.txt")
+        self.assertEqual(moved.path, "/sub/b.txt")
+        self.assertFalse(await sandbox.files.exists("/a.txt"))
+        self.assertEqual(await sandbox.files.read("/sub/b.txt"), "x")
+        await sandbox.files.remove("/sub")
+        self.assertFalse(await sandbox.files.exists("/sub/b.txt"))
+        self.assertTrue(await sandbox.files.make_dir("/new"))
+        self.assertFalse(await sandbox.files.make_dir("/new"))
+        self.assertEqual((await sandbox.files.get_info("/new")).type, FileType.DIR)
+        with self.assertRaises(NotFoundException):
+            await sandbox.files.get_info("/missing")
+
+    async def test_commands_run(self):
+        sandbox = MirageSandbox(timeout=_TIMEOUT, confine=False)
+        await sandbox.files.write("/hello.txt", "hi")
+        result = await sandbox.commands.run("cat /hello.txt")
+        self.assertIsInstance(result, CommandResult)
+        self.assertEqual((result.stdout, result.exit_code, result.error), ("hi", 0, None))
+        # As in E2B, a non-zero exit raises, carrying the CommandResult.
+        with self.assertRaises(CommandExitException) as caught:
+            await sandbox.commands.run("cat /nope.txt")
+        self.assertIsInstance(caught.exception, CommandResult)
+        self.assertNotEqual(caught.exception.exit_code, 0)
+        self.assertIsNotNone(caught.exception.error)
+        with self.assertRaises(TimeoutException):
+            await sandbox.commands.run("sleep 5", timeout=0.2)
+
+    async def test_internal_commands_stay_out_of_history(self):
+        # Mirage 0.0.6+ records executed lines in a /.bash_history view. Only
+        # what the agent typed belongs there, not the bootstrap or file I/O.
+        sandbox = MirageSandbox(timeout=_TIMEOUT, confine=False)
+        await sandbox.run_code("x = 1")
+        await sandbox.write_file("/a.txt", "a")
+        await sandbox.run_bash("echo typed-by-agent")
+        history = await sandbox.read_text("/.bash_history")
+        self.assertIn("echo typed-by-agent", history)
+        self.assertNotIn("base64", history)
+        self.assertNotIn("cat >", history)
+        # Internal views are not the agent's files.
+        listed = (await sandbox.list_files())["files"]
+        self.assertEqual(listed, ["/a.txt"])
+        self.assertEqual([e["path"] for e in sandbox.diff()["written"]], ["/a.txt"])
+
+    async def test_commands_run_timeout_zero_means_no_limit(self):
+        sandbox = MirageSandbox(timeout=_TIMEOUT, confine=False)
+        result = await sandbox.commands.run("echo ok", timeout=0)
+        self.assertEqual((result.exit_code, result.stdout.strip()), (0, "ok"))
+
+    async def test_run_is_a_deprecated_alias(self):
+        sandbox = MirageSandbox(timeout=_TIMEOUT, confine=False)
+        with self.assertWarns(DeprecationWarning):
+            result = await sandbox.run("1 + 1")
+        # The deprecated alias keeps returning the old flat shape.
+        self.assertIsInstance(result, ExecutionResult)
+        self.assertEqual((result.result, result.ok), (2, True))
+
+
 class MirageSandboxTest(_SandboxTestCase):
     async def test_is_sandbox_subclass(self):
         sandbox = MirageSandbox(timeout=_TIMEOUT)
@@ -195,11 +321,17 @@ class MirageSandboxTest(_SandboxTestCase):
 
     async def test_run_returns_execution_result(self):
         sandbox = MirageSandbox(timeout=_TIMEOUT)
-        result = await sandbox.run("print('hello')")
-        self.assertIsInstance(result, ExecutionResult)
-        self.assertIn("hello", result.stdout)
-        self.assertTrue(result.ok)
+        result = await sandbox.run_code("print('hello')\n6 * 7")
+        self.assertIsInstance(result, Execution)
+        self.assertEqual(result.logs.stdout, ["hello\n"])
         self.assertIsNone(result.error)
+        # The last expression is the main result: repr as text, value as json.
+        self.assertEqual(result.text, "42")
+        self.assertEqual(len(result.results), 1)
+        self.assertTrue(result.results[0].is_main_result)
+        self.assertEqual(result.results[0].formats(), ["text"])
+        self.assertEqual(result.execution_count, 1)
+        self.assertEqual((await sandbox.run_code("None")).results, [])
 
     async def test_run_binds_large_inputs(self):
         """An `inputs` payload past the execve per-argument limit
@@ -210,37 +342,37 @@ class MirageSandboxTest(_SandboxTestCase):
         """
         sandbox = MirageSandbox(timeout=_TIMEOUT)
         payload = {"log": "x" * 300_000}
-        bind = await sandbox.run("inputs = _in", inputs={"_in": payload})
-        self.assertTrue(bind.ok, bind.error)
-        result = await sandbox.run("print(len(inputs['log']))")
-        self.assertIn("300000", result.stdout)
+        bind = await sandbox.run_code("inputs = _in", inputs={"_in": payload})
+        self.assertIsNone(bind.error)
+        result = await sandbox.run_code("print(len(inputs['log']))")
+        self.assertIn("300000", _stdout(result))
 
     async def test_run_captures_error(self):
         sandbox = MirageSandbox(timeout=_TIMEOUT)
-        result = await sandbox.run("1 / 0")
-        self.assertFalse(result.ok)
-        self.assertIn("ZeroDivisionError", result.error)
+        result = await sandbox.run_code("1 / 0")
+        self.assertIsNotNone(result.error)
+        self.assertEqual(result.error.name, "ZeroDivisionError")
 
     async def test_traceback_is_trimmed_to_user_frames(self):
         sandbox = MirageSandbox(timeout=_TIMEOUT)
-        result = await sandbox.run("1 / 0")
+        result = await sandbox.run_code("1 / 0")
         # Bootstrap/launcher frames are hidden; only the user frame remains.
-        self.assertIn('"<sandbox>"', result.stderr)
-        self.assertNotIn("dill", result.stderr)
-        self.assertNotIn("base64", result.stderr)
+        self.assertIn('"<sandbox>"', result.error.traceback)
+        self.assertNotIn("dill", result.error.traceback)
+        self.assertNotIn("base64", result.error.traceback)
 
     async def test_state_persists_across_run_calls(self):
         sandbox = MirageSandbox(timeout=_TIMEOUT)
-        await sandbox.run("x = 7")
-        result = await sandbox.run("print(x * 6)")
-        self.assertIn("42", result.stdout)
+        await sandbox.run_code("x = 7")
+        result = await sandbox.run_code("print(x * 6)")
+        self.assertIn("42", _stdout(result))
 
     async def test_functions_and_classes_persist(self):
         sandbox = MirageSandbox(timeout=_TIMEOUT)
-        await sandbox.run("def sq(n):\n    return n * n")
-        await sandbox.run("import math\nclass P:\n    v = 3")
-        result = await sandbox.run("print(sq(4), math.floor(2.7), P.v)")
-        self.assertIn("16 2 3", result.stdout)
+        await sandbox.run_code("def sq(n):\n    return n * n")
+        await sandbox.run_code("import math\nclass P:\n    v = 3")
+        result = await sandbox.run_code("print(sq(4), math.floor(2.7), P.v)")
+        self.assertIn("16 2 3", _stdout(result))
 
     async def test_many_functions_persist(self):
         """Persisting must not be quadratic in the number of definitions.
@@ -251,11 +383,11 @@ class MirageSandboxTest(_SandboxTestCase):
         `RecursionError`, silently losing the whole namespace. One dump of the
         namespace memoizes the shared globals instead."""
         sandbox = MirageSandbox(timeout=_TIMEOUT)
-        await sandbox.run(
+        await sandbox.run_code(
             "\n".join(f"def f{i}(x):\n    return x + {i}" for i in range(120))
         )
-        result = await sandbox.run("print(f0(1), f119(1))")
-        self.assertIn("1 120", result.stdout)
+        result = await sandbox.run_code("print(f0(1), f119(1))")
+        self.assertIn("1 120", _stdout(result))
 
     async def test_unpicklable_value_does_not_drop_the_namespace(self):
         """One unpicklable object must not take the definitions with it.
@@ -265,11 +397,11 @@ class MirageSandboxTest(_SandboxTestCase):
         function carries only the globals it references, instead of the
         offending object along with the whole namespace."""
         sandbox = MirageSandbox(timeout=_TIMEOUT)
-        await sandbox.run(
+        await sandbox.run_code(
             "gen = (i for i in range(3))\ndef survivor(x):\n    return x * 3"
         )
-        result = await sandbox.run("print(survivor(5))")
-        self.assertIn("15", result.stdout)
+        result = await sandbox.run_code("print(survivor(5))")
+        self.assertIn("15", _stdout(result))
         self.assertIsNone(result.error)
 
     async def test_function_sees_names_defined_in_later_runs(self):
@@ -281,29 +413,29 @@ class MirageSandboxTest(_SandboxTestCase):
         though ``helper`` is defined (top-down design: call first, fill in
         after)."""
         sandbox = MirageSandbox(timeout=_TIMEOUT)
-        await sandbox.run("def f(x):\n    return helper(x) + 1")
-        await sandbox.run("def helper(x):\n    return x * 10")
-        result = await sandbox.run("print(f(4))")
-        self.assertIn("41", result.stdout)
+        await sandbox.run_code("def f(x):\n    return helper(x) + 1")
+        await sandbox.run_code("def helper(x):\n    return x * 10")
+        result = await sandbox.run_code("print(f(4))")
+        self.assertIn("41", _stdout(result))
 
     async def test_method_sees_names_defined_in_later_runs(self):
         sandbox = MirageSandbox(timeout=_TIMEOUT)
-        await sandbox.run("class G:\n    def area(self):\n        return helper(3)")
-        await sandbox.run("def helper(x):\n    return x * 10")
-        result = await sandbox.run("print(G().area())")
-        self.assertIn("30", result.stdout)
+        await sandbox.run_code("class G:\n    def area(self):\n        return helper(3)")
+        await sandbox.run_code("def helper(x):\n    return x * 10")
+        result = await sandbox.run_code("print(G().area())")
+        self.assertIn("30", _stdout(result))
 
     async def test_rehomed_function_keeps_closure_and_kwdefaults(self):
         sandbox = MirageSandbox(timeout=_TIMEOUT)
-        await sandbox.run(
+        await sandbox.run_code(
             "def make_adder(n):\n"
             "    def add(x, *, scale=2):\n"
             "        return (x + n) * scale\n"
             "    return add\n"
             "add5 = make_adder(5)"
         )
-        result = await sandbox.run("print(add5(1), add5(1, scale=1))")
-        self.assertIn("12 6", result.stdout)
+        result = await sandbox.run_code("print(add5(1), add5(1, scale=1))")
+        self.assertIn("12 6", _stdout(result))
 
     async def test_imported_function_keeps_its_own_module_globals(self):
         """Re-homing must not touch functions imported from a module.
@@ -312,10 +444,10 @@ class MirageSandboxTest(_SandboxTestCase):
         names in them at call time. Rebuilding it on the sandbox namespace
         strips those: ``os.path.join`` re-homed this way loses ``sep``."""
         sandbox = MirageSandbox(timeout=_TIMEOUT)
-        await sandbox.run("from os.path import join")
-        result = await sandbox.run("print(join('a', 'b'))")
-        self.assertIn("a/b", result.stdout)
-        self.assertFalse(result.error)
+        await sandbox.run_code("from os.path import join")
+        result = await sandbox.run_code("print(join('a', 'b'))")
+        self.assertIn("a/b", _stdout(result))
+        self.assertIsNone(result.error)
 
     async def test_imported_class_methods_keep_their_module_globals(self):
         """Same for the methods of an imported class.
@@ -326,38 +458,39 @@ class MirageSandboxTest(_SandboxTestCase):
         the one that imported it. Worse, the class is re-homed *in place*, so
         a later plain ``import collections`` inherited the damage."""
         sandbox = MirageSandbox(timeout=_TIMEOUT)
-        await sandbox.run("from collections import Counter")
-        result = await sandbox.run("print(Counter('aab')['a'])")
-        self.assertIn("2", result.stdout)
-        self.assertFalse(result.error)
-        fresh = await sandbox.run(
+        await sandbox.run_code("from collections import Counter")
+        result = await sandbox.run_code("print(Counter('aab')['a'])")
+        self.assertIn("2", _stdout(result))
+        self.assertIsNone(result.error)
+        fresh = await sandbox.run_code(
             "import collections\nprint(collections.Counter('aab')['a'])"
         )
-        self.assertIn("2", fresh.stdout)
-        self.assertFalse(fresh.error)
+        self.assertIn("2", _stdout(fresh))
+        self.assertIsNone(fresh.error)
 
     async def test_state_survives_error(self):
         sandbox = MirageSandbox(timeout=_TIMEOUT)
-        await sandbox.run("keep = 11")
-        await sandbox.run("raise ValueError('boom')")
-        result = await sandbox.run("print(keep)")
-        self.assertIn("11", result.stdout)
+        await sandbox.run_code("keep = 11")
+        await sandbox.run_code("raise ValueError('boom')")
+        result = await sandbox.run_code("print(keep)")
+        self.assertIn("11", _stdout(result))
 
     async def test_inputs_are_bound(self):
         sandbox = MirageSandbox(timeout=_TIMEOUT)
-        result = await sandbox.run("print(given + 1)", inputs={"given": 41})
-        self.assertIn("42", result.stdout)
-        self.assertTrue(result.ok)
+        result = await sandbox.run_code("print(given + 1)", inputs={"given": 41})
+        self.assertIn("42", _stdout(result))
+        self.assertIsNone(result.error)
 
     async def test_last_expression_is_captured_as_result(self):
         sandbox = MirageSandbox(timeout=_TIMEOUT)
-        result = await sandbox.run("a = 10\nb = 32\na + b")
-        self.assertEqual(result.result, 42)
+        result = await sandbox.run_code("a = 10\nb = 32\na + b")
+        # As on E2B: a scalar is its text; only lists and dicts get ``json``.
+        self.assertEqual((result.results[0].text, result.results[0].json), ("42", None))
 
     async def test_result_variable_convention(self):
         sandbox = MirageSandbox(timeout=_TIMEOUT)
-        result = await sandbox.run("result = {'k': 5}\nresult")
-        self.assertEqual(result.result, {"k": 5})
+        result = await sandbox.run_code("result = {'k': 5}\nresult")
+        self.assertEqual(result.results[0].json, {"k": 5})
 
     async def test_external_functions_bridge_into_sandbox(self):
         sandbox = MirageSandbox(timeout=_TIMEOUT)
@@ -368,9 +501,9 @@ class MirageSandboxTest(_SandboxTestCase):
         # Bound tools are called *synchronously* inside the sandbox: no
         # `await` / `asyncio.run(...)` ceremony.
         code = "out = adder(x=3, y=4)\nprint(out['sum'])\n"
-        result = await sandbox.run(code, external_functions={"adder": adder})
-        self.assertTrue(result.ok, msg=result.error)
-        self.assertIn("7", result.stdout)
+        result = await sandbox.run_code(code, external_functions={"adder": adder})
+        self.assertIsNone(result.error)
+        self.assertIn("7", _stdout(result))
 
     async def test_sync_tool_call_returns_value_directly(self):
         # A bare synchronous call returns the host tool's value directly, usable
@@ -383,12 +516,12 @@ class MirageSandboxTest(_SandboxTestCase):
 
         sandbox = MirageSandbox(timeout=_TIMEOUT)
         # Last expression is the bare sync call result (the `result` convention).
-        result = await sandbox.run(
+        result = await sandbox.run_code(
             "adder(x=2, y=5)['sum']",
             external_functions={"adder": adder},
         )
-        self.assertTrue(result.ok, msg=result.error)
-        self.assertEqual(result.result, 7)
+        self.assertIsNone(result.error)
+        self.assertEqual(result.results[0].text, "7")
         self.assertEqual(called["n"], 1)
 
     async def test_external_function_accepts_positional_args(self):
@@ -401,12 +534,12 @@ class MirageSandboxTest(_SandboxTestCase):
             return {"sum": x + y}
 
         sandbox = MirageSandbox(timeout=_TIMEOUT)
-        result = await sandbox.run(
+        result = await sandbox.run_code(
             "out = adder(3, 4)\nprint(out['sum'])\n",
             external_functions={"adder": adder},
         )
-        self.assertTrue(result.ok, msg=result.error)
-        self.assertIn("7", result.stdout)
+        self.assertIsNone(result.error)
+        self.assertIn("7", _stdout(result))
 
     async def test_bound_functions_persist_across_runs(self):
         captured = {}
@@ -416,8 +549,8 @@ class MirageSandboxTest(_SandboxTestCase):
             return {"submitted": result}
 
         sandbox = MirageSandbox(timeout=_TIMEOUT, external_functions={"submit": submit})
-        result = await sandbox.run("submit(result={'answer': 'done'})")
-        self.assertTrue(result.ok, msg=result.error)
+        result = await sandbox.run_code("submit(result={'answer': 'done'})")
+        self.assertIsNone(result.error)
         self.assertEqual(captured["value"], {"answer": "done"})
 
     async def test_run_bash(self):
@@ -455,8 +588,8 @@ class MirageSandboxTest(_SandboxTestCase):
 
     async def test_history_records_runs(self):
         sandbox = MirageSandbox(timeout=_TIMEOUT)
-        await sandbox.run("a = 1")
-        await sandbox.run("print(a)")
+        await sandbox.run_code("a = 1")
+        await sandbox.run_code("print(a)")
         history = sandbox.history()
         self.assertEqual(len(history), 2)
         self.assertEqual(history[0]["code"], "a = 1")
@@ -464,18 +597,22 @@ class MirageSandboxTest(_SandboxTestCase):
 
     async def test_reset_clears_state_and_history(self):
         sandbox = MirageSandbox(timeout=_TIMEOUT)
-        await sandbox.run("secret = 123")
+        await sandbox.run_code("secret = 123")
         sandbox.reset()
         self.assertEqual(sandbox.history(), [])
-        result = await sandbox.run("print(secret)")
-        self.assertFalse(result.ok)
-        self.assertIn("NameError", result.error)
+        result = await sandbox.run_code("print(secret)")
+        self.assertIsNotNone(result.error)
+        self.assertEqual(result.error.name, "NameError")
 
-    async def test_timeout_surfaces_as_error(self):
+    async def test_timeout_raises_like_e2b(self):
         sandbox = MirageSandbox(timeout=1.0)
-        result = await sandbox.run("import time\ntime.sleep(5)")
-        self.assertFalse(result.ok)
-        self.assertIn("TimeoutError", result.error)
+        with self.assertRaisesRegex(TimeoutException, "Execution timed out"):
+            await sandbox.run_code("import time\ntime.sleep(5)")
+        # Still recorded, and the tool method reports it as an error.
+        self.assertEqual(sandbox.history()[-1]["error"].split(":")[0], "TimeoutError")
+        tool = await sandbox.run_python_code("import time\ntime.sleep(5)")
+        self.assertFalse(tool["ok"])
+        self.assertIn("TimeoutError", tool["error"])
 
     async def test_require_confinement_needs_confine(self):
         # require_confinement is incompatible with an explicit confine=False.
@@ -491,25 +628,102 @@ class MirageSandboxTest(_SandboxTestCase):
 
         with mock.patch.object(
             mirage_sandbox,
-            "_confinement_available",
-            return_value=(False, "simulated: unavailable"),
+            "confinement_backend",
+            return_value=(None, "simulated: unavailable"),
         ):
             with self.assertRaises(RuntimeError):
                 MirageSandbox(timeout=_TIMEOUT, confine=True, require_confinement=True)
 
+    async def test_default_sandbox_fails_closed_when_unavailable(self):
+        # Secure by default: a plain MirageSandbox() refuses to run LM code
+        # unconfined; nobody reads the warning a graceful fallback would emit.
+        from unittest import mock
+
+        from synalinks.src.sandboxes import mirage_sandbox
+
+        with mock.patch.object(
+            mirage_sandbox,
+            "confinement_backend",
+            return_value=(None, "simulated: unavailable"),
+        ):
+            with self.assertRaisesRegex(RuntimeError, "confine=False"):
+                MirageSandbox(timeout=_TIMEOUT)
+
+    async def test_graceful_fallback_needs_an_explicit_opt_in(self):
+        from unittest import mock
+
+        from synalinks.src.sandboxes import mirage_sandbox
+
+        with mock.patch.object(
+            mirage_sandbox,
+            "confinement_backend",
+            return_value=(None, "simulated: unavailable"),
+        ):
+            with self.assertWarns(RuntimeWarning):
+                sandbox = MirageSandbox(timeout=_TIMEOUT, require_confinement=False)
+        self.addCleanup(sandbox.close)
+        self.assertFalse(sandbox.granted_capabilities()["confined"])
+
+    async def test_confine_false_is_an_explicit_opt_out(self):
+        sandbox = MirageSandbox(timeout=_TIMEOUT, confine=False)
+        self.addCleanup(sandbox.close)
+        caps = sandbox.granted_capabilities()
+        self.assertFalse(caps["confined"])
+        self.assertFalse(caps["require_confinement"])
+        self.assertIsNone(caps["backend"])
+
+    async def test_load_is_confined_by_default(self):
+        # A restored sandbox used to come back unconfined: `load` built it
+        # through `bare`. It now confines, and fails closed, like a new one.
+        from unittest import mock
+
+        from synalinks.src.sandboxes import mirage_sandbox
+
+        source = MirageSandbox(timeout=_TIMEOUT, confine=False)
+        self.addCleanup(source.close)
+        data = source.dump()
+        with mock.patch.object(
+            mirage_sandbox,
+            "confinement_backend",
+            return_value=(None, "simulated: unavailable"),
+        ):
+            with self.assertRaises(RuntimeError):
+                MirageSandbox.load(data)
+        unconfined = MirageSandbox.load(data, confine=False)
+        self.addCleanup(unconfined.close)
+        self.assertFalse(unconfined.granted_capabilities()["confined"])
+
+    async def test_explicit_confined_fork_fails_closed(self):
+        # fork(confine=True) of an unconfined parent must not inherit the
+        # parent's graceful fallback.
+        from unittest import mock
+
+        from synalinks.src.sandboxes import mirage_sandbox
+
+        parent = MirageSandbox(timeout=_TIMEOUT, confine=False)
+        self.addCleanup(parent.close)
+        with mock.patch.object(
+            mirage_sandbox,
+            "confinement_backend",
+            return_value=(None, "simulated: unavailable"),
+        ):
+            # As in E2B, a failed child comes back in place of the sandbox.
+            (child,) = await parent.fork(confine=True)
+            self.assertIsInstance(child, RuntimeError)
+
     # -- security surface ---------------------------------------------------
 
     def test_host_allowlist_matching(self):
-        from synalinks.src.sandboxes.mirage_sandbox import _host_allowed
+        from synalinks.src.utils.egress_utils import host_allowed
 
-        self.assertTrue(_host_allowed("api.openai.com", ["api.openai.com"]))
-        self.assertFalse(_host_allowed("evil.com", ["api.openai.com"]))
+        self.assertTrue(host_allowed("api.openai.com", ["api.openai.com"]))
+        self.assertFalse(host_allowed("evil.com", ["api.openai.com"]))
         # wildcard matches subdomains and the apex, case/trailing-dot insensitive
-        self.assertTrue(_host_allowed("a.b.example.com", ["*.example.com"]))
-        self.assertTrue(_host_allowed("EXAMPLE.com.", ["*.example.com"]))
-        self.assertFalse(_host_allowed("notexample.com", ["*.example.com"]))
+        self.assertTrue(host_allowed("a.b.example.com", ["*.example.com"]))
+        self.assertTrue(host_allowed("EXAMPLE.com.", ["*.example.com"]))
+        self.assertFalse(host_allowed("notexample.com", ["*.example.com"]))
         # an empty allowlist denies everything
-        self.assertFalse(_host_allowed("anything.com", []))
+        self.assertFalse(host_allowed("anything.com", []))
 
     async def test_egress_tool_refuses_offlist_host(self):
         sandbox = MirageSandbox(timeout=_TIMEOUT, allowed_hosts=["api.example.com"])
@@ -520,17 +734,17 @@ class MirageSandboxTest(_SandboxTestCase):
             await fetch(url="file:///etc/passwd")
 
     def test_reject_private_blocks_internal_addresses(self):
-        from synalinks.src.sandboxes.mirage_sandbox import _reject_private
+        from synalinks.src.utils.egress_utils import reject_private
 
         # loopback / private / link-local (incl. cloud-metadata IP) are refused
         for host in ("127.0.0.1", "10.0.0.1", "192.168.1.1", "169.254.169.254"):
             with self.assertRaises(PermissionError):
-                _reject_private(host, None, "http")
+                reject_private(host, None, "http")
         # a public address passes and is returned (numeric, so no DNS lookup)
-        self.assertEqual(_reject_private("8.8.8.8", None, "https"), "8.8.8.8")
+        self.assertEqual(reject_private("8.8.8.8", None, "https"), "8.8.8.8")
 
     async def test_egress_pins_validated_ip(self):
-        # The connection must dial the IP validated by _reject_private, not
+        # The connection must dial the IP validated by reject_private, not
         # re-resolve the hostname (which would reopen the DNS-rebinding window).
         # We allowlist a non-resolving `.invalid` host and pin it to a local
         # server: the fetch only succeeds if the pinned IP is used.
@@ -538,7 +752,7 @@ class MirageSandboxTest(_SandboxTestCase):
         import threading
         from unittest import mock
 
-        from synalinks.src.sandboxes import mirage_sandbox
+        from synalinks.src.utils import egress_utils
 
         class _Handler(http.server.BaseHTTPRequestHandler):
             def do_GET(self):
@@ -559,7 +773,7 @@ class MirageSandboxTest(_SandboxTestCase):
             )
             fetch = sandbox.bound_functions["http_fetch"]
             with mock.patch.object(
-                mirage_sandbox, "_reject_private", return_value="127.0.0.1"
+                egress_utils, "reject_private", return_value="127.0.0.1"
             ):
                 resp = await fetch(url=f"http://pinned.invalid:{port}/")
             self.assertEqual(resp["status"], 200)
@@ -595,49 +809,47 @@ class MirageSandboxTest(_SandboxTestCase):
     def test_confinement_unavailable_points_to_wsl_on_windows(self):
         from unittest import mock
 
-        from synalinks.src.sandboxes import mirage_sandbox
-
         with mock.patch("platform.system", return_value="Windows"):
-            ok, reason = mirage_sandbox._confinement_available()
+            ok, reason = confinement_available()
         self.assertFalse(ok)
         self.assertIn("WSL2", reason)
 
     def test_native_windows_hint_silent_off_windows(self):
         from unittest import mock
 
-        from synalinks.src.sandboxes import mirage_sandbox
+        from synalinks.src.utils import confinement_utils
 
-        mirage_sandbox._WINDOWS_HINTED = False
+        confinement_utils.WINDOWS_HINTED = False
         with mock.patch("platform.system", return_value="Linux"):
-            self.assertIsNone(mirage_sandbox._maybe_warn_native_windows())
+            self.assertIsNone(confinement_utils.maybe_warn_native_windows())
 
     def test_native_windows_hint_warns_once(self):
         import os
         from unittest import mock
 
-        from synalinks.src.sandboxes import mirage_sandbox
+        from synalinks.src.utils import confinement_utils
 
-        mirage_sandbox._WINDOWS_HINTED = False
+        confinement_utils.WINDOWS_HINTED = False
         with mock.patch("platform.system", return_value="Windows"):
             with mock.patch.dict("os.environ", {}, clear=False):
                 os.environ.pop("SYNALINKS_NO_WINDOWS_HINT", None)
                 with self.assertWarns(RuntimeWarning):
-                    msg = mirage_sandbox._maybe_warn_native_windows()
+                    msg = confinement_utils.maybe_warn_native_windows()
                 self.assertIn("WSL2", msg)
                 # second call is a no-op (already hinted this process)
-                self.assertIsNone(mirage_sandbox._maybe_warn_native_windows())
+                self.assertIsNone(confinement_utils.maybe_warn_native_windows())
 
     def test_native_windows_hint_suppressed_by_env_var(self):
         from unittest import mock
 
-        from synalinks.src.sandboxes import mirage_sandbox
+        from synalinks.src.utils import confinement_utils
 
-        mirage_sandbox._WINDOWS_HINTED = False
+        confinement_utils.WINDOWS_HINTED = False
         with mock.patch("platform.system", return_value="Windows"):
             with mock.patch.dict(
                 "os.environ", {"SYNALINKS_NO_WINDOWS_HINT": "1"}, clear=False
             ):
-                self.assertIsNone(mirage_sandbox._maybe_warn_native_windows())
+                self.assertIsNone(confinement_utils.maybe_warn_native_windows())
 
     async def test_allowed_hosts_binds_egress_tool(self):
         sandbox = MirageSandbox(timeout=_TIMEOUT, allowed_hosts=["api.example.com"])
@@ -689,11 +901,14 @@ class MirageSandboxTest(_SandboxTestCase):
             sandbox = MirageSandbox(
                 timeout=_TIMEOUT,
                 confine=True,
+                # The graceful strip-with-a-warning path; fail-closed (the
+                # default) raises instead, covered by the next test.
+                require_confinement=False,
                 workspace_kwargs={"runtimes": ["vfs", "not-a-vouched-runtime"]},
             )
         self.assertEqual(sandbox.granted_capabilities()["host_runtimes"], [])
         # The vouched entry survives; only the unknown one is removed.
-        self.assertEqual(sandbox._workspace_kwargs["runtimes"], ["vfs"])
+        self.assertEqual(sandbox.workspace_kwargs["runtimes"], ["vfs"])
         sandbox.close()
 
     @unittest.skipUnless(_NAMESPACES_OK, _NS_REASON)
@@ -714,7 +929,7 @@ class MirageSandboxTest(_SandboxTestCase):
         # and it must not trip the guard.
         sandbox = MirageSandbox(timeout=_TIMEOUT, confine=True)
         try:
-            self.assertTrue(sandbox._run_python_patched)
+            self.assertTrue(sandbox.run_python_patched)
             self.assertEqual(sandbox.granted_capabilities()["host_runtimes"], [])
         finally:
             sandbox.close()
@@ -728,7 +943,7 @@ class MirageSandboxTest(_SandboxTestCase):
         from synalinks.src.sandboxes import mirage_sandbox
 
         with mock.patch.object(
-            mirage_sandbox, "_install_run_python_patch", return_value=False
+            mirage_sandbox, "local_runtime_supported", return_value=False
         ):
             with self.assertRaises(ValueError):
                 MirageSandbox(timeout=_TIMEOUT, confine=True, require_confinement=True)
@@ -736,10 +951,10 @@ class MirageSandboxTest(_SandboxTestCase):
     def test_seccomp_filter_builds_for_known_arch(self):
         from unittest import mock
 
-        from synalinks.src.sandboxes import mirage_sandbox
+        from synalinks.src.utils import confinement_utils
 
         with mock.patch("platform.machine", return_value="x86_64"):
-            blob = mirage_sandbox._build_seccomp_filter()
+            blob = confinement_utils.build_seccomp_filter()
         self.assertIsInstance(blob, str)
         import base64
 
@@ -748,7 +963,7 @@ class MirageSandboxTest(_SandboxTestCase):
         self.assertEqual(len(raw) % 8, 0)
         # unknown arch -> no filter (confinement still applies without one)
         with mock.patch("platform.machine", return_value="riscv128"):
-            self.assertIsNone(mirage_sandbox._build_seccomp_filter())
+            self.assertIsNone(confinement_utils.build_seccomp_filter())
 
     # -- filesystem tools ---------------------------------------------------
 
@@ -764,6 +979,64 @@ class MirageSandboxTest(_SandboxTestCase):
         sandbox = MirageSandbox(timeout=_TIMEOUT)
         read = await sandbox.read_file("/nope.txt")
         self.assertIn("error", read)
+
+    async def test_read_image(self):
+        sandbox = MirageSandbox(timeout=_TIMEOUT)
+        png = io.BytesIO()
+        PIL.Image.new("RGB", (40, 30), "red").save(png, format="PNG")
+        await sandbox.files.write("/plot.png", png.getvalue())
+        read = await sandbox.read_image("/plot.png")
+        self.assertEqual(read["mime_type"], "image/png")
+        self.assertEqual((read["width"], read["height"]), (40, 30))
+        self.assertNotIn("original_width", read)
+        self.assertEqual(base64.b64decode(read["image"].data), png.getvalue())
+        await sandbox.write_file("/notes.txt", "hello")
+        self.assertIn("not an image", (await sandbox.read_image("/notes.txt"))["error"])
+        self.assertIn("not found", (await sandbox.read_image("/nope.png"))["error"])
+
+    async def test_read_image_scales_a_large_image_down(self):
+        sandbox = MirageSandbox(timeout=_TIMEOUT)
+        bmp = io.BytesIO()
+        PIL.Image.new("RGB", (4000, 1000), "blue").save(bmp, format="BMP")
+        await sandbox.files.write("/scan.bmp", bmp.getvalue())
+        read = await sandbox.read_image("/scan.bmp")
+        self.assertEqual(read["mime_type"], "image/png")
+        self.assertEqual((read["width"], read["height"]), (1568, 392))
+        self.assertEqual((read["original_width"], read["original_height"]), (4000, 1000))
+
+    async def test_read_audio(self):
+        sandbox = MirageSandbox(timeout=_TIMEOUT)
+        wav = io.BytesIO()
+        soundfile.write(wav, np.zeros(8000 * 3), 8000, format="WAV")
+        await sandbox.files.write("/beep.wav", wav.getvalue())
+        read = await sandbox.read_audio("/beep.wav")
+        self.assertEqual((read["format"], read["total_duration"]), ("wav", 3.0))
+        self.assertEqual(base64.b64decode(read["audio"].data), wav.getvalue())
+        clip = await sandbox.read_audio("/beep.wav", offset=1, duration=1)
+        self.assertEqual((clip["offset"], clip["duration"]), (1, 1))
+        self.assertTrue(clip["truncated"])
+        self.assertIn("past the end", (await sandbox.read_audio("/beep.wav", 9))["error"])
+        await sandbox.write_file("/notes.txt", "hello")
+        self.assertIn("not a readable", (await sandbox.read_audio("/notes.txt"))["error"])
+        self.assertIn("not found", (await sandbox.read_audio("/nope.wav"))["error"])
+
+    async def test_run_python_code_returns_displayed_images(self):
+        sandbox = MirageSandbox(timeout=_TIMEOUT)
+        result = await sandbox.run_python_code(
+            "import matplotlib.pyplot as plt\nplt.plot([1, 2, 3])\nplt.show()"
+        )
+        self.assertTrue(result["ok"], result)
+        (image,) = result["images"]
+        self.assertEqual(image.mime_type, "image/png")
+        self.assertTrue(base64.b64decode(image.data).startswith(b"\x89PNG"))
+        self.assertNotIn("images", await sandbox.run_python_code("print(1)"))
+        # A high-dpi figure comes back scaled down to what a model reads.
+        result = await sandbox.run_python_code(
+            "plt.figure(dpi=400)\nplt.plot([1, 2, 3])\nplt.show()"
+        )
+        (image,) = result["images"]
+        width, height = PIL.Image.open(io.BytesIO(base64.b64decode(image.data))).size
+        self.assertEqual(max(width, height), 1568)
 
     async def test_read_file_pagination(self):
         sandbox = MirageSandbox(timeout=_TIMEOUT)
@@ -872,28 +1145,28 @@ class MirageSandboxTest(_SandboxTestCase):
 
     async def test_dump_load_round_trip(self):
         sandbox = MirageSandbox(timeout=_TIMEOUT)
-        await sandbox.run("secret = 1234")
+        await sandbox.run_code("secret = 1234")
         await sandbox.write_file("/keep.txt", "persisted")
         blob = sandbox.dump()
         restored = MirageSandbox.load(blob)
-        result = await restored.run("print(secret)")
-        self.assertIn("1234", result.stdout)
+        result = await restored.run_code("print(secret)")
+        self.assertIn("1234", _stdout(result))
         read = await restored.read_file("/keep.txt")
         self.assertEqual(read["content"], "persisted")
 
     async def test_get_config_from_config_round_trip(self):
         sandbox = MirageSandbox(timeout=_TIMEOUT, name="cfg")
-        await sandbox.run("token = 'abc'")
+        await sandbox.run_code("token = 'abc'")
         config = sandbox.get_config()
         restored = MirageSandbox.from_config(config)
         self.assertEqual(restored.name, "cfg")
-        result = await restored.run("print(token)")
-        self.assertIn("abc", result.stdout)
+        result = await restored.run_code("print(token)")
+        self.assertIn("abc", _stdout(result))
 
     async def test_fork_isolates_filesystem(self):
         sandbox = MirageSandbox(timeout=_TIMEOUT)
         await sandbox.write_file("/f.txt", "parent")
-        child = sandbox.fork()
+        (child,) = await sandbox.fork()
         await child.write_file("/f.txt", "child")
         await child.write_file("/only_child.txt", "x")
         parent_read = await sandbox.read_file("/f.txt")
@@ -903,16 +1176,18 @@ class MirageSandboxTest(_SandboxTestCase):
         parent_only = await sandbox.read_file("/only_child.txt")
         self.assertIn("error", parent_only)
 
-    async def test_fork_copy_repl_inherits_namespace(self):
+    async def test_fork_inherits_namespace(self):
+        # As an E2B fork copies the whole sandbox, the child starts with the
+        # parent's variables, imports and definitions.
         sandbox = MirageSandbox(timeout=_TIMEOUT)
-        await sandbox.run("base = 5")
-        child = sandbox.fork(copy_repl=True)
-        result = await child.run("print(base * 2)")
-        self.assertIn("10", result.stdout)
+        await sandbox.run_code("base = 5")
+        (child,) = await sandbox.fork()
+        result = await child.run_code("print(base * 2)")
+        self.assertIn("10", _stdout(result))
         # Child mutations do not leak back to the parent.
-        await child.run("base = 999")
-        parent_result = await sandbox.run("print(base)")
-        self.assertIn("5", parent_result.stdout)
+        await child.run_code("base = 999")
+        parent_result = await sandbox.run_code("print(base)")
+        self.assertIn("5", _stdout(parent_result))
 
     async def test_diff_and_changes(self):
         sandbox = MirageSandbox(timeout=_TIMEOUT)
@@ -954,10 +1229,10 @@ class MirageSandboxTest(_SandboxTestCase):
         sandbox = MirageSandbox(timeout=_TIMEOUT)
         await sandbox.write_file("/app/main.py", "def f():\n    return 1\n")
         await sandbox.write_file("/old.txt", "delete me\n")
-        child = sandbox.fork()
+        (child,) = await sandbox.fork()
         await child.write_file("/app/main.py", "def f():\n    return 2\n")
         await child.write_file("/new.txt", "new")
-        await child._delete("/old.txt")
+        await child.files.remove("/old.txt")
         patch = child.patch()
         # Modify: a real hunk against the fork-point text.
         self.assertIn("diff --git a/app/main.py b/app/main.py", patch)
@@ -978,7 +1253,7 @@ class MirageSandboxTest(_SandboxTestCase):
     async def test_merge_applies_child_changes(self):
         sandbox = MirageSandbox(timeout=_TIMEOUT)
         await sandbox.write_file("/base.txt", "base")
-        child = sandbox.fork()
+        (child,) = await sandbox.fork()
         await child.write_file("/new.txt", "from_child")
         report = sandbox.merge(child)
         self.assertIn("/new.txt", report["written"])
@@ -986,10 +1261,27 @@ class MirageSandboxTest(_SandboxTestCase):
         read = await sandbox.read_file("/new.txt")
         self.assertEqual(read["content"], "from_child")
 
+    async def test_merge_reports_failed_writes(self):
+        sandbox = MirageSandbox(timeout=_TIMEOUT)
+        (child,) = await sandbox.fork()
+        await child.write_file("/ok.txt", "ok")
+        await child.write_file("/bad.txt", "bad")
+        real_write = sandbox.write
+
+        async def flaky_write(path, data):
+            if path == "/bad.txt":
+                return "disk full"
+            return await real_write(path, data)
+
+        sandbox.write = flaky_write
+        report = sandbox.merge(child)
+        self.assertEqual(report["written"], ["/ok.txt"])
+        self.assertEqual(report["failed"], {"/bad.txt": "disk full"})
+
     async def test_merge_conflict_refused_without_force(self):
         sandbox = MirageSandbox(timeout=_TIMEOUT)
         await sandbox.write_file("/shared.txt", "original")
-        child = sandbox.fork()
+        (child,) = await sandbox.fork()
         await child.write_file("/shared.txt", "child_version")
         # Parent diverges on the same path after the fork.
         await sandbox.write_file("/shared.txt", "parent_version")
@@ -1047,14 +1339,14 @@ class MirageSandboxConfineTest(_SandboxTestCase):
                 timeout=_TIMEOUT, confine=True, extra_binds=[host_dir]
             )
             try:
-                result = await sandbox.run(
+                result = await sandbox.run_code(
                     f"import sys\nsys.path.insert(0, {host_dir!r})\n"
                     "import hostlibxyz\nprint(hostlibxyz.VALUE)\n"
                 )
-                self.assertTrue(result.ok, msg=result.error)
-                self.assertIn("4242", result.stdout)
+                self.assertIsNone(result.error)
+                self.assertIn("4242", _stdout(result))
                 # ...and it's read-only (host import-poisoning guard holds).
-                ro = await sandbox.run(
+                ro = await sandbox.run_code(
                     f"try:\n"
                     f"    open({os.path.join(host_dir, 'hostlibxyz.py')!r}, 'a')"
                     f".write('x')\n"
@@ -1062,7 +1354,7 @@ class MirageSandboxConfineTest(_SandboxTestCase):
                     f"except OSError:\n"
                     f"    print('READONLY')\n"
                 )
-                self.assertIn("READONLY", ro.stdout)
+                self.assertIn("READONLY", _stdout(ro))
             finally:
                 sandbox.close()
         finally:
@@ -1071,23 +1363,25 @@ class MirageSandboxConfineTest(_SandboxTestCase):
     async def test_confine_runs_and_persists_state(self):
         sandbox = MirageSandbox(timeout=_TIMEOUT, confine=True)
         try:
-            self.assertTrue(sandbox._confine)
-            await sandbox.run("x = 41")
-            result = await sandbox.run("print(x + 1)")
-            self.assertTrue(result.ok, msg=result.error)
-            self.assertIn("42", result.stdout)
+            self.assertTrue(sandbox.confine)
+            await sandbox.run_code("x = 41")
+            result = await sandbox.run_code("print(x + 1)")
+            self.assertIsNone(result.error)
+            self.assertIn("42", _stdout(result))
             # third-party / stdlib imports still resolve inside the pivot
-            imp = await sandbox.run("import json, math\nprint(math.floor(2.5))")
-            self.assertTrue(imp.ok, msg=imp.error)
-            self.assertIn("2", imp.stdout)
+            imp = await sandbox.run_code("import json, math\nprint(math.floor(2.5))")
+            self.assertIsNone(imp.error)
+            self.assertIn("2", _stdout(imp))
         finally:
             sandbox.close()
 
     async def test_confine_hides_host_filesystem(self):
         sandbox = MirageSandbox(timeout=_TIMEOUT, confine=True)
         try:
-            result = await sandbox.run("import os\nprint(os.path.exists('/etc/passwd'))")
-            self.assertIn("False", result.stdout)
+            result = await sandbox.run_code(
+                "import os\nprint(os.path.exists('/etc/passwd'))"
+            )
+            self.assertIn("False", _stdout(result))
         finally:
             sandbox.close()
 
@@ -1097,18 +1391,18 @@ class MirageSandboxConfineTest(_SandboxTestCase):
         # depth so host /proc/<pid>/root and /environ aren't even reachable).
         sandbox = MirageSandbox(timeout=_TIMEOUT, confine=True)
         try:
-            result = await sandbox.run(
+            result = await sandbox.run_code(
                 "import os\n"
                 "pids = [int(p) for p in os.listdir('/proc') if p.isdigit()]\n"
                 "print('mypid', os.getpid())\n"
                 "print('maxpid', max(pids))\n"
                 "print('count', len(pids))\n"
             )
-            self.assertTrue(result.ok, msg=result.error)
+            self.assertIsNone(result.error)
             # PID 1 in the new namespace, and only a handful of namespaced PIDs
             # (no sprawling host process table).
-            self.assertIn("mypid 1", result.stdout)
-            lines = dict(ln.split(" ", 1) for ln in result.stdout.strip().splitlines())
+            self.assertIn("mypid 1", _stdout(result))
+            lines = dict(ln.split(" ", 1) for ln in _stdout(result).strip().splitlines())
             self.assertLessEqual(int(lines["maxpid"]), 50)
         finally:
             sandbox.close()
@@ -1116,7 +1410,7 @@ class MirageSandboxConfineTest(_SandboxTestCase):
     async def test_confine_cuts_network(self):
         sandbox = MirageSandbox(timeout=_TIMEOUT, confine=True)
         try:
-            result = await sandbox.run(
+            result = await sandbox.run_code(
                 "import socket\n"
                 "try:\n"
                 "    socket.create_connection(('1.1.1.1', 80), 2)\n"
@@ -1124,7 +1418,7 @@ class MirageSandboxConfineTest(_SandboxTestCase):
                 "except OSError:\n"
                 "    print('CUT')\n"
             )
-            self.assertIn("CUT", result.stdout)
+            self.assertIn("CUT", _stdout(result))
         finally:
             sandbox.close()
 
@@ -1133,10 +1427,10 @@ class MirageSandboxConfineTest(_SandboxTestCase):
         try:
             # a file written via the tool is visible to python at the same path
             await sandbox.write_file("/data.txt", "virtual-content")
-            read = await sandbox.run("print(open('/data.txt').read().strip())")
-            self.assertIn("virtual-content", read.stdout)
+            read = await sandbox.run_code("print(open('/data.txt').read().strip())")
+            self.assertIn("virtual-content", _stdout(read))
             # a file python writes is visible to the tool
-            await sandbox.run("open('/out.txt', 'w').write('from-python')")
+            await sandbox.run_code("open('/out.txt', 'w').write('from-python')")
             tool = await sandbox.read_file("/out.txt")
             self.assertEqual(tool["content"], "from-python")
         finally:
@@ -1151,9 +1445,9 @@ class MirageSandboxConfineTest(_SandboxTestCase):
         try:
             # The host-tool bridge must also work synchronously under confinement.
             code = "print(adder(x=2, y=3)['sum'])\n"
-            result = await sandbox.run(code, external_functions={"adder": adder})
-            self.assertTrue(result.ok, msg=result.error)
-            self.assertIn("5", result.stdout)
+            result = await sandbox.run_code(code, external_functions={"adder": adder})
+            self.assertIsNone(result.error)
+            self.assertIn("5", _stdout(result))
         finally:
             sandbox.close()
 
@@ -1204,7 +1498,7 @@ class MirageSandboxConfineTest(_SandboxTestCase):
             import os as _os
 
             target = _os.path.join(_os.path.dirname(_os.__file__), "os.py")
-            result = await sandbox.run(
+            result = await sandbox.run_code(
                 "import os\n"
                 f"try:\n"
                 f"    open({target!r}, 'a').write('x')\n"
@@ -1212,8 +1506,8 @@ class MirageSandboxConfineTest(_SandboxTestCase):
                 f"except OSError as exc:\n"
                 f"    print('READONLY')\n"
             )
-            self.assertTrue(result.ok, msg=result.error)
-            self.assertIn("READONLY", result.stdout)
+            self.assertIsNone(result.error)
+            self.assertIn("READONLY", _stdout(result))
         finally:
             sandbox.close()
 
@@ -1223,7 +1517,7 @@ class MirageSandboxConfineTest(_SandboxTestCase):
         sandbox = MirageSandbox(timeout=_TIMEOUT, confine=True, seccomp=True)
         try:
             self.assertTrue(sandbox.granted_capabilities()["seccomp"])
-            result = await sandbox.run(
+            result = await sandbox.run_code(
                 "import os\n"
                 "try:\n"
                 "    os.unshare(0)\n"
@@ -1231,8 +1525,8 @@ class MirageSandboxConfineTest(_SandboxTestCase):
                 "except OSError:\n"
                 "    print('BLOCKED')\n"
             )
-            self.assertTrue(result.ok, msg=result.error)
-            self.assertIn("BLOCKED", result.stdout)
+            self.assertIsNone(result.error)
+            self.assertIn("BLOCKED", _stdout(result))
         finally:
             sandbox.close()
 
@@ -1242,7 +1536,7 @@ class MirageSandboxConfineTest(_SandboxTestCase):
         sandbox = MirageSandbox(timeout=_TIMEOUT, confine=True, seccomp=False)
         try:
             self.assertFalse(sandbox.granted_capabilities()["seccomp"])
-            result = await sandbox.run(
+            result = await sandbox.run_code(
                 "import os\n"
                 "try:\n"
                 "    os.unshare(0)\n"
@@ -1250,8 +1544,8 @@ class MirageSandboxConfineTest(_SandboxTestCase):
                 "except OSError:\n"
                 "    print('BLOCKED')\n"
             )
-            self.assertTrue(result.ok, msg=result.error)
-            self.assertIn("ALLOWED", result.stdout)
+            self.assertIsNone(result.error)
+            self.assertIn("ALLOWED", _stdout(result))
         finally:
             sandbox.close()
 
@@ -1272,10 +1566,10 @@ class MirageSandboxConfineTest(_SandboxTestCase):
     async def test_require_confinement_runs_when_available(self):
         sandbox = MirageSandbox(timeout=_TIMEOUT, confine=True, require_confinement=True)
         try:
-            self.assertTrue(sandbox._confine)
-            result = await sandbox.run("print(40 + 2)")
-            self.assertTrue(result.ok, msg=result.error)
-            self.assertIn("42", result.stdout)
+            self.assertTrue(sandbox.confine)
+            result = await sandbox.run_code("print(40 + 2)")
+            self.assertIsNone(result.error)
+            self.assertIn("42", _stdout(result))
         finally:
             sandbox.close()
 
@@ -1286,10 +1580,10 @@ class MirageSandboxConfineTest(_SandboxTestCase):
         unconfined = MirageSandbox(timeout=_TIMEOUT, confine=False)
         c_child = u_child = None
         try:
-            c_child = confined.fork(confine=None)
-            u_child = unconfined.fork(confine=None)
-            self.assertTrue(c_child._confine)
-            self.assertFalse(u_child._confine)
+            (c_child,) = await confined.fork(confine=None)
+            (u_child,) = await unconfined.fork(confine=None)
+            self.assertTrue(c_child.confine)
+            self.assertFalse(u_child.confine)
         finally:
             for sandbox in (confined, unconfined, c_child, u_child):
                 if sandbox is not None:
@@ -1309,19 +1603,19 @@ class MirageSandboxConfineTest(_SandboxTestCase):
         )
         child = None
         try:
-            child = parent.fork(name="sub", confine=True)
-            self.assertTrue(child._confine)
+            (child,) = await parent.fork(name="sub", confine=True)
+            self.assertTrue(child.confine)
             pcaps = parent.granted_capabilities()
             ccaps = child.granted_capabilities()
             for key in ("confined", "seccomp", "read_only_runtime", "network"):
                 self.assertEqual(ccaps[key], pcaps[key])
             self.assertIn("http_fetch", ccaps["tools"])  # egress tool inherited
-            self.assertTrue(child._require_confinement)  # fail-closed propagates
-            self.assertEqual(child._extra_binds, ["/usr/share"])
-            self.assertTrue(child._block_private_egress)
+            self.assertTrue(child.require_confinement)  # fail-closed propagates
+            self.assertEqual(child.extra_binds, parent.extra_binds)
+            self.assertTrue(child.block_private_egress)
             # and it is genuinely confined to ITS OWN fork (host hidden)
-            r = await child.run("import os\nprint(os.path.exists('/etc/passwd'))")
-            self.assertIn("False", r.stdout)
+            r = await child.run_code("import os\nprint(os.path.exists('/etc/passwd'))")
+            self.assertIn("False", _stdout(r))
         finally:
             parent.close()
             if child is not None:
@@ -1334,78 +1628,63 @@ class MirageSandboxConfineTest(_SandboxTestCase):
         child = None
         try:
             await parent.write_file("/shared.txt", "parent-data")
-            child = parent.fork(confine=True, name="sub")
-            self.assertTrue(child._confine)
+            (child,) = await parent.fork(confine=True, name="sub")
+            self.assertTrue(child.confine)
             # child sees the forked copy at the same path, host hidden
-            r = await child.run(
+            r = await child.run_code(
                 "import os\n"
                 "print('shared', open('/shared.txt').read().strip())\n"
                 "print('passwd', os.path.exists('/etc/passwd'))\n"
             )
-            self.assertIn("shared parent-data", r.stdout)
-            self.assertIn("passwd False", r.stdout)
+            self.assertIn("shared parent-data", _stdout(r))
+            self.assertIn("passwd False", _stdout(r))
             # child writes stay in the child fork; the parent never sees them
-            await child.run("open('/childonly.txt', 'w').write('x')")
+            await child.run_code("open('/childonly.txt', 'w').write('x')")
             self.assertIn("error", await parent.read_file("/childonly.txt"))
             # the parent itself is unconfined
-            rp = await parent.run("import os\nprint(os.path.exists('/etc/passwd'))")
-            self.assertIn("True", rp.stdout)
+            rp = await parent.run_code("import os\nprint(os.path.exists('/etc/passwd'))")
+            self.assertIn("True", _stdout(rp))
         finally:
             parent.close()
             if child is not None:
                 child.close()
 
 
-class RunPythonPatchTest(_SandboxTestCase):
-    """`_install_run_python_patch` must locate Mirage's python runner across
-    versions (it moved modules in mirage-ai 0.0.2) so `run_bash`'s `python3`
-    can be confined rather than silently left unconfined."""
+class ShellPythonConfinementTest(_SandboxTestCase):
+    """`confine_shell_python` wraps one workspace's ``local`` runtime so
+    `run_bash`'s ``python3`` confines itself, without patching Mirage's class
+    (which every other workspace and Mirage user in the process shares)."""
 
-    async def test_patch_resolves_runner_on_installed_mirage(self):
-        import importlib
-        import warnings
+    async def test_wraps_the_instance_not_the_class(self):
+        from mirage.runtime.python.local import LocalRuntime
 
         from synalinks.src.sandboxes import mirage_sandbox as ms
 
-        # At least one known runner location must exist in the installed Mirage.
-        # A target's qualname may name a class method (0.0.4+ runtime table) or
-        # a module-level function, so resolve it the same way the patch does.
-        resolved = None
-        for mod_name, qualname in ms._RUN_PYTHON_TARGETS:
-            try:
-                owner = importlib.import_module(mod_name)
-            except Exception:
-                continue
-            *parents, attr_name = qualname.split(".")
-            for parent in parents:
-                owner = getattr(owner, parent, None)
-                if owner is None:
-                    break
-            if owner is not None and getattr(owner, attr_name, None) is not None:
-                resolved = (owner, attr_name)
-                break
-        if resolved is None:
-            self.skipTest("no known mirage python-runner internal is importable")
+        self.assertTrue(ms.local_runtime_supported())
+        class_run = LocalRuntime.run
+        sandbox = MirageSandbox(timeout=_TIMEOUT, confine=False)
+        other = MirageSandbox(timeout=_TIMEOUT, confine=False)
+        self.assertTrue(ms.confine_shell_python(sandbox.workspace))
+        runtime = sandbox.workspace._registry.runtime_bindings["python3"]
+        self.assertTrue(runtime.run.confines_shell_python)
+        # Idempotent, and scoped to this one workspace.
+        wrapped = runtime.run
+        self.assertTrue(ms.confine_shell_python(sandbox.workspace))
+        bindings = sandbox.workspace._registry.runtime_bindings
+        self.assertIs(bindings["python3"].run, wrapped)
+        self.assertIs(LocalRuntime.run, class_run)
+        other_run = other.workspace._registry.runtime_bindings["python3"].run
+        self.assertFalse(getattr(other_run, "confines_shell_python", False))
 
-        mod, attr_name = resolved
-        # Snapshot so we can restore the runner (and the install flag) and not
-        # leak a double-wrap into other tests.
-        original_attr = getattr(mod, attr_name)
-        was_patched = ms._run_python_patched
-        ms._run_python_patched = False
-        try:
-            with warnings.catch_warnings(record=True) as caught:
-                warnings.simplefilter("always")
-                ok = ms._install_run_python_patch()
-            self.assertTrue(ok)
-            self.assertFalse(
-                [w for w in caught if "stays unconfined" in str(w.message)],
-                msg="patch should not warn when a runner is found",
-            )
-            self.assertTrue(hasattr(getattr(mod, attr_name), "_mirage_sandbox_original"))
-        finally:
-            setattr(mod, attr_name, original_attr)
-            ms._run_python_patched = was_patched
+    async def test_wrapped_runtime_passes_code_through_when_inactive(self):
+        from synalinks.src.sandboxes import mirage_sandbox as ms
+
+        sandbox = MirageSandbox(timeout=_TIMEOUT, confine=False)
+        ms.confine_shell_python(sandbox.workspace)
+        # No confined shell command is active, so python3 runs unmodified.
+        result = await sandbox.run_bash("python3 -c 'print(6 * 7)'")
+        self.assertEqual(result["exit_code"], 0, result["stderr"])
+        self.assertIn("42", result["stdout"])
 
 
 class InfraSelfHealTest(_SandboxTestCase):
@@ -1413,77 +1692,64 @@ class InfraSelfHealTest(_SandboxTestCase):
     repeat the same infra error; an agent would loop on it until timeout. `run`
     must detect this, rebuild the workspace, and retry once instead."""
 
-    def test_is_infra_failure_classifies_markers(self):
-        from synalinks.src.sandboxes.mirage_sandbox import _is_infra_failure
-
-        # confine bootstrap abort (exit 99) and a dead FUSE backing.
-        self.assertTrue(_is_infra_failure("confine-error: OSError(13, ...)", 99))
-        self.assertTrue(
-            _is_infra_failure("OSError(107, 'Transport endpoint is not connected')", 1)
-        )
-        # an ordinary snippet error is NOT infrastructure.
-        self.assertFalse(_is_infra_failure("Traceback ...\nValueError: nope", 1))
-        # success never counts, even if a marker appears in echoed text.
-        self.assertFalse(_is_infra_failure("confine-error: (echoed)", 0))
-
     async def test_run_heals_workspace_and_retries_on_infra_failure(self):
         sandbox = MirageSandbox(timeout=_TIMEOUT)
         calls = {"exec": 0, "rebuild": 0}
 
-        async def fake_execute(command, *, stdin=None, timeout=None):
+        async def fake_execute(command, *, stdin=None, timeout=None, record=False):
             calls["exec"] += 1
             if calls["exec"] == 1:
                 return ("", "confine-error: OSError(107, 'Transport endpoint ...')", 99)
             return ("healed\n", "", 0)
 
-        sandbox._execute = fake_execute
-        sandbox._rebuild_workspace = lambda: calls.__setitem__(
+        sandbox.execute = fake_execute
+        sandbox.rebuild_workspace = lambda: calls.__setitem__(
             "rebuild", calls["rebuild"] + 1
         )
         try:
-            result = await sandbox.run("print('x')")
+            result = await sandbox.run_code("print('x')")
         finally:
             sandbox.close()
         # exactly one rebuild, two execute attempts, and the healed run wins.
         self.assertEqual(calls["rebuild"], 1)
         self.assertEqual(calls["exec"], 2)
-        self.assertTrue(result.ok, msg=result.error)
-        self.assertIn("healed", result.stdout)
+        self.assertIsNone(result.error)
+        self.assertIn("healed", _stdout(result))
 
     async def test_run_gives_up_after_one_heal(self):
         sandbox = MirageSandbox(timeout=_TIMEOUT)
         calls = {"exec": 0, "rebuild": 0}
 
-        async def fake_execute(command, *, stdin=None, timeout=None):
+        async def fake_execute(command, *, stdin=None, timeout=None, record=False):
             calls["exec"] += 1
             return ("", "confine-error: still broken", 99)
 
-        sandbox._execute = fake_execute
-        sandbox._rebuild_workspace = lambda: calls.__setitem__(
+        sandbox.execute = fake_execute
+        sandbox.rebuild_workspace = lambda: calls.__setitem__(
             "rebuild", calls["rebuild"] + 1
         )
         try:
-            result = await sandbox.run("print('x')")
+            result = await sandbox.run_code("print('x')")
         finally:
             sandbox.close()
         # one heal, two attempts, then the infra error surfaces (no infinite loop).
         self.assertEqual(calls["rebuild"], 1)
         self.assertEqual(calls["exec"], 2)
-        self.assertFalse(result.ok)
-        self.assertIn("confine-error", result.error)
+        self.assertIsNotNone(result.error)
+        self.assertIn("confine-error", result.error.value)
 
     async def test_run_bash_heals_workspace_and_retries_on_infra_failure(self):
         sandbox = MirageSandbox(timeout=_TIMEOUT)
         calls = {"exec": 0, "rebuild": 0}
 
-        async def fake_execute(command, *, stdin=None, timeout=None):
+        async def fake_execute(command, *, stdin=None, timeout=None, record=False):
             calls["exec"] += 1
             if calls["exec"] == 1:
                 return ("", "OSError(107, 'Transport endpoint is not connected')", 99)
             return ("ok\n", "", 0)
 
-        sandbox._execute = fake_execute
-        sandbox._rebuild_workspace = lambda: calls.__setitem__(
+        sandbox.execute = fake_execute
+        sandbox.rebuild_workspace = lambda: calls.__setitem__(
             "rebuild", calls["rebuild"] + 1
         )
         try:
@@ -1499,23 +1765,23 @@ class InfraSelfHealTest(_SandboxTestCase):
         sandbox = MirageSandbox(timeout=_TIMEOUT)
         calls = {"exec": 0, "rebuild": 0}
 
-        async def fake_execute(command, *, stdin=None, timeout=None):
+        async def fake_execute(command, *, stdin=None, timeout=None, record=False):
             calls["exec"] += 1
             return ("", "Traceback ...\nValueError: boom", 1)
 
-        sandbox._execute = fake_execute
-        sandbox._rebuild_workspace = lambda: calls.__setitem__(
+        sandbox.execute = fake_execute
+        sandbox.rebuild_workspace = lambda: calls.__setitem__(
             "rebuild", calls["rebuild"] + 1
         )
         try:
-            result = await sandbox.run("raise ValueError('boom')")
+            result = await sandbox.run_code("raise ValueError('boom')")
         finally:
             sandbox.close()
         # a genuine snippet error must not trigger a rebuild/retry.
         self.assertEqual(calls["rebuild"], 0)
         self.assertEqual(calls["exec"], 1)
-        self.assertFalse(result.ok)
-        self.assertIn("ValueError", result.error)
+        self.assertIsNotNone(result.error)
+        self.assertEqual(result.error.name, "ValueError")
 
 
 class SbplProfileTest(testing.TestCase):
@@ -1535,7 +1801,7 @@ class SbplProfileTest(testing.TestCase):
         }
         cfg.update(overrides)
         ns = {}
-        exec(_MACOS_CONFINE_SRC, ns)
+        exec(MACOS_CONFINE_SRC, ns)
         return ns["_build_sbpl"](cfg)
 
     def test_profile_is_default_deny(self):
@@ -1703,6 +1969,32 @@ class SbplProfileTest(testing.TestCase):
             '(allow network-outbound (literal "/private/tmp/sbx/rpc_1.sock"))', profile
         )
 
+    def test_process_table_sysctls_are_denied(self):
+        # `kern.proc.*` / `kern.procargs*` hand over every host process and its
+        # arguments; the deny must follow the blanket sysctl-read grant, since
+        # SBPL is last-match-wins.
+        profile = self._build()
+        deny = '(deny sysctl-read (sysctl-name-prefix "kern.proc"))'
+        self.assertIn(deny, profile)
+        self.assertGreater(profile.index(deny), profile.index("(allow sysctl-read)"))
+
+    def test_signals_reach_only_self_and_children(self):
+        # Children, so `Popen.kill()` and subprocess timeouts work; nothing
+        # else, so the snippet cannot signal host processes.
+        profile = self._build()
+        signals = [line for line in profile.splitlines() if "(allow signal" in line]
+        self.assertEqual(
+            signals, ["(allow signal (target self))", "(allow signal (target children))"]
+        )
+
+    def test_bin_sh_shell_selector_is_readable(self):
+        # macOS `/bin/sh` reads this symlink to pick the real shell; denied, it
+        # still runs but writes an error to every shelled-out command's stderr.
+        # The grant is the one link, not the directory holding it.
+        profile = self._build()
+        self.assertIn('(allow file-read* (literal "/private/var/select/sh"))', profile)
+        self.assertNotIn('(subpath "/private/var/select")', profile)
+
     def test_paths_with_quotes_are_escaped(self):
         # SBPL is s-expression syntax: an unescaped quote in a path would end
         # the string early and could terminate the rule, so a crafted directory
@@ -1722,7 +2014,7 @@ class MacosProcessPrologueTest(testing.TestCase):
 
     def _prepare(self, cfg):
         ns = {}
-        exec(_MACOS_CONFINE_SRC, ns)
+        exec(MACOS_CONFINE_SRC, ns)
         cwd = os.getcwd()
         path = list(sys.path)
         env = os.environ.get("TMPDIR")
@@ -1756,6 +2048,18 @@ class MacosProcessPrologueTest(testing.TestCase):
         self._prepare({"tmpdir": scratch})
         self.assertEqual(os.path.realpath(os.getcwd()), os.path.realpath(scratch))
 
+    def test_working_directory_prefers_the_mount(self):
+        # The process stands in the FUSE mount, the directory `pivot_root` makes
+        # "/" on Linux, so a relative path lands on the virtual filesystem the
+        # file tools see rather than in the scratch dir.
+        mount = self.get_temp_dir()
+        scratch = tempfile.mkdtemp()
+        self.addCleanup(os.rmdir, scratch)
+        self._prepare({"tmpdir": scratch, "cwd": mount})
+        self.assertEqual(os.path.realpath(os.getcwd()), os.path.realpath(mount))
+        # TMPDIR still points at the scratch dir, not the mount.
+        self.assertEqual(tempfile.gettempdir(), scratch)
+
     def test_empty_sys_path_entry_is_dropped(self):
         # CPython resolves "" through `getcwd` on the first import after the
         # profile applies, catching only `FileNotFoundError`, so an EPERM there
@@ -1766,18 +2070,35 @@ class MacosProcessPrologueTest(testing.TestCase):
         # ...and only that entry: the runtime set has to survive intact.
         self.assertIn(os.path.dirname(os.__file__), sys.path)
 
-    def test_nproc_rlimit_is_never_applied(self):
-        # RLIMIT_NPROC is counted per user. On Linux that is the sandbox's own
-        # user namespace, so `max_processes` caps the sandbox; here it would be
-        # measured against the whole login session and would stop the sandbox
-        # forking at all, failing `subprocess` with EAGAIN out of `_fork_exec`.
-        # Only the negative is asserted: the other rlimits would apply to this
-        # very test process.
+    def test_nproc_rlimit_is_a_budget_over_running_processes(self):
+        # RLIMIT_NPROC counts every process of the user on macOS, so the cap is
+        # set to what is running plus `max_processes`, not to the bare number
+        # (which would stop the sandbox forking at all). Checked in a child
+        # interpreter: the limit applies to the process that sets it.
+        import subprocess
+
+        script = (
+            "import resource, sys\n"
+            "ns = {}\n"
+            "exec(sys.stdin.read(), ns)\n"
+            "ns['_prepare_macos_process']({'rlimits': {'nproc': 8}})\n"
+            "print(resource.getrlimit(resource.RLIMIT_NPROC)[0])\n"
+        )
+        out = subprocess.run(
+            [sys.executable, "-c", script],
+            input=MACOS_CONFINE_SRC,
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        limit = int(out.stdout.strip())
+        # More than the bare budget (the user already runs processes), and
+        # the budget still fits under it.
+        self.assertGreater(limit, 8)
         import resource
 
-        before = resource.getrlimit(resource.RLIMIT_NPROC)
-        self._prepare({"tmpdir": self.get_temp_dir(), "rlimits": {"nproc": 8}})
-        self.assertEqual(resource.getrlimit(resource.RLIMIT_NPROC), before)
+        _, hard = resource.getrlimit(resource.RLIMIT_NPROC)
+        self.assertLessEqual(limit, hard)
 
     def test_prologue_without_a_scratch_dir_is_harmless(self):
         # `tmpdir` is absent for an unconfined run and on the `run_bash` path
@@ -1787,82 +2108,107 @@ class MacosProcessPrologueTest(testing.TestCase):
         self.assertEqual(os.getcwd(), here)
 
 
-@unittest.skipUnless(_SEATBELT_OK, f"seatbelt confinement unavailable: {_KIND}")
+@unittest.skipUnless(_SEATBELT_OK, _SB_REASON)
 class MacosSeatbeltConfineTest(_SandboxTestCase):
     """Behavioural checks for the macOS backend, on a real Darwin host.
 
     These assert the boundary actually holds, rather than that the profile
     merely renders. Seatbelt gives no PID isolation and no syscall filter, so
-    there is deliberately no counterpart here to the namespace suite's
-    `test_confine_pid_namespace_hides_host_processes` or
-    `test_confine_seccomp_blocks_denied_syscall`.
+    there is deliberately no counterpart here to the namespace suite's PID and
+    seccomp tests.
     """
 
     @staticmethod
-    def _diag(result):
-        """Failure message carrying the sandbox's own stderr.
+    def _diag(execution):
+        """Failure message carrying the sandbox's own stdout and stderr.
 
         A profile that denies something it should not usually surfaces as a
         *downstream* symptom (a `NameError` for state that never persisted, a
-        `None` result), while the bootstrap's `persist-warn` / `result-warn`
-        line naming the denied path goes to stderr. These run on CI hosts
-        nobody can attach to, so the message has to carry it. Stdout too, since
-        a snippet that reports a child's exit status has put the evidence
-        there.
+        missing result), while the bootstrap's warning naming the denied path
+        goes to stderr, so the message has to carry it.
         """
         return "error=%s\nstdout=%s\nstderr=%s" % (
-            result.error,
-            result.stdout,
-            result.stderr,
+            execution.error,
+            _stdout(execution),
+            "".join(execution.logs.stderr),
         )
 
-    async def test_confinement_kind_is_seatbelt(self):
-        self.assertEqual(confinement_kind(), "seatbelt")
+    def sandbox(self, **kwargs):
+        # Seatbelt is the floor under the microVM: force it, so it stays
+        # covered on a Mac where the microVM is what a sandbox would pick.
+        from unittest import mock
 
-    async def test_confined_run_still_works(self):
+        from synalinks.src.sandboxes import mirage_sandbox
+
+        with mock.patch.object(
+            mirage_sandbox, "confinement_backend", return_value=("seatbelt", "forced")
+        ):
+            sandbox = MirageSandbox(timeout=_TIMEOUT, **kwargs)
+        self.addCleanup(sandbox.close)
+        return sandbox
+
+    async def test_capabilities_report_seatbelt(self):
+        caps = self.sandbox().granted_capabilities()
+        self.assertTrue(caps["confined"])
+        self.assertEqual(caps["backend"], "seatbelt")
+        self.assertFalse(caps["seccomp"])
+        self.assertEqual(caps["network"], {"mode": "cut"})
+
+    async def test_confined_run_keeps_state(self):
         # The boundary is worthless if it also breaks execution: the snippet
-        # must still import, run and keep state across calls.
-        sandbox = MirageSandbox(timeout=_TIMEOUT, confine=True)
-        first = await sandbox.run("import json\nkeep = json.dumps({'a': 1})")
-        # Assert on the *first* run too: it is the one that has to write the
-        # dill state into the sandbox's own dir, so a profile that cannot reach
-        # that dir fails here rather than as a NameError one run later.
-        self.assertTrue(first.ok, msg=self._diag(first))
-        result = await sandbox.run("print(keep)")
-        self.assertTrue(result.ok, msg=self._diag(result))
-        self.assertIn('{"a": 1}', result.stdout)
+        # must still import, run and keep state across calls. Assert on the
+        # *first* run too: it writes the dill state into the sandbox's own dir,
+        # so a profile that cannot reach that dir fails here.
+        sandbox = self.sandbox()
+        first = await sandbox.run_code("import json\nkeep = json.dumps({'a': 1})")
+        self.assertIsNone(first.error, msg=self._diag(first))
+        second = await sandbox.run_code("print(keep)")
+        self.assertIsNone(second.error, msg=self._diag(second))
+        self.assertIn('{"a": 1}', _stdout(second))
 
     async def test_confined_run_captures_result(self):
         # The last-expression value travels back through a file in the sandbox
-        # dir, the same writable surface the state file uses, so it is a second
-        # independent check that writes there actually land.
-        sandbox = MirageSandbox(timeout=_TIMEOUT, confine=True)
-        result = await sandbox.run("6 * 7")
-        self.assertTrue(result.ok, msg=self._diag(result))
-        self.assertEqual(result.result, 42, msg=self._diag(result))
+        # dir, so this independently checks that writes there land.
+        execution = await self.sandbox().run_code("6 * 7")
+        self.assertIsNone(execution.error, msg=self._diag(execution))
+        self.assertEqual(execution.text, "42", msg=self._diag(execution))
+
+    async def test_relative_writes_land_on_the_virtual_filesystem(self):
+        # The process stands in the FUSE mount, so the snippet's own `open()`
+        # and the file tools see one filesystem, as they do on Linux.
+        sandbox = self.sandbox()
+        if not sandbox.fuse_mountpoint:
+            self.skipTest("needs macFUSE: without it Seatbelt confines, unshared")
+        execution = await sandbox.run_code("open('note.txt', 'w').write('virt')")
+        self.assertIsNone(execution.error, msg=self._diag(execution))
+        read = await sandbox.read_file("/note.txt")
+        self.assertEqual(read["content"], "virt")
+
+    async def _attempt(self, sandbox, attempt):
+        """Run ``attempt`` and return what it printed: its marker or the error."""
+        execution = await sandbox.run_code(
+            "try:\n"
+            + "".join("    " + line + "\n" for line in attempt.splitlines())
+            + "except Exception as exc:\n"
+            "    print(type(exc).__name__)\n"
+        )
+        self.assertIsNone(execution.error, msg=self._diag(execution))
+        return _stdout(execution)
 
     async def test_confine_blocks_write_outside_sandbox(self):
-        sandbox = MirageSandbox(timeout=_TIMEOUT, confine=True)
-        result = await sandbox.run(
-            "import os\n"
-            "target = os.path.expanduser('~/synalinks_seatbelt_escape.txt')\n"
-            "try:\n"
-            "    open(target, 'w').write('escaped')\n"
-            "    outcome = 'WROTE'\n"
-            "except Exception as exc:\n"
-            "    outcome = type(exc).__name__\n"
-            "print(outcome)\n"
+        target = os.path.expanduser("~/synalinks_seatbelt_escape.txt")
+        out = await self._attempt(
+            self.sandbox(), f"open({target!r}, 'w').write('x')\nprint('WROTE')"
         )
-        self.assertTrue(result.ok, msg=self._diag(result))
-        self.assertNotIn("WROTE", result.stdout)
-        self.assertIn("Error", result.stdout)
+        self.assertNotIn("WROTE", out)
+        self.assertIn("PermissionError", out)
+        self.assertFalse(os.path.exists(target))
 
     async def test_confine_blocks_writes_to_the_seed_workdir(self):
         # `workdir` is a seed, copied into the virtual filesystem host-side, and
-        # the documented contract is that the agent's writes never reach the
-        # real directory. Linux gets that from the pivot: the host filesystem is
-        # gone. macOS is the one platform where the directory is still *there*,
-        # so it is the one platform where this has to be asserted.
+        # the agent's writes must never reach the real directory. Linux gets
+        # that from the pivot; macOS is the one platform where the directory is
+        # still *there*, so it is the one platform where this has to be asserted.
         import shutil
 
         workdir = tempfile.mkdtemp()
@@ -1870,99 +2216,343 @@ class MacosSeatbeltConfineTest(_SandboxTestCase):
         host_file = os.path.join(workdir, "main.py")
         with open(host_file, "w") as fh:
             fh.write("print('orig')\n")
-
-        sandbox = MirageSandbox(timeout=_TIMEOUT, confine=True, workdir=workdir)
-        result = await sandbox.run(
-            "try:\n"
-            "    open(%r, 'w').write('escaped')\n"
-            "    outcome = 'WROTE'\n"
-            "except Exception as exc:\n"
-            "    outcome = type(exc).__name__\n"
-            "print(outcome)\n" % host_file
+        out = await self._attempt(
+            self.sandbox(workdir=workdir),
+            f"open({host_file!r}, 'w').write('escaped')\nprint('WROTE')",
         )
-        self.assertTrue(result.ok, msg=self._diag(result))
-        self.assertNotIn("WROTE", result.stdout)
+        self.assertNotIn("WROTE", out)
         with open(host_file) as fh:
             self.assertEqual(fh.read(), "print('orig')\n")
 
     async def test_confine_blocks_read_outside_runtime_set(self):
-        # Reads are restricted, unlike the Codex/Gemini Seatbelt profiles which
-        # allow the whole disk. /etc/passwd is readable on any unconfined mac.
-        sandbox = MirageSandbox(timeout=_TIMEOUT, confine=True)
-        result = await sandbox.run(
-            "try:\n"
-            "    open('/etc/passwd').read()\n"
-            "    outcome = 'READ'\n"
-            "except Exception as exc:\n"
-            "    outcome = type(exc).__name__\n"
-            "print(outcome)\n"
+        # Reads are restricted, not only writes. /etc/passwd is readable on any
+        # unconfined mac.
+        out = await self._attempt(
+            self.sandbox(), "open('/etc/passwd').read()\nprint('READ')"
         )
-        self.assertTrue(result.ok, msg=self._diag(result))
-        self.assertNotIn("READ", result.stdout)
-
-    async def test_subprocesses_run_but_inherit_the_profile(self):
-        # Shelling out to a host tool works here as it does on Linux, and that
-        # is safe for one reason only: the child inherits the profile. Assert
-        # both halves together, because the first without the second is exactly
-        # the hole that would make exec worth denying.
-        sandbox = MirageSandbox(timeout=_TIMEOUT, confine=True)
-        result = await sandbox.run(
-            "import os, subprocess\n"
-            "ran = subprocess.run(\n"
-            "    ['/bin/sh', '-c', 'echo alive'], capture_output=True, text=True\n"
-            ")\n"
-            # Report the child's exit status and stderr, not just its stdout: a
-            # child that dies in dyld produces empty output and raises nothing,
-            # so silence here has to be distinguishable from success.
-            "print('RC', ran.returncode, 'ERR', ran.stderr.strip())\n"
-            "print('OUT', ran.stdout.strip())\n"
-            "escape = os.path.expanduser('~/synalinks_subprocess_escape.txt')\n"
-            "subprocess.run(\n"
-            "    ['/bin/sh', '-c', 'echo escaped > %s' % escape],\n"
-            "    capture_output=True, text=True,\n"
-            ")\n"
-            "print('ESCAPED' if os.path.exists(escape) else 'CONFINED')\n"
-        )
-        self.assertTrue(result.ok, msg=self._diag(result))
-        # The child ran. Assert this *first*: the escape check below is
-        # satisfied just as well by a child that never started, so on its own
-        # it would pass while proving nothing.
-        self.assertIn("RC 0", result.stdout, msg=self._diag(result))
-        self.assertIn("OUT alive", result.stdout, msg=self._diag(result))
-        # ...and it ran under the same profile as its parent.
-        self.assertIn("CONFINED", result.stdout)
-        self.assertNotIn("ESCAPED", result.stdout)
+        self.assertNotIn("READ", out)
+        self.assertIn("PermissionError", out)
 
     async def test_confine_cuts_network(self):
-        sandbox = MirageSandbox(timeout=_TIMEOUT, confine=True)
-        result = await sandbox.run(
+        out = await self._attempt(
+            self.sandbox(),
             "import socket\n"
             "s = socket.socket()\n"
             "s.settimeout(5)\n"
-            "try:\n"
-            "    s.connect(('1.1.1.1', 80))\n"
-            "    outcome = 'CONNECTED'\n"
-            "except Exception as exc:\n"
-            "    outcome = type(exc).__name__\n"
-            "print(outcome)\n"
+            "s.connect(('1.1.1.1', 80))\n"
+            "print('CONNECTED')",
         )
-        self.assertTrue(result.ok, msg=self._diag(result))
-        self.assertNotIn("CONNECTED", result.stdout)
+        self.assertNotIn("CONNECTED", out)
 
-    async def test_confine_writes_inside_sandbox_still_work(self):
-        # The complement of the escape test: the sandbox's own writable area
-        # must stay writable, or the boundary is just breakage. `TMPDIR` is
-        # pointed into that area precisely so the most ordinary thing a snippet
-        # does with a scratch file works; the host temp dir it would otherwise
-        # name is *not* granted, and must not be.
-        sandbox = MirageSandbox(timeout=_TIMEOUT, confine=True)
-        result = await sandbox.run(
-            "import os, tempfile\n"
-            "p = os.path.join(tempfile.gettempdir(), 'inside.txt')\n"
-            "open(p, 'w').write('ok')\n"
-            "print(open(p).read())\n"
-            "print('WROTE_INSIDE')\n"
+    async def test_subprocesses_run_but_inherit_the_profile(self):
+        # Shelling out works as on Linux, and that is safe for one reason only:
+        # the child inherits the profile. Assert both halves, since the escape
+        # check alone is satisfied just as well by a child that never started.
+        escape = os.path.expanduser("~/synalinks_subprocess_escape.txt")
+        execution = await self.sandbox().run_code(
+            "import subprocess\n"
+            "ran = subprocess.run(['/bin/sh', '-c', 'echo alive'],"
+            " capture_output=True, text=True)\n"
+            "print('RC', ran.returncode, 'OUT', ran.stdout.strip(),"
+            " 'ERR', ran.stderr.strip())\n"
+            f"subprocess.run(['/bin/sh', '-c', 'echo x > {escape}'],"
+            " capture_output=True)\n"
         )
-        self.assertTrue(result.ok, msg=self._diag(result))
-        self.assertIn("WROTE_INSIDE", result.stdout)
-        self.assertIn("ok", result.stdout)
+        self.assertIsNone(execution.error, msg=self._diag(execution))
+        self.assertIn("RC 0 OUT alive ERR", _stdout(execution), msg=self._diag(execution))
+        self.assertTrue(_stdout(execution).strip().endswith("ERR"), self._diag(execution))
+        self.assertFalse(os.path.exists(escape))
+
+    async def test_run_bash_python_is_confined(self):
+        # `run_bash`'s python3 gets the same prologue as `run_code`.
+        result = await self.sandbox().run_bash(
+            "python3 -c \"open('/etc/passwd').read()\" 2>&1 | tail -1"
+        )
+        self.assertIn("PermissionError", result["stdout"])
+
+
+class MicrovmBridgeTest(testing.TestCase):
+    """The microVM backend's host-side pieces that need no VM: they run anywhere.
+
+    The wire codec, errno translation, the helper's Seatbelt profile and the
+    image checks are where a mistake silently widens what a guest can reach,
+    so they are pinned down here rather than only through a booted VM.
+    """
+
+    def test_codec_round_trips_bytes_and_nesting(self):
+        from synalinks.src.utils.microvm_utils import codec
+
+        value = {"data": b"\x00\xffbin", "list": [1, "a", None, [b"x"]], "ok": True}
+        self.assertEqual(codec["decode"](codec["encode"](value)), value)
+
+    def test_codec_drops_objects_it_cannot_carry(self):
+        # A ctypes fuse_file_info (or anything else) must not reach the host
+        # as a live object; it crosses as None.
+        from synalinks.src.utils.microvm_utils import codec
+
+        self.assertEqual(codec["encode"]([object()]), [None])
+
+    def _bridge_call(self, fs, op, *args):
+        import socket
+
+        from synalinks.src.utils.microvm_utils import FsBridge
+        from synalinks.src.utils.microvm_utils import codec
+
+        path = os.path.join(tempfile.mkdtemp(), "b.sock")
+        bridge = FsBridge(fs, path)
+        self.addCleanup(bridge.close)
+        with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as sock:
+            sock.connect(path)
+            codec["send_frame"](sock, {"op": op, "args": codec["encode"](list(args))})
+            return codec["recv_frame"](sock)
+
+    def test_bridge_sends_errno_by_name(self):
+        # errno numbers differ between macOS and Linux (ENOTEMPTY is 66 on
+        # one, 39 on the other); a number would mean a different error there.
+        import errno as errno_mod
+
+        class Fs:
+            def rmdir(self, path):
+                raise OSError(errno_mod.ENOTEMPTY, "not empty")
+
+        self.assertEqual(self._bridge_call(Fs(), "rmdir", "/d"), {"errno": "ENOTEMPTY"})
+
+    def test_bridge_refuses_operations_outside_the_allowlist(self):
+        class Fs:
+            def drain_ops(self):  # a real MirageFS method, not a FUSE op
+                return ["secret"]
+
+        self.assertEqual(self._bridge_call(Fs(), "drain_ops"), {"errno": "ENOSYS"})
+
+    def test_bridge_returns_bytes_intact(self):
+        class Fs:
+            def read(self, path, size, offset, fh):
+                return b"\x00\x01payload"
+
+        from synalinks.src.utils.microvm_utils import codec
+
+        reply = self._bridge_call(Fs(), "read", "/f", 9, 0, 1)
+        self.assertEqual(codec["decode"](reply["result"]), b"\x00\x01payload")
+
+    def _profile(self, **overrides):
+        from synalinks.src.utils.microvm_utils import helper_profile
+
+        vm = {
+            "helper": "/Users/u/Library/Caches/synalinks/microvm/synalinks-krun-1",
+            "rootfs": "/Users/u/Library/Caches/synalinks/microvm/rootfs-1",
+            "libdir": "/opt/homebrew/lib",
+            "network": False,
+        }
+        vm.update(overrides)
+        return helper_profile(vm, "/private/var/folders/x/T/mirage_sandbox_1")
+
+    def test_helper_profile_is_default_deny(self):
+        self.assertIn("(deny default)", self._profile())
+
+    def test_helper_profile_writes_only_the_host_dir(self):
+        profile = self._profile()
+        writes = [line for line in profile.splitlines() if "file-write" in line]
+        self.assertEqual(
+            writes,
+            [
+                "(allow file-read* file-write* (subpath "
+                '"/private/var/folders/x/T/mirage_sandbox_1"))'
+            ],
+        )
+        # ...where nothing may be mapped executable, after the grant.
+        deny = (
+            "(deny file-map-executable "
+            '(subpath "/private/var/folders/x/T/mirage_sandbox_1"))'
+        )
+        self.assertGreater(profile.index(deny), profile.index(writes[0]))
+
+    def test_helper_profile_keeps_homebrew_state_out(self):
+        # Homebrew's `var` holds databases and service state: only libkrun's
+        # libraries are granted, not the whole prefix.
+        profile = self._profile()
+        self.assertNotIn('(subpath "/opt/homebrew")', profile)
+        self.assertNotIn("/opt/homebrew/var", profile)
+        self.assertIn('(subpath "/opt/homebrew/Cellar")', profile)
+
+    def test_helper_profile_network_only_when_requested(self):
+        self.assertNotIn("(allow network*)", self._profile())
+        self.assertIn("(allow network*)", self._profile(network=True))
+
+    def test_downloads_are_verified(self):
+        from synalinks.src.utils.microvm_utils import verified
+        from synalinks.src.utils.microvm_utils import verified_sha256
+
+        good = __import__("hashlib").sha256(b"blob").hexdigest()
+        self.assertEqual(verified_sha256(b"blob", good), b"blob")
+        with self.assertRaises(ValueError):
+            verified_sha256(b"tampered", good)
+        with self.assertRaises(ValueError):
+            verified(b"blob", "md5:" + good)
+
+    def test_layer_whiteouts_are_applied(self):
+        import io
+        import tarfile
+
+        from synalinks.src.utils.microvm_utils import extract_layer
+
+        def layer(entries):
+            buf = io.BytesIO()
+            with tarfile.open(fileobj=buf, mode="w") as tar:
+                for name, data in entries:
+                    info = tarfile.TarInfo(name)
+                    info.size = len(data)
+                    tar.addfile(info, io.BytesIO(data))
+            return buf.getvalue()
+
+        root = tempfile.mkdtemp()
+        extract_layer(layer([("etc/keep", b"1"), ("etc/gone", b"2")]), root)
+        extract_layer(layer([("etc/.wh.gone", b"")]), root)
+        self.assertEqual(sorted(os.listdir(os.path.join(root, "etc"))), ["keep"])
+
+
+@unittest.skipUnless(_MICROVM_OK, _VM_REASON)
+class MicrovmConfineTest(_SandboxTestCase):
+    """The macOS microVM backend, on a Mac that can run it.
+
+    The Linux backend's own suite also runs against it (the guest confines
+    with that code), so these cover what is specific to the VM boundary.
+    """
+
+    def sandbox(self, **kwargs):
+        sandbox = MirageSandbox(timeout=_TIMEOUT, **kwargs)
+        self.addCleanup(sandbox.close)
+        return sandbox
+
+    async def test_capabilities_report_microvm(self):
+        caps = self.sandbox().granted_capabilities()
+        self.assertEqual(caps["backend"], "microvm")
+        self.assertTrue(caps["seccomp"])
+        self.assertEqual(caps["network"], {"mode": "cut"})
+
+    async def test_code_runs_in_a_linux_guest(self):
+        execution = await self.sandbox().run_code("import platform\nplatform.system()")
+        self.assertIsNone(execution.error)
+        self.assertEqual(execution.text, "Linux")
+
+    async def test_host_environment_does_not_reach_the_guest(self):
+        os.environ["SYNALINKS_TEST_SECRET"] = "leak"
+        self.addCleanup(os.environ.pop, "SYNALINKS_TEST_SECRET", None)
+        execution = await self.sandbox().run_code(
+            "import os\n'SYNALINKS_TEST_SECRET' in os.environ"
+        )
+        self.assertEqual(execution.text, "False")
+
+    async def test_host_filesystem_is_absent(self):
+        home = os.path.expanduser("~")
+        execution = await self.sandbox().run_code(f"import os\nos.path.exists({home!r})")
+        self.assertEqual(execution.text, "False")
+
+    async def test_snippet_and_file_tools_share_one_filesystem(self):
+        sandbox = self.sandbox()
+        await sandbox.run_code("open('/note.txt', 'w').write('from-guest')")
+        self.assertEqual((await sandbox.read_file("/note.txt"))["content"], "from-guest")
+        await sandbox.write_file("/host.txt", "from-host")
+        execution = await sandbox.run_code("open('/host.txt').read()")
+        self.assertEqual(execution.text, "from-host")
+
+    async def test_host_tools_are_reachable_over_vsock(self):
+        async def add(a: int, b: int) -> int:
+            """Add."""
+            return a + b
+
+        execution = await self.sandbox(external_functions={"add": add}).run_code(
+            "add(2, 3)"
+        )
+        self.assertIsNone(execution.error)
+        self.assertEqual(execution.text, "5")
+
+    async def test_network_is_cut_unless_requested(self):
+        probe = (
+            "import socket\n"
+            "try:\n"
+            "    socket.create_connection(('1.1.1.1', 80), timeout=5).close()\n"
+            "    outcome = 'CONNECTED'\n"
+            "except OSError as exc:\n"
+            "    outcome = 'blocked'\n"
+            "outcome"
+        )
+        execution = await self.sandbox().run_code(probe)
+        self.assertEqual(execution.text, "blocked")
+
+    async def test_timeout_kills_the_vm(self):
+        sandbox = self.sandbox()
+        sandbox.timeout = 3
+        with self.assertRaises(TimeoutException):
+            await sandbox.run_code("import time\ntime.sleep(60)")
+        sandbox.timeout = _TIMEOUT
+        after = await sandbox.run_code("1 + 1")
+        self.assertEqual(after.text, "2")
+
+
+class MountLeakTest(_SandboxTestCase):
+    """A sandbox's FUSE mount never outlives it, whatever Mirage does.
+
+    Mirage leaks a mount in two timing-dependent ways under load: its macOS
+    unmount ignores a failed ``diskutil``, and a mount that goes live after
+    its readiness wait timed out is dropped from its bookkeeping. macFUSE has
+    only 64 devices, so each leak counts. Both are simulated here.
+    """
+
+    def _mounted_sandbox(self):
+        from unittest import mock
+
+        from synalinks.src.sandboxes import mirage_sandbox
+
+        # A host FUSE mount backs Seatbelt on macOS and namespaces on Linux.
+        backend = ("seatbelt", "forced") if sys.platform == "darwin" else None
+        patcher = (
+            mock.patch.object(mirage_sandbox, "confinement_backend", return_value=backend)
+            if backend
+            else mock.MagicMock()
+        )
+        with patcher:
+            sandbox = MirageSandbox(timeout=_TIMEOUT, require_confinement=False)
+        if not sandbox.fuse_mountpoint:
+            sandbox.close()
+            self.skipTest("no FUSE on this host")
+        return sandbox
+
+    def test_failed_unmount_is_finished_on_close(self):
+        from unittest import mock
+
+        sandbox = self._mounted_sandbox()
+        mountpoint = sandbox.workspace.synalinks_mountpoint
+        self.assertTrue(os.path.ismount(mountpoint))
+        # Mirage's unmount "runs" but leaves the mount in place.
+        with mock.patch("mirage.workspace.fuse.FuseManager.unmount"):
+            sandbox.close()
+        self.assertFalse(os.path.ismount(mountpoint))
+        self.assertFalse(os.path.exists(mountpoint))
+
+    def test_mount_that_misses_its_readiness_wait_is_not_orphaned(self):
+        from synalinks.src.sandboxes.mirage_sandbox import ensure_fuse_mounted
+
+        sandbox = MirageSandbox(timeout=_TIMEOUT, confine=False)
+        self.addCleanup(sandbox.close)
+        ws = sandbox.workspace
+        real_add = ws.add_fuse_mount
+        live = {}
+
+        def add_then_time_out(*args, **kwargs):
+            # The mount comes up, but Mirage reports a timeout: its handle on
+            # the mount is lost, exactly as when the wait expires under load.
+            path = real_add(*args, **kwargs)
+            live["mounted"] = os.path.ismount(path)
+            raise TimeoutError("FUSE mount did not become ready")
+
+        ws.add_fuse_mount = add_then_time_out
+        try:
+            ok = ensure_fuse_mounted(ws)
+        except Exception:
+            self.skipTest("no FUSE on this host")
+        if not live.get("mounted"):
+            self.skipTest("no FUSE on this host")
+        self.assertFalse(ok)
+        mountpoint = ws.synalinks_mountpoint
+        self.assertFalse(os.path.ismount(mountpoint))
+        self.assertFalse(os.path.exists(mountpoint))

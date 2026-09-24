@@ -108,8 +108,31 @@ Plus everything you'd expect from a production-grade framework:
 
 # Requirements
 
-- Python 3.12 or more
-- WSL2 for windows users
+Python 3.12 or newer, plus the code sandbox's system dependency for your OS.
+
+**Linux** (Debian / Ubuntu):
+
+```shell
+sudo apt install fuse3 libfuse3-3
+# Ubuntu 23.10+ only: allow the unprivileged user namespaces the sandbox needs
+sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+```
+
+**macOS** (Apple silicon):
+
+```shell
+xcode-select --install
+brew tap slp/krun
+brew trust --formula slp/krun/libkrun slp/krun/libkrunfw  # recent Homebrew only
+brew install slp/krun/libkrun
+```
+
+**Windows:** install [WSL2](https://learn.microsoft.com/windows/wsl/install)
+(`wsl --install`), then run the Linux commands inside it.
+
+The sandbox always uses the strongest isolation your machine supports and
+refuses to run code it cannot confine (on Macs without libkrun, such as Intel
+Macs, it falls back to a weaker macOS sandbox).
 
 ## Quickstart in 3s with `uv` (recommended)
 

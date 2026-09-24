@@ -12,6 +12,7 @@ from synalinks.src.backend import SymbolicDataModel
 from synalinks.src.backend import Trainable
 from synalinks.src.modules.module import Module
 from synalinks.src.sandboxes.mirage_sandbox import MirageSandbox
+from synalinks.src.sandboxes.sandbox import TimeoutException
 from synalinks.src.saving import serialization_lib
 from synalinks.src.saving.object_registration import get_registered_name
 from synalinks.src.saving.object_registration import get_registered_object
@@ -124,37 +125,37 @@ async def _run_script(
         else None
     )
 
-    execution = await sandbox.run(
-        code,
-        inputs={"inputs": inputs_json},
-        external_functions=external_functions,
-    )
-
-    if execution.error:
-        relabelled = _relabel_error(execution.error)
-        # Syntax errors happen at compile time; no script output precedes them.
-        if execution.error.startswith("SyntaxError"):
-            return None, "", f"{relabelled}\n"
-        return (
-            None,
-            execution.stdout,
-            execution.stderr + f"{relabelled}\n",
+    try:
+        execution = await sandbox.run_code(
+            code,
+            inputs={"inputs": inputs_json},
+            external_functions=external_functions,
         )
+    except TimeoutException as exc:
+        # E2B raises on a timeout; the script's output is an error like any.
+        return None, "", f"{_relabel_error(f'TimeoutError: {exc}')}\n"
 
-    result = execution.result
+    stdout = "".join(execution.logs.stdout)
+    stderr = "".join(execution.logs.stderr)
+    error = execution.error
+    if error:
+        relabelled = _relabel_error(f"{error.name}: {error.value}")
+        # Syntax errors happen at compile time; no script output precedes them.
+        if error.name == "SyntaxError":
+            return None, "", f"{relabelled}\n"
+        return None, stdout, stderr + error.traceback + f"{relabelled}\n"
+
+    main = next((r for r in execution.results if r.is_main_result), None)
+    result = main.json if main else None
     if not result:
-        return None, execution.stdout, execution.stderr
+        return None, stdout, stderr
 
     try:
         jsonschema.validate(result, schema)
     except ValidationError as validation_error:
-        return (
-            None,
-            execution.stdout,
-            execution.stderr + f"Validation Error: {validation_error}\n",
-        )
+        return None, stdout, stderr + f"Validation Error: {validation_error}\n"
 
-    return result, execution.stdout, execution.stderr
+    return result, stdout, stderr
 
 
 @synalinks_export(

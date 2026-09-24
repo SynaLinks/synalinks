@@ -31,6 +31,8 @@ from synalinks.api import ChatMessage
 from synalinks.api import ChatMessages
 from synalinks.api import ChatRole
 from synalinks.api import CitationFaithfulness
+from synalinks.api import CommandExitException
+from synalinks.api import CommandResult
 from synalinks.api import ComposableReward
 from synalinks.api import Concat
 from synalinks.api import Concatenate
@@ -61,9 +63,13 @@ from synalinks.api import EntityHybridFTSSearch
 from synalinks.api import EntityHybridRegexSearch
 from synalinks.api import EntityRegexSearch
 from synalinks.api import EntitySimilaritySearch
+from synalinks.api import EntryInfo
 from synalinks.api import ExactMatch
+from synalinks.api import Execution
+from synalinks.api import ExecutionError
 from synalinks.api import ExecutionResult
 from synalinks.api import Faithfulness
+from synalinks.api import FileType
 from synalinks.api import FineScore
 from synalinks.api import FullTextSearch
 from synalinks.api import Function
@@ -103,6 +109,7 @@ from synalinks.api import LMOperationalMetric
 from synalinks.api import LMOptimizersOperationalMetric
 from synalinks.api import LMRewardsOperationalMetric
 from synalinks.api import LocalGraphSearch
+from synalinks.api import Logs
 from synalinks.api import MarkdownDataset
 from synalinks.api import MarkdownDocument
 from synalinks.api import MarkdownSection
@@ -115,6 +122,7 @@ from synalinks.api import MultiDecision
 from synalinks.api import MultiServerMCPClient
 from synalinks.api import NonAdvice
 from synalinks.api import Not
+from synalinks.api import NotFoundException
 from synalinks.api import Operation
 from synalinks.api import Or
 from synalinks.api import OutMask
@@ -147,6 +155,7 @@ from synalinks.api import RelationHybridRegexSearch
 from synalinks.api import RelationRegexSearch
 from synalinks.api import Relations
 from synalinks.api import RelationSimilaritySearch
+from synalinks.api import Result
 from synalinks.api import RetrieveKnowledge
 from synalinks.api import Reward
 from synalinks.api import RLMAsJudge
@@ -155,6 +164,7 @@ from synalinks.api import RoleViolation
 from synalinks.api import RRFReranker
 from synalinks.api import RubricsAsJudge
 from synalinks.api import Sandbox
+from synalinks.api import SandboxException
 from synalinks.api import Score
 from synalinks.api import SelfCritique
 from synalinks.api import Sequential
@@ -172,6 +182,7 @@ from synalinks.api import Text2Cypher
 from synalinks.api import Text2SQL
 from synalinks.api import TextDataset
 from synalinks.api import TextDocument
+from synalinks.api import TimeoutException
 from synalinks.api import Tool
 from synalinks.api import ToolCall
 from synalinks.api import ToolCallFunction
@@ -186,6 +197,7 @@ from synalinks.api import TurnFaithfulness
 from synalinks.api import TurnRelevancy
 from synalinks.api import UpdateKnowledge
 from synalinks.api import VectorRAGAgent
+from synalinks.api import WriteInfo
 from synalinks.api import Xor
 from synalinks.api import __version__
 from synalinks.api import api_base

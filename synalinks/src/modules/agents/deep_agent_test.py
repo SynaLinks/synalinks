@@ -160,6 +160,24 @@ class DeepAgentInstantiationTest(testing.TestCase):
             },
         )
 
+    @patch.object(LanguageModel, "supports_audio", return_value=True)
+    @patch.object(LanguageModel, "supports_vision", return_value=True)
+    async def test_media_tools_follow_the_model_capabilities(self, vision, audio):
+        lm = LanguageModel(model="ollama/gemma3")
+        agent = DeepAgent(language_model=lm, name="media")
+        self.assertIn("read_image", agent.tools)
+        self.assertIn("read_audio", agent.tools)
+        self.assertIn("read_image", agent.instructions)
+        self.assertIn("read_audio", agent.instructions)
+        audio.return_value = False
+        agent = DeepAgent(language_model=lm, name="images_only")
+        self.assertIn("read_image", agent.tools)
+        self.assertNotIn("read_audio", agent.tools)
+        self.assertNotIn("read_audio", agent.instructions)
+        subagent = DeepAgent(language_model=lm, _subagent_depth=1, name="sub")
+        self.assertIn("read_image", subagent.instructions)
+        self.assertIn("subagent", subagent.instructions)
+
     async def test_agent_appends_user_tools(self):
         wd = self._workdir()
         lm = LanguageModel(model="ollama/mistral")
@@ -340,7 +358,7 @@ class DeepAgentSubagentTest(testing.TestCase):
         agent = DeepAgent(language_model=self._lm(), max_subagent_depth=1, name="m")
         await agent.sandbox.write_file("/keep.txt", "base")
         # Stand in for a finished subagent: a fork that changed some files.
-        fork = agent.sandbox.fork()
+        (fork,) = await agent.sandbox.fork()
         await fork.write_file("/new.txt", "child")
         await fork.write_file("/keep.txt", "edited by child")
         agent._subagents["subagent_0"] = fork
@@ -355,7 +373,7 @@ class DeepAgentSubagentTest(testing.TestCase):
 
     async def test_merge_subagent_paths_subset(self):
         agent = DeepAgent(language_model=self._lm(), max_subagent_depth=1, name="ms")
-        fork = agent.sandbox.fork()
+        (fork,) = await agent.sandbox.fork()
         await fork.write_file("/wanted.txt", "yes")
         await fork.write_file("/skipped.txt", "no")
         agent._subagents["subagent_0"] = fork
@@ -371,7 +389,7 @@ class DeepAgentSubagentTest(testing.TestCase):
 
     async def test_discard_subagent_drops_branch(self):
         agent = DeepAgent(language_model=self._lm(), max_subagent_depth=1, name="d")
-        agent._subagents["subagent_0"] = agent.sandbox.fork()
+        agent._subagents["subagent_0"] = (await agent.sandbox.fork())[0]
         self.assertEqual(
             await agent.discard_subagent("subagent_0"), {"discarded": "subagent_0"}
         )

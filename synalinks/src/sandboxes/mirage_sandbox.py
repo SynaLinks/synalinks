@@ -4,150 +4,86 @@ import asyncio
 import base64
 import contextvars
 import dataclasses
-import difflib
+import glob
 import inspect
 import io
 import json
 import os
+import posixpath
 import re
 import shlex
+import shutil
 import struct
+import subprocess
 import sys
 import tempfile
+import time
+import uuid
+import warnings
 import weakref
 import zipfile
+from datetime import datetime
+from datetime import timezone
+from typing import IO
 from typing import Any
 from typing import Callable
 from typing import Dict
 from typing import List
+from typing import Literal
 from typing import Optional
-from typing import Tuple
+from typing import Union
 
 from synalinks.src.api_export import synalinks_export
-from synalinks.src.sandboxes.sandbox import ExecutionResult
+from synalinks.src.backend import Audio
+from synalinks.src.backend import Image
+from synalinks.src.sandboxes.charts import deserialize_chart
+from synalinks.src.sandboxes.sandbox import DEFAULT_TIMEOUT
+from synalinks.src.sandboxes.sandbox import CommandExitException
+from synalinks.src.sandboxes.sandbox import CommandHandle
+from synalinks.src.sandboxes.sandbox import CommandResult
+from synalinks.src.sandboxes.sandbox import Commands
+from synalinks.src.sandboxes.sandbox import Context
+from synalinks.src.sandboxes.sandbox import EntryInfo
+from synalinks.src.sandboxes.sandbox import Execution
+from synalinks.src.sandboxes.sandbox import ExecutionError
+from synalinks.src.sandboxes.sandbox import FileNotFoundException
+from synalinks.src.sandboxes.sandbox import Filesystem
+from synalinks.src.sandboxes.sandbox import FilesystemEvent
+from synalinks.src.sandboxes.sandbox import FilesystemEventType
+from synalinks.src.sandboxes.sandbox import FileType
+from synalinks.src.sandboxes.sandbox import InvalidArgumentException
+from synalinks.src.sandboxes.sandbox import Logs
+from synalinks.src.sandboxes.sandbox import NotFoundException
+from synalinks.src.sandboxes.sandbox import OutputMessage
+from synalinks.src.sandboxes.sandbox import Result
 from synalinks.src.sandboxes.sandbox import Sandbox
+from synalinks.src.sandboxes.sandbox import TimeoutException
+from synalinks.src.sandboxes.sandbox import WatchHandle
+from synalinks.src.sandboxes.sandbox import WriteInfo
+from synalinks.src.sandboxes.sandbox import call_back
+from synalinks.src.sandboxes.sandbox import execution_timeout_error
+from synalinks.src.sandboxes.sandbox import output_lines
+from synalinks.src.sandboxes.sandbox import request_deadline
 from synalinks.src.saving.object_registration import register_synalinks_serializable
-
-# ---------------------------------------------------------------------------
-# Host heap hygiene.
-#
-# glibc's malloc gives every thread that allocates its own arena (a 64 MiB
-# heap mapping, up to 8 x cores of them) and never returns an arena's freed
-# memory to the OS. A sandbox host is exactly the process that suffers from
-# it: the asyncio default executor, the FUSE bridge, the tool-RPC loop and the
-# HTTP client all allocate from worker threads, and every ``run`` churns
-# multi-megabyte buffers through them (the dill-and-base64 ``inputs`` blob,
-# the persisted namespace, file contents crossing FUSE). After an hour of
-# snippets a host was measured at 2.2 GB resident with 14 MB of live Python
-# objects: 28 threads, 28 fully-resident 64 MiB arenas (``/proc/<pid>/smaps``,
-# 2026-08-30). Capping the arenas makes all threads share two, which bounds
-# the retained memory at a couple of hundred MB, and ``malloc_trim`` after each
-# run hands back what the shared arenas no longer use.
-#
-# Both are process-wide glibc settings and a no-op elsewhere (musl, macOS).
-# They are applied from the process itself so they also hold where no launcher
-# environment is available (a notebook kernel, a Kaggle submission); the
-# ``MALLOC_ARENA_MAX`` environment variable is the equivalent for a launcher.
-_M_ARENA_MAX = -8  # glibc <malloc.h>
-_malloc_arenas_capped: Optional[int] = None
-
-
-def _libc() -> Optional[Any]:
-    """The process's C library via ctypes, or ``None`` when it is not glibc."""
-    if not sys.platform.startswith("linux"):
-        return None
-    try:
-        import ctypes
-        import ctypes.util
-
-        libc = ctypes.CDLL(ctypes.util.find_library("c") or "libc.so.6")
-        # ``mallopt``/``malloc_trim`` exist on glibc; musl has neither.
-        libc.mallopt
-        libc.malloc_trim
-        return libc
-    except (OSError, AttributeError):
-        return None
-
-
-def cap_malloc_arenas(max_arenas: int) -> bool:
-    """Cap glibc's per-thread malloc arenas for this process.
-
-    Idempotent: the first call wins for the life of the process, later calls
-    with the same or a higher cap are no-ops. Arenas that already exist keep
-    living; the cap governs the ones threads would create from now on, so call
-    it before the process starts its worker threads.
-
-    Args:
-        max_arenas (int): The ``M_ARENA_MAX`` value (``2`` is the usual choice
-            for a long-running service).
-
-    Returns:
-        bool: ``True`` when the cap is in place (now or from an earlier call),
-            ``False`` when the platform's allocator is not glibc.
-    """
-    global _malloc_arenas_capped
-    if _malloc_arenas_capped is not None and _malloc_arenas_capped <= max_arenas:
-        return True
-    libc = _libc()
-    if libc is None:
-        return False
-    if libc.mallopt(_M_ARENA_MAX, int(max_arenas)) != 1:
-        return False
-    _malloc_arenas_capped = int(max_arenas)
-    return True
-
-
-def malloc_trim() -> bool:
-    """Return freed heap pages to the OS (every glibc arena, not just the top).
-
-    Returns:
-        bool: ``True`` when memory was released, ``False`` when nothing could be
-            or the allocator is not glibc.
-    """
-    libc = _libc()
-    if libc is None:
-        return False
-    try:
-        return bool(libc.malloc_trim(0))
-    except Exception:  # noqa: BLE001 - never let hygiene break a run
-        return False
-
-
-# FUSE is optional to mirage: both of its mfusepy import sites fall back to
-# `fuse = None`, and the only consumer, FuseManager, is reached exclusively
-# through `Workspace.add_fuse_mount`. Nothing in MirageSandbox needs it except
-# the Linux-only confinement pivot.
-#
-# mirage guards those imports with `except ImportError`, but mfusepy resolves
-# libfuse at *import* time and raises `OSError("Unable to find libfuse")` when
-# there is none. OSError is not ImportError, so the guard misses it and the
-# error escapes `import mirage` entirely. Since synalinks/api reaches
-# DeepAgent -> sandboxes -> mirage, that took down plain `import synalinks` on
-# every host without libfuse, stock macOS included.
-#
-# Probe mfusepy ourselves and, when libfuse is genuinely absent, poison the
-# module slot: `sys.modules[name] = None` makes a later `import name` raise
-# ImportError, which is exactly the error mirage already handles. mirage then
-# takes its own supported no-FUSE path and the sandbox works normally, minus
-# FUSE mounts. Upstream should widen its own guard; this keeps us working on
-# every mirage 0.0.4 install until it does.
-#
-# Recovering the import must NOT quietly cost isolation, so the result is
-# recorded and fed into `_confinement_available` below. On Linux a missing
-# libfuse means confinement is genuinely broken, and the existing `/dev/fuse`
-# probe cannot see that: `/dev/fuse` is the kernel device, while libfuse is the
-# user-space library the mount needs. Without the extra check a host with the
-# device but no library passed the probe, failed to establish the mount, and
-# then ran *unconfined* with nothing said unless `require_confinement` was set.
-try:
-    import mfusepy as _mfusepy  # noqa: F401
-
-    _LIBFUSE_AVAILABLE = True
-except OSError:  # pragma: no cover - only hit where libfuse is missing
-    sys.modules["mfusepy"] = None
-    _LIBFUSE_AVAILABLE = False
-except ImportError:  # pragma: no cover - mfusepy not installed at all
-    _LIBFUSE_AVAILABLE = False
+from synalinks.src.utils.audio_utils import fit_audio
+from synalinks.src.utils.confinement_utils import CONFINE_PROLOGUE_SRC
+from synalinks.src.utils.confinement_utils import build_seccomp_filter
+from synalinks.src.utils.confinement_utils import confinement_backend
+from synalinks.src.utils.egress_utils import make_egress_tool
+from synalinks.src.utils.heap_utils import cap_malloc_arenas
+from synalinks.src.utils.heap_utils import malloc_trim
+from synalinks.src.utils.image_utils import fit_image
+from synalinks.src.utils.microvm_utils import GUEST_BINDS
+from synalinks.src.utils.microvm_utils import GUEST_MOUNT
+from synalinks.src.utils.microvm_utils import GUEST_SOCK_DIR
+from synalinks.src.utils.microvm_utils import prepare_microvm
+from synalinks.src.utils.microvm_utils import run_in_microvm
+from synalinks.src.utils.python_utils import class_method_variant
+from synalinks.src.utils.sandbox_bootstrap_utils import BOOTSTRAP
+from synalinks.src.utils.sandbox_bootstrap_utils import LAUNCHER
+from synalinks.src.utils.sandbox_fs_utils import glob_to_regex
+from synalinks.src.utils.sandbox_fs_utils import paginate
+from synalinks.src.utils.sandbox_fs_utils import render_patch
 
 try:
     import mirage
@@ -165,943 +101,91 @@ except (ImportError, OSError):  # pragma: no cover - mirage genuinely unusable
     run_async_from_sync = None
 
 
-# The launcher is what ``python3 -c`` actually runs: it decodes and execs the
-# real bootstrap (argv[1]) so the bootstrap source never has to survive shell
-# quoting. argv[2] is the dill session-state path; argv[3] is the path of the
-# per-run JSON config file (per-call ``inputs`` blob, host-tool RPC socket +
-# tool names, and the path to write the result value to). Data always travels
-# by file, never on argv: the kernel caps a single exec argument at
-# MAX_ARG_STRLEN (128KiB), far below real ``inputs`` payloads, and a path
-# needs no encoding to survive quoting. Every arg is non-empty on purpose:
-# Mirage's shell drops empty ``''`` tokens, which would shift ``argv``.
-_LAUNCHER = "import base64,sys;exec(base64.b64decode(sys.argv[1]))"
+DEFAULT_MOUNT = "/"
+# The sandbox's own namespace, as E2B lists it among the code contexts.
+DEFAULT_CONTEXT = Context(id="default", language="python", cwd="/")
 
-# The bootstrap runs inside Mirage's real CPython subprocess. Mirage spawns a
-# fresh ``python3`` per command, so to make variables/imports/functions persist
-# across ``run`` calls we serialize the user namespace with ``dill`` after each
-# snippet and restore it before the next: true REPL state without replaying
-# earlier snippets (and their side effects). The namespace lives in a dedicated
-# dict (``ns``) the snippet runs in, pickled with explicit file I/O:
-# ``dill.dump_module`` is deliberately avoided because it embeds its origin path
-# in the pickle, so a re-dump of a *copied* state file (a fork) would write back
-# to the original, breaking isolation. Unpicklable values are skipped per-key.
-#
-# Host callables bound to the sandbox can't be injected into this isolated
-# subprocess directly, so each is exposed as an async stub that RPCs to a host
-# Unix-socket server (length-prefixed JSON, one request/response per call); the
-# host runs the real (possibly LM-calling) tool and returns the result. The
-# snippet is exec'd under the filename ``<sandbox>`` so tracebacks trim to user
-# frames; its last *expression* (the ``result`` convention) is JSON-encoded
-# to the result file so the host can surface it as ``ExecutionResult.result``.
-# macOS in-process confinement, the Seatbelt counterpart to ``_confine`` below.
-#
-# The Linux path is unavailable here and cannot be ported: namespaces,
-# ``pivot_root``, ``/proc/self/uid_map`` and seccomp are Linux kernel features
-# with no XNU equivalent (POSIX never standardized sandboxing, so every kernel
-# grew its own). macOS instead exposes Seatbelt, the TrustedBSD MAC policy the
-# App Sandbox is built on, which takes a declarative SBPL profile rather than a
-# constructed namespace. ``sandbox_init`` applies one to the *calling* process,
-# which fits this bootstrap exactly as ``_confine`` does: run first, in-process,
-# before the snippet imports anything.
-#
-# What this DOES enforce, kernel-side and without root:
-#   * filesystem: ``(deny default)`` then explicit allows, so the snippet reads
-#     only the Python runtime it needs and writes only the sandbox's own dirs.
-#     Reads are restricted, not just writes (Codex and Gemini CLI both give up
-#     on read restriction; here the runtime read set is known, so we keep it).
-#     ``TMPDIR`` is redirected into that writable area, since the host temp dir
-#     the snippet would otherwise get is deliberately not granted, and the
-#     ancestors of every allowed path are traversable (metadata only) so the
-#     ``/var`` -> ``/private/var`` symlink cannot strand the grants.
-#   * network: denied outright unless ``network`` is set, with the host-tool RPC
-#     socket allowed by literal path so the bridge keeps working either way.
-#   * rlimits: ``setrlimit`` is POSIX and applies unchanged.
-#
-# What it does NOT, and why the docs must not imply Linux parity:
-#   * no PID isolation. XNU has no PID namespace, so the host process table
-#     stays visible; ``(deny process-info*)`` narrows this but is not the same
-#     guarantee as being PID 1 in a fresh namespace.
-#   * no syscall filter. Seatbelt gates MAC operations, not syscall numbers,
-#     so the seccomp denylist has no counterpart. The two models overlap but
-#     neither contains the other.
-#
-# ``sandbox_init`` is deprecated (Apple ship no replacement for non-App-Store
-# process sandboxing) but remains the documented path, still works on current
-# macOS, and underpins Apple's own sandboxes; Chrome, Nix, Bazel, Codex and
-# Gemini CLI all rely on it today.
-_LIBSANDBOX = "/usr/lib/libsandbox.1.dylib"
-
-_MACOS_CONFINE_SRC = r'''
-# Mach services the confined process may look up, by exact global name. See
-# `_build_sbpl` for why this is an allowlist and not `(allow mach-lookup)`.
-#
-# Deliberately minimal, and every entry is here on evidence.
-#
-# "The profile is applied after startup, so nothing needs these" holds for the
-# process that applies it and *only* that process. A child exec'd under the
-# profile runs libSystem startup inside it, and a denied bootstrap lookup there
-# does not degrade: libxpc aborts the process. Emptying this list did not break
-# `run`, which is why it looked safe; it broke every `subprocess`, which died
-# on SIGABRT before it could write a word to stderr.
-#
-# Nothing here brokers process execution. Notably absent, and to stay absent:
-# `com.apple.coreservices.launchservicesd` and the launchd family, which exist
-# precisely to spawn processes outside the caller's sandbox.
-_MACOS_MACH_SERVICES = (
-    # libsystem_notify: registered during libSystem startup.
-    "com.apple.system.notification_center",
-    # os_log / libsystem_trace, touched by the C runtime before main().
-    "com.apple.logd",
-    # opendirectoryd's libinfo endpoint, backing pwd/getpwuid, which CPython
-    # calls from `site` and `os.path.expanduser`.
-    "com.apple.system.opendirectoryd.libinfo",
-)
+# Mirage-internal views that are not the agent's files: devices, persisted
+# sessions and the shell history view (mirage-ai 0.0.6+). Skipped by file
+# listings, search, diffs, snapshots and `save`.
+INTERNAL_PATHS = ("/dev", "/.sessions", "/.bash_history")
 
 
-def _sbpl_quote(path):
-    """Quote a path for SBPL, which is s-expression syntax, not shell."""
-    return '"' + str(path).replace("\\", "\\\\").replace('"', '\\"') + '"'
-
-
-def _build_sbpl(cfg):
-    """Render the Seatbelt profile for this run."""
-    import os
-
-    lines = [
-        "(version 1)",
-        "(deny default)",
-        # Keep the process able to run at all: fork for subprocesses the snippet
-        # may spawn, signals to itself, and the sysctl reads CPython performs
-        # during startup. These grant no filesystem or network reach.
-        "(allow process-fork)",
-        "(allow signal (target self))",
-        "(allow sysctl-read)",
-        # Deny introspection of other processes. Not a PID namespace, but it
-        # removes the obvious host-process reconnaissance path. Self is allowed
-        # back, after the deny since SBPL is last-match-wins: a process reading
-        # its own proc info is not reconnaissance (it is its own memory), and
-        # dyld asks about itself while starting a freshly exec'd image, which a
-        # blanket deny turns into an abort.
-        "(deny process-info*)",
-        "(allow process-info* (target self))",
-    ]
-    # Mach services, by explicit name. A bare `(allow mach-lookup)` is the
-    # classic way to render a Seatbelt profile ineffective: a send right to any
-    # service lets the process ask a *daemon* to act for it, and the daemon's
-    # child does not inherit this profile, so the filesystem and network rules
-    # below simply do not apply to the work it performs. Chrome and the Codex /
-    # Gemini CLI profiles all allowlist for this reason.
-    #
-    # This set is deliberately minimal: the notification and logging services
-    # libSystem touches during startup, plus the directory-service lookup that
-    # backs `pwd`/`getpwuid` (CPython's `site` and `os.path.expanduser` call
-    # it). Nothing here brokers process execution. Notably absent, and to stay
-    # absent: `com.apple.coreservices.launchservicesd` and the launchd family,
-    # which exist precisely to spawn processes outside the caller's sandbox.
-    #
-    # Widen only on evidence: a missing service surfaces as the bootstrap
-    # failing closed with `confine-error` and exit 99, never as a silent loss
-    # of confinement, so growing this list from real failures is safe.
-    for service in _MACOS_MACH_SERVICES:
-        lines.append('(allow mach-lookup (global-name "%s"))' % service)
-    # Character devices CPython needs; harmless and required for randomness,
-    # /dev/null redirection and tty probing.
-    for dev in ("/dev/null", "/dev/zero", "/dev/random", "/dev/urandom",
-                "/dev/dtracehelper", "/dev/tty"):
-        lines.append("(allow file-read* file-write-data (literal %s))"
-                     % _sbpl_quote(dev))
-    # Path *resolution*, not content. Reaching an allowed path means reading
-    # every symlink on the way to it, and `(deny default)` denies that too.
-    # This is not a corner case on macOS: the sandbox's own directories live
-    # under the per-user temp dir `/var/folders/...`, and `/var` is a symlink
-    # into `/private`, so with the traversal denied the `file-write*` grant
-    # below never gets the chance to match and every write into the sandbox's
-    # own writable area fails EPERM while the profile looks, on paper, correct.
-    # Metadata only: this permits `stat`/`readlink` on the ancestors, not
-    # reading their contents or listing them.
-    #
-    # The working directory is in this set for the same reason, and it is not
-    # optional: `getcwd` is itself a path operation (the kernel walks the cwd up
-    # to the root), so a cwd outside the granted set fails EPERM. CPython calls
-    # it on the *first import after confinement*, since `python3 -c` puts "" at
-    # the head of `sys.path` and `_path_importer_cache` resolves "" through
-    # `getcwd` while catching only `FileNotFoundError`. That surfaces not as a
-    # denied file but as a `PermissionError` thrown by the import machinery,
-    # several frames away from anything that looks filesystem-related.
-    try:
-        cwd = os.getcwd()
-    except OSError:  # cwd already unreachable; nothing to grant
-        cwd = None
-    ancestors = ["/"]
-    if cwd and cwd != "/":
-        ancestors.append(cwd)
-    for path in (
-        list(cfg.get("read_paths") or [])
-        + list(cfg.get("rw_paths") or [])
-        + [cfg.get("rpc_socket_dir"), cfg.get("sock"), cfg.get("tmpdir"), cwd]
-    ):
-        if not path:
-            continue
-        # Both forms: the host hands over resolved paths, while the snippet may
-        # name the unresolved ones (`TMPDIR`, `/tmp`, `/etc`) for the same file.
-        for form in (str(path), os.path.realpath(str(path))):
-            current = os.path.dirname(form)
-            while current and current != "/":
-                if current not in ancestors:
-                    ancestors.append(current)
-                current = os.path.dirname(current)
-    # The top-level symlinks into /private, which any absolute path the snippet
-    # itself names under them has to traverse.
-    for path in ("/var", "/tmp", "/etc"):
-        if path not in ancestors:
-            ancestors.append(path)
-    for path in ancestors:
-        lines.append("(allow file-read-metadata (literal %s))" % _sbpl_quote(path))
-    # The root directory gets `file-read-data` on top of the metadata above,
-    # and it is load-bearing for every subprocess: dyld4's CacheFinder locates
-    # the shared-cache cryptex by *reading* `/` (macOS 26 runners), and a
-    # denied read there does not degrade, it halts the freshly exec'd child in
-    # `ignition_halt` before dyld can write a word to stderr. The parent never
-    # trips this because its cache was mapped before the profile applied.
-    # `literal` keeps the grant to the directory itself: listing `/` exposes
-    # the well-known top-level names and nothing of any file's contents.
-    lines.append('(allow file-read-data (literal "/"))')
-    # Read-only: the interpreter, its stdlib and the host package dirs, the
-    # same set the Linux path bind-mounts read-only. Without these the snippet
-    # cannot import anything, including its own bootstrap dependencies.
-    for path in cfg.get("read_paths") or []:
-        lines.append("(allow file-read* (subpath %s))" % _sbpl_quote(path))
-    # Execution is limited to that same read-only runtime set, so the snippet
-    # cannot exec a binary it wrote itself: the writable area is not in this
-    # set, and `file-map-executable` is denied there besides.
-    #
-    # It does include `/usr/bin`, so the snippet can shell out to host tools
-    # exactly as it can on Linux, where the runtime dirs are bind-mounted and
-    # executable. That is deliberate parity, and it is not an escape: a child
-    # process inherits the profile it is spawned under, so a `subprocess` here
-    # gets the same denied filesystem and network as its parent. The escape
-    # route in this area is not exec but `mach-lookup`, where a *daemon* does
-    # the work outside the profile, and that allowlist is empty.
-    # `file-map-executable` goes with it and is not implied by `file-read*`:
-    # it is a separate operation, and an exec'd binary needs its pages, and
-    # dyld needs the pages of every dylib it then loads, mapped executable. A
-    # profile with `process-exec` but not this one starts the child and kills
-    # it in dyld, which surfaces as a subprocess that produces no output and
-    # raises nothing in the parent.
-    for path in cfg.get("read_paths") or []:
-        lines.append("(allow process-exec (subpath %s))" % _sbpl_quote(path))
-        lines.append("(allow file-map-executable (subpath %s))" % _sbpl_quote(path))
-    # Read-write: the sandbox's own directories (dill state, result file, RPC
-    # socket, working tree). This is the only writable surface.
-    for path in cfg.get("rw_paths") or []:
-        lines.append("(allow file-read* file-write* (subpath %s))"
-                     % _sbpl_quote(path))
-    # ...but nothing written there may then be *executed* as native code. SBPL
-    # is last-match-wins, so this deny follows the grant above and carves
-    # `file-map-executable` back out of it: a snippet cannot drop a dylib into
-    # its own scratch dir and `dlopen` it. Executable pages therefore come from
-    # the read-only runtime set and nowhere else, which is write-xor-execute
-    # across the whole profile, and the nearest macOS gets to the seccomp
-    # filter it has no equivalent of: native code the snippet brought itself is
-    # exactly what a syscall denylist exists to constrain. (`ctypes` against
-    # the *system* libc is still reachable; no profile can gate that.)
-    for path in cfg.get("rw_paths") or []:
-        lines.append("(deny file-map-executable (subpath %s))" % _sbpl_quote(path))
-    # The host-tool bridge is a unix socket, which Seatbelt classes as network
-    # rather than file I/O, so it needs an explicit allow to survive the
-    # network denial below. The socket is created per run under a random name,
-    # so this grants the containing directory; the literal is added as well
-    # when the host already knows the path, since path filters on
-    # `network-outbound` are far better attested for `literal` than `subpath`.
-    sock_dir = cfg.get("rpc_socket_dir")
-    if sock_dir:
-        lines.append("(allow network-outbound (subpath %s))" % _sbpl_quote(sock_dir))
-    if cfg.get("sock"):
-        lines.append("(allow network-outbound (literal %s))"
-                     % _sbpl_quote(cfg["sock"]))
-    if cfg.get("network"):
-        lines.append("(allow network*)")
-    # Nothing else. Loopback is deliberately NOT granted: unlike Linux, where
-    # NEWNET gives the process a private network namespace whose loopback is
-    # its own, macOS has no namespace and `(local ip)` would be the *host's*
-    # 127.0.0.1. That would hand supposedly network-isolated code every service
-    # bound to localhost (model servers, databases, the user's own dev APIs),
-    # which is exactly what confinement is meant to prevent. The host-tool
-    # bridge does not need it either: it is a unix socket, granted by the
-    # `rpc_socket_dir` rule above, which Seatbelt classes as network-outbound
-    # but matches on path rather than address.
-    return "\n".join(lines) + "\n"
-
-
-def _prepare_macos_process(cfg):
-    """Pre-profile setup: rlimits, and standing where the profile can grant.
-
-    Split out of `_confine_macos` because everything here is plain POSIX and
-    testable off a Darwin host, unlike the `sandbox_init` call that follows it.
-    """
-    import os
-    import resource
-    import sys
-    import tempfile
-
-    # Point the snippet's temp dir at the sandbox's own writable area. The
-    # Linux path gets this for free: it pivots into the virtual filesystem,
-    # where /tmp is the sandbox's. Seatbelt confines in place, so
-    # `tempfile.gettempdir()` would otherwise hand back the *host* temp dir,
-    # which the profile does not grant, and the most ordinary thing a snippet
-    # can do with a scratch file would fail. Set before the profile applies and
-    # before anything has called `gettempdir` (which memoizes), and set
-    # `tempfile.tempdir` too so the answer does not depend on that ordering.
-    tmpdir = cfg.get("tmpdir")
-    if tmpdir:
-        os.environ["TMPDIR"] = tmpdir
-        tempfile.tempdir = tmpdir
-        # Move the process into that area rather than widen the profile to
-        # wherever it happens to be standing. `getcwd` is a path operation, and
-        # a cwd outside the granted set fails EPERM: granting metadata on the
-        # cwd is not enough, so the fix is to be somewhere the profile already
-        # grants outright. The Linux path ends up in the same place for the
-        # same reason, since `pivot_root` leaves the process chdir'd into the
-        # sandbox root. A relative path in a snippet then lands in the
-        # sandbox's own scratch dir instead of a host dir it cannot write.
-        try:
-            os.chdir(tmpdir)
-        except OSError:  # scratch dir missing; the profile still applies below
-            pass
-
-    # Drop the leading "" from `sys.path`, belt to the chdir's braces. CPython
-    # resolves that entry through `getcwd` on the first import *after* the
-    # profile applies, catching only `FileNotFoundError`, so an EPERM there
-    # surfaces as a `PermissionError` raised by the import machinery, frames
-    # away from anything filesystem-shaped, and takes down an import that would
-    # otherwise have succeeded from a granted `sys.path` entry. Nothing in the
-    # sandbox imports from the working directory: the runtime set is absolute.
-    sys.path = [entry for entry in sys.path if entry]
-
-    # rlimits: POSIX, and unaffected by the profile applied below. All except
-    # RLIMIT_NPROC, which is deliberately skipped here and is the one rlimit
-    # that does not mean the same thing on both platforms.
-    #
-    # It is counted per *user*, not per process. On Linux that lands on the
-    # fresh user namespace `_confine` unshares, so `max_processes` is a budget
-    # for the sandbox alone, counting from ~1. macOS has no namespace, so the
-    # same number is measured against every process the logged-in user is
-    # already running, which on any real machine is well past 64: setting it
-    # would not cap the sandbox, it would stop it forking at all, and
-    # `subprocess` / `multiprocessing` would fail with EAGAIN out of
-    # `_fork_exec`. Better to enforce nothing than to enforce that.
-    rl = cfg.get("rlimits") or {}
-    for key, which in (
-        ("as", getattr(resource, "RLIMIT_AS", None)),
-        ("cpu", getattr(resource, "RLIMIT_CPU", None)),
-        ("fsize", getattr(resource, "RLIMIT_FSIZE", None)),
-    ):
-        if rl.get(key) and which is not None:
-            try:
-                resource.setrlimit(which, (rl[key], rl[key]))
-            except (ValueError, OSError):
-                # An existing limit already tighter than the request is not a
-                # failure; the tighter one wins and confinement continues.
-                pass
-
-
-def _confine_macos(cfg):
-    import ctypes
-    import ctypes.util
-
-    _prepare_macos_process(cfg)
-
-    path = ctypes.util.find_library("sandbox") or "/usr/lib/libsandbox.1.dylib"
-    libsandbox = ctypes.CDLL(path, use_errno=True)
-    libsandbox.sandbox_init.argtypes = [
-        ctypes.c_char_p,
-        ctypes.c_uint64,
-        ctypes.POINTER(ctypes.c_char_p),
-    ]
-    libsandbox.sandbox_init.restype = ctypes.c_int
-    err = ctypes.c_char_p()
-    # flags=0 means "profile is SBPL source", as opposed to one of the named
-    # builtin profiles.
-    rc = libsandbox.sandbox_init(_build_sbpl(cfg).encode("utf-8"), 0,
-                                 ctypes.byref(err))
-    if rc != 0:
-        detail = err.value.decode("utf-8", "replace") if err.value else "unknown"
-        raise OSError("sandbox_init failed: " + detail)
-'''
-
-
-# Rootless in-process confinement, shared by the ``run`` bootstrap and the
-# ``run_bash`` ``_run_python`` patch: enter fresh user/mount/PID(/net)
-# namespaces, fork (PID namespaces only apply to children) so the child is PID 1
-# of the new namespace, bind the Python runtime into the FUSE-mounted virtual
-# filesystem, then pivot_root into it so the process sees ONLY the virtual
-# sandbox at "/" with the host filesystem gone and a fresh /proc that shows only
-# namespaced PIDs. Must run first, single-threaded, before the snippet imports
-# anything (the runtime binds keep imports working).
-_CONFINE_SRC = r"""
-def _confine(cfg):
-    import ctypes
-    import ctypes.util
-    import os
-    import platform
-    import resource
-
-    libc = ctypes.CDLL(ctypes.util.find_library("c") or "libc.so.6", use_errno=True)
-    sys_pivot = {
-        "x86_64": 155,
-        "aarch64": 41,
-        "armv7l": 218,
-        "ppc64le": 203,
-        "s390x": 217,
-    }.get(platform.machine())
-    if sys_pivot is None:
-        raise OSError("unsupported architecture for pivot_root: " + platform.machine())
-    NEWUSER, NEWNS, NEWNET, NEWIPC, NEWUTS, NEWPID = (
-        0x10000000,
-        0x20000,
-        0x40000000,
-        0x8000000,
-        0x4000000,
-        0x20000000,
-    )
-    MS_REC, MS_PRIVATE, MS_BIND, MNT_DETACH = 16384, 1 << 18, 4096, 2
-    MS_REMOUNT, MS_RDONLY, MS_NOSUID, MS_NODEV = 32, 1, 2, 4
-
-    def _ck(rc, what):
-        if rc != 0:
-            err = ctypes.get_errno()
-            raise OSError(err, os.strerror(err), what)
-
-    def _mount(src, tgt, fs, flags, data=None):
-        enc = lambda x: x.encode() if x else None
-        _ck(libc.mount(enc(src), enc(tgt), enc(fs), flags, enc(data)), "mount " + tgt)
-
-    def _bind(d, readonly):
-        # Bind ``d`` at the same path under the new root. A bind mount inherits
-        # the source's writability, so making it read-only needs a *second*
-        # remount (MS_BIND | MS_REMOUNT | MS_RDONLY); a single mount() cannot
-        # express a read-only bind. Read-only binds (the Python runtime: venv,
-        # stdlib, system lib/bin) stop confined code from poisoning files the
-        # *host* later imports outside the sandbox; ``_hostdir`` is bound
-        # writable because the dill state / result file / RPC socket live there.
-        if not os.path.isdir(d):
-            return
-        try:
-            os.makedirs(mp + d, exist_ok=True)
-            _mount(d, mp + d, None, MS_BIND | MS_REC)
-        except OSError:
-            return  # cannot bind this dir at all; skip it
-        if readonly:
-            # Lock it read-only and FAIL CLOSED if that can't be done: swallowing
-            # the failure would leave the runtime writable while we still claim
-            # (and ``granted_capabilities`` reports) read-only, a fail-open that
-            # re-opens the venv-poisoning escape. This remount is deliberately
-            # OUTSIDE the try/except so an error propagates to ``_confine`` →
-            # ``sys.exit(99)``. ``nosuid``/``nodev`` are re-specified so the
-            # remount doesn't EPERM trying to drop those locked flags on a
-            # hardened source mount (e.g. a venv on a ``nosuid``/``nodev``
-            # ``/tmp`` or ``/home``); the runtime needs neither setuid bits nor
-            # device nodes.
-            _mount(
-                d,
-                mp + d,
-                None,
-                MS_BIND | MS_REMOUNT | MS_RDONLY | MS_NOSUID | MS_NODEV,
-            )
-
-    uid, gid = os.getuid(), os.getgid()  # capture before unshare (later: overflow id)
-    flags = NEWUSER | NEWNS | NEWIPC | NEWUTS | NEWPID
-    if not cfg.get("network"):
-        flags |= NEWNET
-    os.unshare(flags)
-    with open("/proc/self/setgroups", "w") as fh:
-        fh.write("deny")
-    with open("/proc/self/uid_map", "w") as fh:
-        fh.write("0 %d 1" % uid)
-    with open("/proc/self/gid_map", "w") as fh:
-        fh.write("0 %d 1" % gid)
-    # NEWPID only takes effect for *children*: the unsharing process stays in the
-    # old PID namespace, so we must fork. The child is PID 1 of the new namespace
-    # and does the rest of the confinement (mount /proc, pivot_root, seccomp) and
-    # runs the snippet; because it mounts a fresh procfs while inside the new
-    # PID namespace, that /proc shows ONLY namespaced PIDs; host processes are
-    # no longer visible, removing any reliance on the userns credential check to
-    # keep /proc/<host-pid>/root and /environ unreadable. The parent waits and
-    # propagates the child's exit status (so the host still sees the real code).
-    _pid = os.fork()
-    if _pid:
-        _, _status = os.waitpid(_pid, 0)
-        if os.WIFSIGNALED(_status):
-            os._exit(128 + os.WTERMSIG(_status))
-        os._exit(os.WEXITSTATUS(_status) if os.WIFEXITED(_status) else 1)
-    # Child (PID 1): die if the parent is killed (e.g. host timeout-kill), so the
-    # snippet can't outlive the process the host is waiting on.
-    try:
-        libc.prctl(1, 9, 0, 0, 0)  # PR_SET_PDEATHSIG, SIGKILL
-    except Exception:
-        pass
-    mp = cfg["mp"]
-    _mount(None, "/", None, MS_REC | MS_PRIVATE)
-    _mount(mp, mp, None, MS_BIND | MS_REC)
-    for d in cfg.get("binds", []):
-        _bind(d, True)
-    for d in cfg.get("rw_binds", []):
-        _bind(d, False)
-    try:
-        os.makedirs(mp + "/proc", exist_ok=True)
-        _mount("proc", mp + "/proc", "proc", 0)
-    except OSError:
-        pass
-    os.chdir(mp)
-    os.makedirs(".oldroot", exist_ok=True)
-    _ck(libc.syscall(sys_pivot, b".", b".oldroot"), "pivot_root")
-    os.chdir("/")
-    libc.umount2(b"/.oldroot", MNT_DETACH)
-    try:
-        os.rmdir("/.oldroot")
-    except OSError:
-        pass
-    rl = cfg.get("rlimits") or {}
-    for key, which in (
-        ("as", resource.RLIMIT_AS),
-        ("cpu", resource.RLIMIT_CPU),
-        ("nproc", resource.RLIMIT_NPROC),
-        ("fsize", resource.RLIMIT_FSIZE),
-    ):
-        if rl.get(key):
-            resource.setrlimit(which, (rl[key], rl[key]))
-    # Seccomp goes LAST: it denies mount/unshare/pivot_root, which the steps
-    # above still need. The filter (a prebuilt classic-BPF ``sock_filter[]``
-    # blob, base64'd by the host) shrinks the kernel attack surface a confined
-    # process can reach (eBPF, ptrace, userfaultfd, perf, keyrings, module
-    # loading, kexec, namespace ops, open_by_handle_at, etc.), returning EPERM.
-    sec = cfg.get("seccomp")
-    if sec:
-        import base64 as _b64
-
-        blob = _b64.b64decode(sec)
-        PR_SET_NO_NEW_PRIVS, PR_SET_SECCOMP, SECCOMP_MODE_FILTER = 38, 22, 2
-        libc.prctl.restype = ctypes.c_int
-        libc.prctl.argtypes = [ctypes.c_int] + [ctypes.c_ulong] * 4
-        # No-new-privs is mandatory to load a filter without privilege, and
-        # stops a denied-but-setuid path from regaining what the filter drops.
-        _ck(libc.prctl(PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0), "no_new_privs")
-
-        class _SockFprog(ctypes.Structure):
-            _fields_ = [("len", ctypes.c_ushort), ("filter", ctypes.c_void_p)]
-
-        buf = ctypes.create_string_buffer(blob, len(blob))
-        prog = _SockFprog(len(blob) // 8, ctypes.cast(buf, ctypes.c_void_p))
-        _ck(
-            libc.prctl(
-                PR_SET_SECCOMP, SECCOMP_MODE_FILTER, ctypes.addressof(prog), 0, 0
-            ),
-            "seccomp",
-        )
-"""
-
-_BOOTSTRAP = (
-    r"""
-import os, sys, base64, json, ast
-import dill
-state = sys.argv[2]
-config = {}
-if len(sys.argv) > 3 and sys.argv[3]:
-    try:
-        with open(sys.argv[3], "r") as _fh:
-            config = json.load(_fh)
-    except Exception as exc:
-        print("config-warn: " + repr(exc), file=sys.stderr)
-"""
-    + _CONFINE_SRC
-    + _MACOS_CONFINE_SRC
-    + r"""
-if config.get("confine"):
-    try:
-        # Same decision the host made in `_confine_config`, re-derived here
-        # rather than trusted from the config: the bootstrap runs on the very
-        # host being confined, so its own platform is the authority.
-        if sys.platform == "darwin":
-            _confine_macos(config)
-        else:
-            _confine(config)
-    except Exception as exc:
-        print("confine-error: " + repr(exc), file=sys.stderr)
-        sys.exit(99)
-ns = {"__name__": "__main__", "__builtins__": __builtins__}
-if os.path.exists(state):
-    try:
-        with open(state, "rb") as fh:
-            ns.update(dill.load(fh))
-    except Exception as exc:
-        print("restore-warn: " + repr(exc), file=sys.stderr)
-# Pinned names re-assert themselves on every run, from the persisted
-# ``__rlm_pinned__`` dict, BEFORE the per-run ``inputs=`` binding (so an
-# explicit binding still wins). A caller that persists an environment
-# variable for the agent's code to read (the RLM binds the module input as
-# ``inputs`` once per call) pins it so that a snippet assigning over the
-# name — LLM-written code does — only breaks that one snippet, instead of
-# poisoning every later snippet of the call: the next run restores the pin.
-try:
-    ns.update(ns.get("__rlm_pinned__") or {})
-except Exception as exc:
-    print("pinned-warn: " + repr(exc), file=sys.stderr)
-_inputs = config.get("inputs")
-if _inputs:
-    try:
-        ns.update(dill.loads(base64.b64decode(_inputs)))
-    except Exception as exc:
-        print("inputs-warn: " + repr(exc), file=sys.stderr)
-# Re-home restored functions onto the live ``ns``. dill pickles a function
-# together with a *private copy* of the globals it referenced, so a restored
-# function's ``__globals__`` is a ghost of the namespace as of the run that
-# defined it — while this run's snippet execs into ``ns``. Without re-homing,
-# a function defined in an earlier run can never see a name defined in a
-# later one (``def f(): return helper()`` then ``def helper(): ...`` next run
-# leaves ``f`` raising NameError forever), and every dump/restore round-trip
-# nests another ghost copy into the state file. Rebuilding each function on
-# ``ns`` restores true REPL semantics: one shared global namespace.
-#
-# Only functions *defined in the sandbox* may be re-homed. An imported
-# function closes over its own module's globals, and rebuilding it on ``ns``
-# strips the module internals it reaches at call time: re-homing
-# ``collections.Counter``'s methods makes ``Counter('aa')`` raise
-# ``NameError: name '_collections_abc' is not defined``, and re-homing
-# ``os.path.join`` loses ``sep``. Sandbox-defined functions are the ones whose
-# (ghost) globals are a copy of ``ns``, which carries ``__name__ ==
-# "__main__"``; an imported one carries its own module name.
-import types as _types
-def _rehome(value):
-    if (
-        isinstance(value, _types.FunctionType)
-        and value.__globals__ is not ns
-        and value.__globals__.get("__name__") == "__main__"
-    ):
-        fixed = _types.FunctionType(
-            value.__code__, ns, value.__name__, value.__defaults__, value.__closure__
-        )
-        fixed.__kwdefaults__ = value.__kwdefaults__
-        fixed.__qualname__ = value.__qualname__
-        fixed.__dict__.update(value.__dict__)
-        fixed.__module__ = value.__module__
-        return fixed
-    return value
-for _key in list(ns):
-    _value = ns[_key] = _rehome(ns[_key])
-    if isinstance(_value, type):
-        # Methods of sandbox-defined classes carry the same ghost globals.
-        for _attr, _member in list(vars(_value).items()):
-            _fixed = _rehome(_member)
-            if _fixed is not _member:
-                try:
-                    setattr(_value, _attr, _fixed)
-                except (AttributeError, TypeError):
-                    pass
-_sock = config.get("sock")
-if _sock and config.get("tools"):
-    import asyncio, struct, threading
-    async def _rpc(_name, *args, **kwargs):
-        reader, writer = await asyncio.open_unix_connection(_sock)
-        payload = json.dumps(
-            {"name": _name, "args": args, "kwargs": kwargs}
-        ).encode("utf-8")
-        writer.write(struct.pack(">I", len(payload)) + payload)
-        await writer.drain()
-        header = await reader.readexactly(4)
-        (length,) = struct.unpack(">I", header)
-        body = await reader.readexactly(length)
-        writer.close()
-        resp = json.loads(body.decode("utf-8"))
-        if not resp.get("ok"):
-            raise RuntimeError(resp.get("error", "tool call failed"))
-        return resp.get("result")
-    # Tools are exposed as PLAIN SYNC functions: `result = submit(...)`, with no
-    # `await` / `asyncio.run(...)`. Each call's RPC coroutine runs on a dedicated
-    # background event-loop thread and the result is returned synchronously, so
-    # this works from a flat script and even from inside a snippet that happens
-    # to run its own event loop.
-    _tool_loop = asyncio.new_event_loop()
-    threading.Thread(target=_tool_loop.run_forever, daemon=True).start()
-    def _make_stub(_name):
-        def _stub(*args, **kwargs):
-            return asyncio.run_coroutine_threadsafe(
-                _rpc(_name, *args, **kwargs), _tool_loop
-            ).result()
-        return _stub
-    for _tool_name in config["tools"]:
-        ns[_tool_name] = _make_stub(_tool_name)
-user = sys.stdin.buffer.read().decode("utf-8")
-value = None
-try:
-    tree = ast.parse(user, "<sandbox>", "exec")
-    if tree.body and isinstance(tree.body[-1], ast.Expr):
-        last = tree.body.pop()
-        if tree.body:
-            exec(compile(tree, "<sandbox>", "exec"), ns)
-        value = eval(compile(ast.Expression(last.value), "<sandbox>", "eval"), ns)
-    else:
-        exec(compile(tree, "<sandbox>", "exec"), ns)
-finally:
-    # Persist the namespace with ONE dill.dumps. Pickling item by item is
-    # quadratic: every sandbox-defined function is pickled together with a
-    # copy of its (shared) globals, so N functions cost N full-namespace
-    # pickles (25 functions ~3 s, 100 ~14 s, ~200 hits RecursionError). A
-    # single dump memoizes the shared globals once. Only when that fails do
-    # we fall back to filtering out the unpicklable items one by one.
-    keep = {k: v for k, v in ns.items() if k != "__builtins__"}
-    try:
-        blob = dill.dumps(keep)
-    except Exception:
-        # Something in the namespace is unpicklable (an open file, a
-        # generator, ...). Drop those items, and pickle functions with
-        # ``recurse=True`` so they carry only the globals they reference
-        # rather than the whole namespace: otherwise every sandbox-defined
-        # function would be lost along with the offending item. Restored
-        # functions are re-homed onto the live namespace on the next run
-        # anyway, so the reduced globals are never observable.
-        keep = {}
-        for key, item in list(ns.items()):
-            if key == "__builtins__":
-                continue
-            try:
-                dill.dumps(item, recurse=True)
-                keep[key] = item
-            except Exception:
-                pass
-        try:
-            blob = dill.dumps(keep, recurse=True)
-        except Exception as exc:
-            blob = None
-            print("persist-warn: " + repr(exc), file=sys.stderr)
-    if blob is not None:
-        # Write to a sibling temp file and rename so a run killed mid-write
-        # (host timeout) or a concurrent run can never leave the state file
-        # truncated or half-written.
-        tmp = state + ".tmp." + str(os.getpid())
-        try:
-            with open(tmp, "wb") as fh:
-                fh.write(blob)
-            os.replace(tmp, state)
-        except Exception as exc:
-            print("persist-warn: " + repr(exc), file=sys.stderr)
-            try:
-                os.unlink(tmp)
-            except OSError:
-                pass
-    result_path = config.get("result")
-    if result_path:
-        try:
-            encoded = json.dumps(value)
-        except Exception:
-            encoded = "null"
-        try:
-            with open(result_path, "w") as fh:
-                fh.write(encoded)
-        except Exception as exc:
-            print("result-warn: " + repr(exc), file=sys.stderr)
-"""
-)
-
-_DEFAULT_MOUNT = "/"
-
-
-def _paginate(items: List[Any], offset: int, limit: int):
-    """Slice ``items`` to a page starting at a **1-based** ``offset``.
-
-    Returns ``(page, truncated)`` where ``truncated`` is True when more
-    items follow the page. ``offset`` 1 is the first item (grep
-    convention); ``limit <= 0`` means "all remaining".
-    """
-    start = max(offset - 1, 0)
-    page = items[start:] if limit <= 0 else items[start : start + limit]
-    truncated = start + len(page) < len(items)
-    return page, truncated
-
-
-def _unified_body(
-    from_file: str,
-    to_file: str,
-    old_lines: List[str],
-    new_lines: List[str],
-) -> str:
-    """Render the ``---``/``+++``/``@@`` body of a unified diff for one file.
-
-    Wraps ``difflib.unified_diff`` and appends git's ``\\ No newline at end of
-    file`` marker after any hunk line whose source lacked a trailing newline,
-    so the output applies cleanly. Once inside a hunk we never re-classify
-    lines by prefix: a deleted line like ``--foo`` becomes ``---foo`` and must
-    not be mistaken for a header.
-    """
-    parts: List[str] = []
-    in_hunk = False
-    for line in difflib.unified_diff(
-        old_lines, new_lines, fromfile=from_file, tofile=to_file, n=3
-    ):
-        if not in_hunk:
-            parts.append(line)  # ``--- ``/``+++ `` headers and first ``@@``
-            if line.startswith("@@"):
-                in_hunk = True
-            continue
-        if line.startswith("@@"):
-            parts.append(line)
-        elif line.endswith("\n"):
-            parts.append(line)
-        else:
-            parts.append(line + "\n\\ No newline at end of file\n")
-    return "".join(parts)
-
-
-def _render_patch(
-    base: Dict[str, str],
-    current: Dict[str, str],
-    paths: Optional[set] = None,
-) -> str:
-    """Render a git-style unified diff between two ``{vpath: text}`` snapshots.
-
-    Mirrors ``git diff``: a ``diff --git a/p b/p`` header per changed file,
-    ``new file``/``deleted file`` modes with ``/dev/null`` sides, real ``@@``
-    hunks, and ``Binary files ... differ`` for NUL-containing content. The
-    result is meant to be consumable by ``git apply`` / ``patch -p1``. ``paths``
-    restricts output to a subset of virtual paths.
-    """
-    out: List[str] = []
-    for path in sorted(set(base) | set(current)):
-        if paths is not None and path not in paths:
-            continue
-        old = base.get(path)
-        new = current.get(path)
-        if old == new:
-            continue
-        rel = path.lstrip("/")
-        a, b = f"a/{rel}", f"b/{rel}"
-        out.append(f"diff --git {a} {b}\n")
-        if (old is not None and "\x00" in old) or (new is not None and "\x00" in new):
-            if old is None:
-                out.append("new file mode 100644\n")
-            elif new is None:
-                out.append("deleted file mode 100644\n")
-            old_side = a if old is not None else "/dev/null"
-            new_side = b if new is not None else "/dev/null"
-            out.append(f"Binary files {old_side} and {new_side} differ\n")
-            continue
-        if old is None:
-            out.append("new file mode 100644\n")
-            from_file, old_lines = "/dev/null", []
-        else:
-            from_file, old_lines = a, old.splitlines(keepends=True)
-        if new is None:
-            out.append("deleted file mode 100644\n")
-            to_file, new_lines = "/dev/null", []
-        else:
-            to_file, new_lines = b, new.splitlines(keepends=True)
-        out.append(_unified_body(from_file, to_file, old_lines, new_lines))
-    return "".join(out)
-
-
-def _glob_to_regex(pattern: str) -> "re.Pattern":
-    """Translate a glob (``*``, ``?``, ``[seq]``, ``**``) to a regex.
-
-    ``*`` matches within a single path segment, ``**`` spans segments, and
-    ``**/`` additionally matches zero leading directories so that
-    ``**/x.py`` finds ``x.py`` at the root too.
-    """
-    i, n = 0, len(pattern)
-    out: List[str] = []
-    while i < n:
-        if pattern[i : i + 3] == "**/":
-            out.append("(?:.*/)?")
-            i += 3
-        elif pattern[i : i + 2] == "**":
-            out.append(".*")
-            i += 2
-        elif pattern[i] == "*":
-            out.append("[^/]*")
-            i += 1
-        elif pattern[i] == "?":
-            out.append("[^/]")
-            i += 1
-        elif pattern[i] == "[":
-            j = i + 1
-            if j < n and pattern[j] in "!^":
-                j += 1
-            if j < n and pattern[j] == "]":
-                j += 1
-            while j < n and pattern[j] != "]":
-                j += 1
-            if j >= n:  # unterminated class -> literal '['
-                out.append("\\[")
-                i += 1
-            else:
-                seq = pattern[i + 1 : j]
-                seq = ("^" + seq[1:]) if seq[:1] in "!^" else seq
-                out.append("[" + seq + "]")
-                i = j + 1
-        else:
-            out.append(re.escape(pattern[i]))
-            i += 1
-    return re.compile("^" + "".join(out) + "$")
-
-
-def _clean_traceback(stderr: str) -> str:
-    """Drop bootstrap/launcher frames from a traceback, keeping user frames.
-
-    The snippet runs under the filename ``<sandbox>``; everything before the
-    first ``File "<sandbox>"`` frame is harness scaffolding, so we keep the
-    ``Traceback`` header and splice straight to the user frames.
-    """
-    lines = stderr.splitlines(keepends=True)
-    header_idx = next(
-        (i for i, ln in enumerate(lines) if ln.startswith("Traceback")), None
-    )
-    sandbox_idx = next((i for i, ln in enumerate(lines) if '"<sandbox>"' in ln), None)
-    if header_idx is None or sandbox_idx is None or sandbox_idx <= header_idx:
-        return stderr
-    kept = [lines[header_idx]] + lines[sandbox_idx:]
-    return "".join(kept)
-
-
-def _jsonable(value: Any) -> Any:
-    """Coerce a host tool's return into something JSON-serializable.
-
-    Pass-through when already JSON-safe; falls back to a DataModel's
-    ``get_json()`` (the convention sandbox tool adapters follow) and finally to
-    ``str``, so the RPC response always crosses the socket.
-    """
-    try:
-        json.dumps(value)
-        return value
-    except (TypeError, ValueError):
-        if hasattr(value, "get_json"):
-            try:
-                return value.get_json()
-            except Exception:  # noqa: BLE001 - fall through to str
-                pass
-        return str(value)
-
-
-def _rmtree(path: str) -> None:
+def rmtree(path: Optional[str]) -> None:
     """Best-effort recursive delete of a host temp directory."""
-    import shutil
-
-    try:
+    if path:
         shutil.rmtree(path, ignore_errors=True)
-    except Exception:  # noqa: BLE001 - teardown must not raise
+
+
+def require_mirage() -> None:
+    if mirage is None:
+        raise ImportError(
+            "MirageSandbox requires the `mirage-ai` package. "
+            "Install it with `pip install mirage-ai`."
+        )
+
+
+# Mirage turned several Workspace methods (stat, readdir, copy, load, snapshot,
+# close, stdout_str, ...) into coroutines across its 0.0.x releases. These two
+# helpers accept either shape so call sites do not branch on the version.
+async def maybe_await(value):
+    return await value if inspect.isawaitable(value) else value
+
+
+def resolve_sync(value):
+    """Drive ``value`` to completion from sync code if Mirage returned a coroutine."""
+    return run_async_from_sync(value) if inspect.isawaitable(value) else value
+
+
+def is_dir(stat) -> bool:
+    """Whether a Mirage ``FileStat`` describes a directory."""
+    return str(getattr(stat.type, "value", stat.type)) == "directory"
+
+
+def release_mountpoint(path: Optional[str]) -> None:
+    """Make sure a mountpoint this sandbox created ends up unmounted and removed.
+
+    Mirage's own teardown is not enough on its own: its macOS unmount runs
+    ``diskutil unmount force`` without checking the result, and a mount that
+    only comes up *after* its 10 s readiness wait timed out is dropped from its
+    bookkeeping while the mount thread goes on to mount it anyway, so nothing
+    would ever unmount it. Either leaks a mount per occurrence, under load, and
+    macFUSE has only 64 devices. The sandbox picks the path itself (see
+    `ensure_fuse_mounted`), so it can always finish the job. Never raises.
+    """
+    if not path:
+        return
+    if os.path.ismount(path):
+        if sys.platform == "darwin":
+            commands = (["umount", "-f", path], ["diskutil", "unmount", "force", path])
+        else:
+            commands = (["fusermount", "-uz", path], ["umount", "-l", path])
+        for command in commands:
+            try:
+                subprocess.run(command, capture_output=True, timeout=30)
+            except (OSError, subprocess.SubprocessError):
+                continue
+            if not os.path.ismount(path):
+                break
+    try:
+        os.rmdir(path)  # empty once unmounted; left alone if it is not
+    except OSError:
         pass
 
 
-def _sync_close_workspace(ws) -> None:
+def sync_close_workspace(ws) -> None:
     """Release a Mirage workspace's FUSE mount, from any context, never raising.
 
-    ``Workspace.close`` is a coroutine, but the actual ``fusermount -u`` lives in
-    its *synchronous* ``_close_parts`` (the awaited part only drains cache
-    tasks). So:
+    ``Workspace.close`` is a coroutine, but the actual unmount (``fusermount -u``,
+    or ``diskutil unmount`` on macOS) lives in Mirage's *synchronous*
+    ``close_sync_parts`` (the awaited part only drains cache tasks). So:
 
     * with **no running loop** (a finalizer, ``gc.collect``, interpreter exit, or
       a plain sync caller) we drive the full coroutine via ``asyncio.run``:
       unmount *and* cache drain;
     * with a **loop already running** (called from inside async code) we can't
-      block on it, so we release the mount synchronously via ``_close_parts``
-      and skip the best-effort cache drain.
+      block on it, so we release the mount synchronously via
+      ``close_sync_parts`` and skip the best-effort cache drain.
 
     Either way the FUSE mount is dropped, which is what prevents the leak that
     exhausts ``mount_max``.
@@ -1112,670 +196,116 @@ def _sync_close_workspace(ws) -> None:
         loop = asyncio.get_running_loop()
     except RuntimeError:
         loop = None
+    closed = False
     if loop is None:
         try:
             result = ws.close()
             if inspect.isawaitable(result):
                 asyncio.run(result)
-            return
+            closed = True
         except Exception:  # noqa: BLE001 - fall through to a forced unmount
             pass
-    # A loop is running, or the coroutine could not be driven: unmount now.
-    try:
-        parts = getattr(ws, "_close_parts", None)
-        if callable(parts):
-            parts()
-        else:
-            result = ws.close()
-            if inspect.isawaitable(result):
-                result.close()  # avoid "coroutine was never awaited"
-    except Exception:  # noqa: BLE001 - teardown must not raise
-        pass
+    if not closed:
+        # A loop is running, or the coroutine could not be driven: unmount
+        # now. Discarding the `ws.close()` coroutine here instead would leak
+        # the mount, which on macOS exhausts macFUSE's 64 devices within one
+        # test run.
+        try:
+            from mirage.workspace.workspace.lifecycle import close_sync_parts
+
+            close_sync_parts(ws)
+        except Exception:  # noqa: BLE001 - teardown must not raise
+            pass
+    release_mountpoint(getattr(ws, "synalinks_mountpoint", None))
 
 
-def _finalize_workspace(state: dict) -> None:
+def finalize_workspace(state: dict) -> None:
     """``weakref.finalize`` callback: release a dropped sandbox's mount + hostdir.
 
     Runs when a :class:`MirageSandbox` is garbage-collected without an explicit
     ``close()`` (and, because ``weakref.finalize`` also fires pending callbacks
     at interpreter exit, on process shutdown too). ``state`` is a plain dict that
     never references the sandbox, so it does not keep it alive; ``reset`` /
-    ``_rebuild_workspace`` mutate it in place so this always releases the
+    ``rebuild_workspace`` mutate it in place so this always releases the
     *current* workspace.
     """
-    _sync_close_workspace(state.get("ws"))
-    _rmtree(state.get("hostdir") or "")
+    sync_close_workspace(state.get("ws"))
+    rmtree(state.get("hostdir"))
 
 
-def _is_wsl() -> bool:
-    """Whether this process runs inside the Windows Subsystem for Linux."""
+# Confinement config for the *currently executing* shell command of a confined
+# sandbox, read by `confine_shell_python`'s wrapper. ``None`` (the default)
+# means "not in a confined shell command", so the wrapper passes code through
+# untouched. It is a context variable rather than a sandbox attribute because
+# ``run_code`` also launches its bootstrap through the same runtime (and
+# confines itself), possibly concurrently with a ``run_bash`` on one sandbox.
+active_confine: contextvars.ContextVar[Optional[Dict[str, Any]]] = contextvars.ContextVar(
+    "mirage_active_confine", default=None
+)
+
+
+def local_runtime_supported() -> bool:
+    """Whether the installed Mirage has the ``LocalRuntime.run(self, RunArgs)``
+    coroutine `confine_shell_python` wraps (the layout since mirage-ai 0.0.4)."""
     try:
-        with open("/proc/sys/kernel/osrelease") as fh:
-            return "microsoft" in fh.read().lower()
-    except OSError:
+        from mirage.runtime.python.local import LocalRuntime
+    except ImportError:
         return False
+    return inspect.iscoroutinefunction(getattr(LocalRuntime, "run", None))
 
 
-# One-time native-Windows hint. The sandbox's confinement is Linux-only, so on
-# native Windows code runs unconfined; steer users to WSL2. Emitted once per
-# process when this module is first imported (it is pulled in by ``import
-# synalinks`` via the code-running agents). Suppressible / a no-op off Windows.
-_WINDOWS_HINTED = False
+def confine_shell_python(ws, vm: Optional[Dict[str, Any]] = None) -> bool:
+    """Make the ``python3`` a shell command spawns in ``ws`` confine itself.
 
-_WINDOWS_HINT = (
-    "synalinks: on native Windows the code-running sandbox confinement "
-    "is unavailable, so LM-generated code runs UNCONFINED. Run synalinks inside "
-    "WSL2 (Windows Subsystem for Linux) for the secure, confined sandbox. "
-    "Set SYNALINKS_NO_WINDOWS_HINT=1 to silence this message."
-)
+    Mirage runs a shell's ``python3`` through the workspace's ``local`` runtime
+    (a host CPython subprocess), not through our ``run_code`` bootstrap, so it
+    would otherwise run unconfined. This wraps ``run`` on *that workspace's*
+    runtime instance to prepend the confinement prologue whenever
+    `active_confine` is set. Nothing process-wide is patched: other workspaces,
+    and any other Mirage user in the process, are untouched.
 
+    With ``vm`` (the microVM backend's live launch settings) every ``python3``
+    of the workspace, the ``run_code`` bootstrap included, runs in a fresh
+    microVM instead of on the host, where the prologue confines it again with
+    the Linux backend.
 
-def _maybe_warn_native_windows():
-    """Warn once on native Windows that confinement needs WSL2; return the message.
-
-    A no-op (returns ``None``) off Windows, when already emitted this process, or
-    when ``SYNALINKS_NO_WINDOWS_HINT`` is set. Inside WSL2 ``platform.system()``
-    reports ``"Linux"``, so this correctly stays silent there.
+    Returns True when ``python3`` is confined (or is not served by ``local`` at
+    all, so it never reaches the host); False, with a warning, when the
+    runtime does not have the expected shape.
     """
-    import platform
-    import warnings
-
-    global _WINDOWS_HINTED
-    if _WINDOWS_HINTED or platform.system() != "Windows":
-        return None
-    _WINDOWS_HINTED = True
-    if os.environ.get("SYNALINKS_NO_WINDOWS_HINT"):
-        return None
-    warnings.warn(_WINDOWS_HINT, RuntimeWarning, stacklevel=2)
-    return _WINDOWS_HINT
-
-
-_maybe_warn_native_windows()
-
-
-def confinement_kind() -> Optional[str]:
-    """Which confinement backend this host can use, or ``None`` for neither.
-
-    ``"namespaces"`` on Linux is the strong one: user/mount/PID/net namespaces,
-    a ``pivot_root`` into the virtual filesystem, and a seccomp syscall
-    denylist. ``"seatbelt"`` on macOS enforces the filesystem and network
-    boundaries plus rlimits, but has no PID isolation and no syscall filter,
-    because XNU provides no equivalent of either.
-
-    Callers that need the full guarantee should branch on this rather than on
-    the availability boolean, which only says *some* confinement is possible.
-    """
-    import platform
-
-    system = platform.system()
-    if system == "Linux":
-        return "namespaces"
-    if system == "Darwin":
-        return "seatbelt"
-    return None
-
-
-def _confinement_available() -> tuple[bool, str]:
-    """Whether in-process confinement can run, by whichever backend fits.
-
-    Returns ``(ok, reason)``; ``reason`` explains why not when ``ok`` is False.
-    On Linux this means ``os.unshare`` (Python 3.12+), ``/dev/fuse``, libfuse
-    and unprivileged user namespaces; on macOS it means Seatbelt's libsandbox.
-    Windows has neither, and the intended path there is to run synalinks inside
-    **WSL2**, where the Linux backend works unchanged; the reason string says
-    so, and ``require_confinement=True`` turns any of these into a hard error
-    rather than a silent unconfined run.
-
-    See `confinement_kind` for *which* backend, and how much it guarantees.
-    """
-    import ctypes.util
-    import platform
-
-    system = platform.system()
-    if system == "Windows":
-        return False, (
-            "confinement requires Linux; on Windows, run synalinks inside WSL2 "
-            "(Windows Subsystem for Linux), where confinement works unchanged"
-        )
-    if system == "Darwin":
-        # Seatbelt rather than namespaces; see `_MACOS_CONFINE_SRC` for what
-        # that does and does not buy. Weaker than the Linux path (no PID
-        # isolation, no syscall filter), so callers who need the full guarantee
-        # should check `confinement_kind`, not just this boolean.
-        if not (ctypes.util.find_library("sandbox") or os.path.exists(_LIBSANDBOX)):
-            return False, (
-                "confinement requires the macOS Seatbelt library (libsandbox), "
-                "which could not be found"
-            )
-        return True, ""
-    if system != "Linux":
-        return False, f"confinement requires Linux or macOS (this host is {system})"
-    if not hasattr(os, "unshare"):
-        return False, "confinement requires os.unshare (Python 3.12+)"
-    if not os.path.exists("/dev/fuse"):
-        reason = "confinement requires FUSE (/dev/fuse is absent)"
-        if _is_wsl():
-            # WSL1 has no real kernel / FUSE; WSL2 does. Point the user there.
-            reason += "; on WSL use WSL2 (WSL1 cannot confine)"
-        return False, reason
-    if not _LIBFUSE_AVAILABLE:
-        # `/dev/fuse` above is the kernel device; the mount also needs the
-        # libfuse user-space library, which mfusepy loads at import. A host can
-        # easily have the first and not the second (slim containers, or the
-        # mirage-ai[fuse] extra left uninstalled). Report it here so confinement
-        # fails closed with a usable reason, instead of passing this probe and
-        # then silently running unconfined when the mount does not come up.
-        return False, (
-            "confinement requires the libfuse user-space library, which could "
-            "not be loaded; install libfuse (Debian/Ubuntu: libfuse3-3 or "
-            "libfuse2) and the mirage-ai[fuse] extra"
-        )
-    try:
-        with open("/proc/sys/kernel/unprivileged_userns_clone") as fh:
-            if fh.read().strip() == "0":
-                return False, "unprivileged user namespaces are disabled"
-    except OSError:
-        pass  # absent on distros where userns is enabled by default
-    # The checks above are cheap capability probes; they pass on environments
-    # that still *forbid* the credential-map handshake the real confinement
-    # performs (notably GitHub Actions and many containers deny writing
-    # ``/proc/self/setgroups``). Settle it by actually attempting the setup.
-    return _confinement_smoke_test()
-
-
-_confine_smoke_cache: Optional[Tuple[bool, str]] = None
-
-
-def _confinement_smoke_test() -> "Tuple[bool, str]":
-    """Attempt the unprivileged user-namespace credential handshake for real.
-
-    Forks a throwaway child that runs the exact first steps of ``_confine``
-    (``unshare`` the namespaces, then write ``setgroups``/``uid_map``/``gid_map``)
-    and reports whether they succeeded. The fork keeps the ``unshare`` off the
-    host process; the child only ever ``os._exit``s. Without this, environments
-    that allow ``unshare`` but deny the map writes (GitHub Actions, some
-    containers) pass the cheap probes, so the documented graceful fallback to
-    unconfined never fires and every confined ``run`` dies with
-    ``confine-error: PermissionError(13) ... /proc/self/setgroups``. Cached:
-    the answer is constant for the process lifetime.
-    """
-    global _confine_smoke_cache
-    if _confine_smoke_cache is not None:
-        return _confine_smoke_cache
-    try:
-        pid = os.fork()
-    except OSError as exc:
-        _confine_smoke_cache = (False, f"cannot fork to probe confinement: {exc}")
-        return _confine_smoke_cache
-    if pid == 0:  # child: bare-minimum work, never returns to the caller
-        try:
-            NEWUSER, NEWNS, NEWNET, NEWIPC, NEWUTS, NEWPID = (
-                0x10000000,
-                0x20000,
-                0x40000000,
-                0x8000000,
-                0x4000000,
-                0x20000000,
-            )
-            uid, gid = os.getuid(), os.getgid()
-            os.unshare(NEWUSER | NEWNS | NEWNET | NEWIPC | NEWUTS | NEWPID)
-            with open("/proc/self/setgroups", "w") as fh:
-                fh.write("deny")
-            with open("/proc/self/uid_map", "w") as fh:
-                fh.write("0 %d 1" % uid)
-            with open("/proc/self/gid_map", "w") as fh:
-                fh.write("0 %d 1" % gid)
-        except BaseException:
-            os._exit(99)
-        os._exit(0)
-    _, status = os.waitpid(pid, 0)
-    if os.WIFEXITED(status) and os.WEXITSTATUS(status) == 0:
-        _confine_smoke_cache = (True, "")
-    else:
-        _confine_smoke_cache = (
-            False,
-            "the kernel/environment forbids unprivileged user-namespace setup "
-            "(e.g. writing /proc/self/setgroups is denied, as on GitHub Actions "
-            "and inside many containers)",
-        )
-    return _confine_smoke_cache
-
-
-# ``AUDIT_ARCH_*`` tokens (EM_* | 64-bit | little-endian) the seccomp filter
-# pins on, so a process cannot dodge the filter by issuing a syscall under a
-# different ABI (e.g. x86_64's x32). Only arches with a maintained syscall-number
-# table below are listed; others get no filter (namespace isolation still holds).
-_AUDIT_ARCH = {"x86_64": 0xC000003E, "aarch64": 0xC00000B7}
-
-# Syscalls a confined process is denied (returned EPERM). Not an attempt at a
-# minimal allowlist: sandboxed code runs arbitrary Python + packages, so this
-# is a denylist of high-risk calls a normal workload never needs: kernel attack
-# surface (bpf, userfaultfd, perf_event_open, ptrace, process_vm_*), privilege /
-# namespace manipulation (mount, umount2, pivot_root, chroot, unshare, setns),
-# module loading + kexec, keyrings (keyctl/add_key/request_key), the
-# open_by_handle_at container-escape vector, and host-management calls
-# (reboot, swapon/off, acct, quotactl, iopl/ioperm). ``clone``/``clone3`` are
-# deliberately *not* denied: modern glibc routes threading/fork through them.
-_SECCOMP_DENY = {
-    "x86_64": [
-        101,
-        155,
-        161,
-        163,
-        165,
-        166,
-        167,
-        168,
-        169,
-        172,
-        173,
-        175,
-        176,
-        179,
-        246,
-        248,
-        249,
-        250,
-        272,
-        298,
-        303,
-        304,
-        308,
-        310,
-        311,
-        313,
-        320,
-        321,
-        323,
-    ],
-    "aarch64": [
-        39,
-        40,
-        41,
-        51,
-        60,
-        89,
-        97,
-        104,
-        105,
-        106,
-        117,
-        142,
-        217,
-        218,
-        219,
-        224,
-        225,
-        241,
-        264,
-        265,
-        268,
-        270,
-        271,
-        273,
-        280,
-        282,
-        294,
-    ],
-}
-
-
-def _build_seccomp_filter() -> Optional[str]:
-    """Assemble the classic-BPF seccomp denylist for this arch (base64), or None.
-
-    Emits a ``sock_filter[]`` program: pin the audit arch (mismatch → EPERM),
-    reject x32 syscalls on x86_64, then EPERM each denied syscall number and
-    ALLOW everything else. Built host-side and shipped in the confinement config
-    so the subprocess only has to ``prctl(PR_SET_SECCOMP, ...)`` it. Returns
-    ``None`` on an arch without a maintained number table (no filter applied).
-    """
-    import platform
-    import struct
-
-    machine = platform.machine()
-    arch = _AUDIT_ARCH.get(machine)
-    denied = _SECCOMP_DENY.get(machine)
-    if arch is None or not denied:
-        return None
-
-    BPF_LD, BPF_W, BPF_ABS = 0x00, 0x00, 0x20
-    BPF_JMP, BPF_JEQ, BPF_JGE, BPF_K = 0x05, 0x10, 0x30, 0x00
-    BPF_RET = 0x06
-    ALLOW = 0x7FFF0000  # SECCOMP_RET_ALLOW
-    DENY = 0x00050000 | 1  # SECCOMP_RET_ERRNO | EPERM
-
-    # Lay out the program symbolically first so jump distances to the trailing
-    # DENY instruction can be resolved once the total length is known.
-    plan = ["LD_ARCH", "CK_ARCH", "LD_NR"]
-    if machine == "x86_64":
-        plan.append("CK_X32")
-    plan.extend(("DENY_IF", nr) for nr in denied)
-    plan.append("ALLOW")
-    plan.append("DENY")
-    deny_idx = len(plan) - 1
-
-    out = []
-    for i, item in enumerate(plan):
-        tag = item[0] if isinstance(item, tuple) else item
-        off = deny_idx - i - 1  # instrs to skip to reach the trailing DENY
-        if tag == "LD_ARCH":
-            out.append((BPF_LD | BPF_W | BPF_ABS, 0, 0, 4))  # A = data.arch
-        elif tag == "CK_ARCH":
-            out.append((BPF_JMP | BPF_JEQ | BPF_K, 0, off, arch))  # !=arch → DENY
-        elif tag == "LD_NR":
-            out.append((BPF_LD | BPF_W | BPF_ABS, 0, 0, 0))  # A = data.nr
-        elif tag == "CK_X32":
-            out.append((BPF_JMP | BPF_JGE | BPF_K, off, 0, 0x40000000))  # x32 → DENY
-        elif tag == "DENY_IF":
-            out.append((BPF_JMP | BPF_JEQ | BPF_K, off, 0, item[1]))  # nr → DENY
-        elif tag == "ALLOW":
-            out.append((BPF_RET | BPF_K, 0, 0, ALLOW))
-        else:  # DENY
-            out.append((BPF_RET | BPF_K, 0, 0, DENY))
-
-    blob = b"".join(struct.pack("=HBBI", *insn) for insn in out)
-    return base64.b64encode(blob).decode("ascii")
-
-
-_EGRESS_MAX_BYTES = 5 * 1024 * 1024
-
-
-def _host_allowed(host: str, patterns: List[str]) -> bool:
-    """Whether ``host`` matches the egress allowlist.
-
-    Case-insensitive, trailing dot ignored. A bare entry matches that host
-    exactly; a ``*.example.com`` entry matches any subdomain **and** the apex
-    ``example.com``. No entry matches everything; an empty allowlist denies all.
-    """
-    host = (host or "").lower().rstrip(".")
-    for pat in patterns:
-        pat = pat.lower().rstrip(".")
-        if pat.startswith("*."):
-            suffix = pat[2:]
-            if host == suffix or host.endswith("." + suffix):
-                return True
-        elif host == pat:
-            return True
-    return False
-
-
-def _reject_private(host: str, port: Optional[int], scheme: str) -> str:
-    """Validate ``host`` resolves to a public address; return that pinned IP.
-
-    A second gate beyond the hostname allowlist: refuses loopback, private
-    (RFC 1918), link-local (incl. the ``169.254.169.254`` cloud-metadata IP),
-    reserved, multicast and unspecified addresses (``PermissionError`` if any
-    resolved address is non-public). Returns the first validated IP so the
-    caller can **pin** the connection to it, closing the DNS-rebinding window
-    where the host could re-resolve to an internal address between this check
-    and the connect.
-    """
-    import ipaddress
-    import socket
-
-    port = port or (443 if scheme == "https" else 80)
-    try:
-        infos = socket.getaddrinfo(host, port, proto=socket.IPPROTO_TCP)
-    except socket.gaierror as exc:
-        raise PermissionError(f"cannot resolve host {host!r}: {exc}")
-    chosen = None
-    for info in infos:
-        ip = ipaddress.ip_address(info[4][0])
-        if (
-            ip.is_private
-            or ip.is_loopback
-            or ip.is_link_local
-            or ip.is_reserved
-            or ip.is_multicast
-            or ip.is_unspecified
-        ):
-            raise PermissionError(
-                f"host {host!r} resolves to non-public address {ip} "
-                "(set block_private_egress=False to allow internal targets)"
-            )
-        if chosen is None:
-            chosen = info[4][0]
-    if chosen is None:
-        raise PermissionError(f"host {host!r} did not resolve to any address")
-    return chosen
-
-
-def _do_fetch(url, method, headers, data, patterns, timeout, max_bytes, block_private):
-    """Blocking HTTP(S) fetch, refused unless every hop stays on the allowlist.
-
-    Runs host-side (the sandbox has no raw network under confinement), so the
-    allowlist is enforced where the model cannot reach around it. Redirects are
-    re-checked, so an allowlisted host cannot bounce the request off-list, and
-    (unless ``block_private`` is False) every hop's resolved address must be
-    public **and the connection is pinned to that validated IP**, so a host
-    cannot re-resolve to an internal address after the check (no DNS-rebinding
-    TOCTOU). TLS still validates the cert against the original hostname (SNI).
-    """
-    import http.client
-    import socket
-    import urllib.error
-    import urllib.parse
-    import urllib.request
-
-    # host -> validated public IP, populated by ``_check`` per hop; the pinned
-    # connection classes below dial this IP instead of re-resolving the name.
-    pinned: Dict[str, str] = {}
-
-    def _check(u):
-        parts = urllib.parse.urlsplit(u)
-        if parts.scheme not in ("http", "https"):
-            raise PermissionError(f"scheme not allowed: {parts.scheme!r}")
-        host = parts.hostname or ""
-        if not _host_allowed(host, patterns):
-            raise PermissionError(f"host not in allowlist: {host!r}")
-        if block_private:
-            pinned[host] = _reject_private(host, parts.port, parts.scheme)
-
-    _check(url)
-
-    class _PinnedHTTPConnection(http.client.HTTPConnection):
-        def connect(self):
-            target = pinned.get(self.host, self.host)
-            self.sock = socket.create_connection(
-                (target, self.port), self.timeout, self.source_address
-            )
-
-    class _PinnedHTTPSConnection(http.client.HTTPSConnection):
-        def connect(self):
-            target = pinned.get(self.host, self.host)
-            sock = socket.create_connection(
-                (target, self.port), self.timeout, self.source_address
-            )
-            # server_hostname is the *name*, not the pinned IP, so SNI and cert
-            # hostname verification still check the certificate against the host.
-            self.sock = self._context.wrap_socket(sock, server_hostname=self.host)
-
-    class _PinnedHTTPHandler(urllib.request.HTTPHandler):
-        def http_open(self, req):
-            return self.do_open(_PinnedHTTPConnection, req)
-
-    class _PinnedHTTPSHandler(urllib.request.HTTPSHandler):
-        def https_open(self, req):
-            return self.do_open(_PinnedHTTPSConnection, req)
-
-    class _Guard(urllib.request.HTTPRedirectHandler):
-        def redirect_request(self, req, fp, code, msg, hdrs, newurl):
-            _check(newurl)  # re-checks allowlist + re-pins the redirect target
-            return super().redirect_request(req, fp, code, msg, hdrs, newurl)
-
-    body = data.encode("utf-8") if isinstance(data, str) else data
-    req = urllib.request.Request(
-        url, data=body, method=(method or "GET").upper(), headers=headers or {}
-    )
-    opener = urllib.request.build_opener(_Guard, _PinnedHTTPHandler, _PinnedHTTPSHandler)
-    with opener.open(req, timeout=timeout) as resp:
-        raw = resp.read(max_bytes + 1)
-        truncated = len(raw) > max_bytes
-        text = raw[:max_bytes].decode("utf-8", errors="replace")
-        return {
-            "status": resp.status,
-            "headers": dict(resp.headers.items()),
-            "body": text,
-            "truncated": truncated,
-            "url": resp.geturl(),
-        }
-
-
-def _make_egress_tool(patterns: List[str], timeout: float, block_private: bool):
-    """Build the bound ``http_fetch`` callable enforcing ``patterns`` host-side.
-
-    Exposed inside the sandbox like any other bound function (over the host RPC
-    bridge, which works even when confinement has cut the network), giving
-    confined code an allowlisted egress path and *only* that path. When
-    ``block_private`` is True, hosts resolving to non-public addresses are also
-    refused (SSRF guard).
-    """
-    import asyncio
-
-    allow = list(patterns)
-
-    async def http_fetch(url, method="GET", headers=None, data=None):
-        """Fetch an allowlisted HTTP(S) URL via the host and return the response.
-
-        Args:
-            url (str): Absolute ``http(s)://`` URL; its host (and any redirect
-                target) must be on the sandbox's egress allowlist.
-            method (str): HTTP method (default ``"GET"``).
-            headers (dict): Optional request headers.
-            data (str): Optional request body.
-
-        Returns:
-            dict: ``status``, ``headers``, ``body`` (text, capped), ``truncated``
-            and the final ``url``. Raises ``PermissionError`` if the host is not
-            allowlisted (or resolves to a non-public address).
-        """
-        return await asyncio.to_thread(
-            _do_fetch,
-            url,
-            method,
-            headers,
-            data,
-            allow,
-            timeout,
-            _EGRESS_MAX_BYTES,
-            block_private,
-        )
-
-    return http_fetch
-
-
-# Confinement config for the *currently executing* ``run_bash`` of a confined
-# sandbox, read by the ``_run_python`` patch below. ``None`` (the default) means
-# "not in a confined run_bash", so the patch is a no-op; every other code path,
-# including ``run`` (which confines via its own bootstrap) and unconfined
-# sandboxes, is unaffected.
-_active_confine: contextvars.ContextVar[Optional[Dict[str, Any]]] = (
-    contextvars.ContextVar("mirage_active_confine", default=None)
-)
-_run_python_patched = False
-
-# Mirage's internal python runner, by layout, newest first. It moved from
-# ``workspace.executor.builtins._run_python`` (older Mirage) to
-# ``commands.builtin.general.python._run_python_subprocess`` (mirage-ai 0.0.2)
-# and, in 0.0.4, into the pluggable runtime table as
-# ``runtime.python.local.LocalRuntime.run`` (``async def run(self, RunArgs)``).
-# Each entry is ``(module, qualname)`` resolved attribute-by-attribute, so a
-# class method and a module-level function are both addressable. We patch
-# whichever the installed Mirage exposes; add new locations to the *front* as
-# Mirage evolves so the current layout is preferred.
-_RUN_PYTHON_TARGETS = (
-    ("mirage.runtime.python.local", "LocalRuntime.run"),
-    ("mirage.commands.builtin.general.python", "_run_python_subprocess"),
-    ("mirage.workspace.executor.builtins", "_run_python"),
-)
-
-
-def _install_run_python_patch() -> bool:
-    """Patch Mirage's python runner so ``run_bash``'s ``python3`` self-confines.
-
-    Mirage spawns ``python3`` directly (not through our ``run`` bootstrap), so a
-    shell ``python3`` would otherwise run unconfined. This wraps that one
-    function to prepend the confinement prologue to the executed code whenever
-    `_active_confine` is set (i.e. inside a confined ``run_bash``). The runner's
-    module/name has changed across Mirage versions, so we probe the known
-    locations (`_RUN_PYTHON_TARGETS`). Idempotent; returns False (with a
-    warning naming what was tried) if none is found.
-    """
-    global _run_python_patched
-    if _run_python_patched:
+    bindings = getattr(getattr(ws, "_registry", None), "runtime_bindings", None) or {}
+    runtime = bindings.get("python3")
+    if runtime is None or runtime_name(runtime) != "local":
         return True
-
-    import importlib
-
-    owner = original = None
-    attr = ""
-    for mod_name, qualname in _RUN_PYTHON_TARGETS:
-        try:
-            candidate_owner = importlib.import_module(mod_name)
-        except Exception:  # noqa: BLE001 - mirage layout changed / unavailable
-            continue
-        # Walk the qualname so ``LocalRuntime.run`` (a method) resolves the same
-        # way a bare module-level function does; the last hop is what we patch.
-        *parents, attr_name = qualname.split(".")
-        for parent in parents:
-            candidate_owner = getattr(candidate_owner, parent, None)
-            if candidate_owner is None:
-                break
-        if candidate_owner is None:
-            continue
-        candidate = getattr(candidate_owner, attr_name, None)
-        if candidate is not None and inspect.iscoroutinefunction(candidate):
-            owner, attr, original = candidate_owner, attr_name, candidate
-            break
-
-    if original is None:
-        import warnings
-
-        tried = ", ".join(f"{m}.{a}" for m, a in _RUN_PYTHON_TARGETS)
+    run = getattr(runtime, "run", None)
+    if getattr(run, "confines_shell_python", False):
+        return True
+    if not inspect.iscoroutinefunction(run):
         warnings.warn(
-            "MirageSandbox: cannot confine run_bash's python3 (no known mirage "
-            f"python-runner internal found; tried {tried}); shell python stays "
-            "unconfined.",
+            "MirageSandbox: cannot confine run_bash's python3 (Mirage's local "
+            "runtime has no async `run`); shell python stays unconfined.",
             RuntimeWarning,
-            stacklevel=2,
+            stacklevel=3,
         )
         return False
 
-    def _confined(code: str) -> str:
-        # ``repr`` (not ``json.dumps``) so the embedded config is valid Python
-        # source (True/False/None, not JSON true/false/null).
-        cfg = _active_confine.get()
-        if cfg is None:
-            return code
-        # Both prologues are emitted and the platform picked at run time, so a
-        # `python3` the shell spawns self-confines exactly as `run`'s bootstrap
-        # does, on whichever host it lands.
-        return (
-            "import os, sys\n"
-            + _CONFINE_SRC
-            + _MACOS_CONFINE_SRC
-            + "\n_fn = _confine_macos if sys.platform == 'darwin' else _confine\n"
-            + "_fn("
-            + repr(cfg)
-            + ")\n"
-            + code
-        )
+    async def run_confined(args):
+        cfg = active_confine.get()
+        if cfg is not None:
+            # ``repr`` (not ``json.dumps``) so the embedded config is valid
+            # Python source (True/False/None, not JSON true/false/null).
+            prologue = (
+                "import os, sys\n"
+                + CONFINE_PROLOGUE_SRC
+                + "\n_confine_platform(%r)\n" % (cfg,)
+            )
+            args = dataclasses.replace(args, code=prologue + args.code)
+        if vm is not None:
+            return await run_in_microvm(vm, args)
+        return await run(args)
 
-    if inspect.isclass(owner):
-        # 0.0.4+ runtime-table layout: ``async def run(self, RunArgs)``. RunArgs
-        # is a frozen dataclass, so the prologue goes on via ``replace``.
-        async def _patched_run_python(self, args):
-            patched = dataclasses.replace(args, code=_confined(args.code))
-            return await original(self, patched)
-
-    else:
-        # Pre-0.0.4 layout: ``async def f(code, stdin_data, args, env)``.
-        async def _patched_run_python(code, stdin_data=None, args=None, env=None):
-            return await original(_confined(code), stdin_data, args=args, env=env)
-
-    _patched_run_python._mirage_sandbox_original = original  # for introspection
-    setattr(owner, attr, _patched_run_python)
-    _run_python_patched = True
+    run_confined.confines_shell_python = True
+    runtime.run = run_confined  # instance attribute shadows the class method
     return True
 
 
@@ -1784,10 +314,10 @@ def _install_run_python_patch() -> bool:
 # packages and talks to the host over a unix socket for tool RPC. Mirage's own
 # default world binds ``python3`` to ``monty`` (a Rust Python subset) and would
 # serve none of that, so ``local`` (host CPython subprocess) is selected here
-# and *this* module supplies the isolation: `_install_run_python_patch` prepends
+# and *this* module supplies the isolation: `confine_shell_python` prepends
 # the namespace/seccomp prologue to every ``python3`` the shell spawns, exactly
-# as ``run``'s own bootstrap self-confines.
-_DEFAULT_RUNTIMES = ("local",)
+# as ``run_code``'s own bootstrap self-confines.
+DEFAULT_RUNTIMES = ("local",)
 
 # Runtimes that keep execution inside a sandbox of Mirage's own: ``monty`` (a
 # Rust interpreter with "no host filesystem, environment, or network access"),
@@ -1797,39 +327,37 @@ _DEFAULT_RUNTIMES = ("local",)
 # only safe under confinement once the run-python patch is installed, which the
 # call site checks. Deliberately an allowlist: an unrecognized runtime counts as
 # host-escaping rather than being trusted by default.
-_SANDBOXED_RUNTIMES = frozenset({"monty", "wasi", "quickjs", "vfs"})
-_SANDBOXED_RUNTIMES_HINT = ", ".join(sorted(_SANDBOXED_RUNTIMES))
+SANDBOXED_RUNTIMES = frozenset({"monty", "wasi", "quickjs", "vfs"})
+SANDBOXED_RUNTIMES_HINT = ", ".join(sorted(SANDBOXED_RUNTIMES))
 
 
-def _runtime_name(entry) -> str:
+def runtime_name(entry) -> str:
     """Name of a Mirage runtime entry, given either a name or an instance."""
     if isinstance(entry, str):
         return entry
     return str(getattr(entry, "name", "") or entry.__class__.__name__)
 
 
-def _host_escaping_runtimes(runtimes, patched: bool = False) -> List[str]:
+def host_escaping_runtimes(runtimes, patched: bool = False) -> List[str]:
     """Names of ``runtimes`` entries that can execute code on the host.
 
     Keeps an explicit ``workspace_kwargs={"runtimes": ...}`` from quietly
     defeating confinement; see the call site for the policy. ``local`` is
-    excused only when ``patched`` says `_install_run_python_patch` succeeded, so
+    excused only when ``patched`` says `confine_shell_python` can apply, so
     every ``python3`` it spawns carries the confinement prologue. ``None``
     (meaning this sandbox's own default world) is resolved first, so the default
     is judged by the same rule as anything a caller passes.
     """
-    allowed = set(_SANDBOXED_RUNTIMES)
+    allowed = set(SANDBOXED_RUNTIMES)
     if patched:
         allowed.add("local")
-    entries = runtimes if runtimes else _DEFAULT_RUNTIMES
+    entries = runtimes if runtimes else DEFAULT_RUNTIMES
     return [
-        name
-        for name in (_runtime_name(entry) for entry in entries)
-        if name not in allowed
+        name for name in (runtime_name(entry) for entry in entries) if name not in allowed
     ]
 
 
-def _adopt_runtimes(ws, runtimes=_DEFAULT_RUNTIMES) -> None:
+def adopt_runtimes(ws, runtimes=DEFAULT_RUNTIMES) -> None:
     """Re-apply this sandbox's runtime world to a copied/loaded workspace.
 
     ``Workspace.copy()`` and ``Workspace.load()`` both rebuild through Mirage's
@@ -1852,10 +380,8 @@ def _adopt_runtimes(ws, runtimes=_DEFAULT_RUNTIMES) -> None:
     bindings = getattr(getattr(ws, "_registry", None), "runtime_bindings", None)
     if bindings is None:
         return
-    bound = _runtime_name(bindings.get("python3")) if bindings.get("python3") else ""
+    bound = runtime_name(bindings.get("python3")) if bindings.get("python3") else ""
     if bound not in runtimes:
-        import warnings
-
         warnings.warn(
             f"MirageSandbox: 'python3' is served by {bound or 'no runtime'} in "
             f"this workspace, not {'/'.join(runtimes)}; the sandbox bootstrap "
@@ -1866,7 +392,7 @@ def _adopt_runtimes(ws, runtimes=_DEFAULT_RUNTIMES) -> None:
         )
 
 
-def _ensure_fuse_mounted(ws) -> bool:
+def ensure_fuse_mounted(ws) -> bool:
     """Mount ``ws``'s virtual filesystem via FUSE if not already; return success.
 
     Both construction and `fork` need this: mirage-ai 0.0.4 dropped the
@@ -1880,14 +406,22 @@ def _ensure_fuse_mounted(ws) -> bool:
     add_mount = getattr(ws, "add_fuse_mount", None)
     if add_mount is None:
         return False
+    # The sandbox picks the path and records it on the workspace, so every
+    # teardown can make sure it is gone (`release_mountpoint`), whatever
+    # Mirage's own bookkeeping ends up knowing about it.
+    mountpoint = tempfile.mkdtemp(prefix="mirage-")
+    ws.synalinks_mountpoint = mountpoint
     try:
-        add_mount(_DEFAULT_MOUNT)
+        add_mount(DEFAULT_MOUNT, mountpoint=mountpoint)
     except Exception:  # noqa: BLE001 - FUSE unavailable / layout changed
+        # Removing the directory now also stops a mount still in flight from
+        # landing later with no owner.
+        release_mountpoint(mountpoint)
         return False
     return bool(getattr(ws, "fuse_mountpoint", None))
 
 
-def _error_from(stderr: str, exit_code: int) -> Optional[str]:
+def error_from(stderr: str, exit_code: int) -> Optional[str]:
     """Derive a one-line ``error`` string from a failed run's stderr.
 
     Returns ``None`` on success (exit 0). Otherwise prefers the final
@@ -1907,26 +441,338 @@ def _error_from(stderr: str, exit_code: int) -> Optional[str]:
 # ``confine-error: ...`` and exits 99) and a dead FUSE backing whose userspace
 # daemon went away (``OSError(107, 'Transport endpoint is not connected')``,
 # ENOTCONN). Once the mount is dead, *every* subsequent run repeats the error,
-# so an agent calling ``run`` would loop on it until its wall-clock budget runs
-# out. `run` detects these, rebuilds the workspace, and retries once.
-_INFRA_FAILURE_MARKERS = (
+# so an agent calling ``run_code`` would loop on it until its wall-clock budget runs
+# out. `run_code` detects these, rebuilds the workspace, and retries once.
+INFRA_FAILURE_MARKERS = (
     "confine-error",
     "Transport endpoint is not connected",
 )
 
-# How many times `run` will rebuild the workspace and retry on an infrastructure
+# How many times `run_code` will rebuild the workspace and retry on an infrastructure
 # failure before giving up and returning the error. One heal clears the observed
 # transient (a stale/dead FUSE mount left by an earlier run); a failure that
 # survives a fresh mount is a real environment problem, not worth looping on.
-_MAX_INFRA_HEALS = 1
+MAX_INFRA_HEALS = 1
 
 
-def _is_infra_failure(stderr: str, exit_code: int) -> bool:
-    """True when a run failed because the sandbox plumbing (confinement / FUSE
-    mount) is broken, rather than because the snippet itself errored."""
-    if exit_code == 0:
-        return False
-    return any(marker in (stderr or "") for marker in _INFRA_FAILURE_MARKERS)
+def entry_info(path: str, st) -> EntryInfo:
+    """Build an E2B-style `EntryInfo` from a Mirage ``FileStat``.
+
+    Mirage's virtual filesystem has no owners or permission bits for most
+    backends; those fields then carry E2B's defaults (user ``user``, mode
+    ``0o755`` for directories and ``0o644`` for files).
+    """
+    kind = str(getattr(st.type, "value", st.type))
+    file_type = {"directory": FileType.DIR, "symlink": FileType.SYMLINK}.get(
+        kind, FileType.FILE
+    )
+    mode = st.mode if st.mode is not None else (0o755 if kind == "directory" else 0o644)
+    try:
+        modified = datetime.fromisoformat(str(st.modified).replace("Z", "+00:00"))
+    except ValueError:
+        modified = datetime.fromtimestamp(0, tz=timezone.utc)
+    return EntryInfo(
+        name=posixpath.basename(path.rstrip("/")) or "/",
+        type=file_type,
+        path=path,
+        size=0 if file_type is FileType.DIR else int(st.size or 0),
+        mode=mode,
+        permissions="".join(
+            flag if mode & bit else "-"
+            for flag, bit in zip(
+                "rwxrwxrwx", (0o400, 0o200, 0o100, 0o40, 0o20, 0o10, 4, 2, 1)
+            )
+        ),
+        owner=str(st.uid) if st.uid is not None else "user",
+        group=str(st.gid) if st.gid is not None else "user",
+        modified_time=modified,
+    )
+
+
+class MirageFilesystem(Filesystem):
+    """``sandbox.files`` over the Mirage virtual filesystem (E2B signatures)."""
+
+    async def stat(self, path: str):
+        try:
+            return await maybe_await(self.sandbox.workspace.stat(path))
+        except FileNotFoundError as exc:
+            raise FileNotFoundException(str(exc) or path) from exc
+
+    async def shell(self, command: str) -> None:
+        _, stderr, exit_code = await self.sandbox.execute(command)
+        if exit_code != 0:
+            raise OSError(stderr.strip() or f"command failed: {command}")
+
+    @request_deadline
+    async def read(
+        self,
+        path: str,
+        format: Literal["text", "bytes", "stream"] = "text",
+        user: Optional[str] = None,
+        request_timeout: Optional[float] = None,
+        gzip: bool = False,
+        stream_idle_timeout: Optional[float] = None,
+    ):
+        if format == "text":
+            data = await self.sandbox.read_text(path)
+            if data is None:
+                raise FileNotFoundException(path)
+            return data
+        result = await self.sandbox.workspace.execute(
+            "cat -- %s" % shlex.quote(path),
+            session_id=self.sandbox.session_id,
+            record=False,
+        )
+        if result.exit_code != 0:
+            raise FileNotFoundException(path)
+        data = bytearray(await maybe_await(result.stdout))
+        if format == "bytes":
+            return data
+
+        async def chunks():
+            for start in range(0, len(data), 65536):
+                yield bytes(data[start : start + 65536])
+
+        return chunks()
+
+    @request_deadline
+    async def write(
+        self,
+        path: str,
+        data: Union[str, bytes, IO],
+        user: Optional[str] = None,
+        request_timeout: Optional[float] = None,
+        gzip: bool = False,
+        use_octet_stream: Optional[bool] = None,
+        metadata: Optional[Dict[str, str]] = None,
+    ) -> WriteInfo:
+        if hasattr(data, "read"):
+            data = data.read()
+        error = await self.sandbox.write(path, data)
+        if error:
+            raise OSError(error)
+        return WriteInfo(
+            name=posixpath.basename(path),
+            type=FileType.FILE,
+            path=path,
+            metadata=metadata,
+        )
+
+    @request_deadline
+    async def list(
+        self,
+        path: str,
+        depth: Optional[int] = 1,
+        user: Optional[str] = None,
+        request_timeout: Optional[float] = None,
+    ) -> List[EntryInfo]:
+        entries: List[EntryInfo] = []
+        stack = [(path, 1)]
+        while stack:
+            directory, level = stack.pop()
+            for child in await maybe_await(self.sandbox.workspace.readdir(directory)):
+                entry = entry_info(child, await self.stat(child))
+                entries.append(entry)
+                if entry.type is FileType.DIR and (depth is None or level < depth):
+                    stack.append((child, level + 1))
+        return sorted(entries, key=lambda e: e.path)
+
+    @request_deadline
+    async def exists(
+        self,
+        path: str,
+        user: Optional[str] = None,
+        request_timeout: Optional[float] = None,
+    ) -> bool:
+        try:
+            await self.stat(path)
+        except FileNotFoundError:
+            return False
+        return True
+
+    @request_deadline
+    async def get_info(
+        self,
+        path: str,
+        user: Optional[str] = None,
+        request_timeout: Optional[float] = None,
+    ) -> EntryInfo:
+        return entry_info(path, await self.stat(path))
+
+    @request_deadline
+    async def remove(
+        self,
+        path: str,
+        user: Optional[str] = None,
+        request_timeout: Optional[float] = None,
+    ) -> None:
+        await self.shell("rm -rf -- %s" % shlex.quote(path))
+
+    @request_deadline
+    async def rename(
+        self,
+        old_path: str,
+        new_path: str,
+        user: Optional[str] = None,
+        request_timeout: Optional[float] = None,
+    ) -> EntryInfo:
+        parent = posixpath.dirname(new_path.rstrip("/")) or "/"
+        await self.shell(
+            "mkdir -p %s && mv -- %s %s"
+            % (shlex.quote(parent), shlex.quote(old_path), shlex.quote(new_path))
+        )
+        return await self.get_info(new_path)
+
+    @request_deadline
+    async def make_dir(
+        self,
+        path: str,
+        user: Optional[str] = None,
+        request_timeout: Optional[float] = None,
+    ) -> bool:
+        if await self.exists(path):
+            return False
+        await self.shell("mkdir -p -- %s" % shlex.quote(path))
+        return True
+
+    @request_deadline
+    async def watch_dir(
+        self,
+        path: str,
+        on_event: Callable[[FilesystemEvent], Any],
+        on_exit: Optional[Callable[[Optional[Exception]], Any]] = None,
+        user: Optional[str] = None,
+        request_timeout: Optional[float] = None,
+        timeout: Optional[float] = 60,
+        recursive: bool = False,
+        include_entry: bool = False,
+        allow_network_mounts: bool = False,
+    ) -> WatchHandle:
+        """Poll ``path`` and report creations, writes and removals.
+
+        The virtual filesystem has no change notifications, so the tree is
+        compared with its previous state every 0.1 s: an entry that appears
+        is a ``CREATE``, one whose size or modification time changes a
+        ``WRITE``, one that disappears a ``REMOVE``.
+        """
+        await self.get_info(path)  # a missing directory fails now, as on E2B
+        root = path.rstrip("/") or "/"
+
+        async def snapshot() -> Dict[str, EntryInfo]:
+            entries = await self.list(root, depth=None if recursive else 1)
+            return {entry.path: entry for entry in entries}
+
+        # Taken before returning, as E2B's watch is live once this returns: a
+        # change made right after the call is seen.
+        initial = await snapshot()
+
+        async def watch():
+            error = None
+            deadline = time.monotonic() + timeout if timeout else None
+            before = initial
+            try:
+                while deadline is None or time.monotonic() < deadline:
+                    await asyncio.sleep(0.1)
+                    after = await snapshot()
+                    changes = (
+                        [
+                            (p, FilesystemEventType.CREATE)
+                            for p in after
+                            if p not in before
+                        ]
+                        + [
+                            (p, FilesystemEventType.WRITE)
+                            for p in after
+                            if p in before
+                            and (after[p].size, after[p].modified_time)
+                            != (before[p].size, before[p].modified_time)
+                        ]
+                        + [
+                            (p, FilesystemEventType.REMOVE)
+                            for p in before
+                            if p not in after
+                        ]
+                    )
+                    for changed, kind in changes:
+                        await call_back(
+                            on_event,
+                            FilesystemEvent(
+                                name=posixpath.relpath(changed, root),
+                                type=kind,
+                                entry=after.get(changed) if include_entry else None,
+                            ),
+                        )
+                    before = after
+            except asyncio.CancelledError:
+                raise
+            except Exception as exc:  # noqa: BLE001 - reported through on_exit
+                error = exc
+            await call_back(on_exit, error)
+
+        return WatchHandle(asyncio.ensure_future(watch()))
+
+
+class MirageCommands(Commands):
+    """``sandbox.commands`` over the Mirage shell, confined like `run_bash`
+    (E2B signatures). ``envs`` and ``cwd`` apply to the one command: it runs
+    in a subshell, so they do not leak into the session."""
+
+    async def run(
+        self,
+        cmd: str,
+        background: Optional[bool] = None,
+        envs: Optional[Dict[str, str]] = None,
+        user: Optional[str] = None,
+        cwd: Optional[str] = None,
+        on_stdout: Optional[Callable[[str], Any]] = None,
+        on_stderr: Optional[Callable[[str], Any]] = None,
+        stdin: Optional[bool] = None,
+        timeout: Optional[float] = 60,
+        request_timeout: Optional[float] = None,
+    ):
+        environment = {**self.sandbox.envs, **(envs or {})}
+        for key in environment:
+            if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", key):
+                raise InvalidArgumentException(f"invalid environment variable {key!r}")
+        prefix = "".join(f"export {k}={shlex.quote(v)}; " for k, v in environment.items())
+        if cwd:
+            prefix += f"cd {shlex.quote(cwd)} && "
+        line = f"( {prefix}{cmd}\n)" if prefix else cmd
+
+        async def execute(stdin_data: bytes):
+            return await self.sandbox.run_shell(line, timeout, stdin=stdin_data or None)
+
+        if background:
+            pid = self.sandbox.new_pid()
+            handle = CommandHandle(
+                pid,
+                execute,
+                stdin=bool(stdin),
+                on_stdout=on_stdout,
+                on_stderr=on_stderr,
+                on_exit=lambda done: self.sandbox.processes.pop(done.pid, None),
+                cmd=cmd,
+                envs=environment,
+                cwd=cwd,
+            )
+            self.sandbox.processes[pid] = handle
+            return handle
+        stdout, stderr, exit_code = await execute(b"")
+        for line_out in output_lines(stdout):
+            await call_back(on_stdout, line_out)
+        for line_err in output_lines(stderr):
+            await call_back(on_stderr, line_err)
+        # As in E2B: a timeout and a non-zero exit raise instead of returning.
+        if exit_code == 124 and stderr.startswith("TimeoutError: execution exceeded"):
+            raise TimeoutException(stderr)
+        if exit_code != 0:
+            raise CommandExitException(
+                stderr=stderr,
+                stdout=stdout,
+                exit_code=exit_code,
+                error=error_from(stderr, exit_code),
+            )
+        return CommandResult(stderr=stderr, stdout=stdout, exit_code=0, error=None)
 
 
 @register_synalinks_serializable()
@@ -1945,7 +791,7 @@ class MirageSandbox(Sandbox):
 
     Wraps a Mirage ``Workspace``: a virtual filesystem that mounts resources
     (RAM, disk, S3, Postgres, SSH, ...) under virtual paths and runs shell
-    commands against them. ``run`` executes Python through Mirage's ``python3``
+    commands against them. ``run_code`` executes Python through Mirage's ``python3``
     builtin, and the file tools (`read_file`, `write_file`, ...) operate
     on the mounted virtual filesystem.
 
@@ -1955,8 +801,8 @@ class MirageSandbox(Sandbox):
     import synalinks
 
     sandbox = synalinks.MirageSandbox(timeout=10)
-    await sandbox.run("x = 6 * 7")
-    result = await sandbox.run("print(x)")
+    await sandbox.run_code("x = 6 * 7")
+    result = await sandbox.run_code("print(x)")
     print(result.stdout)                    # -> "42\\n"
 
     # Snapshot + restore (workspace + interpreter state)
@@ -1967,16 +813,16 @@ class MirageSandbox(Sandbox):
     ## Python state persistence
 
     Mirage spawns a **fresh** ``python3`` process per command, so Python
-    variables would not normally survive between ``run`` calls. The sandbox
+    variables would not normally survive between ``run_code`` calls. The sandbox
     bridges this by serializing the interpreter namespace (variables, imports,
     user-defined functions and classes) with ``dill`` after each snippet and
-    restoring it before the next. State therefore persists across ``run`` calls
+    restoring it before the next. State therefore persists across ``run_code`` calls
     just like a REPL (without replaying earlier snippets), and a snippet that
     raises does not wipe the accumulated namespace.
 
     ## Confinement (the default; `confine=True`, Linux and macOS)
 
-    By default each ``run`` (and any ``python3`` spawned by `run_bash`) is
+    By default each ``run_code`` (and any ``python3`` spawned by `run_bash`) is
     **confined**: it enters a fresh user / mount / PID / network namespace and
     ``pivot_root``s into the FUSE-mounted virtual filesystem, so the snippet
     sees **only** the virtual sandbox at ``/`` (and, via the PID namespace, only
@@ -1989,73 +835,82 @@ class MirageSandbox(Sandbox):
     and entirely in-process (no container runtime): the Python subprocess
     sandboxes itself at startup via ``unshare`` + read-only runtime binds +
     ``pivot_root``, with optional ``RLIMIT_*`` caps. Requires Linux,
-    ``/dev/fuse``, libfuse and unprivileged user namespaces; where confinement
-    is unavailable it falls back to unconfined execution with a
-    ``RuntimeWarning`` (or set ``require_confinement=True`` to make that a hard
-    error).
+    ``/dev/fuse``, libfuse and unprivileged user namespaces.
 
-    ## Confinement on macOS (Seatbelt, and how it differs)
+    **Secure by default, and fail-closed**: the sandbox always uses the
+    strongest backend the host can run (there is no knob to pick a weaker
+    one; `granted_capabilities` reports which, as ``backend``), and where none
+    can run it **raises** rather than run code unconfined. Weakening is always
+    explicit: ``confine=False`` opts out, and ``require_confinement=False``
+    restores a warn-and-run-unconfined fallback.
 
-    macOS confines through **Seatbelt**, the TrustedBSD MAC policy behind the
+    ## Confinement on macOS (a Linux microVM, Seatbelt as the floor)
+
+    On Apple silicon with libkrun installed, each ``python3`` runs in a fresh
+    **Linux microVM** (libkrun on Hypervisor.framework, ~0.3 s per run), and
+    the Linux confinement above runs *inside* it, unchanged: namespaces, PID
+    isolation, seccomp, read-only runtime, cut network, behind a guest kernel
+    of its own. The guest serves the virtual filesystem itself (a FUSE mount
+    bridged over vsock to this workspace, so macFUSE is not needed), sees no
+    host files but this sandbox's own state dir, and inherits no host
+    environment variables. The helper process that runs the VM confines
+    *itself* with a Seatbelt profile first, so escaping the VM through the
+    hypervisor layer still lands in a sandbox. ``backend`` is ``"microvm"``.
+    ``extra_binds`` are shared into the VM read-only, except under directories
+    the Linux image owns (``/usr``, ``/opt``, ...); host packages that are
+    compiled macOS binaries cannot run in the Linux guest.
+
+    Where no microVM can run (Intel Macs, a Mac that is itself a VM, libkrun
+    missing), macOS confines through **Seatbelt**, the TrustedBSD MAC policy behind the
     App Sandbox, because none of the Linux mechanism exists on XNU: namespaces,
-    ``pivot_root``, ``/proc`` and seccomp are Linux kernel features, and POSIX
-    never standardized sandboxing. ``sandbox_init`` applies a default-deny SBPL
-    profile to the process, which **enforces the filesystem and network
-    boundaries plus ``RLIMIT_*``**: the snippet reads only the Python runtime it
-    needs, writes only the sandbox's own directories, and gets no network unless
-    ``network=True`` (the host-tool bridge socket stays reachable either way).
-    Reads are restricted, not merely writes.
+    ``pivot_root`` and seccomp are Linux kernel features. ``sandbox_init``
+    applies a default-deny SBPL profile to the process, which **enforces the
+    filesystem and network boundaries plus ``RLIMIT_*``**: the snippet reads
+    only the Python runtime it needs, writes only the sandbox's own directories
+    and the macFUSE-mounted virtual filesystem, and gets no network unless
+    ``confine_network=True`` (the host-tool bridge socket stays reachable either
+    way). Reads are restricted, not merely writes. The process stands in the
+    mount, so a *relative* ``open()`` lands on the virtual filesystem the file
+    tools see; an absolute path names the host, where the profile denies it.
 
-    Where macOS allows it the profile grants *less* than the Linux path, since
-    capability reduction is the only lever left once the two guarantees below
-    are off the table:
+    Where macOS allows it the profile grants *less* than the Linux path:
 
     * **Mach services by name, three of them.** A bare ``(allow mach-lookup)``
-      is the real escape route in this area, since a daemon does the work
-      outside the caller's profile. The three allowed are what libSystem looks
-      up while a freshly exec'd child starts; none brokers process execution,
-      and the launchd family is deliberately absent.
+      is the real escape route, since a daemon does the work outside the
+      caller's profile. The three allowed are what libSystem looks up while a
+      freshly exec'd child starts; none brokers process execution.
     * **write xor execute.** The writable area denies ``file-map-executable``,
       so a snippet cannot ``dlopen`` a dylib it wrote itself.
     * **no reach into ``workdir``.** It is a seed, copied in host-side, and
       stays unreadable and unwritable from inside.
 
-    Subprocesses work as they do on Linux: exec is limited to the read-only
-    runtime set (so not a binary the snippet wrote), and a child **inherits the
-    profile**, so it runs with the same denied filesystem and network.
+    Subprocesses work as on Linux: exec is limited to the read-only runtime set
+    (so not a binary the snippet wrote), and a child **inherits the profile**.
 
-    Two guarantees from the Linux path remain **absent**, and code that depends
-    on them should check `confinement_kind` rather than assume parity:
+    Guarantees from the Linux path that remain **weaker** (``backend`` in
+    `granted_capabilities` reports ``"seatbelt"`` so code can tell):
 
-    * **no PID isolation** - XNU has no PID namespace, so host processes remain
-      visible. ``(deny process-info*)`` narrows inspection but is not the same.
+    * **no PID namespace** - XNU has none. The host process table is hidden
+      (``process-info`` and the ``kern.proc`` sysctls are denied) and signals
+      reach only the snippet's own process tree, but PIDs are shared.
     * **no syscall filter** - Seatbelt gates MAC operations, not syscall
-      numbers, so the seccomp denylist has no counterpart. Native code the
-      snippet brought itself is the main thing that would exploit the gap, and
-      the write-xor-execute rule above is what closes off that route.
-    * **no fork-bomb guard** - ``max_processes`` is per *user*, which on Linux
-      means the sandbox's own user namespace and here would mean the whole
-      login session, so it is ignored rather than enforced wrongly.
-
-    One behaviour also differs and is not a bug: the snippet's own ``open()``
-    is host I/O restricted to the sandbox's directories, rather than the
-    virtual filesystem the file tools use, because there is no ``pivot_root``
-    to unify the two. Write a file with ``run`` and read it back with
-    `read_file` and you get the Linux answer on Linux and nothing here.
+      numbers, so the seccomp denylist has no counterpart, and the snippet
+      shares the host kernel.
+    * **fork budget, not a count** - ``RLIMIT_NPROC`` is per *user*, so the cap
+      is set to the user's running processes plus ``max_processes``.
 
     ## Windows (run under WSL2)
 
     Windows has no confinement backend: ``unshare`` / ``pivot_root`` / FUSE /
     seccomp have no native-Windows equivalent, and Seatbelt is macOS-only. The
-    supported way to get it on Windows is to run synalinks **inside WSL2**
-    (Windows Subsystem for
-    Linux 2): it is a real Linux kernel, so confinement works unchanged, and
-    because WSL2 is itself a lightweight VM, the confined process is additionally
-    separated from the Windows host by the VM boundary. On **native** Windows
-    confinement is unavailable: a default ``MirageSandbox()`` falls back to
-    unconfined with a ``RuntimeWarning`` pointing at WSL2, and
-    ``require_confinement=True`` raises rather than running an LM's code
-    unconfined. (WSL1 also cannot confine: it has no ``/dev/fuse``; use WSL2.)
+    supported way to get it on
+    Windows is to run synalinks **inside WSL2** (Windows Subsystem for Linux 2):
+    it is a real Linux kernel, so confinement works unchanged, and because WSL2
+    is itself a lightweight VM, the confined process is additionally separated
+    from the Windows host by the VM boundary. On **native** Windows
+    confinement is unavailable, so a default ``MirageSandbox()`` raises (with a
+    pointer to WSL2) rather than run an LM's code unconfined. (WSL1 also cannot
+    confine: it has no ``/dev/fuse``; use WSL2.)
 
     ## Unconfined (`confine=False`)
 
@@ -2070,7 +925,7 @@ class MirageSandbox(Sandbox):
       `run_python_file`), where mounted S3 buckets, disks, etc. live.
 
     They are separate spaces, so use the file tools / shell for the mounts and
-    ``run`` for computation. Choose this only for trusted code that must reach
+    ``run_code`` for computation. Choose this only for trusted code that must reach
     the host filesystem or network.
 
     ## Bound tools and mounts are the real boundary
@@ -2094,9 +949,10 @@ class MirageSandbox(Sandbox):
     returns its JSON-marshalable result synchronously.
 
     Args:
-        timeout (float): Per-snippet execution budget in seconds (Default 5).
-            Enforced around the underlying Mirage command; on expiry the run
-            returns a ``TimeoutError`` in ``error``.
+        timeout (float): Per-snippet execution budget in seconds, what
+            ``run_code(timeout=None)`` uses (Default 300, as on E2B). Enforced
+            around the underlying Mirage command; on expiry ``run_code``
+            raises `TimeoutException`, as on E2B.
         name (str): Optional. Human-readable name for the sandbox.
         workdir (str): Optional. Host directory whose files seed the virtual
             filesystem at construction. The files are copied **into** the mount
@@ -2117,28 +973,31 @@ class MirageSandbox(Sandbox):
             ``MountMode.EXEC`` to make every bare mount read/write/exec.
         session_id (str): Optional. Mirage session whose working directory and
             environment persist across commands. Defaults to ``"default"``.
-        confine (bool): Optional. When ``True`` (Linux only), each ``run``
-            executes the snippet in a fresh user / mount / network namespace
-            pivoted into the FUSE-mounted virtual filesystem: the snippet sees
-            **only** the virtual sandbox at ``/`` (its ``open()`` lands on the
-            mount, unifying it with the file tools), the host filesystem is
-            hidden, and the network is cut. Rootless, in-process: no container
-            runtime. Requires ``/dev/fuse`` and unprivileged user namespaces;
-            on an unsupported host it is disabled with a ``RuntimeWarning``
-            (graceful fallback). **Defaults to ``True``** (secure by default): a
-            plain ``MirageSandbox()`` is confined + syscall-filtered + network-cut
-            where the platform supports it. Pass ``confine=False`` to opt out
-            (e.g. when the code must reach the host filesystem or network), or
-            ``require_confinement=True`` to make the fallback a hard error.
-        require_confinement (bool): Optional. Make confinement **fail closed**.
+        confine (bool): Optional. When ``True`` (Linux; macOS via Seatbelt, see
+            above), each ``run_code`` executes the snippet in a fresh user /
+            mount / network namespace pivoted into the FUSE-mounted virtual
+            filesystem: the snippet sees **only** the virtual sandbox at ``/``
+            (its ``open()`` lands on the mount, unifying it with the file
+            tools), the host filesystem is hidden, and the network is cut.
+            Rootless, in-process: no container runtime. Requires ``/dev/fuse``
+            and unprivileged user namespaces (on macOS: macFUSE and
+            libsandbox); on an unsupported host it is disabled with a
+            ``RuntimeWarning`` (graceful fallback). **Defaults to ``True``**
+            (secure by default): a plain ``MirageSandbox()`` is confined +
+            syscall-filtered + network-cut, and refuses to run where it cannot
+            confine. Pass ``confine=False`` to opt out (e.g. when the code must
+            reach the host filesystem or network).
+        require_confinement (bool): Optional. Confinement **fails closed**.
             When ``True`` (implies ``confine=True``), any condition that would
             otherwise silently fall back to *unconfined* execution (confinement
             unavailable on the host, the FUSE mount failing to come up, or a
             ``fork(confine=True)`` that cannot confine) raises instead of
-            warning, and a `run` / `run_bash` whose confinement is not active is
+            warning, and a `run_code` / `run_bash` whose confinement is not active is
             refused. Use this for untrusted (e.g. LM-generated) code, where a
             missing isolation boundary must be a hard error rather than a warning
-            that scrolls past. Defaults to ``False`` (graceful fallback).
+            that scrolls past. Defaults to ``None``: follows ``confine``, so a
+            confined sandbox fails closed. ``False`` restores the graceful
+            fallback (warn, then run unconfined).
         seccomp (bool): Optional. Apply a seccomp syscall denylist inside a
             confined run, shrinking the kernel attack surface (no eBPF, ptrace,
             userfaultfd, perf, keyrings, module loading, kexec, namespace ops,
@@ -2179,12 +1038,11 @@ class MirageSandbox(Sandbox):
             allocator alone. Defaults to ``2``.
         max_processes (int): Optional. Process cap (``RLIMIT_NPROC``) for a
             confined run (fork-bomb guard). Defaults to 64; ``None`` to disable.
-            **Linux only.** ``RLIMIT_NPROC`` is counted per user, which on Linux
+            ``RLIMIT_NPROC`` is counted per user, which on Linux
             means the fresh user namespace the sandbox unshares, so the cap
-            applies to the sandbox alone. macOS has no namespace to scope it to,
-            so the same number would be measured against every process the user
-            is already running and would stop the sandbox forking at all; it is
-            ignored there rather than enforced wrongly.
+            applies to the sandbox alone (in the macOS microVM too). Under
+            Seatbelt, with no namespace to scope it to, the cap is set to the
+            user's running processes plus this budget.
         extra_binds (list): Optional. Additional host directories to bind
             **read-only** into the confined root, on top of the auto-detected
             Python install / site-packages / ``PYTHONPATH`` dirs (which already
@@ -2209,6 +1067,9 @@ class MirageSandbox(Sandbox):
             above).
     """
 
+    filesystem_class = MirageFilesystem
+    commands_class = MirageCommands
+
     description: str = (
         "Code runs in a real Python 3 interpreter (CPython) with the full "
         "standard library and any installed third-party packages. State persists "
@@ -2229,11 +1090,11 @@ class MirageSandbox(Sandbox):
 
     # Class-level default so instances built without ``__init__`` (``load``,
     # ``from_config``, forks) behave like a fresh sandbox.
-    _malloc_arena_max: Optional[int] = 2
+    malloc_arena_max: Optional[int] = 2
 
     def __init__(
         self,
-        timeout: float = 5.0,
+        timeout: float = DEFAULT_TIMEOUT,
         name: Optional[str] = None,
         *,
         workdir: Optional[str] = None,
@@ -2241,7 +1102,7 @@ class MirageSandbox(Sandbox):
         mode: Optional[Any] = None,
         session_id: str = "default",
         confine: bool = True,
-        require_confinement: bool = False,
+        require_confinement: Optional[bool] = None,
         seccomp: bool = True,
         confine_network: bool = False,
         allowed_hosts: Optional[List[str]] = None,
@@ -2254,11 +1115,7 @@ class MirageSandbox(Sandbox):
         workspace_kwargs: Optional[Dict[str, Any]] = None,
         external_functions: Optional[Dict[str, Callable]] = None,
     ):
-        if mirage is None:
-            raise ImportError(
-                "MirageSandbox requires the `mirage-ai` package. "
-                "Install it with `pip install mirage-ai`."
-            )
+        require_mirage()
         Sandbox.__init__(
             self, timeout=timeout, name=name, external_functions=external_functions
         )
@@ -2266,12 +1123,12 @@ class MirageSandbox(Sandbox):
         # governs arenas created after it.
         if malloc_arena_max is not None:
             cap_malloc_arenas(malloc_arena_max)
-        self._malloc_arena_max = malloc_arena_max
-        self._session = session_id
-        self._mode = mode if mode is not None else MountMode.EXEC
-        self._workspace_kwargs = dict(workspace_kwargs or {})
+        self.malloc_arena_max = malloc_arena_max
+        self.session_id = session_id
+        self.mode = mode if mode is not None else MountMode.EXEC
+        self.workspace_kwargs = dict(workspace_kwargs or {})
         raw_resources = (
-            resources if resources is not None else {_DEFAULT_MOUNT: RAMResource()}
+            resources if resources is not None else {DEFAULT_MOUNT: RAMResource()}
         )
         # Least-privilege mounts: the root scratch mount stays EXEC (it must be
         # writable and run ``python3``), but any *other* bare mount defaults to
@@ -2279,62 +1136,69 @@ class MirageSandbox(Sandbox):
         # mounted real resource (S3, Postgres, disk) you did not explicitly make
         # writable. Override per mount with a ``(resource, MountMode)`` tuple, or
         # globally by passing ``mode=``.
-        self._resources = self._resolve_mount_modes(raw_resources, mode)
-        self._workdir = workdir
+        self.resources = {
+            prefix: (
+                value
+                if isinstance(value, tuple)
+                else (
+                    value,
+                    (
+                        mode
+                        if mode is not None
+                        else (
+                            MountMode.EXEC if prefix == DEFAULT_MOUNT else MountMode.READ
+                        )
+                    ),
+                )
+            )
+            for prefix, value in raw_resources.items()
+        }
+        # The host directory the filesystem was seeded from, or ``None``.
+        self.workdir = workdir
 
-        # Confinement: when enabled, ``run`` executes the snippet in a fresh
+        # Confinement: when enabled, ``run_code`` executes the snippet in a fresh
         # user/mount/net namespace pivoted into the FUSE-mounted virtual
         # filesystem (no host fs, no network). Gated on platform support; on an
         # unsupported host it is disabled with a warning (graceful fallback).
-        self._confine = bool(confine)
+        self.confine = bool(confine)
         # Whether ``run_bash``'s ``python3`` carries the confinement prologue.
         # False until the patch actually installs, so the runtime guard below
         # judges the boundary by what is in place, not by what was requested.
-        self._run_python_patched = False
-        # Fail-closed: when ``require_confinement`` is set, every path that would
-        # otherwise silently fall back to *unconfined* execution raises instead.
-        # Use this when the sandbox runs untrusted (e.g. LM-generated) code and a
-        # missing boundary must be a hard error, not a warning that scrolls past.
-        self._require_confinement = bool(require_confinement)
-        if self._require_confinement and not self._confine:
+        self.run_python_patched = False
+        # Fail-closed by default: a confined sandbox that cannot confine raises
+        # rather than run LM-generated code unconfined behind a warning that
+        # scrolls past. ``None`` follows ``confine``; an explicit False restores
+        # the graceful fallback, and ``confine=False`` opts out entirely.
+        self.require_confinement = (
+            self.confine if require_confinement is None else bool(require_confinement)
+        )
+        if self.require_confinement and not self.confine:
             raise ValueError(
                 "MirageSandbox(require_confinement=True) requires confine=True."
             )
-        # Extra host directories bound read-only into the confined root (on top of
-        # the auto-detected Python install/package dirs), e.g. for libraries in
-        # nonstandard locations, data files or model weights.
-        self._extra_binds = list(extra_binds or [])
-        self._confine_network = bool(confine_network)
+        # Extra host directories bound read-only into the confined root, on top
+        # of the auto-detected Python install/package dirs.
+        self.extra_binds = list(extra_binds or [])
+        self.confine_network = bool(confine_network)
         # Seccomp denylist: prebuilt host-side, applied inside a confined run to
         # shrink the kernel syscall surface. ``None`` when disabled or on an arch
         # without a number table. Active only under confinement (a no-op for an
         # unconfined sandbox, where there is no boundary to harden).
-        self._seccomp_blob = _build_seccomp_filter() if seccomp else None
-        if seccomp and self._confine and self._seccomp_blob is None:
-            import warnings
-
-            warnings.warn(
-                "MirageSandbox: seccomp unavailable on this architecture; "
-                "confining without a syscall filter.",
-                RuntimeWarning,
-                stacklevel=2,
-            )
+        self.seccomp_blob = build_seccomp_filter() if seccomp else None
         # Egress allowlist: when set, a host-mediated ``http_fetch`` tool is bound
         # that only reaches allowlisted hosts. Combined with a cut network
         # (confined, default), that is the *only* path out; the model cannot
         # open raw sockets around it. ``None`` leaves egress unrestricted-by-tool.
-        self._allowed_hosts = list(allowed_hosts) if allowed_hosts is not None else None
-        self._block_private_egress = bool(block_private_egress)
-        if self._allowed_hosts is not None:
-            self._functions.setdefault(
+        self.allowed_hosts = list(allowed_hosts) if allowed_hosts is not None else None
+        self.block_private_egress = bool(block_private_egress)
+        if self.allowed_hosts is not None:
+            self.functions.setdefault(
                 "http_fetch",
-                _make_egress_tool(
-                    self._allowed_hosts, self.timeout, self._block_private_egress
+                make_egress_tool(
+                    self.allowed_hosts, self.timeout, self.block_private_egress
                 ),
             )
-            if not bool(confine):
-                import warnings
-
+            if not self.confine:
                 warnings.warn(
                     "MirageSandbox(allowed_hosts=...) without confine=True: the "
                     "allowlist is advisory: unconfined code can open raw sockets "
@@ -2342,35 +1206,62 @@ class MirageSandbox(Sandbox):
                     RuntimeWarning,
                     stacklevel=2,
                 )
-        self._rlimits: Dict[str, int] = {}
+        self.rlimits: Dict[str, int] = {}
         if memory_limit_mb:
-            self._rlimits["as"] = int(memory_limit_mb) * 1024 * 1024
+            self.rlimits["as"] = int(memory_limit_mb) * 1024 * 1024
         if cpu_limit_seconds:
-            self._rlimits["cpu"] = int(cpu_limit_seconds)
+            self.rlimits["cpu"] = int(cpu_limit_seconds)
         if max_processes:
-            self._rlimits["nproc"] = int(max_processes)
-        if self._confine:
-            ok, reason = _confinement_available()
-            if not ok:
-                if self._require_confinement:
-                    raise RuntimeError(
-                        f"MirageSandbox(require_confinement=True): confinement "
-                        f"unavailable: {reason}."
-                    )
-                import warnings
-
-                warnings.warn(
-                    f"MirageSandbox(confine=True) disabled: {reason}. "
-                    "Running without confinement.",
-                    RuntimeWarning,
-                    stacklevel=2,
-                )
-                self._confine = False
+            self.rlimits["nproc"] = int(max_processes)
+        # Which mechanism confines: the strongest this host can run, never a
+        # knob (see `confinement_backend`). ``vm`` holds the microVM's live
+        # launch settings; `set_workspace` / `init_host_state` fill in the
+        # mountpoint and host dir as they come to exist.
+        self.backend: Optional[str] = None
+        self.vm: Optional[Dict[str, Any]] = None
+        if self.confine:
+            backend, reason = confinement_backend()
+            if backend is None:
+                self.fall_back_unconfined("MirageSandbox(confine=True)", reason)
             else:
-                # Confine ``python3`` spawned via ``run_bash`` (Mirage's
-                # builtin), not just ``run``'s bootstrap. The FUSE mount the
-                # snippet pivots into is set up by ``_new_workspace``.
-                self._run_python_patched = _install_run_python_patch()
+                if backend == "microvm":
+                    try:
+                        self.vm = {
+                            **prepare_microvm(),
+                            "network": self.confine_network,
+                            "extra_binds": list(self.extra_binds),
+                            "cpus": 2,
+                            # Guest RAM is committed lazily, so the default
+                            # costs only what the snippet touches.
+                            "memory_mb": (
+                                int(memory_limit_mb) + 512 if memory_limit_mb else 2048
+                            ),
+                        }
+                        # The filter runs in the guest kernel: build it for the
+                        # guest's arch, not this host's.
+                        self.seccomp_blob = (
+                            build_seccomp_filter("aarch64") if seccomp else None
+                        )
+                    except Exception as exc:  # noqa: BLE001 - fall back, still confined
+                        backend = "seatbelt"
+                        warnings.warn(
+                            "MirageSandbox: the microVM backend could not be "
+                            f"prepared ({exc}); confining with Seatbelt instead.",
+                            RuntimeWarning,
+                            stacklevel=2,
+                        )
+                self.backend = backend
+                if seccomp and self.seccomp_blob is None:
+                    warnings.warn(
+                        "MirageSandbox: seccomp unavailable on this architecture; "
+                        "confining without a syscall filter.",
+                        RuntimeWarning,
+                        stacklevel=2,
+                    )
+                # ``python3`` spawned via ``run_bash`` is confined per workspace
+                # in `set_workspace`; this probe only decides, before any
+                # workspace exists, whether the ``local`` runtime is safe.
+                self.run_python_patched = local_runtime_supported()
 
         # A runtime decides where a command's code actually executes, so under
         # confinement it is part of the boundary. ``local`` (this sandbox's
@@ -2384,22 +1275,20 @@ class MirageSandbox(Sandbox):
         # purpose: anything unrecognized counts as host-escaping, so a runtime
         # added by a future Mirage release cannot silently inherit trust it was
         # never audited for.
-        escaping = _host_escaping_runtimes(
-            self._workspace_kwargs.get("runtimes"),
-            patched=self._run_python_patched,
+        escaping = host_escaping_runtimes(
+            self.workspace_kwargs.get("runtimes"),
+            patched=self.run_python_patched,
         )
-        if escaping and (self._confine or self._require_confinement):
+        if escaping and (self.confine or self.require_confinement):
             listed = ", ".join(repr(name) for name in escaping)
-            if self._require_confinement:
+            if self.require_confinement:
                 raise ValueError(
                     "MirageSandbox(require_confinement=True): runtime "
                     f"{listed} can execute code on the host, bypassing "
                     "confinement. Use only sandboxed runtimes "
-                    f"({_SANDBOXED_RUNTIMES_HINT}), or 'local' on a host where "
+                    f"({SANDBOXED_RUNTIMES_HINT}), or 'local' on a host where "
                     "the run-python confinement patch applies."
                 )
-            import warnings
-
             warnings.warn(
                 f"MirageSandbox: runtime {listed} executes code on the host "
                 "and bypasses confinement; dropping it because confine=True.",
@@ -2408,81 +1297,195 @@ class MirageSandbox(Sandbox):
             )
             kept = [
                 entry
-                for entry in (self._workspace_kwargs.get("runtimes") or _DEFAULT_RUNTIMES)
-                if _runtime_name(entry) in _SANDBOXED_RUNTIMES
+                for entry in (self.workspace_kwargs.get("runtimes") or DEFAULT_RUNTIMES)
+                if runtime_name(entry) in SANDBOXED_RUNTIMES
             ]
             # Pin the survivors explicitly (even when empty): dropping the key
             # would fall back to this sandbox's ``local`` default, which is the
             # very thing being removed. An empty list leaves Mirage's bare vfs.
-            self._workspace_kwargs["runtimes"] = kept
+            self.workspace_kwargs["runtimes"] = kept
 
-        self._ws = self._new_workspace()
-        self._fuse_mountpoint = getattr(self._ws, "fuse_mountpoint", None)
-        # Only the namespace backend pivots into the FUSE mount; Seatbelt
-        # confines the process in place, so a missing mountpoint is not a
-        # confinement failure there.
-        if (
-            self._require_confinement
-            and not self._fuse_mountpoint
-            and confinement_kind() != "seatbelt"
-        ):
-            raise RuntimeError(
-                "MirageSandbox(require_confinement=True): the FUSE mount was not "
-                "established, so the snippet cannot be confined to the virtual "
-                "filesystem."
-            )
-        # Per-sandbox host directory holding the dill state, per-run result file
-        # and RPC socket. Bind-mounted into the confined root so those paths
-        # still resolve after the pivot. Resolved on creation: on macOS the
-        # temp dir sits behind the `/var` -> `/private/var` symlink, and the
-        # Seatbelt profile matches resolved paths, so every path derived from
-        # this one is canonical from the start rather than per use site.
-        self._hostdir = os.path.realpath(tempfile.mkdtemp(prefix="mirage_sandbox_"))
-        # Host file holding the dill-serialized interpreter namespace; created
-        # lazily on the first ``run`` and reused (so state accumulates).
-        self._state_path: Optional[str] = None
-        # Snapshot of the filesystem at the branch point (``{vpath: text}``).
-        # Seeded from ``workdir``; replaced by `fork` with the parent's
-        # current tree so `diff` / `merge` report only post-fork changes.
-        self._fork_base: Dict[str, str] = {}
+        self.set_workspace(self.new_workspace())
+        self.init_host_state()
         if workdir:
-            self._fork_base = self._seed_from_workdir(workdir)
-        self._arm_finalizer()
+            self.fork_base = self.seed_from_workdir(workdir)
 
-    @property
-    def workdir(self) -> Optional[str]:
-        """The host directory the filesystem was seeded from, or ``None``."""
-        return self._workdir
+    @classmethod
+    def bare(cls, *, timeout: float, name: Optional[str]) -> "MirageSandbox":
+        """An instance with every config attribute at its unconfined default.
+
+        `fork` and `load` build through here instead of ``__init__`` (they bring
+        their own workspace), so the attribute list lives in one place besides
+        the constructor. Callers then override what they inherit.
+        """
+        instance = cls.__new__(cls)
+        Sandbox.__init__(instance, timeout=timeout, name=name)
+        instance.session_id = "default"
+        instance.mode = MountMode.EXEC
+        instance.workspace_kwargs = {}
+        instance.resources = {}
+        instance.workdir = None
+        instance.confine = False
+        instance.require_confinement = False
+        instance.backend = None
+        instance.vm = None
+        instance.run_python_patched = False
+        instance.confine_network = False
+        instance.seccomp_blob = None
+        instance.allowed_hosts = None
+        instance.block_private_egress = True
+        instance.extra_binds = []
+        instance.rlimits = {}
+        return instance
+
+    def init_host_state(self) -> None:
+        """Create the per-sandbox host state and arm the GC finalizer.
+
+        The host directory holds the dill state, per-run result/config files
+        and the RPC socket; it is bind-mounted into the confined root so those
+        paths still resolve after the pivot. ``state_path`` is created lazily
+        on the first ``run_code``. ``fork_base`` is the ``{vpath: text}``
+        snapshot `diff` / `merge` compare against (the ``workdir`` seed or the
+        fork point).
+        """
+        self.hostdir = os.path.realpath(tempfile.mkdtemp(prefix="mirage_sandbox_"))
+        # Code contexts made by `create_code_context`, by id.
+        self.contexts: Dict[str, Dict[str, Any]] = {}
+        # matplotlib's font cache (``mplconfigdir`` of `run_code`), seeded
+        # with the one the host's own matplotlib built, when there is one: a
+        # snippet then plots at once instead of first indexing every system
+        # font (seconds on macOS), in every new sandbox. A private copy, so
+        # no sandbox can alter what another reads. Not for the microVM, whose
+        # Linux guest has other fonts at other paths.
+        mplconfig = os.path.join(self.hostdir, "mplconfig")
+        os.makedirs(mplconfig, exist_ok=True)
+        if getattr(self, "backend", None) != "microvm":
+            host_cache = os.environ.get("MPLCONFIGDIR") or (
+                os.path.expanduser("~/.matplotlib")
+                if sys.platform == "darwin"
+                else os.path.join(
+                    os.environ.get("XDG_CACHE_HOME") or os.path.expanduser("~/.cache"),
+                    "matplotlib",
+                )
+            )
+            for cached in glob.glob(os.path.join(host_cache, "fontlist-*.json")):
+                shutil.copy(cached, mplconfig)
+        if self.vm is not None:
+            self.vm["hostdir"] = self.hostdir
+        self.state_path: Optional[str] = None
+        self.fork_base: Dict[str, str] = {}
+        # Release the mount even if the sandbox is dropped without ``close()``:
+        # leaked mounts pile up until ``mount_max`` and new ones fail silently.
+        # The finalizer holds a plain dict, never ``self``, so it does not keep
+        # the sandbox alive; `set_workspace` keeps the dict current.
+        self.workspace_state = {"ws": self.workspace, "hostdir": self.hostdir}
+        self.finalizer = weakref.finalize(self, finalize_workspace, self.workspace_state)
+
+    def set_workspace(self, ws, *, when: str = "") -> None:
+        """Adopt ``ws`` as the live workspace and re-check the confinement mount.
+
+        Keeps the GC finalizer pointed at the live workspace and refreshes the
+        cached FUSE mountpoint (a new workspace gets a new mount). Under
+        ``require_confinement`` a missing mount is a hard error.
+        """
+        self.workspace = ws
+        if getattr(self, "workspace_state", None) is not None:
+            self.workspace_state["ws"] = ws
+        self.fuse_mountpoint = getattr(ws, "fuse_mountpoint", None)
+        if self.vm is not None:
+            # The guest serves this workspace's filesystem itself, bridged to
+            # the same ``MirageFS`` a host FUSE mount would run.
+            from mirage.fuse.fs import MirageFS
+
+            self.vm["fs"] = MirageFS(ws.fs, root_prefix=DEFAULT_MOUNT)
+        if self.confine:
+            # Each workspace has its own runtime instances, so every new one
+            # (construction, reset, heal, fork) needs its ``python3`` wrapped.
+            self.run_python_patched = confine_shell_python(ws, self.vm)
+        if not self.require_confinement:
+            return
+        if not self.fuse_mountpoint and self.backend == "namespaces":
+            problem = f"the FUSE mount was not established{when}"
+        elif not self.run_python_patched:
+            problem = "run_bash's python3 cannot be confined in this workspace"
+        else:
+            return
+        # Leave nothing half-usable behind: without a mountpoint every later
+        # run refuses, and the workspace (and any mount it holds) is released
+        # here since no finalizer may own it yet.
+        self.fuse_mountpoint = None
+        sync_close_workspace(ws)
+        if getattr(self, "workspace_state", None) is not None:
+            self.workspace_state["ws"] = None
+        raise RuntimeError(
+            f"MirageSandbox(require_confinement=True): {problem}; cannot confine."
+        )
+
+    def start_confined(
+        self,
+        ws,
+        label: str,
+        *,
+        backend: Optional[str] = None,
+        vm: Optional[Dict[str, Any]] = None,
+        seccomp_blob: Optional[str] = None,
+    ) -> None:
+        """Confine a `bare` instance (from `fork` or `load`) before it adopts ``ws``.
+
+        ``backend`` / ``vm`` / ``seccomp_blob`` carry a parent's settings; with
+        no ``backend`` the strongest available is picked, as for a new sandbox.
+        Falls back (raising under ``require_confinement``) when nothing can
+        confine, or when the namespace backend has no FUSE mount to pivot into.
+        """
+        reason = ""
+        if backend is None:
+            backend, reason = confinement_backend()
+        # Only the namespace backend needs a host FUSE mount (see
+        # `new_workspace`); none is made for a backend that will not run, so
+        # a refusal below leaves no mount behind.
+        mounted = backend in ("namespaces", "seatbelt") and ensure_fuse_mounted(ws)
+        if backend is None or (backend == "namespaces" and not mounted):
+            self.fall_back_unconfined(label, reason or "FUSE setup failed")
+            return
+        self.run_python_patched = local_runtime_supported()
+        self.confine = True
+        self.backend = backend
+        self.seccomp_blob = seccomp_blob
+        if backend == "microvm":
+            base = vm or {
+                **prepare_microvm(),
+                "network": self.confine_network,
+                "extra_binds": list(self.extra_binds),
+                "cpus": 2,
+                "memory_mb": 2048,
+            }
+            # This instance's own host dir and filesystem are filled in as they
+            # come to exist.
+            self.vm = {k: v for k, v in base.items() if k not in ("hostdir", "fs")}
+            self.seccomp_blob = seccomp_blob or build_seccomp_filter("aarch64")
+
+    def fall_back_unconfined(self, label: str, reason: str) -> None:
+        """Disable confinement with a warning, or raise if it was required."""
+        if self.require_confinement:
+            raise RuntimeError(
+                f"{label} cannot confine: {reason}. Refusing to run code "
+                "unconfined; pass confine=False to opt out explicitly (never "
+                "for untrusted code)."
+            )
+        warnings.warn(
+            f"{label} disabled: {reason}. Running without confinement.",
+            RuntimeWarning,
+            stacklevel=3,
+        )
+        self.confine = False
 
     # -- internal helpers ----------------------------------------------------
 
-    @staticmethod
-    def _resolve_mount_modes(resources: Dict[str, Any], explicit_mode: Any) -> dict:
-        """Resolve each mount to an explicit ``(resource, MountMode)`` pair.
-
-        Honors a per-mount ``(resource, mode)`` tuple as given. For a bare
-        resource: uses ``explicit_mode`` when the caller passed ``mode=``;
-        otherwise applies the least-privilege default: ``EXEC`` for the root
-        scratch mount (it must be writable and run ``python3``) and ``READ``
-        (read-only) for any other mount, so external resources are not writable
-        unless opted in.
-        """
-        resolved: dict = {}
-        for prefix, value in resources.items():
-            if isinstance(value, tuple):
-                resolved[prefix] = value  # explicit per-mount mode; honor it
-            elif explicit_mode is not None:
-                resolved[prefix] = (value, explicit_mode)
-            else:
-                default = MountMode.EXEC if prefix == _DEFAULT_MOUNT else MountMode.READ
-                resolved[prefix] = (value, default)
-        return resolved
-
-    def _new_workspace(self):
+    def new_workspace(self):
         """Build a Mirage ``Workspace`` for this sandbox's mounts and session.
 
         The single place a ``Workspace`` is constructed, so construction,
-        `reset` and `_rebuild_workspace` cannot drift apart. Two details Mirage
+        `reset` and `rebuild_workspace` cannot drift apart. Two details Mirage
         will not infer for us:
 
         * ``session_id`` names the workspace's default session. Mirage seeds
@@ -2492,15 +1495,17 @@ class MirageSandbox(Sandbox):
           ``fuse`` off the constructor); a confined sandbox needs it so the
           snippet's own ``open()`` lands on the mount.
         """
-        kwargs = dict(self._workspace_kwargs)
-        kwargs.setdefault("session_id", self._session)
-        kwargs.setdefault("runtimes", list(_DEFAULT_RUNTIMES))
-        ws = Workspace(self._resources, mode=self._mode, **kwargs)
-        if self._confine:
-            _ensure_fuse_mounted(ws)
+        kwargs = dict(self.workspace_kwargs)
+        kwargs.setdefault("session_id", self.session_id)
+        kwargs.setdefault("runtimes", list(DEFAULT_RUNTIMES))
+        ws = Workspace(self.resources, mode=self.mode, **kwargs)
+        # A host FUSE mount serves the namespace backend's pivot and Seatbelt's
+        # working dir; the microVM guest mounts the filesystem itself.
+        if self.confine and self.backend != "microvm":
+            ensure_fuse_mounted(ws)
         return ws
 
-    def _seed_from_workdir(self, workdir: str) -> Dict[str, str]:
+    def seed_from_workdir(self, workdir: str) -> Dict[str, str]:
         """Copy a host directory's files into the mount; return the snapshot.
 
         Host-safe: contents are read once and written into the virtual
@@ -2521,155 +1526,17 @@ class MirageSandbox(Sandbox):
                         data = fh.read()
                 except OSError:
                     continue
-                rel = os.path.relpath(host, root).replace(os.sep, "/")
-                vpath = "/" + rel
-                text = data.decode("utf-8", errors="replace")
-                run_async_from_sync(self._write(vpath, text))
-                base[vpath] = text
+                vpath = "/" + os.path.relpath(host, root).replace(os.sep, "/")
+                run_async_from_sync(self.write(vpath, data))
+                base[vpath] = data.decode("utf-8", errors="replace")
         return base
 
-    def _ensure_state_path(self) -> str:
+    def ensure_state_path(self) -> str:
         # State lives in the per-sandbox host dir (bound into the confined root
         # so the path resolves after a pivot). Absent until the first run.
-        if self._state_path is None:
-            self._state_path = os.path.join(self._hostdir, "state.pkl")
-        return self._state_path
-
-    def _runtime_binds(self) -> List[str]:
-        """Host directories to bind **read-only** into the confined root.
-
-        The interpreter's own install + venv + system lib/bin dirs, plus the
-        host's installed-package locations (user site-packages, ``PYTHONPATH``
-        dirs) and any caller-supplied ``extra_binds``, each bind-mounted
-        read-only at its original absolute path so ``sys.path`` keeps resolving
-        after the pivot and **host libraries import inside the sandbox just as
-        they do on the host**, while confined code still cannot write them. The
-        per-sandbox host dir (state / result / socket) is bound separately and
-        writably via ``rw_binds``. Nothing else of the host filesystem is visible
-        (notably not ``/etc`` or ``/home``, beyond the package dirs below).
-        """
-        candidates = [
-            sys.base_prefix,
-            sys.prefix,
-            "/usr",
-            "/lib",
-            "/lib64",
-            "/bin",
-        ]
-        if sys.platform == "darwin":
-            # dyld resolves nearly every library out of the shared cache under
-            # /System, and the package prefixes hold the interpreter's own
-            # dependency dylibs (a Homebrew or MacPorts python links against
-            # libssl / libffi living beside it, outside `sys.prefix`). Without
-            # these the Seatbelt profile denies the reads CPython performs
-            # before it can execute a single line of the snippet.
-            #
-            # `/Library` is deliberately not here. It is where third-party
-            # software keeps its data on a Mac, so granting it reads the user's
-            # installed-application state for no gain: a python.org framework
-            # build lives under `/Library/Frameworks/Python.framework`, which
-            # `sys.base_prefix` already covers on its own.
-            candidates += [
-                "/System",
-                "/opt/homebrew",
-                "/opt/local",
-                "/private/var/db/dyld",
-            ]
-        # Host import locations outside the active prefix, so packages installed
-        # in user site / system dist-packages / PYTHONPATH (and editable installs
-        # they reference) resolve inside the sandbox. ``site`` re-adds these to
-        # the subprocess ``sys.path``, so binding them is enough to import.
-        try:
-            import site
-
-            candidates += list(site.getsitepackages())
-            candidates.append(site.getusersitepackages())
-        except Exception:  # noqa: BLE001 - site may be restricted/absent
-            pass
-        candidates += [p for p in os.environ.get("PYTHONPATH", "").split(os.pathsep) if p]
-        candidates += list(self._extra_binds)
-        # Keep only existing dirs, and drop any nested under an already-included
-        # dir (a parent bind already exposes it) so we don't double-mount.
-        seen: List[str] = []
-        for d in candidates:
-            if not d or not os.path.isdir(d):
-                continue
-            ad = os.path.abspath(d)
-            if any(ad == s or ad.startswith(s + os.sep) for s in seen):
-                continue
-            seen.append(ad)
-        return seen
-
-    def _confine_config(self) -> Optional[dict]:
-        """Confinement block for the bootstrap config, or ``None`` if disabled."""
-        if not self._confine:
-            return None
-        if confinement_kind() == "seatbelt":
-            # No FUSE mount to pivot into on macOS, and none needed: Seatbelt
-            # confines the process where it stands instead of relocating it.
-            # The writable surface is therefore the sandbox's own host dir,
-            # and the readable surface the same runtime set the Linux path
-            # bind-mounts read-only.
-            #
-            # `workdir` is deliberately NOT writable here, and not readable
-            # either. It is a *seed*: `_seed_from_workdir` copies it into the
-            # virtual filesystem host-side at construction, and the documented
-            # contract is that the agent's writes never touch the real
-            # directory. On Linux that holds because the host filesystem is
-            # gone after the pivot; granting it on macOS would quietly make the
-            # one platform where the host is still there the one platform where
-            # a snippet can edit the user's own files.
-            rw_paths = [self._hostdir]
-            # Darwin hands out /var/folders temp dirs through a /private
-            # symlink, and Seatbelt matches on the resolved path, so a profile
-            # written against the unresolved one silently fails to match.
-            rw_paths = [os.path.realpath(p) for p in rw_paths]
-            read_paths = [os.path.realpath(p) for p in self._runtime_binds()]
-            # Scratch space for the snippet, inside the writable area and kept
-            # apart from the state / result / socket files that share it (see
-            # `_confine_macos`, which points `TMPDIR` here).
-            tmpdir = os.path.join(self._hostdir, "tmp")
-            os.makedirs(tmpdir, exist_ok=True)
-            config = {
-                "confine": True,
-                "read_paths": read_paths,
-                "rw_paths": rw_paths,
-                "network": self._confine_network,
-                "rlimits": dict(self._rlimits),
-                "tmpdir": tmpdir,
-            }
-            # The per-run RPC socket is created inside the host dir under a
-            # random name, so the profile allows the directory rather than a
-            # literal path it cannot know yet.
-            config["rpc_socket_dir"] = os.path.realpath(self._hostdir)
-            return config
-        if not self._fuse_mountpoint:
-            return None
-        config = {
-            "confine": True,
-            "mp": self._fuse_mountpoint,
-            "binds": self._runtime_binds(),
-            "rw_binds": [self._hostdir],
-            "network": self._confine_network,
-            "rlimits": dict(self._rlimits),
-        }
-        if self._seccomp_blob:
-            config["seccomp"] = self._seccomp_blob
-        return config
-
-    def _guard_confinement(self, confine_cfg: Optional[dict]) -> None:
-        """Refuse to execute unconfined when confinement was required.
-
-        Defense in depth for `require_confinement`: even if some later
-        state change (a `reset`, a `fork`) left the sandbox unable to confine,
-        a missing config here is a hard error rather than a silent unconfined
-        run.
-        """
-        if self._require_confinement and confine_cfg is None:
-            raise RuntimeError(
-                "MirageSandbox(require_confinement=True): confinement is not "
-                "active; refusing to execute unconfined."
-            )
+        if self.state_path is None:
+            self.state_path = os.path.join(self.hostdir, "state.pkl")
+        return self.state_path
 
     def granted_capabilities(self) -> Dict[str, Any]:
         """Audit the privilege surface this sandbox actually grants.
@@ -2682,8 +1549,11 @@ class MirageSandbox(Sandbox):
         access mode. Verify it grants only what the task needs.
 
         Returns:
-            dict: ``confined``, ``require_confinement``, ``seccomp`` (filter
-            active), ``read_only_runtime``, ``network`` (``{"mode": ...}``:
+            dict: ``confined``, ``backend`` (``"namespaces"`` on Linux;
+            ``"microvm"`` on macOS, or ``"seatbelt"`` where no microVM can run,
+            which has no PID isolation or syscall filter; ``None`` unconfined),
+            ``require_confinement``, ``seccomp``
+            (filter active), ``read_only_runtime``, ``network`` (``{"mode": ...}``:
             ``host`` unconfined, else ``cut`` / ``full`` / ``allowlist``),
             ``host_runtimes`` (names of configured runtimes that execute code on
             the host rather than in a sandbox; should be empty when confined),
@@ -2691,50 +1561,55 @@ class MirageSandbox(Sandbox):
             surface) and ``mounts`` (``prefix -> mode``, the actual per-mount
             access mode).
         """
-        if not self._confine:
+        if not self.confine:
             network = {"mode": "host"}  # unconfined: shares the host network
-        elif self._allowed_hosts is not None:
-            network = {"mode": "allowlist", "allowed_hosts": list(self._allowed_hosts)}
-        elif self._confine_network:
+        elif self.allowed_hosts is not None:
+            network = {"mode": "allowlist", "allowed_hosts": list(self.allowed_hosts)}
+        elif self.confine_network:
             network = {"mode": "full"}
         else:
             network = {"mode": "cut"}
 
-        def _mode_name(value):
-            # Each entry is a (resource, MountMode) pair after _resolve_mount_modes;
-            # fall back to the global mode for any bare survivor.
-            m = value[1] if isinstance(value, tuple) else self._mode
-            return getattr(m, "name", str(m))
-
         return {
-            "confined": self._confine,
-            "require_confinement": self._require_confinement,
-            "seccomp": bool(self._seccomp_blob) and self._confine,
-            "read_only_runtime": self._confine,
+            "confined": self.confine,
+            "backend": self.backend if self.confine else None,
+            "require_confinement": self.require_confinement,
+            "seccomp": bool(self.seccomp_blob) and self.confine,
+            "read_only_runtime": self.confine,
             "network": network,
-            "host_runtimes": _host_escaping_runtimes(
-                self._workspace_kwargs.get("runtimes"),
-                patched=self._run_python_patched,
+            "host_runtimes": host_escaping_runtimes(
+                self.workspace_kwargs.get("runtimes"),
+                patched=self.run_python_patched,
             ),
-            "tools": sorted(self._functions),
-            "mounts": {p: _mode_name(v) for p, v in self._resources.items()},
+            "tools": sorted(self.functions),
+            # `load` keeps caller-supplied mounts bare; they use the global mode.
+            "mounts": {
+                prefix: getattr(m, "name", str(m))
+                for prefix, value in self.resources.items()
+                for m in [value[1] if isinstance(value, tuple) else self.mode]
+            },
         }
 
-    async def _execute(
+    async def execute(
         self,
         command: str,
         *,
         stdin: Optional[bytes] = None,
         timeout: Optional[float] = None,
+        record: bool = False,
     ):
         """Run one Mirage command; return ``(stdout, stderr, exit_code)``.
 
-        ``stdout_str`` / ``stderr_str`` are awaited (Mirage returns them as
-        coroutines). A ``timeout`` (seconds) bounds the whole command and, on
-        expiry, surfaces as ``exit_code = 124`` with a ``TimeoutError`` on
-        stderr, mirroring the shell ``timeout`` convention.
+        A ``timeout`` (seconds) bounds the whole command and, on expiry,
+        surfaces as ``exit_code = 124`` with a ``TimeoutError`` on stderr,
+        mirroring the shell ``timeout`` convention. Mirage logs every recorded
+        line in the workspace's ``/.bash_history`` view, so only commands the
+        agent itself typed are recorded (``record=True``); the bootstrap
+        launch and file-tool plumbing would otherwise fill it.
         """
-        coro = self._ws.execute(command, session_id=self._session, stdin=stdin)
+        coro = self.workspace.execute(
+            command, session_id=self.session_id, stdin=stdin, record=record
+        )
         try:
             if timeout is not None:
                 result = await asyncio.wait_for(coro, timeout=timeout)
@@ -2742,28 +1617,209 @@ class MirageSandbox(Sandbox):
                 result = await coro
         except asyncio.TimeoutError:
             return "", f"TimeoutError: execution exceeded {timeout}s", 124
-        out = result.stdout_str()
-        err = result.stderr_str()
-        if inspect.isawaitable(out):
-            out = await out
-        if inspect.isawaitable(err):
-            err = await err
+        out = await maybe_await(result.stdout_str())
+        err = await maybe_await(result.stderr_str())
         return out, err, result.exit_code
+
+    async def execute_healing(
+        self,
+        make_command: Callable[[Optional[dict]], str],
+        *,
+        stdin: Optional[bytes] = None,
+        timeout: Optional[float] = None,
+        confine_shell: bool = False,
+    ):
+        """Run a command, rebuilding the workspace once on an infra failure.
+
+        A dead FUSE mount or a confinement-bootstrap abort makes every later
+        command repeat the same error, which an agent would loop on until its
+        budget runs out, so the workspace (and its mount) is rebuilt and the
+        command retried once. ``make_command`` receives the confinement config,
+        recomputed per attempt because a rebuild creates a fresh mount.
+        ``confine_shell`` marks an agent-typed shell command: its line is
+        recorded in history, and the config is advertised through
+        ``active_confine`` so any ``python3`` it spawns self-confines.
+        """
+        heals = 0
+        while True:
+            confine_cfg = None
+            # Only the namespace backend pivots into a host FUSE mount. Seatbelt
+            # confines without one (the snippet then just cannot reach the
+            # virtual filesystem), and the microVM guest mounts its own.
+            if self.confine and (self.fuse_mountpoint or self.backend != "namespaces"):
+                confine_cfg = {
+                    "confine": True,
+                    "network": self.confine_network,
+                    "rlimits": dict(self.rlimits),
+                }
+                if self.seccomp_blob:
+                    confine_cfg["seccomp"] = self.seccomp_blob
+            if confine_cfg is not None and self.backend == "microvm":
+                # Confined again *inside* the guest by the Linux backend, over
+                # the guest image's own runtime dirs (the host's are macOS
+                # binaries), pivoting into the guest's mount of the virtual
+                # filesystem. The host dir is shared in at its host path; RPC
+                # sockets are reached through guest-local proxies.
+                confine_cfg.update(
+                    mp=GUEST_MOUNT,
+                    # ``extra_binds`` are shared into the guest at their host
+                    # paths (read-only), so they bind in as they do on Linux.
+                    # Both spellings of each: the guest aliases /var/folders.
+                    binds=list(GUEST_BINDS)
+                    + sorted(
+                        {
+                            path
+                            for d in self.extra_binds
+                            for path in (os.path.abspath(d), os.path.realpath(d))
+                        }
+                    ),
+                    rw_binds=[self.hostdir, GUEST_SOCK_DIR],
+                    sock_dir=GUEST_SOCK_DIR,
+                )
+            elif confine_cfg is not None:
+                # Host directories bound **read-only** into the confined root:
+                # the interpreter's install + venv + system lib/bin dirs, the
+                # host's package locations (site-packages, ``PYTHONPATH``) and
+                # ``extra_binds``, each at its original path so ``sys.path``
+                # resolves after the pivot and host libraries import as they do
+                # on the host, while confined code cannot write them. Nothing
+                # else of the host filesystem is visible (not ``/etc``,
+                # ``/home``). Re-read per run so later installs are picked up.
+                candidates = [
+                    sys.base_prefix,
+                    sys.prefix,
+                    "/usr",
+                    "/lib",
+                    "/lib64",
+                    "/bin",
+                ]
+                if sys.platform == "darwin":
+                    # dyld resolves nearly every library out of the shared cache
+                    # under /System, and the package prefixes hold the
+                    # interpreter's own dependency dylibs (a Homebrew or MacPorts
+                    # python links against libssl / libffi living beside it,
+                    # outside `sys.prefix`). Without these the Seatbelt profile
+                    # denies the reads CPython performs before it can execute a
+                    # single line of the snippet. `/Library` is deliberately not
+                    # here: it holds third-party application state, and a
+                    # python.org framework build under it is covered by
+                    # `sys.base_prefix` already.
+                    candidates += [
+                        "/System",
+                        "/opt/homebrew",
+                        "/opt/local",
+                        "/private/var/db/dyld",
+                    ]
+                try:
+                    import site
+
+                    candidates += list(site.getsitepackages())
+                    candidates.append(site.getusersitepackages())
+                except Exception:  # noqa: BLE001 - site may be restricted/absent
+                    pass
+                candidates += [
+                    p for p in os.environ.get("PYTHONPATH", "").split(os.pathsep) if p
+                ]
+                binds: List[str] = []
+                for d in candidates + self.extra_binds:
+                    if not d or not os.path.isdir(d):
+                        continue
+                    d = os.path.abspath(d)
+                    # A dir under an already-bound one is exposed by its parent.
+                    if not any(d == b or d.startswith(b + os.sep) for b in binds):
+                        binds.append(d)
+                if self.backend == "seatbelt":
+                    # Seatbelt confines the process where it stands rather
+                    # than pivoting it, so the same sets become profile grants:
+                    # the runtime read-only, and writable only the host dir
+                    # (state / result / RPC socket) plus the FUSE mount, which
+                    # the process also stands in so its relative paths land on
+                    # the virtual filesystem. `workdir` is deliberately not
+                    # granted: it is a seed copied in host-side, and the agent's
+                    # writes must never reach the real directory. Seatbelt
+                    # matches resolved paths, and Darwin hands temp dirs out
+                    # through the `/var` -> `/private/var` symlink.
+                    mp = self.fuse_mountpoint and os.path.realpath(self.fuse_mountpoint)
+                    tmpdir = os.path.join(self.hostdir, "tmp")
+                    os.makedirs(tmpdir, exist_ok=True)
+                    confine_cfg.update(
+                        read_paths=[os.path.realpath(b) for b in binds],
+                        rw_paths=[p for p in (self.hostdir, mp) if p],
+                        # The per-run RPC socket gets a random name inside the
+                        # host dir, so the profile grants the directory.
+                        rpc_socket_dir=self.hostdir,
+                        tmpdir=tmpdir,
+                        cwd=mp,
+                    )
+                else:
+                    confine_cfg.update(
+                        mp=self.fuse_mountpoint,
+                        binds=binds,
+                        rw_binds=[self.hostdir],
+                    )
+            elif self.require_confinement:
+                # Defense in depth: even if a later state change (a reset, a
+                # fork) left the sandbox unable to confine, never run unconfined.
+                raise RuntimeError(
+                    "MirageSandbox(require_confinement=True): confinement is not "
+                    "active; refusing to execute unconfined."
+                )
+            command = make_command(confine_cfg)
+            token = (
+                active_confine.set(confine_cfg) if confine_shell and confine_cfg else None
+            )
+            try:
+                stdout, stderr, exit_code = await self.execute(
+                    command, stdin=stdin, timeout=timeout, record=confine_shell
+                )
+            finally:
+                if token is not None:
+                    active_confine.reset(token)
+            infra_failure = exit_code != 0 and any(
+                marker in (stderr or "") for marker in INFRA_FAILURE_MARKERS
+            )
+            if heals < MAX_INFRA_HEALS and infra_failure:
+                heals += 1
+                self.rebuild_workspace()
+                continue
+            return stdout, stderr, exit_code
 
     # -- execution primitives ------------------------------------------------
 
-    async def run(
+    async def run_code(
         self,
         code: str,
+        language: Optional[str] = None,
+        context: Optional[Context] = None,
+        on_stdout: Optional[Callable[[OutputMessage], Any]] = None,
+        on_stderr: Optional[Callable[[OutputMessage], Any]] = None,
+        on_result: Optional[Callable[[Result], Any]] = None,
+        on_error: Optional[Callable[[ExecutionError], Any]] = None,
+        envs: Optional[Dict[str, str]] = None,
+        timeout: Optional[float] = None,
+        request_timeout: Optional[float] = None,
         *,
         inputs: Optional[Dict[str, Any]] = None,
         external_functions: Optional[Dict[str, Callable]] = None,
-    ) -> ExecutionResult:
+    ) -> Execution:
         import dill
 
-        state_path = self._ensure_state_path()
+        if context is not None and language is not None:
+            raise InvalidArgumentException(
+                "You can provide context or language, but not both at the same time."
+            )
+        if language not in (None, "python", "python3"):
+            raise InvalidArgumentException(
+                f"language {language!r} is not supported: this sandbox runs Python"
+            )
+        # As on E2B: ``None`` is the default (the sandbox's), ``0`` no limit.
+        timeout = None if timeout == 0 else (timeout or self.timeout or None)
+        if context is not None and context.id != DEFAULT_CONTEXT.id:
+            state_path = self.context_entry(context)["state_path"]
+        else:
+            state_path = self.ensure_state_path()
         # Persistently bound functions, plus this call's, exposed in-sandbox.
-        functions = {**self._functions, **(external_functions or {})}
+        functions = {**self.functions, **(external_functions or {})}
 
         server = None
         sock_path = None
@@ -2771,15 +1827,25 @@ class MirageSandbox(Sandbox):
         # they are reachable after the confinement pivot (which binds that
         # dir in).
         result_fd, result_path = tempfile.mkstemp(
-            prefix="result_", suffix=".json", dir=self._hostdir
+            prefix="result_", suffix=".json", dir=self.hostdir
         )
         os.close(result_fd)
         config_fd, config_path = tempfile.mkstemp(
-            prefix="config_", suffix=".json", dir=self._hostdir
+            prefix="config_", suffix=".json", dir=self.hostdir
         )
         os.close(config_fd)
         try:
-            base_config: Dict[str, Any] = {"result": result_path}
+            base_config: Dict[str, Any] = {
+                "result": result_path,
+                "envs": {**self.envs, **(envs or {})},
+                # matplotlib's font cache: built once per sandbox, in its own
+                # (writable, confined-visible) host dir.
+                "mplconfigdir": os.path.join(self.hostdir, "mplconfig"),
+            }
+            if context is not None:
+                # Not ``cwd``: that key is Seatbelt's (where it stands).
+                base_config["context_cwd"] = context.cwd
+                base_config["cwd_root"] = self.virtual_root()
             if inputs:
                 base_config["inputs"] = base64.b64encode(dill.dumps(inputs)).decode(
                     "ascii"
@@ -2788,44 +1854,79 @@ class MirageSandbox(Sandbox):
                 # A host-side Unix-socket server services in-sandbox tool calls
                 # concurrently while the snippet subprocess runs. It lives in the
                 # host dir (not the workspace), so it survives a workspace heal.
-                sock_path = tempfile.mktemp(
-                    prefix="rpc_", suffix=".sock", dir=self._hostdir
-                )
-                server = await asyncio.start_unix_server(
-                    self._make_rpc_handler(functions), path=sock_path
-                )
+                # Short name on purpose: AF_UNIX paths cap at 104 bytes on
+                # macOS, and the temp dir already uses most of that.
+                sock_path = os.path.join(self.hostdir, f"rpc_{uuid.uuid4().hex[:8]}.sock")
+
+                # One length-prefixed JSON request ``{"name", "args", "kwargs"}``
+                # per connection; the host callable runs (awaited if async) and
+                # its result goes back as ``{"ok": true, "result": ...}`` or
+                # ``{"ok": false, "error": ...}``.
+                async def handle(reader, writer):
+                    try:
+                        (length,) = struct.unpack(">I", await reader.readexactly(4))
+                        request = json.loads(await reader.readexactly(length))
+                        func = functions.get(request.get("name"))
+                        if func is None:
+                            resp = {
+                                "ok": False,
+                                "error": f"unknown tool: {request.get('name')}",
+                            }
+                        else:
+                            try:
+                                result = await maybe_await(
+                                    func(
+                                        *(request.get("args") or []),
+                                        **(request.get("kwargs") or {}),
+                                    )
+                                )
+                                try:
+                                    json.dumps(result)
+                                except (TypeError, ValueError):
+                                    # DataModels expose ``get_json()``; anything
+                                    # else crosses the socket as its ``str``.
+                                    try:
+                                        result = result.get_json()
+                                    except Exception:  # noqa: BLE001
+                                        result = str(result)
+                                resp = {"ok": True, "result": result}
+                            except Exception as exc:  # noqa: BLE001 - to snippet
+                                resp = {
+                                    "ok": False,
+                                    "error": f"{type(exc).__name__}: {exc}",
+                                }
+                        body = json.dumps(resp).encode("utf-8")
+                    except asyncio.IncompleteReadError:
+                        return
+                    except Exception as exc:  # noqa: BLE001 - protocol failure
+                        body = json.dumps({"ok": False, "error": str(exc)}).encode()
+                    try:
+                        writer.write(struct.pack(">I", len(body)) + body)
+                        await writer.drain()
+                        writer.close()
+                    except Exception:  # noqa: BLE001 - peer may have gone away
+                        pass
+
+                server = await asyncio.start_unix_server(handle, path=sock_path)
                 base_config["sock"] = sock_path
                 base_config["tools"] = sorted(functions)
-            b64_boot = base64.b64encode(_BOOTSTRAP.encode("utf-8")).decode("ascii")
+            b64_boot = base64.b64encode(BOOTSTRAP.encode("utf-8")).decode("ascii")
 
-            # Heal-and-retry loop: a dead FUSE mount / confinement-bootstrap
-            # failure makes every run repeat the same infra error, which an
-            # agent would loop on until timeout. Rebuild the workspace (fresh
-            # mount) and retry once. The confinement config carries the mount
-            # point, so it is recomputed each attempt after a rebuild.
-            heals = 0
-            while True:
-                config = dict(base_config)
-                confine_cfg = self._confine_config()
-                self._guard_confinement(confine_cfg)
-                if confine_cfg:
-                    config.update(confine_cfg)
+            def make_command(confine_cfg: Optional[dict]) -> str:
                 with open(config_path, "w", encoding="utf-8") as fh:
-                    json.dump(config, fh)
-                command = 'python3 -c "%s" %s %s %s' % (
-                    _LAUNCHER,
+                    json.dump({**base_config, **(confine_cfg or {})}, fh)
+                return 'python3 -c "%s" %s %s %s' % (
+                    LAUNCHER,
                     b64_boot,
                     shlex.quote(state_path),
                     shlex.quote(config_path),
                 )
-                stdout, stderr, exit_code = await self._execute(
-                    command, stdin=code.encode("utf-8"), timeout=self.timeout
-                )
-                if heals < _MAX_INFRA_HEALS and _is_infra_failure(stderr, exit_code):
-                    heals += 1
-                    self._rebuild_workspace()
-                    continue
-                break
+
+            stdout, stderr, exit_code = await self.execute_healing(
+                make_command,
+                stdin=code.encode("utf-8"),
+                timeout=timeout,
+            )
         finally:
             if server is not None:
                 server.close()
@@ -2833,7 +1934,13 @@ class MirageSandbox(Sandbox):
                     await server.wait_closed()
                 except Exception:  # noqa: BLE001 - server teardown is best-effort
                     pass
-            value = self._read_result(result_path)
+            # The bootstrap's report: the raised error and the last
+            # expression's value, if any (absent when the process died first).
+            try:
+                with open(result_path) as fh:
+                    report = json.loads(fh.read() or "{}")
+            except (OSError, json.JSONDecodeError):
+                report = {}
             for path in (result_path, sock_path, config_path):
                 if path and os.path.exists(path):
                     try:
@@ -2841,78 +1948,124 @@ class MirageSandbox(Sandbox):
                     except OSError:
                         pass
 
-        stderr = _clean_traceback(stderr)
-        if self._malloc_arena_max is not None:
+        error = report.get("error")
+        if error is not None:
+            error = ExecutionError(**error)
+        elif exit_code == 124 and stderr.startswith("TimeoutError: execution exceeded"):
+            # As on E2B, a run past its timeout raises rather than returning an
+            # `Execution`; it still lands in the history.
+            self.record_run(
+                code,
+                Execution(
+                    logs=Logs(stdout=[stdout] if stdout else []),
+                    error=ExecutionError(
+                        name="TimeoutError", value=stderr.strip(), traceback=""
+                    ),
+                ),
+            )
+            raise execution_timeout_error()
+        elif exit_code != 0:
+            # Died without reaching the bootstrap's handler: a timeout, a
+            # confinement abort, ``sys.exit(n)`` or a crash.
+            message = error_from(stderr, exit_code)
+            match = re.match(r"([A-Za-z_][\w.]*): (.*)", message)
+            name, value = match.groups() if match else ("SandboxError", message)
+            # stderr *is* the failure report here; keep it in one place.
+            error = ExecutionError(name=name, value=value, traceback=stderr)
+            stderr = ""
+        if self.malloc_arena_max is not None:
             # The run's buffers (inputs blob, namespace, FUSE copies) are freed
             # by now; give their pages back instead of keeping them in the
             # arenas for the next hour.
             malloc_trim()
-        return self._record_run(
+        # What the code displayed (``display``, ``plt.show``, open figures)
+        # and its last expression, as E2B results (see the bootstrap).
+        fields = {f.name for f in dataclasses.fields(Result)}
+        results = [
+            Result(
+                **{k: v for k, v in item.items() if k in fields and k != "chart"},
+                chart=deserialize_chart(item.get("chart")),
+            )
+            for item in report.get("results") or []
+        ]
+        execution = self.record_run(
             code,
-            ExecutionResult(
-                stdout=stdout,
-                stderr=stderr,
-                result=value,
-                error=_error_from(stderr, exit_code),
+            Execution(
+                results=results,
+                logs=Logs(
+                    stdout=[stdout] if stdout else [],
+                    stderr=[stderr] if stderr else [],
+                ),
+                error=error,
             ),
         )
+        return await self.notify(execution, on_stdout, on_stderr, on_result, on_error)
 
-    @staticmethod
-    def _read_result(path: str) -> Optional[Any]:
-        """Decode the JSON last-expression value the subprocess wrote, if any."""
-        try:
-            with open(path, "r") as fh:
-                text = fh.read()
-        except OSError:
-            return None
-        if not text:
-            return None
-        try:
-            return json.loads(text)
-        except json.JSONDecodeError:
-            return None
+    # -- code contexts (E2B) ------------------------------------------------
 
-    def _make_rpc_handler(self, functions: Dict[str, Callable]):
-        """Build the Unix-socket handler that dispatches in-sandbox tool calls.
+    def virtual_root(self) -> Optional[str]:
+        """Where the virtual filesystem's "/" is from inside a run, or ``None``.
 
-        Each connection carries one length-prefixed JSON request
-        ``{"name", "args", "kwargs"}``; the named host callable runs (awaited
-        if a coroutine) and its JSON-marshalable return is sent back as
-        ``{"ok": true, "result": ...}`` (or ``{"ok": false, "error": ...}``).
+        ``""`` once confinement pivoted into it (namespaces, microVM), the host
+        mount under Seatbelt, and ``None`` unconfined, where the snippet's
+        own file I/O does not reach it.
         """
+        if not self.confine:
+            return None
+        if self.backend == "seatbelt":
+            return self.fuse_mountpoint and os.path.realpath(self.fuse_mountpoint)
+        return ""
 
-        async def handle(reader, writer):
-            try:
-                header = await reader.readexactly(4)
-                (length,) = struct.unpack(">I", header)
-                request = json.loads((await reader.readexactly(length)).decode("utf-8"))
-                name = request.get("name")
-                args = request.get("args") or []
-                kwargs = request.get("kwargs") or {}
-                func = functions.get(name)
-                if func is None:
-                    resp = {"ok": False, "error": f"unknown tool: {name}"}
-                else:
-                    try:
-                        result = func(*args, **kwargs)
-                        if inspect.isawaitable(result):
-                            result = await result
-                        resp = {"ok": True, "result": _jsonable(result)}
-                    except Exception as exc:  # noqa: BLE001 - surfaced to snippet
-                        resp = {"ok": False, "error": f"{type(exc).__name__}: {exc}"}
-                body = json.dumps(resp).encode("utf-8")
-            except asyncio.IncompleteReadError:
-                return
-            except Exception as exc:  # noqa: BLE001 - protocol-level failure
-                body = json.dumps({"ok": False, "error": str(exc)}).encode("utf-8")
-            try:
-                writer.write(struct.pack(">I", len(body)) + body)
-                await writer.drain()
-                writer.close()
-            except Exception:  # noqa: BLE001 - peer may have gone away
-                pass
+    def context_entry(self, context: Union[Context, str]) -> Dict[str, Any]:
+        """The record of a context made by `create_code_context`."""
+        context_id = context.id if isinstance(context, Context) else context
+        entry = self.contexts.get(context_id)
+        if entry is None:
+            raise NotFoundException(f"Context {context_id} not found")
+        return entry
 
-        return handle
+    @request_deadline
+    async def create_code_context(
+        self,
+        cwd: Optional[str] = None,
+        language: Optional[str] = None,
+        request_timeout: Optional[float] = None,
+    ) -> Context:
+        """Create a code context: its own Python namespace, and ``cwd`` (a
+        virtual path, default ``/``) as working directory for its runs."""
+        if language not in (None, "python", "python3"):
+            raise InvalidArgumentException(
+                f"language {language!r} is not supported: this sandbox runs Python"
+            )
+        context = Context(id=uuid.uuid4().hex, language="python", cwd=cwd or "/")
+        self.contexts[context.id] = {
+            "context": context,
+            "state_path": os.path.join(self.hostdir, f"context_{context.id}.dill"),
+        }
+        return context
+
+    async def list_code_contexts(self) -> List[Context]:
+        """The default context, then those made by `create_code_context`."""
+        return [DEFAULT_CONTEXT] + [entry["context"] for entry in self.contexts.values()]
+
+    async def restart_code_context(self, context: Union[Context, str]) -> None:
+        """Wipe a context's namespace; restarting the default one wipes the
+        sandbox's own namespace (its variables, imports, definitions)."""
+        context_id = context.id if isinstance(context, Context) else context
+        if context_id == DEFAULT_CONTEXT.id:
+            self.discard_state()
+            return
+        path = self.context_entry(context)["state_path"]
+        if os.path.exists(path):
+            os.unlink(path)
+
+    async def remove_code_context(self, context: Union[Context, str]) -> None:
+        """Delete a context and its namespace (the default one cannot be)."""
+        context_id = context.id if isinstance(context, Context) else context
+        if context_id == DEFAULT_CONTEXT.id:
+            raise InvalidArgumentException("The default context cannot be removed")
+        await self.restart_code_context(context)
+        del self.contexts[context_id]
 
     async def run_bash(self, command: str) -> dict:
         """Run a shell command in the sandbox's isolated Mirage shell.
@@ -2932,30 +2085,7 @@ class MirageSandbox(Sandbox):
             dict: ``ok`` (exit code 0), ``stdout``, ``stderr`` and
             ``exit_code``.
         """
-        # Heal-and-retry on an infrastructure failure (dead FUSE mount /
-        # confinement abort), same as ``run``; otherwise every shell call would
-        # repeat the error and an agent would loop on it. The confinement config
-        # (with the mount point) is recomputed each attempt since a rebuild
-        # creates a fresh mount; when confined we advertise it via
-        # ``_active_confine`` so any ``python3`` the command spawns (through the
-        # patched runner) self-confines like ``run`` does.
-        heals = 0
-        while True:
-            confine_cfg = self._confine_config()
-            self._guard_confinement(confine_cfg)
-            token = _active_confine.set(confine_cfg) if confine_cfg else None
-            try:
-                stdout, stderr, exit_code = await self._execute(
-                    command, timeout=self.timeout
-                )
-            finally:
-                if token is not None:
-                    _active_confine.reset(token)
-            if heals < _MAX_INFRA_HEALS and _is_infra_failure(stderr, exit_code):
-                heals += 1
-                self._rebuild_workspace()
-                continue
-            break
+        stdout, stderr, exit_code = await self.run_shell(command)
         return {
             "ok": exit_code == 0,
             "stdout": stdout,
@@ -2963,59 +2093,59 @@ class MirageSandbox(Sandbox):
             "exit_code": exit_code,
         }
 
-    async def _write(self, path: str, content: str) -> int:
-        """Write ``content`` to ``path`` in the virtual filesystem (mkdir -p)."""
-        parent = os.path.dirname(path.rstrip("/")) or "/"
-        command = "mkdir -p %s && cat > %s" % (
-            shlex.quote(parent),
-            shlex.quote(path),
+    async def run_shell(
+        self,
+        command: str,
+        timeout: Optional[float] = None,
+        stdin: Optional[bytes] = None,
+    ):
+        """Run a shell command confined and self-healing, like `run_code`.
+
+        Shared by `run_bash` and ``commands.run``; returns
+        ``(stdout, stderr, exit_code)``.
+        """
+        return await self.execute_healing(
+            lambda _cfg: command,
+            stdin=stdin,
+            # ``None`` means the sandbox default; ``0`` means no limit (E2B).
+            timeout=self.timeout if timeout is None else (timeout or None),
+            confine_shell=True,
         )
-        data = content.encode("utf-8")
-        _, _stderr, _exit = await self._execute(command, stdin=data)
-        return len(data)
 
-    async def _delete(self, path: str) -> None:
-        """Remove ``path`` from the virtual filesystem (best-effort)."""
-        await self._execute("rm -f -- %s" % shlex.quote(path))
+    async def write(self, path: str, data) -> Optional[str]:
+        """Write ``data`` (text or bytes) to ``path``, creating parent dirs.
 
-    async def _read_tree(self) -> Dict[str, str]:
+        The one write path behind `write_file`, ``files.write``, seeding and
+        `merge`. Returns ``None`` on success, else the error message.
+        """
+        if isinstance(data, str):
+            data = data.encode("utf-8")
+        parent = posixpath.dirname(path.rstrip("/")) or "/"
+        command = "mkdir -p %s && cat > %s" % (shlex.quote(parent), shlex.quote(path))
+        _, stderr, exit_code = await self.execute(command, stdin=bytes(data))
+        if exit_code != 0:
+            return stderr.strip() or f"failed to write {path}"
+        return None
+
+    async def read_tree(self) -> Dict[str, str]:
         """Snapshot the virtual filesystem as ``{vpath: text}`` (text files)."""
         tree: Dict[str, str] = {}
-        for path in await self._walk_files():
-            if path.startswith("/.sessions") or path.startswith("/dev"):
-                continue
-            text = await self._read_text(path)
+        for path in await self.walk_files():
+            text = await self.read_text(path)
             if text is not None:
                 tree[path] = text
         return tree
 
     def reset(self) -> None:
-        self._discard_state()
+        self.discard_state()
         self.clear_history()
         # Release the current workspace's FUSE mount before replacing it;
         # otherwise every ``reset`` leaks a mount until ``mount_max`` is hit.
-        _sync_close_workspace(getattr(self, "_ws", None))
-        self._ws = self._new_workspace()
-        # Point the GC/exit finalizer at the new workspace so it releases the
-        # live mount (not the one we just closed) if the sandbox is dropped.
-        if getattr(self, "_ws_state", None) is not None:
-            self._ws_state["ws"] = self._ws
-        # The new workspace gets a fresh FUSE mount; refresh the cached
-        # mountpoint so a confined sandbox pivots into the live mount (and
-        # ``require_confinement`` still holds) after a reset.
-        self._fuse_mountpoint = getattr(self._ws, "fuse_mountpoint", None)
-        if (
-            self._require_confinement
-            and not self._fuse_mountpoint
-            and confinement_kind() != "seatbelt"
-        ):
-            raise RuntimeError(
-                "MirageSandbox(require_confinement=True): the FUSE mount was not "
-                "re-established after reset; cannot confine."
-            )
-        self._fork_base = self._seed_from_workdir(self._workdir) if self._workdir else {}
+        sync_close_workspace(getattr(self, "workspace", None))
+        self.set_workspace(self.new_workspace(), when=" after reset")
+        self.fork_base = self.seed_from_workdir(self.workdir) if self.workdir else {}
 
-    def _rebuild_workspace(self) -> None:
+    def rebuild_workspace(self) -> None:
         """Re-establish the Mirage workspace and its FUSE mount in place.
 
         Self-heals a dead mount mid-session (``Transport endpoint is not
@@ -3026,104 +2156,98 @@ class MirageSandbox(Sandbox):
         virtual filesystem's live contents are lost, but the dead mount had
         already made them unreachable.
         """
-        ws = getattr(self, "_ws", None)
-        if ws is not None:
-            try:
-                result = ws.close()
-                if inspect.isawaitable(result):
-                    run_async_from_sync(result)
-            except Exception:  # noqa: BLE001 - the old mount is already broken
-                pass
-        self._ws = self._new_workspace()
-        if getattr(self, "_ws_state", None) is not None:
-            self._ws_state["ws"] = self._ws
-        self._fuse_mountpoint = getattr(self._ws, "fuse_mountpoint", None)
-        if self._require_confinement and not self._fuse_mountpoint:
-            raise RuntimeError(
-                "MirageSandbox(require_confinement=True): the FUSE mount could "
-                "not be re-established after an infrastructure failure; cannot "
-                "confine."
-            )
+        # Called from inside `run_code` / `run_bash`, i.e. with a loop running,
+        # which `sync_close_workspace` handles (a blocking close would not).
+        sync_close_workspace(getattr(self, "workspace", None))
+        self.set_workspace(self.new_workspace(), when=" after an infrastructure failure")
 
-    def _arm_finalizer(self) -> None:
-        """Register a GC/exit finalizer that releases this sandbox's FUSE mount.
-
-        Called from every construction path (``__init__``, `fork`, `load`) so a
-        sandbox that is dropped without an explicit ``close()`` still releases
-        its mount; otherwise leaked mounts accumulate until ``mount_max`` is hit
-        and new mounts fail silently. The finalizer closes over a plain-dict
-        holder (``_ws_state``), never ``self``, so it does not keep the sandbox
-        alive; `reset` / `_rebuild_workspace` update the holder in place.
-        """
-        self._ws_state = {
-            "ws": getattr(self, "_ws", None),
-            "hostdir": getattr(self, "_hostdir", None),
-        }
-        self._finalizer = weakref.finalize(self, _finalize_workspace, self._ws_state)
-
-    def _disarm_finalizer(self) -> None:
+    def disarm_finalizer(self) -> None:
         """Cancel the GC/exit finalizer after an explicit close, and forget the
         workspace so it can't be released a second time."""
-        fin = getattr(self, "_finalizer", None)
+        fin = getattr(self, "finalizer", None)
         if fin is not None:
             fin.detach()
-        if getattr(self, "_ws_state", None) is not None:
-            self._ws_state["ws"] = None
+        if getattr(self, "workspace_state", None) is not None:
+            self.workspace_state["ws"] = None
+
+    @classmethod
+    def network_options(
+        cls, allow_internet_access: Optional[bool], network: Optional[Any]
+    ) -> Dict[str, Any]:
+        """Map `create`'s E2B network options onto this sandbox's own.
+
+        ``allow_internet_access=True`` opens the network (``confine_network``);
+        ``network={"allow_out": [...]}`` becomes the ``allowed_hosts`` egress
+        allowlist (only these hosts, through ``http_fetch``). E2B rules with no
+        local equivalent (``deny_out``, ...) raise rather than being dropped.
+        """
+        options: Dict[str, Any] = {}
+        if allow_internet_access:
+            options["confine_network"] = True
+        if network:
+            rules = dict(network)
+            allow_out = rules.pop("allow_out", None)
+            unsupported = [key for key, value in rules.items() if value]
+            if unsupported:
+                raise InvalidArgumentException(
+                    f"network rules {unsupported} are not supported locally; "
+                    "use allow_out (an egress allowlist)"
+                )
+            if allow_out:
+                options["allowed_hosts"] = list(allow_out)
+        return options
+
+    async def release(self) -> None:
+        """Release the FUSE mount, workspace and host state (for ``kill``)."""
+        await self.aclose()
 
     async def aclose(self) -> None:
         """Async release of the workspace and host state directory."""
-        self._discard_state()
-        ws = getattr(self, "_ws", None)
+        self.killed = True
+        Sandbox.live_sandboxes.pop(self.identifier, None)
+        self.discard_state()
+        ws = getattr(self, "workspace", None)
         if ws is not None:
-            result = ws.close()
-            if inspect.isawaitable(result):
-                await result
-        _rmtree(getattr(self, "_hostdir", "") or "")
-        self._disarm_finalizer()
+            await maybe_await(ws.close())
+            release_mountpoint(getattr(ws, "synalinks_mountpoint", None))
+        rmtree(getattr(self, "hostdir", None))
+        self.disarm_finalizer()
 
     def close(self) -> None:
         """Best-effort, synchronous release of the workspace and state dir.
 
         Safe to call from any context (with or without a running event loop):
-        the FUSE mount is released synchronously via the workspace's
-        ``_close_parts`` when a loop is already running, and via the full async
+        the FUSE mount is released synchronously via Mirage's
+        ``close_sync_parts`` when a loop is already running, and via the full async
         ``close`` otherwise. Teardown never raises.
         """
-        self._discard_state()
-        _sync_close_workspace(getattr(self, "_ws", None))
-        _rmtree(getattr(self, "_hostdir", "") or "")
-        self._disarm_finalizer()
+        self.killed = True
+        Sandbox.live_sandboxes.pop(getattr(self, "identifier", None), None)
+        self.discard_state()
+        sync_close_workspace(getattr(self, "workspace", None))
+        rmtree(getattr(self, "hostdir", None))
+        self.disarm_finalizer()
 
-    def _discard_state(self) -> None:
-        if self._state_path and os.path.exists(self._state_path):
+    def discard_state(self) -> None:
+        if self.state_path and os.path.exists(self.state_path):
             try:
-                os.unlink(self._state_path)
+                os.unlink(self.state_path)
             except OSError:
                 pass
-        self._state_path = None
+        self.state_path = None
 
-    def _read_state_bytes(self) -> Optional[bytes]:
-        if self._state_path and os.path.exists(self._state_path):
-            with open(self._state_path, "rb") as fh:
+    def read_state_bytes(self) -> Optional[bytes]:
+        if self.state_path and os.path.exists(self.state_path):
+            with open(self.state_path, "rb") as fh:
                 return fh.read()
         return None
 
-    def _write_state_bytes(self, data: Optional[bytes]) -> None:
+    def write_state_bytes(self, data: Optional[bytes]) -> None:
         if not data:
             return
-        path = self._ensure_state_path()
+        path = self.ensure_state_path()
         with open(path, "wb") as fh:
             fh.write(data)
-
-    def _snapshot_workspace(self) -> bytes:
-        buf = io.BytesIO()
-        # ``Workspace.snapshot`` became a coroutine in mirage-ai 0.0.2; drive it
-        # from this sync method via Mirage's own sync bridge (older versions
-        # return None and skip the await).
-        result = self._ws.snapshot(buf)
-        if inspect.isawaitable(result):
-            run_async_from_sync(result)
-        return buf.getvalue()
 
     # -- serialization -------------------------------------------------------
 
@@ -3135,14 +2259,16 @@ class MirageSandbox(Sandbox):
         *resources* themselves are not embedded (they may carry credentials);
         ``load`` re-supplies them, defaulting to a fresh in-memory mount.
         """
-        state = self._read_state_bytes()
+        state = self.read_state_bytes()
+        snapshot = io.BytesIO()
+        resolve_sync(self.workspace.snapshot(snapshot))
         payload = {
-            "workspace": base64.b64encode(self._snapshot_workspace()).decode("ascii"),
+            "workspace": base64.b64encode(snapshot.getvalue()).decode("ascii"),
             "state": base64.b64encode(state).decode("ascii") if state else None,
-            "history": [dict(entry) for entry in self._history],
+            "history": [dict(entry) for entry in self.run_history],
             "timeout": self.timeout,
             "name": self.name,
-            "session_id": self._session,
+            "session_id": self.session_id,
         }
         return json.dumps(payload).encode("utf-8")
 
@@ -3154,71 +2280,52 @@ class MirageSandbox(Sandbox):
         resources: Optional[Dict[str, Any]] = None,
         mode: Optional[Any] = None,
         workspace_kwargs: Optional[Dict[str, Any]] = None,
+        confine: bool = True,
     ) -> "MirageSandbox":
         """Restore a sandbox from bytes produced by `dump`.
 
         ``resources`` overrides the mounts for the restored workspace (required
         when the original mounts carried redacted credentials); by default a
         fresh in-memory ``RAMResource`` is mounted at ``/`` and the snapshot's
-        files are loaded into it.
+        files are loaded into it. The restored sandbox is confined, and fails
+        closed, exactly like a new one; pass ``confine=False`` to opt out.
         """
-        if mirage is None:
-            raise ImportError(
-                "MirageSandbox requires the `mirage-ai` package. "
-                "Install it with `pip install mirage-ai`."
-            )
+        require_mirage()
         payload = json.loads(data.decode("utf-8"))
-        mounts = resources if resources is not None else {_DEFAULT_MOUNT: RAMResource()}
-        # ``Workspace.load`` became a coroutine in mirage-ai 0.0.4; drive it from
-        # this sync classmethod the same way `fork` drives ``copy`` (older
-        # versions return a ``Workspace`` directly).
-        ws = Workspace.load(
-            io.BytesIO(base64.b64decode(payload["workspace"])), resources=mounts
+        mounts = resources if resources is not None else {DEFAULT_MOUNT: RAMResource()}
+        ws = resolve_sync(
+            Workspace.load(
+                io.BytesIO(base64.b64decode(payload["workspace"])), resources=mounts
+            )
         )
-        if inspect.isawaitable(ws):
-            ws = run_async_from_sync(ws)
         # Same as `fork`: a loaded workspace comes back without the runtime
         # world, so ``python3`` would not be the CPython the bootstrap needs.
-        _adopt_runtimes(ws, (workspace_kwargs or {}).get("runtimes") or _DEFAULT_RUNTIMES)
-        instance = cls.__new__(cls)
-        Sandbox.__init__(
-            instance,
-            timeout=payload.get("timeout", 5.0),
-            name=payload.get("name"),
-        )
-        instance._session = payload.get("session_id", "default")
-        instance._mode = mode if mode is not None else MountMode.EXEC
-        instance._workspace_kwargs = dict(workspace_kwargs or {})
-        instance._resources = mounts
-        instance._workdir = None
-        instance._confine = False
-        instance._require_confinement = False
-        instance._run_python_patched = False
-        instance._confine_network = False
-        instance._seccomp_blob = None
-        instance._allowed_hosts = None
-        instance._block_private_egress = True
-        instance._extra_binds = []
-        instance._rlimits = {}
-        instance._ws = ws
-        instance._fuse_mountpoint = getattr(ws, "fuse_mountpoint", None)
-        instance._hostdir = os.path.realpath(tempfile.mkdtemp(prefix="mirage_sandbox_"))
-        instance._state_path = None
-        instance._fork_base = {}
+        adopt_runtimes(ws, (workspace_kwargs or {}).get("runtimes") or DEFAULT_RUNTIMES)
+        instance = cls.bare(timeout=payload.get("timeout", 5.0), name=payload.get("name"))
+        instance.session_id = payload.get("session_id", "default")
+        if mode is not None:
+            instance.mode = mode
+        instance.workspace_kwargs = dict(workspace_kwargs or {})
+        instance.resources = mounts
+        if confine:
+            instance.require_confinement = True
+            instance.start_confined(
+                ws,
+                "MirageSandbox.load(confine=True)",
+                seccomp_blob=build_seccomp_filter(),
+            )
+        instance.set_workspace(ws)
+        instance.init_host_state()
         if payload.get("state"):
-            instance._write_state_bytes(base64.b64decode(payload["state"]))
-        instance._history = [dict(entry) for entry in (payload.get("history") or [])]
-        instance._arm_finalizer()
+            instance.write_state_bytes(base64.b64decode(payload["state"]))
+        instance.run_history = [dict(entry) for entry in (payload.get("history") or [])]
         return instance
-
-    def _obj_type(self):
-        return "MirageSandbox"
 
     def get_config(self) -> dict:
         return {
             "timeout": self.timeout,
             "name": self.name,
-            "session_id": self._session,
+            "session_id": self.session_id,
             "data": base64.b64encode(self.dump()).decode("ascii"),
         }
 
@@ -3235,102 +2342,103 @@ class MirageSandbox(Sandbox):
 
     # -- branching -----------------------------------------------------------
 
-    def fork(
+    @class_method_variant("class_fork")
+    async def fork(
         self,
+        timeout: Optional[int] = None,
+        count: Optional[int] = None,
         *,
         name: Optional[str] = None,
-        copy_repl: bool = False,
         confine: Optional[bool] = None,
-    ) -> "MirageSandbox":
-        """Return an isolated child branched off this sandbox's current state.
+        **opts,
+    ) -> List[Union["MirageSandbox", Exception]]:
+        """Branch ``count`` (default 1) isolated children off this sandbox's
+        current state (E2B's ``fork``); returns them in a list, with the
+        exception in place of any child that failed.
 
-        The child gets an isolated copy of the Mirage workspace (its virtual
-        filesystem), so the child's writes never touch the parent and vice
-        versa. By default the child starts from a clean interpreter; pass
-        ``copy_repl=True`` to also inherit this sandbox's Python namespace
-        (variables, imports, definitions).
+        Each child gets an isolated copy of the Mirage workspace (its virtual
+        filesystem) and of the Python namespace (variables, imports,
+        definitions), as an E2B fork copies the whole sandbox: from then on,
+        neither side's writes or assignments reach the other.
 
         Args:
-            name (str): Optional name for the child sandbox.
-            copy_repl (bool): Also inherit this sandbox's Python namespace.
+            timeout (int): Optional. Lifetime of the children in seconds
+                (E2B's; see `set_timeout`).
+            count (int): Optional. How many children; defaults to 1.
+            name (str): Optional name for the child (numbered when
+                ``count`` > 1).
             confine (bool): Whether the child is confined to **its own fork**
-                (its ``run`` / ``run_bash`` python sees only the child's virtual
-                filesystem, host hidden, network cut; see ``confine`` on the
-                constructor). ``None`` (default) inherits this sandbox's
-                setting; ``True`` / ``False`` override. A confined child gets
-                its own FUSE mount; if confinement can't be set up it falls back
-                to unconfined with a warning.
+                (its ``run_code`` / ``run_bash`` python sees only the child's
+                virtual filesystem, host hidden, network cut; see ``confine``
+                on the constructor). ``None`` (default) inherits this
+                sandbox's setting; ``True`` / ``False`` override. An explicit
+                ``True`` fails closed when confinement cannot be set up.
         """
-        child = MirageSandbox.__new__(MirageSandbox)
-        Sandbox.__init__(
-            child,
-            timeout=self.timeout,
-            name=(
-                name if name is not None else (f"{self.name}_fork" if self.name else None)
-            ),
+        children: List[Union["MirageSandbox", Exception]] = []
+        base_name = (
+            name if name is not None else (f"{self.name}_fork" if self.name else None)
         )
-        child._session = self._session
-        child._mode = self._mode
-        child._workspace_kwargs = dict(self._workspace_kwargs)
-        child._resources = self._resources
-        child._workdir = self._workdir
-        child._confine_network = self._confine_network
-        child._seccomp_blob = self._seccomp_blob
-        child._allowed_hosts = self._allowed_hosts
-        child._block_private_egress = self._block_private_egress
-        child._extra_binds = list(self._extra_binds)
-        # Bound functions (incl. the egress ``http_fetch`` tool) carry to the
-        # child, so a confined fork keeps the same allowlisted capabilities.
-        child._functions = dict(self._functions)
-        child._rlimits = dict(self._rlimits)
-        # ``Workspace.copy`` became a coroutine in mirage-ai 0.0.2; drive it from
-        # this sync method (older versions return a ``Workspace`` directly).
-        child._ws = self._ws.copy()
-        if inspect.isawaitable(child._ws):
-            child._ws = run_async_from_sync(child._ws)
-        # ``copy`` rebuilds through Mirage's ``_from_state``, which drops the
-        # runtime world; without this the child's ``python3`` is not CPython.
-        _adopt_runtimes(
-            child._ws, self._workspace_kwargs.get("runtimes") or _DEFAULT_RUNTIMES
-        )
-        # Confine the child to its *own* fork: it needs its own FUSE mount
-        # (``copy()`` does not carry one over) so the child's snippet pivots
-        # into the child's filesystem, not the parent's.
-        want = self._confine if confine is None else bool(confine)
-        # A child only requires confinement (fail-closed) when it is asked to
-        # confine at all; an explicit ``confine=False`` fork opts out cleanly.
-        child._require_confinement = self._require_confinement and want
-        child._confine = False
-        child._run_python_patched = False
-        if want:
-            ok, reason = _confinement_available()
-            if ok and _ensure_fuse_mounted(child._ws):
-                child._run_python_patched = _install_run_python_patch()
-                child._confine = True
-            elif child._require_confinement:
-                raise RuntimeError(
-                    "MirageSandbox.fork(confine=True) with require_confinement: "
-                    f"{reason or 'FUSE setup failed'}."
+        for index in range(count or 1):
+            try:
+                child_name = (
+                    f"{base_name}_{index}"
+                    if base_name and (count or 1) > 1
+                    else base_name
                 )
-            else:
-                import warnings
-
-                warnings.warn(
-                    "MirageSandbox.fork(confine=True) disabled: "
-                    f"{reason or 'FUSE setup failed'}. Fork runs unconfined.",
-                    RuntimeWarning,
-                    stacklevel=2,
+                child = self.bare(timeout=self.timeout, name=child_name)
+                child.session_id = self.session_id
+                child.mode = self.mode
+                child.workspace_kwargs = dict(self.workspace_kwargs)
+                child.resources = self.resources
+                child.workdir = self.workdir
+                child.confine_network = self.confine_network
+                child.seccomp_blob = self.seccomp_blob
+                child.allowed_hosts = self.allowed_hosts
+                child.block_private_egress = self.block_private_egress
+                child.extra_binds = list(self.extra_binds)
+                # Bound functions (incl. the egress ``http_fetch`` tool) carry to the
+                # child, so a confined fork keeps the same allowlisted capabilities.
+                child.functions = dict(self.functions)
+                child.rlimits = dict(self.rlimits)
+                ws = resolve_sync(self.workspace.copy())
+                # ``copy`` rebuilds through Mirage's ``_from_state``, which drops the
+                # runtime world; without this the child's ``python3`` is not CPython.
+                adopt_runtimes(
+                    ws, self.workspace_kwargs.get("runtimes") or DEFAULT_RUNTIMES
                 )
-        child._fuse_mountpoint = getattr(child._ws, "fuse_mountpoint", None)
-        child._hostdir = os.path.realpath(tempfile.mkdtemp(prefix="mirage_sandbox_"))
-        child._state_path = None
-        # The child branches from the parent's *current* tree, so the child's
-        # `diff` reports exactly what it changes from here (a clean boundary).
-        child._fork_base = run_async_from_sync(self._read_tree())
-        if copy_repl:
-            child._write_state_bytes(self._read_state_bytes())
-        child._arm_finalizer()
-        return child
+                # Confine the child to its *own* fork: it needs its own FUSE mount
+                # (``copy()`` does not carry one over) so the child's snippet pivots
+                # into the child's filesystem, not the parent's. A child only requires
+                # confinement (fail-closed) when it is asked to confine at all; an
+                # explicit ``confine=False`` fork opts out cleanly.
+                want = self.confine if confine is None else bool(confine)
+                # Inheriting keeps the parent's fail-closed setting; an explicit
+                # ``confine=True`` fails closed like a new sandbox.
+                child.require_confinement = (
+                    self.require_confinement and want if confine is None else want
+                )
+                if want:
+                    # Same backend as the parent; a fork of an unconfined parent picks
+                    # the strongest available, as a new sandbox would.
+                    child.start_confined(
+                        ws,
+                        "MirageSandbox.fork(confine=True)",
+                        backend=self.backend if self.confine else None,
+                        vm=self.vm,
+                        seccomp_blob=self.seccomp_blob,
+                    )
+                child.set_workspace(ws)
+                child.init_host_state()
+                # The child branches from the parent's *current* tree, so the child's
+                # `diff` reports exactly what it changes from here (a clean boundary).
+                child.fork_base = await self.read_tree()
+                child.write_state_bytes(self.read_state_bytes())
+                if timeout:
+                    await child.set_timeout(timeout)
+                children.append(child)
+            except Exception as exc:  # noqa: BLE001 - E2B reports per-child failures
+                children.append(exc)
+        return children
 
     def diff(self) -> dict:
         """Filesystem changes this sandbox made relative to its branch base.
@@ -3340,26 +2448,17 @@ class MirageSandbox(Sandbox):
         [{"path", "kind", "size"}, ...], "deleted": [...]}`` where ``kind`` is
         ``"create"`` (new file) or ``"modify"`` (the path existed in the base).
         """
-        base = self._fork_base
-        current = run_async_from_sync(self._read_tree())
-        written = []
-        for path in sorted(current):
-            if path not in base:
-                written.append(
-                    {
-                        "path": path,
-                        "kind": "create",
-                        "size": len(current[path].encode()),
-                    }
-                )
-            elif current[path] != base[path]:
-                written.append(
-                    {
-                        "path": path,
-                        "kind": "modify",
-                        "size": len(current[path].encode()),
-                    }
-                )
+        base = self.fork_base
+        current = run_async_from_sync(self.read_tree())
+        written = [
+            {
+                "path": path,
+                "kind": "modify" if path in base else "create",
+                "size": len(text.encode()),
+            }
+            for path, text in sorted(current.items())
+            if base.get(path) != text
+        ]
         deleted = sorted(p for p in base if p not in current)
         return {"written": written, "deleted": deleted}
 
@@ -3392,7 +2491,7 @@ class MirageSandbox(Sandbox):
             dict: ``path`` (the resolved archive path) and ``files`` (the
             number of files written).
         """
-        tree = run_async_from_sync(self._read_tree())
+        tree = run_async_from_sync(self.read_tree())
         if not path.endswith(".zip"):
             path = path + ".zip"
         path = os.path.abspath(path)
@@ -3415,9 +2514,9 @@ class MirageSandbox(Sandbox):
         a ``Binary files ... differ`` line. ``paths`` restricts output to a
         subset of virtual paths.
         """
-        base = self._fork_base
-        current = run_async_from_sync(self._read_tree())
-        return _render_patch(base, current, None if paths is None else set(paths))
+        base = self.fork_base
+        current = run_async_from_sync(self.read_tree())
+        return render_patch(base, current, None if paths is None else set(paths))
 
     def merge(
         self,
@@ -3436,17 +2535,19 @@ class MirageSandbox(Sandbox):
         a subset; ``repl=True`` also adopts ``other``'s interpreter state.
 
         Returns:
-            dict: ``{"written", "deleted", "conflicts", "skipped",
-            "repl_adopted"}``.
+            dict: ``{"written", "deleted", "conflicts", "skipped", "failed",
+            "repl_adopted"}``. ``failed`` maps each path whose write or delete
+            did not go through to the error; it is not listed as merged.
         """
-        base = other._fork_base
-        other_current = run_async_from_sync(other._read_tree())
-        self_current = run_async_from_sync(self._read_tree())
+        base = other.fork_base
+        other_current = run_async_from_sync(other.read_tree())
+        self_current = run_async_from_sync(self.read_tree())
         selected = None if paths is None else set(paths)
         written: List[str] = []
         deleted: List[str] = []
         conflicts: set = set()
         skipped: set = set()
+        failed: Dict[str, str] = {}
 
         for path in sorted(other_current):
             if selected is not None and path not in selected:
@@ -3459,8 +2560,11 @@ class MirageSandbox(Sandbox):
                 if not force:
                     skipped.add(path)
                     continue
-            run_async_from_sync(self._write(path, other_current[path]))
-            written.append(path)
+            error = run_async_from_sync(self.write(path, other_current[path]))
+            if error:
+                failed[path] = error
+            else:
+                written.append(path)
 
         for path in sorted(base):
             if selected is not None and path not in selected:
@@ -3474,65 +2578,68 @@ class MirageSandbox(Sandbox):
                 if not force:
                     skipped.add(path)
                     continue
-            run_async_from_sync(self._delete(path))
-            deleted.append(path)
+            _, stderr, exit_code = run_async_from_sync(
+                self.execute("rm -f -- %s" % shlex.quote(path))
+            )
+            if exit_code != 0:
+                failed[path] = stderr.strip() or f"failed to delete {path}"
+            else:
+                deleted.append(path)
 
         if repl:
-            self._write_state_bytes(other._read_state_bytes())
+            self.write_state_bytes(other.read_state_bytes())
 
         return {
             "written": written,
             "deleted": deleted,
             "conflicts": sorted(conflicts),
             "skipped": sorted(skipped),
+            "failed": failed,
             "repl_adopted": bool(repl),
         }
 
     # -- tool methods --------------------------------------------------------
 
-    async def _walk_files(self) -> List[str]:
+    async def walk_files(self) -> List[str]:
         """Return every file path in the virtual filesystem (sorted).
 
         Walks the merged mount view via Mirage ``readdir`` / ``stat``,
-        descending into directories and collecting non-directory paths.
+        descending into directories and collecting non-directory paths, and
+        skipping Mirage's internal views (`INTERNAL_PATHS`).
         """
         files: List[str] = []
         stack = ["/"]
-        seen = set()
+        seen = set(INTERNAL_PATHS)
         while stack:
             directory = stack.pop()
             if directory in seen:
                 continue
             seen.add(directory)
             try:
-                children = self._ws.readdir(directory)
-                if inspect.isawaitable(children):
-                    children = await children
+                children = await maybe_await(self.workspace.readdir(directory))
             except Exception:  # noqa: BLE001 - missing/permission dirs are skipped
                 continue
             for child in children:
+                if child in seen:
+                    continue
                 try:
-                    st = self._ws.stat(child)
-                    if inspect.isawaitable(st):
-                        st = await st
+                    st = await maybe_await(self.workspace.stat(child))
                 except Exception:  # noqa: BLE001
                     continue
-                if str(getattr(st.type, "value", st.type)) == "directory":
+                if is_dir(st):
                     stack.append(child)
                 else:
                     files.append(child)
         return sorted(files)
 
-    async def _read_text(self, path: str) -> Optional[str]:
+    async def read_text(self, path: str) -> Optional[str]:
         """Read a virtual-filesystem file via the shell; ``None`` if missing.
 
         Returns the decoded text (Mirage decodes bytes as UTF-8, replacing
         undecodable sequences); these tools target text files.
         """
-        stdout, stderr, exit_code = await self._execute("cat -- %s" % shlex.quote(path))
-        if exit_code != 0:
-            return None
-        return stdout
+        stdout, _, exit_code = await self.execute("cat -- %s" % shlex.quote(path))
+        return stdout if exit_code == 0 else None
 
     async def list_files(
         self, pattern: str = "**/*", offset: int = 1, limit: int = 0
@@ -3554,9 +2661,9 @@ class MirageSandbox(Sandbox):
             dict: ``files`` (this page of path strings), ``total``, ``offset``
             and ``truncated``.
         """
-        regex = _glob_to_regex(pattern)
-        files = [p for p in await self._walk_files() if regex.match(p.lstrip("/"))]
-        page, truncated = _paginate(files, offset, limit)
+        regex = glob_to_regex(pattern)
+        files = [p for p in await self.walk_files() if regex.match(p.lstrip("/"))]
+        page, truncated = paginate(files, offset, limit)
         return {
             "files": page,
             "total": len(files),
@@ -3582,11 +2689,11 @@ class MirageSandbox(Sandbox):
             inclusive), ``total_lines`` and ``truncated``, or ``error`` if the
             file is missing.
         """
-        content = await self._read_text(path)
+        content = await self.read_text(path)
         if content is None:
             return {"error": f"file not found: {path}"}
         lines = content.splitlines(keepends=True)
-        page, truncated = _paginate(lines, offset, limit)
+        page, truncated = paginate(lines, offset, limit)
         start = max(offset, 1)
         return {
             "content": "".join(page),
@@ -3594,6 +2701,78 @@ class MirageSandbox(Sandbox):
             "end_line": start + len(page) - 1,
             "total_lines": len(lines),
             "truncated": truncated,
+        }
+
+    async def read_image(self, path: str) -> dict:
+        """Look at an image file from the mounted virtual filesystem.
+
+        Reach for this to see an image, e.g. a chart a script saved: it is
+        shown to you with the result. A large image is scaled down to what
+        you can read.
+
+        Args:
+            path (str): Absolute virtual path of the image, e.g.
+                ``'/plots/loss.png'``.
+
+        Returns:
+            dict: ``path``, ``mime_type``, ``width``, ``height`` and
+            ``image`` (the image), plus ``original_width`` and
+            ``original_height`` when it was scaled down; or ``error`` if the
+            file is missing or is not an image.
+        """
+        try:
+            data = bytes(await self.files.read(path, format="bytes"))
+        except FileNotFoundException:
+            return {"error": f"file not found: {path}"}
+        try:
+            fitted = fit_image(data)
+        except ValueError:
+            return {"error": f"not an image: {path}"}
+        encoded = base64.b64encode(fitted.pop("data")).decode("ascii")
+        return {
+            "path": path,
+            **fitted,
+            "image": Image(data=encoded, mime_type=fitted["mime_type"]),
+        }
+
+    async def read_audio(
+        self, path: str, offset: float = 0.0, duration: float = 0.0
+    ) -> dict:
+        """Listen to an audio file from the mounted virtual filesystem.
+
+        Reach for this to hear a recording or a sound a script generated: the
+        clip is played to you with the result. Any common format (WAV, MP3,
+        FLAC, OGG, ...).
+
+        Args:
+            path (str): Absolute virtual path of the audio file, e.g.
+                ``'/recordings/call.wav'``.
+            offset (float): Where to start listening, in seconds. Defaults
+                to 0.
+            duration (float): How many seconds to listen to; 0 (the default)
+                for the rest of the file. At most 300 seconds per call: raise
+                ``offset`` to listen further in.
+
+        Returns:
+            dict: ``path``, ``format``, ``offset`` and ``duration`` of the
+            clip, ``total_duration`` of the file, ``truncated`` (whether
+            audio remains after the clip) and ``audio`` (the clip); or
+            ``error`` if the file is missing, is not audio or ``offset`` is
+            past its end.
+        """
+        try:
+            data = bytes(await self.files.read(path, format="bytes"))
+        except FileNotFoundException:
+            return {"error": f"file not found: {path}"}
+        try:
+            clip = fit_audio(data, offset, duration)
+        except ValueError as exc:
+            return {"error": f"{path}: {exc}"}
+        encoded = base64.b64encode(clip.pop("data")).decode("ascii")
+        return {
+            "path": path,
+            **clip,
+            "audio": Audio(data=encoded, format=clip["format"]),
         }
 
     async def write_file(self, path: str, content: str) -> dict:
@@ -3612,14 +2791,10 @@ class MirageSandbox(Sandbox):
             dict: ``written`` (the path) and ``bytes`` (count written), or
             ``error`` on failure.
         """
-        quoted = shlex.quote(path)
-        parent = os.path.dirname(path.rstrip("/")) or "/"
-        command = "mkdir -p %s && cat > %s" % (shlex.quote(parent), quoted)
-        data = content.encode("utf-8")
-        _, stderr, exit_code = await self._execute(command, stdin=data)
-        if exit_code != 0:
-            return {"error": stderr.strip() or f"failed to write {path}"}
-        return {"written": path, "bytes": len(data)}
+        error = await self.write(path, content)
+        if error:
+            return {"error": error}
+        return {"written": path, "bytes": len(content.encode("utf-8"))}
 
     async def edit_file(
         self, path: str, old: str, new: str, replace_all: bool = False
@@ -3641,13 +2816,12 @@ class MirageSandbox(Sandbox):
             dict: ``path`` and ``replacements`` (count made), or ``error`` if
             the file is missing, or ``old`` is empty / absent / not unique.
         """
-        content = await self._read_text(path)
+        content = await self.read_text(path)
         if content is None:
             return {"error": f"file not found: {path}"}
         if not old:
             return {"error": "`old` must be a non-empty string"}
-        text = content
-        occurrences = text.count(old)
+        occurrences = content.count(old)
         if occurrences == 0:
             return {"error": f"`old` text not found in {path}"}
         if occurrences > 1 and not replace_all:
@@ -3658,7 +2832,7 @@ class MirageSandbox(Sandbox):
                 )
             }
         replacements = occurrences if replace_all else 1
-        new_text = text.replace(old, new) if replace_all else text.replace(old, new, 1)
+        new_text = content.replace(old, new, -1 if replace_all else 1)
         result = await self.write_file(path, new_text)
         if "error" in result:
             return result
@@ -3691,18 +2865,18 @@ class MirageSandbox(Sandbox):
             regex = re.compile(pattern)
         except re.error as exc:
             return {"error": f"invalid regex: {exc}"}
-        glob_regex = _glob_to_regex(glob)
+        glob_regex = glob_to_regex(glob)
         matches: List[Dict[str, Any]] = []
-        for path in await self._walk_files():
+        for path in await self.walk_files():
             if not glob_regex.match(path.lstrip("/")):
                 continue
-            content = await self._read_text(path)
+            content = await self.read_text(path)
             if content is None:
                 continue
             for lineno, line in enumerate(content.splitlines(), start=1):
                 if regex.search(line):
                     matches.append({"path": path, "line": lineno, "text": line})
-        page, truncated = _paginate(matches, offset, limit)
+        page, truncated = paginate(matches, offset, limit)
         return {
             "matches": page,
             "total": len(matches),
@@ -3724,7 +2898,7 @@ class MirageSandbox(Sandbox):
             and ``error`` (a message string, or null on success), or ``error``
             if the file is missing.
         """
-        content = await self._read_text(path)
+        content = await self.read_text(path)
         if content is None:
             return {"error": f"file not found: {path}"}
         return await self.run_python_code(content)

@@ -14,6 +14,7 @@ from synalinks.src.backend.common.op_scope import trajectory_scope
 from synalinks.src.modules.agents.utils.agents_utils import discover_agents_md
 from synalinks.src.modules.agents.utils.agents_utils import merge_tools
 from synalinks.src.modules.agents.utils.agents_utils import resolve_workdir
+from synalinks.src.modules.agents.utils.agents_utils import tool_message_content
 from synalinks.src.modules.agents.utils.skills_utils import READ_SKILL_TOOL_NAME
 from synalinks.src.modules.agents.utils.skills_utils import build_read_skill_tool
 from synalinks.src.modules.agents.utils.skills_utils import discover_skills_in_roots
@@ -795,7 +796,7 @@ class FunctionCallingAgent(Module):
                     ChatMessage(
                         role=ChatRole.TOOL,
                         tool_call_id=tool_call_id,
-                        content=content,
+                        content=tool_message_content(content),
                     ).get_json()
                 )
         return False
@@ -922,7 +923,7 @@ class FunctionCallingAgent(Module):
                         tool_message = ChatMessage(
                             role=ChatRole.TOOL,
                             tool_call_id=tool_call_id,
-                            content=content,
+                            content=tool_message_content(content),
                         )
                     agent_messages.append(tool_message.get_json())
                     new_messages.append(tool_message)

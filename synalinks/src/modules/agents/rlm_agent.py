@@ -23,10 +23,12 @@ from synalinks.src.backend import is_chat_messages
 from synalinks.src.modules.agents.function_calling_agent import FunctionCallingAgent
 from synalinks.src.modules.agents.utils.agents_utils import InputsSummary
 from synalinks.src.modules.agents.utils.agents_utils import summarize_inputs
+from synalinks.src.modules.agents.utils.agents_utils import tool_message_content
 from synalinks.src.modules.core.tool import Tool
 from synalinks.src.modules.language_models import get as _get_lm
 from synalinks.src.sandboxes.mirage_sandbox import MirageSandbox
 from synalinks.src.sandboxes.sandbox import Sandbox
+from synalinks.src.sandboxes.sandbox import TimeoutException
 from synalinks.src.saving import serialization_lib
 from synalinks.src.saving.object_registration import get_registered_name
 from synalinks.src.saving.object_registration import get_registered_object
@@ -1181,7 +1183,8 @@ class RecursiveLanguageModelAgent(FunctionCallingAgent):
             `inputs`; read full values via `inputs[field]`. Other tools
             (`submit`, `llm_query`, ...) are pre-imported functions; call them
             directly, e.g. `out = llm_query(prompt)`. Call `submit(result={...})`
-            to end the run.
+            to end the run. Images the snippet displays (`plt.show()`,
+            `display(image)`) are shown to you with the output.
 
             Args:
                 code (str): The Python snippet to execute in the
@@ -1194,6 +1197,9 @@ class RecursiveLanguageModelAgent(FunctionCallingAgent):
                 observation["stderr"] = stderr
             if result.get("error"):
                 observation["error"] = result["error"]
+            if result.get("images"):
+                # Shown to the model next to the output (e.g. plt.show()).
+                observation["images"] = result["images"]
             return observation
 
         return Tool(run_python_code, name="run_python_code")
@@ -1243,9 +1249,9 @@ class RecursiveLanguageModelAgent(FunctionCallingAgent):
                 # OWN fork (host hidden, network cut, isolated filesystem, and
                 # the parent's egress/mount/seccomp posture); when the parent
                 # runs unconfined, so does the subagent.
-                fork = sandbox.fork(
-                    copy_repl=True, name=f"{self.name}_sub{index}", confine=None
-                )
+                (fork,) = await sandbox.fork(name=f"{self.name}_sub{index}", confine=None)
+                if isinstance(fork, Exception):
+                    raise fork
                 subagent = RecursiveLanguageModelAgent(
                     language_model=self.sub_language_model,
                     sub_language_model=self.sub_language_model,
@@ -1436,13 +1442,19 @@ class RecursiveLanguageModelAgent(FunctionCallingAgent):
         # name is also PINNED (``__rlm_pinned__``): the sandbox re-asserts it at
         # the start of every run, so a snippet that assigns over ``inputs`` —
         # LLM-written code does — breaks only itself, not the rest of the call.
-        bind = await sandbox.run(
-            "inputs = _rlm_inputs\n__rlm_pinned__ = {'inputs': _rlm_inputs}",
-            inputs={"_rlm_inputs": inputs_json},
-        )
-        if not bind.ok:
+        try:
+            bind = await sandbox.run_code(
+                "inputs = _rlm_inputs\n__rlm_pinned__ = {'inputs': _rlm_inputs}",
+                inputs={"_rlm_inputs": inputs_json},
+            )
+        except TimeoutException as exc:
             raise RuntimeError(
-                f"failed to bind `inputs` into the sandbox: {bind.error or bind.stderr}"
+                f"failed to bind `inputs` into the sandbox: {exc}"
+            ) from exc
+        if bind.error:
+            raise RuntimeError(
+                "failed to bind `inputs` into the sandbox: "
+                f"{bind.error.name}: {bind.error.value}"
             )
         run_tool = self._build_run_python_code_tool(sandbox)
 
@@ -1563,7 +1575,7 @@ class RecursiveLanguageModelAgent(FunctionCallingAgent):
                 ChatMessage(
                     role=ChatRole.TOOL,
                     tool_call_id=tool_call_id,
-                    content=content,
+                    content=tool_message_content(content),
                 ).get_json()
             )
             if ctx["submitted_final"] is not None:

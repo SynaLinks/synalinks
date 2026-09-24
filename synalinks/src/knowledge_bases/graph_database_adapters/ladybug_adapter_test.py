@@ -8,6 +8,7 @@ verifiable.
 """
 
 import sys
+import time
 import unittest
 from typing import List
 from typing import Literal
@@ -3441,3 +3442,55 @@ class FreeFormGraphTest(testing.TestCase):
         # Base Entity has only `label`: no property to promote to PK.
         with self.assertRaisesRegex(ValueError, "primary key"):
             await adapter.update_entities(Entity(label="Bare"))
+
+
+class ExtensionInstallRetryTest(testing.TestCase):
+    """A failed extension `INSTALL` is retried; a timed-out one is not."""
+
+    def _install(self, outcomes):
+        """Install through a connection whose `execute` plays `outcomes`."""
+        calls = []
+
+        class Connection:
+            def __init__(self, database):
+                pass
+
+            def execute(self, query):
+                calls.append(query)
+                outcome = outcomes[len(calls) - 1]
+                if isinstance(outcome, BaseException):
+                    raise outcome
+
+        module = "synalinks.src.knowledge_bases.graph_database_adapters.ladybug_adapter"
+        with (
+            patch(f"{module}.lb.Connection", Connection),
+            patch(f"{module}.lb.Database"),
+            patch(f"{module}.time.sleep") as sleep,
+        ):
+            try:
+                LadybugAdapter._install_extension(None, "fts")
+            finally:
+                self.sleeps = [c.args[0] for c in sleep.call_args_list]
+        return calls
+
+    def test_a_failure_is_retried(self):
+        calls = self._install([RuntimeError("connection reset"), None])
+        self.assertEqual(calls, ["INSTALL fts", "INSTALL fts"])
+        self.assertEqual(self.sleeps, [1])
+
+    def test_gives_up_after_the_last_attempt(self):
+        with self.assertRaisesRegex(RuntimeError, "404"):
+            self._install([RuntimeError("404")] * 3)
+        self.assertEqual(self.sleeps, [1, 2])
+
+    def test_a_timeout_is_not_retried(self):
+        module = "synalinks.src.knowledge_bases.graph_database_adapters.ladybug_adapter"
+        with (
+            patch(f"{module}._EXTENSION_INSTALL_TIMEOUT_SECONDS", 0.05),
+            patch(f"{module}.lb.Database"),
+            patch(f"{module}.lb.Connection") as connection,
+        ):
+            connection.return_value.execute.side_effect = lambda query: time.sleep(0.5)
+            with self.assertRaises(TimeoutError):
+                LadybugAdapter._install_extension(None, "fts")
+            self.assertEqual(connection.return_value.execute.call_count, 1)

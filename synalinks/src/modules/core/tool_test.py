@@ -310,3 +310,36 @@ class ToolOutputSchemaTest(testing.TestCase):
         self.assertNotIn("count", schema["required"])
         self.assertEqual(schema["properties"]["name"]["type"], "string")
         self.assertEqual(schema["properties"]["count"]["type"], "integer")
+
+
+class ToolImagesTest(testing.TestCase):
+    async def test_returned_images_become_content_parts(self):
+        async def render(path: str):
+            """Render a chart.
+
+            Args:
+                path (str): The chart file.
+            """
+            image = synalinks.Image(data="QUJD", mime_type="image/png")
+            return {"path": path, "image": image, "pages": [image, "text"]}
+
+        result = (await Tool(render)(path="/a.png")).get_json()
+        part = {"type": "image_url", "image_url": {"url": "data:image/png;base64,QUJD"}}
+        self.assertEqual(result["image"], part)
+        self.assertEqual(result["pages"], [part, "text"])
+        self.assertEqual(result["path"], "/a.png")
+
+    async def test_returned_audio_becomes_a_content_part(self):
+        async def record(path: str):
+            """Record a clip.
+
+            Args:
+                path (str): The clip file.
+            """
+            return {"audio": synalinks.Audio(data="QUJD", format="wav")}
+
+        result = (await Tool(record)(path="/a.wav")).get_json()
+        self.assertEqual(
+            result["audio"],
+            {"type": "input_audio", "input_audio": {"data": "QUJD", "format": "wav"}},
+        )

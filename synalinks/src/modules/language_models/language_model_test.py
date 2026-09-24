@@ -5,6 +5,7 @@ import os
 import warnings
 from unittest.mock import patch
 
+import httpx
 from litellm.types.utils import Choices
 from litellm.types.utils import CompletionTokensDetailsWrapper
 from litellm.types.utils import Message
@@ -1239,3 +1240,230 @@ class CurrentCallUsageTest(testing.TestCase):
 
         seen = await asyncio.gather(one(), one(), one())
         self.assertEqual(sorted(seen), [1, 2, 3])
+
+
+class CapabilitiesTest(testing.TestCase):
+    def test_supports_vision_follows_litellm_model_table(self):
+        self.assertTrue(LanguageModel(model="openai/gpt-4o-mini").supports_vision())
+        self.assertFalse(LanguageModel(model="deepseek/deepseek-chat").supports_vision())
+
+    @patch("httpx.post")
+    def test_supports_vision_asks_ollama_for_its_capabilities(self, mock_post):
+        mock_post.return_value = httpx.Response(
+            200,
+            json={"capabilities": ["completion", "vision"]},
+            request=httpx.Request("POST", "http://localhost:11434/api/show"),
+        )
+        self.assertTrue(LanguageModel(model="ollama/gemma3").supports_vision())
+        self.assertEqual(mock_post.call_args.kwargs["json"], {"model": "gemma3"})
+        mock_post.return_value = httpx.Response(
+            200,
+            json={"capabilities": ["completion", "tools"]},
+            request=httpx.Request("POST", "http://localhost:11434/api/show"),
+        )
+        self.assertFalse(LanguageModel(model="ollama/qwen3").supports_vision())
+
+    @patch("httpx.post", side_effect=httpx.ConnectError("refused"))
+    def test_supports_vision_is_false_when_ollama_is_unreachable(self, mock_post):
+        self.assertFalse(LanguageModel(model="ollama/gemma3").supports_vision())
+
+    def test_supports_audio_follows_litellm_model_table(self):
+        self.assertTrue(LanguageModel(model="gemini/gemini-2.5-flash").supports_audio())
+        self.assertFalse(
+            LanguageModel(model="anthropic/claude-sonnet-4-5").supports_audio()
+        )
+
+    @patch("httpx.post")
+    def test_supports_audio_asks_ollama_for_its_capabilities(self, mock_post):
+        mock_post.return_value = httpx.Response(
+            200,
+            json={"capabilities": ["completion", "audio"]},
+            request=httpx.Request("POST", "http://localhost:11434/api/show"),
+        )
+        lm = LanguageModel(model="ollama/gemma3n")
+        self.assertTrue(lm.supports_audio())
+        self.assertFalse(lm.supports_vision())
+
+    def test_supports_softprompt_only_on_vllm(self):
+        self.assertTrue(LanguageModel(model="vllm/qwen").supports_softprompt())
+        self.assertFalse(LanguageModel(model="openai/gpt-4o-mini").supports_softprompt())
+        self.assertFalse(LanguageModel(model="ollama/mistral").supports_softprompt())
+
+
+class ToolResultImagesTest(testing.TestCase):
+    """Where the images a tool returned end up in the provider request."""
+
+    def _messages(self):
+        return ChatMessages(
+            messages=[
+                ChatMessage(role=ChatRole.USER, content="plot it"),
+                ChatMessage(
+                    role=ChatRole.ASSISTANT,
+                    tool_calls=[
+                        {
+                            "id": "c1",
+                            "type": "function",
+                            "function": {"name": "run_python_code", "arguments": {}},
+                        }
+                    ],
+                ),
+                ChatMessage(
+                    role=ChatRole.TOOL,
+                    tool_call_id="c1",
+                    content=[
+                        '{"images": ["<image 1>"]}',
+                        Image(data="QUJD", mime_type="image/png"),
+                    ],
+                ),
+            ]
+        )
+
+    @patch("litellm.acompletion")
+    async def test_anthropic_keeps_images_in_the_tool_result(self, mock_completion):
+        mock_completion.return_value = {"choices": [{"message": {"content": "ok"}}]}
+        await LanguageModel(model="anthropic/claude-sonnet-4-5")(self._messages())
+        sent = mock_completion.call_args.kwargs["messages"]
+        self.assertEqual(len(sent), 3)
+        self.assertEqual(sent[2]["content"][1]["type"], "image_url")
+
+    @patch("litellm.acompletion")
+    async def test_gemini_3_keeps_images_in_the_tool_result(self, mock_completion):
+        mock_completion.return_value = {"choices": [{"message": {"content": "ok"}}]}
+        await LanguageModel(model="gemini/gemini-3-flash-preview")(self._messages())
+        sent = mock_completion.call_args.kwargs["messages"]
+        self.assertEqual(len(sent), 3)
+        self.assertEqual(sent[2]["content"][1]["type"], "image_url")
+
+    @patch("litellm.acompletion")
+    async def test_gemini_2_moves_images_to_a_user_message(self, mock_completion):
+        # Multimodal function responses are Gemini 3 only.
+        mock_completion.return_value = {"choices": [{"message": {"content": "ok"}}]}
+        await LanguageModel(model="gemini/gemini-2.5-flash")(self._messages())
+        sent = mock_completion.call_args.kwargs["messages"]
+        self.assertEqual(len(sent), 4)
+        self.assertEqual(sent[3]["content"][1]["type"], "image_url")
+
+    @patch("litellm.acompletion")
+    async def test_openrouter_claude_moves_images_to_a_user_message(
+        self, mock_completion
+    ):
+        # OpenRouter speaks the OpenAI format, whose tool messages are text
+        # only, even when the model behind it is Claude.
+        mock_completion.return_value = {"choices": [{"message": {"content": "ok"}}]}
+        await LanguageModel(model="openrouter/anthropic/claude-sonnet-4.5")(
+            self._messages()
+        )
+        sent = mock_completion.call_args.kwargs["messages"]
+        self.assertEqual(len(sent), 4)
+        self.assertIsInstance(sent[2]["content"], str)
+        self.assertIn("1 image(s) attached in the next message", sent[2]["content"])
+        self.assertEqual(sent[3]["role"], "user")
+        self.assertEqual(
+            sent[3]["content"][1]["image_url"]["url"], "data:image/png;base64,QUJD"
+        )
+
+    @patch("litellm.acompletion")
+    async def test_openai_moves_images_to_a_user_message(self, mock_completion):
+        mock_completion.return_value = {"choices": [{"message": {"content": "ok"}}]}
+        await LanguageModel(model="openai/gpt-4o-mini")(self._messages())
+        sent = mock_completion.call_args.kwargs["messages"]
+        self.assertEqual(len(sent), 4)
+        self.assertIsInstance(sent[2]["content"], str)
+        self.assertIn("attached in the next message", sent[2]["content"])
+        self.assertEqual(sent[3]["role"], "user")
+        self.assertEqual(
+            sent[3]["content"][1]["image_url"]["url"], "data:image/png;base64,QUJD"
+        )
+
+    @patch("litellm.acompletion")
+    async def test_text_only_model_gets_a_note_instead(self, mock_completion):
+        mock_completion.return_value = {"choices": [{"message": {"content": "ok"}}]}
+        await LanguageModel(model="deepseek/deepseek-chat")(self._messages())
+        sent = mock_completion.call_args.kwargs["messages"]
+        self.assertEqual(len(sent), 3)
+        self.assertIn("omitted", sent[2]["content"])
+
+
+class ToolResultAudioTest(testing.TestCase):
+    """Audio a tool returned always travels in a follow-up user message."""
+
+    def _messages(self):
+        return ChatMessages(
+            messages=[
+                ChatMessage(role=ChatRole.USER, content="listen"),
+                ChatMessage(
+                    role=ChatRole.ASSISTANT,
+                    tool_calls=[
+                        {
+                            "id": "c1",
+                            "type": "function",
+                            "function": {"name": "read_audio", "arguments": {}},
+                        }
+                    ],
+                ),
+                ChatMessage(
+                    role=ChatRole.TOOL,
+                    tool_call_id="c1",
+                    content=['{"audio": "<audio 1>"}', Audio(data="QUJD", format="wav")],
+                ),
+            ]
+        )
+
+    @patch("litellm.acompletion")
+    async def test_gemini_gets_the_audio_in_a_user_message(self, mock_completion):
+        mock_completion.return_value = {"choices": [{"message": {"content": "ok"}}]}
+        await LanguageModel(model="gemini/gemini-2.5-flash")(self._messages())
+        sent = mock_completion.call_args.kwargs["messages"]
+        self.assertEqual(len(sent), 4)
+        self.assertIn("1 audio clip(s) attached", sent[2]["content"])
+        self.assertEqual(sent[3]["role"], "user")
+        self.assertEqual(sent[3]["content"][1]["input_audio"]["data"], "QUJD")
+
+    @patch("litellm.acompletion")
+    async def test_images_stay_in_the_tool_result_next_to_dropped_audio(
+        self, mock_completion
+    ):
+        mock_completion.return_value = {"choices": [{"message": {"content": "ok"}}]}
+        messages = self._messages()
+        messages.messages[2].content.append(
+            Image(data="QUJD", mime_type="image/png").to_content_part()
+        )
+        await LanguageModel(model="anthropic/claude-sonnet-4-5")(messages)
+        sent = mock_completion.call_args.kwargs["messages"]
+        self.assertEqual(len(sent), 3)
+        text, image = sent[2]["content"]
+        self.assertIn("1 audio clip(s) omitted", text["text"])
+        self.assertEqual(image["type"], "image_url")
+
+    @patch("litellm.acompletion")
+    async def test_openrouter_gemini_gets_the_audio_in_a_user_message(
+        self, mock_completion
+    ):
+        mock_completion.return_value = {"choices": [{"message": {"content": "ok"}}]}
+        await LanguageModel(model="openrouter/google/gemini-2.5-flash")(self._messages())
+        sent = mock_completion.call_args.kwargs["messages"]
+        self.assertEqual(len(sent), 4)
+        self.assertIn("1 audio clip(s) attached", sent[2]["content"])
+        self.assertEqual(sent[3]["role"], "user")
+        self.assertEqual(
+            sent[3]["content"][1],
+            {"type": "input_audio", "input_audio": {"data": "QUJD", "format": "wav"}},
+        )
+
+    @patch("litellm.acompletion")
+    async def test_openrouter_claude_gets_an_audio_note(self, mock_completion):
+        mock_completion.return_value = {"choices": [{"message": {"content": "ok"}}]}
+        await LanguageModel(model="openrouter/anthropic/claude-sonnet-4.5")(
+            self._messages()
+        )
+        sent = mock_completion.call_args.kwargs["messages"]
+        self.assertEqual(len(sent), 3)
+        self.assertIn("1 audio clip(s) omitted", sent[2]["content"])
+
+    @patch("litellm.acompletion")
+    async def test_model_without_audio_gets_a_note(self, mock_completion):
+        mock_completion.return_value = {"choices": [{"message": {"content": "ok"}}]}
+        await LanguageModel(model="anthropic/claude-sonnet-4-5")(self._messages())
+        sent = mock_completion.call_args.kwargs["messages"]
+        self.assertEqual(len(sent), 3)
+        self.assertIn("1 audio clip(s) omitted", sent[2]["content"])

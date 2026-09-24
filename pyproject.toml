@@ -30,37 +30,38 @@ dependencies = [
   "inquirer",
   "jinja2",
   "jsonschema",
-  "ladybug>=0.19.1",
+  # <0.20: the 0.20 macOS ALGO extension (PageRank, community detection)
+  # links libnetworkit/libarrow/libomp by rpaths to ladybug's build machine
+  # and does not ship them, so `LOAD algo` fails on every Mac.
+  "ladybug>=0.19.1,<0.20",
+  # E2B's chart extraction for the sandbox's Result.chart (MIT).
+  "e2b-charts>=1.0.0",
   "lancedb>=0.30.2",
   "litellm>=1.84.0",
   "markdown-it-py",
   "matplotlib",
   "mcp>=2",
   "httpx2",
-  "mlflow>=3.11.1",
+  # >=3.16.1: 3.13.0 - 3.15.2 carry GHSA-h7x2-h6g9-p789 (AI Gateway SSRF).
+  "mlflow>=3.16.1",
   "namex",
   "numpy",
   "dill",
-  # Upper-bounded on purpose: mirage-ai is pre-1.0 and ships breaking API
-  # changes in patch releases (0.0.4 moved `fuse` off the Workspace
-  # constructor, dropped `native`, made `load` async and stopped
-  # auto-creating sessions). An open `>=` let that land silently.
-  # The [fuse] extra is required, not optional: MirageSandbox's confinement
-  # pivots into the FUSE-mounted virtual filesystem, mfusepy is what brings
-  # that mount up, and 0.0.4 moved it behind this extra. Without it there is
-  # no mount and therefore no confinement, on Linux where confinement is
-  # otherwise available. It is inert on macOS and Windows, which cannot
-  # confine regardless. Missing libfuse no longer degrades quietly:
-  # `_confinement_available` in synalinks/src/sandboxes/mirage_sandbox.py
-  # probes for it and fails closed, so keep this extra to make confinement
-  # work, not to keep it honest.
-  "mirage-ai[fuse]>=0.0.4,<0.0.5",
+  # The [fuse] extra brings mfusepy, which MirageSandbox's Linux confinement
+  # needs to mount the virtual filesystem it pivots into. Missing libfuse is
+  # detected by `_confinement_available` (synalinks/src/sandboxes/_confinement.py)
+  # and fails closed under `require_confinement`.
+  "mirage-ai[fuse]>=0.0.6",
   "optree",
   "orjson",
+  "pillow",
   "pydantic",
   "pydotplus",
   "rich",
   "skills-ref>=0.1.1",
+  # Decodes the audio files `read_audio` sends (WAV, FLAC, OGG, MP3); the
+  # wheels bundle libsndfile.
+  "soundfile>=0.12",
   "synaops>=0.2.1",
   "tenacity",
 ]
@@ -85,6 +86,8 @@ include-package-data = true
 # offline. The patterns cover regular files and dotfiles (e.g. .gitignore,
 # .python-version, .gitkeep) at every depth under cli/templates.
 "synalinks.cli" = ["templates/**/*", "templates/**/.*"]
+# The macOS microVM helper is compiled from source on the user's machine.
+"synalinks.src.utils" = ["krun/*.c"]
 
 [tool.setuptools.dynamic]
 version = {attr = "synalinks.src.version.__version__"}
@@ -166,4 +169,6 @@ dev = [
     "keras-tuner>=1.4",
     "mkdocstrings[python]>=1.0.4",
     "zensical>=0.0.46",
+    # Only to check the sandbox against E2B's own SDK (e2b_compatibility_test).
+    "e2b-code-interpreter>=2.10.0",
 ]

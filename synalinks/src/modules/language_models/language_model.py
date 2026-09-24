@@ -7,6 +7,7 @@ import os
 import time
 import warnings
 
+import httpx
 import litellm
 import orjson
 from tenacity import before_sleep_log
@@ -22,6 +23,7 @@ from synalinks.src.backend import JsonDataModel
 from synalinks.src.backend.common.op_scope import current_op_scope
 from synalinks.src.backend.common.op_scope import current_trajectory_start
 from synalinks.src.backend.pydantic.chat_completions import to_chat_completion_message
+from synalinks.src.backend.pydantic.media import place_tool_result_media
 from synalinks.src.backend.pydantic.media import resolve_content_media
 from synalinks.src.modules.core.tool import Tool
 from synalinks.src.modules.module import Module
@@ -871,6 +873,28 @@ class LanguageModel(Module):
         # input_audio parts carrying a url/path) into base64 payloads, for this
         # batch only. Content already inlined at construction is left untouched.
         formatted_messages = await resolve_content_media(formatted_messages)
+        # Media returned by tools (a sandbox plot, a `read_image`, a
+        # `read_audio`): images stay inside the tool result for the models
+        # that take them there (Claude's `tool_result`, Gemini 3's multimodal
+        # function responses; litellm maps both), the rest goes to a
+        # follow-up user message, the only role the other APIs take it in.
+        media_kinds = {
+            part.get("type")
+            for message in formatted_messages
+            if message["role"] == "tool" and isinstance(message["content"], list)
+            for part in message["content"]
+        }
+        if media_kinds & {"image_url", "input_audio"}:
+            formatted_messages = place_tool_result_media(
+                formatted_messages,
+                native=(
+                    provider in ("anthropic", "vertex_ai", "bedrock")
+                    and "claude" in self.model
+                )
+                or (provider in ("gemini", "vertex_ai") and "gemini-3" in self.model),
+                vision="image_url" in media_kinds and self.supports_vision(),
+                audio="input_audio" in media_kinds and self.supports_audio(),
+            )
         if tools or tool_schemas:
             wire_tools = []
             if tools:
@@ -1349,6 +1373,81 @@ class LanguageModel(Module):
             (list): The sorted list of supported provider prefixes.
         """
         return list(SUPPORTED_PROVIDERS)
+
+    def supports_vision(self):
+        """Whether the model accepts images in its input.
+
+        An Ollama model is asked for its capabilities (its server reports
+        ``vision`` for the multimodal ones); any other model is looked up in
+        litellm's model table, where an unlisted model counts as text-only.
+        Register a self-hosted vision model with `litellm.register_model`
+        (``supports_vision: True``) to make it pass.
+
+        ```python
+        import synalinks
+
+        lm = synalinks.LanguageModel(model="openai/gpt-4o-mini")
+        print(lm.supports_vision())  # True
+        ```
+
+        Returns:
+            (bool): True if the model can read images.
+        """
+        if self.model.startswith("ollama"):
+            return "vision" in self.ollama_capabilities()
+        return bool(litellm.supports_vision(model=self.model))
+
+    def supports_audio(self):
+        """Whether the model accepts audio in its input.
+
+        Looked up like `supports_vision`: an Ollama model reports ``audio``
+        among its capabilities, any other model is looked up in litellm's
+        model table (`litellm.register_model` with ``supports_audio_input:
+        True`` makes an unlisted one pass).
+
+        ```python
+        import synalinks
+
+        lm = synalinks.LanguageModel(model="gemini/gemini-2.5-flash")
+        print(lm.supports_audio())  # True
+        ```
+
+        Returns:
+            (bool): True if the model can listen to audio.
+        """
+        if self.model.startswith("ollama"):
+            return "audio" in self.ollama_capabilities()
+        return bool(litellm.supports_audio_input(model=self.model))
+
+    def ollama_capabilities(self):
+        """The capabilities an Ollama server reports for this model.
+
+        Returns:
+            (list): E.g. ``["completion", "vision", "tools"]``; empty when the
+            server cannot be reached or does not know the model.
+        """
+        try:
+            response = httpx.post(
+                f"{self.api_base}/api/show",
+                json={"model": self.model.split("/", 1)[1]},
+                timeout=10,
+            )
+            response.raise_for_status()
+        except httpx.HTTPError:
+            return []
+        return response.json().get("capabilities") or []
+
+    def supports_softprompt(self):
+        """Whether the provider accepts soft prompts (prompt embeddings).
+
+        Only vLLM takes embeddings in place of prompt tokens (its
+        ``prompt_embeds`` input, served with ``--enable-prompt-embeds``); the
+        hosted APIs take text and media only.
+
+        Returns:
+            (bool): True if the model is served by vLLM.
+        """
+        return self.model.startswith("hosted_vllm")
 
     def _obj_type(self):
         return "LanguageModel"

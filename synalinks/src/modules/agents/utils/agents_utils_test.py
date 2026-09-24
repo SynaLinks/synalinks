@@ -3,12 +3,14 @@
 """Tests for the AGENTS.md helpers in ``agents_utils`` (agents.md standard):
 root + nested (monorepo nearest-wins) discovery and the prompt rendering."""
 
+import json
 import os
 import tempfile
 
 from synalinks.src import testing
 from synalinks.src.modules.agents.utils.agents_utils import discover_agents_md
 from synalinks.src.modules.agents.utils.agents_utils import find_agents_md
+from synalinks.src.modules.agents.utils.agents_utils import tool_message_content
 
 
 class AgentsMdTest(testing.TestCase):
@@ -52,3 +54,29 @@ class AgentsMdTest(testing.TestCase):
     def test_missing_workdir(self):
         self.assertEqual(discover_agents_md(None), [])
         self.assertEqual(discover_agents_md(os.path.join(self.root, "nope")), [])
+
+
+class ToolMessageContentTest(testing.TestCase):
+    def test_images_are_attached_after_the_json(self):
+        part = {"type": "image_url", "image_url": {"url": "data:image/png;base64,QUJD"}}
+        content = tool_message_content({"ok": True, "images": [part, part]})
+        self.assertEqual(
+            json.loads(content[0]), {"ok": True, "images": ["<image 1>", "<image 2>"]}
+        )
+        self.assertEqual(content[1:], [part, part])
+        self.assertEqual(
+            json.loads(tool_message_content({"image": part})[0]), {"image": "<image 1>"}
+        )
+
+    def test_audio_is_attached_after_the_json(self):
+        image = {"type": "image_url", "image_url": {"url": "data:image/png;base64,QQ"}}
+        clip = {"type": "input_audio", "input_audio": {"data": "QUJD", "format": "wav"}}
+        content = tool_message_content({"image": image, "audio": clip})
+        self.assertEqual(
+            json.loads(content[0]), {"image": "<image 1>", "audio": "<audio 1>"}
+        )
+        self.assertEqual(content[1:], [image, clip])
+
+    def test_results_without_images_are_unchanged(self):
+        self.assertEqual(tool_message_content({"ok": True}), {"ok": True})
+        self.assertEqual(tool_message_content("error: boom"), "error: boom")
