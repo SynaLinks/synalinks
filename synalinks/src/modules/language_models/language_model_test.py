@@ -1344,6 +1344,25 @@ class ToolResultImagesTest(testing.TestCase):
         self.assertEqual(sent[3]["content"][1]["type"], "image_url")
 
     @patch("litellm.acompletion")
+    async def test_openrouter_claude_moves_images_to_a_user_message(
+        self, mock_completion
+    ):
+        # OpenRouter speaks the OpenAI format, whose tool messages are text
+        # only, even when the model behind it is Claude.
+        mock_completion.return_value = {"choices": [{"message": {"content": "ok"}}]}
+        await LanguageModel(model="openrouter/anthropic/claude-sonnet-4.5")(
+            self._messages()
+        )
+        sent = mock_completion.call_args.kwargs["messages"]
+        self.assertEqual(len(sent), 4)
+        self.assertIsInstance(sent[2]["content"], str)
+        self.assertIn("1 image(s) attached in the next message", sent[2]["content"])
+        self.assertEqual(sent[3]["role"], "user")
+        self.assertEqual(
+            sent[3]["content"][1]["image_url"]["url"], "data:image/png;base64,QUJD"
+        )
+
+    @patch("litellm.acompletion")
     async def test_openai_moves_images_to_a_user_message(self, mock_completion):
         mock_completion.return_value = {"choices": [{"message": {"content": "ok"}}]}
         await LanguageModel(model="openai/gpt-4o-mini")(self._messages())
@@ -1415,6 +1434,31 @@ class ToolResultAudioTest(testing.TestCase):
         text, image = sent[2]["content"]
         self.assertIn("1 audio clip(s) omitted", text["text"])
         self.assertEqual(image["type"], "image_url")
+
+    @patch("litellm.acompletion")
+    async def test_openrouter_gemini_gets_the_audio_in_a_user_message(
+        self, mock_completion
+    ):
+        mock_completion.return_value = {"choices": [{"message": {"content": "ok"}}]}
+        await LanguageModel(model="openrouter/google/gemini-2.5-flash")(self._messages())
+        sent = mock_completion.call_args.kwargs["messages"]
+        self.assertEqual(len(sent), 4)
+        self.assertIn("1 audio clip(s) attached", sent[2]["content"])
+        self.assertEqual(sent[3]["role"], "user")
+        self.assertEqual(
+            sent[3]["content"][1],
+            {"type": "input_audio", "input_audio": {"data": "QUJD", "format": "wav"}},
+        )
+
+    @patch("litellm.acompletion")
+    async def test_openrouter_claude_gets_an_audio_note(self, mock_completion):
+        mock_completion.return_value = {"choices": [{"message": {"content": "ok"}}]}
+        await LanguageModel(model="openrouter/anthropic/claude-sonnet-4.5")(
+            self._messages()
+        )
+        sent = mock_completion.call_args.kwargs["messages"]
+        self.assertEqual(len(sent), 3)
+        self.assertIn("1 audio clip(s) omitted", sent[2]["content"])
 
     @patch("litellm.acompletion")
     async def test_model_without_audio_gets_a_note(self, mock_completion):
