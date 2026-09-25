@@ -203,3 +203,34 @@ class MultiDecisionWithDecisionModelTest(testing.TestCase):
                 "Does the label 'finance' apply?",
             },
         )
+
+    async def test_threshold(self):
+        class Query(DataModel):
+            query: str
+
+        decision_model = DecisionModel(model="typesafe/jev-latest")
+        mock_decision_model(
+            decision_model,
+            {
+                "label_0": {"type": "noul", "noul": 0.9},
+                "label_1": {"type": "noul", "noul": 0.2},
+                "label_2": {"type": "noul", "noul": 0.6},
+            },
+        )
+        multi_decision = MultiDecision(
+            question="Which topics?",
+            labels=["science", "finance", "sports"],
+            decision_model=decision_model,
+            threshold=0.7,
+        )
+        result = await multi_decision(Query(query="q"))
+        self.assertEqual(result.get_json(), {"choices": ["science"]})
+        restored = MultiDecision.from_config(multi_decision.get_config())
+        self.assertEqual(restored.threshold, 0.7)
+        with self.assertRaisesRegex(ValueError, "requires a `decision_model`"):
+            MultiDecision(
+                question="Which topics?",
+                labels=["science", "finance"],
+                language_model=LanguageModel(model="ollama/mistral"),
+                threshold=0.7,
+            )

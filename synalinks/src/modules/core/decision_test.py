@@ -74,7 +74,7 @@ class DecisionWithDecisionModelTest(testing.TestCase):
         payloads = mock_decision_model(
             decision_model,
             {
-                "choice": {
+                "decision": {
                     "type": "choice",
                     "choice": "easy",
                     "probabilities": {"easy": 0.9, "difficult": 0.1},
@@ -101,10 +101,50 @@ class DecisionWithDecisionModelTest(testing.TestCase):
         self.assertEqual(
             payloads[0]["questions"],
             {
-                "choice": {
+                "decision": {
                     "type": "choice",
                     "instructions": "What is the difficulty level of the query?",
                     "criteria": {"easy": None, "difficult": None},
                 }
             },
         )
+
+    async def test_min_confidence_abstains(self):
+        class Query(DataModel):
+            query: str
+
+        decision_model = DecisionModel(model="typesafe/jev-latest")
+        mock_decision_model(
+            decision_model,
+            {
+                "decision": {
+                    "type": "choice",
+                    "choice": "easy",
+                    "probabilities": {"easy": 0.6, "difficult": 0.4},
+                    "confidence": 0.3,
+                }
+            },
+        )
+        sure = Decision(
+            question="Easy?",
+            labels=["easy", "difficult"],
+            decision_model=decision_model,
+            min_confidence=0.2,
+        )
+        unsure = Decision(
+            question="Easy?",
+            labels=["easy", "difficult"],
+            decision_model=decision_model,
+            min_confidence=0.5,
+        )
+        self.assertEqual((await sure(Query(query="q"))).get_json(), {"choice": "easy"})
+        self.assertIsNone(await unsure(Query(query="q")))
+        restored = Decision.from_config(unsure.get_config())
+        self.assertEqual(restored.min_confidence, 0.5)
+        with self.assertRaisesRegex(ValueError, "requires a `decision_model`"):
+            Decision(
+                question="Easy?",
+                labels=["easy", "difficult"],
+                language_model=LanguageModel(model="ollama/mistral"),
+                min_confidence=0.5,
+            )

@@ -1,13 +1,15 @@
 # License Apache 2.0: (c) 2025-2026 Yoan Sallami (Synalinks Team)
 
-
 from synalinks.src import ops
 from synalinks.src.api_export import synalinks_export
 from synalinks.src.backend import DataModel
 from synalinks.src.backend import Field
+from synalinks.src.backend import JsonDataModel
+from synalinks.src.backend import SymbolicDataModel
 from synalinks.src.backend import dynamic_enum
 from synalinks.src.modules.core.generator import Generator
 from synalinks.src.modules.decision_models import resolve_decision_model
+from synalinks.src.modules.decision_models.decision_model import choice_schema
 from synalinks.src.modules.language_models import get as _get_lm
 from synalinks.src.modules.module import Module
 from synalinks.src.saving import serialization_lib
@@ -28,16 +30,23 @@ class DecisionModelAnswer(DataModel):
     choice: str = Field(description="The chosen label.")
 
 
-def decision_model_schema(question, labels):
+def decision_model_schema(labels):
     """Return the `Decision` output schema when a `DecisionModel` decides.
 
     Decision models answer typed questions without reasoning step by step, so
-    there is no `thinking` field: `choice` is asked as the question itself,
-    over the labels.
+    there is no `thinking` field: the output is only the `choice`.
     """
-    schema = dynamic_enum(DecisionModelAnswer.get_schema(), "choice", labels)
-    schema["properties"]["choice"]["description"] = question
-    return schema
+    return dynamic_enum(DecisionModelAnswer.get_schema(), "choice", labels)
+
+
+def decision_model_question_schema(question, labels):
+    """Return the schema the `DecisionModel` answers for a `Decision`: the
+    question, asked as is, as a choice over the labels."""
+    return {
+        "type": "object",
+        "properties": {"decision": choice_schema(question, labels)},
+        "required": ["decision"],
+    }
 
 
 def default_decision_instructions(labels):
@@ -89,8 +98,10 @@ class Decision(Module):
 
     Pass a `decision_model` to decide with a `DecisionModel` instead of the
     language model: faster and cheaper, with calibrated answers, but without
-    step by step reasoning. The output then has no `thinking` field, only the
-    `choice`, and the question is asked to the decision model as is.
+    step by step reasoning. The question is asked to the decision model as
+    is, and the output has no `thinking` field, only the `choice`. With
+    `min_confidence`, a decision the decision model is not sure enough about
+    is not taken: the module returns `None`, so a `Branch` selects no branch.
 
     ```python
     x1 = await synalinks.Decision(
@@ -133,6 +144,9 @@ class Decision(Module):
         decision_model (DecisionModel): Optional. A decision model to decide
             with instead of the language model: the question is asked as is,
             over the labels, and the output has no `thinking` field.
+        min_confidence (float): Optional. With a decision model, the confidence
+            (from 0 to 1) under which no decision is taken: the module then
+            returns `None`. Default to None (always decide).
     """
 
     def __init__(
@@ -156,6 +170,7 @@ class Decision(Module):
         description=None,
         trainable=True,
         decision_model=None,
+        min_confidence=None,
     ):
         super().__init__(
             name=name,
@@ -172,11 +187,18 @@ class Decision(Module):
         self.labels = labels
         self.language_model = _get_lm(language_model)
         self.decision_model = resolve_decision_model(decision_model, language_model)
+        if min_confidence is not None and self.decision_model is None:
+            raise ValueError(
+                "`min_confidence` requires a `decision_model`: a language model "
+                "gives no confidence to compare it to."
+            )
+        self.min_confidence = min_confidence
         if self.decision_model is not None:
-            schema = decision_model_schema(question, labels)
+            self.schema = decision_model_schema(labels)
+            generator_schema = decision_model_question_schema(question, labels)
         else:
-            schema = dynamic_enum(DecisionAnswer.get_schema(), "choice", labels)
-        self.schema = schema
+            self.schema = dynamic_enum(DecisionAnswer.get_schema(), "choice", labels)
+            generator_schema = self.schema
         self.prompt_template = prompt_template
         self.examples = examples
         if not instructions:
@@ -191,7 +213,7 @@ class Decision(Module):
         self.use_inputs_schema = use_inputs_schema
         self.use_outputs_schema = use_outputs_schema
         self.decision = Generator(
-            schema=self.schema,
+            schema=generator_schema,
             language_model=self.language_model,
             decision_model=self.decision_model,
             prompt_template=self.prompt_template,
@@ -217,7 +239,22 @@ class Decision(Module):
             name="inputs_with_question_" + self.name,
         )
         result = await self.decision(inputs, training=training)
-        return result
+        if result is None or self.decision_model is None:
+            return result
+        answer = result.get("decision")
+        if self.min_confidence is not None and answer["confidence"] < self.min_confidence:
+            # Not sure enough: abstain, like a failed decision.
+            return None
+        return JsonDataModel(
+            json={"choice": answer["choice"]},
+            schema=self.schema,
+            name=result.name,
+        )
+
+    async def compute_output_spec(self, inputs, training=False):
+        if self.decision_model is None:
+            return await super().compute_output_spec(inputs, training=training)
+        return SymbolicDataModel(schema=self.schema, name=self.name)
 
     def get_config(self):
         config = {
@@ -234,6 +271,7 @@ class Decision(Module):
             "reasoning_effort": self.reasoning_effort,
             "use_inputs_schema": self.use_inputs_schema,
             "use_outputs_schema": self.use_outputs_schema,
+            "min_confidence": self.min_confidence,
             "name": self.name,
             "description": self.description,
             "trainable": self.trainable,

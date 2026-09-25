@@ -294,6 +294,45 @@ def _field_instructions(key, description):
     return description
 
 
+def _is_scale(options):
+    """Whether an enum is a numeric scale (e.g. `synalinks.Rating`)."""
+    return all(
+        isinstance(option, (int, float)) and not isinstance(option, bool)
+        for option in options
+    )
+
+
+def _scale_levels(key, options):
+    """Return a numeric scale's values and the levels a score question asks.
+
+    A scale of up to `MAX_SCORE_LEVELS` values is asked as is. A finer one
+    (e.g. `synalinks.FineScore`) is asked over `MAX_SCORE_LEVELS` levels evenly
+    spread over its range, and the answer is mapped back to the nearest value.
+    """
+    values = sorted(options)
+    if len(values) < MIN_SCORE_LEVELS:
+        raise UnsupportedSchemaError(
+            f"Field {key!r} is a scale of {len(values)} value(s); a score needs "
+            f"at least {MIN_SCORE_LEVELS}."
+        )
+    if len(values) <= MAX_SCORE_LEVELS:
+        return values, values
+    low, high = values[0], values[-1]
+    step = (high - low) / (MAX_SCORE_LEVELS - 1)
+    return values, [low + i * step for i in range(MAX_SCORE_LEVELS)]
+
+
+def _format_level(level):
+    return str(level) if isinstance(level, int) else f"{round(level, 3):g}"
+
+
+def _scale_value(answer, values, levels):
+    """Map a score answer back to the nearest value of its scale."""
+    position = answer["score"] / (len(levels) - 1)
+    target = levels[0] + position * (levels[-1] - levels[0])
+    return min(values, key=lambda value: abs(value - target))
+
+
 def questions_from_schema(schema):
     """Infer the decision model questions from an output schema.
 
@@ -301,6 +340,9 @@ def questions_from_schema(schema):
     `description`. The question type follows the field type:
 
     - `boolean`: a noul question, answered with `True` when p >= 0.5.
+    - A numeric `enum`, such as `synalinks.Score` or `synalinks.Rating`: a
+        score question over the scale's values, answered with the value
+        nearest to the probability-weighted score.
     - A string `enum` (`Literal` or `Enum`): a choice question over the
         values, answered with the most probable one.
     - A `noul_schema`, `choice_schema` or `score_schema` object: the matching
@@ -310,8 +352,9 @@ def questions_from_schema(schema):
         schema (dict): The output JSON schema.
 
     Returns:
-        (tuple): The dict of questions, and the set of fields answered with a
-            plain value (`boolean` or `enum`) rather than the full answer.
+        (tuple): The dict of questions, and the fields answered with a plain
+            value (`boolean` or `enum`) rather than the full answer, mapped to
+            the values and levels of their scale for a numeric `enum`.
 
     Raises:
         UnsupportedSchemaError: If a field cannot be answered by a decision
@@ -324,21 +367,29 @@ def questions_from_schema(schema):
             f"one field, got {schema!r}."
         )
     questions = {}
-    plain = set()
+    plain = {}
     for key, prop in properties.items():
         node = _resolve_ref(schema, prop)
         instructions = _field_instructions(key, node.get("description"))
         fields = node.get("properties") or {}
         if node.get("type") == "boolean":
             questions[key] = {"type": "noul", "instructions": instructions}
-            plain.add(key)
+            plain[key] = None
+        elif "enum" in node and _is_scale(node["enum"]):
+            values, levels = _scale_levels(key, node["enum"])
+            questions[key] = {
+                "type": "score",
+                "instructions": instructions,
+                "criteria": [_format_level(level) for level in levels],
+            }
+            plain[key] = (values, levels)
         elif "enum" in node:
             questions[key] = {
                 "type": "choice",
                 "instructions": instructions,
                 "criteria": {str(option): None for option in node["enum"]},
             }
-            plain.add(key)
+            plain[key] = None
         elif "noul" in fields:
             questions[key] = {"type": "noul", "instructions": instructions}
         elif "choice" in fields:
@@ -386,6 +437,8 @@ def outputs_from_answers(questions, plain, answers):
         if key in plain:
             if questions[key]["type"] == "noul":
                 outputs[key] = answer["noul"] >= 0.5
+            elif questions[key]["type"] == "score":
+                outputs[key] = _scale_value(answer, *plain[key])
             else:
                 outputs[key] = answer["choice"]
         else:

@@ -8,6 +8,7 @@ from synalinks.src.backend import DataModel
 from synalinks.src.modules import Input
 from synalinks.src.modules.core.branch import Branch
 from synalinks.src.modules.core.generator import Generator
+from synalinks.src.modules.core.identity import Identity
 from synalinks.src.modules.decision_models import DecisionModel
 from synalinks.src.modules.language_models import LanguageModel
 from synalinks.src.programs import Program
@@ -91,7 +92,7 @@ class BranchWithDecisionModelTest(testing.TestCase):
         mock_decision_model(
             decision_model,
             {
-                "choice": {
+                "decision": {
                     "type": "choice",
                     "choice": "easy",
                     "probabilities": {"easy": 0.9, "difficult": 0.1},
@@ -118,3 +119,38 @@ class BranchWithDecisionModelTest(testing.TestCase):
 
         self.assertEqual(easy.get_json(), {"answer": "Paris"})
         self.assertIsNone(difficult)
+
+    async def test_min_confidence_selects_no_branch(self):
+        class Query(DataModel):
+            query: str
+
+        decision_model = DecisionModel(model="typesafe/jev-latest")
+        mock_decision_model(
+            decision_model,
+            {
+                "decision": {
+                    "type": "choice",
+                    "choice": "easy",
+                    "probabilities": {"easy": 0.55, "difficult": 0.45},
+                    "confidence": 0.1,
+                }
+            },
+        )
+        x0 = Input(data_model=Query)
+        (x1, x2) = await Branch(
+            question="Easy?",
+            labels=["easy", "difficult"],
+            branches=[Identity(), Identity()],
+            decision_model=decision_model,
+            min_confidence=0.5,
+        )(x0)
+        program = Program(inputs=x0, outputs=[x1, x2])
+
+        easy, difficult = await program(Query(query="q"))
+
+        self.assertIsNone(easy)
+        self.assertIsNone(difficult)
+        branch = program.get_module(index=1)
+        restored = Branch.from_config(branch.get_config())
+        self.assertEqual(restored.min_confidence, 0.5)
+        self.assertEqual(restored.decision.min_confidence, 0.5)

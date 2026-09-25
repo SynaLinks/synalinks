@@ -12,6 +12,7 @@ from synalinks.src.backend import SymbolicDataModel
 from synalinks.src.backend import dynamic_enum_array
 from synalinks.src.modules.core.generator import Generator
 from synalinks.src.modules.decision_models import resolve_decision_model
+from synalinks.src.modules.decision_models.decision_model import noul_schema
 from synalinks.src.modules.language_models import get as _get_lm
 from synalinks.src.modules.module import Module
 from synalinks.src.saving import serialization_lib
@@ -29,21 +30,20 @@ class MultiDecisionAnswer(DataModel):
 
 
 class MultiDecisionModelAnswer(DataModel):
-    choices: List[str] = Field(description="The chosen labels (one or more).")
+    choices: List[str] = Field(
+        description="The labels whose probability reaches the threshold."
+    )
 
 
 def decision_model_label_schema(question, labels):
     """Return the schema a `DecisionModel` answers for a `MultiDecision`.
 
     Decision models answer typed questions, so each label is asked as a
-    yes/no question of its own: `label_<i>` is `True` when the label applies.
+    yes/no question of its own: `label_<i>` holds the probability that the
+    label applies.
     """
     properties = {
-        f"label_{i}": {
-            "title": f"Label {i}",
-            "type": "boolean",
-            "description": f"{question} Does the label {label!r} apply?",
-        }
+        f"label_{i}": noul_schema(f"{question} Does the label {label!r} apply?")
         for i, label in enumerate(labels)
     }
     return {
@@ -147,6 +147,9 @@ class MultiDecision(Module):
         decision_model (DecisionModel): Optional. A decision model to decide
             with instead of the language model: it answers one yes/no
             question per label, and the output has no `thinking` field.
+        threshold (float): Optional. With a decision model, the probability
+            from which a label is chosen (default to 0.5). Raise it to keep
+            only the labels the decision model is sure about.
     """
 
     def __init__(
@@ -171,6 +174,7 @@ class MultiDecision(Module):
         description=None,
         trainable=True,
         decision_model=None,
+        threshold=None,
     ):
         super().__init__(
             name=name,
@@ -188,6 +192,12 @@ class MultiDecision(Module):
         self.inline = inline
         self.language_model = _get_lm(language_model)
         self.decision_model = resolve_decision_model(decision_model, language_model)
+        if threshold is not None and self.decision_model is None:
+            raise ValueError(
+                "`threshold` requires a `decision_model`: a language model gives "
+                "no probability to compare it to."
+            )
+        self.threshold = 0.5 if threshold is None else float(threshold)
         if self.decision_model is not None:
             # No `thinking` field: decision models do not reason step by step.
             self.schema = dynamic_enum_array(
@@ -247,13 +257,16 @@ class MultiDecision(Module):
         result = await self.decision(inputs, training=training)
         if result is None or self.decision_model is None:
             return result
+        probabilities = {
+            label: result.get(f"label_{i}")["noul"] for i, label in enumerate(self.labels)
+        }
         return JsonDataModel(
             json={
                 "choices": [
                     label
-                    for i, label in enumerate(self.labels)
-                    if result.get(f"label_{i}")
-                ]
+                    for label in self.labels
+                    if probabilities[label] >= self.threshold
+                ],
             },
             schema=self.schema,
             name=result.name,
@@ -280,6 +293,7 @@ class MultiDecision(Module):
             "reasoning_effort": self.reasoning_effort,
             "use_inputs_schema": self.use_inputs_schema,
             "use_outputs_schema": self.use_outputs_schema,
+            "threshold": self.threshold if self.decision_model is not None else None,
             "name": self.name,
             "description": self.description,
             "trainable": self.trainable,
