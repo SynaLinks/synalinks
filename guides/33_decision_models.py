@@ -79,18 +79,81 @@ model cannot end up in a module that needs to write. With
 `synalinks.set_default_decision_model(...)`, these modules use it by default,
 the same way `set_default_language_model` works for language models.
 
+## Decision Models in Modules
+
+Given a decision model, each of these modules keeps its job but drops its
+free-text part: there is no `thinking` to write before a decision, and no
+`critique` to write before a grade. Here is each of them with a decision
+model, on a support ticket (`x0 = synalinks.Input(data_model=Ticket)`).
+
+**`Generator`**: answers the questions of its data model.
+
 ```python
-triage = synalinks.Generator(
+triage = await synalinks.Generator(
     data_model=Triage,
     decision_model=decision_model,
     instructions="Triage the support tickets of an online shop.",
-)
+)(x0)
+# {"is_billing": true, "urgency": "high"}
 ```
 
-Given a decision model, the decision modules keep their job but drop their
-free-text part: a `Decision` answers without its `thinking`, a `SelfCritique`
-grades without writing a `critique`, and a `RubricsAsJudge` grades every
-criterion in a single call.
+**`Decision`**: picks one of the labels, asking its `question` as is.
+
+```python
+team = await synalinks.Decision(
+    question="Which team should handle the ticket?",
+    labels=["billing", "technical", "sales"],
+    decision_model=decision_model,
+)(x0)
+# {"choice": "billing"}
+```
+
+**`MultiDecision`**: picks every label that applies, asking one yes/no
+question per label.
+
+```python
+topics = await synalinks.MultiDecision(
+    question="Which topics does the ticket mention?",
+    labels=["payment", "delivery", "account"],
+    decision_model=decision_model,
+)(x0)
+# {"choices": ["payment", "account"]}
+```
+
+**`Branch`**: routes the input to the module of the label its `Decision`
+picks; the other branches return `None`.
+
+```python
+(billing, technical) = await synalinks.Branch(
+    question="Which team should handle the ticket?",
+    labels=["billing", "technical"],
+    branches=[billing_agent, technical_agent],
+    decision_model=decision_model,
+)(x0)
+```
+
+**`SelfCritique`**: grades its inputs on five levels, from "Very bad." to
+"Very good.", into a `reward` between 0 and 1, without writing a critique.
+
+```python
+graded = await synalinks.SelfCritique(decision_model=decision_model)(reply)
+# {..., "reward": 0.75}
+```
+
+**`RubricsAsJudge`**: grades an answer against weighted criteria, all in one
+call. The built-in rubric rewards (`Faithfulness`, `Toxicity`...) take a
+`decision_model` the same way.
+
+```python
+reward = synalinks.rewards.RubricsAsJudge(
+    rubrics=[
+        {"name": "correct", "description": "The answer is correct.", "weight": 2},
+        {"name": "concise", "description": "No preamble, no filler."},
+    ],
+    decision_model=decision_model,
+)
+toxicity = synalinks.rewards.Toxicity(decision_model=decision_model)
+```
 
 ## Route Cheap, Write Expensive
 
@@ -133,15 +196,16 @@ makes it a practical reward to train with.
 
 ## Complete Example
 
-The example below builds three programs with a decision model:
+The example below runs every module above with a decision model:
 
-1. **Triage**: a `Generator` whose data model is made of questions answers a
-   support ticket.
+1. **Triage**: a `Generator` answers the questions of its data model about a
+   support ticket, a `Decision` picks the team that handles it, and a
+   `MultiDecision` the topics it mentions.
 2. **Routing**: a `Branch` decided by the decision model sends easy queries to
    a plain `Generator` and difficult ones to a `ChainOfThought`, both answered
    by a language model.
-3. **Grading**: a `RubricsAsJudge` grades two answers against weighted
-   criteria in one call.
+3. **Grading**: a `SelfCritique` grades a reply, and a `RubricsAsJudge` grades
+   two answers against weighted criteria in one call.
 
 ## Take-Home Summary
 
@@ -227,18 +291,29 @@ async def main():
     # 1. A Generator with a decision model: every field is a question
     # -------------------------------------------------------------------------
     print("=" * 60)
-    print("Triage: a Generator answered by a decision model")
+    print("Triage: a Generator, a Decision and a MultiDecision")
     print("=" * 60)
 
     inputs = synalinks.Input(data_model=Ticket)
-    outputs = await synalinks.Generator(
+    answers = await synalinks.Generator(
         data_model=Triage,
         decision_model=decision_model,
         instructions="Triage the support tickets of an online shop.",
     )(inputs)
+    team = await synalinks.Decision(
+        question="Which team should handle the ticket?",
+        labels=["billing", "technical", "sales"],
+        decision_model=decision_model,
+    )(inputs)
+    topics = await synalinks.MultiDecision(
+        question="Which topics does the ticket mention?",
+        labels=["payment", "delivery", "account"],
+        decision_model=decision_model,
+    )(inputs)
+    # The three read the same input, so they run in parallel.
     triage = synalinks.Program(
         inputs=inputs,
-        outputs=outputs,
+        outputs=answers + team + topics,
         name="ticket_triage",
         description="Triage the support tickets",
     )
@@ -291,8 +366,19 @@ async def main():
     # 3. Grade with rubrics: every criterion in one decision model call
     # -------------------------------------------------------------------------
     print("=" * 60)
-    print("Grading: RubricsAsJudge with a decision model")
+    print("Grading: SelfCritique and RubricsAsJudge with a decision model")
     print("=" * 60)
+
+    inputs = synalinks.Input(data_model=Answer)
+    outputs = await synalinks.SelfCritique(decision_model=decision_model)(inputs)
+    critic = synalinks.Program(
+        inputs=inputs,
+        outputs=outputs,
+        name="self_critique",
+        description="Grade a reply",
+    )
+    graded = await critic(Answer(answer="The trip takes 3 hours and 35 minutes."))
+    print(graded.prettify_json())
 
     reward = synalinks.rewards.RubricsAsJudge(
         decision_model=decision_model,
