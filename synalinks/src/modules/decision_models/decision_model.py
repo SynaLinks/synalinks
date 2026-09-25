@@ -157,7 +157,6 @@ def _instructions_description(instructions):
     return json.dumps(instructions)
 
 
-@synalinks_export("synalinks.decision_models.noul_schema")
 def noul_schema(instructions):
     """Return the schema of a field answered by a yes/no (noul) question.
 
@@ -181,7 +180,6 @@ def noul_schema(instructions):
     }
 
 
-@synalinks_export("synalinks.decision_models.choice_schema")
 def choice_schema(instructions, options):
     """Return the schema of a field answered by a choice question.
 
@@ -345,8 +343,11 @@ def questions_from_schema(schema):
         nearest to the probability-weighted score.
     - A string `enum` (`Literal` or `Enum`): a choice question over the
         values, answered with the most probable one.
-    - A `noul_schema`, `choice_schema` or `score_schema` object: the matching
-        question, answered with the full answer (probabilities, confidence...).
+    - A `score_schema` object: a score question over its levels, answered
+        with the full answer (score, probabilities, confidence).
+    - A `noul_schema` or `choice_schema` object: the yes/no and choice
+        questions `MultiDecision` and `Decision` ask internally, answered with
+        the full answer.
 
     Args:
         schema (dict): The output JSON schema.
@@ -420,8 +421,9 @@ def questions_from_schema(schema):
                 f"Field {key!r} ({field_type}) cannot be answered by a decision "
                 "model: decision models do not generate text or values, they "
                 "only answer typed questions. Use a `bool`, a string enum "
-                "(`Literal` or `Enum`), or a `noul_schema`, `choice_schema` or "
-                "`score_schema` object, or a `LanguageModel` to generate it."
+                "(`Literal` or `Enum`), a score (`synalinks.Rating`, "
+                "`synalinks.Score`...) or a `score_schema` object, or a "
+                "`LanguageModel` to generate it."
             )
     try:
         validate_questions(questions)
@@ -614,11 +616,10 @@ class DecisionModel(Module):
         probability of yes is at least 0.5.
     - A string enum (`Literal` or `Enum`): pick one option, up to 255. The
         field is the most probable option.
-    - `noul_schema(...)`: a yes/no question answered with `{"noul": p}`, the
-        probability that the answer is yes.
-    - `choice_schema(...)`: pick one option (optionally described), answered
-        with `{"choice", "probabilities", "confidence"}`.
-    - `score_schema(...)`: rate along 2 to 10 ordered levels, answered with
+    - A score (`synalinks.Rating`, `synalinks.Score`...): rate along its
+        scale. The field is the value of the scale nearest to the
+        probability-weighted score.
+    - `score_schema(...)`: rate along 2 to 10 described levels, answered with
         `{"score", "legend", "probabilities", "confidence"}`, where `score` is
         the probability-weighted level index.
 
@@ -1035,8 +1036,9 @@ class DecisionModel(Module):
         """Check that a decision model can answer an output schema.
 
         Every field must be a question a decision model answers: a `bool`, a
-        string enum (`Literal` or `Enum`), or a `noul_schema`,
-        `choice_schema` or `score_schema` object, each with a description.
+        string enum (`Literal` or `Enum`), a score (`synalinks.Rating`,
+        `synalinks.Score`...) or a `score_schema` object, each with a
+        description.
 
         Args:
             schema (dict): The output JSON schema to check.

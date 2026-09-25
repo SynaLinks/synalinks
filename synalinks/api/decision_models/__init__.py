@@ -17,11 +17,5 @@ from synalinks.src.modules.decision_models.decision_model import (
     UnsupportedSchemaError as UnsupportedSchemaError,
 )
 from synalinks.src.modules.decision_models.decision_model import (
-    choice_schema as choice_schema,
-)
-from synalinks.src.modules.decision_models.decision_model import (
-    noul_schema as noul_schema,
-)
-from synalinks.src.modules.decision_models.decision_model import (
     score_schema as score_schema,
 )

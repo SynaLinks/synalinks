@@ -210,8 +210,8 @@ class Generator(Module):
     Pass a `decision_model` to answer with a `DecisionModel` instead of the
     language model: it is faster and cheaper, and its answers are calibrated,
     but it does not generate. Every field of the data model must be a question
-    it can answer (a `bool`, a string enum, or a `noul_schema`, `choice_schema`
-    or `score_schema` object, see `DecisionModel`), otherwise an
+    it can answer (a `bool`, a string enum, a score such as `synalinks.Rating`,
+    or a `score_schema` object, see `DecisionModel`), otherwise an
     `UnsupportedSchemaError` is raised. The instructions and examples are sent
     to it as the system message.
 
