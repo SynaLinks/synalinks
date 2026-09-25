@@ -157,7 +157,6 @@ def _instructions_description(instructions):
     return json.dumps(instructions)
 
 
-@synalinks_export("synalinks.decision_models.noul_schema")
 def noul_schema(instructions):
     """Return the schema of a field answered by a yes/no (noul) question.
 
@@ -181,7 +180,6 @@ def noul_schema(instructions):
     }
 
 
-@synalinks_export("synalinks.decision_models.choice_schema")
 def choice_schema(instructions, options):
     """Return the schema of a field answered by a choice question.
 
@@ -294,6 +292,45 @@ def _field_instructions(key, description):
     return description
 
 
+def _is_scale(options):
+    """Whether an enum is a numeric scale (e.g. `synalinks.Rating`)."""
+    return all(
+        isinstance(option, (int, float)) and not isinstance(option, bool)
+        for option in options
+    )
+
+
+def _scale_levels(key, options):
+    """Return a numeric scale's values and the levels a score question asks.
+
+    A scale of up to `MAX_SCORE_LEVELS` values is asked as is. A finer one
+    (e.g. `synalinks.FineScore`) is asked over `MAX_SCORE_LEVELS` levels evenly
+    spread over its range, and the answer is mapped back to the nearest value.
+    """
+    values = sorted(options)
+    if len(values) < MIN_SCORE_LEVELS:
+        raise UnsupportedSchemaError(
+            f"Field {key!r} is a scale of {len(values)} value(s); a score needs "
+            f"at least {MIN_SCORE_LEVELS}."
+        )
+    if len(values) <= MAX_SCORE_LEVELS:
+        return values, values
+    low, high = values[0], values[-1]
+    step = (high - low) / (MAX_SCORE_LEVELS - 1)
+    return values, [low + i * step for i in range(MAX_SCORE_LEVELS)]
+
+
+def _format_level(level):
+    return str(level) if isinstance(level, int) else f"{round(level, 3):g}"
+
+
+def _scale_value(answer, values, levels):
+    """Map a score answer back to the nearest value of its scale."""
+    position = answer["score"] / (len(levels) - 1)
+    target = levels[0] + position * (levels[-1] - levels[0])
+    return min(values, key=lambda value: abs(value - target))
+
+
 def questions_from_schema(schema):
     """Infer the decision model questions from an output schema.
 
@@ -301,17 +338,24 @@ def questions_from_schema(schema):
     `description`. The question type follows the field type:
 
     - `boolean`: a noul question, answered with `True` when p >= 0.5.
+    - A numeric `enum`, such as `synalinks.Score` or `synalinks.Rating`: a
+        score question over the scale's values, answered with the value
+        nearest to the probability-weighted score.
     - A string `enum` (`Literal` or `Enum`): a choice question over the
         values, answered with the most probable one.
-    - A `noul_schema`, `choice_schema` or `score_schema` object: the matching
-        question, answered with the full answer (probabilities, confidence...).
+    - A `score_schema` object: a score question over its levels, answered
+        with the full answer (score, probabilities, confidence).
+    - A `noul_schema` or `choice_schema` object: the yes/no and choice
+        questions `MultiDecision` and `Decision` ask internally, answered with
+        the full answer.
 
     Args:
         schema (dict): The output JSON schema.
 
     Returns:
-        (tuple): The dict of questions, and the set of fields answered with a
-            plain value (`boolean` or `enum`) rather than the full answer.
+        (tuple): The dict of questions, and the fields answered with a plain
+            value (`boolean` or `enum`) rather than the full answer, mapped to
+            the values and levels of their scale for a numeric `enum`.
 
     Raises:
         UnsupportedSchemaError: If a field cannot be answered by a decision
@@ -324,21 +368,29 @@ def questions_from_schema(schema):
             f"one field, got {schema!r}."
         )
     questions = {}
-    plain = set()
+    plain = {}
     for key, prop in properties.items():
         node = _resolve_ref(schema, prop)
         instructions = _field_instructions(key, node.get("description"))
         fields = node.get("properties") or {}
         if node.get("type") == "boolean":
             questions[key] = {"type": "noul", "instructions": instructions}
-            plain.add(key)
+            plain[key] = None
+        elif "enum" in node and _is_scale(node["enum"]):
+            values, levels = _scale_levels(key, node["enum"])
+            questions[key] = {
+                "type": "score",
+                "instructions": instructions,
+                "criteria": [_format_level(level) for level in levels],
+            }
+            plain[key] = (values, levels)
         elif "enum" in node:
             questions[key] = {
                 "type": "choice",
                 "instructions": instructions,
                 "criteria": {str(option): None for option in node["enum"]},
             }
-            plain.add(key)
+            plain[key] = None
         elif "noul" in fields:
             questions[key] = {"type": "noul", "instructions": instructions}
         elif "choice" in fields:
@@ -369,8 +421,9 @@ def questions_from_schema(schema):
                 f"Field {key!r} ({field_type}) cannot be answered by a decision "
                 "model: decision models do not generate text or values, they "
                 "only answer typed questions. Use a `bool`, a string enum "
-                "(`Literal` or `Enum`), or a `noul_schema`, `choice_schema` or "
-                "`score_schema` object, or a `LanguageModel` to generate it."
+                "(`Literal` or `Enum`), a score (`synalinks.Rating`, "
+                "`synalinks.Score`...) or a `score_schema` object, or a "
+                "`LanguageModel` to generate it."
             )
     try:
         validate_questions(questions)
@@ -386,6 +439,8 @@ def outputs_from_answers(questions, plain, answers):
         if key in plain:
             if questions[key]["type"] == "noul":
                 outputs[key] = answer["noul"] >= 0.5
+            elif questions[key]["type"] == "score":
+                outputs[key] = _scale_value(answer, *plain[key])
             else:
                 outputs[key] = answer["choice"]
         else:
@@ -561,11 +616,10 @@ class DecisionModel(Module):
         probability of yes is at least 0.5.
     - A string enum (`Literal` or `Enum`): pick one option, up to 255. The
         field is the most probable option.
-    - `noul_schema(...)`: a yes/no question answered with `{"noul": p}`, the
-        probability that the answer is yes.
-    - `choice_schema(...)`: pick one option (optionally described), answered
-        with `{"choice", "probabilities", "confidence"}`.
-    - `score_schema(...)`: rate along 2 to 10 ordered levels, answered with
+    - A score (`synalinks.Rating`, `synalinks.Score`...): rate along its
+        scale. The field is the value of the scale nearest to the
+        probability-weighted score.
+    - `score_schema(...)`: rate along 2 to 10 described levels, answered with
         `{"score", "legend", "probabilities", "confidence"}`, where `score` is
         the probability-weighted level index.
 
@@ -982,8 +1036,9 @@ class DecisionModel(Module):
         """Check that a decision model can answer an output schema.
 
         Every field must be a question a decision model answers: a `bool`, a
-        string enum (`Literal` or `Enum`), or a `noul_schema`,
-        `choice_schema` or `score_schema` object, each with a description.
+        string enum (`Literal` or `Enum`), a score (`synalinks.Rating`,
+        `synalinks.Score`...) or a `score_schema` object, each with a
+        description.
 
         Args:
             schema (dict): The output JSON schema to check.

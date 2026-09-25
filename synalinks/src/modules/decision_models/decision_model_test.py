@@ -255,7 +255,7 @@ class DecisionModelTest(testing.TestCase):
     def test_questions_from_schema(self):
         questions, plain = questions_from_schema(MIXED_SCHEMA)
         self.assertEqual(questions, MIXED_QUESTIONS)
-        self.assertEqual(plain, set())
+        self.assertEqual(plain, {})
         structured = noul_schema({"question": "q", "guidance": "g"})
         questions, _ = questions_from_schema(
             {"type": "object", "properties": {"a": structured}}
@@ -422,6 +422,49 @@ class DecisionModelTest(testing.TestCase):
             synalinks.Generator(data_model=Billing, language_model=decision_model)
         with self.assertRaisesRegex(ValueError, "not a `LanguageModel`"):
             synalinks.ChainOfThought(data_model=Billing, language_model=decision_model)
+
+    async def test_score_types_are_score_questions(self):
+        class Review(DataModel):
+            quality: synalinks.Rating = Field(
+                description="How good is the answer, from 1 (worst) to 5 (best)?"
+            )
+            precision: synalinks.FineScore = Field(
+                description="How precise is the answer, from 0 to 1?"
+            )
+
+        questions, _ = questions_from_schema(Review.get_schema())
+        self.assertEqual(
+            questions["quality"],
+            {
+                "type": "score",
+                "instructions": "How good is the answer, from 1 (worst) to 5 (best)?",
+                "criteria": ["1", "2", "3", "4", "5"],
+            },
+        )
+        # 21 values: asked over the 10 levels the API allows, spread over 0..1.
+        self.assertEqual(len(questions["precision"]["criteria"]), 10)
+        self.assertEqual(questions["precision"]["criteria"][0], "0")
+        self.assertEqual(questions["precision"]["criteria"][-1], "1")
+
+        def score(value, levels):
+            keys = [str(i) for i in range(levels)]
+            return {
+                "type": "score",
+                "score": value,
+                "legend": {key: key for key in keys},
+                "probabilities": {key: 1.0 / levels for key in keys},
+                "confidence": 0.5,
+            }
+
+        decision_model = DecisionModel(model="typesafe/jev-latest")
+        mock_decision_model(
+            decision_model,
+            # 3.4 on levels 0..4 -> 4.4 on 1..5 -> 4; 4.5 on 0..9 -> 0.5 -> 0.5.
+            {"quality": score(3.4, 5), "precision": score(4.5, 10)},
+        )
+        result = await decision_model(ticket("Hi"), schema=Review.get_schema())
+        self.assertEqual(result.get_json(), {"quality": 4, "precision": 0.5})
+        Review(**result.get_json())  # the values belong to their scales
 
     def test_check_schema(self):
         decision_model = DecisionModel(model="typesafe/jev-latest")

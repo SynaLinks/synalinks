@@ -183,6 +183,12 @@ class Branch(Module):
         decision_model (DecisionModel): Optional. A decision model to decide
             which branch to take, instead of the language model (see
             `Decision`). The branches keep their own models.
+        min_confidence (float): Optional. With a decision model and a
+            `Decision`, the confidence under which no branch is selected
+            (see `Decision`).
+        threshold (float): Optional. With a decision model and a
+            `MultiDecision`, the probability from which a branch is selected
+            (see `MultiDecision`).
     """
 
     def __init__(
@@ -210,6 +216,8 @@ class Branch(Module):
         description=None,
         trainable=True,
         decision_model=None,
+        min_confidence=None,
+        threshold=None,
         **kwargs,
     ):
         super().__init__(
@@ -253,6 +261,12 @@ class Branch(Module):
             and "decision_model" in inspect.signature(decision_type).parameters
         ):
             decision_model_kwargs["decision_model"] = resolved_decision_model
+        # Also only given when set: `min_confidence` is a `Decision` argument,
+        # `threshold` a `MultiDecision` one.
+        if min_confidence is not None:
+            decision_model_kwargs["min_confidence"] = min_confidence
+        if threshold is not None:
+            decision_model_kwargs["threshold"] = threshold
         self.decision = decision_type(
             question=self.question,
             labels=self.labels,
@@ -272,6 +286,8 @@ class Branch(Module):
             **decision_model_kwargs,
         )
         self.decision_model = getattr(self.decision, "decision_model", None)
+        self.min_confidence = min_confidence
+        self.threshold = threshold
 
     async def call(self, inputs, training=False):
         outputs = [None] * len(self.branches)
@@ -388,6 +404,8 @@ class Branch(Module):
             "reasoning_effort": self.reasoning_effort,
             "use_inputs_schema": self.use_inputs_schema,
             "use_outputs_schema": self.use_outputs_schema,
+            "min_confidence": self.min_confidence,
+            "threshold": self.threshold,
             "name": self.name,
             "description": self.description,
             "trainable": self.trainable,

@@ -44,7 +44,8 @@ difference is that each field is a *question*, asked with the field's
 
 - a `bool` field is a yes/no question,
 - a `Literal` (or string `Enum`) field picks one of its options,
-- a `score_schema` field rates along ordered levels (see the API reference).
+- a score field (`synalinks.Rating`, `synalinks.Score`, ...) rates along its
+  scale, and the answer is a value of that scale.
 
 ```python
 class Triage(synalinks.DataModel):
@@ -54,7 +55,17 @@ class Triage(synalinks.DataModel):
     urgency: Literal["low", "medium", "high"] = synalinks.Field(
         description="How urgent is the ticket?",
     )
+    frustration: synalinks.Rating = synalinks.Field(
+        description="How frustrated is the customer, from 1 (calm) to 5 (angry)?",
+    )
 ```
+
+For a score, the decision model does not pick a single level: it spreads its
+probability over the levels, and the answer is the level at the center of
+that spread. A customer torn between "annoyed" and "angry" lands between the
+two, rather than on whichever a model happened to generate. Say what the
+scale means in the `description`, as above: that is how the decision model
+knows which end is which.
 
 What a decision model cannot answer is a field that has to be *written*: a
 free-form string, a number, a list. Synalinks refuses such a data model up
@@ -102,7 +113,7 @@ triage = await synalinks.Generator(
     decision_model=decision_model,
     instructions="Triage the support tickets of an online shop.",
 )(x0)
-# {"is_billing": true, "urgency": "high"}
+# {"is_billing": true, "urgency": "high", "frustration": 4}
 ```
 
 ### `Decision`
@@ -123,14 +134,30 @@ team = await synalinks.Decision(
 # {"choice": "billing"}
 ```
 
+A decision model also knows how sure it is. Set `min_confidence`, and a
+decision it is not sure enough about is not taken: the `Decision` returns
+`None` instead of a guess, so the program can hand the input to something
+else, a stronger model or a human.
+
+```python
+team = await synalinks.Decision(
+    question="Which team should handle the ticket?",
+    labels=["billing", "technical", "sales"],
+    decision_model=decision_model,
+    min_confidence=0.7,
+)(x0)
+# {"choice": "billing"}, or None when the model is unsure
+```
+
 ### `MultiDecision`
 
 A `MultiDecision` picks every label that applies: multi-label
 classification. A decision model answers it as one yes/no question per
 label ("Which topics does the ticket mention? Does the label 'payment'
-apply?"), and the labels answered yes (a probability of at least 0.5) are
-kept. As each label is judged on its own, the result can hold several
-labels, or none at all when nothing applies.
+apply?"), and the labels whose probability reaches the `threshold` (0.5 by
+default) are kept. Raise it to keep only the labels the model is sure about,
+lower it to miss fewer. As each label is judged on its own, the result can
+hold several labels, or none at all when nothing applies.
 
 ```python
 topics = await synalinks.MultiDecision(
@@ -148,7 +175,9 @@ chosen label runs, and the other branches return `None` (see
 [Guide 5](https://synalinks.github.io/synalinks/guides/Control%20Flow/)). The
 decision model only makes the choice: the branches keep their own models, so
 a branch can still be a language model writing an answer. This is where a
-decision model pays off most, since the routing runs on every input.
+decision model pays off most, since the routing runs on every input. A
+`Branch` takes a `min_confidence` too (a `threshold` with a `MultiDecision`):
+when the decision is not taken, no branch runs.
 
 ```python
 (billing, technical) = await synalinks.Branch(
@@ -216,6 +245,64 @@ graph LR
 The routing decision runs on every request, so making it cheap and fast
 matters more than anywhere else in the program.
 
+## How Sure Is Sure Enough?
+
+`min_confidence` and `threshold` trade one kind of mistake for another. Set
+them low, and the program always decides, including when it should not. Set
+them high, and it only decides when it is sure, at the price of handing more
+inputs over to a slower path. Where the balance lies depends on what a wrong
+decision costs you, compared with an unanswered one, and on your data: there
+is no good default.
+
+These thresholds are **hyperparameters**, not parameters: training does not
+change them, you fix them before it starts. So rather than guessing, search
+for them, like any other hyperparameter, with the KerasTuner tuners of
+[Guide 17](https://synalinks.github.io/synalinks/guides/Hyperparameter%20Search/).
+The one thing to get right is the reward. If an unanswered input scored 0,
+like a wrong one, the search would learn that abstaining never pays and set
+the threshold to 0. Give it a score between a right and a wrong decision,
+reflecting what an abstention is worth to you:
+
+```python
+import synalinks
+
+synalinks.disable_keras_backend()  # before using the tuners (see Guide 17)
+
+
+async def triage_reward(y_true, y_pred):
+    if y_pred is None:
+        return 0.5  # not decided: better than wrong, worse than right
+    return 1.0 if y_pred.get("choice") == y_true.get("choice") else 0.0
+
+
+async def build_program(hp):
+    min_confidence = hp.Float("min_confidence", 0.0, 0.9, step=0.1)
+    synalinks.clear_session()
+    inputs = synalinks.Input(data_model=Ticket)
+    outputs = await synalinks.Decision(
+        question="Which team should handle the ticket?",
+        labels=["billing", "technical", "sales"],
+        decision_model=decision_model,
+        min_confidence=min_confidence,
+    )(inputs)
+    program = synalinks.Program(inputs=inputs, outputs=outputs)
+    program.compile(reward=triage_reward)
+    return program
+
+
+tuner = synalinks.tuners.GridSearch(
+    build_program,
+    objective=synalinks.tuners.Objective("val_reward", direction="max"),
+    directory="tuning",
+    project_name="triage_min_confidence",
+)
+tuner.search(x=x_train, y=y_train, validation_data=(x_val, y_val), epochs=1)
+```
+
+The grid tries every threshold from 0 to 0.9, and the best one is the
+balance that fits your data, not a number picked by hand. Decision model
+calls are cheap, so trying many thresholds costs little.
+
 ## Learning in Context
 
 A decision model answers in the context of the whole conversation: the
@@ -253,12 +340,16 @@ The example below runs every module above with a decision model:
 
 - A **decision model** answers typed questions (yes/no, one of a list, a
   score) with calibrated probabilities; it never writes text.
-- **Fields are questions**: `bool` and `Literal` fields, each asked with its
-  `description`. A field that has to be written needs a language model.
+- **Fields are questions**: `bool`, `Literal` and score (`synalinks.Rating`,
+  `synalinks.Score`) fields, each asked with its `description`. A field that
+  has to be written needs a language model.
 - Modules that decide take it through their **`decision_model`** argument,
   never as a `language_model`; `set_default_decision_model()` sets a default.
 - **Route cheap, write expensive**: decide with a decision model, write with
   a language model only where needed.
+- It **knows how sure it is**: `min_confidence` and `threshold` let a
+  decision be skipped rather than guessed, and KerasTuner finds the values
+  that fit your data.
 - It **learns in context**, so programs using it train like any other, with
   every optimizer, `OMEGA` included, and it makes a fast, cheap judge.
 
@@ -270,6 +361,7 @@ The example below runs every module above with a decision model:
 - [Branch](https://synalinks.github.io/synalinks/Synalinks%20API/Modules%20API/Core%20Modules/Branch%20module/)
 - [RubricsAsJudge](https://synalinks.github.io/synalinks/Synalinks%20API/Rewards/RubricsAsJudge%20reward/)
 - [OMEGA](https://synalinks.github.io/synalinks/Synalinks%20API/Optimizers%20API/OMEGA/)
+- [Tuners](https://synalinks.github.io/synalinks/Synalinks%20API/Tuners/)
 """
 
 import asyncio
@@ -298,6 +390,9 @@ class Triage(synalinks.DataModel):
     )
     urgency: Literal["low", "medium", "high"] = synalinks.Field(
         description="How urgent is the ticket?",
+    )
+    frustration: synalinks.Rating = synalinks.Field(
+        description="How frustrated is the customer, from 1 (calm) to 5 (angry)?",
     )
 
 
