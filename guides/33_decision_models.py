@@ -83,10 +83,18 @@ the same way `set_default_language_model` works for language models.
 
 Given a decision model, each of these modules keeps its job but drops its
 free-text part: there is no `thinking` to write before a decision, and no
-`critique` to write before a grade. Here is each of them with a decision
-model, on a support ticket (`x0 = synalinks.Input(data_model=Ticket)`).
+`critique` to write before a grade. What remains is the decision itself,
+which the decision model makes faster and more reliably. The examples below
+run on a support ticket (`x0 = synalinks.Input(data_model=Ticket)`).
 
-**`Generator`**: answers the questions of its data model.
+### `Generator`
+
+The `Generator` is the most general of them: give it a data model made of
+questions, and the decision model answers them all at once. The
+`instructions` and examples you give the `Generator` still apply: they form
+the system message the questions are answered in, exactly as for a language
+model. Use it when a step needs several answers about the same input, like
+triaging a ticket.
 
 ```python
 triage = await synalinks.Generator(
@@ -97,7 +105,14 @@ triage = await synalinks.Generator(
 # {"is_billing": true, "urgency": "high"}
 ```
 
-**`Decision`**: picks one of the labels, asking its `question` as is.
+### `Decision`
+
+A `Decision` picks one label out of a closed list: single-label
+classification. With a language model, it first writes its reasoning in a
+`thinking` field, then picks. With a decision model, the `question` is asked
+as is, the labels are the options, and the output is only the `choice`. Since
+the question is all the decision model reads besides the input, phrase it
+about the input, and give labels that speak for themselves.
 
 ```python
 team = await synalinks.Decision(
@@ -108,8 +123,14 @@ team = await synalinks.Decision(
 # {"choice": "billing"}
 ```
 
-**`MultiDecision`**: picks every label that applies, asking one yes/no
-question per label.
+### `MultiDecision`
+
+A `MultiDecision` picks every label that applies: multi-label
+classification. A decision model answers it as one yes/no question per
+label ("Which topics does the ticket mention? Does the label 'payment'
+apply?"), and the labels answered yes (a probability of at least 0.5) are
+kept. As each label is judged on its own, the result can hold several
+labels, or none at all when nothing applies.
 
 ```python
 topics = await synalinks.MultiDecision(
@@ -120,8 +141,14 @@ topics = await synalinks.MultiDecision(
 # {"choices": ["payment", "account"]}
 ```
 
-**`Branch`**: routes the input to the module of the label its `Decision`
-picks; the other branches return `None`.
+### `Branch`
+
+A `Branch` is a `Decision` wired to one module per label: the module of the
+chosen label runs, and the other branches return `None` (see
+[Guide 5](https://synalinks.github.io/synalinks/guides/Control%20Flow/)). The
+decision model only makes the choice: the branches keep their own models, so
+a branch can still be a language model writing an answer. This is where a
+decision model pays off most, since the routing runs on every input.
 
 ```python
 (billing, technical) = await synalinks.Branch(
@@ -132,17 +159,32 @@ picks; the other branches return `None`.
 )(x0)
 ```
 
-**`SelfCritique`**: grades its inputs on five levels, from "Very bad." to
-"Very good.", into a `reward` between 0 and 1, without writing a critique.
+### `SelfCritique`
+
+A `SelfCritique` grades its inputs, typically an answer, with a `reward`
+between 0 and 1. A decision model rates the inputs on five levels, from
+"Very bad." to "Very good.", and the reward follows the probability of each
+level, so an answer the model hesitates about lands between two levels
+rather than on one. It does not write the critique a language model would,
+so it only works with a reward (`return_reward=True`, the default).
 
 ```python
 graded = await synalinks.SelfCritique(decision_model=decision_model)(reply)
 # {..., "reward": 0.75}
 ```
 
-**`RubricsAsJudge`**: grades an answer against weighted criteria, all in one
-call. The built-in rubric rewards (`Faithfulness`, `Toxicity`...) take a
-`decision_model` the same way.
+### `RubricsAsJudge`
+
+A `RubricsAsJudge` grades an answer against named criteria and combines them
+by weight ([Guide 13](https://synalinks.github.io/synalinks/guides/Rewards/)).
+A decision model asks each criterion as a question ("How well does the
+answer meet this criterion: ...?") over five levels, from "Does not meet the
+criterion at all." to "Fully meets the criterion.", and grades all the
+criteria in a single call, however many there are. Instead of a written
+critique, the `critique` lists the level and confidence of each criterion,
+which is often all you need to see why an answer lost points. The built-in
+rubric rewards, such as `Faithfulness` or `Toxicity`, take a `decision_model`
+the same way.
 
 ```python
 reward = synalinks.rewards.RubricsAsJudge(
