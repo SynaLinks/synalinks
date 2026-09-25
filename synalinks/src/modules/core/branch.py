@@ -1,10 +1,12 @@
 # License Apache 2.0: (c) 2025-2026 Yoan Sallami (Synalinks Team)
 
 import asyncio
+import inspect
 
 from synalinks.src import ops
 from synalinks.src.api_export import synalinks_export
 from synalinks.src.modules.core.decision import Decision
+from synalinks.src.modules.decision_models import resolve_decision_model
 from synalinks.src.modules.language_models import get as _get_lm
 from synalinks.src.modules.module import Module
 from synalinks.src.saving import serialization_lib
@@ -226,6 +228,10 @@ class Branch(Module):
         self.branches = {labels[i]: m for i, m in enumerate(branches)}
         self.inject_decision = inject_decision
         self.return_decision = return_decision
+        # Resolved here, from the arguments as given: the decision module
+        # receives the resolved language model, so it could not tell the
+        # default decision model apart from an explicit language model.
+        resolved_decision_model = resolve_decision_model(decision_model, language_model)
         self.language_model = _get_lm(language_model)
         self.prompt_template = prompt_template
         self.examples = examples
@@ -239,10 +245,14 @@ class Branch(Module):
         self.use_inputs_schema = use_inputs_schema
         self.use_outputs_schema = use_outputs_schema
         # Only given when set, so a custom `decision_type` without decision
-        # model support keeps working.
+        # model support keeps working (the default decision model is only
+        # given to a `decision_type` that takes one).
         decision_model_kwargs = {}
-        if decision_model is not None:
-            decision_model_kwargs["decision_model"] = decision_model
+        if decision_model is not None or (
+            resolved_decision_model is not None
+            and "decision_model" in inspect.signature(decision_type).parameters
+        ):
+            decision_model_kwargs["decision_model"] = resolved_decision_model
         self.decision = decision_type(
             question=self.question,
             labels=self.labels,

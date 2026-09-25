@@ -16,7 +16,7 @@ from synalinks.src.backend.pydantic.metrics import score_type_description
 from synalinks.src.backend.pydantic.metrics import score_type_json_type
 from synalinks.src.backend.pydantic.metrics import serialize_score_type
 from synalinks.src.modules.core.generator import Generator
-from synalinks.src.modules.decision_models import get as _get_dm
+from synalinks.src.modules.decision_models import resolve_decision_model
 from synalinks.src.modules.decision_models.decision_model import UnsupportedSchemaError
 from synalinks.src.modules.decision_models.decision_model import score_schema
 from synalinks.src.modules.language_models import get as _get_lm
@@ -299,9 +299,11 @@ class SelfCritique(Module):
             trainable=trainable,
         )
         self.language_model = _get_lm(language_model)
-        self.decision_model = (
-            _get_dm(decision_model) if decision_model is not None else None
-        )
+        self.decision_model = resolve_decision_model(decision_model, language_model)
+        if decision_model is None and not return_reward:
+            # A decision model does not write the critique: the default one
+            # does not apply.
+            self.decision_model = None
         self.score_type = get_score_type(score_type or FineScore)
         self.prompt_template = prompt_template
         self.examples = examples

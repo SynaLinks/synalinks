@@ -20,7 +20,7 @@ from synalinks.src.backend.pydantic.metrics import score_type_json_type
 from synalinks.src.backend.pydantic.metrics import serialize_score_type
 from synalinks.src.modules import Generator
 from synalinks.src.modules import Module
-from synalinks.src.modules.decision_models import get as _get_dm
+from synalinks.src.modules.decision_models import resolve_decision_model
 from synalinks.src.modules.decision_models.decision_model import score_schema
 from synalinks.src.modules.ttc.self_critique import CritiqueWithReward
 from synalinks.src.rewards.reward_wrappers import ProgramAsJudge
@@ -280,9 +280,11 @@ class RubricsAsJudgeProgram(Module):
             raise ValueError(f"Duplicate rubric names after normalization: {names}.")
 
         self.language_model = language_model
-        self.decision_model = (
-            _get_dm(decision_model) if decision_model is not None else None
-        )
+        self.decision_model = resolve_decision_model(decision_model, language_model)
+        if decision_model is None and score_type is not None:
+            # A score scale is for a language model: the default decision
+            # model does not apply.
+            self.decision_model = None
         self.prompt_template = prompt_template
         self.examples = examples
         prompt_variables = {"rubrics": [rubric.get_json() for rubric in self.rubrics]}

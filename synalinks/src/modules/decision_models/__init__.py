@@ -109,3 +109,28 @@ def get(identifier):
     if isinstance(obj, DecisionModel):
         return obj
     raise ValueError(f"Could not interpret decision model identifier: {identifier}")
+
+
+def resolve_decision_model(decision_model=None, language_model=None):
+    """Return the decision model a module that supports one uses, or `None`.
+
+    An explicit `decision_model` wins. Otherwise an explicit `language_model`
+    means the module uses that language model. Otherwise the default decision
+    model (see `synalinks.set_default_decision_model`) is used instead of the
+    default language model, when one is set.
+
+    Args:
+        decision_model (str | dict | DecisionModel | None): The module's
+            `decision_model` argument.
+        language_model (str | dict | LanguageModel | None): The module's
+            `language_model` argument.
+
+    Returns:
+        (DecisionModel | None): The decision model to use, or `None` to use
+            the language model.
+    """
+    if decision_model is not None:
+        return get(decision_model)
+    if language_model is not None:
+        return None
+    return get(None)

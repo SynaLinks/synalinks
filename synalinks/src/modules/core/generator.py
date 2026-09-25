@@ -16,7 +16,8 @@ from synalinks.src.backend import is_chat_messages
 from synalinks.src.backend import is_strictly_chat_message
 from synalinks.src.backend import is_strictly_chat_messages
 from synalinks.src.backend.common.op_scope import current_op_scope
-from synalinks.src.modules.decision_models import get as _get_dm
+from synalinks.src.modules.decision_models import resolve_decision_model
+from synalinks.src.modules.decision_models.decision_model import UnsupportedSchemaError
 from synalinks.src.modules.language_models import get as _get_lm
 from synalinks.src.modules.language_models.language_model import StreamingIterator
 from synalinks.src.modules.language_models.language_model import _tool_to_wire
@@ -320,6 +321,9 @@ class Generator(Module):
         decision_model (DecisionModel): Optional. A decision model to answer
             with instead of the language model. Every field of the schema must
             be a question it can answer (see `DecisionModel.check_schema()`).
+            Without `decision_model` nor `language_model`, the default decision
+            model (see `synalinks.set_default_decision_model`) is used when it
+            can answer the schema, else the default language model.
     """
 
     def __init__(
@@ -358,10 +362,16 @@ class Generator(Module):
             schema = data_model.get_schema()
         self.schema = schema
         self.language_model = _get_lm(language_model)
-        self.decision_model = None
-        if decision_model is not None:
-            self.decision_model = _get_dm(decision_model)
-            self.decision_model.check_schema(self.schema)
+        self.decision_model = resolve_decision_model(decision_model, language_model)
+        if self.decision_model is not None:
+            try:
+                self.decision_model.check_schema(self.schema)
+            except UnsupportedSchemaError:
+                if decision_model is not None:
+                    raise
+                # The default decision model cannot answer this schema (it
+                # needs generation): use the language model.
+                self.decision_model = None
         if not prompt_template:
             prompt_template = default_prompt_template()
         self.prompt_template = prompt_template

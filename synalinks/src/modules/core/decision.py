@@ -7,7 +7,7 @@ from synalinks.src.backend import DataModel
 from synalinks.src.backend import Field
 from synalinks.src.backend import dynamic_enum
 from synalinks.src.modules.core.generator import Generator
-from synalinks.src.modules.decision_models import get as _get_dm
+from synalinks.src.modules.decision_models import resolve_decision_model
 from synalinks.src.modules.language_models import get as _get_lm
 from synalinks.src.modules.module import Module
 from synalinks.src.saving import serialization_lib
@@ -171,9 +171,7 @@ class Decision(Module):
         self.question = question
         self.labels = labels
         self.language_model = _get_lm(language_model)
-        self.decision_model = (
-            _get_dm(decision_model) if decision_model is not None else None
-        )
+        self.decision_model = resolve_decision_model(decision_model, language_model)
         if self.decision_model is not None:
             schema = decision_model_schema(question, labels)
         else:

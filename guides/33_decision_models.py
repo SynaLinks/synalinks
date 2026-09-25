@@ -41,6 +41,26 @@ decision_model = synalinks.DecisionModel(model="typesafe/jev-latest")
 Pin a versioned ID (e.g. `"typesafe/jev-1.13.0"`) once you have tuned
 thresholds on a model, so an upgrade of `jev-latest` does not move them.
 
+### A Default Decision Model
+
+Like the default language model, a default decision model spares passing it
+to every module:
+
+```python
+synalinks.set_default_language_model("ollama/mistral:latest")
+synalinks.set_default_decision_model("typesafe/jev-latest")
+```
+
+A module that accepts a decision model then uses the default decision model
+instead of the default language model: a `Decision` or a `Branch` decides with
+it, a `RubricsAsJudge` grades with it. The order is: its `decision_model`, then
+its `language_model` (an explicit language model is used, not the default
+decision model), then the default decision model, then the default language
+model. The default decision model only goes where it can answer: a `Generator`
+uses it only when every field of its schema is a question (a `Generator` that
+writes text keeps the default language model), and neither a `SelfCritique`
+without reward nor a `RubricsAsJudge` with a `score_type` uses it.
+
 ## The `decision_model` Argument
 
 A `DecisionModel` is called like a `LanguageModel`, with chat messages and a
@@ -231,6 +251,8 @@ failed, even though it returns `None`.
   with a language model only where needed.
 - **Credentials from the environment**: `TYPESAFE_API_KEY`, loaded from a
   `.env` file.
+- **A default**: `set_default_decision_model()` makes the modules that accept
+  a decision model use it instead of the default language model.
 
 ## API References
 
