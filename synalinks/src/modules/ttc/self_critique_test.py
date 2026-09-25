@@ -1,6 +1,7 @@
 # License Apache 2.0: (c) 2025-2026 Yoan Sallami (Synalinks Team)
 
 import json
+import os
 from unittest.mock import patch
 
 from synalinks.src import testing
@@ -10,10 +11,13 @@ from synalinks.src.backend import FineScore
 from synalinks.src.backend import Rating
 from synalinks.src.backend import Rating20
 from synalinks.src.modules.core.input_module import Input
+from synalinks.src.modules.decision_models import DecisionModel
+from synalinks.src.modules.decision_models.decision_model import UnsupportedSchemaError
 from synalinks.src.modules.language_models import LanguageModel
 from synalinks.src.modules.ttc.chain_of_thought import ChainOfThought
 from synalinks.src.modules.ttc.self_critique import SelfCritique
 from synalinks.src.programs.program import Program
+from synalinks.src.testing.test_utils import mock_decision_model
 
 
 class SelfCritiqueModuleTest(testing.TestCase):
@@ -223,3 +227,51 @@ class SelfCritiqueModuleTest(testing.TestCase):
         self.assertTrue(critique.built)
         self.assertEqual(mock_completion.call_count, 1)
         self.assertAlmostEqual(result.get("reward"), 0.9)
+
+
+@patch.dict(os.environ, {"TYPESAFE_API_KEY": "test-key"})
+class SelfCritiqueWithDecisionModelTest(testing.TestCase):
+    async def test_decision_model_reward(self):
+        class Answer(DataModel):
+            answer: str
+
+        decision_model = DecisionModel(model="typesafe/jev-latest")
+        payloads = mock_decision_model(
+            decision_model,
+            {
+                "reward": {
+                    "type": "score",
+                    "score": 3.0,
+                    "legend": {
+                        "0": "Very bad.",
+                        "1": "Bad.",
+                        "2": "Acceptable.",
+                        "3": "Good.",
+                        "4": "Very good.",
+                    },
+                    "probabilities": {"0": 0.0, "1": 0.0, "2": 0.0, "3": 1.0, "4": 0.0},
+                    "confidence": 0.9,
+                }
+            },
+        )
+
+        x0 = Input(data_model=Answer)
+        x1 = await SelfCritique(decision_model=decision_model)(x0)
+        program = Program(inputs=x0, outputs=x1)
+
+        result = await program(Answer(answer="Paris"))
+
+        self.assertEqual(result.get_json(), {"answer": "Paris", "reward": 0.75})
+        self.assertEqual(x1.get_schema()["properties"]["reward"]["maximum"], 1.0)
+        self.assertEqual(payloads[0]["questions"]["reward"]["type"], "score")
+        module = program.get_module(index=1)
+        restored = SelfCritique.from_config(module.get_config())
+        self.assertIsInstance(restored.decision_model, DecisionModel)
+        self.assertEqual(restored.generator.schema, module.generator.schema)
+
+    def test_decision_model_needs_reward(self):
+        with self.assertRaises(UnsupportedSchemaError):
+            SelfCritique(
+                decision_model=DecisionModel(model="typesafe/jev-latest"),
+                return_reward=False,
+            )

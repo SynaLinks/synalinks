@@ -1,10 +1,21 @@
 # License Apache 2.0: (c) 2025-2026 Yoan Sallami (Synalinks Team)
 
+import json
+import os
 from types import SimpleNamespace
+from typing import Literal
 from unittest.mock import AsyncMock
+from unittest.mock import patch
+
+import numpy as np
 
 from synalinks.src import testing
+from synalinks.src.backend import DataModel
+from synalinks.src.backend import Field
 from synalinks.src.backend import JsonDataModel
+from synalinks.src.modules import Input
+from synalinks.src.modules.core.generator import Generator
+from synalinks.src.modules.decision_models import DecisionModel
 from synalinks.src.modules.embedding_models import EmbeddingModel
 from synalinks.src.modules.language_models import LanguageModel
 from synalinks.src.optimizers.evolutionary_optimizer import EvolutionaryOptimizer
@@ -13,6 +24,9 @@ from synalinks.src.optimizers.omega import base_instructions
 from synalinks.src.optimizers.omega import crossover_instructions
 from synalinks.src.optimizers.omega import mutation_instructions
 from synalinks.src.optimizers.omega import similarity_distance
+from synalinks.src.programs import Program
+from synalinks.src.rewards.exact_match import ExactMatch
+from synalinks.src.testing.test_utils import mock_decision_model
 
 
 class OMEGATest(testing.TestCase):
@@ -805,3 +819,103 @@ class HardExampleMemoryTest(testing.TestCase):
         self.assertEqual(config["hard_example_min_observations"], 4)
         with self.assertRaises(ValueError):
             OMEGA(hard_example_min_observations=0)
+
+
+class _Ticket(DataModel):
+    message: str = Field(description="The customer message")
+
+
+class _Team(DataModel):
+    team: Literal["billing", "technical"] = Field(
+        description="Which team should handle the ticket?"
+    )
+
+
+EVOLVED_INSTRUCTIONS = "Route billing questions to billing, crashes to technical."
+
+
+@patch.dict(os.environ, {"TYPESAFE_API_KEY": "test-key"})
+class OMEGAWithDecisionModelTest(testing.TestCase):
+    @patch("litellm.aembedding")
+    @patch("litellm.acompletion")
+    async def test_evolves_the_instructions_of_a_decision_model(
+        self, mock_completion, mock_embedding
+    ):
+        """OMEGA's language model writes the candidate instructions, and the
+        decision model answers with each candidate in its state."""
+
+        def answers(payload):
+            # The decision model only gets it right with the evolved
+            # instructions in its system message.
+            system = payload["state"][0]["content"]
+            user = payload["state"][-1]["content"]
+            if EVOLVED_INSTRUCTIONS in system and "crash" in user:
+                team, other = "technical", "billing"
+            else:
+                team, other = "billing", "technical"
+            return {
+                "team": {
+                    "type": "choice",
+                    "choice": team,
+                    "probabilities": {team: 0.8, other: 0.2},
+                    "confidence": 0.7,
+                }
+            }
+
+        async def completion(*args, **kwargs):
+            schema = kwargs["response_format"]["json_schema"]["schema"]
+            candidate = {}
+            for key, value in schema.get("properties", {}).items():
+                if key == "instructions":
+                    candidate[key] = EVOLVED_INSTRUCTIONS
+                elif value.get("type") == "string":
+                    candidate[key] = "Separate billing from technical issues."
+                else:
+                    candidate[key] = []
+            return {"choices": [{"message": {"content": json.dumps(candidate)}}]}
+
+        async def embedding(*args, **kwargs):
+            inputs = kwargs.get("input") or args[1]
+            inputs = inputs if isinstance(inputs, list) else [inputs]
+            return {"data": [{"embedding": [0.1, 0.2, 0.3]} for _ in inputs]}
+
+        mock_completion.side_effect = completion
+        mock_embedding.side_effect = embedding
+        decision_model = DecisionModel(model="typesafe/jev-latest")
+        payloads = mock_decision_model(decision_model, answers)
+
+        x0 = Input(data_model=_Ticket)
+        x1 = await Generator(
+            data_model=_Team,
+            decision_model=decision_model,
+            instructions="Triage.",
+        )(x0)
+        program = Program(inputs=x0, outputs=x1)
+        program.compile(
+            reward=ExactMatch(),
+            optimizer=OMEGA(
+                language_model=LanguageModel(model="openai/gpt-4o-mini"),
+                embedding_model=EmbeddingModel(model="openai/text-embedding-3-small"),
+            ),
+        )
+        # Each ticket's team follows from its text, so a reward is earned only
+        # by answering from the input (validation included).
+        x = np.array(
+            [_Ticket(message="I was charged twice"), _Ticket(message="The app crashes")]
+            * 2,
+            dtype="object",
+        )
+        y = np.array(
+            [_Team(team="billing"), _Team(team="technical")] * 2,
+            dtype="object",
+        )
+
+        history = await program.fit(
+            x=x, y=y, epochs=2, batch_size=2, verbose=0, validation_data=(x, y)
+        )
+
+        self.assertEqual(
+            program.trainable_variables[0].get("instructions"), EVOLVED_INSTRUCTIONS
+        )
+        self.assertIn(EVOLVED_INSTRUCTIONS, payloads[-1]["state"][0]["content"])
+        self.assertEqual(history.history["val_reward"][-1], 1.0)

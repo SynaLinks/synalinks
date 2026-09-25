@@ -3,8 +3,12 @@
 import copy
 import re
 
+from pydantic import field_validator
+
 from synalinks.src import ops
 from synalinks.src.api_export import synalinks_export
+from synalinks.src.backend import DataModel
+from synalinks.src.backend import Field
 from synalinks.src.backend import JsonDataModel
 from synalinks.src.backend import SymbolicDataModel
 from synalinks.src.backend import is_symbolic_data_model
@@ -16,6 +20,8 @@ from synalinks.src.backend.pydantic.metrics import score_type_json_type
 from synalinks.src.backend.pydantic.metrics import serialize_score_type
 from synalinks.src.modules import Generator
 from synalinks.src.modules import Module
+from synalinks.src.modules.decision_models import get as _get_dm
+from synalinks.src.modules.decision_models.decision_model import score_schema
 from synalinks.src.modules.ttc.self_critique import CritiqueWithReward
 from synalinks.src.rewards.reward_wrappers import ProgramAsJudge
 from synalinks.src.rewards.rubrics import get_rubric
@@ -30,6 +36,21 @@ DEFAULT_INSTRUCTIONS = (
     "using the scale in <score_scale>, then write a critique naming the "
     "criteria that lost points and why. Grade only these criteria."
 )
+
+
+DEFAULT_DECISION_MODEL_INSTRUCTIONS = (
+    "Your task is to grade the given answer against each criterion, independently."
+)
+
+# The levels a decision model grades each criterion on, from the lowest reward
+# to the highest.
+DECISION_MODEL_LEVELS = [
+    "Does not meet the criterion at all.",
+    "Meets a small part of the criterion.",
+    "Meets about half of the criterion.",
+    "Meets most of the criterion, with minor gaps.",
+    "Fully meets the criterion.",
+]
 
 
 def default_rubrics_prompt_template():
@@ -91,58 +112,51 @@ def normalize_rubric_name(name):
     return name
 
 
-class Rubric:
-    """One rubric criterion for `RubricsAsJudge`.
+class Rubric(DataModel):
+    """One rubric criterion for `RubricsAsJudge`."""
 
-    Args:
-        name (str): Short identifier used as the JSON property name. It is
-            normalized to snake_case.
-        description (str): Description of what the judge should evaluate.
-        weight (float): Positive relative weight. Defaults to 1.0.
-    """
+    name: str = Field(
+        description=(
+            "Short identifier used as the JSON property name. It is normalized "
+            "to snake_case."
+        ),
+    )
+    description: str = Field(
+        description="Description of what the judge should evaluate.",
+    )
+    weight: float = Field(
+        default=1.0,
+        description="Positive relative weight.",
+    )
 
-    def __init__(self, name, description, weight=1.0):
-        weight = float(weight)
-        if weight <= 0:
+    @field_validator("name")
+    @classmethod
+    def _normalize_name(cls, name):
+        normalized = normalize_rubric_name(name)
+        if not RUBRIC_NAME_REGEX.match(normalized):
             raise ValueError(
-                f"Rubric {name!r} has weight {weight}; weights must be positive."
-            )
-        self.name = normalize_rubric_name(name)
-        if not RUBRIC_NAME_REGEX.match(self.name):
-            raise ValueError(
-                f"Rubric name {name!r} normalizes to {self.name!r}, "
+                f"Rubric name {name!r} normalizes to {normalized!r}, "
                 "which is not usable as a JSON property."
             )
-        self.description = str(description)
-        self.weight = weight
+        return normalized
 
+    @field_validator("weight")
     @classmethod
-    def parse(cls, rubric):
-        if isinstance(rubric, cls):
-            return rubric
-        if isinstance(rubric, dict):
-            missing = {"name", "description"} - set(rubric)
-            if missing:
-                raise ValueError(f"Rubric {rubric!r} is missing {sorted(missing)}.")
-            return cls(
-                name=rubric["name"],
-                description=rubric["description"],
-                weight=rubric.get("weight", 1.0),
-            )
-        if isinstance(rubric, str):
-            return cls(name=normalize_rubric_name(rubric)[:40], description=rubric)
-        raise TypeError(f"Cannot interpret {rubric!r} as a rubric.")
+    def _check_weight(cls, weight):
+        if weight <= 0:
+            raise ValueError(f"Rubric weight is {weight}; weights must be positive.")
+        return weight
 
-    def get_config(self):
-        return {
-            "name": self.name,
-            "description": self.description,
-            "weight": self.weight,
-        }
 
-    @classmethod
-    def from_config(cls, config):
-        return cls(**config)
+def parse_rubric(rubric):
+    """Return a `Rubric` from a `Rubric`, a dict or a plain description."""
+    if isinstance(rubric, Rubric):
+        return rubric
+    if isinstance(rubric, dict):
+        return Rubric(**rubric)
+    if isinstance(rubric, str):
+        return Rubric(name=normalize_rubric_name(rubric)[:40], description=rubric)
+    raise TypeError(f"Cannot interpret {rubric!r} as a rubric.")
 
 
 def rubrics_schema(rubrics, score_type):
@@ -170,6 +184,57 @@ def rubrics_schema(rubrics, score_type):
     }
 
 
+def rubrics_decision_model_schema(rubrics):
+    """Return the grade-sheet schema a `DecisionModel` answers.
+
+    Decision models do not write text, so there is no `critique`: each
+    criterion is a score question over `DECISION_MODEL_LEVELS`.
+    """
+    properties = {
+        rubric.name: score_schema(
+            f"How well does the answer meet this criterion: {rubric.description}",
+            DECISION_MODEL_LEVELS,
+        )
+        for rubric in rubrics
+    }
+    return {
+        "title": "RubricGrades",
+        "type": "object",
+        "properties": properties,
+        "required": list(properties),
+        "additionalProperties": False,
+    }
+
+
+def rubrics_decision_model_output_schema(rubrics):
+    """Return the grade-sheet schema of a `DecisionModel` judge.
+
+    Each criterion is its score normalized to [0, 1], next to a critique that
+    lists the level each criterion landed on.
+    """
+    properties = {
+        "critique": {
+            "title": "Critique",
+            "type": "string",
+            "description": "The level and confidence of each criterion.",
+        }
+    }
+    for rubric in rubrics:
+        properties[rubric.name] = {
+            "title": rubric.name,
+            "type": "number",
+            "minimum": 0.0,
+            "maximum": 1.0,
+            "description": rubric.description,
+        }
+    return {
+        "title": "RubricGrades",
+        "type": "object",
+        "properties": properties,
+        "required": list(properties),
+    }
+
+
 def rubrics_schema_with_reward(schema):
     """Return a copy of the grade-sheet schema with the computed reward field."""
     schema = copy.deepcopy(schema)
@@ -188,7 +253,8 @@ def rubrics_schema_with_reward(schema):
 
 
 class RubricsAsJudgeProgram(Module):
-    """Score each criterion with a language model, then combine in Python."""
+    """Score each criterion with a language (or decision) model, then combine
+    in Python."""
 
     def __init__(
         self,
@@ -201,32 +267,49 @@ class RubricsAsJudgeProgram(Module):
         name=None,
         description=None,
         trainable=True,
+        decision_model=None,
     ):
         super().__init__(name=name, description=description, trainable=trainable)
         if isinstance(rubrics, str):
             rubrics = get_rubric(rubrics)
         if not rubrics:
             raise ValueError("`rubrics` is required and must not be empty.")
-        self.rubrics = [Rubric.parse(rubric) for rubric in rubrics]
+        self.rubrics = [parse_rubric(rubric) for rubric in rubrics]
         names = [rubric.name for rubric in self.rubrics]
         if len(set(names)) != len(names):
             raise ValueError(f"Duplicate rubric names after normalization: {names}.")
 
-        self.score_type = get_score_type(score_type or Rating20)
         self.language_model = language_model
+        self.decision_model = (
+            _get_dm(decision_model) if decision_model is not None else None
+        )
         self.prompt_template = prompt_template
         self.examples = examples
-        self.instructions = instructions or DEFAULT_INSTRUCTIONS
-        self.schema = rubrics_schema(self.rubrics, self.score_type)
-        self.output_schema = rubrics_schema_with_reward(self.schema)
+        prompt_variables = {"rubrics": [rubric.get_json() for rubric in self.rubrics]}
+        if self.decision_model is not None:
+            if score_type is not None:
+                raise ValueError(
+                    "`score_type` does not apply with a `DecisionModel`: every "
+                    "criterion is graded on the same ordered levels."
+                )
+            self.score_type = None
+            self.instructions = instructions or DEFAULT_DECISION_MODEL_INSTRUCTIONS
+            self.schema = rubrics_decision_model_schema(self.rubrics)
+            self.output_schema = rubrics_schema_with_reward(
+                rubrics_decision_model_output_schema(self.rubrics)
+            )
+        else:
+            self.score_type = get_score_type(score_type or Rating20)
+            self.instructions = instructions or DEFAULT_INSTRUCTIONS
+            self.schema = rubrics_schema(self.rubrics, self.score_type)
+            self.output_schema = rubrics_schema_with_reward(self.schema)
+            prompt_variables["score_scale"] = score_type_description(self.score_type)
         self.generator = Generator(
             schema=self.schema,
             language_model=language_model,
+            decision_model=self.decision_model,
             prompt_template=prompt_template or default_rubrics_prompt_template(),
-            prompt_variables={
-                "rubrics": [rubric.get_config() for rubric in self.rubrics],
-                "score_scale": score_type_description(self.score_type),
-            },
+            prompt_variables=prompt_variables,
             examples=examples,
             instructions=self.instructions,
             name="generator_" + self.name,
@@ -260,6 +343,8 @@ class RubricsAsJudgeProgram(Module):
             return SymbolicDataModel(schema=self.output_schema, name=grades.name)
 
         json = dict(grades.get_json())
+        if self.score_type is None:
+            json = self.decision_model_grades(json)
         total = 0.0
         weights = 0.0
         missing = []
@@ -268,7 +353,9 @@ class RubricsAsJudgeProgram(Module):
             if value is None:
                 missing.append(rubric.name)
                 continue
-            total += normalize_score(value, self.score_type) * rubric.weight
+            if self.score_type is not None:
+                value = normalize_score(value, self.score_type)
+            total += value * rubric.weight
             weights += rubric.weight
         if missing:
             return CritiqueWithReward(
@@ -281,17 +368,40 @@ class RubricsAsJudgeProgram(Module):
         json["reward"] = total / weights if weights else 0.0
         return JsonDataModel(json=json, schema=self.output_schema, name=grades.name)
 
+    def decision_model_grades(self, answers):
+        """Turn a decision model's score answers into normalized grades."""
+        json = {}
+        critique = []
+        for rubric in self.rubrics:
+            answer = answers.get(rubric.name)
+            if answer is None:
+                continue
+            top = len(answer["legend"]) - 1
+            normalized = answer["score"] / top
+            level = answer["legend"][str(int(answer["score"] + 0.5))]
+            critique.append(
+                f"{rubric.name}: {level} (score {normalized:.2f}, "
+                f"confidence {answer['confidence']:.2f})"
+            )
+            json[rubric.name] = normalized
+        return {"critique": "\n".join(critique), **json}
+
     def get_config(self):
         config = {
-            "rubrics": [rubric.get_config() for rubric in self.rubrics],
+            "rubrics": [rubric.get_json() for rubric in self.rubrics],
             "prompt_template": self.prompt_template,
             "examples": self.examples,
             "instructions": self.instructions,
-            "score_type": serialize_score_type(self.score_type),
             "name": self.name,
             "description": self.description,
             "trainable": self.trainable,
         }
+        if self.score_type is not None:
+            config["score_type"] = serialize_score_type(self.score_type)
+        if self.decision_model is not None:
+            config["decision_model"] = serialization_lib.serialize_synalinks_object(
+                self.decision_model
+            )
         return {
             "language_model": serialization_lib.serialize_synalinks_object(
                 self.language_model
@@ -304,6 +414,10 @@ class RubricsAsJudgeProgram(Module):
         language_model = serialization_lib.deserialize_synalinks_object(
             config.pop("language_model")
         )
+        if "decision_model" in config:
+            config["decision_model"] = serialization_lib.deserialize_synalinks_object(
+                config.pop("decision_model")
+            )
         return cls(language_model=language_model, **config)
 
 
@@ -325,12 +439,18 @@ class RubricsAsJudge(ProgramAsJudge):
         examples (list): Optional examples for the prompt.
         instructions (str): Optional judge instructions.
         score_type (type | str): Per-criterion score scale. Defaults to `Rating20`.
+            Language model only.
         reduction (str): Reward reduction. Defaults to `"mean"`.
         name (str): Optional reward name.
         in_mask (list): Optional fields to keep before judging.
         out_mask (list): Optional fields to remove before judging.
         in_mask_pattern (str): Optional regex of fields to keep.
         out_mask_pattern (str): Optional regex of fields to remove.
+        decision_model (DecisionModel): Optional. A decision model to grade
+            with instead of the language model: every criterion is a score
+            question over the same ordered levels, all in one call. It does
+            not write a critique, so the `critique` lists the level and
+            confidence of each criterion instead.
     """
 
     def __init__(
@@ -347,6 +467,7 @@ class RubricsAsJudge(ProgramAsJudge):
         out_mask=None,
         in_mask_pattern=None,
         out_mask_pattern=None,
+        decision_model=None,
     ):
         program = RubricsAsJudgeProgram(
             language_model=language_model,
@@ -355,6 +476,7 @@ class RubricsAsJudge(ProgramAsJudge):
             examples=examples,
             instructions=instructions,
             score_type=score_type,
+            decision_model=decision_model,
         )
         super().__init__(
             program=program,
@@ -377,6 +499,8 @@ class RubricsAsJudge(ProgramAsJudge):
             "score_type": program.score_type,
             **config,
         }
+        if program.decision_model is not None:
+            kwargs["decision_model"] = program.decision_model
         if cls is RubricsAsJudge:
-            kwargs["rubrics"] = [rubric.get_config() for rubric in program.rubrics]
+            kwargs["rubrics"] = [rubric.get_json() for rubric in program.rubrics]
         return cls(**kwargs)

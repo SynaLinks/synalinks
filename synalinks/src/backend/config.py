@@ -54,6 +54,10 @@ _DEFAULT_LANGUAGE_MODEL_IDENTIFIER = None
 _DEFAULT_EMBEDDING_MODEL = None
 _DEFAULT_EMBEDDING_MODEL_IDENTIFIER = None
 
+# Default decision model (same shape as language model above).
+_DEFAULT_DECISION_MODEL = None
+_DEFAULT_DECISION_MODEL_IDENTIFIER = None
+
 # Default knowledge base (same shape as language model above).
 _DEFAULT_KNOWLEDGE_BASE = None
 _DEFAULT_KNOWLEDGE_BASE_IDENTIFIER = None
@@ -660,6 +664,52 @@ def set_default_embedding_model(identifier: "str | dict | object | None"):
 
 @synalinks_export(
     [
+        "synalinks.config.default_decision_model",
+        "synalinks.default_decision_model",
+    ]
+)
+def default_decision_model():
+    """Return the default `DecisionModel` instance, or `None` if unset."""
+    global _DEFAULT_DECISION_MODEL
+    if _DEFAULT_DECISION_MODEL is None and _DEFAULT_DECISION_MODEL_IDENTIFIER is not None:
+        from synalinks.src.modules.decision_models import get as _get_dm
+
+        _DEFAULT_DECISION_MODEL = _get_dm(_DEFAULT_DECISION_MODEL_IDENTIFIER)
+    return _DEFAULT_DECISION_MODEL
+
+
+@synalinks_export(
+    [
+        "synalinks.config.set_default_decision_model",
+        "synalinks.set_default_decision_model",
+    ]
+)
+def set_default_decision_model(identifier: "str | dict | object | None"):
+    """Set the default `DecisionModel`.
+
+    Args:
+        identifier (str | dict | DecisionModel | None): A model string
+            (e.g. `"typesafe/jev-latest"`), a config dict, an existing
+            `DecisionModel` instance, or `None` to clear. Strings persist
+            into the on-disk config; instances do not.
+    """
+    global _DEFAULT_DECISION_MODEL, _DEFAULT_DECISION_MODEL_IDENTIFIER
+    if identifier is None:
+        _DEFAULT_DECISION_MODEL = None
+        _DEFAULT_DECISION_MODEL_IDENTIFIER = None
+        _persist_config()
+        return
+    from synalinks.src.modules.decision_models import get as _get_dm
+
+    _DEFAULT_DECISION_MODEL = _get_dm(identifier)
+    _DEFAULT_DECISION_MODEL_IDENTIFIER = (
+        identifier if isinstance(identifier, str) else None
+    )
+    _persist_config()
+
+
+@synalinks_export(
+    [
         "synalinks.config.default_knowledge_base",
         "synalinks.default_knowledge_base",
     ]
@@ -722,6 +772,8 @@ def _persist_config():
         payload["language_model"] = _DEFAULT_LANGUAGE_MODEL_IDENTIFIER
     if _DEFAULT_EMBEDDING_MODEL_IDENTIFIER is not None:
         payload["embedding_model"] = _DEFAULT_EMBEDDING_MODEL_IDENTIFIER
+    if _DEFAULT_DECISION_MODEL_IDENTIFIER is not None:
+        payload["decision_model"] = _DEFAULT_DECISION_MODEL_IDENTIFIER
     if _DEFAULT_KNOWLEDGE_BASE_IDENTIFIER is not None:
         payload["knowledge_base"] = _DEFAULT_KNOWLEDGE_BASE_IDENTIFIER
     try:
@@ -808,6 +860,10 @@ if os.path.exists(_config_path):
     if _em_identifier is not None:
         assert isinstance(_em_identifier, str)
         _DEFAULT_EMBEDDING_MODEL_IDENTIFIER = _em_identifier
+    _dm_identifier = _config.get("decision_model")
+    if _dm_identifier is not None:
+        assert isinstance(_dm_identifier, str)
+        _DEFAULT_DECISION_MODEL_IDENTIFIER = _dm_identifier
     _kb_identifier = _config.get("knowledge_base")
     if _kb_identifier is not None:
         assert isinstance(_kb_identifier, str)

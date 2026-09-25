@@ -47,7 +47,7 @@ _PHASES = ("inference", "reward", "optimizer")
 _MAX_PARAM_LENGTH = 6000
 _MODEL_TYPE = "synalinks_program"
 _JSON_PRIMITIVES = {"string": "string", "integer": "long", "number": "double"}
-_PROMPT_USER_TURN = "<input>\n{{ inputs }}\n</input>\n<output>\n"
+_PROMPT_USER_TURN = "{{ inputs }}"
 
 
 def _prompt_name(program_name, module_name):
@@ -131,6 +131,13 @@ class SynalinksProgramModel(mlflow.pyfunc.PythonModel if MLFLOW_AVAILABLE else o
     `Program.load()` from their import path, so the code declaring them only
     needs to be importable where the model is loaded.
     """
+
+    # The input and output are validated against the model signature that
+    # `Monitor` logs, derived from the program's own JSON schemas: a program's
+    # inputs are arbitrary JSON, which no static type hint on `predict` can
+    # describe (and a hint would reject the dict and DataFrame inputs). This
+    # tells MLflow not to expect type-hint based validation.
+    _skip_type_hint_validation = True
 
     def __init__(self):
         self.program = None

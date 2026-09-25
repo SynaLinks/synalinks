@@ -33,6 +33,8 @@ class TestCase(
         _config._DEFAULT_LANGUAGE_MODEL_IDENTIFIER = None
         _config._DEFAULT_EMBEDDING_MODEL = None
         _config._DEFAULT_EMBEDDING_MODEL_IDENTIFIER = None
+        _config._DEFAULT_DECISION_MODEL = None
+        _config._DEFAULT_DECISION_MODEL_IDENTIFIER = None
         self._zero_retry_backoff()
 
     def _zero_retry_backoff(self):
@@ -51,13 +53,14 @@ class TestCase(
 
         import tenacity
 
+        from synalinks.src.modules.decision_models import decision_model
         from synalinks.src.modules.embedding_models import embedding_model
         from synalinks.src.modules.language_models import language_model
 
         def _instant_wait(max_wait=60.0):
             return tenacity.wait_fixed(0)
 
-        for module in (language_model, embedding_model):
+        for module in (language_model, embedding_model, decision_model):
             patcher = mock.patch.object(module, "rate_limit_aware_wait", _instant_wait)
             patcher.start()
             self.addCleanup(patcher.stop)

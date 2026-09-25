@@ -8,6 +8,7 @@ from synalinks.api import backend as backend
 from synalinks.api import callbacks as callbacks
 from synalinks.api import config as config
 from synalinks.api import datasets as datasets
+from synalinks.api import decision_models as decision_models
 from synalinks.api import embedding_models as embedding_models
 from synalinks.api import hooks as hooks
 from synalinks.api import initializers as initializers
@@ -34,6 +35,7 @@ from synalinks.src.backend.common.symbolic_data_model import (
 )
 from synalinks.src.backend.common.symbolic_scope import SymbolicScope as SymbolicScope
 from synalinks.src.backend.config import api_base as api_base
+from synalinks.src.backend.config import default_decision_model as default_decision_model
 from synalinks.src.backend.config import (
     default_embedding_model as default_embedding_model,
 )
@@ -50,6 +52,9 @@ from synalinks.src.backend.config import (
 )
 from synalinks.src.backend.config import record_traces as record_traces
 from synalinks.src.backend.config import set_api_base as set_api_base
+from synalinks.src.backend.config import (
+    set_default_decision_model as set_default_decision_model,
+)
 from synalinks.src.backend.config import (
     set_default_embedding_model as set_default_embedding_model,
 )
@@ -250,6 +255,9 @@ from synalinks.src.modules.core.lambda_module import Lambda as Lambda
 from synalinks.src.modules.core.multi_decision import MultiDecision as MultiDecision
 from synalinks.src.modules.core.not_module import Not as Not
 from synalinks.src.modules.core.tool import Tool as Tool
+from synalinks.src.modules.decision_models.decision_model import (
+    DecisionModel as DecisionModel,
+)
 from synalinks.src.modules.embedding_models.embedding_model import (
     EmbeddingModel as EmbeddingModel,
 )

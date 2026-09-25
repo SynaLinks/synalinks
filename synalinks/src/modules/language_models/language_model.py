@@ -173,7 +173,8 @@ def current_call_usage():
     the file cache, otherwise a dict with `input_tokens`, `output_tokens`,
     `total_tokens`, `cache_read_input_tokens`, `cache_creation_input_tokens`,
     `reasoning_tokens`, `cost` (`None` when the provider reports none),
-    `elapsed_s` and `finish_reason`.
+    `elapsed_s` and `finish_reason`. When every attempt failed, `error` (and
+    `fallback` when a fallback answered).
     """
     return _CURRENT_CALL_USAGE.get()
 
@@ -1144,13 +1145,18 @@ class LanguageModel(Module):
             self._record_event("failed_calls")
             if self.fallback:
                 self._record_event("fallback_activations")
-                return await self.fallback(
+                response = await self.fallback(
                     messages,
                     schema=schema,
                     streaming=streaming,
                     **input_kwargs,
                 )
+                # The fallback's usage is reported on its own span: this call
+                # only reports its failure.
+                _CURRENT_CALL_USAGE.set({"error": str(e), "fallback": True})
+                return response
             else:
+                _CURRENT_CALL_USAGE.set({"error": str(e)})
                 return None
 
     async def _call_with_retry(

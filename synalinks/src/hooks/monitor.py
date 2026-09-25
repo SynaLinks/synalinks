@@ -325,6 +325,10 @@ class Monitor(Hook):
             return SpanType.CHAT_MODEL
         elif module_class == "EmbeddingModel":
             return SpanType.EMBEDDING
+        elif module_class == "DecisionModel":
+            # Same interface as a `LanguageModel` (chat messages in, structured
+            # output out), so it is traced as a chat model too.
+            return SpanType.CHAT_MODEL
         elif module_class in ("FunctionCallingAgent",):
             return SpanType.AGENT
         elif module_class in ("EmbedKnowledge", "RetrieveKnowledge", "UpdateKnowledge"):
@@ -446,15 +450,23 @@ class Monitor(Hook):
             else [d.get_json() for d in leaves]
         )
 
-        # Serialize kwargs if present (for modules that use keyword arguments)
+        # Serialize kwargs if present (for modules that use keyword arguments).
+        # Like the inputs: schemas when the call is symbolic, JSON data
+        # otherwise. So the target `schema` of a model call is only logged
+        # when building the program, not on every real call.
         serialized_kwargs = {}
         if kwargs:
             # Filter out non-serializable kwargs like 'training'
             for key, value in kwargs.items():
                 if key == "training":
                     serialized_kwargs[key] = value
+                elif key == "schema":
+                    if is_symbolic:
+                        serialized_kwargs[key] = value
                 elif hasattr(value, "get_json"):
-                    serialized_kwargs[key] = value.get_json()
+                    serialized_kwargs[key] = (
+                        value.get_schema() if is_symbolic else value.get_json()
+                    )
                 elif isinstance(value, (str, int, float, bool, list, dict, type(None))):
                     serialized_kwargs[key] = value
 
@@ -480,7 +492,8 @@ class Monitor(Hook):
 
         chat_messages = None
         chat_tools = None
-        if span_type == SpanType.CHAT_MODEL:
+        # A symbolic call has no messages yet, only their schema (in the inputs).
+        if span_type == SpanType.CHAT_MODEL and not is_symbolic:
             chat_messages = _chat_messages_of(inputs)
             chat_tools = _chat_tools_of(kwargs or {})
 
@@ -527,6 +540,15 @@ class Monitor(Hook):
                 attributes[_ATTR_LLM_COST] = {"total_cost": usage["cost"]}
         if usage and usage.get("cache_hit"):
             attributes["synalinks.cache_hit"] = True
+        if usage and usage.get("model"):
+            attributes["synalinks.response_model"] = usage["model"]
+        if usage and usage.get("fallback"):
+            attributes["synalinks.fallback"] = True
+        # A call that failed every attempt returns `None` instead of raising:
+        # report it as the failure it is.
+        if exception is None and usage and usage.get("error"):
+            exception = RuntimeError(usage["error"])
+            attributes["synalinks.success"] = False
         span.set_attributes(attributes)
 
         if exception:
@@ -550,6 +572,9 @@ class Monitor(Hook):
             choices = _chat_output_of(serialized_outputs, usage)
             if choices is not None:
                 outputs_dict = {"choices": choices, **outputs_dict}
+        if usage and usage.get("answers") is not None:
+            # A decision model's raw answers, with probabilities and confidence.
+            outputs_dict["answers"] = usage["answers"]
         span.set_outputs(outputs_dict)
 
         await asyncio.to_thread(span.end)
@@ -593,12 +618,19 @@ class Monitor(Hook):
             cost = self.module._get_call_context().cost
 
         usage = None
-        if self.module.__class__.__name__ == "LanguageModel":
+        module_class = self.module.__class__.__name__
+        if module_class == "LanguageModel":
             from synalinks.src.modules.language_models.language_model import (
                 current_call_usage,
             )
 
             # Read in the caller's task: the ContextVar was set by `call()`.
+            usage = current_call_usage() or {}
+        elif module_class == "DecisionModel":
+            from synalinks.src.modules.decision_models.decision_model import (
+                current_call_usage,
+            )
+
             usage = current_call_usage() or {}
 
         run_maybe_nested(

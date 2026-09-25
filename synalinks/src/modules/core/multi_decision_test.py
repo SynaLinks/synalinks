@@ -1,6 +1,7 @@
 # License Apache 2.0: (c) 2025 Yoan Sallami (Synalinks Team)
 
 import json
+import os
 from unittest.mock import patch
 
 from synalinks.src import testing
@@ -9,8 +10,10 @@ from synalinks.src.backend import dynamic_enum_array
 from synalinks.src.modules import Input
 from synalinks.src.modules.core.multi_decision import MultiDecision
 from synalinks.src.modules.core.multi_decision import MultiDecisionAnswer
+from synalinks.src.modules.decision_models import DecisionModel
 from synalinks.src.modules.language_models import LanguageModel
 from synalinks.src.programs import Program
+from synalinks.src.testing.test_utils import mock_decision_model
 
 
 class MultiDecisionTest(testing.TestCase):
@@ -144,3 +147,59 @@ class MultiDecisionTest(testing.TestCase):
         self.assertEqual(config["question"], "Pick topics")
         self.assertEqual(config["labels"], ["a", "b", "c"])
         self.assertTrue(config["inline"])
+
+
+class MultiDecisionConfigTest(testing.TestCase):
+    def test_seed_instructions_reach_the_generator(self):
+        multi_decision = MultiDecision(
+            question="Which topics?",
+            labels=["science", "finance"],
+            seed_instructions=["Pick every topic the query covers."],
+            language_model=LanguageModel(model="ollama/mistral"),
+        )
+        restored = MultiDecision.from_config(multi_decision.get_config())
+        self.assertEqual(
+            restored.decision.seed_instructions, ["Pick every topic the query covers."]
+        )
+
+
+@patch.dict(os.environ, {"TYPESAFE_API_KEY": "test-key"})
+class MultiDecisionWithDecisionModelTest(testing.TestCase):
+    async def test_one_noul_per_label(self):
+        class Query(DataModel):
+            query: str
+
+        decision_model = DecisionModel(model="typesafe/jev-latest")
+        payloads = mock_decision_model(
+            decision_model,
+            {
+                "label_0": {"type": "noul", "noul": 0.9},
+                "label_1": {"type": "noul", "noul": 0.2},
+                "label_2": {"type": "noul", "noul": 0.6},
+            },
+        )
+
+        x0 = Input(data_model=Query)
+        x1 = await MultiDecision(
+            question="Which topics does the query cover?",
+            labels=["science", "finance", "sports"],
+            decision_model=decision_model,
+        )(x0)
+        program = Program(inputs=x0, outputs=x1)
+
+        result = await program(Query(query="Biotech startup raises funds"))
+
+        self.assertEqual(result.get_json(), {"choices": ["science", "sports"]})
+        self.assertEqual(list(x1.get_schema()["properties"]), ["choices"])
+        module = program.get_module(index=1)
+        restored = MultiDecision.from_config(module.get_config())
+        self.assertIsInstance(restored.decision_model, DecisionModel)
+        self.assertEqual(restored.decision.schema, module.decision.schema)
+        self.assertEqual(
+            payloads[0]["questions"]["label_1"],
+            {
+                "type": "noul",
+                "instructions": "Which topics does the query cover? "
+                "Does the label 'finance' apply?",
+            },
+        )

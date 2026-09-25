@@ -7,6 +7,7 @@ from synalinks.src.backend import DataModel
 from synalinks.src.backend import Field
 from synalinks.src.backend import dynamic_enum
 from synalinks.src.modules.core.generator import Generator
+from synalinks.src.modules.decision_models import get as _get_dm
 from synalinks.src.modules.language_models import get as _get_lm
 from synalinks.src.modules.module import Module
 from synalinks.src.saving import serialization_lib
@@ -21,6 +22,22 @@ class DecisionAnswer(DataModel):
         description="Your step by step thinking to choose the correct label."
     )
     choice: str = Field(description="The chosen label.")
+
+
+class DecisionModelAnswer(DataModel):
+    choice: str = Field(description="The chosen label.")
+
+
+def decision_model_schema(question, labels):
+    """Return the `Decision` output schema when a `DecisionModel` decides.
+
+    Decision models answer typed questions without reasoning step by step, so
+    there is no `thinking` field: `choice` is asked as the question itself,
+    over the labels.
+    """
+    schema = dynamic_enum(DecisionModelAnswer.get_schema(), "choice", labels)
+    schema["properties"]["choice"]["description"] = question
+    return schema
 
 
 def default_decision_instructions(labels):
@@ -70,6 +87,19 @@ class Decision(Module):
         asyncio.run(main())
     ```
 
+    Pass a `decision_model` to decide with a `DecisionModel` instead of the
+    language model: faster and cheaper, with calibrated answers, but without
+    step by step reasoning. The output then has no `thinking` field, only the
+    `choice`, and the question is asked to the decision model as is.
+
+    ```python
+    x1 = await synalinks.Decision(
+        question="What is the danger level of the discussion?",
+        labels=["low", "medium", "high"],
+        decision_model=synalinks.DecisionModel(model="typesafe/jev-latest"),
+    )(x0)
+    ```
+
     You can view this module, as performing a single label classification on the input.
 
     Args:
@@ -100,6 +130,9 @@ class Decision(Module):
         name (str): Optional. The name of the module.
         description (str): Optional. The description of the module.
         trainable (bool): Whether the module's variables should be trainable.
+        decision_model (DecisionModel): Optional. A decision model to decide
+            with instead of the language model: the question is asked as is,
+            over the labels, and the output has no `thinking` field.
     """
 
     def __init__(
@@ -122,6 +155,7 @@ class Decision(Module):
         name=None,
         description=None,
         trainable=True,
+        decision_model=None,
     ):
         super().__init__(
             name=name,
@@ -134,16 +168,23 @@ class Decision(Module):
             raise ValueError("The `labels` argument must be provided.")
         if not isinstance(labels, list):
             raise ValueError("The `labels` parameter must be a list of string.")
-        schema = dynamic_enum(DecisionAnswer.get_schema(), "choice", labels)
-        self.schema = schema
         self.question = question
         self.labels = labels
         self.language_model = _get_lm(language_model)
+        self.decision_model = (
+            _get_dm(decision_model) if decision_model is not None else None
+        )
+        if self.decision_model is not None:
+            schema = decision_model_schema(question, labels)
+        else:
+            schema = dynamic_enum(DecisionAnswer.get_schema(), "choice", labels)
+        self.schema = schema
         self.prompt_template = prompt_template
         self.examples = examples
         if not instructions:
             instructions = default_decision_instructions(self.labels)
         self.instructions = instructions
+        self.seed_instructions = seed_instructions
         self.temperature = temperature
         self.max_tokens = max_tokens
         self.top_p = top_p
@@ -154,9 +195,11 @@ class Decision(Module):
         self.decision = Generator(
             schema=self.schema,
             language_model=self.language_model,
+            decision_model=self.decision_model,
             prompt_template=self.prompt_template,
             examples=self.examples,
             instructions=self.instructions,
+            seed_instructions=self.seed_instructions,
             temperature=self.temperature,
             max_tokens=self.max_tokens,
             top_p=self.top_p,
@@ -202,6 +245,10 @@ class Decision(Module):
                 self.language_model
             )
         }
+        if self.decision_model is not None:
+            language_model_config["decision_model"] = (
+                serialization_lib.serialize_synalinks_object(self.decision_model)
+            )
         return {**config, **language_model_config}
 
     @classmethod
@@ -209,4 +256,8 @@ class Decision(Module):
         language_model = serialization_lib.deserialize_synalinks_object(
             config.pop("language_model")
         )
+        if "decision_model" in config:
+            config["decision_model"] = serialization_lib.deserialize_synalinks_object(
+                config.pop("decision_model"),
+            )
         return cls(language_model=language_model, **config)

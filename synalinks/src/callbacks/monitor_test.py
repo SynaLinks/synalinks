@@ -958,9 +958,7 @@ class MonitorPromptRegistryTest(testing.TestCase):
         self.assertEqual(first["name"], "qa_prog.generator")
         self.assertEqual(first["template"][0]["role"], "system")
         self.assertIn("Answer briefly.", first["template"][0]["content"])
-        self.assertEqual(
-            first["template"][1]["content"], "<input>\n{{ inputs }}\n</input>\n<output>\n"
-        )
+        self.assertEqual(first["template"][1]["content"], "{{ inputs }}")
         self.assertEqual(first["commit_message"], "epoch 0: val_reward=0.5000")
         self.assertEqual(first["tags"]["val_reward"], "0.5")
         self.assertEqual(first["tags"]["optimizer"], "OMEGA")

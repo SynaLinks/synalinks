@@ -53,6 +53,7 @@ if __name__ == "__main__":
 - [Not module](Core Modules/Not module.md)
 - [Generator module](Core Modules/Generator module.md)
 - [Decision module](Core Modules/Decision module.md)
+- [MultiDecision module](Core Modules/MultiDecision module.md)
 - [Action module](Core Modules/Action module.md)
 - [Branch module](Core Modules/Branch module.md)
 - [Tool module](Core Modules/Tool module.md)

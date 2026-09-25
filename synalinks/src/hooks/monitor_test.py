@@ -1,5 +1,6 @@
 # License Apache 2.0: (c) 2025-2026 Yoan Sallami (Synalinks Team)
 
+import os
 from unittest.mock import AsyncMock
 from unittest.mock import patch
 
@@ -9,7 +10,9 @@ from synalinks.src import testing
 from synalinks.src.backend import ChatMessage
 from synalinks.src.backend import ChatMessages
 from synalinks.src.backend import ChatRole
+from synalinks.src.backend import DataModel
 from synalinks.src.backend import EmbeddingRequest
+from synalinks.src.backend import Field
 from synalinks.src.hooks.monitor import MLFLOW_TRACE_SESSION_KEY
 from synalinks.src.hooks.monitor import MLFLOW_TRACE_USER_KEY
 from synalinks.src.hooks.monitor import Monitor
@@ -17,8 +20,11 @@ from synalinks.src.hooks.monitor import current_trace_context
 from synalinks.src.hooks.monitor import root_trace_ids_since
 from synalinks.src.hooks.monitor import root_trace_mark
 from synalinks.src.hooks.monitor import trace_context
+from synalinks.src.modules import Input
+from synalinks.src.modules.decision_models import DecisionModel
 from synalinks.src.modules.embedding_models import EmbeddingModel
 from synalinks.src.modules.language_models import LanguageModel
+from synalinks.src.testing.test_utils import mock_decision_model
 
 
 def _new_monitor(module):
@@ -31,6 +37,10 @@ def _new_monitor(module):
 class MonitorSpanTypeTest(testing.TestCase):
     def test_language_model_maps_to_chat_model(self):
         monitor = _new_monitor(LanguageModel(model="ollama/mistral"))
+        self.assertEqual(monitor._get_span_type(), SpanType.CHAT_MODEL)
+
+    def test_decision_model_maps_to_chat_model(self):
+        monitor = _new_monitor(DecisionModel(model="typesafe/jev-latest"))
         self.assertEqual(monitor._get_span_type(), SpanType.CHAT_MODEL)
 
     def test_embedding_model_maps_to_embedding(self):
@@ -334,6 +344,210 @@ class MonitorStandardAttributesTest(testing.TestCase):
         self.assertEqual(choice["finish_reason"], "stop")
         tags = mock_mlflow.start_span_no_context.call_args.kwargs["tags"]
         self.assertEqual(tags["synalinks.phase"], "inference")
+
+    @patch.dict(os.environ, {"TYPESAFE_API_KEY": "test-key"})
+    @patch("synalinks.src.hooks.monitor.mlflow")
+    async def test_decision_model_span_like_language_model(self, mock_mlflow):
+        class Billing(DataModel):
+            is_billing: bool = Field(description="Is the ticket about billing?")
+
+        span = _RecordingSpan()
+        mock_mlflow.start_span_no_context.return_value = span
+        dm = DecisionModel(model="typesafe/jev-latest", hooks=[self._make_monitor()])
+        mock_decision_model(dm, {"is_billing": {"type": "noul", "noul": 0.9}})
+        messages = ChatMessages(
+            messages=[ChatMessage(role=ChatRole.USER, content="Charged twice.")]
+        )
+
+        await dm(messages, schema=Billing.get_schema())
+
+        self.assertEqual(
+            mock_mlflow.start_span_no_context.call_args.kwargs["span_type"],
+            SpanType.CHAT_MODEL,
+        )
+        self.assertEqual(span.attributes["mlflow.llm.model"], "typesafe/jev-latest")
+        self.assertEqual(span.attributes["mlflow.llm.provider"], "typesafe")
+        self.assertEqual(span.attributes["mlflow.message.format"], "openai")
+        self.assertEqual(
+            span.attributes["mlflow.chat.tokenUsage"],
+            {"input_tokens": 100, "output_tokens": 10, "total_tokens": 110},
+        )
+        self.assertAlmostEqual(
+            span.attributes["mlflow.llm.cost"]["total_cost"], 100 * 0.042e-6
+        )
+        self.assertEqual(
+            span.inputs["messages"], [{"role": "user", "content": "Charged twice."}]
+        )
+        choice = span.outputs["choices"][0]
+        self.assertEqual(choice["message"]["role"], "assistant")
+        self.assertEqual(choice["message"]["content"], '{"is_billing": true}')
+        # The raw answers keep the probabilities the output values leave out.
+        self.assertEqual(
+            span.outputs["answers"], {"is_billing": {"type": "noul", "noul": 0.9}}
+        )
+        # A real call logs JSON data only, not the target schema.
+        self.assertNotIn("kwargs", span.inputs)
+        self.assertEqual(
+            span.attributes["synalinks.response_model"], "typesafe/jev-1.13.0"
+        )
+        self.assertTrue(span.attributes["synalinks.success"])
+
+    @patch("synalinks.src.hooks.monitor.mlflow")
+    async def test_schema_is_logged_only_for_symbolic_calls(self, mock_mlflow):
+        class Billing(DataModel):
+            is_billing: bool = Field(description="Is the ticket about billing?")
+
+        span = _RecordingSpan()
+        mock_mlflow.start_span_no_context.return_value = span
+        dm = DecisionModel(model="typesafe/jev-latest", hooks=[self._make_monitor()])
+
+        await dm(Input(data_model=ChatMessages), schema=Billing.get_schema())
+
+        self.assertTrue(span.attributes["synalinks.is_symbolic"])
+        self.assertEqual(span.inputs["kwargs"]["schema"], Billing.get_schema())
+        self.assertEqual(span.inputs["data"], [ChatMessages.get_schema()])
+
+    @patch.dict(os.environ, {"TYPESAFE_API_KEY": "test-key"})
+    @patch("synalinks.src.hooks.monitor.mlflow")
+    async def test_decision_model_failure_and_fallback_spans(self, mock_mlflow):
+        class Billing(DataModel):
+            is_billing: bool = Field(description="Is the ticket about billing?")
+
+        spans = []
+
+        def start_span(**kwargs):
+            spans.append(_RecordingSpan())
+            return spans[-1]
+
+        mock_mlflow.start_span_no_context.side_effect = start_span
+        messages = ChatMessages(messages=[ChatMessage(role=ChatRole.USER, content="x")])
+
+        # Every attempt fails: the call returns `None`, and its span says so.
+        dm = DecisionModel(
+            model="typesafe/jev-latest", retry=1, hooks=[self._make_monitor()]
+        )
+        mock_decision_model(dm, 503)
+        with self.assertWarns(UserWarning):
+            self.assertIsNone(await dm(messages, schema=Billing.get_schema()))
+        self.assertEqual(spans[0].status, "ERROR")
+        self.assertFalse(spans[0].attributes["synalinks.success"])
+        self.assertIn("503", spans[0].attributes["synalinks.exception"])
+
+        # A fallback answers: its usage is on its own span, not on the
+        # failed primary's too.
+        spans.clear()
+        fallback = DecisionModel(
+            model="typesafe/jev-1.13.0", hooks=[self._make_monitor()]
+        )
+        mock_decision_model(fallback, {"is_billing": {"type": "noul", "noul": 0.9}})
+        dm = DecisionModel(
+            model="typesafe/jev-latest",
+            retry=1,
+            fallback=fallback,
+            hooks=[self._make_monitor()],
+        )
+        mock_decision_model(dm, 503)
+        with self.assertWarns(UserWarning):
+            result = await dm(messages, schema=Billing.get_schema())
+        self.assertEqual(result.get_json(), {"is_billing": True})
+        primary, secondary = spans
+        self.assertEqual(primary.status, "ERROR")
+        self.assertTrue(primary.attributes["synalinks.fallback"])
+        self.assertNotIn("mlflow.chat.tokenUsage", primary.attributes)
+        self.assertEqual(secondary.status, "OK")
+        self.assertEqual(
+            secondary.attributes["mlflow.chat.tokenUsage"]["total_tokens"], 110
+        )
+
+    @patch.dict(os.environ, {"TYPESAFE_API_KEY": "test-key"})
+    @patch("synalinks.src.hooks.monitor.mlflow")
+    async def test_decision_model_cache_hit_span(self, mock_mlflow):
+        class Billing(DataModel):
+            is_billing: bool = Field(description="Is the ticket about billing?")
+
+        spans = []
+
+        def start_span(**kwargs):
+            spans.append(_RecordingSpan())
+            return spans[-1]
+
+        mock_mlflow.start_span_no_context.side_effect = start_span
+        dm = DecisionModel(
+            model="typesafe/jev-latest",
+            cache_dir=self.get_temp_dir(),
+            hooks=[self._make_monitor()],
+        )
+        mock_decision_model(dm, {"is_billing": {"type": "noul", "noul": 0.9}})
+        messages = ChatMessages(messages=[ChatMessage(role=ChatRole.USER, content="x")])
+
+        await dm(messages, schema=Billing.get_schema())
+        await dm(messages, schema=Billing.get_schema())
+
+        self.assertEqual(dm.cumulated_cache_hits, 1)
+        self.assertEqual(len(spans), 2)
+        self.assertIn("mlflow.chat.tokenUsage", spans[0].attributes)
+        self.assertTrue(spans[1].attributes["synalinks.cache_hit"])
+        self.assertNotIn("mlflow.chat.tokenUsage", spans[1].attributes)
+
+    @patch("synalinks.src.hooks.monitor.mlflow")
+    @patch("litellm.acompletion")
+    async def test_language_model_failure_and_fallback_spans(
+        self, mock_completion, mock_mlflow
+    ):
+        from litellm.types.utils import Choices
+        from litellm.types.utils import Message
+        from litellm.types.utils import ModelResponse
+        from litellm.types.utils import Usage
+
+        spans = []
+
+        def start_span(**kwargs):
+            spans.append(_RecordingSpan())
+            return spans[-1]
+
+        mock_mlflow.start_span_no_context.side_effect = start_span
+        messages = ChatMessages(messages=[ChatMessage(role=ChatRole.USER, content="x")])
+
+        # Every attempt fails: the call returns `None`, and its span says so.
+        mock_completion.side_effect = ValueError("provider down")
+        lm = LanguageModel(model="ollama/mistral", retry=1, hooks=[self._make_monitor()])
+        with self.assertWarns(UserWarning):
+            self.assertIsNone(await lm(messages))
+        self.assertEqual(spans[0].status, "ERROR")
+        self.assertFalse(spans[0].attributes["synalinks.success"])
+        self.assertIn("provider down", spans[0].attributes["synalinks.exception"])
+
+        # A fallback answers: its usage is on its own span, not on the
+        # failed primary's too.
+        spans.clear()
+
+        async def completion(*args, **kwargs):
+            if kwargs["model"].endswith("mistral"):
+                raise ValueError("provider down")
+            return ModelResponse(
+                choices=[Choices(message=Message(content="ok"))],
+                usage=Usage(prompt_tokens=5, completion_tokens=1, total_tokens=6),
+            )
+
+        mock_completion.side_effect = completion
+        fallback = LanguageModel(model="ollama/qwen3", hooks=[self._make_monitor()])
+        lm = LanguageModel(
+            model="ollama/mistral",
+            retry=1,
+            fallback=fallback,
+            hooks=[self._make_monitor()],
+        )
+        with self.assertWarns(UserWarning):
+            result = await lm(messages)
+        self.assertEqual(result.get("content"), "ok")
+        primary, secondary = spans
+        self.assertEqual(primary.status, "ERROR")
+        self.assertTrue(primary.attributes["synalinks.fallback"])
+        self.assertNotIn("mlflow.chat.tokenUsage", primary.attributes)
+        self.assertEqual(secondary.status, "OK")
+        self.assertEqual(
+            secondary.attributes["mlflow.chat.tokenUsage"]["total_tokens"], 6
+        )
 
     @patch("synalinks.src.hooks.monitor.mlflow")
     @patch("litellm.acompletion")
