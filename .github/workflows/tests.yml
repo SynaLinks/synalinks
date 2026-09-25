@@ -64,8 +64,12 @@ jobs:
         if: runner.os == 'macOS'
         run: |
           brew tap slp/krun
-          brew trust --formula slp/krun/libkrun || true
-          brew trust --formula slp/krun/libkrunfw || true
+          # Homebrew only loads the formulas of a third-party tap once trusted.
+          # Trust all of them, so a new libkrun dependency added to the tap
+          # (e.g. virglrenderer-krun) does not break the install.
+          for formula in $(brew tap-info --json slp/krun | jq -r '.[0].formula_names[]'); do
+            brew trust --formula "$formula" || true
+          done
           brew install slp/krun/libkrun
       # Fail loudly if the sandbox would not use the strongest isolation the
       # runner supports, rather than letting the confine tests silently skip:
