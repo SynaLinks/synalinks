@@ -1,14 +1,21 @@
 # License Apache 2.0: (c) 2025-2026 Yoan Sallami (Synalinks Team)
 
 import asyncio
+import os
+from typing import Literal
 from unittest import mock
+from unittest.mock import patch
 
 from synalinks.src import testing
+from synalinks.src.backend import DataModel
+from synalinks.src.backend import Field
 from synalinks.src.backend.common.global_state import clear_session
+from synalinks.src.backend.common.op_scope import _OP_SCOPE
 from synalinks.src.backend.common.op_scope import _add_phase_wall_clock_s
 from synalinks.src.backend.common.op_scope import current_op_scope
 from synalinks.src.backend.common.op_scope import op_scope
 from synalinks.src.backend.common.op_scope import read_phase_wall_clock_s
+from synalinks.src.callbacks.budget_stopping import BudgetStopping
 from synalinks.src.metrics.lm_metrics import AvgCacheCreationTokensPerCall
 from synalinks.src.metrics.lm_metrics import AvgCachedTokensPerCall
 from synalinks.src.metrics.lm_metrics import AvgCostPerCall
@@ -77,7 +84,14 @@ from synalinks.src.metrics.lm_metrics import Throughput
 from synalinks.src.metrics.lm_metrics import TokensPerSecond
 from synalinks.src.metrics.lm_metrics import TotalTokens
 from synalinks.src.metrics.lm_metrics import _collect_language_models
+from synalinks.src.metrics.program_metrics import ProgramCost
+from synalinks.src.modules import Input
+from synalinks.src.modules.core.generator import Generator
+from synalinks.src.modules.decision_models import DecisionModel
 from synalinks.src.modules.language_models import LanguageModel
+from synalinks.src.programs import Program
+from synalinks.src.rewards.rubrics_as_judge import RubricsAsJudge
+from synalinks.src.testing.test_utils import mock_decision_model
 
 _LM_SUFFIXES = (
     "calls",
@@ -358,6 +372,38 @@ class OperationalMetricsAutoBindTest(testing.TestCase):
         self.assertIn(id(sub_lm), ids)
         self.assertEqual(len(set(ids)), 2)
 
+    def test_collect_walks_compiled_reward(self):
+        # A judge's model runs during the reward phase: reward metrics were
+        # blind to it when only the program's own modules were walked.
+        program_lm = _stub_lm()
+        direct_judge_lm = _stub_lm()
+        program_judge_lm = _stub_lm()
+
+        class _Reward:
+            def __init__(self, language_model=None, program=None, rewards=None):
+                self.language_model = language_model
+                self.program = program
+                self.rewards = rewards
+
+        class _CompileReward:
+            def __init__(self, reward):
+                self._user_reward = reward
+
+        program = _FakeProgram(modules=[_FakeModule(lm=program_lm)])
+        program._compile_reward = _CompileReward(
+            _Reward(
+                rewards=[
+                    _Reward(language_model=direct_judge_lm),
+                    _Reward(program=_FakeProgram([_FakeModule(lm=program_judge_lm)])),
+                ]
+            )
+        )
+        lms = _collect_language_models(program)
+        self.assertEqual(
+            [id(lm) for lm in lms],
+            [id(program_lm), id(direct_judge_lm), id(program_judge_lm)],
+        )
+
     def test_bind_program_aggregates_sub_language_model_tokens(self):
         # End-to-end version of the bug: a metric bound to a program whose
         # only LM module exposes `sub_language_model` must still see calls
@@ -400,13 +446,9 @@ class LMPhaseRoutingTest(testing.TestCase):
         m_rew = _bind(RewardTotalTokens(), [lm])
         m_opt = _bind(OptimizerTotalTokens(), [lm])
 
-        _record(
-            lm, prompt=100, completion=20, elapsed=0.0, cost=0.001, phase="inference"
-        )
+        _record(lm, prompt=100, completion=20, elapsed=0.0, cost=0.001, phase="inference")
         _record(lm, prompt=50, completion=10, elapsed=0.0, cost=0.0005, phase="reward")
-        _record(
-            lm, prompt=200, completion=40, elapsed=0.0, cost=0.002, phase="optimizer"
-        )
+        _record(lm, prompt=200, completion=40, elapsed=0.0, cost=0.002, phase="optimizer")
 
         self.assertEqual(m_inf.result(), 120)
         self.assertEqual(m_rew.result(), 60)
@@ -416,9 +458,7 @@ class LMPhaseRoutingTest(testing.TestCase):
         lm = _stub_lm()
         m = _bind(RewardInputTokens(), [lm])
         _record(lm, prompt=300, completion=10, elapsed=0.0, cost=0.0, phase="reward")
-        _record(
-            lm, prompt=999, completion=999, elapsed=0.0, cost=0.0, phase="inference"
-        )
+        _record(lm, prompt=999, completion=999, elapsed=0.0, cost=0.0, phase="inference")
         self.assertEqual(m.result(), 300)
 
     def test_optimizer_input_tokens(self):
@@ -688,12 +728,8 @@ class LMExtraAveragesPerPhaseTest(testing.TestCase):
                 self.assertEqual(m_reasoning.result(), 0.0)
                 # 2 calls, 500 total tokens, 60 cached, 40 cache-creation,
                 # 30 reasoning.
-                _record(
-                    lm, prompt=100, completion=20, elapsed=0.1, cost=0.0, phase=phase
-                )
-                _record(
-                    lm, prompt=300, completion=80, elapsed=0.1, cost=0.0, phase=phase
-                )
+                _record(lm, prompt=100, completion=20, elapsed=0.1, cost=0.0, phase=phase)
+                _record(lm, prompt=300, completion=80, elapsed=0.1, cost=0.0, phase=phase)
                 _bump(lm, "cached_tokens", 60, phase=phase)
                 _bump(lm, "cache_creation_tokens", 40, phase=phase)
                 _bump(lm, "reasoning_tokens", 30, phase=phase)
@@ -735,3 +771,140 @@ class LMFailureMetricsPerPhaseTest(testing.TestCase):
                 self.assertEqual(m_failed.result(), 3)
                 self.assertEqual(m_fallback.result(), 2)
                 self.assertEqual(m_error.result(), 3 / 4)  # 3 failed / (1 + 3)
+
+
+class _DMQuery(DataModel):
+    query: str
+
+
+class _DMDifficulty(DataModel):
+    decision: Literal["easy", "difficult"] = Field(description="Easy?")
+
+
+_DM_ANSWER = {
+    "decision": {
+        "type": "choice",
+        "choice": "easy",
+        "probabilities": {"easy": 0.9, "difficult": 0.1},
+        "confidence": 0.8,
+    }
+}
+
+
+@patch.dict(os.environ, {"TYPESAFE_API_KEY": "test-key"})
+class LMOperationalMetricsWithDecisionModelTest(testing.TestCase):
+    """Decision models are counted by the language model operational metrics."""
+
+    async def build_program(self, decision_model):
+        x0 = Input(data_model=_DMQuery)
+        x1 = await Generator(
+            data_model=_DMDifficulty,
+            decision_model=decision_model,
+        )(x0)
+        return Program(inputs=x0, outputs=x1)
+
+    async def test_collect_follows_fallback_chain(self):
+        fallback = DecisionModel(model="typesafe/jev-1.13.0")
+        decision_model = DecisionModel(model="typesafe/jev-latest", fallback=fallback)
+        program = await self.build_program(decision_model)
+        self.assertEqual(_collect_language_models(program), [decision_model, fallback])
+
+    async def test_inference_metrics(self):
+        decision_model = DecisionModel(model="typesafe/jev-latest")
+        mock_decision_model(decision_model, _DM_ANSWER, 422)
+        program = await self.build_program(decision_model)
+        metrics = [
+            TotalTokens(),
+            Cost(),
+            AvgLatency(),
+            FailedCalls(),
+            ErrorRate(),
+            RewardTotalTokens(),
+            ProgramCost(),
+        ]
+        for metric in metrics:
+            metric.bind_program(program)
+
+        token = _OP_SCOPE.set("inference")
+        try:
+            await program(_DMQuery(query="q"))
+            with self.assertWarns(UserWarning):
+                await program(_DMQuery(query="q"))
+        finally:
+            _OP_SCOPE.reset(token)
+
+        results = {metric.name: metric.result() for metric in metrics}
+        # The language model operational metrics count decision model calls.
+        self.assertEqual(results["total_tokens"], 110)
+        self.assertAlmostEqual(results["cost"], 100 * 0.042e-6)
+        self.assertGreater(results["avg_latency"], 0.0)
+        self.assertEqual(results["failed_calls"], 1)
+        self.assertEqual(results["error_rate"], 0.5)
+        self.assertEqual(results["reward_total_tokens"], 0)
+        self.assertAlmostEqual(results["program_cost"], 100 * 0.042e-6)
+
+    async def test_judge_decision_model_counts_in_reward_phase(self):
+        levels = [
+            "Does not meet the criterion at all.",
+            "Meets a small part of the criterion.",
+            "Meets about half of the criterion.",
+            "Meets most of the criterion, with minor gaps.",
+            "Fully meets the criterion.",
+        ]
+        judge = DecisionModel(model="typesafe/jev-latest")
+        mock_decision_model(
+            judge,
+            {
+                "correct": {
+                    "type": "score",
+                    "score": 4.0,
+                    "legend": {str(i): level for i, level in enumerate(levels)},
+                    "probabilities": {str(i): float(i == 4) for i in range(5)},
+                    "confidence": 0.9,
+                }
+            },
+        )
+        x0 = Input(data_model=_DMQuery)
+        x1 = await Generator(
+            data_model=_DMDifficulty,
+            decision_model=DecisionModel(model="typesafe/jev-latest"),
+        )(x0)
+        program = Program(inputs=x0, outputs=x1)
+        metrics = [RewardTotalTokens(), RewardCost()]
+        program.compile(
+            reward=RubricsAsJudge(
+                decision_model=judge,
+                rubrics=[{"name": "correct", "description": "Correct."}],
+            ),
+        )
+        # `compile()` binds clones of its metrics: bind these ones to read them.
+        for metric in metrics:
+            metric.bind_program(program)
+        self.assertIn(judge, _collect_language_models(program))
+
+        token = _OP_SCOPE.set("reward")
+        try:
+            await program.compute_reward(
+                x=[_DMQuery(query="q")],
+                y=[_DMDifficulty(decision="easy")],
+                y_pred=[_DMDifficulty(decision="easy")],
+            )
+        finally:
+            _OP_SCOPE.reset(token)
+
+        results = {metric.name: metric.result() for metric in metrics}
+        self.assertEqual(results["reward_total_tokens"], 110)
+        self.assertAlmostEqual(results["reward_cost"], 100 * 0.042e-6)
+
+    async def test_budget_stopping_counts_decision_model_cost(self):
+        decision_model = DecisionModel(model="typesafe/jev-latest", cost_per_token=1.0)
+        mock_decision_model(decision_model, _DM_ANSWER)
+        program = await self.build_program(decision_model)
+        callback = BudgetStopping(max_cost=50.0)
+        callback.set_program(program)
+        self.assertEqual(callback._read_cost(), 0.0)
+
+        await program(_DMQuery(query="q"))
+
+        self.assertEqual(callback._read_cost(), 100.0)
+        self.assertEqual(callback._read_tokens(), 110)

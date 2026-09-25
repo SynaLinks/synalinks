@@ -341,3 +341,44 @@ def named_product(*args, **kwargs):
         tests = new_tests
 
     return tests
+
+
+def mock_decision_model(decision_model, *responses, model="jev-1.13.0"):
+    """Route a `DecisionModel`'s HTTP calls to canned responses.
+
+    Each response answers one request, in order; the last one repeats. A
+    response is either an `answers` dict, a callable taking the request
+    payload and returning an `answers` dict, or an int HTTP error status.
+
+    Args:
+        decision_model (DecisionModel): The decision model to mock.
+        *responses: The canned responses.
+        model (str): The versioned model ID reported in each response.
+
+    Returns:
+        (list): The request payloads received, appended as calls happen.
+    """
+    import json
+
+    import httpx2
+
+    payloads = []
+
+    def handler(request):
+        payload = json.loads(request.content)
+        response = responses[min(len(payloads), len(responses) - 1)]
+        payloads.append(payload)
+        if isinstance(response, int):
+            return httpx2.Response(response, json={"error": "mocked"})
+        answers = response(payload) if callable(response) else response
+        return httpx2.Response(
+            200,
+            json={
+                "model": model,
+                "answers": answers,
+                "usage": {"input_tokens": 100, "output_tokens": 10},
+            },
+        )
+
+    decision_model._transport = httpx2.MockTransport(handler)
+    return payloads

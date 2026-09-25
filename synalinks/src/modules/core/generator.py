@@ -16,6 +16,7 @@ from synalinks.src.backend import is_chat_messages
 from synalinks.src.backend import is_strictly_chat_message
 from synalinks.src.backend import is_strictly_chat_messages
 from synalinks.src.backend.common.op_scope import current_op_scope
+from synalinks.src.modules.decision_models import get as _get_dm
 from synalinks.src.modules.language_models import get as _get_lm
 from synalinks.src.modules.language_models.language_model import StreamingIterator
 from synalinks.src.modules.language_models.language_model import _tool_to_wire
@@ -80,12 +81,8 @@ def default_prompt_template():
 <examples>
 {% for example in examples %}
 <example>
-<input>
 {{ example[0] }}
-</input>
-<output>
 {{ example[1] }}
-</output>
 </example>
 {% endfor %}
 </examples>
@@ -99,10 +96,70 @@ Your task is to answer with a JSON containing the following keys: {data_model_fi
 """.strip()
 
 
+def format_chat_messages(inputs, system_message):
+    """Format the inputs into chat messages behind a system message.
+
+    Chat inputs keep their own system (or developer) prompt when they have
+    one; otherwise the given `system_message` is put first, and data inputs
+    are rendered as the user message.
+
+    Args:
+        inputs (JsonDataModel): The inputs to format.
+        system_message (ChatMessage): The system message to put first.
+
+    Returns:
+        (ChatMessages): The formatted chat messages.
+    """
+    # Strict chat inputs: keep the caller's own system/developer prompt when
+    # they supply one; otherwise inject ours.
+    if is_strictly_chat_messages(inputs):
+        msgs = inputs.get("messages")
+        if _has_system_prompt(msgs):
+            return ChatMessages(messages=msgs)
+        return ChatMessages(messages=[system_message.get_json(), *msgs])
+    if is_strictly_chat_message(inputs):
+        msg = inputs.get_json()
+        if _has_system_prompt([msg]):
+            return ChatMessages(messages=[msg])
+        return ChatMessages(messages=[system_message.get_json(), msg])
+
+    if is_chat_messages(inputs):
+        data = inputs.get_json()
+        msgs = data.get("messages")
+        # Fields declared before `messages` are the inputs; fields after it
+        # are outputs (e.g. concatenated by an upstream generator), so only
+        # the leading fields are rendered as the input turn.
+        keys = list(data.keys())
+        inputs_fields = {k: data[k] for k in keys[: keys.index("messages")]}
+        messages = [system_message]
+        if inputs_fields:
+            messages.append(
+                ChatMessage(
+                    role="user",
+                    content=f"{inputs_fields}",
+                )
+            )
+        messages.extend(msgs)
+        return ChatMessages(messages=messages)
+    # NB: a strictly-chat-message input is already handled by the
+    # is_strictly_chat_message early-return above. Anything that only
+    # *contains* a chat message here also carries extra fields (a reward's
+    # `gold_`-prefixed reference, inputs concatenated by an upstream
+    # generator, ...). Splatting the whole dict into a single ChatMessage
+    # would trip its `extra="forbid"`, so it falls through to be rendered as
+    # input data below.
+    user_message = ChatMessage(
+        role="user",
+        content=f"{inputs.get_json()}",
+    )
+    return ChatMessages(messages=[system_message, user_message])
+
+
 @synalinks_export(["synalinks.modules.Generator", "synalinks.Generator"])
 class Generator(Module):
     """
-    Use a `LanguageModel` to generate a data model from an arbitrary input data model.
+    Use a `LanguageModel` (or a `DecisionModel`) to generate a data model from an
+    arbitrary input data model.
 
     Example:
 
@@ -143,6 +200,56 @@ class Generator(Module):
             outputs=x1,
             name="chain_of_thought_with_critique",
             description="Useful to answer step by step and evaluate your answer",
+        )
+
+    if __name__ == "__main__":
+        asyncio.run(main())
+    ```
+
+    Pass a `decision_model` to answer with a `DecisionModel` instead of the
+    language model: it is faster and cheaper, and its answers are calibrated,
+    but it does not generate. Every field of the data model must be a question
+    it can answer (a `bool`, a string enum, or a `noul_schema`, `choice_schema`
+    or `score_schema` object, see `DecisionModel`), otherwise an
+    `UnsupportedSchemaError` is raised. The instructions and examples are sent
+    to it as the system message.
+
+    ```python
+    import synalinks
+    import asyncio
+    from typing import Literal
+
+    async def main():
+
+        class Ticket(synalinks.DataModel):
+            message: str = synalinks.Field(
+                description="The customer message",
+            )
+
+        class Triage(synalinks.DataModel):
+            is_billing: bool = synalinks.Field(
+                description="Is the ticket about billing?",
+            )
+            urgency: Literal["low", "medium", "high"] = synalinks.Field(
+                description="How urgent is the ticket?",
+            )
+
+        decision_model = synalinks.DecisionModel(
+            model="typesafe/jev-latest",
+        )
+
+        x0 = synalinks.Input(data_model=Ticket)
+        x1 = await synalinks.Generator(
+            data_model=Triage,
+            decision_model=decision_model,
+            instructions="Triage the support tickets of an online shop.",
+        )(x0)
+
+        program = synalinks.Program(
+            inputs=x0,
+            outputs=x1,
+            name="ticket_triage",
+            description="Triage the support tickets",
         )
 
     if __name__ == "__main__":
@@ -210,6 +317,9 @@ class Generator(Module):
         name (str): Optional. The name of the module.
         description (str): Optional. The description of the module.
         trainable (bool): Whether the module's variables should be trainable.
+        decision_model (DecisionModel): Optional. A decision model to answer
+            with instead of the language model. Every field of the schema must
+            be a question it can answer (see `DecisionModel.check_schema()`).
     """
 
     def __init__(
@@ -237,6 +347,7 @@ class Generator(Module):
         name=None,
         description=None,
         trainable=True,
+        decision_model=None,
     ):
         super().__init__(
             name=name,
@@ -247,6 +358,10 @@ class Generator(Module):
             schema = data_model.get_schema()
         self.schema = schema
         self.language_model = _get_lm(language_model)
+        self.decision_model = None
+        if decision_model is not None:
+            self.decision_model = _get_dm(decision_model)
+            self.decision_model.check_schema(self.schema)
         if not prompt_template:
             prompt_template = default_prompt_template()
         self.prompt_template = prompt_template
@@ -343,7 +458,8 @@ class Generator(Module):
             sampling["top_p"] = self.top_p
         if self.top_k is not None:
             sampling["top_k"] = self.top_k
-        value = await self.language_model(
+        model = self.decision_model or self.language_model
+        value = await model(
             msgs,
             schema=self.schema,
             tools=tools,
@@ -422,52 +538,7 @@ class Generator(Module):
                 )
 
     def format_messages(self, inputs=None):
-        # Strict chat inputs: skip Jinja2 rendering when the caller already
-        # supplies their own system/developer prompt; otherwise inject ours.
-        if is_strictly_chat_messages(inputs):
-            msgs = inputs.get("messages")
-            if _has_system_prompt(msgs):
-                return ChatMessages(messages=msgs)
-            system_message = self._render_system_message(inputs)
-            return ChatMessages(messages=[system_message.get_json(), *msgs])
-        if is_strictly_chat_message(inputs):
-            msg = inputs.get_json()
-            if _has_system_prompt([msg]):
-                return ChatMessages(messages=[msg])
-            system_message = self._render_system_message(inputs)
-            return ChatMessages(messages=[system_message.get_json(), msg])
-
-        system_message = self._render_system_message(inputs)
-        if is_chat_messages(inputs):
-            data = inputs.get_json()
-            msgs = data.get("messages")
-            # Fields declared before `messages` are the inputs; fields after it
-            # are outputs (e.g. concatenated by an upstream generator), so only
-            # the leading fields are rendered as the input turn.
-            keys = list(data.keys())
-            inputs_fields = {k: data[k] for k in keys[: keys.index("messages")]}
-            messages = [system_message]
-            if inputs_fields:
-                messages.append(
-                    ChatMessage(
-                        role="user",
-                        content=f"<input>\n{inputs_fields}\n</input>\n<output>\n",
-                    )
-                )
-            messages.extend(msgs)
-            return ChatMessages(messages=messages)
-        # NB: a strictly-chat-message input is already handled by the
-        # is_strictly_chat_message early-return above. Anything that only
-        # *contains* a chat message here also carries extra fields (a reward's
-        # `gold_`-prefixed reference, inputs concatenated by an upstream
-        # generator, ...). Splatting the whole dict into a single ChatMessage
-        # would trip its `extra="forbid"`, so it falls through to be rendered as
-        # input data below.
-        user_message = ChatMessage(
-            role="user",
-            content=f"<input>\n{inputs.get_json()}\n</input>\n<output>\n",
-        )
-        return ChatMessages(messages=[system_message, user_message])
+        return format_chat_messages(inputs, self._render_system_message(inputs))
 
     def _render_system_message(self, inputs):
         template = jinja2.Template(self.prompt_template)
@@ -520,6 +591,10 @@ class Generator(Module):
                 self.language_model,
             )
         }
+        if self.decision_model is not None:
+            language_model_config["decision_model"] = (
+                serialization_lib.serialize_synalinks_object(self.decision_model)
+            )
         return {
             **config,
             **language_model_config,
@@ -530,6 +605,10 @@ class Generator(Module):
         language_model = serialization_lib.deserialize_synalinks_object(
             config.pop("language_model"),
         )
+        if "decision_model" in config:
+            config["decision_model"] = serialization_lib.deserialize_synalinks_object(
+                config.pop("decision_model"),
+            )
         return cls(
             language_model=language_model,
             **config,

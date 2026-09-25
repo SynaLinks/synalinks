@@ -6,12 +6,15 @@ Synalinks provides built-in observability through MLflow, enabling you to trace 
 
 The observability system automatically creates spans for each module call, capturing:
 
-- **Inputs and outputs** of each module; language model spans carry the chat
-  messages and tools in OpenAI format, so the MLflow UI renders the conversation
-- **Token usage and cost** on language model spans, using MLflow's standard
-  `mlflow.chat.tokenUsage`, `mlflow.llm.cost`, `mlflow.llm.model` and
-  `mlflow.llm.provider` attributes, so the trace-level token and cost roll-ups work
-- **Duration** and **success/failure status** of each call
+- **Inputs and outputs** of each module; language model and decision model spans
+  carry the chat messages and tools in OpenAI format, so the MLflow UI renders the
+  conversation
+- **Token usage and cost** on language model and decision model spans, using
+  MLflow's standard `mlflow.chat.tokenUsage`, `mlflow.llm.cost`, `mlflow.llm.model`
+  and `mlflow.llm.provider` attributes, so the trace-level token and cost roll-ups
+  work
+- **Duration** and **success/failure status** of each call, including the model
+  calls that failed every retry (they return `None` instead of raising)
 - **Parent-child relationships** between nested module calls
 - **Phase tags**: every trace is tagged `synalinks.program` and `synalinks.phase`
   (`inference`, `reward` or `optimizer`), so the calls made by rewards and optimizers
@@ -217,11 +220,16 @@ Synalinks automatically categorizes spans based on module type for better visual
 
 | Module | Span Type |
 |--------|-----------|
-| `Generator`, `ChainOfThought`, `SelfCritique` | `LLM` |
+| `LanguageModel`, `DecisionModel` | `CHAT_MODEL` |
+| `EmbeddingModel` | `EMBEDDING` |
 | `FunctionCallingAgent` | `AGENT` |
 | `EmbedKnowledge`, `RetrieveKnowledge`, `UpdateKnowledge` | `RETRIEVER` |
 | `Tool` | `TOOL` |
-| Other modules | `CHAIN` |
+| Other modules (`Generator`, `ChainOfThought`, `SelfCritique`...) | `CHAIN` |
+
+A `Generator` is a `CHAIN` span wrapping the `CHAT_MODEL` span of the model it
+calls. A `DecisionModel` is called like a `LanguageModel`, so its calls
+are traced the same way.
 
 ### Span Attributes
 
@@ -237,13 +245,36 @@ Each span includes these attributes:
 | `synalinks.is_symbolic` | Whether the call was symbolic (graph building) |
 | `synalinks.duration` | Call duration in seconds |
 | `synalinks.success` | Whether the call succeeded |
-| `synalinks.cost` | LLM API cost (when available) |
+
+Model spans (`CHAT_MODEL`) also carry:
+
+| Attribute | Description |
+|-----------|-------------|
+| `mlflow.llm.model` / `mlflow.llm.provider` | The model requested (e.g. `openai/gpt-4o-mini`) and its provider |
+| `mlflow.chat.tokenUsage` | Input, output and total tokens of the call |
+| `mlflow.llm.cost` | Cost of the call in USD (`total_cost`), when known |
+| `synalinks.cache_hit` | The response came from the model's on-disk cache |
+| `synalinks.fallback` | Every attempt failed and the `fallback` model answered |
+
+Decision model spans add the model that answered and its raw answers:
+
+| Attribute / Output | Description |
+|--------------------|-------------|
+| `synalinks.response_model` | The versioned model that answered (e.g. `typesafe/jev-1.13.0` for `jev-latest`), which the cost is based on |
+| `answers` (span outputs) | The raw answers, with the probabilities and confidence the output values leave out |
 
 ### Exception Events
 
 When a module call fails, the span automatically records an exception event with:
 - `exception.type`: The exception class name
 - `exception.message`: The exception message
+
+A language or decision model call that fails every retry returns `None` rather
+than raising, so the program can carry on. Its span is still marked as failed
+(`ERROR` status, `synalinks.success` false, exception event with the last error).
+When a `fallback` model answers instead, the failed call's span only records the
+failure and `synalinks.fallback`, and the fallback call gets its own child span
+with its tokens and cost, so they are counted once.
 
 ### Users and Sessions
 
@@ -277,9 +308,7 @@ winning.
 ```python
 @app.post("/chat")
 async def chat(request: ChatRequest):
-    with synalinks.trace_context(
-        user_id=request.user_id, session_id=request.session_id
-    ):
+    with synalinks.trace_context(user_id=request.user_id, session_id=request.session_id):
         return await program(request.messages)
 ```
 
@@ -639,3 +668,7 @@ PermissionError: [Errno 13] Permission denied: '/mlflow'
 ### Missing cost information
 
 Cost tracking requires the language model to return usage information. Ensure your LLM provider supports this feature.
+
+Decision models are billed on input tokens only, at a price known per versioned
+model. For a model missing from the built-in price table, pass `cost_per_token`
+to the `DecisionModel`.

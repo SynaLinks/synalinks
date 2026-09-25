@@ -55,6 +55,7 @@ nav:
     - guides/Programs.md
     - guides/Modules.md
     - guides/Control Flow.md
+    - guides/Decision Models.md
     - guides/Agents.md
     - guides/Knowledge Base.md
     - guides/Knowledge Graph Extraction.md
@@ -118,6 +119,7 @@ nav:
   - Synalinks API:
     - Synalinks API/Language Models API.md
     - Synalinks API/Embedding Models API.md
+    - Synalinks API/Decision Models API.md
     - Knowledge Base API:
       - Synalinks API/Knowledge Base API/Knowledge Base.md
       - Database Adapters:
@@ -153,6 +155,7 @@ nav:
         - Synalinks API/Modules API/Core Modules/Not module.md
         - Synalinks API/Modules API/Core Modules/Generator module.md
         - Synalinks API/Modules API/Core Modules/Decision module.md
+        - Synalinks API/Modules API/Core Modules/MultiDecision module.md
         - Synalinks API/Modules API/Core Modules/Action module.md
         - Synalinks API/Modules API/Core Modules/Branch module.md
         - Synalinks API/Modules API/Core Modules/Tool module.md

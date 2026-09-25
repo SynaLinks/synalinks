@@ -33,6 +33,7 @@ class AnswerRelevancy(RubricsAsJudge):
         out_mask=None,
         in_mask_pattern=None,
         out_mask_pattern=None,
+        decision_model=None,
     ):
         super().__init__(
             language_model=language_model,
@@ -47,6 +48,7 @@ class AnswerRelevancy(RubricsAsJudge):
             out_mask=out_mask,
             in_mask_pattern=in_mask_pattern,
             out_mask_pattern=out_mask_pattern,
+            decision_model=decision_model,
         )
 
 
@@ -79,6 +81,7 @@ class Faithfulness(RubricsAsJudge):
         out_mask=None,
         in_mask_pattern=None,
         out_mask_pattern=None,
+        decision_model=None,
     ):
         super().__init__(
             language_model=language_model,
@@ -93,6 +96,7 @@ class Faithfulness(RubricsAsJudge):
             out_mask=out_mask,
             in_mask_pattern=in_mask_pattern,
             out_mask_pattern=out_mask_pattern,
+            decision_model=decision_model,
         )
 
 
@@ -125,6 +129,7 @@ class Hallucination(RubricsAsJudge):
         out_mask=None,
         in_mask_pattern=None,
         out_mask_pattern=None,
+        decision_model=None,
     ):
         super().__init__(
             language_model=language_model,
@@ -139,6 +144,7 @@ class Hallucination(RubricsAsJudge):
             out_mask=out_mask,
             in_mask_pattern=in_mask_pattern,
             out_mask_pattern=out_mask_pattern,
+            decision_model=decision_model,
         )
 
 
@@ -171,6 +177,7 @@ class Summarization(RubricsAsJudge):
         out_mask=None,
         in_mask_pattern=None,
         out_mask_pattern=None,
+        decision_model=None,
     ):
         super().__init__(
             language_model=language_model,
@@ -185,6 +192,7 @@ class Summarization(RubricsAsJudge):
             out_mask=out_mask,
             in_mask_pattern=in_mask_pattern,
             out_mask_pattern=out_mask_pattern,
+            decision_model=decision_model,
         )
 
 
@@ -222,6 +230,7 @@ class ArgumentCorrectness(RubricsAsJudge):
         out_mask=None,
         in_mask_pattern=None,
         out_mask_pattern=None,
+        decision_model=None,
     ):
         super().__init__(
             language_model=language_model,
@@ -236,6 +245,7 @@ class ArgumentCorrectness(RubricsAsJudge):
             out_mask=out_mask,
             in_mask_pattern=in_mask_pattern,
             out_mask_pattern=out_mask_pattern,
+            decision_model=decision_model,
         )
 
 
@@ -273,6 +283,7 @@ class ContextualRelevancy(RubricsAsJudge):
         out_mask=None,
         in_mask_pattern=None,
         out_mask_pattern=None,
+        decision_model=None,
     ):
         super().__init__(
             language_model=language_model,
@@ -287,6 +298,7 @@ class ContextualRelevancy(RubricsAsJudge):
             out_mask=out_mask,
             in_mask_pattern=in_mask_pattern,
             out_mask_pattern=out_mask_pattern,
+            decision_model=decision_model,
         )
 
 
@@ -324,6 +336,7 @@ class ContextualPrecision(RubricsAsJudge):
         out_mask=None,
         in_mask_pattern=None,
         out_mask_pattern=None,
+        decision_model=None,
     ):
         super().__init__(
             language_model=language_model,
@@ -338,6 +351,7 @@ class ContextualPrecision(RubricsAsJudge):
             out_mask=out_mask,
             in_mask_pattern=in_mask_pattern,
             out_mask_pattern=out_mask_pattern,
+            decision_model=decision_model,
         )
 
 
@@ -370,6 +384,7 @@ class ContextualRecall(RubricsAsJudge):
         out_mask=None,
         in_mask_pattern=None,
         out_mask_pattern=None,
+        decision_model=None,
     ):
         super().__init__(
             language_model=language_model,
@@ -384,6 +399,7 @@ class ContextualRecall(RubricsAsJudge):
             out_mask=out_mask,
             in_mask_pattern=in_mask_pattern,
             out_mask_pattern=out_mask_pattern,
+            decision_model=decision_model,
         )
 
 
@@ -421,6 +437,7 @@ class CitationFaithfulness(RubricsAsJudge):
         out_mask=None,
         in_mask_pattern=None,
         out_mask_pattern=None,
+        decision_model=None,
     ):
         super().__init__(
             language_model=language_model,
@@ -435,6 +452,7 @@ class CitationFaithfulness(RubricsAsJudge):
             out_mask=out_mask,
             in_mask_pattern=in_mask_pattern,
             out_mask_pattern=out_mask_pattern,
+            decision_model=decision_model,
         )
 
 
@@ -467,6 +485,7 @@ class Bias(RubricsAsJudge):
         out_mask=None,
         in_mask_pattern=None,
         out_mask_pattern=None,
+        decision_model=None,
     ):
         super().__init__(
             language_model=language_model,
@@ -481,6 +500,7 @@ class Bias(RubricsAsJudge):
             out_mask=out_mask,
             in_mask_pattern=in_mask_pattern,
             out_mask_pattern=out_mask_pattern,
+            decision_model=decision_model,
         )
 
 
@@ -513,6 +533,7 @@ class Toxicity(RubricsAsJudge):
         out_mask=None,
         in_mask_pattern=None,
         out_mask_pattern=None,
+        decision_model=None,
     ):
         super().__init__(
             language_model=language_model,
@@ -527,6 +548,7 @@ class Toxicity(RubricsAsJudge):
             out_mask=out_mask,
             in_mask_pattern=in_mask_pattern,
             out_mask_pattern=out_mask_pattern,
+            decision_model=decision_model,
         )
 
 
@@ -559,6 +581,7 @@ class PIILeakage(RubricsAsJudge):
         out_mask=None,
         in_mask_pattern=None,
         out_mask_pattern=None,
+        decision_model=None,
     ):
         super().__init__(
             language_model=language_model,
@@ -573,6 +596,7 @@ class PIILeakage(RubricsAsJudge):
             out_mask=out_mask,
             in_mask_pattern=in_mask_pattern,
             out_mask_pattern=out_mask_pattern,
+            decision_model=decision_model,
         )
 
 
@@ -605,6 +629,7 @@ class Misuse(RubricsAsJudge):
         out_mask=None,
         in_mask_pattern=None,
         out_mask_pattern=None,
+        decision_model=None,
     ):
         super().__init__(
             language_model=language_model,
@@ -619,6 +644,7 @@ class Misuse(RubricsAsJudge):
             out_mask=out_mask,
             in_mask_pattern=in_mask_pattern,
             out_mask_pattern=out_mask_pattern,
+            decision_model=decision_model,
         )
 
 
@@ -651,6 +677,7 @@ class NonAdvice(RubricsAsJudge):
         out_mask=None,
         in_mask_pattern=None,
         out_mask_pattern=None,
+        decision_model=None,
     ):
         super().__init__(
             language_model=language_model,
@@ -665,6 +692,7 @@ class NonAdvice(RubricsAsJudge):
             out_mask=out_mask,
             in_mask_pattern=in_mask_pattern,
             out_mask_pattern=out_mask_pattern,
+            decision_model=decision_model,
         )
 
 
@@ -697,6 +725,7 @@ class PromptAlignment(RubricsAsJudge):
         out_mask=None,
         in_mask_pattern=None,
         out_mask_pattern=None,
+        decision_model=None,
     ):
         super().__init__(
             language_model=language_model,
@@ -711,6 +740,7 @@ class PromptAlignment(RubricsAsJudge):
             out_mask=out_mask,
             in_mask_pattern=in_mask_pattern,
             out_mask_pattern=out_mask_pattern,
+            decision_model=decision_model,
         )
 
 
@@ -743,6 +773,7 @@ class TaskCompletion(RubricsAsJudge):
         out_mask=None,
         in_mask_pattern=None,
         out_mask_pattern=None,
+        decision_model=None,
     ):
         super().__init__(
             language_model=language_model,
@@ -757,6 +788,7 @@ class TaskCompletion(RubricsAsJudge):
             out_mask=out_mask,
             in_mask_pattern=in_mask_pattern,
             out_mask_pattern=out_mask_pattern,
+            decision_model=decision_model,
         )
 
 
@@ -789,6 +821,7 @@ class ToolCorrectness(RubricsAsJudge):
         out_mask=None,
         in_mask_pattern=None,
         out_mask_pattern=None,
+        decision_model=None,
     ):
         super().__init__(
             language_model=language_model,
@@ -803,6 +836,7 @@ class ToolCorrectness(RubricsAsJudge):
             out_mask=out_mask,
             in_mask_pattern=in_mask_pattern,
             out_mask_pattern=out_mask_pattern,
+            decision_model=decision_model,
         )
 
 
@@ -835,6 +869,7 @@ class ToolUse(RubricsAsJudge):
         out_mask=None,
         in_mask_pattern=None,
         out_mask_pattern=None,
+        decision_model=None,
     ):
         super().__init__(
             language_model=language_model,
@@ -849,6 +884,7 @@ class ToolUse(RubricsAsJudge):
             out_mask=out_mask,
             in_mask_pattern=in_mask_pattern,
             out_mask_pattern=out_mask_pattern,
+            decision_model=decision_model,
         )
 
 
@@ -881,6 +917,7 @@ class ToolPermission(RubricsAsJudge):
         out_mask=None,
         in_mask_pattern=None,
         out_mask_pattern=None,
+        decision_model=None,
     ):
         super().__init__(
             language_model=language_model,
@@ -895,6 +932,7 @@ class ToolPermission(RubricsAsJudge):
             out_mask=out_mask,
             in_mask_pattern=in_mask_pattern,
             out_mask_pattern=out_mask_pattern,
+            decision_model=decision_model,
         )
 
 
@@ -927,6 +965,7 @@ class GoalAccuracy(RubricsAsJudge):
         out_mask=None,
         in_mask_pattern=None,
         out_mask_pattern=None,
+        decision_model=None,
     ):
         super().__init__(
             language_model=language_model,
@@ -941,6 +980,7 @@ class GoalAccuracy(RubricsAsJudge):
             out_mask=out_mask,
             in_mask_pattern=in_mask_pattern,
             out_mask_pattern=out_mask_pattern,
+            decision_model=decision_model,
         )
 
 
@@ -973,6 +1013,7 @@ class RoleAdherence(RubricsAsJudge):
         out_mask=None,
         in_mask_pattern=None,
         out_mask_pattern=None,
+        decision_model=None,
     ):
         super().__init__(
             language_model=language_model,
@@ -987,6 +1028,7 @@ class RoleAdherence(RubricsAsJudge):
             out_mask=out_mask,
             in_mask_pattern=in_mask_pattern,
             out_mask_pattern=out_mask_pattern,
+            decision_model=decision_model,
         )
 
 
@@ -1019,6 +1061,7 @@ class RoleViolation(RubricsAsJudge):
         out_mask=None,
         in_mask_pattern=None,
         out_mask_pattern=None,
+        decision_model=None,
     ):
         super().__init__(
             language_model=language_model,
@@ -1033,6 +1076,7 @@ class RoleViolation(RubricsAsJudge):
             out_mask=out_mask,
             in_mask_pattern=in_mask_pattern,
             out_mask_pattern=out_mask_pattern,
+            decision_model=decision_model,
         )
 
 
@@ -1065,6 +1109,7 @@ class PlanQuality(RubricsAsJudge):
         out_mask=None,
         in_mask_pattern=None,
         out_mask_pattern=None,
+        decision_model=None,
     ):
         super().__init__(
             language_model=language_model,
@@ -1079,6 +1124,7 @@ class PlanQuality(RubricsAsJudge):
             out_mask=out_mask,
             in_mask_pattern=in_mask_pattern,
             out_mask_pattern=out_mask_pattern,
+            decision_model=decision_model,
         )
 
 
@@ -1111,6 +1157,7 @@ class PlanAdherence(RubricsAsJudge):
         out_mask=None,
         in_mask_pattern=None,
         out_mask_pattern=None,
+        decision_model=None,
     ):
         super().__init__(
             language_model=language_model,
@@ -1125,6 +1172,7 @@ class PlanAdherence(RubricsAsJudge):
             out_mask=out_mask,
             in_mask_pattern=in_mask_pattern,
             out_mask_pattern=out_mask_pattern,
+            decision_model=decision_model,
         )
 
 
@@ -1157,6 +1205,7 @@ class StepEfficiency(RubricsAsJudge):
         out_mask=None,
         in_mask_pattern=None,
         out_mask_pattern=None,
+        decision_model=None,
     ):
         super().__init__(
             language_model=language_model,
@@ -1171,6 +1220,7 @@ class StepEfficiency(RubricsAsJudge):
             out_mask=out_mask,
             in_mask_pattern=in_mask_pattern,
             out_mask_pattern=out_mask_pattern,
+            decision_model=decision_model,
         )
 
 
@@ -1208,6 +1258,7 @@ class AgentLoopDetection(RubricsAsJudge):
         out_mask=None,
         in_mask_pattern=None,
         out_mask_pattern=None,
+        decision_model=None,
     ):
         super().__init__(
             language_model=language_model,
@@ -1222,6 +1273,7 @@ class AgentLoopDetection(RubricsAsJudge):
             out_mask=out_mask,
             in_mask_pattern=in_mask_pattern,
             out_mask_pattern=out_mask_pattern,
+            decision_model=decision_model,
         )
 
 
@@ -1259,6 +1311,7 @@ class ConversationCompleteness(RubricsAsJudge):
         out_mask=None,
         in_mask_pattern=None,
         out_mask_pattern=None,
+        decision_model=None,
     ):
         super().__init__(
             language_model=language_model,
@@ -1273,6 +1326,7 @@ class ConversationCompleteness(RubricsAsJudge):
             out_mask=out_mask,
             in_mask_pattern=in_mask_pattern,
             out_mask_pattern=out_mask_pattern,
+            decision_model=decision_model,
         )
 
 
@@ -1310,6 +1364,7 @@ class KnowledgeRetention(RubricsAsJudge):
         out_mask=None,
         in_mask_pattern=None,
         out_mask_pattern=None,
+        decision_model=None,
     ):
         super().__init__(
             language_model=language_model,
@@ -1324,6 +1379,7 @@ class KnowledgeRetention(RubricsAsJudge):
             out_mask=out_mask,
             in_mask_pattern=in_mask_pattern,
             out_mask_pattern=out_mask_pattern,
+            decision_model=decision_model,
         )
 
 
@@ -1356,6 +1412,7 @@ class TopicAdherence(RubricsAsJudge):
         out_mask=None,
         in_mask_pattern=None,
         out_mask_pattern=None,
+        decision_model=None,
     ):
         super().__init__(
             language_model=language_model,
@@ -1370,6 +1427,7 @@ class TopicAdherence(RubricsAsJudge):
             out_mask=out_mask,
             in_mask_pattern=in_mask_pattern,
             out_mask_pattern=out_mask_pattern,
+            decision_model=decision_model,
         )
 
 
@@ -1402,6 +1460,7 @@ class TurnRelevancy(RubricsAsJudge):
         out_mask=None,
         in_mask_pattern=None,
         out_mask_pattern=None,
+        decision_model=None,
     ):
         super().__init__(
             language_model=language_model,
@@ -1416,6 +1475,7 @@ class TurnRelevancy(RubricsAsJudge):
             out_mask=out_mask,
             in_mask_pattern=in_mask_pattern,
             out_mask_pattern=out_mask_pattern,
+            decision_model=decision_model,
         )
 
 
@@ -1448,6 +1508,7 @@ class TurnFaithfulness(RubricsAsJudge):
         out_mask=None,
         in_mask_pattern=None,
         out_mask_pattern=None,
+        decision_model=None,
     ):
         super().__init__(
             language_model=language_model,
@@ -1462,4 +1523,5 @@ class TurnFaithfulness(RubricsAsJudge):
             out_mask=out_mask,
             in_mask_pattern=in_mask_pattern,
             out_mask_pattern=out_mask_pattern,
+            decision_model=decision_model,
         )

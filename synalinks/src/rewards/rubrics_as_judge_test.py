@@ -1,6 +1,7 @@
 # License Apache 2.0: (c) 2025-2026 Yoan Sallami (Synalinks Team)
 
 import json
+import os
 from unittest.mock import patch
 
 from synalinks.src import rewards
@@ -10,10 +11,14 @@ from synalinks.src.backend import Field
 from synalinks.src.backend import Rating
 from synalinks.src.backend import Rating20
 from synalinks.src.backend import is_symbolic_data_model
+from synalinks.src.modules.decision_models import DecisionModel
 from synalinks.src.modules.language_models import LanguageModel
+from synalinks.src.rewards.rubrics_as_judge import DECISION_MODEL_LEVELS
 from synalinks.src.rewards.rubrics_as_judge import Rubric
 from synalinks.src.rewards.rubrics_as_judge import RubricsAsJudge
 from synalinks.src.rewards.rubrics_as_judge import RubricsAsJudgeProgram
+from synalinks.src.rewards.rubrics_as_judge import parse_rubric
+from synalinks.src.testing.test_utils import mock_decision_model
 
 
 class RubricsAsJudgeTest(testing.TestCase):
@@ -56,9 +61,7 @@ class RubricsAsJudgeTest(testing.TestCase):
                 }
             ]
         }
-        score = await reward(
-            y_true=Answer(answer="Paris"), y_pred=Answer(answer="Paris")
-        )
+        score = await reward(y_true=Answer(answer="Paris"), y_pred=Answer(answer="Paris"))
         # correct: (5 - 1) / 4 = 1.0, grounded: (3 - 1) / 4 = 0.5
         self.assertAlmostEqual(score, (3 * 1.0 + 1 * 0.5) / 4)
 
@@ -75,7 +78,7 @@ class RubricsAsJudgeTest(testing.TestCase):
         mock_completion.assert_not_called()
 
     def test_rubric_validation(self):
-        rubric = Rubric.parse("No preamble, no restating the question.")
+        rubric = parse_rubric("No preamble, no restating the question.")
         self.assertEqual(rubric.name, "no_preamble_no_restating_the_question")
         with self.assertRaisesRegex(ValueError, "must not be empty"):
             RubricsAsJudge(
@@ -90,7 +93,7 @@ class RubricsAsJudgeTest(testing.TestCase):
                 ],
             )
         with self.assertRaisesRegex(ValueError, "weights must be positive"):
-            Rubric("correct", "Correct.", weight=0)
+            Rubric(name="correct", description="Correct.", weight=0)
 
     def test_rubrics_as_judge_preset(self):
         language_model = LanguageModel(model="ollama/mistral")
@@ -115,15 +118,20 @@ class RubricsAsJudgeTest(testing.TestCase):
 
     def test_rubric_parse(self):
         # Names are normalized into JSON property names.
-        self.assertEqual(Rubric("Is It Correct?", "Correct.").name, "is_it_correct")
-        self.assertEqual(Rubric("2nd opinion", "Opinion.").name, "criterion_2nd_opinion")
-        rubric = Rubric.parse({"name": "correct", "description": "Correct.", "weight": 2})
-        self.assertIs(Rubric.parse(rubric), rubric)
-        self.assertEqual(Rubric.from_config(rubric.get_config()).weight, 2.0)
-        with self.assertRaisesRegex(ValueError, "missing \\['description'\\]"):
-            Rubric.parse({"name": "correct"})
+        self.assertEqual(
+            Rubric(name="Is It Correct?", description="Correct.").name, "is_it_correct"
+        )
+        self.assertEqual(
+            Rubric(name="2nd opinion", description="Opinion.").name,
+            "criterion_2nd_opinion",
+        )
+        rubric = parse_rubric({"name": "correct", "description": "Correct.", "weight": 2})
+        self.assertIs(parse_rubric(rubric), rubric)
+        self.assertEqual(Rubric(**rubric.get_json()).weight, 2.0)
+        with self.assertRaisesRegex(ValueError, "description"):
+            parse_rubric({"name": "correct"})
         with self.assertRaisesRegex(TypeError, "Cannot interpret"):
-            Rubric.parse(42)
+            parse_rubric(42)
 
     @patch("litellm.acompletion")
     async def test_rubrics_as_judge_without_gold_reference(self, mock_completion):
@@ -244,3 +252,71 @@ class RubricsAsJudgeTest(testing.TestCase):
         self.assertIs(restored.program.score_type, Rating)
         self.assertEqual(restored.program.rubrics[0].name, "correct")
         self.assertEqual(restored.program.rubrics[0].weight, 2.0)
+
+
+def score_answer(score, confidence=0.9):
+    keys = [str(i) for i in range(len(DECISION_MODEL_LEVELS))]
+    return {
+        "type": "score",
+        "score": score,
+        "legend": dict(zip(keys, DECISION_MODEL_LEVELS)),
+        "probabilities": {key: 1.0 if key == str(int(score)) else 0.0 for key in keys},
+        "confidence": confidence,
+    }
+
+
+@patch.dict(os.environ, {"TYPESAFE_API_KEY": "test-key"})
+class RubricsAsJudgeWithDecisionModelTest(testing.TestCase):
+    async def test_weighted_reward_in_one_call(self):
+        class Answer(DataModel):
+            answer: str
+
+        decision_model = DecisionModel(model="typesafe/jev-latest")
+        payloads = mock_decision_model(
+            decision_model,
+            {"correct": score_answer(4.0), "concise": score_answer(2.0)},
+        )
+        reward = RubricsAsJudge(
+            decision_model=decision_model,
+            rubrics=[
+                {"name": "correct", "description": "The answer is correct.", "weight": 3},
+                {"name": "concise", "description": "The answer is concise."},
+            ],
+        )
+
+        result = await reward.program([Answer(answer="Paris"), Answer(answer="Paris")])
+
+        # (1.0 * 3 + 0.5 * 1) / 4
+        self.assertAlmostEqual(result.get("reward"), 0.875)
+        self.assertEqual(result.get("correct"), 1.0)
+        self.assertEqual(result.get("concise"), 0.5)
+        self.assertIn(
+            "correct: Fully meets the criterion. (score 1.00, confidence 0.90)",
+            result.get("critique"),
+        )
+        self.assertEqual(len(payloads), 1)
+        self.assertEqual(
+            payloads[0]["questions"]["correct"],
+            {
+                "type": "score",
+                "instructions": "How well does the answer meet this criterion: "
+                "The answer is correct.",
+                "criteria": DECISION_MODEL_LEVELS,
+            },
+        )
+
+    def test_score_type_does_not_apply(self):
+        with self.assertRaisesRegex(ValueError, "score_type"):
+            RubricsAsJudge(
+                decision_model=DecisionModel(model="typesafe/jev-latest"),
+                rubrics="toxicity",
+                score_type=Rating,
+            )
+
+    def test_config_round_trip(self):
+        reward = rewards.Faithfulness(
+            decision_model=DecisionModel(model="typesafe/jev-latest"),
+        )
+        restored = rewards.deserialize(rewards.serialize(reward))
+        self.assertIsInstance(restored.program.decision_model, DecisionModel)
+        self.assertIsNone(restored.program.score_type)

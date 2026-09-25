@@ -16,6 +16,7 @@ Class hierarchy:
 from synalinks.src.api_export import synalinks_export
 from synalinks.src.backend.common.op_scope import read_phase_wall_clock_s
 from synalinks.src.metrics.metric import Metric
+from synalinks.src.metrics.metrics_utils import model_holders
 
 _TRACKED_SUFFIXES = (
     "calls",
@@ -48,10 +49,7 @@ def _collect_embedding_models(program):
             else:
                 break
 
-    modules = []
-    if hasattr(program, "_flatten_modules"):
-        modules = program._flatten_modules(include_self=True, recursive=True)
-    for module in modules:
+    for module in model_holders(program):
         _add_chain(getattr(module, "embedding_model", None))
         if isinstance(module, EmbeddingModel):
             _add_chain(module)
@@ -1217,9 +1215,7 @@ class AvgOptimizerEmbeddingCostPerCall(EmbeddingModelOptimizersOperationalMetric
 
 
 @synalinks_export("synalinks.metrics.AvgOptimizerEmbeddingCachedTokensPerCall")
-class AvgOptimizerEmbeddingCachedTokensPerCall(
-    EmbeddingModelOptimizersOperationalMetric
-):
+class AvgOptimizerEmbeddingCachedTokensPerCall(EmbeddingModelOptimizersOperationalMetric):
     """Average cached prompt tokens per embedding call during the optimizer step.
 
     Example:

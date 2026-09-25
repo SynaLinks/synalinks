@@ -7,8 +7,11 @@ from synalinks.src import ops
 from synalinks.src.api_export import synalinks_export
 from synalinks.src.backend import DataModel
 from synalinks.src.backend import Field
+from synalinks.src.backend import JsonDataModel
+from synalinks.src.backend import SymbolicDataModel
 from synalinks.src.backend import dynamic_enum_array
 from synalinks.src.modules.core.generator import Generator
+from synalinks.src.modules.decision_models import get as _get_dm
 from synalinks.src.modules.language_models import get as _get_lm
 from synalinks.src.modules.module import Module
 from synalinks.src.saving import serialization_lib
@@ -23,6 +26,33 @@ class MultiDecisionAnswer(DataModel):
         description="Your step by step thinking to choose the correct labels."
     )
     choices: List[str] = Field(description="The chosen labels (one or more).")
+
+
+class MultiDecisionModelAnswer(DataModel):
+    choices: List[str] = Field(description="The chosen labels (one or more).")
+
+
+def decision_model_label_schema(question, labels):
+    """Return the schema a `DecisionModel` answers for a `MultiDecision`.
+
+    Decision models answer typed questions, so each label is asked as a
+    yes/no question of its own: `label_<i>` is `True` when the label applies.
+    """
+    properties = {
+        f"label_{i}": {
+            "title": f"Label {i}",
+            "type": "boolean",
+            "description": f"{question} Does the label {label!r} apply?",
+        }
+        for i, label in enumerate(labels)
+    }
+    return {
+        "title": "LabelDecisions",
+        "type": "object",
+        "properties": properties,
+        "required": list(properties),
+        "additionalProperties": False,
+    }
 
 
 def default_multi_decision_instructions(labels):
@@ -114,6 +144,9 @@ class MultiDecision(Module):
         description (str): Optional. The description of the module.
         trainable (bool): Whether the module's variables should be
             trainable.
+        decision_model (DecisionModel): Optional. A decision model to decide
+            with instead of the language model: it answers one yes/no
+            question per label, and the output has no `thinking` field.
     """
 
     def __init__(
@@ -137,6 +170,7 @@ class MultiDecision(Module):
         name=None,
         description=None,
         trainable=True,
+        decision_model=None,
     ):
         super().__init__(
             name=name,
@@ -149,17 +183,30 @@ class MultiDecision(Module):
             raise ValueError("The `labels` argument must be provided.")
         if not isinstance(labels, list):
             raise ValueError("The `labels` parameter must be a list of string.")
-        schema = dynamic_enum_array(
-            MultiDecisionAnswer.get_schema(),
-            "choices",
-            labels,
-            inline=inline,
-        )
-        self.schema = schema
         self.question = question
         self.labels = labels
         self.inline = inline
         self.language_model = _get_lm(language_model)
+        self.decision_model = (
+            _get_dm(decision_model) if decision_model is not None else None
+        )
+        if self.decision_model is not None:
+            # No `thinking` field: decision models do not reason step by step.
+            self.schema = dynamic_enum_array(
+                MultiDecisionModelAnswer.get_schema(),
+                "choices",
+                labels,
+                inline=inline,
+            )
+            generator_schema = decision_model_label_schema(question, labels)
+        else:
+            self.schema = dynamic_enum_array(
+                MultiDecisionAnswer.get_schema(),
+                "choices",
+                labels,
+                inline=inline,
+            )
+            generator_schema = self.schema
         self.prompt_template = prompt_template
         self.examples = examples
         if not instructions:
@@ -174,11 +221,13 @@ class MultiDecision(Module):
         self.use_inputs_schema = use_inputs_schema
         self.use_outputs_schema = use_outputs_schema
         self.decision = Generator(
-            schema=self.schema,
+            schema=generator_schema,
             language_model=self.language_model,
+            decision_model=self.decision_model,
             prompt_template=self.prompt_template,
             examples=self.examples,
             instructions=self.instructions,
+            seed_instructions=self.seed_instructions,
             temperature=self.temperature,
             max_tokens=self.max_tokens,
             top_p=self.top_p,
@@ -198,7 +247,24 @@ class MultiDecision(Module):
             name="inputs_with_question_" + self.name,
         )
         result = await self.decision(inputs, training=training)
-        return result
+        if result is None or self.decision_model is None:
+            return result
+        return JsonDataModel(
+            json={
+                "choices": [
+                    label
+                    for i, label in enumerate(self.labels)
+                    if result.get(f"label_{i}")
+                ]
+            },
+            schema=self.schema,
+            name=result.name,
+        )
+
+    async def compute_output_spec(self, inputs, training=False):
+        if self.decision_model is None:
+            return await super().compute_output_spec(inputs, training=training)
+        return SymbolicDataModel(schema=self.schema, name=self.name)
 
     def get_config(self):
         config = {
@@ -225,6 +291,10 @@ class MultiDecision(Module):
                 self.language_model
             )
         }
+        if self.decision_model is not None:
+            language_model_config["decision_model"] = (
+                serialization_lib.serialize_synalinks_object(self.decision_model)
+            )
         return {**config, **language_model_config}
 
     @classmethod
@@ -232,4 +302,8 @@ class MultiDecision(Module):
         language_model = serialization_lib.deserialize_synalinks_object(
             config.pop("language_model")
         )
+        if "decision_model" in config:
+            config["decision_model"] = serialization_lib.deserialize_synalinks_object(
+                config.pop("decision_model"),
+            )
         return cls(language_model=language_model, **config)

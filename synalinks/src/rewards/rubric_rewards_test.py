@@ -7,8 +7,8 @@ from synalinks.src.modules.language_models import LanguageModel
 from synalinks.src.rewards.rubric_rewards import Faithfulness
 from synalinks.src.rewards.rubrics import get_rubric
 from synalinks.src.rewards.rubrics import list_rubrics
-from synalinks.src.rewards.rubrics_as_judge import Rubric
 from synalinks.src.rewards.rubrics_as_judge import RubricsAsJudge
+from synalinks.src.rewards.rubrics_as_judge import parse_rubric
 from synalinks.src.utils.naming import to_snake_case
 
 
@@ -53,7 +53,7 @@ class RubricRewardsTest(testing.TestCase):
                 self.assertEqual(reward.name, preset)
                 self.assertEqual(
                     [rubric.name for rubric in reward.program.rubrics],
-                    [Rubric.parse(rubric).name for rubric in get_rubric(preset)],
+                    [parse_rubric(rubric).name for rubric in get_rubric(preset)],
                 )
                 restored = rewards.deserialize(rewards.serialize(reward))
                 self.assertIsInstance(restored, cls)

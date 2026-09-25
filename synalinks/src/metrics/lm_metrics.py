@@ -7,6 +7,11 @@ provider call. Routing across `inference`, `reward`, and `optimizer`
 phases follows the active `op_scope` (a contextvar the trainer sets via
 `synalinks.src.backend.common.op_scope.op_scope`).
 
+A `DecisionModel` keeps the same counters, so these metrics count its calls
+too. The models reachable from the program are collected on `compile()`,
+including `fallback` chains and the models of the compiled reward (e.g. a
+judge's), whose calls run during the reward phase.
+
 Class hierarchy:
 
     LMOperationalMetric         (base, _phase = "inference")
@@ -17,6 +22,7 @@ Class hierarchy:
 from synalinks.src.api_export import synalinks_export
 from synalinks.src.backend.common.op_scope import read_phase_wall_clock_s
 from synalinks.src.metrics.metric import Metric
+from synalinks.src.metrics.metrics_utils import model_holders
 
 _TRACKED_SUFFIXES = (
     "calls",
@@ -50,7 +56,13 @@ def _collect_language_models(program):
     subagents. Skipping it here left those calls' `cumulated_cost` counted
     (updated unconditionally) but every token/latency operational metric
     blind to them, since only `language_model` was ever chained.
+
+    A `DecisionModel` has the same interface and keeps the same counters, so it
+    is collected too: every operational metric counts its calls. The models of
+    the compiled reward (e.g. a judge's) are collected as well, since they run
+    during the reward phase.
     """
+    from synalinks.src.modules.decision_models import DecisionModel
     from synalinks.src.modules.language_models import LanguageModel
 
     lms = []
@@ -58,20 +70,18 @@ def _collect_language_models(program):
 
     def _add_chain(lm):
         while lm is not None and id(lm) not in seen:
-            if isinstance(lm, LanguageModel):
+            if isinstance(lm, (LanguageModel, DecisionModel)):
                 seen.add(id(lm))
                 lms.append(lm)
                 lm = getattr(lm, "fallback", None)
             else:
                 break
 
-    modules = []
-    if hasattr(program, "_flatten_modules"):
-        modules = program._flatten_modules(include_self=True, recursive=True)
-    for module in modules:
+    for module in model_holders(program):
         _add_chain(getattr(module, "language_model", None))
         _add_chain(getattr(module, "sub_language_model", None))
-        if isinstance(module, LanguageModel):
+        _add_chain(getattr(module, "decision_model", None))
+        if isinstance(module, (LanguageModel, DecisionModel)):
             _add_chain(module)
     return lms
 

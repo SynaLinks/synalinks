@@ -46,6 +46,7 @@ from synalinks.api import CypherAgent
 from synalinks.api import DataModel
 from synalinks.api import Dataset
 from synalinks.api import Decision
+from synalinks.api import DecisionModel
 from synalinks.api import DeepAgent
 from synalinks.api import DeepAgentAsJudge
 from synalinks.api import EmbeddedEntity
@@ -206,7 +207,9 @@ from synalinks.api import callbacks
 from synalinks.api import clear_session
 from synalinks.api import config
 from synalinks.api import datasets
+from synalinks.api import decision_models
 from synalinks.api import default_agent_prompt_template
+from synalinks.api import default_decision_model
 from synalinks.api import default_embedding_model
 from synalinks.api import default_knowledge_base
 from synalinks.api import default_language_model
@@ -256,6 +259,7 @@ from synalinks.api import rewards
 from synalinks.api import sandboxes
 from synalinks.api import saving
 from synalinks.api import set_api_base
+from synalinks.api import set_default_decision_model
 from synalinks.api import set_default_embedding_model
 from synalinks.api import set_default_knowledge_base
 from synalinks.api import set_default_language_model

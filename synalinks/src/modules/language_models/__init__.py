@@ -86,6 +86,11 @@ def get(identifier):
 
     Returns:
         (LanguageModel): A concrete Synalinks LanguageModel instance.
+
+    Raises:
+        ValueError: If the identifier is a `DecisionModel` (use the
+            `decision_model` argument of the modules that support one) or
+            cannot be interpreted.
     """
     if identifier is None:
         # Lazy import to avoid a backend → modules cycle. ``None`` falls
@@ -99,6 +104,16 @@ def get(identifier):
         if identifier is None:
             return None
 
+    # Lazy import: decision models import the language model module.
+    from synalinks.src.modules.decision_models import DecisionModel
+
+    if isinstance(identifier, DecisionModel):
+        raise ValueError(
+            f"{identifier} is a `DecisionModel`, not a `LanguageModel`: pass it as "
+            "the `decision_model` of a module that supports decision models "
+            "(`Generator`, `Decision`, `MultiDecision`, `Branch`, `SelfCritique`, "
+            "`RubricsAsJudge`), not as a `language_model`."
+        )
     if isinstance(identifier, dict):
         obj = deserialize(identifier)
     elif isinstance(identifier, str):

@@ -7,6 +7,7 @@ since your modifications would be overwritten.
 from synalinks.src.backend.config import api_base as api_base
 from synalinks.src.backend.config import api_key as api_key
 from synalinks.src.backend.config import backend as backend
+from synalinks.src.backend.config import default_decision_model as default_decision_model
 from synalinks.src.backend.config import (
     default_embedding_model as default_embedding_model,
 )
@@ -29,6 +30,9 @@ from synalinks.src.backend.config import record_traces as record_traces
 from synalinks.src.backend.config import set_api_base as set_api_base
 from synalinks.src.backend.config import set_api_key as set_api_key
 from synalinks.src.backend.config import set_backend as set_backend
+from synalinks.src.backend.config import (
+    set_default_decision_model as set_default_decision_model,
+)
 from synalinks.src.backend.config import (
     set_default_embedding_model as set_default_embedding_model,
 )

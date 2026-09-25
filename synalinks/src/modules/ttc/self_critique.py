@@ -16,6 +16,9 @@ from synalinks.src.backend.pydantic.metrics import score_type_description
 from synalinks.src.backend.pydantic.metrics import score_type_json_type
 from synalinks.src.backend.pydantic.metrics import serialize_score_type
 from synalinks.src.modules.core.generator import Generator
+from synalinks.src.modules.decision_models import get as _get_dm
+from synalinks.src.modules.decision_models.decision_model import UnsupportedSchemaError
+from synalinks.src.modules.decision_models.decision_model import score_schema
 from synalinks.src.modules.language_models import get as _get_lm
 from synalinks.src.modules.module import Module
 from synalinks.src.saving import serialization_lib
@@ -79,6 +82,37 @@ def critique_with_reward_schema(score_type):
         ),
     }
     return schema
+
+
+# The levels a decision model grades the inputs on, from the lowest reward to
+# the highest.
+DECISION_MODEL_REWARD_LEVELS = [
+    "Very bad.",
+    "Bad.",
+    "Acceptable.",
+    "Good.",
+    "Very good.",
+]
+
+
+def decision_model_reward_schema():
+    """Return the `SelfCritique` schema a `DecisionModel` answers.
+
+    Decision models do not write text, so there is no `critique`: the
+    `reward` is a score question over `DECISION_MODEL_REWARD_LEVELS`.
+    """
+    return {
+        "title": "Reward",
+        "type": "object",
+        "properties": {
+            "reward": score_schema(
+                "How good are the provided inputs?",
+                DECISION_MODEL_REWARD_LEVELS,
+            ),
+        },
+        "required": ["reward"],
+        "additionalProperties": False,
+    }
 
 
 def default_critique_instructions(score_type=None, return_reward=True):
@@ -219,16 +253,21 @@ class SelfCritique(Module):
         use_outputs_schema (bool): Optional. Whether or not use the outputs schema in
             the prompt (Default to False) (see `Generator`).
         return_reward (bool): Optional. Whether or not to compute an intermediate reward.
-        score_type (type | str): Optional. The scale the language model picks the
-            reward from: `synalinks.FineScore` (default), `synalinks.Score`,
-            `synalinks.Rating`, `synalinks.Rating10`, `synalinks.Rating20`, any
-            `Enum` whose members are `int` or `float`, or the name of one of them.
+        score_type (type | str): Optional. Language model only. The scale the
+            language model picks the reward from: `synalinks.FineScore`
+            (default), `synalinks.Score`, `synalinks.Rating`, `synalinks.Rating10`,
+            `synalinks.Rating20`, any `Enum` whose members are `int` or `float`,
+            or the name of one of them.
             The output `reward` is always normalized to a float between 0.0 and 1.0.
         return_inputs (bool): Optional. Whether or not to concatenate the inputs to
             the outputs (Default to True) (see `Generator`).
         name (str): Optional. The name of the module.
         description (str): Optional. The description of the module.
         trainable (bool): Whether the module's variables should be trainable.
+        decision_model (DecisionModel): Optional. A decision model to grade
+            with instead of the language model. It does not write a critique:
+            the output has no `critique` field, and `return_reward` must be
+            True.
     """
 
     def __init__(
@@ -252,6 +291,7 @@ class SelfCritique(Module):
         name=None,
         description=None,
         trainable=True,
+        decision_model=None,
     ):
         super().__init__(
             name=name,
@@ -259,10 +299,23 @@ class SelfCritique(Module):
             trainable=trainable,
         )
         self.language_model = _get_lm(language_model)
+        self.decision_model = (
+            _get_dm(decision_model) if decision_model is not None else None
+        )
         self.score_type = get_score_type(score_type or FineScore)
         self.prompt_template = prompt_template
         self.examples = examples
-        if instructions is None:
+        use_decision_model = self.decision_model is not None
+        if use_decision_model and not return_reward:
+            raise UnsupportedSchemaError(
+                "A `DecisionModel` does not write a critique: use it with "
+                "`return_reward=True`, or use a `LanguageModel`."
+            )
+        if instructions is None and use_decision_model:
+            instructions = (
+                "Your task is to carefully examine the provided inputs and grade them."
+            )
+        elif instructions is None:
             instructions = default_critique_instructions(
                 self.score_type, return_reward=return_reward
             )
@@ -278,7 +331,9 @@ class SelfCritique(Module):
         self.return_reward = return_reward
         self.return_inputs = return_inputs
 
-        if self.return_reward:
+        if use_decision_model:
+            schema = decision_model_reward_schema()
+        elif self.return_reward:
             schema = critique_with_reward_schema(self.score_type)
         else:
             schema = Critique.get_schema()
@@ -286,6 +341,7 @@ class SelfCritique(Module):
         self.generator = Generator(
             schema=schema,
             language_model=self.language_model,
+            decision_model=self.decision_model,
             prompt_template=self.prompt_template,
             examples=self.examples,
             instructions=self.instructions,
@@ -318,8 +374,12 @@ class SelfCritique(Module):
         if is_symbolic_data_model(outputs):
             return SymbolicDataModel(schema=schema, name=outputs.name)
         json = dict(outputs.get_json())
-        if json.get("reward") is not None:
-            json["reward"] = normalize_score(json["reward"], self.score_type)
+        reward = json.get("reward")
+        if isinstance(reward, dict):
+            # A decision model's score answer: its level index, out of the top.
+            json["reward"] = reward["score"] / (len(reward["legend"]) - 1)
+        elif reward is not None:
+            json["reward"] = normalize_score(reward, self.score_type)
         return JsonDataModel(json=json, schema=schema, name=outputs.name)
 
     def get_config(self):
@@ -347,6 +407,10 @@ class SelfCritique(Module):
                 self.language_model,
             )
         }
+        if self.decision_model is not None:
+            language_model_config["decision_model"] = (
+                serialization_lib.serialize_synalinks_object(self.decision_model)
+            )
         return {
             **config,
             **language_model_config,
@@ -357,6 +421,10 @@ class SelfCritique(Module):
         language_model = serialization_lib.deserialize_synalinks_object(
             config.pop("language_model"),
         )
+        if "decision_model" in config:
+            config["decision_model"] = serialization_lib.deserialize_synalinks_object(
+                config.pop("decision_model"),
+            )
         return cls(
             language_model=language_model,
             **config,

@@ -178,6 +178,9 @@ class Branch(Module):
         name (str): Optional. The name of the module.
         description (str): Optional. The description of the module.
         trainable (bool): Whether the module's variables should be trainable.
+        decision_model (DecisionModel): Optional. A decision model to decide
+            which branch to take, instead of the language model (see
+            `Decision`). The branches keep their own models.
     """
 
     def __init__(
@@ -204,6 +207,7 @@ class Branch(Module):
         name=None,
         description=None,
         trainable=True,
+        decision_model=None,
         **kwargs,
     ):
         super().__init__(
@@ -234,6 +238,11 @@ class Branch(Module):
         self.reasoning_effort = reasoning_effort
         self.use_inputs_schema = use_inputs_schema
         self.use_outputs_schema = use_outputs_schema
+        # Only given when set, so a custom `decision_type` without decision
+        # model support keeps working.
+        decision_model_kwargs = {}
+        if decision_model is not None:
+            decision_model_kwargs["decision_model"] = decision_model
         self.decision = decision_type(
             question=self.question,
             labels=self.labels,
@@ -250,7 +259,9 @@ class Branch(Module):
             use_inputs_schema=self.use_inputs_schema,
             use_outputs_schema=self.use_outputs_schema,
             name="decision_" + self.name,
+            **decision_model_kwargs,
         )
+        self.decision_model = getattr(self.decision, "decision_model", None)
 
     async def call(self, inputs, training=False):
         outputs = [None] * len(self.branches)
@@ -376,6 +387,10 @@ class Branch(Module):
                 self.language_model
             )
         }
+        if self.decision_model is not None:
+            language_model_config["decision_model"] = (
+                serialization_lib.serialize_synalinks_object(self.decision_model)
+            )
         branches_config = {
             "branches": [
                 serialization_lib.serialize_synalinks_object(branch)
@@ -389,6 +404,10 @@ class Branch(Module):
         language_model = serialization_lib.deserialize_synalinks_object(
             config.pop("language_model")
         )
+        if "decision_model" in config:
+            config["decision_model"] = serialization_lib.deserialize_synalinks_object(
+                config.pop("decision_model"),
+            )
         branches = [
             serialization_lib.deserialize_synalinks_object(
                 branch_config, custom_objects=custom_objects
