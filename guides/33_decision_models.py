@@ -1,94 +1,50 @@
+# License Apache 2.0: (c) 2025-2026 Yoan Sallami (Synalinks Team)
+
 """
 # Decision Models
 
-A **decision model** answers typed questions about its input instead of
-generating text. Ask it "is this about billing?" and it returns the
-probability of *yes*; ask it to pick a team and it returns one of the teams
-you listed, with the probability of each; ask it to rate an answer and it
-returns a score along the levels you gave. It never writes a sentence.
+Most steps of a program *write*: an answer, a summary, a plan. But many steps
+only *decide*: is this ticket about billing? Which branch should handle this
+query? Is this answer grounded in its context? A language model can do both,
+but for a decision it is overkill: it generates tokens you then have to trust
+to be one of your labels.
 
-That restriction is what makes it useful. A decision model (a "System One"
-model, such as TypeSafe's `jev`) is much faster and cheaper than a language
-model, its answers are **calibrated probabilities** rather than sampled
-tokens, and an answer is **always** one of the options you gave: there is no
-output to parse and no invalid label to recover from. That makes it a good
-fit for everything a program decides rather than writes: routing,
-classification, guards and grading.
+A **decision model** does only the second job. It never writes a sentence:
+it answers typed questions about its input, a yes or a no, one option out of
+a list, or a score along ordered levels, each with **calibrated
+probabilities**. Its answer is always one of the options you gave, so there is
+nothing to parse and no invalid label to recover from, and it is much faster
+and cheaper than a language model.
 
-What it does not do: reason step by step, generate text or values, call
-tools, or read images. When a step needs any of those, keep a language model.
+The mental model is a form, not an essay. A language model writes the essay;
+a decision model ticks the boxes of a form you designed. When a step of your
+program is a form, give it to a decision model.
 
-## Setting the API Key
+## Decision Models vs. Language Models
 
-Like language models, decision models read their credentials from
-environment variables. Set `TYPESAFE_API_KEY` (and, to use another endpoint,
-`TYPESAFE_BASE_URL`), ideally in a `.env` file kept out of version control:
+| | Language model | Decision model |
+|---|---|---|
+| Output | Generated text (or JSON) | Answers to typed questions |
+| Guarantee | Constrained by the schema | Always one of your options |
+| Confidence | None | Calibrated probabilities |
+| Reasoning | Step by step, tools, images | None |
+| Cost and latency | Higher | Much lower |
+| Best for | Writing, reasoning, acting | Routing, classification, guards, grading |
 
-```
-TYPESAFE_API_KEY=your-api-key
-```
+The two are complementary, and the best programs use both: a decision model
+for every *decision* on the path, a language model only where something has
+to be *written*.
 
-and load it at the start of your script with `load_dotenv()`, as this guide
-does. The key is read on every call, so it is never stored in the program's
-config nor written to disk when you save a program.
-If the key is missing, a call fails like any other failed call: it warns and
-returns `None` (or asks the `fallback` model, if any).
+## Fields Are Questions
 
-```python
-decision_model = synalinks.DecisionModel(model="typesafe/jev-latest")
-```
-
-Pin a versioned ID (e.g. `"typesafe/jev-1.13.0"`) once you have tuned
-thresholds on a model, so an upgrade of `jev-latest` does not move them.
-
-### A Default Decision Model
-
-Like the default language model, a default decision model spares passing it
-to every module:
-
-```python
-synalinks.set_default_language_model("ollama/mistral:latest")
-synalinks.set_default_decision_model("typesafe/jev-latest")
-```
-
-A module that accepts a decision model then uses the default decision model
-instead of the default language model: a `Decision` or a `Branch` decides with
-it, a `RubricsAsJudge` grades with it. The order is: its `decision_model`, then
-a `language_model` other than the default one (a language model you chose is
-used), then the default decision model, then the default language model. The
-default decision model wins over the default language model even when a
-module is given the default language model explicitly, as parent modules do
-when they build their inner modules. The default decision model only goes where it can answer: a `Generator`
-uses it only when every field of its schema is a question (a `Generator` that
-writes text keeps the default language model), and neither a `SelfCritique`
-without reward nor a `RubricsAsJudge` with a `score_type` uses it.
-
-## The `decision_model` Argument
-
-A `DecisionModel` is called like a `LanguageModel`, with chat messages and a
-target output schema. The modules that can use one take it through their own
-**`decision_model`** argument: `Generator`, `Decision`, `MultiDecision`,
-`Branch`, `SelfCritique`, `RubricsAsJudge` and the rubric rewards. It is never
-a `language_model`: a module given a decision model as its `language_model`
-raises an error, so a decision model cannot end up in a module that needs to
-generate text. The difference is what the schema may contain. The decision model turns each
-field of the output data model into one question, asked with the field's
+A decision model is driven by a data model, like a language model
+([Guide 2](https://synalinks.github.io/synalinks/guides/Data%20Models/)). The
+difference is that each field is a *question*, asked with the field's
 `description`:
 
-| Field type | Question | Output value |
-|---|---|---|
-| `bool` | yes/no | `True` when the probability of yes is at least 0.5 |
-| `Literal[...]` or a string `Enum` | pick one option | the most probable option |
-| `noul_schema(...)` | yes/no | `{"noul": p}` |
-| `choice_schema(...)` | pick one (described) option | `{"choice", "probabilities", "confidence"}` |
-| `score_schema(...)` | rate along 2 to 10 ordered levels | `{"score", "legend", "probabilities", "confidence"}` |
-
-The three `*_schema` helpers (in `synalinks.decision_models`) keep the
-probabilities in the output, for when you need more than the top answer.
-
-Any other field (a free-form `str`, a number, a list...) would need
-generation, so it raises an `UnsupportedSchemaError`. Use
-`decision_model.check_schema(schema)` to check a schema up front.
+- a `bool` field is a yes/no question,
+- a `Literal` (or string `Enum`) field picks one of its options,
+- a `score_schema` field rates along ordered levels (see the API reference).
 
 ```python
 class Triage(synalinks.DataModel):
@@ -98,7 +54,32 @@ class Triage(synalinks.DataModel):
     urgency: Literal["low", "medium", "high"] = synalinks.Field(
         description="How urgent is the ticket?",
     )
+```
 
+What a decision model cannot answer is a field that has to be *written*: a
+free-form string, a number, a list. Synalinks refuses such a data model up
+front instead of failing at run time.
+
+All the questions of a data model are answered in one call, in parallel, so
+put every question about an input in the same data model.
+
+## The `decision_model` Argument
+
+A decision model is set up like a language model, with its API key in the
+environment (`TYPESAFE_API_KEY`, e.g. in a `.env` file):
+
+```python
+decision_model = synalinks.DecisionModel(model="typesafe/jev-latest")
+```
+
+The modules that can decide take it through their own `decision_model`
+argument: `Generator`, `Decision`, `Branch`, `MultiDecision`, `SelfCritique`
+and `RubricsAsJudge`. It is never passed as a `language_model`, so a decision
+model cannot end up in a module that needs to write. With
+`synalinks.set_default_decision_model(...)`, these modules use it by default,
+the same way `set_default_language_model` works for language models.
+
+```python
 triage = synalinks.Generator(
     data_model=Triage,
     decision_model=decision_model,
@@ -106,164 +87,83 @@ triage = synalinks.Generator(
 )
 ```
 
-### The Context Is the State
+Given a decision model, the decision modules keep their job but drop their
+free-text part: a `Decision` answers without its `thinking`, a `SelfCritique`
+grades without writing a `critique`, and a `RubricsAsJudge` grades every
+criterion in a single call.
 
-The messages the `Generator` builds, the system message with the
-instructions and few-shot examples, then the inputs, are sent to the
-decision model as its **state**: the context every question is answered in.
-So the instructions and examples work exactly as with a language model, and
-optimizers improve them the same way (in-context learning).
+## Route Cheap, Write Expensive
 
-All the questions of a call see the same state and are answered
-independently and in parallel: put every question about an input in one data
-model rather than making several calls.
-
-## Decision Models in Modules
-
-The modules whose output is a decision rather than a text accept a
-`decision_model`. They switch to a data model made of questions when they get
-one, so the output loses its free-text field:
-
-- **`Decision`** asks the `question` as is, over the `labels`. The output is
-  `{"choice": ...}`, without `thinking`.
-- **`Branch`** routes through its `Decision`, so it works unchanged.
-- **`MultiDecision`** asks one yes/no question per label, and keeps the
-  labels answered yes: `{"choices": [...]}`, without `thinking`.
-- **`SelfCritique`** grades the inputs on five levels, from "Very bad." to
-  "Very good.". The output `reward` is normalized to [0, 1] as usual, but
-  there is no `critique` (so `return_reward` must stay `True`).
-- **`RubricsAsJudge`** (and the built-in rubric rewards, such as
-  `Faithfulness`) grades every criterion as a score question in a single
-  call. The `critique` lists the level and confidence of each criterion.
+The pattern this enables is the one below: a decision model routes each query
+([Guide 5](https://synalinks.github.io/synalinks/guides/Control%20Flow/)), and
+only the branch that needs it pays for a language model reasoning step by
+step.
 
 ```mermaid
 graph LR
-    Q[Query] --> D{Decision<br/>decision model}
+    Q[Query] --> D{Branch<br/>decision model}
     D -->|easy| A1[Generator<br/>language model]
     D -->|difficult| A2[ChainOfThought<br/>language model]
     A1 --> O[Answer]
     A2 --> O
 ```
 
-A common pattern is the one above: a decision model routes, a language model
-writes. The cheap, fast decision runs on every request, and only the branch
-that needs it pays for step by step reasoning.
+The routing decision runs on every request, so making it cheap and fast
+matters more than anywhere else in the program.
 
-## In-Context Learning
+## Learning in Context
 
-Decision models learn in context, like language models. Their answers are
-conditioned on the whole state, so the instructions and the few-shot examples
-of the system message change how they answer, without any weight update: show
-a decision model a few tickets labeled the way your team triages them, and it
-follows that labeling on the next ones.
+A decision model answers in the context of the whole conversation: the
+system message, with the instructions and the few-shot examples, then the
+inputs. So it learns in context like a language model: show it a few tickets
+labeled the way your team triages them, and it follows that labeling.
 
-That makes a program answered by a decision model **trainable the same way**
-as one answered by a language model. The trainable variables do not change:
-a `Generator` keeps its instructions and examples in its state whatever model
-it calls, and so do the modules built on it (`Decision`, `Branch`,
-`MultiDecision`, `SelfCritique`). Every optimizer works on them unchanged,
-from `RandomFewShot`, which selects the few-shot examples, to **`OMEGA`**,
-which evolves the instructions with a genetic algorithm.
+That means a program answered by a decision model trains **the same way**
+([Guide 15](https://synalinks.github.io/synalinks/guides/Training/)). The
+trainable variables are the same instructions and examples, and every
+optimizer works on them: `RandomFewShot` selects the examples, and `OMEGA`
+evolves the instructions, with its own language model writing the candidates
+while the decision model answers with each of them. As evaluating a candidate
+only costs decision model calls, many candidates can be tried cheaply.
 
-With `OMEGA`, the language model given to the optimizer writes the new
-candidate instructions (mutations and crossovers), the embedding model keeps
-them diverse (Dominated Novelty Search), and the decision model answers the
-program's questions with each candidate in its state. Since evaluating a candidate only costs decision model calls, many
-candidates can be tried for the price of a few language model calls.
+A decision model is also a natural **judge**
+([Guide 13](https://synalinks.github.io/synalinks/guides/Rewards/)): a
+`RubricsAsJudge` given one grades every criterion in one cheap call, which
+makes it a practical reward to train with.
 
-```python
-program.compile(
-    reward=synalinks.rewards.ExactMatch(),
-    optimizer=synalinks.optimizers.OMEGA(
-        language_model=language_model,  # writes the candidates
-        embedding_model=embedding_model,  # keeps them diverse
-    ),
-)
-history = await program.fit(x=x_train, y=y_train, epochs=4)
-```
+## Complete Example
 
-Here the program's modules use the decision model, and `OMEGA` uses a
-language model: the one that proposes candidates never has to be the one
-that answers.
+The example below builds three programs with a decision model:
 
-## Grading While Training
+1. **Triage**: a `Generator` whose data model is made of questions answers a
+   support ticket.
+2. **Routing**: a `Branch` decided by the decision model sends easy queries to
+   a plain `Generator` and difficult ones to a `ChainOfThought`, both answered
+   by a language model.
+3. **Grading**: a `RubricsAsJudge` grades two answers against weighted
+   criteria in one call.
 
-Because a decision model grades all the criteria of a rubric in one cheap
-call, `RubricsAsJudge` with a decision model is a practical reward to train a
-program with: `compile()` it as the reward, then `fit()` as usual.
+## Take-Home Summary
 
-```python
-program.compile(
-    reward=synalinks.rewards.RubricsAsJudge(
-        decision_model=decision_model,
-        rubrics=[
-            {"name": "correct", "description": "The answer is correct.", "weight": 2},
-            {"name": "concise", "description": "No preamble, no filler."},
-        ],
-    ),
-    optimizer=synalinks.optimizers.RandomFewShot(),
-)
-```
-
-The decision model tracks its usage with the same counters as a language
-model: calls, tokens, latency, cost (only input tokens are billed), failed
-calls and fallback activations, split by phase (inference, reward,
-optimizer). So the language model operational metrics (`TotalTokens`,
-`Cost`, `AvgLatency`, `ErrorRate`, their `Reward*` and `Optimizer*`
-variants...) count its calls too, including those of a judge in the reward
-phase, and so do `ProgramCost` and `BudgetStopping`.
-
-With observability enabled, each call is traced like a language model call
-(a `CHAT_MODEL` span with the messages, token usage and cost), plus the
-versioned model that answered and the raw answers with their probabilities
-and confidence. A call that failed every retry is marked as
-failed, even though it returns `None`.
-
-## Reliability
-
-- **Retries**: rate limiting (429), overload (529) and transient server
-  errors are retried with backoff (`retry`, default 5 attempts); a
-  `Retry-After` header is honored. Validation (422) and auth errors are not
-  retried.
-- **Validation**: every answer is checked against its question. A missing
-  answer, a choice outside the options, or a probability outside [0, 1]
-  fails the call instead of reaching your program.
-- **Fallback**: `fallback=` takes another decision model to call when every
-  attempt failed. Without one, a failed call returns `None`, which flows
-  through the program like any other missing value.
-- **Cache**: `cache_dir=` saves every response on disk, keyed by the full
-  request, so reruns (e.g. evaluations) do not pay twice.
-
-## Key Takeaways
-
-- **Decide, don't generate**: a decision model answers yes/no, choice and
-  score questions with calibrated probabilities, and nothing else.
-- **Its own argument**: pass it as the `decision_model` of the modules that
-  support it; the output data model defines the questions. A module never
-  takes one as its `language_model`.
-- **Fields are questions**: `bool`, `Literal`/`Enum` and the `*_schema`
-  helpers, each asked with its `description`. Anything else raises an
-  `UnsupportedSchemaError`.
-- **The messages are the state**: instructions and examples reach the
-  decision model through the system message.
-- **In-context learning**: decision models learn from their instructions and
-  examples, so every optimizer, `RandomFewShot` and `OMEGA` included, trains
-  a program that uses them exactly as with a language model.
-- **Route cheap, write expensive**: decide with a decision model, generate
-  with a language model only where needed.
-- **Credentials from the environment**: `TYPESAFE_API_KEY`, loaded from a
-  `.env` file.
-- **A default**: `set_default_decision_model()` makes the modules that accept
-  a decision model use it instead of the default language model.
+- A **decision model** answers typed questions (yes/no, one of a list, a
+  score) with calibrated probabilities; it never writes text.
+- **Fields are questions**: `bool` and `Literal` fields, each asked with its
+  `description`. A field that has to be written needs a language model.
+- Modules that decide take it through their **`decision_model`** argument,
+  never as a `language_model`; `set_default_decision_model()` sets a default.
+- **Route cheap, write expensive**: decide with a decision model, write with
+  a language model only where needed.
+- It **learns in context**, so programs using it train like any other, with
+  every optimizer, `OMEGA` included, and it makes a fast, cheap judge.
 
 ## API References
 
-- [Decision Models API](https://synalinks.github.io/synalinks/Synalinks%20API/Decision%20Models%20API/)
-- [OMEGA](https://synalinks.github.io/synalinks/Synalinks%20API/Optimizers%20API/OMEGA/)
-- [Language Model operational metrics](https://synalinks.github.io/synalinks/Synalinks%20API/Metrics/Language%20Model%20operational%20metrics/)
+- [DecisionModel](https://synalinks.github.io/synalinks/Synalinks%20API/Decision%20Models%20API/)
 - [Generator](https://synalinks.github.io/synalinks/Synalinks%20API/Modules%20API/Core%20Modules/Generator%20module/)
 - [Decision](https://synalinks.github.io/synalinks/Synalinks%20API/Modules%20API/Core%20Modules/Decision%20module/)
 - [Branch](https://synalinks.github.io/synalinks/Synalinks%20API/Modules%20API/Core%20Modules/Branch%20module/)
+- [RubricsAsJudge](https://synalinks.github.io/synalinks/Synalinks%20API/Rewards/RubricsAsJudge%20reward/)
+- [OMEGA](https://synalinks.github.io/synalinks/Synalinks%20API/Optimizers%20API/OMEGA/)
 """
 
 import asyncio
@@ -329,8 +229,6 @@ async def main():
     print("=" * 60)
     print("Triage: a Generator answered by a decision model")
     print("=" * 60)
-
-    decision_model.check_schema(Triage.get_schema())
 
     inputs = synalinks.Input(data_model=Ticket)
     outputs = await synalinks.Generator(
