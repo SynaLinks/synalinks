@@ -54,9 +54,11 @@ synalinks.set_default_decision_model("typesafe/jev-latest")
 A module that accepts a decision model then uses the default decision model
 instead of the default language model: a `Decision` or a `Branch` decides with
 it, a `RubricsAsJudge` grades with it. The order is: its `decision_model`, then
-its `language_model` (an explicit language model is used, not the default
-decision model), then the default decision model, then the default language
-model. The default decision model only goes where it can answer: a `Generator`
+a `language_model` other than the default one (a language model you chose is
+used), then the default decision model, then the default language model. The
+default decision model wins over the default language model even when a
+module is given the default language model explicitly, as parent modules do
+when they build their inner modules. The default decision model only goes where it can answer: a `Generator`
 uses it only when every field of its schema is a question (a `Generator` that
 writes text keeps the default language model), and neither a `SelfCritique`
 without reward nor a `RubricsAsJudge` with a `score_type` uses it.

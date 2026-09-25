@@ -629,6 +629,31 @@ class DefaultDecisionModelTest(testing.TestCase):
         )
         self.assertIsNone(branch.decision_model)
 
+    def test_default_wins_over_the_default_language_model(self):
+        from synalinks.src.backend import config
+
+        with patch.object(config, "_persist_config"):
+            config.set_default_language_model(self.language_model)
+
+        def clear():
+            with patch.object(config, "_persist_config"):
+                config.set_default_language_model(None)
+
+        self.addCleanup(clear)
+        # Modules pass their resolved (default) language model down: it must
+        # not count as a language model chosen over the default decision model.
+        generator = synalinks.Generator(
+            data_model=Billing, language_model=synalinks.default_language_model()
+        )
+        self.assertIs(generator.decision_model, self.default)
+        decision = synalinks.Decision(question="Easy?", labels=["easy", "hard"])
+        self.assertIs(decision.decision_model, self.default)
+        # Another language model is a choice: it is used.
+        other = synalinks.LanguageModel(model="ollama/qwen3")
+        self.assertIsNone(
+            synalinks.Generator(data_model=Billing, language_model=other).decision_model
+        )
+
     def test_default_only_where_it_applies(self):
         # A Generator uses the default decision model only for a schema it
         # can answer.
