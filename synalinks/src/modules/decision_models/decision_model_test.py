@@ -560,4 +560,118 @@ class DecisionModelTest(testing.TestCase):
         decision_model = DecisionModel(model="typesafe/jev-latest")
         with patch.object(config, "_persist_config"):
             config.set_default_decision_model(decision_model)
-        self.assertIs(get(None), decision_model)
+        try:
+            self.assertIs(get(None), decision_model)
+        finally:
+            with patch.object(config, "_persist_config"):
+                config.set_default_decision_model(None)
+
+
+class DefaultDecisionModelTest(testing.TestCase):
+    """Modules that accept a decision model use the default decision model
+    instead of the default language model."""
+
+    def setUp(self):
+        super().setUp()
+        from synalinks.src.backend import config
+
+        self.default = DecisionModel(model="typesafe/jev-latest")
+        self.language_model = synalinks.LanguageModel(model="ollama/mistral")
+        with patch.object(config, "_persist_config"):
+            config.set_default_decision_model(self.default)
+
+        def clear():
+            with patch.object(config, "_persist_config"):
+                config.set_default_decision_model(None)
+
+        self.addCleanup(clear)
+
+    def test_decision_modules_use_the_default(self):
+        decision = synalinks.Decision(question="Easy?", labels=["easy", "hard"])
+        self.assertIs(decision.decision_model, self.default)
+        self.assertNotIn("thinking", decision.schema["properties"])
+        self.assertIs(decision.decision.decision_model, self.default)
+
+        multi_decision = synalinks.MultiDecision(question="Which?", labels=["a", "b"])
+        self.assertIs(multi_decision.decision_model, self.default)
+
+        branch = synalinks.Branch(
+            question="Easy?",
+            labels=["easy", "hard"],
+            branches=[synalinks.Identity(), synalinks.Identity()],
+        )
+        self.assertIs(branch.decision_model, self.default)
+        self.assertIs(branch.decision.decision_model, self.default)
+
+        self_critique = synalinks.SelfCritique()
+        self.assertIs(self_critique.decision_model, self.default)
+
+        rubrics = synalinks.rewards.RubricsAsJudge(rubrics="faithfulness")
+        self.assertIs(rubrics.program.decision_model, self.default)
+
+    def test_explicit_models_win(self):
+        other = DecisionModel(model="typesafe/jev-1.13.0")
+        decision = synalinks.Decision(
+            question="Easy?", labels=["easy", "hard"], decision_model=other
+        )
+        self.assertIs(decision.decision_model, other)
+        # An explicit language model is used, not the default decision model.
+        decision = synalinks.Decision(
+            question="Easy?", labels=["easy", "hard"], language_model=self.language_model
+        )
+        self.assertIsNone(decision.decision_model)
+        self.assertIn("thinking", decision.schema["properties"])
+        branch = synalinks.Branch(
+            question="Easy?",
+            labels=["easy", "hard"],
+            branches=[synalinks.Identity(), synalinks.Identity()],
+            language_model=self.language_model,
+        )
+        self.assertIsNone(branch.decision_model)
+
+    def test_default_wins_over_the_default_language_model(self):
+        from synalinks.src.backend import config
+
+        with patch.object(config, "_persist_config"):
+            config.set_default_language_model(self.language_model)
+
+        def clear():
+            with patch.object(config, "_persist_config"):
+                config.set_default_language_model(None)
+
+        self.addCleanup(clear)
+        # Modules pass their resolved (default) language model down: it must
+        # not count as a language model chosen over the default decision model.
+        generator = synalinks.Generator(
+            data_model=Billing, language_model=synalinks.default_language_model()
+        )
+        self.assertIs(generator.decision_model, self.default)
+        decision = synalinks.Decision(question="Easy?", labels=["easy", "hard"])
+        self.assertIs(decision.decision_model, self.default)
+        # Another language model is a choice: it is used.
+        other = synalinks.LanguageModel(model="ollama/qwen3")
+        self.assertIsNone(
+            synalinks.Generator(data_model=Billing, language_model=other).decision_model
+        )
+
+    def test_default_only_where_it_applies(self):
+        # A Generator uses the default decision model only for a schema it
+        # can answer.
+        self.assertIs(
+            synalinks.Generator(data_model=Billing).decision_model, self.default
+        )
+
+        class Summary(DataModel):
+            summary: str = Field(description="Summarize the query.")
+
+        self.assertIsNone(synalinks.Generator(data_model=Summary).decision_model)
+        # Its `thinking` field needs generation.
+        self.assertIsNone(
+            synalinks.ChainOfThought(data_model=Billing).generator.decision_model
+        )
+        # No critique from a decision model, no score scale for one.
+        self.assertIsNone(synalinks.SelfCritique(return_reward=False).decision_model)
+        rubrics = synalinks.rewards.RubricsAsJudge(
+            rubrics="faithfulness", score_type="Rating"
+        )
+        self.assertIsNone(rubrics.program.decision_model)

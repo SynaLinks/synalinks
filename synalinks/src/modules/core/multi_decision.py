@@ -11,7 +11,7 @@ from synalinks.src.backend import JsonDataModel
 from synalinks.src.backend import SymbolicDataModel
 from synalinks.src.backend import dynamic_enum_array
 from synalinks.src.modules.core.generator import Generator
-from synalinks.src.modules.decision_models import get as _get_dm
+from synalinks.src.modules.decision_models import resolve_decision_model
 from synalinks.src.modules.language_models import get as _get_lm
 from synalinks.src.modules.module import Module
 from synalinks.src.saving import serialization_lib
@@ -187,9 +187,7 @@ class MultiDecision(Module):
         self.labels = labels
         self.inline = inline
         self.language_model = _get_lm(language_model)
-        self.decision_model = (
-            _get_dm(decision_model) if decision_model is not None else None
-        )
+        self.decision_model = resolve_decision_model(decision_model, language_model)
         if self.decision_model is not None:
             # No `thinking` field: decision models do not reason step by step.
             self.schema = dynamic_enum_array(
