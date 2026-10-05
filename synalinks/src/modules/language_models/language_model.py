@@ -565,6 +565,22 @@ class LanguageModel(Module):
     )
     ```
 
+    **Using a ChatGPT subscription (no API key)**
+
+    The `codex/` prefix reaches OpenAI models through a ChatGPT subscription
+    login instead of an API key. It does not go through LiteLLM: use
+    `synalinks.OAuthLanguageModel`, which sends the requests through the
+    locally signed-in Codex CLI (see its documentation for the setup and
+    limitations).
+
+    ```python
+    import synalinks
+
+    language_model = synalinks.OAuthLanguageModel(
+        model="codex/gpt-5.5",
+    )
+    ```
+
     To cascade models in case there is anything wrong with
     the model provider (hence making your pipelines more robust).
     Use the `fallback` argument like in this example:
@@ -931,7 +947,7 @@ class LanguageModel(Module):
             if self.model.startswith("ollama"):
                 kwargs["think"] = False
         elif reasoning_effort != "none":
-            if litellm.supports_reasoning(model=self.model):
+            if self.supports_reasoning():
                 kwargs["reasoning_effort"] = reasoning_effort
                 if schema_had_thinking:
                     # The LM produces a native reasoning trace via
@@ -987,6 +1003,7 @@ class LanguageModel(Module):
                 or self.model.startswith("openrouter")
                 or self.model.startswith("groq")
                 or self.model.startswith("bedrock")
+                or self.model.startswith("codex")
             ):
                 # Use constrained structured output for openai/azure
                 # plus deepseek, together_ai, huggingface (TGI and
@@ -1152,6 +1169,30 @@ class LanguageModel(Module):
                 _CURRENT_CALL_USAGE.set({"error": str(e)})
                 return None
 
+    async def _acompletion(self, formatted_messages, **kwargs):
+        """Send one completion request and return the provider response.
+
+        This is the transport seam: everything around it (message
+        formatting, structured-output payload, cache, retry, fallback, usage
+        accounting and response parsing) is provider-agnostic. A subclass
+        that does not go through LiteLLM (e.g. `OAuthLanguageModel`)
+        overrides this method and returns a LiteLLM-shaped response.
+
+        Args:
+            formatted_messages (list): The chat messages in OpenAI wire shape.
+            **kwargs (keyword arguments): The request parameters.
+
+        Returns:
+            (ModelResponse): The provider response.
+        """
+        return await litellm.acompletion(
+            model=self.model,
+            messages=formatted_messages,
+            timeout=self.timeout,
+            caching=self.caching,
+            **kwargs,
+        )
+
     async def _call_with_retry(
         self, formatted_messages, schema, streaming, schema_had_thinking, **kwargs
     ):
@@ -1171,13 +1212,7 @@ class LanguageModel(Module):
             response_str = ""
             try:
                 t0 = time.perf_counter()
-                response = await litellm.acompletion(
-                    model=self.model,
-                    messages=formatted_messages,
-                    timeout=self.timeout,
-                    caching=self.caching,
-                    **kwargs,
-                )
+                response = await self._acompletion(formatted_messages, **kwargs)
                 elapsed_s = time.perf_counter() - t0
                 op_scope = current_op_scope()
                 response_cost = None
@@ -1468,6 +1503,17 @@ class LanguageModel(Module):
                 self-hosted one).
         """
         return model_catalog.model_info(model)
+    def supports_reasoning(self):
+        """Whether `reasoning_effort` is forwarded to the provider.
+
+        Looked up in litellm's model table: when True, the effort is sent
+        with the request and the native reasoning trace fills the `thinking`
+        field of the output, if any.
+
+        Returns:
+            (bool): True if the model takes a reasoning effort.
+        """
+        return litellm.supports_reasoning(model=self.model)
 
     def supports_vision(self):
         """Whether the model accepts images in its input.
