@@ -469,6 +469,30 @@ class OAuthLanguageModelTest(testing.TestCase):
         self.assertEqual(len(recorder.calls), 1)
         self.assertEqual(lm.cumulated_cache_hits, 1)
 
+    async def test_file_cache_is_keyed_by_reasoning_effort(self):
+        recorder = Recorder(stdout=_events("answer"))
+        lm = OAuthLanguageModel(model="codex/gpt-5.5", cache_dir=self.get_temp_dir())
+        with patch(_RUN, recorder):
+            await lm(_messages(), reasoning_effort="low")
+            await lm(_messages(), reasoning_effort="high")
+            await lm(_messages(), reasoning_effort="low")
+        self.assertEqual(len(recorder.calls), 2)
+        self.assertEqual(lm.cumulated_cache_hits, 1)
+
+    async def test_ignored_parameters_are_reported_once(self):
+        recorder = Recorder(stdout=_events("ok"))
+        lm = OAuthLanguageModel(model="codex/gpt-5.5")
+        with patch(_RUN, recorder):
+            with warnings.catch_warnings(record=True) as caught:
+                warnings.simplefilter("always")
+                await lm(_messages(), temperature=0.0)
+                await lm(_messages(), temperature=0.7)
+                await lm(_messages(), temperature=0.0, max_tokens=5)
+        reports = [str(w.message) for w in caught if "ignores" in str(w.message)]
+        self.assertEqual(len(reports), 2)
+        self.assertIn("['temperature']", reports[0])
+        self.assertIn("['max_tokens']", reports[1])
+
     async def test_missing_cli_fails_fast(self):
         lm = OAuthLanguageModel(model="codex/gpt-5.5", retry=3, retry_max_wait=0)
         with patch.object(

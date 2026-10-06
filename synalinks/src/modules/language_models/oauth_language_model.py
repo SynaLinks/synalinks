@@ -12,6 +12,7 @@ from synalinks.src.api_export import synalinks_export
 from synalinks.src.modules.language_models.language_model import DeterministicStopError
 from synalinks.src.modules.language_models.language_model import LanguageModel
 from synalinks.src.saving.object_registration import register_synalinks_serializable
+from synalinks.src.utils.file_cache import FileCache
 
 # The providers reachable through a locally authenticated CLI, i.e. the
 # values accepted before the `/` in `model`.
@@ -110,6 +111,21 @@ _MAX_ERROR_CHARS = 500
 # unchanged to the `fallback`, which must not receive anything private to
 # this class, and concurrent calls on one instance never see each other's.
 _REASONING_EFFORT = contextvars.ContextVar("synalinks_oauth_reasoning_effort")
+
+
+class _EffortKeyedFileCache(FileCache):
+    """A `FileCache` whose keys also depend on the reasoning effort.
+
+    The effort is not a request parameter of this class (see
+    `_REASONING_EFFORT`), so it is missing from the payload the base class
+    hashes: without it, two calls differing only by their effort would share
+    one cache entry.
+    """
+
+    def make_key(self, payload):
+        return super().make_key(
+            {**payload, "reasoning_effort": _REASONING_EFFORT.get(None)}
+        )
 
 
 def _strict_schema(schema):
@@ -430,6 +446,11 @@ class OAuthLanguageModel(LanguageModel):
                 f"Received: model={model!r}"
             )
         super().__init__(model=model, **kwargs)
+        if self.cache_dir:
+            self._file_cache = _EffortKeyedFileCache(self.cache_dir)
+        # The ignored parameters already reported, so that a parameter set on
+        # every call (e.g. the `temperature` of a `Generator`) warns once.
+        self._reported_ignored_params = set()
 
     async def call(
         self,
@@ -494,8 +515,13 @@ class OAuthLanguageModel(LanguageModel):
         schema = None
         if response_format:
             schema = (response_format.get("json_schema") or {}).get("schema")
-        ignored = sorted(k for k in kwargs if k in _IGNORED_PARAMS)
+        ignored = sorted(
+            k
+            for k in kwargs
+            if k in _IGNORED_PARAMS and k not in self._reported_ignored_params
+        )
         if ignored:
+            self._reported_ignored_params.update(ignored)
             warnings.warn(
                 f"{self} ignores the parameters {ignored}: the Codex CLI does not "
                 "expose them."
