@@ -576,7 +576,7 @@ class LanguageModel(Module):
     import synalinks
 
     language_model = synalinks.OAuthLanguageModel(
-        model="codex/gpt-5.5",
+        model="codex/gpt-6.1-sol",
     )
     ```
 
@@ -616,7 +616,8 @@ class LanguageModel(Module):
       effect for providers that reason by default, i.e. ollama's thinking
       models (`qwen3`, `deepseek-r1`, ...), where it maps to ollama's
       `think=False` toggle (safely ignored by non-thinking ollama models), and
-      the ChatGPT backend (`codex/`), where it sends the effort `"none"`.
+      the ChatGPT backend (`codex/`), where it sends the lowest effort every
+      model accepts (`"low"`: most of them cannot turn reasoning off).
       Opt-in providers (OpenAI, Anthropic, Gemini, ...) reason only when
       explicitly enabled, so there is nothing to send and this value is a
       no-op for them.
@@ -934,7 +935,8 @@ class LanguageModel(Module):
         #                reason unless told not to. `think=False` is the ollama
         #                toggle and is safely ignored by non-thinking ollama
         #                models. The ChatGPT backend (`codex/`) also reasons by
-        #                default and takes the effort "none" to stop. Opt-in
+        #                default: "disable" is handed to its transport, which
+        #                knows the lowest effort the CLI accepts. Opt-in
         #                providers (OpenAI, Anthropic, Gemini, ...) reason only
         #                when enabled, so there is nothing to send.
         #   otherwise -> forward the effort to litellm when the model supports it.
@@ -951,7 +953,7 @@ class LanguageModel(Module):
             if self.model.startswith("ollama"):
                 kwargs["think"] = False
             elif self.model.startswith("codex"):
-                kwargs["reasoning_effort"] = "none"
+                kwargs["reasoning_effort"] = "disable"
         elif reasoning_effort != "none":
             if self.supports_reasoning():
                 kwargs["reasoning_effort"] = reasoning_effort

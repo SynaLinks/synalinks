@@ -68,6 +68,11 @@ class Person(DataModel):
     address: Address = Address(city="")
 
 
+class Contact(DataModel):
+    name: str = Field(description="The name")
+    home: Address = Field(description="Where they live")
+
+
 class FreeForm(DataModel):
     payload: Dict[str, str] = {}
 
@@ -148,6 +153,36 @@ class StrictSchemaTest(testing.TestCase):
         self.assertEqual(strict["required"], ["properties", "type"])
         self.assertNotIn("required", strict["properties"])
 
+    def test_ref_keeps_no_sibling_keyword(self):
+        # `address` has a default: Pydantic writes it next to the `$ref`.
+        strict = _strict_schema(Person.get_schema())
+        self.assertEqual(strict["properties"]["address"], {"$ref": "#/$defs/Address"})
+
+    def test_described_ref_is_inlined(self):
+        strict = _strict_schema(Contact.get_schema())
+        home = strict["properties"]["home"]
+        self.assertNotIn("$ref", home)
+        self.assertEqual(home["description"], "Where they live")
+        self.assertEqual(home["required"], ["city", "zip_code"])
+        self.assertIs(home["additionalProperties"], False)
+
+    def test_recursive_ref_stays_a_bare_ref(self):
+        schema = {
+            "$defs": {
+                "Node": {
+                    "type": "object",
+                    "properties": {
+                        "child": {"$ref": "#/$defs/Node", "description": "Next"}
+                    },
+                }
+            },
+            "type": "object",
+            "properties": {"root": {"$ref": "#/$defs/Node", "description": "Top"}},
+        }
+        strict = _strict_schema(schema)
+        child = strict["properties"]["root"]["properties"]["child"]
+        self.assertEqual(child, {"$ref": "#/$defs/Node"})
+
     def test_free_form_object_raises(self):
         with self.assertRaisesRegex(ValueError, "free-form object"):
             _strict_schema(FreeForm.get_schema())
@@ -158,7 +193,7 @@ class StrictSchemaTest(testing.TestCase):
 class CodexCommandTest(testing.TestCase):
     def test_command_is_locked_down(self):
         command = _build_codex_command(
-            "gpt-5.5",
+            "gpt-6.1-sol",
             "/tmp/work",
             instructions_path="/tmp/i.md",
             schema_path="/tmp/s.json",
@@ -169,7 +204,7 @@ class CodexCommandTest(testing.TestCase):
             self.assertIn(flag, command)
         self.assertEqual(command[command.index("-s") + 1], "read-only")
         self.assertEqual(command[command.index("-C") + 1], "/tmp/work")
-        self.assertEqual(command[command.index("-m") + 1], "gpt-5.5")
+        self.assertEqual(command[command.index("-m") + 1], "gpt-6.1-sol")
         self.assertEqual(command[command.index("--output-schema") + 1], "/tmp/s.json")
         self.assertIn('web_search="disabled"', command)
         self.assertIn("features.shell_tool=false", command)
@@ -259,14 +294,14 @@ class SplitMessagesTest(testing.TestCase):
 
 class OAuthLanguageModelTest(testing.TestCase):
     def test_model_must_be_a_codex_model(self):
-        for model in ("gpt-5.5", "openai/gpt-5.5", "codex/", "claude/sonnet"):
+        for model in ("gpt-6.1-sol", "openai/gpt-6.1-sol", "codex/", "claude/sonnet"):
             with self.assertRaisesRegex(ValueError, "expects `model`"):
                 OAuthLanguageModel(model=model)
         with self.assertRaisesRegex(ValueError, "need to set the `model`"):
             OAuthLanguageModel()
 
     def test_get_routes_codex_identifiers(self):
-        lm = synalinks.language_models.get("codex/gpt-5.5")
+        lm = synalinks.language_models.get("codex/gpt-6.1-sol")
         self.assertIsInstance(lm, OAuthLanguageModel)
         self.assertNotIsInstance(
             synalinks.language_models.get("openai/gpt-4o-mini"), OAuthLanguageModel
@@ -277,7 +312,7 @@ class OAuthLanguageModelTest(testing.TestCase):
 
     def test_serialization_roundtrip(self):
         lm = OAuthLanguageModel(
-            model="codex/gpt-5.5",
+            model="codex/gpt-6.1-sol",
             timeout=30,
             retry=2,
             reasoning_effort="low",
@@ -298,7 +333,7 @@ class OAuthLanguageModelTest(testing.TestCase):
             "address": {"city": "London", "zip_code": None},
         }
         recorder = Recorder(stdout=_events(json.dumps(answer)))
-        lm = OAuthLanguageModel(model="codex/gpt-5.5", reasoning_effort="medium")
+        lm = OAuthLanguageModel(model="codex/gpt-6.1-sol", reasoning_effort="medium")
         with patch(_RUN, recorder):
             result = await lm(_messages(), schema=Person.get_schema())
 
@@ -310,7 +345,7 @@ class OAuthLanguageModelTest(testing.TestCase):
         self.assertEqual(call["instructions"], "You extract persons.")
         self.assertEqual(call["prompt"], "Ada, 36, from London.")
         self.assertEqual(call["cwd_content"], [])
-        self.assertEqual(call["command"][call["command"].index("-m") + 1], "gpt-5.5")
+        self.assertEqual(call["command"][call["command"].index("-m") + 1], "gpt-6.1-sol")
         self.assertIn('model_reasoning_effort="medium"', call["command"])
         # The schema handed to the CLI is the strict one.
         self.assertEqual(call["schema"]["required"], ["name", "age", "tags", "address"])
@@ -338,12 +373,12 @@ class OAuthLanguageModelTest(testing.TestCase):
 
     async def test_per_call_reasoning_effort_overrides_default(self):
         recorder = Recorder(stdout=_events("ok"))
-        lm = OAuthLanguageModel(model="codex/gpt-5.5", reasoning_effort="high")
+        lm = OAuthLanguageModel(model="codex/gpt-6.1-sol", reasoning_effort="high")
         with patch(_RUN, recorder):
             await lm(_messages(), reasoning_effort="disable")
             await lm(_messages(), reasoning_effort="none")
-        # "disable" turns reasoning off, "none" keeps the model default.
-        self.assertIn('model_reasoning_effort="none"', recorder.calls[0]["command"])
+        # "disable" sends the lowest effort, "none" keeps the model default.
+        self.assertIn('model_reasoning_effort="low"', recorder.calls[0]["command"])
         self.assertFalse(
             any(
                 a.startswith("model_reasoning_effort")
@@ -363,7 +398,7 @@ class OAuthLanguageModelTest(testing.TestCase):
             ],
         )
         recorder = Recorder(stdout=stdout)
-        lm = OAuthLanguageModel(model="codex/gpt-5.5", reasoning_effort="low")
+        lm = OAuthLanguageModel(model="codex/gpt-6.1-sol", reasoning_effort="low")
         with patch(_RUN, recorder):
             result = await lm(_messages(), schema=Reasoned.get_schema())
         # The effort is sent, the field stays in the schema and the model's
@@ -372,24 +407,26 @@ class OAuthLanguageModelTest(testing.TestCase):
         self.assertEqual(recorder.calls[0]["schema"]["required"], ["thinking", "answer"])
         self.assertEqual(result.get_json(), answer)
 
-    async def test_minimal_effort_is_sent_as_low(self):
+    async def test_efforts_the_backend_rejects_are_sent_as_low(self):
         recorder = Recorder(stdout=_events("ok"))
-        lm = OAuthLanguageModel(model="codex/gpt-5.5")
+        lm = OAuthLanguageModel(model="codex/gpt-6.1-sol")
         with patch(_RUN, recorder):
             await lm(_messages(), reasoning_effort="minimal")
-        self.assertIn('model_reasoning_effort="low"', recorder.calls[0]["command"])
+            await lm(_messages(), reasoning_effort="disable")
+        for call in recorder.calls:
+            self.assertIn('model_reasoning_effort="low"', call["command"])
 
     async def test_unset_effort_keeps_the_model_default(self):
         # A `Generator` built without an effort passes `reasoning_effort=None`.
         recorder = Recorder(stdout=_events("ok"))
-        lm = OAuthLanguageModel(model="codex/gpt-5.5", reasoning_effort="high")
+        lm = OAuthLanguageModel(model="codex/gpt-6.1-sol", reasoning_effort="high")
         with patch(_RUN, recorder):
             await lm(_messages(), reasoning_effort=None)
         self.assertIn('model_reasoning_effort="high"', recorder.calls[0]["command"])
 
     async def test_unsupported_parameters_are_ignored_with_a_warning(self):
         recorder = Recorder(stdout=_events("ok"))
-        lm = OAuthLanguageModel(model="codex/gpt-5.5", temperature=0.0, max_tokens=10)
+        lm = OAuthLanguageModel(model="codex/gpt-6.1-sol", temperature=0.0, max_tokens=10)
         with patch(_RUN, recorder):
             with warnings.catch_warnings(record=True) as caught:
                 warnings.simplefilter("always")
@@ -401,7 +438,7 @@ class OAuthLanguageModelTest(testing.TestCase):
         self.assertFalse(any("temperature" in a for a in recorder.calls[0]["command"]))
 
     async def test_tools_and_streaming_are_rejected(self):
-        lm = OAuthLanguageModel(model="codex/gpt-5.5")
+        lm = OAuthLanguageModel(model="codex/gpt-6.1-sol")
         with self.assertRaisesRegex(ValueError, "tool calling"):
             await lm(_messages(), tool_schemas=[{"type": "function"}])
         with self.assertRaisesRegex(ValueError, "streaming"):
@@ -409,7 +446,7 @@ class OAuthLanguageModelTest(testing.TestCase):
 
     async def test_free_form_schema_is_rejected_before_any_call(self):
         recorder = Recorder(stdout=_events("{}"))
-        lm = OAuthLanguageModel(model="codex/gpt-5.5")
+        lm = OAuthLanguageModel(model="codex/gpt-6.1-sol")
         with patch(_RUN, recorder):
             with self.assertRaisesRegex(ValueError, "free-form object"):
                 await lm(_messages(), schema=FreeForm.get_schema())
@@ -421,7 +458,7 @@ class OAuthLanguageModelTest(testing.TestCase):
             extra=[{"type": "item.completed", "item": {"type": "web_search"}}],
         )
         recorder = Recorder(stdout=stdout)
-        lm = OAuthLanguageModel(model="codex/gpt-5.5", retry=3, retry_max_wait=0)
+        lm = OAuthLanguageModel(model="codex/gpt-6.1-sol", retry=3, retry_max_wait=0)
         with patch(_RUN, recorder):
             result = await lm(_messages())
         self.assertIsNone(result)
@@ -442,7 +479,7 @@ class OAuthLanguageModelTest(testing.TestCase):
         recorder = Recorder(stderr="connection reset", returncode=1)
         fallback = OAuthLanguageModel(model="codex/default")
         lm = OAuthLanguageModel(
-            model="codex/gpt-5.5", retry=2, retry_max_wait=0, fallback=fallback
+            model="codex/gpt-6.1-sol", retry=2, retry_max_wait=0, fallback=fallback
         )
         calls = []
 
@@ -455,13 +492,15 @@ class OAuthLanguageModelTest(testing.TestCase):
         with patch(_RUN, run):
             result = await lm(_messages())
         self.assertEqual(result.get("content"), "from fallback")
-        self.assertEqual(calls, ["codex/gpt-5.5", "codex/gpt-5.5", "codex/default"])
+        self.assertEqual(
+            calls, ["codex/gpt-6.1-sol", "codex/gpt-6.1-sol", "codex/default"]
+        )
         self.assertEqual(lm.cumulated_fallback_activations, 1)
 
     async def test_fallback_receives_the_caller_parameters_untouched(self):
         recorder = Recorder(stderr="connection reset", returncode=1)
         lm = OAuthLanguageModel(
-            model="codex/gpt-5.5",
+            model="codex/gpt-6.1-sol",
             retry=1,
             reasoning_effort="high",
             fallback=LanguageModel(model="openai/gpt-4o-mini"),
@@ -481,7 +520,7 @@ class OAuthLanguageModelTest(testing.TestCase):
 
     async def test_concurrent_calls_keep_their_own_reasoning_effort(self):
         recorder = Recorder(stdout=_events("ok"))
-        lm = OAuthLanguageModel(model="codex/gpt-5.5")
+        lm = OAuthLanguageModel(model="codex/gpt-6.1-sol")
         efforts = ["low", "medium", "high", "none"]
         with patch(_RUN, recorder):
             await asyncio.gather(
@@ -503,7 +542,7 @@ class OAuthLanguageModelTest(testing.TestCase):
 
     async def test_file_cache_hit_skips_the_cli(self):
         recorder = Recorder(stdout=_events("cached answer"))
-        lm = OAuthLanguageModel(model="codex/gpt-5.5", cache_dir=self.get_temp_dir())
+        lm = OAuthLanguageModel(model="codex/gpt-6.1-sol", cache_dir=self.get_temp_dir())
         with patch(_RUN, recorder):
             first = await lm(_messages())
             second = await lm(_messages())
@@ -513,7 +552,7 @@ class OAuthLanguageModelTest(testing.TestCase):
 
     async def test_file_cache_is_keyed_by_reasoning_effort(self):
         recorder = Recorder(stdout=_events("answer"))
-        lm = OAuthLanguageModel(model="codex/gpt-5.5", cache_dir=self.get_temp_dir())
+        lm = OAuthLanguageModel(model="codex/gpt-6.1-sol", cache_dir=self.get_temp_dir())
         with patch(_RUN, recorder):
             await lm(_messages(), reasoning_effort="low")
             await lm(_messages(), reasoning_effort="high")
@@ -523,7 +562,7 @@ class OAuthLanguageModelTest(testing.TestCase):
 
     async def test_ignored_parameters_are_reported_once(self):
         recorder = Recorder(stdout=_events("ok"))
-        lm = OAuthLanguageModel(model="codex/gpt-5.5")
+        lm = OAuthLanguageModel(model="codex/gpt-6.1-sol")
         with patch(_RUN, recorder):
             with warnings.catch_warnings(record=True) as caught:
                 warnings.simplefilter("always")
@@ -536,7 +575,7 @@ class OAuthLanguageModelTest(testing.TestCase):
         self.assertIn("['max_tokens']", reports[1])
 
     async def test_missing_cli_fails_fast(self):
-        lm = OAuthLanguageModel(model="codex/gpt-5.5", retry=3, retry_max_wait=0)
+        lm = OAuthLanguageModel(model="codex/gpt-6.1-sol", retry=3, retry_max_wait=0)
         with patch.object(
             oauth_language_model.asyncio,
             "create_subprocess_exec",
@@ -547,7 +586,7 @@ class OAuthLanguageModelTest(testing.TestCase):
         self.assertEqual(spawn.call_count, 1)
 
     async def test_subprocess_environment_is_an_allowlist(self):
-        lm = OAuthLanguageModel(model="codex/gpt-5.5", retry=1)
+        lm = OAuthLanguageModel(model="codex/gpt-6.1-sol", retry=1)
         seen = {}
 
         async def spawn(*command, env=None, **kwargs):
@@ -570,6 +609,6 @@ class OAuthLanguageModelTest(testing.TestCase):
     async def test_timeout_kills_the_subprocess(self):
         if not shutil.which("sleep"):
             self.skipTest("`sleep` is not available")
-        lm = OAuthLanguageModel(model="codex/gpt-5.5", timeout=0.2)
+        lm = OAuthLanguageModel(model="codex/gpt-6.1-sol", timeout=0.2)
         with self.assertRaisesRegex(RuntimeError, "timed out"):
             await lm._run(["sleep", "30"], "")
