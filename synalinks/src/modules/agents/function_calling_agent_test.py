@@ -1236,3 +1236,89 @@ class TruncatedGenerationTest(testing.TestCase):
 
         # One turn (not retried three times), then the final generator.
         self.assertEqual(mock_completion.call_count, 2)
+
+
+class FinalAnswerToolChoiceTest(testing.TestCase):
+    """The final answer is asked with the tools declared and forbidden.
+
+    Over a trajectory full of tool use, a model may still emit one more call
+    while writing the answer. Asked without the tools, the provider has no
+    reason to parse it, and the model's raw tool-call syntax (Kimi K2's
+    ``<|tool_calls_section_begin|>``) came back as the answer's text.
+    """
+
+    @patch("litellm.acompletion")
+    async def test_autonomous_final_answer_declares_the_tools_and_forbids_them(
+        self, mock_completion
+    ):
+        inputs = Input(data_model=ChatMessages)
+        outputs = await FunctionCallingAgent(
+            language_model=LanguageModel(model="ollama/mistral"),
+            tools=[Tool(calculate)],
+            autonomous=True,
+            max_iterations=3,
+        )(inputs)
+        agent = Program(inputs=inputs, outputs=outputs, name="final_tool_choice_test")
+        mock_completion.side_effect = [
+            _lm_response(
+                tool_calls=[{"name": "calculate", "arguments": {"expression": "10 + 20"}}]
+            ),
+            _lm_response(content="Done."),
+            _lm_response(content="The result is 30."),
+        ]
+        result = await agent(
+            ChatMessages(messages=[ChatMessage(role="user", content="10 + 20?")])
+        )
+        self.assertEqual(result.get("messages")[-1]["content"], "The result is 30.")
+        final_call = mock_completion.call_args_list[-1].kwargs
+        self.assertEqual(final_call.get("tool_choice"), "none")
+        self.assertEqual(
+            [t["function"]["name"] for t in final_call.get("tools")], ["calculate"]
+        )
+        # The step generator keeps choosing freely.
+        self.assertNotIn("tool_choice", mock_completion.call_args_list[0].kwargs)
+
+    @patch("litellm.acompletion")
+    async def test_interactive_final_answer_declares_the_tools_and_forbids_them(
+        self, mock_completion
+    ):
+        inputs = Input(data_model=ChatMessages)
+        outputs = await FunctionCallingAgent(
+            language_model=LanguageModel(model="ollama/mistral"),
+            tools=[Tool(calculate)],
+            autonomous=False,
+        )(inputs)
+        agent = Program(
+            inputs=inputs, outputs=outputs, name="final_tool_choice_step_test"
+        )
+        mock_completion.side_effect = [
+            _lm_response(content="Nothing to call."),
+            _lm_response(content="Hello."),
+        ]
+        await agent(ChatMessages(messages=[ChatMessage(role="user", content="Hi")]))
+        final_call = mock_completion.call_args_list[-1].kwargs
+        self.assertEqual(final_call.get("tool_choice"), "none")
+        self.assertTrue(final_call.get("tools"))
+
+    @patch("litellm.acompletion")
+    async def test_a_structured_final_answer_sends_no_tools(self, mock_completion):
+        class Answer(DataModel):
+            answer: str = Field(description="The answer")
+
+        inputs = Input(data_model=ChatMessages)
+        outputs = await FunctionCallingAgent(
+            language_model=LanguageModel(model="ollama/mistral"),
+            data_model=Answer,
+            tools=[Tool(calculate)],
+            autonomous=True,
+            max_iterations=2,
+        )(inputs)
+        agent = Program(inputs=inputs, outputs=outputs, name="final_schema_test")
+        mock_completion.side_effect = [
+            _lm_response(content="Done."),
+            _lm_response(content=json.dumps({"answer": "30"})),
+        ]
+        await agent(ChatMessages(messages=[ChatMessage(role="user", content="10 + 20?")]))
+        final_call = mock_completion.call_args_list[-1].kwargs
+        # A schema and tools cannot share an LM call: asked without tools, as before.
+        self.assertNotIn("tool_choice", final_call)

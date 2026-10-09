@@ -803,7 +803,24 @@ class FunctionCallingAgent(Module):
 
     async def _final_result(self, trajectory, ctx, training):
         """Produce the final answer data model from the trajectory (hook)."""
-        return await self.final_generator(trajectory)
+        return await self._final_answer(trajectory, self._native_tools(ctx))
+
+    async def _final_answer(self, trajectory, tools):
+        """The final generator's answer over a trajectory that used `tools`.
+
+        The trajectory is full of tool calls and results, so a model may still
+        want one more call while it writes the answer. Sent without the
+        tools, nothing tells the provider to parse that call, and the model's
+        raw tool-call syntax (Kimi K2's ``<|tool_calls_section_begin|>``,
+        DeepSeek's ``<｜tool▁calls▁begin｜>``, ...) comes back as the
+        answer's text. So, unless the answer is structured (a schema and tools
+        cannot share an LM call), the tools go along with
+        ``tool_choice="none"``: declared, so the call is parsed rather than
+        leaked, and forbidden, so the model writes the answer.
+        """
+        if self.schema or not tools:
+            return await self.final_generator(trajectory)
+        return await self.final_generator(trajectory, tools=tools, tool_choice="none")
 
     async def _wrap_final(self, final_result, agent_messages, training):
         """Wrap the final answer into the agent's return value (shared)."""
@@ -937,7 +954,7 @@ class FunctionCallingAgent(Module):
         # If no tool calls, call final generator
         # without appending the empty tool calls message
         if not tool_calls or not tool_calls.get("tool_calls"):
-            final_result = await self.final_generator(trajectory)
+            final_result = await self._final_answer(trajectory, list(self.tools.values()))
             # Interactive streaming hands the lazy iterator back; in a batched
             # loop the final generator has already drained it to a concrete
             # result, so fall through to the normal wrapping below.
