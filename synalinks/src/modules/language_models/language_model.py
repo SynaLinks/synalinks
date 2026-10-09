@@ -615,10 +615,12 @@ class LanguageModel(Module):
       no effort of its own) means unset: the constructor default applies.
     - `"disable"`: actively turn native reasoning *off*. This only has an
       effect for providers that reason by default, i.e. ollama's thinking
-      models (`qwen3`, `deepseek-r1`, ...); it maps to ollama's `think=False`
-      toggle and is safely ignored by non-thinking ollama models. Opt-in
-      providers (OpenAI, Anthropic, Gemini, ...) reason only when explicitly
-      enabled, so there is nothing to send and this value is a no-op for them.
+      models (`qwen3`, `deepseek-r1`, ...), where it maps to ollama's
+      `think=False` toggle (safely ignored by non-thinking ollama models), and
+      the ChatGPT backend (`codex/`), where it sends the effort `"none"`.
+      Opt-in providers (OpenAI, Anthropic, Gemini, ...) reason only when
+      explicitly enabled, so there is nothing to send and this value is a
+      no-op for them.
     - any other value (e.g. `"low"`, `"medium"`, `"high"`): forwarded to the
       provider as the reasoning effort, but only when the model supports
       reasoning (otherwise it is silently dropped).
@@ -937,8 +939,10 @@ class LanguageModel(Module):
         #                ollama's thinking models (qwen3, deepseek-r1, ...), which
         #                reason unless told not to. `think=False` is the ollama
         #                toggle and is safely ignored by non-thinking ollama
-        #                models. Opt-in providers (OpenAI, Anthropic, Gemini, ...)
-        #                reason only when enabled, so there is nothing to send.
+        #                models. The ChatGPT backend (`codex/`) also reasons by
+        #                default and takes the effort "none" to stop. Opt-in
+        #                providers (OpenAI, Anthropic, Gemini, ...) reason only
+        #                when enabled, so there is nothing to send.
         #   otherwise -> forward the effort to litellm when the model supports it.
         # A module passes `reasoning_effort=None` when it sets none of its own
         # (e.g. a `Generator` built without one): that is "unset", so the
@@ -952,10 +956,12 @@ class LanguageModel(Module):
         if reasoning_effort == "disable":
             if self.model.startswith("ollama"):
                 kwargs["think"] = False
+            elif self.model.startswith("codex"):
+                kwargs["reasoning_effort"] = "none"
         elif reasoning_effort != "none":
             if self.supports_reasoning():
                 kwargs["reasoning_effort"] = reasoning_effort
-                if schema_had_thinking:
+                if schema_had_thinking and self.supports_reasoning_trace():
                     # The LM produces a native reasoning trace via
                     # `reasoning_content`; strip `thinking` from the LM
                     # schema to save tokens; we re-inject it after the call.
@@ -1338,7 +1344,11 @@ class LanguageModel(Module):
                             "structured output: " + refusal
                         )
                     json_instance = orjson.loads(response_str)
-                    if reasoning_content and schema_had_thinking:
+                    if (
+                        reasoning_content
+                        and schema_had_thinking
+                        and self.supports_reasoning_trace()
+                    ):
                         json_instance["thinking"] = reasoning_content
                 else:
                     # OpenAI's nested tool-call envelope is the synalinks
@@ -1513,13 +1523,25 @@ class LanguageModel(Module):
         """Whether `reasoning_effort` is forwarded to the provider.
 
         Looked up in litellm's model table: when True, the effort is sent
-        with the request and the native reasoning trace fills the `thinking`
-        field of the output, if any.
+        with the request (see also `supports_reasoning_trace()`).
 
         Returns:
             (bool): True if the model takes a reasoning effort.
         """
         return litellm.supports_reasoning(model=self.model)
+
+    def supports_reasoning_trace(self):
+        """Whether the native reasoning trace fills the `thinking` field.
+
+        When True and a reasoning effort is sent, the `thinking` field is left
+        out of the schema handed to the model and filled with the
+        `reasoning_content` of the response instead. When False, the model
+        writes `thinking` like any other field.
+
+        Returns:
+            (bool): True if the reasoning trace replaces `thinking`.
+        """
+        return True
 
     def supports_vision(self):
         """Whether the model accepts images in its input.

@@ -72,6 +72,11 @@ class FreeForm(DataModel):
     payload: Dict[str, str] = {}
 
 
+class Reasoned(DataModel):
+    thinking: str = Field(description="Step by step thinking")
+    answer: int = Field(description="The answer")
+
+
 class Recorder:
     """Stands in for `OAuthLanguageModel._run`, recording what was sent."""
 
@@ -337,13 +342,50 @@ class OAuthLanguageModelTest(testing.TestCase):
         with patch(_RUN, recorder):
             await lm(_messages(), reasoning_effort="disable")
             await lm(_messages(), reasoning_effort="none")
-        self.assertIn('model_reasoning_effort="low"', recorder.calls[0]["command"])
+        # "disable" turns reasoning off, "none" keeps the model default.
+        self.assertIn('model_reasoning_effort="none"', recorder.calls[0]["command"])
         self.assertFalse(
             any(
                 a.startswith("model_reasoning_effort")
                 for a in recorder.calls[1]["command"]
             )
         )
+
+    async def test_thinking_field_is_written_by_the_model(self):
+        answer = {"thinking": "s-t-r-a-w-b-e-r-r-y: three r.", "answer": 3}
+        stdout = _events(
+            json.dumps(answer),
+            extra=[
+                {
+                    "type": "item.completed",
+                    "item": {"type": "reasoning", "text": "**Counting**"},
+                }
+            ],
+        )
+        recorder = Recorder(stdout=stdout)
+        lm = OAuthLanguageModel(model="codex/gpt-5.5", reasoning_effort="low")
+        with patch(_RUN, recorder):
+            result = await lm(_messages(), schema=Reasoned.get_schema())
+        # The effort is sent, the field stays in the schema and the model's
+        # text is kept (the one-line summary does not overwrite it).
+        self.assertIn('model_reasoning_effort="low"', recorder.calls[0]["command"])
+        self.assertEqual(recorder.calls[0]["schema"]["required"], ["thinking", "answer"])
+        self.assertEqual(result.get_json(), answer)
+
+    async def test_minimal_effort_is_sent_as_low(self):
+        recorder = Recorder(stdout=_events("ok"))
+        lm = OAuthLanguageModel(model="codex/gpt-5.5")
+        with patch(_RUN, recorder):
+            await lm(_messages(), reasoning_effort="minimal")
+        self.assertIn('model_reasoning_effort="low"', recorder.calls[0]["command"])
+
+    async def test_unset_effort_keeps_the_model_default(self):
+        # A `Generator` built without an effort passes `reasoning_effort=None`.
+        recorder = Recorder(stdout=_events("ok"))
+        lm = OAuthLanguageModel(model="codex/gpt-5.5", reasoning_effort="high")
+        with patch(_RUN, recorder):
+            await lm(_messages(), reasoning_effort=None)
+        self.assertIn('model_reasoning_effort="high"', recorder.calls[0]["command"])
 
     async def test_unsupported_parameters_are_ignored_with_a_warning(self):
         recorder = Recorder(stdout=_events("ok"))

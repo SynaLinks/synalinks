@@ -1,7 +1,6 @@
 # License Apache 2.0: (c) 2025-2026 Yoan Sallami (Synalinks Team)
 
 import asyncio
-import contextvars
 import copy
 import json
 import os
@@ -12,7 +11,6 @@ from synalinks.src.api_export import synalinks_export
 from synalinks.src.modules.language_models.language_model import DeterministicStopError
 from synalinks.src.modules.language_models.language_model import LanguageModel
 from synalinks.src.saving.object_registration import register_synalinks_serializable
-from synalinks.src.utils.file_cache import FileCache
 
 # The providers reachable through a locally authenticated CLI, i.e. the
 # values accepted before the `/` in `model`.
@@ -86,11 +84,6 @@ _DISABLED_FEATURES = (
 # the model acted instead of answering: the call is failed.
 _ALLOWED_ITEM_TYPES = frozenset({"agent_message", "reasoning", "error"})
 
-# `reasoning_effort` values Synalinks accepts that the Codex CLI does not.
-# "none" sends nothing (model default); "disable"/"minimal" fall back to the
-# lowest effort the ChatGPT backend accepts.
-_EFFORT_ALIASES = {"disable": "low", "minimal": "low"}
-
 # Request parameters with no Codex CLI equivalent, dropped with a warning.
 _IGNORED_PARAMS = (
     "temperature",
@@ -105,27 +98,6 @@ _IGNORED_PARAMS = (
 )
 
 _MAX_ERROR_CHARS = 500
-
-# The reasoning effort of the call running in the current task. A ContextVar
-# rather than a request parameter: the parameters of a call are handed
-# unchanged to the `fallback`, which must not receive anything private to
-# this class, and concurrent calls on one instance never see each other's.
-_REASONING_EFFORT = contextvars.ContextVar("synalinks_oauth_reasoning_effort")
-
-
-class _EffortKeyedFileCache(FileCache):
-    """A `FileCache` whose keys also depend on the reasoning effort.
-
-    The effort is not a request parameter of this class (see
-    `_REASONING_EFFORT`), so it is missing from the payload the base class
-    hashes: without it, two calls differing only by their effort would share
-    one cache entry.
-    """
-
-    def make_key(self, payload):
-        return super().make_key(
-            {**payload, "reasoning_effort": _REASONING_EFFORT.get(None)}
-        )
 
 
 def _strict_schema(schema):
@@ -409,8 +381,9 @@ class OAuthLanguageModel(LanguageModel):
         Each call carries a few thousand tokens of harness overhead and
         counts against the usage limits of the subscription.
 
-    `reasoning_effort` is supported (`"low"`, `"medium"`, `"high"`...);
-    `"none"` keeps the default of the model.
+    `reasoning_effort` is supported (`"low"`, `"medium"`, `"high"`...):
+    `"none"` keeps the default of the model and `"disable"` turns reasoning
+    off. A `thinking` field of the output schema is written by the model.
 
     Args:
         model (str): The model to use, as `codex/<model>` (e.g.
@@ -446,8 +419,6 @@ class OAuthLanguageModel(LanguageModel):
                 f"Received: model={model!r}"
             )
         super().__init__(model=model, **kwargs)
-        if self.cache_dir:
-            self._file_cache = _EffortKeyedFileCache(self.cache_dir)
         # The ignored parameters already reported, so that a parameter set on
         # every call (e.g. the `temperature` of a `Generator`) warns once.
         self._reported_ignored_params = set()
@@ -486,31 +457,14 @@ class OAuthLanguageModel(LanguageModel):
             raise ValueError("`OAuthLanguageModel` does not support streaming.")
         if schema:
             schema = _strict_schema(schema)
-        # The base class drops `reasoning_effort` for the models LiteLLM does
-        # not know to reason (see `supports_reasoning`); it is read here and
-        # handed to the transport out of band, leaving `kwargs` untouched for
-        # the `fallback`.
-        reasoning_effort = kwargs.get(
-            "reasoning_effort", self.default_kwargs.get("reasoning_effort", "none")
-        )
-        token = _REASONING_EFFORT.set(
-            None
-            if not reasoning_effort or reasoning_effort == "none"
-            else _EFFORT_ALIASES.get(reasoning_effort, reasoning_effort)
-        )
-        try:
-            return await super().call(
-                messages,
-                schema=schema,
-                streaming=False,
-                **kwargs,
-            )
-        finally:
-            _REASONING_EFFORT.reset(token)
+        return await super().call(messages, schema=schema, **kwargs)
 
     async def _acompletion(self, formatted_messages, **kwargs):
         kwargs = copy.copy(kwargs)
-        reasoning_effort = _REASONING_EFFORT.get(None)
+        reasoning_effort = kwargs.pop("reasoning_effort", None)
+        if reasoning_effort == "minimal":
+            # Not accepted by the ChatGPT backend; "low" is the closest effort.
+            reasoning_effort = "low"
         response_format = kwargs.pop("response_format", None)
         schema = None
         if response_format:
@@ -631,10 +585,17 @@ class OAuthLanguageModel(LanguageModel):
         return list(OAUTH_PROVIDERS)
 
     def supports_reasoning(self):
-        """Whether the base class forwards `reasoning_effort` (always False).
+        """Whether the model takes a reasoning effort (always True).
 
-        The effort is handed to the CLI by this class instead, and the
-        `thinking` field of a schema, if any, is generated like any other.
+        The effort reaches the CLI as `model_reasoning_effort`.
+        """
+        return True
+
+    def supports_reasoning_trace(self):
+        """Whether the reasoning trace fills the `thinking` field (always False).
+
+        The CLI only returns a one-line summary of the reasoning, and not on
+        every turn: the model writes the `thinking` field itself.
         """
         return False
 
