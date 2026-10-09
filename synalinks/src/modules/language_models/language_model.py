@@ -611,7 +611,8 @@ class LanguageModel(Module):
     accepts:
 
     - `"none"` (the default): send nothing, leaving the model at its provider
-      default reasoning behavior.
+      default reasoning behavior. `None` (what a module passes when it sets
+      no effort of its own) means unset: the constructor default applies.
     - `"disable"`: actively turn native reasoning *off*. This only has an
       effect for providers that reason by default, i.e. ollama's thinking
       models (`qwen3`, `deepseek-r1`, ...); it maps to ollama's `think=False`
@@ -939,7 +940,12 @@ class LanguageModel(Module):
         #                models. Opt-in providers (OpenAI, Anthropic, Gemini, ...)
         #                reason only when enabled, so there is nothing to send.
         #   otherwise -> forward the effort to litellm when the model supports it.
-        reasoning_effort = kwargs.pop("reasoning_effort", "none")
+        # A module passes `reasoning_effort=None` when it sets none of its own
+        # (e.g. a `Generator` built without one): that is "unset", so the
+        # model's default applies, never an effort to send.
+        reasoning_effort = kwargs.pop("reasoning_effort", None)
+        if reasoning_effort is None:
+            reasoning_effort = self.default_kwargs.get("reasoning_effort") or "none"
         schema_had_thinking = bool(schema) and "thinking" in (
             schema.get("properties") or {}
         )
