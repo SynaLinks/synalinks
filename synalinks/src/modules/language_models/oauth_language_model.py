@@ -84,6 +84,12 @@ _DISABLED_FEATURES = (
 # the model acted instead of answering: the call is failed.
 _ALLOWED_ITEM_TYPES = frozenset({"agent_message", "reasoning", "error"})
 
+# `reasoning_effort` values Synalinks accepts that the ChatGPT backend does not
+# take on every model. Measured with codex-cli 0.162: gpt-6.1-sol accepts
+# low/medium/high/xhigh/max and rejects "none" and "minimal" (gpt-5.5 still
+# took "none"), so "low" is the lowest effort every listed model accepts.
+_EFFORT_ALIASES = {"disable": "low", "minimal": "low"}
+
 # Request parameters with no Codex CLI equivalent, dropped with a warning.
 _IGNORED_PARAMS = (
     "temperature",
@@ -107,25 +113,57 @@ def _strict_schema(schema):
     list all its properties in `required` and set `additionalProperties` to
     `False`. Pydantic leaves the fields that have a default out of
     `required`, so the schema is rewritten recursively (`$defs`, `items`,
-    `anyOf`...) without mutating the input.
+    `anyOf`...) without mutating the input. A `$ref` is also left alone in
+    its node (see `_bare_refs`).
 
     Raises:
         ValueError: If the schema contains a free-form object (one without
             `properties`, or accepting additional properties), which strict
             mode cannot express.
     """
+    if isinstance(schema, dict):
+        schema = _bare_refs(schema, schema.get("$defs") or {})
+    return _close_objects(schema)
+
+
+def _bare_refs(node, defs, inlining=()):
+    """Returns a copy of `node` where no `$ref` has a sibling keyword.
+
+    Pydantic writes `{"$ref": ..., "default": ...}` for a nested data model
+    with a default, and `{"$ref": ..., "description": ...}` for a described
+    one. About half of the ChatGPT backend's calls reject both ("$ref cannot
+    have keywords"), measured with gpt-6.1-sol. The `default` is dropped (every
+    field is required in strict mode); a `description` is kept by inlining
+    the referenced definition, unless it is recursive.
+    """
+    if isinstance(node, list):
+        return [_bare_refs(item, defs, inlining) for item in node]
+    if not isinstance(node, dict):
+        return node
+    ref = node.get("$ref")
+    if isinstance(ref, str) and len(node) > 1:
+        name = ref.rsplit("/", 1)[-1]
+        if "description" in node and name in defs and name not in inlining:
+            target = _bare_refs(defs[name], defs, inlining + (name,))
+            return {**target, "description": node["description"]}
+        return {"$ref": ref}
+    return {key: _bare_refs(value, defs, inlining) for key, value in node.items()}
+
+
+def _close_objects(schema):
+    """Closes every object of `schema` and requires all its properties."""
     if not isinstance(schema, dict):
         return schema
     out = dict(schema)
     for key in ("properties", "$defs", "definitions"):
         if isinstance(out.get(key), dict):
-            out[key] = {k: _strict_schema(v) for k, v in out[key].items()}
+            out[key] = {k: _close_objects(v) for k, v in out[key].items()}
     for key in ("items", "not"):
         if isinstance(out.get(key), dict):
-            out[key] = _strict_schema(out[key])
+            out[key] = _close_objects(out[key])
     for key in ("anyOf", "oneOf", "allOf", "prefixItems"):
         if isinstance(out.get(key), list):
-            out[key] = [_strict_schema(item) for item in out[key]]
+            out[key] = [_close_objects(item) for item in out[key]]
     properties = out.get("properties")
     if out.get("type") == "object" or isinstance(properties, dict):
         if not isinstance(properties, dict) or out.get("additionalProperties"):
@@ -340,13 +378,13 @@ class OAuthLanguageModel(LanguageModel):
     import synalinks
 
     language_model = synalinks.OAuthLanguageModel(
-        model="codex/gpt-5.5",
+        model="codex/gpt-6.1-sol",
         reasoning_effort="low",
     )
     ```
 
-    `synalinks.language_models.get("codex/gpt-5.5")`, and therefore
-    `language_model="codex/gpt-5.5"` on any module, returns this class too.
+    `synalinks.language_models.get("codex/gpt-6.1-sol")`, and therefore
+    `language_model="codex/gpt-6.1-sol"` on any module, returns this class too.
     Use `"codex/default"` to let the CLI pick the default model of the
     account, and `codex debug models` to list the available ones.
 
@@ -382,12 +420,14 @@ class OAuthLanguageModel(LanguageModel):
         counts against the usage limits of the subscription.
 
     `reasoning_effort` is supported (`"low"`, `"medium"`, `"high"`...):
-    `"none"` keeps the default of the model and `"disable"` turns reasoning
-    off. A `thinking` field of the output schema is written by the model.
+    `"none"` keeps the default of the model. `"disable"` and `"minimal"`
+    send `"low"`, the lowest effort every model accepts (most of them cannot
+    turn reasoning off). A `thinking` field of the output schema is written
+    by the model.
 
     Args:
         model (str): The model to use, as `codex/<model>` (e.g.
-            `codex/gpt-5.5`), or `codex/default` for the account default.
+            `codex/gpt-6.1-sol`), or `codex/default` for the account default.
         api_base (str): Unused, accepted for compatibility with
             `LanguageModel`.
         timeout (int): The timeout in seconds of one call, after which the
@@ -415,7 +455,7 @@ class OAuthLanguageModel(LanguageModel):
         if not separator or provider not in OAUTH_PROVIDERS or not cli_model:
             raise ValueError(
                 "`OAuthLanguageModel` expects `model` as '<provider>/<model>' with "
-                f"a provider among {list(OAUTH_PROVIDERS)} (e.g. 'codex/gpt-5.5'). "
+                f"a provider among {list(OAUTH_PROVIDERS)} (e.g. 'codex/gpt-6.1-sol'). "
                 f"Received: model={model!r}"
             )
         super().__init__(model=model, **kwargs)
@@ -462,9 +502,7 @@ class OAuthLanguageModel(LanguageModel):
     async def _acompletion(self, formatted_messages, **kwargs):
         kwargs = copy.copy(kwargs)
         reasoning_effort = kwargs.pop("reasoning_effort", None)
-        if reasoning_effort == "minimal":
-            # Not accepted by the ChatGPT backend; "low" is the closest effort.
-            reasoning_effort = "low"
+        reasoning_effort = _EFFORT_ALIASES.get(reasoning_effort, reasoning_effort)
         response_format = kwargs.pop("response_format", None)
         schema = None
         if response_format:
