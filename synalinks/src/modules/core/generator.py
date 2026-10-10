@@ -438,7 +438,9 @@ class Generator(Module):
             name="state_" + self.name,
         )
 
-    async def call(self, inputs, tools=None, tool_schemas=None, training=False):
+    async def call(
+        self, inputs, tools=None, tool_schemas=None, tool_choice=None, training=False
+    ):
         if not inputs:
             return None
         # Merge the always-on, constructor-level tools/schemas with any passed
@@ -476,6 +478,10 @@ class Generator(Module):
             tool_schemas=tool_schemas,
             streaming=streaming,
             reasoning_effort=self.reasoning_effort,
+            # Only when asked: e.g. `"none"` keeps the tools declared (so the
+            # provider still parses the model's tool syntax) while forbidding
+            # a call.
+            **({"tool_choice": tool_choice} if tool_choice is not None else {}),
             **sampling,
         )
         if isinstance(value, StreamingIterator):
@@ -514,7 +520,7 @@ class Generator(Module):
         return None
 
     async def compute_output_spec(
-        self, inputs, tools=None, tool_schemas=None, training=False
+        self, inputs, tools=None, tool_schemas=None, tool_choice=None, training=False
     ):
         if self.schema:
             if self.return_inputs:

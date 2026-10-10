@@ -1625,7 +1625,8 @@ class RecursiveLanguageModelAgent(FunctionCallingAgent):
                 )
                 return self._wrap_trajectory(agent_messages)
         else:
-            final_result = await self.final_generator(trajectory)
+            # Declared but forbidden tools: a leftover call is parsed, not leaked as text.
+            final_result = await self._final_answer(trajectory, self._native_tools(ctx))
             if not self.schema:
                 # Schemaless fallback: the final generator emits a ChatMessage.
                 if final_result:
