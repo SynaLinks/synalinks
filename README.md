@@ -1,7 +1,7 @@
 <div align="center">
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="img/synalinks-dark.svg">
-  <img height=200 alt="Synalinks" src="img/synalinks-light.svg">
+  <img height="200" alt="Synalinks" src="img/synalinks-light.svg">
 </picture>
 </div>
 
