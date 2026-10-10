@@ -1435,9 +1435,12 @@ class ToolResultAudioTest(testing.TestCase):
         self.assertIn("1 audio clip(s) omitted", text["text"])
         self.assertEqual(image["type"], "image_url")
 
+    # litellm's model table, fetched at import, comes and goes on OpenRouter's
+    # models: what is tested is the message, not the table.
+    @patch.object(LanguageModel, "supports_audio", return_value=True)
     @patch("litellm.acompletion")
     async def test_openrouter_gemini_gets_the_audio_in_a_user_message(
-        self, mock_completion
+        self, mock_completion, _
     ):
         mock_completion.return_value = {"choices": [{"message": {"content": "ok"}}]}
         await LanguageModel(model="openrouter/google/gemini-2.5-flash")(self._messages())
