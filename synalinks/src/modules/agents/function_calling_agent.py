@@ -419,9 +419,10 @@ class FunctionCallingAgent(Module):
         prompt_template (str): The jinja2 prompt template. Defaults to
             `default_agent_prompt_template`, whose extra sections render
             the ``custom_instructions``, ``sandbox_functions`` and
-            ``available_skills`` variables the agent derives at
-            construction (from the workdir's root ``AGENTS.md``, the
-            ``skills`` roots, and the sandbox tools); a custom template
+            ``available_skills`` variables the agent derives (from the
+            workdir's root ``AGENTS.md`` and the sandbox tools at
+            construction, from the ``skills`` roots at each call); a
+            custom template
             can place the same ``{{ ... }}`` placeholders wherever it
             wants.
         examples (list): The default list of examples, the examples
@@ -465,10 +466,12 @@ class FunctionCallingAgent(Module):
             existing directory (Default to None).
         skills (list): Optional. A list of folder paths, each a *root* directory
             under which Agent Skills live as ``<root>/<name>/SKILL.md`` (the open
-            agentskills.io standard). The discovered skills' names and
+            agentskills.io standard). The roots are read at each call, so
+            skills added, removed or edited while the agent lives are picked
+            up by its next call. The discovered skills' names and
             descriptions are rendered as an ``<available_skills>`` block into
             the step generator's prompt template (the ``available_skills``
-            prompt variable: static configuration, so in-context optimization
+            prompt variable: configuration, so in-context optimization
             of the instructions cannot drop the listing); per progressive
             disclosure, each skill's full ``SKILL.md`` body is read on
             demand: setting `skills` also adds a built-in ``read_skill(name)``
@@ -524,7 +527,6 @@ class FunctionCallingAgent(Module):
 
         self.workdir = resolve_workdir(workdir)
         self.skills = resolve_skills_paths(skills)
-        skill_dirs = discover_skills_in_roots(self.skills) if self.skills else []
 
         agents_md_items = discover_agents_md(self.workdir) if self.workdir else []
         # root AGENTS.md only: nested files create conflicting instructions
@@ -535,11 +537,6 @@ class FunctionCallingAgent(Module):
             self.prompt_variables["custom_instructions"] = [
                 {"directory": item.directory or ".", "content": item.content}
                 for item in agents_md_items
-            ]
-        if skill_dirs:
-            skills = [load_skill(skill_dir) for skill_dir in skill_dirs]
-            self.prompt_variables["available_skills"] = [
-                {"name": skill.name, "description": skill.description} for skill in skills
             ]
 
         if not schema and data_model:
@@ -697,9 +694,21 @@ class FunctionCallingAgent(Module):
                 f"In interactive mode, the {type(self).__name__} needs a "
                 "ChatMessages-like data model as inputs"
             )
+        if self.skills:
+            # Discovered at each call, so a skill added, removed or
+            # re-described on disk is seen without rebuilding the agent. The
+            # listing goes to the generator that renders the prompt (the one
+            # inside `ChainOfThought`), which keeps its own prompt variables.
+            step_generator = getattr(
+                self.tool_calls_generator, "generator", self.tool_calls_generator
+            )
+            step_generator.prompt_variables["available_skills"] = [
+                {"name": skill.name, "description": skill.description}
+                for skill in map(load_skill, discover_skills_in_roots(self.skills))
+            ]
         # `call` is a template method: it builds the trajectory, then runs
         # the autonomous loop or the interactive step (AGENTS.md and the
-        # available skills travel in the prompt template, see `__init__`).
+        # available skills travel in the prompt template).
         # Subclasses (e.g. RLM) specialize behavior by overriding the hooks
         # below (`_begin_call`, `_native_tools`, `_dispatch_tool_calls`,
         # `_final_result`, ...) rather than reimplementing `call`. Extra
