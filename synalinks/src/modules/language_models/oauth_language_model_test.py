@@ -26,10 +26,28 @@ from synalinks.src.modules.language_models.oauth_language_model import (
 from synalinks.src.modules.language_models.oauth_language_model import _parse_codex_events
 from synalinks.src.modules.language_models.oauth_language_model import _split_messages
 from synalinks.src.modules.language_models.oauth_language_model import _strict_schema
+from synalinks.src.modules.language_models.oauth_language_model import _without_tools
 
 _RUN = (
     "synalinks.src.modules.language_models.oauth_language_model.OAuthLanguageModel._run"
 )
+
+
+# What `codex debug models` prints: a gpt-6 entry, whose tools go through code
+# mode, and an older one.
+_CATALOG = {
+    "models": [
+        {
+            "slug": "gpt-6.1-sol",
+            "default_reasoning_level": "low",
+            "tool_mode": "code_mode_only",
+            "multi_agent_version": "v2",
+            "apply_patch_tool_type": "freeform",
+            "experimental_supported_tools": ["clock"],
+        },
+        {"slug": "gpt-5.5", "tool_mode": None, "experimental_supported_tools": []},
+    ]
+}
 
 
 def _events(text, usage=None, extra=()):
@@ -83,23 +101,35 @@ class Reasoned(DataModel):
 
 
 class Recorder:
-    """Stands in for `OAuthLanguageModel._run`, recording what was sent."""
+    """Stands in for `OAuthLanguageModel._run`, recording what was sent.
 
-    def __init__(self, stdout="", stderr="", returncode=0):
+    `codex debug models` is answered with `catalog` and counted apart: `calls`
+    only holds the completions.
+    """
+
+    def __init__(self, stdout="", stderr="", returncode=0, catalog=None):
         self.result = (stdout, stderr, returncode)
+        self.catalog = json.dumps(_CATALOG) if catalog is None else catalog
+        self.catalog_reads = 0
         self.calls = []
 
     async def __call__(self, command, prompt, cwd=None):
+        if command[1] == "debug":
+            self.catalog_reads += 1
+            return self.catalog, "", 0
         files = {}
         for flag, key in (("--output-schema", "schema"),):
             if flag in command:
                 with open(command[command.index(flag) + 1], encoding="utf-8") as f:
                     files[key] = json.load(f)
         for arg in command:
-            if arg.startswith("model_instructions_file="):
-                path = json.loads(arg.split("=", 1)[1])
-                with open(path, encoding="utf-8") as f:
-                    files["instructions"] = f.read()
+            for prefix, key in (
+                ("model_instructions_file=", "instructions"),
+                ("model_catalog_json=", "catalog"),
+            ):
+                if arg.startswith(prefix):
+                    with open(json.loads(arg[len(prefix) :]), encoding="utf-8") as f:
+                        files[key] = f.read()
         self.calls.append(
             {
                 "command": command,
@@ -197,6 +227,7 @@ class CodexCommandTest(testing.TestCase):
             "/tmp/work",
             instructions_path="/tmp/i.md",
             schema_path="/tmp/s.json",
+            catalog_path="/tmp/m.json",
             reasoning_effort="low",
         )
         self.assertEqual(command[:2], ["codex", "exec"])
@@ -208,6 +239,12 @@ class CodexCommandTest(testing.TestCase):
         self.assertEqual(command[command.index("--output-schema") + 1], "/tmp/s.json")
         self.assertIn('web_search="disabled"', command)
         self.assertIn("features.shell_tool=false", command)
+        # Nothing but the messages reaches the model: no injected text, and
+        # the catalog without the tools it gives a model.
+        self.assertIn("include_permissions_instructions=false", command)
+        self.assertIn("include_environment_context=false", command)
+        self.assertIn("skills.include_instructions=false", command)
+        self.assertIn('model_catalog_json="/tmp/m.json"', command)
         self.assertIn('model_instructions_file="/tmp/i.md"', command)
         self.assertIn('model_reasoning_effort="low"', command)
         self.assertEqual(command[-1], "-")
@@ -218,7 +255,30 @@ class CodexCommandTest(testing.TestCase):
         self.assertNotIn("-m", command)
         self.assertNotIn("--output-schema", command)
         self.assertFalse(any(a.startswith("model_instructions_file") for a in command))
+        self.assertFalse(any(a.startswith("model_catalog_json") for a in command))
         self.assertFalse(any(a.startswith("model_reasoning_effort") for a in command))
+
+
+class ModelCatalogTest(testing.TestCase):
+    def test_no_model_keeps_its_tools(self):
+        sol, older = _without_tools(_CATALOG)["models"]
+        self.assertEqual(
+            sol,
+            {
+                "slug": "gpt-6.1-sol",
+                "default_reasoning_level": "low",
+                "tool_mode": None,
+                "multi_agent_version": None,
+                "apply_patch_tool_type": None,
+                "experimental_supported_tools": [],
+            },
+        )
+        # A field an entry does not have is not added to it.
+        self.assertEqual(
+            older,
+            {"slug": "gpt-5.5", "tool_mode": None, "experimental_supported_tools": []},
+        )
+        self.assertEqual(_CATALOG["models"][0]["tool_mode"], "code_mode_only")
 
 
 class CodexEventsTest(testing.TestCase):
@@ -501,6 +561,8 @@ class OAuthLanguageModelTest(testing.TestCase):
         calls = []
 
         async def run(self, command, prompt, cwd=None):
+            if "exec" not in command:
+                return await recorder(command, prompt, cwd=cwd)
             calls.append(self.model)
             if self is fallback:
                 return _events("from fallback"), "", 0
@@ -556,6 +618,33 @@ class OAuthLanguageModelTest(testing.TestCase):
                 "none": [],
             },
         )
+
+    async def test_model_catalog_is_read_once_and_handed_without_tools(self):
+        recorder = Recorder(stdout=_events("ok"))
+        lm = OAuthLanguageModel(model="codex/gpt-6.1-sol")
+        with patch(_RUN, recorder):
+            await lm(_user("one"))
+            await lm(_user("two"))
+        self.assertEqual(recorder.catalog_reads, 1)
+        for call in recorder.calls:
+            self.assertEqual(json.loads(call["catalog"]), _without_tools(_CATALOG))
+
+    async def test_missing_model_catalog_is_reported_once(self):
+        # An older CLI has no `codex debug models`: the completion still runs,
+        # with the tools the CLI gives the model.
+        recorder = Recorder(stdout=_events("ok"), catalog="")
+        lm = OAuthLanguageModel(model="codex/gpt-6.1-sol")
+        with patch(_RUN, recorder):
+            with warnings.catch_warnings(record=True) as caught:
+                warnings.simplefilter("always")
+                result = await lm(_user("one"))
+                await lm(_user("two"))
+        self.assertEqual(result.get("content"), "ok")
+        self.assertEqual(recorder.catalog_reads, 1)
+        reports = [w for w in caught if "no model catalog" in str(w.message)]
+        self.assertEqual(len(reports), 1)
+        for call in recorder.calls:
+            self.assertNotIn("catalog", call)
 
     async def test_file_cache_hit_skips_the_cli(self):
         recorder = Recorder(stdout=_events("cached answer"))
