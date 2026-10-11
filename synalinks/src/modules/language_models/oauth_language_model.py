@@ -53,11 +53,7 @@ _ENV_ALLOWLIST = (
 )
 
 # Codex features that give the model a way to act (shell, web, apps, plugins,
-# sub-agents...). They are switched off through `-c features.<name>=false`
-# rather than `--disable <name>`: the latter aborts on a name the installed
-# CLI does not know, the former only emits a warning, so the list survives
-# CLI upgrades. `_ALLOWED_ITEM_TYPES` below is what actually enforces that no
-# tool ran.
+# sub-agents...).
 _DISABLED_FEATURES = (
     "shell_tool",
     "unified_exec",
@@ -78,9 +74,41 @@ _DISABLED_FEATURES = (
     "memories",
 )
 
+# Everything the harness would add to a request on its own, switched off with
+# `-c <key>=<value>`: the tools above and the text it injects around the
+# prompt (sandbox rules, collaboration mode, working directory and date,
+# skills, `AGENTS.md`). `-c features.<name>=false` is used rather than
+# `--disable <name>`: the latter aborts on a name the installed CLI does not
+# know, while an unknown key only emits a notice, so the list survives CLI
+# upgrades.
+_CONFIG_OVERRIDES = (
+    'web_search="disabled"',
+    "project_doc_max_bytes=0",
+    "include_permissions_instructions=false",
+    "include_collaboration_mode_instructions=false",
+    "include_environment_context=false",
+    "skills.include_instructions=false",
+    *(f"features.{name}=false" for name in _DISABLED_FEATURES),
+)
+
+# What the model catalog of the CLI gives a model whatever the configuration
+# says: the "code mode" JavaScript tool (the only way the gpt-6 models call
+# tools), sub-agents, the patch tool and the experimental tools. With code
+# mode on, gpt-6.1-sol spends two requests listing its tools before it
+# answers (measured with codex-cli 0.162), and none of it shows in the JSONL
+# stream.
+_CATALOG_TOOL_FIELDS = {
+    "tool_mode": None,
+    "multi_agent_version": None,
+    "apply_patch_tool_type": None,
+    "experimental_supported_tools": [],
+}
+
 # The JSONL item types a plain completion may produce. Anything else (a
 # command execution, a web search, a file change, an MCP tool call...) means
-# the model acted instead of answering: the call is failed.
+# the model acted instead of answering: the call is failed. This is a second
+# line of defence: what runs through code mode is not reported as an item,
+# which is why the tools are taken out of the catalog in the first place.
 _ALLOWED_ITEM_TYPES = frozenset({"agent_message", "reasoning", "error"})
 
 # `reasoning_effort` values Synalinks accepts that the ChatGPT backend does not
@@ -177,6 +205,35 @@ def _close_objects(schema):
     return out
 
 
+def _without_tools(catalog):
+    """Returns a copy of the CLI's model catalog where no model is given tools.
+
+    Only the fields an entry already has are overridden, so that an entry of
+    another catalog version is left as the CLI wrote it.
+    """
+    return {
+        **catalog,
+        "models": [
+            {**model, **{k: v for k, v in _CATALOG_TOOL_FIELDS.items() if k in model}}
+            for model in catalog["models"]
+        ],
+    }
+
+
+def _write(directory, name, text):
+    """Writes `text` to `name` in `directory`.
+
+    Returns:
+        (str): The path of the file, or None if there is nothing to write.
+    """
+    if not text:
+        return None
+    path = os.path.join(directory, name)
+    with open(path, "w", encoding="utf-8") as f:
+        f.write(text)
+    return path
+
+
 def _message_text(message):
     """Returns the text of a wire-format chat message (non-text parts dropped)."""
     content = message.get("content")
@@ -228,20 +285,23 @@ def _build_codex_command(
     workdir,
     instructions_path=None,
     schema_path=None,
+    catalog_path=None,
     reasoning_effort=None,
 ):
     """Builds the `codex exec` command line of one completion.
 
     The CLI is an agent harness; every flag below strips it down to a plain
-    completion endpoint:
+    completion endpoint, whose request holds the system message, the prompt
+    and the schema, and nothing else:
 
     - `--ephemeral`: no session file written to disk.
     - `--ignore-user-config` / `--ignore-rules`: the user's `config.toml`
         (MCP servers, profiles, hooks...) and exec rules are not loaded; the
         login is still read from `CODEX_HOME`.
     - `-s read-only` + `-C <empty dir>`: nothing to read, nothing writable.
-    - `web_search="disabled"` and `features.*=false`: no tool is offered.
-    - `project_doc_max_bytes=0`: no `AGENTS.md` is injected.
+    - `_CONFIG_OVERRIDES`: no tool is offered and no text is injected.
+    - `model_catalog_json`: the catalog of the CLI without the tools it
+        gives a model (see `_CATALOG_TOOL_FIELDS`).
     - `model_instructions_file`: the system message replaces the built-in
         coding-agent prompt.
     """
@@ -259,13 +319,11 @@ def _build_codex_command(
         "read-only",
         "-C",
         workdir,
-        "-c",
-        'web_search="disabled"',
-        "-c",
-        "project_doc_max_bytes=0",
     ]
-    for feature in _DISABLED_FEATURES:
-        command += ["-c", f"features.{feature}=false"]
+    for override in _CONFIG_OVERRIDES:
+        command += ["-c", override]
+    if catalog_path:
+        command += ["-c", f"model_catalog_json={json.dumps(catalog_path)}"]
     if instructions_path:
         command += ["-c", f"model_instructions_file={json.dumps(instructions_path)}"]
     if reasoning_effort:
@@ -396,10 +454,17 @@ class OAuthLanguageModel(LanguageModel):
 
     - The output schema is passed with `--output-schema` and enforced by the
         backend in strict mode: every field is required and returned.
-    - The system message replaces the built-in coding-agent prompt.
+    - The system message replaces the built-in coding-agent prompt, and the
+        harness adds nothing to the request: it holds the messages and the
+        schema, as with an API.
     - The model gets no tool: the shell, web search, apps and plugins are
-        disabled, the sandbox is read-only and the working directory is an
-        empty temporary directory. If a tool runs anyway, the call fails.
+        disabled, and the tools the model catalog of the CLI turns on for a
+        model (the "code mode" of the gpt-6 models, sub-agents, the patch
+        tool) are taken out of it. The catalog is read once with
+        `codex debug models`; if the CLI has none, a warning says so.
+    - Whatever the model is given, the sandbox is read-only, without
+        network, and the working directory is an empty temporary directory.
+        A tool call the CLI reports fails the call.
     - The subprocess only inherits an allowlist of environment variables,
         so the API keys of the parent process are not exposed to it.
 
@@ -414,9 +479,8 @@ class OAuthLanguageModel(LanguageModel):
         class where a deterministic `temperature=0.0` judge is required.
     - A free-form `dict` field cannot be expressed in strict mode and
         raises a `ValueError`.
-    - The cost is not tracked (flat-rate subscription); token usage is.
-        Each call carries a few thousand tokens of harness overhead and
-        counts against the usage limits of the subscription.
+    - The cost is not tracked (flat-rate subscription); token usage is, and
+        each call counts against the usage limits of the subscription.
 
     `reasoning_effort` behaves as with `LanguageModel`: a value (`"low"`,
     `"medium"`, `"high"`...) is sent to the backend, `"none"` and `None`
@@ -462,6 +526,9 @@ class OAuthLanguageModel(LanguageModel):
         # The ignored parameters already reported, so that a parameter set on
         # every call (e.g. the `temperature` of a `Generator`) warns once.
         self._reported_ignored_params = set()
+        # The tool-free model catalog, as JSON, read from the CLI on the
+        # first call ("" if the CLI has none).
+        self._catalog = None
 
     async def call(
         self,
@@ -524,27 +591,19 @@ class OAuthLanguageModel(LanguageModel):
         cli_model = self.model.split("/", 1)[1]
         if cli_model == "default":
             cli_model = None
+        catalog = await self._model_catalog()
 
         with tempfile.TemporaryDirectory(prefix="synalinks_oauth_") as tmp:
             # The model runs in an empty directory; the request files live
             # next to it, out of its working root.
             workdir = os.path.join(tmp, "workdir")
             os.mkdir(workdir)
-            instructions_path = None
-            if instructions:
-                instructions_path = os.path.join(tmp, "instructions.md")
-                with open(instructions_path, "w", encoding="utf-8") as f:
-                    f.write(instructions)
-            schema_path = None
-            if schema:
-                schema_path = os.path.join(tmp, "schema.json")
-                with open(schema_path, "w", encoding="utf-8") as f:
-                    json.dump(schema, f)
             command = _build_codex_command(
                 cli_model,
                 workdir,
-                instructions_path=instructions_path,
-                schema_path=schema_path,
+                instructions_path=_write(tmp, "instructions.md", instructions),
+                schema_path=_write(tmp, "schema.json", schema and json.dumps(schema)),
+                catalog_path=_write(tmp, "models.json", catalog),
                 reasoning_effort=reasoning_effort,
             )
             stdout, stderr, returncode = await self._run(command, prompt, cwd=workdir)
@@ -569,6 +628,30 @@ class OAuthLanguageModel(LanguageModel):
                 raise DeterministicStopError(message, "invalid_request")
             raise RuntimeError(message)
         return _to_model_response(content, usage)
+
+    async def _model_catalog(self):
+        """Returns the tool-free model catalog of the CLI, as JSON.
+
+        The catalog holds the request settings of each model (reasoning
+        levels, verbosity, context window...), so the one of the CLI is kept
+        and only its tools are removed. It is read once per instance.
+
+        Returns:
+            (str): The catalog, or an empty string if the CLI printed none.
+        """
+        if self._catalog is None:
+            stdout, _, _ = await self._run(["codex", "debug", "models"], "")
+            try:
+                self._catalog = json.dumps(_without_tools(json.loads(stdout)))
+            except (ValueError, TypeError, KeyError):
+                self._catalog = ""
+                warnings.warn(
+                    f"`codex debug models` printed no model catalog: {self} keeps "
+                    "the tools the CLI gives the model by default (the code mode "
+                    "of the gpt-6 models), whose calls cost requests and are not "
+                    "reported."
+                )
+        return self._catalog
 
     async def _run(self, command, prompt, cwd=None):
         """Runs `command` with `prompt` on stdin.
