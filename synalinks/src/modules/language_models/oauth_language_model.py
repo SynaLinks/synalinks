@@ -1,7 +1,6 @@
 # License Apache 2.0: (c) 2025-2026 Yoan Sallami (Synalinks Team)
 
 import asyncio
-import copy
 import json
 import os
 import tempfile
@@ -419,11 +418,12 @@ class OAuthLanguageModel(LanguageModel):
         Each call carries a few thousand tokens of harness overhead and
         counts against the usage limits of the subscription.
 
-    `reasoning_effort` is supported (`"low"`, `"medium"`, `"high"`...):
-    `"none"` keeps the default of the model. `"disable"` and `"minimal"`
-    send `"low"`, the lowest effort every model accepts (most of them cannot
-    turn reasoning off). A `thinking` field of the output schema is written
-    by the model.
+    `reasoning_effort` behaves as with `LanguageModel`: a value (`"low"`,
+    `"medium"`, `"high"`...) is sent to the backend, `"none"` and `None`
+    keep the default of the model. `"disable"` and `"minimal"` send `"low"`,
+    the lowest effort every model accepts (most of them cannot turn
+    reasoning off). A `thinking` field of the output schema is written by
+    the model.
 
     Args:
         model (str): The model to use, as `codex/<model>` (e.g.
@@ -500,7 +500,9 @@ class OAuthLanguageModel(LanguageModel):
         return await super().call(messages, schema=schema, **kwargs)
 
     async def _acompletion(self, formatted_messages, **kwargs):
-        kwargs = copy.copy(kwargs)
+        # As for any provider, `None` (what a module passes when it sets no
+        # effort) and "none" (not forwarded by the base class) leave the model
+        # at its default: no effort is sent.
         reasoning_effort = kwargs.pop("reasoning_effort", None)
         reasoning_effort = _EFFORT_ALIASES.get(reasoning_effort, reasoning_effort)
         response_format = kwargs.pop("response_format", None)

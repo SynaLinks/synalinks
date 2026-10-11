@@ -298,7 +298,7 @@ class Generator(Module):
             default).
         reasoning_effort (string): Optional. The reasoning effort for the LM call
             between ['minimal', 'low', 'medium', 'high', 'disable', 'none', None].
-            Default to None (unset: the language model's default applies).
+            Default to None (no reasoning).
         streaming (str): Optional. If true stream the LM response, enabled only if
             `schema` is `None`. Honored in every phase (inference, reward,
             optimizer) and in training: in a batched loop (predict / evaluate /
