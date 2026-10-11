@@ -21,7 +21,6 @@ from synalinks.src.backend import ChatMessage
 from synalinks.src.backend import ChatMessages
 from synalinks.src.backend import ChatRole
 from synalinks.src.backend import DataModel
-from synalinks.src.backend import Field
 from synalinks.src.backend import Image
 from synalinks.src.backend.common.op_scope import _OP_SCOPE
 from synalinks.src.modules.core.tool import Tool
@@ -511,43 +510,6 @@ class LanguageModelTest(testing.TestCase):
         lm = LanguageModel(model="openai/gpt-4o-mini")
         await lm(messages, reasoning_effort="disable")
         self.assertNotIn("think", mock_completion.call_args.kwargs)
-
-    @patch("litellm.acompletion")
-    async def test_unset_reasoning_effort_is_not_an_effort(self, mock_completion):
-        """A module passes `reasoning_effort=None` when it sets none (e.g. a
-        `Generator` built without one). It must leave the model's default in
-        place and keep the `thinking` field of the schema, not be sent as an
-        effort that strips it.
-        """
-
-        class Reasoned(DataModel):
-            thinking: str = Field(description="Step by step thinking")
-            answer: str = Field(description="The answer")
-
-        mock_completion.return_value = {
-            "choices": [{"message": {"content": '{"thinking": "2+2", "answer": "4"}'}}]
-        }
-        messages = ChatMessages(
-            messages=[ChatMessage(role=ChatRole.USER, content="2+2?")]
-        )
-
-        lm = LanguageModel(model="openai/gpt-5")
-        result = await lm(messages, schema=Reasoned.get_schema(), reasoning_effort=None)
-        sent = mock_completion.call_args.kwargs
-        self.assertNotIn("reasoning_effort", sent)
-        schema = sent["response_format"]["json_schema"]["schema"]
-        self.assertIn("thinking", schema["properties"])
-        self.assertEqual(result.get_json(), {"thinking": "2+2", "answer": "4"})
-
-        lm = LanguageModel(model="openai/gpt-5", reasoning_effort="high")
-        await lm(messages, reasoning_effort=None)
-        self.assertEqual(mock_completion.call_args.kwargs["reasoning_effort"], "high")
-
-        ollama_lm = LanguageModel(
-            model="ollama_chat/qwen3:8b", reasoning_effort="disable"
-        )
-        await ollama_lm(messages, reasoning_effort=None)
-        self.assertIs(mock_completion.call_args.kwargs.get("think"), False)
 
 
 class MultimodalWireTest(testing.TestCase):

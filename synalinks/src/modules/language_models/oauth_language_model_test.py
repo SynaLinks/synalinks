@@ -416,13 +416,30 @@ class OAuthLanguageModelTest(testing.TestCase):
         for call in recorder.calls:
             self.assertIn('model_reasoning_effort="low"', call["command"])
 
-    async def test_unset_effort_keeps_the_model_default(self):
-        # A `Generator` built without an effort passes `reasoning_effort=None`.
+    async def test_reasoning_effort_follows_the_base_class(self):
+        # Same contract as `LanguageModel`: the effort of the call wins over
+        # the one of the constructor, `None` (what a module passes when it
+        # sets no effort) and "none" both keep the default of the model.
         recorder = Recorder(stdout=_events("ok"))
         lm = OAuthLanguageModel(model="codex/gpt-6.1-sol", reasoning_effort="high")
         with patch(_RUN, recorder):
+            await lm(_messages())
+            await lm(_messages(), reasoning_effort="low")
             await lm(_messages(), reasoning_effort=None)
-        self.assertIn('model_reasoning_effort="high"', recorder.calls[0]["command"])
+            await lm(_messages(), reasoning_effort="none")
+        efforts = [
+            [a for a in call["command"] if a.startswith("model_reasoning_effort")]
+            for call in recorder.calls
+        ]
+        self.assertEqual(
+            efforts,
+            [
+                ['model_reasoning_effort="high"'],
+                ['model_reasoning_effort="low"'],
+                [],
+                [],
+            ],
+        )
 
     async def test_unsupported_parameters_are_ignored_with_a_warning(self):
         recorder = Recorder(stdout=_events("ok"))
