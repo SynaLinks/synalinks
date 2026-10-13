@@ -123,7 +123,7 @@ sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
 ```shell
 xcode-select --install
 brew tap slp/krun
-brew trust --formula slp/krun/libkrun slp/krun/libkrunfw  # recent Homebrew only
+brew trust --formula slp/krun/libkrun slp/krun/libkrunfw slp/krun/virglrenderer-krun  # recent Homebrew only
 brew install slp/krun/libkrun
 ```
 

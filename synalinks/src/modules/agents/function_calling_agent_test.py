@@ -1036,28 +1036,72 @@ class FunctionCallingAgentTest(testing.TestCase):
             )
         return root
 
-    async def test_skills_discovered_once_at_construction(self):
-        """`skills` roots are discovered at construction into the
+    @patch("litellm.acompletion")
+    async def test_skills_discovered_at_each_call(self, mock_completion):
+        """`skills` roots are discovered at each call into the
         `available_skills` prompt variable, rendered by the agent prompt
         template (not the trainable instructions, so in-context
-        optimization cannot drop the listing)."""
+        optimization cannot drop the listing): a skill added while the
+        agent lives is listed by its next call."""
         root = self._make_skills_root()
         agent = FunctionCallingAgent(
             language_model=LanguageModel(model="ollama/mistral"),
             tools=[Tool(calculate)],
+            autonomous=False,
             skills=[root],
         )
         self.assertIn("<available_skills>", agent.prompt_template)
         self.assertIn("{{ skill.name }}", agent.prompt_template)
+        mock_completion.return_value = _lm_response(content="Done.")
+        input_messages = ChatMessages(
+            messages=[ChatMessage(role="user", content="What is 1 + 1?")]
+        )
+        self.assertNotIn("available_skills", agent.prompt_variables)
+        await agent(input_messages)
         self.assertEqual(
-            agent.prompt_variables["available_skills"],
+            agent.tool_calls_generator.prompt_variables["available_skills"],
             [{"name": "pdf-filler", "description": "Fill PDF forms."}],
         )
+        skill_dir = os.path.join(root, "csv-reader")
+        os.makedirs(skill_dir)
+        with open(os.path.join(skill_dir, "SKILL.md"), "w", encoding="utf-8") as f:
+            f.write("---\nname: csv-reader\ndescription: Read CSV files.\n---\nBody.\n")
+        await agent(input_messages)
+        # The step generator's system prompt, one per call (the final-answer
+        # generator keeps the default template).
+        system_prompts = [
+            call.kwargs["messages"][0]["content"]
+            for call in mock_completion.call_args_list
+            if "<available_skills>" in call.kwargs["messages"][0]["content"]
+        ]
+        self.assertEqual(len(system_prompts), 2)
+        self.assertNotIn("csv-reader", system_prompts[0])
+        self.assertIn("csv-reader", system_prompts[1])
+        self.assertIn("pdf-filler", system_prompts[1])
         self.assertNotIn("<available_skills>", agent.instructions)
         self.assertNotIn(
             "<available_skills>",
             agent.tool_calls_generator.state.get("instructions"),
         )
+
+    @patch("litellm.acompletion")
+    async def test_skills_listed_with_chain_of_thought(self, mock_completion):
+        """With `use_chain_of_thought`, the prompt is rendered by the
+        generator inside `ChainOfThought`: the listing must reach that one."""
+        agent = FunctionCallingAgent(
+            language_model=LanguageModel(model="ollama/mistral"),
+            tools=[Tool(calculate)],
+            autonomous=False,
+            use_chain_of_thought=True,
+            skills=[self._make_skills_root()],
+        )
+        mock_completion.return_value = _lm_response(content="Done.")
+        await agent(ChatMessages(messages=[ChatMessage(role="user", content="Hi")]))
+        system_prompts = [
+            call.kwargs["messages"][0]["content"]
+            for call in mock_completion.call_args_list
+        ]
+        self.assertTrue(any("pdf-filler" in prompt for prompt in system_prompts))
 
     async def test_no_skills_means_no_skills_variable(self):
         agent = FunctionCallingAgent(
@@ -1193,7 +1237,9 @@ class SkillsToolWiringTest(testing.TestCase):
             language_model=LanguageModel(model="ollama/mistral"),
             skills=[self._make_skills_root()],
         )
-        skills = agent.prompt_variables["available_skills"]
+        with patch("litellm.acompletion", return_value=_lm_response(content="Done.")):
+            await agent(ChatMessages(messages=[ChatMessage(role="user", content="Hi")]))
+        skills = agent.tool_calls_generator.prompt_variables["available_skills"]
         self.assertEqual([s["name"] for s in skills], ["pdf-processing"])
         self.assertEqual(sorted(skills[0]), ["description", "name"])
         self.assertNotIn("<location>", agent.prompt_template)
