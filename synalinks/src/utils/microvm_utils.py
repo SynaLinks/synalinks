@@ -254,7 +254,9 @@ def recv_frame(sock):
 
 # The guest FUSE daemon: serves GUEST_MOUNT by forwarding every operation over
 # vsock to the host's `FsBridge`. One connection per libfuse worker thread.
-FS_SRC = CODEC_SRC + r"""
+FS_SRC = (
+    CODEC_SRC
+    + r"""
 import errno, socket, sys, threading
 import mfusepy
 
@@ -283,7 +285,9 @@ for _op in %(ops)r:
     setattr(Proxy, _op, lambda self, *args, _op=_op: call(_op, *args))
 
 mfusepy.FUSE(Proxy(), MOUNT, foreground=True, allow_other=True)
-""" % {"ops": FS_OPS}
+"""
+    % {"ops": FS_OPS}
+)
 
 HELPER_SRC = os.path.join(os.path.dirname(__file__), "krun", "krun_helper.c")
 ENTITLEMENTS = """<?xml version="1.0" encoding="UTF-8"?>

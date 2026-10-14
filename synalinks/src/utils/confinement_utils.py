@@ -571,7 +571,10 @@ def _confine_macos(cfg):
 # are emitted and the platform picked at run time, by the process being
 # confined rather than trusted from the host's config: it runs on the very host
 # it confines, so its own platform is the authority.
-CONFINE_PROLOGUE_SRC = CONFINE_SRC + MACOS_CONFINE_SRC + r"""
+CONFINE_PROLOGUE_SRC = (
+    CONFINE_SRC
+    + MACOS_CONFINE_SRC
+    + r"""
 def _confine_platform(cfg):
     import sys
 
@@ -580,6 +583,7 @@ def _confine_platform(cfg):
     else:
         _confine(cfg)
 """
+)
 
 
 # One-time native-Windows hint. The sandbox's confinement needs Linux or macOS, so on

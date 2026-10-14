@@ -210,10 +210,10 @@ async def main():
     load_dotenv()
 
     # Enable observability for tracing (view traces at http://localhost:5000)
-#     synalinks.enable_observability(
-#         tracking_uri="http://localhost:5000",
-#         experiment_name="lesson_5a_data_model_operators",
-#     )
+    #     synalinks.enable_observability(
+    #         tracking_uri="http://localhost:5000",
+    #         experiment_name="lesson_5a_data_model_operators",
+    #     )
 
     language_model = synalinks.LanguageModel(
         model="ollama/mistral:latest",

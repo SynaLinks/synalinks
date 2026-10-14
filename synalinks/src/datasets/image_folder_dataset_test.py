@@ -50,7 +50,7 @@ class ImageFolderDatasetTest(testing.TestCase):
             output_template='{"role":"assistant","content":{{ image_path | tojson }}}',
             batch_size=4,
         )
-        (x, y) = next(iter(ds))
+        x, y = next(iter(ds))
         self.assertEqual(x[0].get_json()["messages"][0]["content"], "photo")
         self.assertEqual(y[0].get_json()["content"], os.path.join("sub", "photo.png"))
 

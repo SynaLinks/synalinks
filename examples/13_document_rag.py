@@ -139,10 +139,10 @@ async def main():
     load_dotenv()
 
     # Enable observability for tracing
-#     synalinks.enable_observability(
-#         tracking_uri="http://localhost:5000",
-#         experiment_name="document_rag_pipeline",
-#     )
+    #     synalinks.enable_observability(
+    #         tracking_uri="http://localhost:5000",
+    #         experiment_name="document_rag_pipeline",
+    #     )
 
     # Initialize models
     language_model = synalinks.LanguageModel(

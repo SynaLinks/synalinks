@@ -206,11 +206,7 @@ class RLMAsJudgeTest(testing.TestCase):
             # ...so the final grading step formats the trajectory.
             {
                 "choices": [
-                    {
-                        "message": {
-                            "content": '{"critique": "Out of turns.", "reward": 1}'
-                        }
-                    }
+                    {"message": {"content": '{"critique": "Out of turns.", "reward": 1}'}}
                 ]
             },
         ]

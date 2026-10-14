@@ -269,10 +269,10 @@ async def main():
     load_dotenv()
 
     # Enable observability for tracing (view traces at http://localhost:5000)
-#     synalinks.enable_observability(
-#         tracking_uri="http://localhost:5000",
-#         experiment_name="lesson_1b_subclassing",
-#     )
+    #     synalinks.enable_observability(
+    #         tracking_uri="http://localhost:5000",
+    #         experiment_name="lesson_1b_subclassing",
+    #     )
 
     # Initialize the language model
     language_model = synalinks.LanguageModel(

@@ -226,10 +226,10 @@ async def main():
     load_dotenv()
 
     # Enable observability for tracing (view traces at http://localhost:5000)
-#     synalinks.enable_observability(
-#         tracking_uri="http://localhost:5000",
-#         experiment_name="lesson_0_first_steps",
-#     )
+    #     synalinks.enable_observability(
+    #         tracking_uri="http://localhost:5000",
+    #         experiment_name="lesson_0_first_steps",
+    #     )
 
     # Setup
     setup()

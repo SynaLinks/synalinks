@@ -8,5 +8,5 @@
 ## Source
 
 ```python
---8<-- "guides/21_fastmcp_deployment.py:source"
+--8 < --"guides/21_fastmcp_deployment.py:source"
 ```

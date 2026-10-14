@@ -33,6 +33,7 @@ you can mix them freely (including across multi-output programs).
 async def answer_matches(y_true, y_pred):
     return 1.0 if y_true.get("answer") == y_pred.get("answer") else 0.0
 
+
 program.compile(
     reward=answer_matches,
     optimizer=synalinks.optimizers.RandomFewShot(),

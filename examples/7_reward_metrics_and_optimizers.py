@@ -108,10 +108,10 @@ async def main():
     load_dotenv()
 
     # Enable observability for tracing
-#     synalinks.enable_observability(
-#         tracking_uri="http://localhost:5000",
-#         experiment_name="reward_metrics_optimizers",
-#     )
+    #     synalinks.enable_observability(
+    #         tracking_uri="http://localhost:5000",
+    #         experiment_name="reward_metrics_optimizers",
+    #     )
 
     # Initialize the language model
     language_model = synalinks.LanguageModel(

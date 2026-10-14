@@ -8,5 +8,5 @@
 ## Source
 
 ````python
---8<-- "guides/25_python_synthesis.py:339"
+--8 < --"guides/25_python_synthesis.py:339"
 ````

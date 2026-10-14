@@ -121,9 +121,7 @@ class ComposableReward(Reward):
         config = super().get_config()
         config.update(
             {
-                "rewards": serialization_lib.serialize_synalinks_object(
-                    self.rewards
-                ),
+                "rewards": serialization_lib.serialize_synalinks_object(self.rewards),
                 "weights": self.weights,
             }
         )

@@ -93,9 +93,7 @@ def default_rlm_judge_instructions(
         (str): The instructions string.
     """
     if recursive:
-        base = get_recursive_instructions().replace(
-            "{max_llm_calls}", str(max_llm_calls)
-        )
+        base = get_recursive_instructions().replace("{max_llm_calls}", str(max_llm_calls))
     else:
         base = get_default_instructions()
     verify = (

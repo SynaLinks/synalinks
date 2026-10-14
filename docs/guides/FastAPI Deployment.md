@@ -8,5 +8,5 @@
 ## Source
 
 ```python
---8<-- "guides/20_fastapi_deployment.py:source"
+--8 < --"guides/20_fastapi_deployment.py:source"
 ```
