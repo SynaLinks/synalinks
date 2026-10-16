@@ -1,9 +1,12 @@
 from synalinks.src.api_export import synalinks_export
 from synalinks.src.modules.language_models.language_model import LanguageModel
+from synalinks.src.modules.language_models.oauth_language_model import OAUTH_PROVIDERS
+from synalinks.src.modules.language_models.oauth_language_model import OAuthLanguageModel
 from synalinks.src.saving import serialization_lib
 
 ALL_OBJECTS = {
     LanguageModel,
+    OAuthLanguageModel,
 }
 
 ALL_OBJECTS_DICT = {cls.__name__.lower(): cls for cls in ALL_OBJECTS}
@@ -79,6 +82,7 @@ def get(identifier):
             identifier, one of:
             - String: a model name (e.g. `"openai/gpt-4o-mini"`), used
               to construct a `LanguageModel(model=identifier)`.
+              A `codex/` model name constructs an `OAuthLanguageModel`.
             - Dictionary: configuration dictionary.
             - Synalinks LanguageModel instance (returned unchanged).
             - ``None``: resolved against
@@ -117,7 +121,11 @@ def get(identifier):
     if isinstance(identifier, dict):
         obj = deserialize(identifier)
     elif isinstance(identifier, str):
-        obj = LanguageModel(model=identifier)
+        if identifier.split("/")[0] in OAUTH_PROVIDERS:
+            # Subscription login through the provider's CLI, not LiteLLM.
+            obj = OAuthLanguageModel(model=identifier)
+        else:
+            obj = LanguageModel(model=identifier)
     else:
         obj = identifier
 

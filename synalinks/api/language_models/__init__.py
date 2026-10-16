@@ -13,3 +13,6 @@ from synalinks.src.modules.language_models import (
 from synalinks.src.modules.language_models.language_model import (
     LanguageModel as LanguageModel,
 )
+from synalinks.src.modules.language_models.oauth_language_model import (
+    OAuthLanguageModel as OAuthLanguageModel,
+)
