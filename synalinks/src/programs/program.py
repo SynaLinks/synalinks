@@ -683,6 +683,12 @@ class Program(Trainer, Module):
         and the values are nested dictionaries containing the variable
         paths and their corresponding values.
 
+        The program's own variables do not depend on module names: when
+        the state tree was saved from the same program built under other
+        names (e.g. one program per user or conversation), they are matched
+        by position, the order the program creates them in. Any of them that
+        cannot be matched raises instead of being skipped.
+
         Args:
             state_tree (dict): A dictionary representing the state tree of the program.
                 The keys are the variable names, and the values are nested
@@ -691,11 +697,9 @@ class Program(Trainer, Module):
         for k, v in state_tree.items():
             path_value_dict = self._flatten_nested_dict(v)
             if k == "trainable_variables":
-                self._assign_variable_values(self.trainable_variables, path_value_dict)
+                self._assign_program_variables(self.trainable_variables, v, k)
             elif k == "non_trainable_variables":
-                self._assign_variable_values(
-                    self.non_trainable_variables, path_value_dict
-                )
+                self._assign_program_variables(self.non_trainable_variables, v, k)
             elif k == "optimizer_trainable_variables":
                 if self.optimizer:
                     self._assign_variable_values(
@@ -710,6 +714,36 @@ class Program(Trainer, Module):
                 self._assign_variable_values(self.metrics_variables, path_value_dict)
             else:
                 raise ValueError(f"Unknown variable name: {k}")
+
+    def _assign_program_variables(self, variables, nested_dict, group):
+        saved = self._fields_by_variable(nested_dict)
+        own = self._fields_by_variable(self._create_nested_dict(variables))
+        if set(saved) == set(own):
+            pairs = [(path, path) for path in saved]
+        elif len(saved) == len(own) and all(
+            set(fields) == set(own_fields)
+            for fields, own_fields in zip(saved.values(), own.values())
+        ):
+            # Same structure under other names: the nesting of both trees
+            # follows the order the variables were created in.
+            pairs = list(zip(saved, own))
+        else:
+            raise ValueError(
+                f"The {group} of the state tree do not match program "
+                f"'{self.name}'. Unknown to the program: "
+                f"{sorted(set(saved) - set(own))}. Missing from the state tree: "
+                f"{sorted(set(own) - set(saved))}."
+            )
+        by_path = {variable.path: variable for variable in variables}
+        for saved_path, own_path in pairs:
+            by_path[own_path].get_json().update(saved[saved_path])
+
+    def _fields_by_variable(self, nested_dict):
+        fields = {}
+        for full_path, value in self._flatten_nested_dict(nested_dict).items():
+            path, _, field_name = full_path.rpartition("/")
+            fields.setdefault(path, {})[field_name] = value
+        return fields
 
     def _assign_variable_values(self, variables, path_value_dict):
         for full_path, value in path_value_dict.items():
