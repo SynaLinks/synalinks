@@ -19,6 +19,27 @@ from synalinks.src.utils.nlp_utils import remove_numerical_suffix
 from synalinks.src.version import __version__
 
 
+class Query(DataModel):
+    query: str
+
+
+class Answer(DataModel):
+    answer: str
+
+
+async def build_two_step_program(name):
+    """Two generators named after `name`, as an app builds one program per user."""
+    language_model = LanguageModel(model="ollama/mistral")
+    x0 = Input(data_model=Query)
+    x1 = await Generator(
+        data_model=Answer, language_model=language_model, name=f"draft_{name}"
+    )(x0)
+    x2 = await Generator(
+        data_model=Answer, language_model=language_model, name=f"refine_{name}"
+    )(x1)
+    return Program(inputs=x0, outputs=x2, name=f"program_{name}")
+
+
 class ProgramTest(testing.TestCase):
     async def test_get_state(self):
         class Query(DataModel):
@@ -99,6 +120,36 @@ class ProgramTest(testing.TestCase):
         ] = "Dummy prompt template"
         program.set_state_tree(state_tree)
         self.assertEqual(state_tree, program.get_state_tree())
+
+    async def test_load_variables_saved_under_other_names(self):
+        # One program per conversation: same structure, names that differ.
+        first = await build_two_step_program("conversation_a")
+        first.trainable_variables[0].get_json()["instructions"] = "Draft first."
+        first.trainable_variables[1].get_json()["instructions"] = "Then refine."
+        with tempfile.TemporaryDirectory() as tmp:
+            filepath = os.path.join(tmp, "program.variables.json")
+            first.save_variables(filepath)
+            second = await build_two_step_program("conversation_b")
+            second.load_variables(filepath)
+
+        self.assertEqual(
+            [v.get_json()["instructions"] for v in second.trainable_variables],
+            ["Draft first.", "Then refine."],
+        )
+
+    async def test_load_variables_of_another_program_raises(self):
+        two_steps = await build_two_step_program("conversation_a")
+
+        x0 = Input(data_model=Query)
+        x1 = await Generator(
+            data_model=Answer,
+            language_model=LanguageModel(model="ollama/mistral"),
+            name="only_step",
+        )(x0)
+        one_step = Program(inputs=x0, outputs=x1, name="one_step")
+
+        with self.assertRaisesRegex(ValueError, "do not match program 'one_step'"):
+            one_step.set_state_tree(two_steps.get_state_tree())
 
     async def test_get_state_after_compile(self):
         class Query(DataModel):
