@@ -88,6 +88,10 @@ _CONFIG_OVERRIDES = (
     "include_collaboration_mode_instructions=false",
     "include_environment_context=false",
     "skills.include_instructions=false",
+    # The analytics upload holds the process about 0.4 s after the turn has
+    # completed (measured with codex-cli 0.162: 0.37 to 0.41 s with it,
+    # 0.01 s without), about a tenth of a short completion.
+    "analytics.enabled=false",
     *(f"features.{name}=false" for name in _DISABLED_FEATURES),
 )
 
@@ -131,6 +135,10 @@ _IGNORED_PARAMS = (
 )
 
 _MAX_ERROR_CHARS = 500
+
+# The system message of a completion that has none: without one, the CLI
+# would send its own coding-agent prompt (about 3,500 tokens) instead.
+_DEFAULT_INSTRUCTIONS = "Answer the user's message."
 
 
 def _strict_schema(schema):
@@ -454,9 +462,9 @@ class OAuthLanguageModel(LanguageModel):
 
     - The output schema is passed with `--output-schema` and enforced by the
         backend in strict mode: every field is required and returned.
-    - The system message replaces the built-in coding-agent prompt, and the
-        harness adds nothing to the request: it holds the messages and the
-        schema, as with an API.
+    - The system message replaces the built-in coding-agent prompt (a short
+        default one is sent when there is none), and the harness adds
+        nothing to the request: it holds the messages and the schema.
     - The model gets no tool: the shell, web search, apps and plugins are
         disabled, and the tools the model catalog of the CLI turns on for a
         model (the "code mode" of the gpt-6 models, sub-agents, the patch
@@ -470,6 +478,15 @@ class OAuthLanguageModel(LanguageModel):
 
     **Limitations**
 
+    - The messages are not sent as a chat. The system and developer
+        messages become the instructions of the CLI, as one block; the rest
+        becomes a single prompt: a lone user message verbatim, a longer
+        conversation as a role-tagged transcript (`[USER]`, `[ASSISTANT]`).
+        Earlier assistant turns are therefore not sent as assistant
+        messages, and what reaches the backend is shaped by the CLI, which
+        can change between releases (`codex debug prompt-input` shows it).
+        Results are not directly comparable with the same program on an
+        API-key provider.
     - No tool calling and no streaming: `tools`, `tool_schemas` and
         `streaming=True` raise a `ValueError`. Use an API-key provider for
         the tool-calling generator of an agent.
@@ -480,7 +497,16 @@ class OAuthLanguageModel(LanguageModel):
     - A free-form `dict` field cannot be expressed in strict mode and
         raises a `ValueError`.
     - The cost is not tracked (flat-rate subscription); token usage is, and
-        each call counts against the usage limits of the subscription.
+        each call counts against the usage limits of the subscription. The
+        backend also caps concurrent requests per account (about five in
+        flight, measured with codex-cli 0.162); beyond that, requests are
+        refused and retried.
+    - One process per call. The Codex Python SDK (`openai-codex`, a
+        persistent `codex app-server`) sends the same request for the same
+        settings and was not measurably faster.
+    - OpenAI recommends API-key authentication for programmatic Codex
+        workflows; check the terms of your subscription before unattended
+        use.
 
     `reasoning_effort` behaves as with `LanguageModel`: a value (`"low"`,
     `"medium"`, `"high"`...) is sent to the backend, `"none"` and `None`
@@ -601,7 +627,9 @@ class OAuthLanguageModel(LanguageModel):
             command = _build_codex_command(
                 cli_model,
                 workdir,
-                instructions_path=_write(tmp, "instructions.md", instructions),
+                instructions_path=_write(
+                    tmp, "instructions.md", instructions or _DEFAULT_INSTRUCTIONS
+                ),
                 schema_path=_write(tmp, "schema.json", schema and json.dumps(schema)),
                 catalog_path=_write(tmp, "models.json", catalog),
                 reasoning_effort=reasoning_effort,

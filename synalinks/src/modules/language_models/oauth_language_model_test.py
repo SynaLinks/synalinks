@@ -244,6 +244,8 @@ class CodexCommandTest(testing.TestCase):
         self.assertIn("include_permissions_instructions=false", command)
         self.assertIn("include_environment_context=false", command)
         self.assertIn("skills.include_instructions=false", command)
+        # No analytics upload holding the process after the turn.
+        self.assertIn("analytics.enabled=false", command)
         self.assertIn('model_catalog_json="/tmp/m.json"', command)
         self.assertIn('model_instructions_file="/tmp/i.md"', command)
         self.assertIn('model_reasoning_effort="low"', command)
@@ -426,6 +428,9 @@ class OAuthLanguageModelTest(testing.TestCase):
             result = await lm(messages)
         self.assertEqual(result.get("role"), ChatRole.ASSISTANT)
         self.assertEqual(result.get("content"), "Hello!")
+        # Without a system message, a short default one still replaces the
+        # coding-agent prompt of the CLI.
+        self.assertEqual(recorder.calls[0]["instructions"], "Answer the user's message.")
         command = recorder.calls[0]["command"]
         self.assertNotIn("-m", command)
         self.assertNotIn("--output-schema", command)
