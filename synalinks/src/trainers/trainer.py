@@ -1313,7 +1313,7 @@ class Trainer:
             raise ValueError(msg)
 
     def _auto_build(self, iterator=None, data_batch=None):
-        """Build the program, if it is not, and its optimizer.
+        """Build the program, if it is not.
 
         Building the program means calling it: a program's output schema is
         not knowable without running it, so this does one real forward pass on
@@ -1322,10 +1322,11 @@ class Trainer:
         it produces are returned rather than dropped, letting a caller that is
         about to evaluate the very same batch reuse them.
 
-        The reward and the metrics are not built here: they build on the
-        first sample they score (`CompileReward.call`,
-        `CompileMetrics.update_state`), with or without a target, so data
-        without targets (a judge needs none) trains and evaluates like any.
+        The reward, the metrics and the optimizer are not built here: each
+        builds on the first sample it receives (`CompileReward.call`,
+        `CompileMetrics.update_state`, `Optimizer.optimize`), with or without
+        a target, so data without targets (a judge needs none) trains and
+        evaluates like any, and an evaluation never builds an optimizer.
 
         Returns:
             (list | None): The predictions for `data_batch`'s inputs, or None
@@ -1333,7 +1334,6 @@ class Trainer:
         """
         y_pred = None
         program_unbuilt = not all(module.built for module in self._flatten_modules())
-        optimizer_unbuilt = self.optimizer is not None and not self.optimizer.built
         if program_unbuilt:
             if data_batch is None:
                 for _, data_or_iterator in iterator:
@@ -1357,9 +1357,6 @@ class Trainer:
                     "Exception encountered:\n"
                     f"'{e}'"
                 )
-        if optimizer_unbuilt:
-            # Build optimizer
-            run_maybe_nested(self.optimizer.build(self.trainable_variables))
         self._post_build()
         return y_pred
 
