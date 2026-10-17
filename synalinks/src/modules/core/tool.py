@@ -234,6 +234,10 @@ class Tool(Module):
             description=description,
             trainable=trainable,
         )
+        # A tool has no state to build. An agent calls its tools only for
+        # real, never symbolically, so left unbuilt they made every agent
+        # program look unbuilt to `fit` and `evaluate`.
+        self.built = True
 
     def _parse_arguments(self):
         """Parse the function arguments to build the input parameter schema."""

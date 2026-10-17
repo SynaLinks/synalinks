@@ -30,6 +30,8 @@ class ToolModuleTest(testing.TestCase):
         self.assertEqual(tool.name, "my_tool")
         self.assertEqual(tool.description, "A test tool.")
         self.assertFalse(tool.trainable)
+        # No state to build: an agent program holding it is built as made.
+        self.assertTrue(tool.built)
 
     def test_init_with_custom_name(self):
         """Test initialization with custom name and description."""

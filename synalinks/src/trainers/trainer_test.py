@@ -213,8 +213,7 @@ class TestTrainer(testing.TestCase):
 
         # The build pass predicted the whole first batch, and those predictions
         # are what the first `test_on_batch` scores — so each sample is
-        # predicted once, not twice. The one extra pass is `_auto_build`'s own
-        # spec pass for the metric and reward state; it is paid once per
+        # predicted once, not twice. The one extra pass is paid once per
         # program, not once per sample, and is not what this reuse addresses.
         self.assertLessEqual(ProgramWithAnUntakenPath.forward_passes, len(x_test) + 1)
 
@@ -225,6 +224,56 @@ class TestTrainer(testing.TestCase):
         _ = await program.evaluate(x=x_test, y=y_test)
         self.assertFalse(all(module.built for module in program._flatten_modules()))
         self.assertEqual(ProgramWithAnUntakenPath.forward_passes - before, len(x_test))
+
+    @patch("litellm.acompletion")
+    async def test_fit_and_evaluate_without_targets(self, mock_completion):
+        """A reward that needs no target (a judge) trains and evaluates on
+        inputs alone, even when the program is unbuilt and `fit`/`evaluate`
+        build it on a batch that has no `y`."""
+        mock_answer = AnswerWithRationale(rationale="It is well known.", answer="Paris")
+        mock_completion.return_value = {
+            "choices": [{"message": {"content": json.dumps(mock_answer.get_json())}}]
+        }
+        language_model = LanguageModel(model="ollama/mistral")
+
+        class Graded(rewards.Reward):
+            async def call(self, y_true, y_pred):
+                assert y_true is None
+                return 1.0 if y_pred.get("answer") == "Paris" else 0.0
+
+        class ProgramWithAnUntakenPath(programs.Program):
+            def __init__(self, language_model=None):
+                super().__init__()
+                self.answer = modules.Generator(
+                    data_model=AnswerWithRationale, language_model=language_model
+                )
+                self.fallback = modules.Generator(
+                    data_model=AnswerWithRationale, language_model=language_model
+                )
+
+            async def call(self, inputs, training=False):
+                return await self.answer(inputs)
+
+        program = ProgramWithAnUntakenPath(language_model=language_model)
+        program.compile(
+            optimizer=optimizers.random_few_shot.RandomFewShot(), reward=Graded()
+        )
+        (x_train, _), (x_test, _) = load_test_data()
+
+        self.assertEqual((await program.evaluate(x=x_test))["reward"], 1.0)
+        history = await program.fit(x=x_train, epochs=1, validation_split=0.5)
+        self.assertEqual(history.history["reward"], [1.0])
+        self.assertEqual(history.history["val_reward"], [1.0])
+
+    async def test_fit_without_validation_data_says_why(self):
+        program = await program_test()
+        program.compile(
+            optimizer=optimizers.random_few_shot.RandomFewShot(),
+            reward=rewards.ExactMatch(in_mask=["answer"]),
+        )
+        (x_train, y_train), _ = load_test_data()
+        with self.assertRaisesRegex(ValueError, "needs validation data"):
+            await program.fit(x=x_train, y=y_train, epochs=1, validation_split=0)
 
     @patch("litellm.acompletion")
     async def test_predict(self, mock_completion):
