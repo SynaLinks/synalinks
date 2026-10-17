@@ -107,7 +107,10 @@ class NoTargetsTest(testing.TestCase):
         program = await agent_program()
         program.compile(optimizer=optimizers.RandomFewShot(), reward=GradedTurn())
         self.assertEqual((await program.evaluate(x=questions(3)))["reward"], 1.0)
+        # The optimizer builds on the first sample it receives, not before.
+        self.assertFalse(program.optimizer.built)
         history = await program.fit(x=questions(4), epochs=1, validation_split=0.5)
+        self.assertTrue(program.optimizer.built)
         self.assertEqual(history.history["reward"], [1.0])
         self.assertEqual(history.history["val_reward"], [1.0])
 
