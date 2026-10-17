@@ -59,6 +59,26 @@ def unpack_x_y(data):
     raise ValueError(error_msg)
 
 
+def unpack_x_targets(data):
+    """`unpack_x_y`, with one `None` target per sample when there are none.
+
+    Rewards, metrics and optimizers take a target for each prediction. Data
+    without targets is for a reward that needs none (a judge grading the
+    prediction on its own): each prediction gets `None` as its target.
+
+    Args:
+        data: A tuple of the form `(x,)`, or `(x, y)`.
+
+    Returns:
+        The unpacked `(x, y)`, `y` an object array of `None`s when the data
+        has no targets.
+    """
+    x, y = unpack_x_y(data)
+    if y is None and x is not None:
+        y = np.array([None] * len(tree.flatten(x)[0]), dtype="object")
+    return x, y
+
+
 @synalinks_export("synalinks.utils.pack_x_y")
 def pack_x_y(x, y=None):
     """Packs user-provided data into a tuple.

@@ -650,7 +650,15 @@ class Trainer:
             )
 
         if validation_data is not None:
-            val_x, val_y = data_adapter_utils.unpack_x_y(validation_data)
+            val_x, val_y = data_adapter_utils.unpack_x_targets(validation_data)
+        elif self.trainable_variables and isinstance(
+            self.optimizer, optimizers_module.Optimizer
+        ):
+            raise ValueError(
+                "`fit()` needs validation data to optimize: the optimizer scores "
+                "every candidate on it. Pass `validation_split` (a fraction of "
+                "`x` held out) or `validation_data`."
+            )
         # Create an iterator that yields batches of input/target data.
         epoch_iterator = EpochIterator(
             x=x,
@@ -735,7 +743,7 @@ class Trainer:
             with epoch_iterator.catch_stop_iteration():
                 for step, iterator in epoch_iterator:
                     data = iterator[0]
-                    x_batch, y_batch = data_adapter_utils.unpack_x_y(data)
+                    x_batch, y_batch = data_adapter_utils.unpack_x_targets(data)
 
                     if self.trainable_variables and isinstance(
                         self.optimizer, optimizers_module.Optimizer
@@ -949,7 +957,7 @@ class Trainer:
         for step, iterator in epoch_iterator:
             callbacks.on_test_batch_begin(step)
             data = iterator[0]
-            x_batch, y_batch = data_adapter_utils.unpack_x_y(data)
+            x_batch, y_batch = data_adapter_utils.unpack_x_targets(data)
             # Only the first step can consume the auto-build's predictions, and
             # only once: taking it clears it, so every later batch predicts.
             y_pred, prebuilt_y_pred = prebuilt_y_pred, None
@@ -1079,6 +1087,9 @@ class Trainer:
                 and metric values (if there are metrics and `return_dict=False`),
                 or a dict of metric and reward values (if `return_dict=True`).
         """
+        x, y = data_adapter_utils.unpack_x_targets((x, y))
+        if val_x is not None:
+            val_x, val_y = data_adapter_utils.unpack_x_targets((val_x, val_y))
         if self.trainable_variables and isinstance(
             self.optimizer, optimizers_module.Optimizer
         ):
@@ -1141,6 +1152,7 @@ class Trainer:
                 and metric values (if there are metrics and `return_dict=False`),
                 or a dict of metric and reward values (if `return_dict=True`).
         """
+        x, y = data_adapter_utils.unpack_x_targets((x, y))
         if y_pred is None:
             y_pred = await self.predict_on_batch(x)
 
@@ -1153,7 +1165,9 @@ class Trainer:
         # Per-sample rewards of the last test batch, read by callbacks
         # (e.g. `callbacks.Monitor` logs them as per-trace assessments).
         self._per_sample_rewards = list(rewards)
-        self._per_sample_targets = [t.get_json() for t in y] if y is not None else None
+        self._per_sample_targets = (
+            [None if t is None else t.get_json() for t in y] if y is not None else None
+        )
         reduction = (
             self._compile_reward.reduction if self._compile_reward is not None else "mean"
         )
@@ -1299,7 +1313,7 @@ class Trainer:
             raise ValueError(msg)
 
     def _auto_build(self, iterator=None, data_batch=None):
-        """Build the program, its metrics, its reward and its optimizer.
+        """Build the program, if it is not, and its optimizer.
 
         Building the program means calling it: a program's output schema is
         not knowable without running it, so this does one real forward pass on
@@ -1308,20 +1322,19 @@ class Trainer:
         it produces are returned rather than dropped, letting a caller that is
         about to evaluate the very same batch reuse them.
 
+        The reward and the metrics are not built here: they build on the
+        first sample they score (`CompileReward.call`,
+        `CompileMetrics.update_state`), with or without a target, so data
+        without targets (a judge needs none) trains and evaluates like any.
+
         Returns:
             (list | None): The predictions for `data_batch`'s inputs, or None
                 when nothing needed building and no forward pass was made.
         """
         y_pred = None
         program_unbuilt = not all(module.built for module in self._flatten_modules())
-        compile_metrics_unbuilt = (
-            self._compile_metrics is not None and not self._compile_metrics.built
-        )
-        compile_reward_unbuilt = (
-            self._compile_reward is not None and not self._compile_reward.built
-        )
         optimizer_unbuilt = self.optimizer is not None and not self.optimizer.built
-        if program_unbuilt or compile_metrics_unbuilt or compile_reward_unbuilt:
+        if program_unbuilt:
             if data_batch is None:
                 for _, data_or_iterator in iterator:
                     if isinstance(data_or_iterator, (list, tuple)):
@@ -1329,7 +1342,7 @@ class Trainer:
                     else:
                         data_batch = next(data_or_iterator)
                     break
-            x, y = data_batch
+            x, _ = data_adapter_utils.unpack_x_y(data_batch)
             try:
                 y_pred = run_maybe_nested(self.predict_on_batch(x))
             except Exception as e:
@@ -1343,27 +1356,6 @@ class Trainer:
                     "of data is the right way to build it.\n"
                     "Exception encountered:\n"
                     f"'{e}'"
-                )
-            if compile_metrics_unbuilt:
-                # Build all metric state with `backend.compute_output_spec`.
-                run_maybe_nested(
-                    backend.compute_output_spec(
-                        self.compute_metrics,
-                        x,
-                        y,
-                        y_pred,
-                    )
-                )
-            if compile_reward_unbuilt:
-                # Build `CompileReward` state with `backend.compute_output_spec`.
-                run_maybe_nested(
-                    backend.compute_output_spec(
-                        self.compute_reward,
-                        x,
-                        y,
-                        y_pred,
-                        training=False,
-                    )
                 )
         if optimizer_unbuilt:
             # Build optimizer
