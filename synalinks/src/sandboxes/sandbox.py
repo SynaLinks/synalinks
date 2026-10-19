@@ -411,6 +411,16 @@ class TimeoutException(SandboxException, TimeoutError):
     """An execution, command or request ran past its timeout."""
 
 
+@synalinks_export("synalinks.sandboxes.SandboxNotRunningException")
+class SandboxNotRunningException(TimeoutException):
+    """The sandbox is no longer running (killed, paused or timed out)."""
+
+
+@synalinks_export("synalinks.sandboxes.SandboxUnreachableException")
+class SandboxUnreachableException(TimeoutException):
+    """The sandbox could not be reached while not confirmed stopped."""
+
+
 @synalinks_export("synalinks.sandboxes.InvalidArgumentException")
 class InvalidArgumentException(SandboxException):
     """An argument is not valid, e.g. an unsupported ``language``."""
@@ -484,6 +494,18 @@ class BuildException(Exception):
 @synalinks_export("synalinks.sandboxes.FileUploadException")
 class FileUploadException(BuildException):
     """A file upload during a template build failed."""
+
+
+@synalinks_export("synalinks.sandboxes.DockerfileSyntaxError")
+class DockerfileSyntaxError(ValueError):
+    """A Dockerfile given to a template build does not parse."""
+
+    def __init__(self, message: str, line: Optional[int] = None) -> None:
+        self.line = line
+        if line is None:
+            super().__init__(f"Dockerfile parse error: {message}")
+        else:
+            super().__init__(f"Dockerfile parse error on line {line}: {message}")
 
 
 @synalinks_export("synalinks.sandboxes.SecretException")
@@ -1743,17 +1765,30 @@ class Sandbox(SynalinksSaveable):
 
     @classmethod
     async def class_pause(
-        cls, sandbox_id: str, keep_memory: Optional[bool] = None, **opts
+        cls,
+        sandbox_id: str,
+        keep_memory: Optional[bool] = None,
+        *,
+        mode: Optional[Literal["full", "filesystem"]] = None,
+        **opts,
     ) -> bool:
-        return await cls.lookup(sandbox_id).pause(keep_memory)
+        return await cls.lookup(sandbox_id).pause(keep_memory, mode=mode)
 
     @class_method_variant("class_pause")
-    async def pause(self, keep_memory: Optional[bool] = None, **opts) -> bool:
+    async def pause(
+        self,
+        keep_memory: Optional[bool] = None,
+        *,
+        mode: Optional[Literal["full", "filesystem"]] = None,
+        **opts,
+    ) -> bool:
         """Mark the sandbox paused (E2B's ``pause``); `connect` resumes it.
 
         A local sandbox holds no machine to suspend: its files and namespace
         simply stay as they are, so this records the state and stops a
         lifetime deadline, as a paused E2B sandbox does not time out.
+        ``keep_memory`` and ``mode`` are accepted for E2B compatibility and
+        have no effect.
         """
         if self.lifetime_timer is not None:
             self.lifetime_timer.cancel()
@@ -1763,14 +1798,25 @@ class Sandbox(SynalinksSaveable):
 
     @classmethod
     async def class_beta_pause(
-        cls, sandbox_id: str, keep_memory: Optional[bool] = None, **opts
+        cls,
+        sandbox_id: str,
+        keep_memory: Optional[bool] = None,
+        *,
+        mode: Optional[Literal["full", "filesystem"]] = None,
+        **opts,
     ) -> bool:
-        return await cls.lookup(sandbox_id).beta_pause(keep_memory)
+        return await cls.lookup(sandbox_id).beta_pause(keep_memory, mode=mode)
 
     @class_method_variant("class_beta_pause")
-    async def beta_pause(self, keep_memory: Optional[bool] = None, **opts) -> bool:
+    async def beta_pause(
+        self,
+        keep_memory: Optional[bool] = None,
+        *,
+        mode: Optional[Literal["full", "filesystem"]] = None,
+        **opts,
+    ) -> bool:
         """E2B's earlier name for `pause`."""
-        return await self.pause(keep_memory)
+        return await self.pause(keep_memory, mode=mode)
 
     @classmethod
     async def class_connect(
@@ -1917,17 +1963,29 @@ class Sandbox(SynalinksSaveable):
 
     @classmethod
     async def class_create_snapshot(
-        cls, sandbox_id: str, name: Optional[str] = None, **opts
+        cls,
+        sandbox_id: str,
+        name: Optional[str] = None,
+        *,
+        mode: Optional[Literal["full", "filesystem"]] = None,
+        **opts,
     ) -> SnapshotInfo:
-        return await cls.lookup(sandbox_id).create_snapshot(name)
+        return await cls.lookup(sandbox_id).create_snapshot(name, mode=mode)
 
     @class_method_variant("class_create_snapshot")
-    async def create_snapshot(self, name: Optional[str] = None, **opts) -> SnapshotInfo:
+    async def create_snapshot(
+        self,
+        name: Optional[str] = None,
+        *,
+        mode: Optional[Literal["full", "filesystem"]] = None,
+        **opts,
+    ) -> SnapshotInfo:
         """Snapshot the sandbox's current state (E2B's ``create_snapshot``).
 
         Kept in this process; start a sandbox from it with
         ``create(template=snapshot_id)``. Uses `dump`, so a backend without
-        `dump` cannot snapshot.
+        `dump` cannot snapshot. ``mode`` is accepted for E2B compatibility;
+        the snapshot always holds the full state.
         """
         snapshot_id = uuid.uuid4().hex
         Sandbox.snapshots[snapshot_id] = {
