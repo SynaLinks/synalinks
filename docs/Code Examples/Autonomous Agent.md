@@ -11,7 +11,7 @@
 --8<-- "examples/10_autonomous_agent.py:108"
 ````
 
-## Run log
+## Run log { data-search-exclude }
 
 The log below is the **unedited** combined output of running the example above
 with local models (ollama).

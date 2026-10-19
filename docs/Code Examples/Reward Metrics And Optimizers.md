@@ -11,7 +11,7 @@
 --8<-- "examples/7_reward_metrics_and_optimizers.py:84"
 ````
 
-## Run log
+## Run log { data-search-exclude }
 
 The log below is the **unedited** combined output of running the example above
 with local models (ollama).

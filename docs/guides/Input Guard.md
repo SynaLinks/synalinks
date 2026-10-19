@@ -11,7 +11,7 @@
 --8<-- "guides/8_input_guard.py:294"
 ````
 
-## Run log
+## Run log { data-search-exclude }
 
 This guide calls `synalinks.enable_logging()`, so a full run traces every
 module call. The log below is the **unedited** output of running the guide
