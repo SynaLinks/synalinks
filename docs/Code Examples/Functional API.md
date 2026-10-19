@@ -11,7 +11,7 @@
 --8<-- "examples/1a_functional_api.py:127"
 ````
 
-## Run log
+## Run log { data-search-exclude }
 
 The log below is the **unedited** combined output of running the example above
 with local models (ollama).

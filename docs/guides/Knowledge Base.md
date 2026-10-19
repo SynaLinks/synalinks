@@ -11,7 +11,7 @@
 --8<-- "guides/7_knowledge_base.py:source"
 ````
 
-## Run log
+## Run log { data-search-exclude }
 
 This guide calls `synalinks.enable_logging()`, so a full run traces every
 module call. The log below is the **unedited** output of running the guide

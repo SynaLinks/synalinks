@@ -11,7 +11,7 @@
 --8<-- "examples/16_sql_agent.py:source"
 ````
 
-## Run log
+## Run log { data-search-exclude }
 
 The log below is the **unedited** combined output of running the example above
 with local models (ollama).

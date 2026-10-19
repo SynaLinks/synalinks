@@ -10,7 +10,7 @@
 --8<-- "guides/29_mixture_of_models.py:396"
 ````
 
-## Run log
+## Run log { data-search-exclude }
 
 This guide calls `synalinks.enable_logging()`, so a full run traces every
 module call: each proposer, the merge, and the aggregator. The log below is

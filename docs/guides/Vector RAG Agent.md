@@ -10,7 +10,7 @@
 --8<-- "guides/24_vector_rag_agent.py:246"
 ````
 
-## Run log
+## Run log { data-search-exclude }
 
 This guide calls `synalinks.enable_logging()`, so a full run traces every
 module call. The log below is the **unedited** output of running the guide

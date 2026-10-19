@@ -10,7 +10,7 @@
 --8<-- "guides/32_graphrag.py:source"
 ````
 
-## Run log
+## Run log { data-search-exclude }
 
 This guide calls `synalinks.enable_logging(log_level="info")`, so a full run
 traces every module call: the graph load, community building, both retrievers,

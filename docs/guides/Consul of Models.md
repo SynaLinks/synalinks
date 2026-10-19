@@ -10,7 +10,7 @@
 --8<-- "guides/30_consul_of_models.py:364"
 ````
 
-## Run log
+## Run log { data-search-exclude }
 
 This guide calls `synalinks.enable_logging()`, so a full run traces every
 module call: each member's turn and the chair's synthesis. The log below is

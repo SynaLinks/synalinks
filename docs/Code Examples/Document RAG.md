@@ -11,7 +11,7 @@
 --8<-- "examples/13_document_rag.py:89"
 ````
 
-## Run log
+## Run log { data-search-exclude }
 
 The log below is the **unedited** combined output of running the example above
 with local models (ollama).

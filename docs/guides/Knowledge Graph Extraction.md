@@ -10,7 +10,7 @@
 --8<-- "guides/27_knowledge_graph_extraction.py:source"
 ````
 
-## Run log
+## Run log { data-search-exclude }
 
 This guide calls `synalinks.enable_logging(log_level="info")`, so a full run
 traces every module call: entity/relation extraction, the embedding step, and
