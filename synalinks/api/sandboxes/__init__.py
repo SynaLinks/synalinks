@@ -28,6 +28,7 @@ from synalinks.src.sandboxes.sandbox import CommandExitException as CommandExitE
 from synalinks.src.sandboxes.sandbox import CommandHandle as CommandHandle
 from synalinks.src.sandboxes.sandbox import CommandResult as CommandResult
 from synalinks.src.sandboxes.sandbox import Context as Context
+from synalinks.src.sandboxes.sandbox import DockerfileSyntaxError as DockerfileSyntaxError
 from synalinks.src.sandboxes.sandbox import EntryInfo as EntryInfo
 from synalinks.src.sandboxes.sandbox import Execution as Execution
 from synalinks.src.sandboxes.sandbox import ExecutionError as ExecutionError
@@ -63,8 +64,14 @@ from synalinks.src.sandboxes.sandbox import SandboxMetrics as SandboxMetrics
 from synalinks.src.sandboxes.sandbox import (
     SandboxNotFoundException as SandboxNotFoundException,
 )
+from synalinks.src.sandboxes.sandbox import (
+    SandboxNotRunningException as SandboxNotRunningException,
+)
 from synalinks.src.sandboxes.sandbox import SandboxQuery as SandboxQuery
 from synalinks.src.sandboxes.sandbox import SandboxState as SandboxState
+from synalinks.src.sandboxes.sandbox import (
+    SandboxUnreachableException as SandboxUnreachableException,
+)
 from synalinks.src.sandboxes.sandbox import SecretException as SecretException
 from synalinks.src.sandboxes.sandbox import (
     SecretNotFoundException as SecretNotFoundException,
