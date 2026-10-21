@@ -1521,6 +1521,10 @@ class StreamingIterator:
     from the outermost agent's start (so it includes every tool-calling round)
     to the first token of the final answer. This drives
     `AvgTrajectoryTimeToFirstToken`.
+
+    `messages` holds what an interactive agent's step produced before the
+    answer it streams (the results of the tool calls it ran), in the shape
+    a non-streamed step returns them, so the caller can store them too.
     """
 
     def __init__(
@@ -1547,6 +1551,7 @@ class StreamingIterator:
         self._content_parts = []
         self._reasoning_parts = []
         self._on_complete = None
+        self.messages = []
 
     def __aiter__(self):
         return self

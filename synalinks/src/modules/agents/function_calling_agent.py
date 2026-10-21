@@ -968,6 +968,8 @@ class FunctionCallingAgent(Module):
             # loop the final generator has already drained it to a concrete
             # result, so fall through to the normal wrapping below.
             if isinstance(final_result, StreamingIterator):
+                # The tool results this step ran go along with the answer.
+                final_result.messages = [m.get_json() for m in new_messages]
                 return final_result
             if self.schema:
                 # Combine messages with structured output

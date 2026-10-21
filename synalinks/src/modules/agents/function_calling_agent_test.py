@@ -724,6 +724,62 @@ class FunctionCallingAgentTest(testing.TestCase):
         self.assertEqual(messages[1].get("role"), "assistant")
 
     @patch("litellm.acompletion")
+    async def test_non_autonomous_streamed_answer_carries_tool_messages(
+        self, mock_completion
+    ):
+        """A streamed final answer carries the tool results its step ran."""
+        language_model = LanguageModel(model="ollama/mistral")
+        inputs = Input(data_model=ChatMessages)
+        outputs = await FunctionCallingAgent(
+            language_model=language_model,
+            tools=[Tool(calculate)],
+            autonomous=False,
+            return_inputs_with_trajectory=False,
+            streaming=True,
+        )(inputs)
+        agent = Program(
+            inputs=inputs,
+            outputs=outputs,
+            name="non_autonomous_streaming_test",
+        )
+
+        no_more_tools = {"thinking": "25.", "tool_calls": []}
+        mock_completion.side_effect = [
+            {"choices": [{"message": {"content": json.dumps(no_more_tools)}}]},
+            iter([{"choices": [{"delta": {"content": "It is 25."}}]}]),
+        ]
+
+        input_messages = ChatMessages(
+            messages=[
+                ChatMessage(role="user", content="How much is 5 * 5?"),
+                ChatMessage(
+                    role="assistant",
+                    content="",
+                    tool_calls=[
+                        {
+                            "id": "test-tool-call-id",
+                            "type": "function",
+                            "function": {
+                                "name": "calculate",
+                                "arguments": {"expression": "5 * 5"},
+                            },
+                        }
+                    ],
+                ),
+            ]
+        )
+        stream = await agent(input_messages)
+
+        self.assertIsInstance(stream, StreamingIterator)
+        self.assertEqual(len(stream.messages), 1)
+        self.assertEqual(stream.messages[0].get("role"), "tool")
+        self.assertEqual(stream.messages[0].get("tool_call_id"), "test-tool-call-id")
+        collected = ""
+        async for chunk in stream:
+            collected += chunk.get("content", "")
+        self.assertEqual(collected, "It is 25.")
+
+    @patch("litellm.acompletion")
     async def test_non_autonomous_mode_with_trajectory(self, mock_completion):
         """Test non-autonomous mode with return_inputs_with_trajectory=True."""
         language_model = LanguageModel(model="ollama/mistral")
