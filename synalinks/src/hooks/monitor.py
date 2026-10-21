@@ -284,6 +284,9 @@ class Monitor(Hook):
     ```
     """
 
+    # Resolved by `_setup_mlflow` on the first call.
+    _experiment_id = None
+
     def __init__(
         self,
         tracking_uri=None,
@@ -310,7 +313,10 @@ class Monitor(Hook):
         if self.tracking_uri:
             mlflow.set_tracking_uri(self.tracking_uri)
 
-        mlflow.set_experiment(self.experiment_name)
+        # Kept to start each trace in it: MLflow's active experiment is
+        # process-wide, so another thread setting its own would take this
+        # hook's traces with it.
+        self._experiment_id = mlflow.set_experiment(self.experiment_name).experiment_id
         self._setup_done = True
 
     def _get_span_type(self):
@@ -370,6 +376,7 @@ class Monitor(Hook):
             parent_span=parent_span_obj,
             metadata=metadata or None,
             tags=tags or None,
+            experiment_id=self._experiment_id,
         )
 
         # Store only in the module-level registry. Storing the span on the
