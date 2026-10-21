@@ -432,6 +432,7 @@ class Monitor(Callback):
         self.logger = logging.getLogger(__name__)
 
         self._run = None
+        self._experiment_id = None
         self._trace_mark = None
         self._steps = {"train": 0, "val": 0, "test": 0}
         self._epoch = 0
@@ -490,11 +491,12 @@ class Monitor(Callback):
         if run_id is not None:
             self._run = mlflow.start_run(run_id=run_id)
             self.run_id = run_id
-        elif tags:
-            self._run = mlflow.start_run(run_name=run_name, tags=tags)
-            self.run_id = self._run.info.run_id
         else:
-            self._run = mlflow.start_run(run_name=run_name)
+            # In this callback's experiment, never MLflow's active one: that is
+            # process-wide, and another thread may have set its own since.
+            self._run = mlflow.start_run(
+                run_name=run_name, experiment_id=self._experiment_id, tags=tags or None
+            )
             self.run_id = self._run.info.run_id
 
         tags = dict(self.tags)

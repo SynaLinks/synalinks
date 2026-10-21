@@ -82,7 +82,9 @@ class MonitorSetupAndRunTest(testing.TestCase):
         with patch.object(monitor_module, "mlflow") as mlf:
             mlf.start_run.return_value = fake_run
             cb._start_run(run_name_suffix="train")
-        mlf.start_run.assert_called_once_with(run_name="base_train")
+        mlf.start_run.assert_called_once_with(
+            run_name="base_train", experiment_id=None, tags=None
+        )
         tags_arg = mlf.set_tags.call_args[0][0]
         self.assertEqual(tags_arg["extra"], "v")
         self.assertEqual(tags_arg["program_name"], "p1")
@@ -94,7 +96,21 @@ class MonitorSetupAndRunTest(testing.TestCase):
         with patch.object(monitor_module, "mlflow") as mlf:
             mlf.start_run.return_value = _FakeRun()
             cb._start_run(run_name_suffix="test")
-        mlf.start_run.assert_called_once_with(run_name="test")
+        mlf.start_run.assert_called_once_with(
+            run_name="test", experiment_id=None, tags=None
+        )
+
+    def test_start_run_in_own_experiment_not_the_active_one(self):
+        """Another thread may have set MLflow's process-wide active experiment
+        since `_setup_mlflow`; the run still starts in this callback's."""
+        cb = Monitor(experiment_name="mine")
+        with patch.object(monitor_module, "mlflow") as mlf:
+            mlf.set_experiment.return_value.experiment_id = "exp-mine"
+            mlf.start_run.return_value = _FakeRun()
+            cb._setup_mlflow()
+            mlf.set_experiment("theirs")
+            cb._start_run(run_name_suffix="test")
+        self.assertEqual(mlf.start_run.call_args.kwargs["experiment_id"], "exp-mine")
 
     def test_end_run_clears_state(self):
         cb = Monitor()
@@ -329,7 +345,9 @@ class MonitorResumeTest(testing.TestCase):
             mlf.MlflowClient.return_value.search_runs.return_value = []
             mlf.start_run.return_value = _FakeRun(run_id="new-1")
             cb._start_run(run_name_suffix="test")
-        mlf.start_run.assert_called_once_with(run_name="nightly_test")
+        mlf.start_run.assert_called_once_with(
+            run_name="nightly_test", experiment_id=cb._experiment_id, tags=None
+        )
         self.assertEqual(cb.run_id, "new-1")
         self.assertEqual(cb._steps["test"], 0)
 
@@ -764,7 +782,9 @@ class MonitorModelLoggingTest(testing.TestCase):
             cb.on_test_begin()
             cb.on_test_end(logs={"reward": 0.3})
         mlf.start_run.assert_called_once_with(
-            run_name="qa_test", tags={"mlflow.parentRunId": "run-train"}
+            run_name="qa_test",
+            experiment_id=cb._experiment_id,
+            tags={"mlflow.parentRunId": "run-train"},
         )
         mlf.set_active_model.assert_called_once_with(model_id="m-9")
         self.assertEqual(mlf.log_metrics.call_args.kwargs["model_id"], "m-9")
@@ -778,7 +798,9 @@ class MonitorModelLoggingTest(testing.TestCase):
             self._mlf(mlf)
             cb.on_test_begin()
             cb.on_test_end(logs={"reward": 0.3})
-        mlf.start_run.assert_called_once_with(run_name="qa_test")
+        mlf.start_run.assert_called_once_with(
+            run_name="qa_test", experiment_id=cb._experiment_id, tags=None
+        )
 
     def test_expectations_logged_next_to_rewards(self):
         cb = Monitor()

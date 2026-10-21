@@ -181,6 +181,37 @@ class MonitorEndToEndTest(testing.TestCase):
         )
 
 
+class MonitorExperimentTest(testing.TestCase):
+    @patch("synalinks.src.hooks.monitor.mlflow")
+    @patch("litellm.acompletion")
+    async def test_spans_start_in_the_hook_experiment_not_the_active_one(
+        self, mock_completion, mock_mlflow
+    ):
+        """MLflow's active experiment is process-wide: a trace must start in
+        the experiment this hook resolved, whatever another thread set since."""
+        mock_completion.return_value = {"choices": [{"message": {"content": "Hi"}}]}
+        fake_span = AsyncMock()
+        fake_span.set_attributes = lambda *a, **kw: None
+        fake_span.set_inputs = lambda *a, **kw: None
+        fake_span.set_outputs = lambda *a, **kw: None
+        fake_span.set_status = lambda *a, **kw: None
+        fake_span.end = lambda: None
+        mock_mlflow.start_span_no_context.return_value = fake_span
+        mock_mlflow.set_experiment.return_value.experiment_id = "exp-mine"
+
+        monitor = Monitor(experiment_name="mine")
+        lm = LanguageModel(model="ollama/mistral", hooks=[monitor])
+        messages = ChatMessages(
+            messages=[ChatMessage(role=ChatRole.USER, content="Hello")]
+        )
+        await lm(messages)
+        mock_mlflow.set_experiment("theirs")
+        await lm(messages)
+
+        for call in mock_mlflow.start_span_no_context.call_args_list:
+            self.assertEqual(call.kwargs["experiment_id"], "exp-mine")
+
+
 class TraceContextTest(testing.TestCase):
     def test_no_context_by_default(self):
         self.assertIsNone(current_trace_context())
