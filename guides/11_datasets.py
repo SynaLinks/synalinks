@@ -337,6 +337,17 @@ A few `HuggingFaceDataset` arguments you may need later:
   GRPO-style RL training expects.
 - **`revision=...`**: pin to a specific dataset commit or
   branch. Important for reproducibility on a moving Hub.
+- **`tools_template=...`** (every `Dataset`): for a tool-calling
+  benchmark, where each row brings its own functions. A third
+  Jinja2 template, rendering a JSON list of tool declarations in
+  the shape a Chat Completions request sends them,
+  `{"type": "function", "function": {name, description,
+  parameters}}`. Each input is then the request's shape: the
+  row's fields (`messages` by default) plus a `tools` field,
+  typed as the API declares them; any other shape is refused
+  when the row is read. `ds.row_schema` is the row's own schema,
+  for a module that reads it back out of the request and sends
+  the tools as the request's.
 - **`**kwargs`** are forwarded straight to
   `datasets.load_dataset`, so anything that library accepts
   (`data_files`, `token`, `trust_remote_code`, ...) works

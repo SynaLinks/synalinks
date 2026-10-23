@@ -6,8 +6,13 @@ import orjson
 
 from synalinks.src.api_export import synalinks_export
 from synalinks.src.backend.common.json_data_model import JsonDataModel
+from synalinks.src.backend.pydantic.chat_completions import ChatCompletionTool
 from synalinks.src.backend.pydantic.common import ChatMessage
 from synalinks.src.backend.pydantic.common import ChatMessages
+
+# The input field a row's tool declarations ride in (`tools_template`):
+# `tools`, as a Chat Completions request carries them beside its `messages`.
+TOOLS_FIELD = "tools"
 
 
 @synalinks_export(["synalinks.Dataset", "synalinks.datasets.Dataset"])
@@ -62,6 +67,18 @@ class Dataset:
             dataset is inputs-only and yields single-element ``(x,)``
             batches (no targets). Rewards that need ``y_true`` will see
             it missing.
+        tools_template (str): Jinja2 template string rendering the row's
+            own tool declarations: a JSON list of
+            ``{"type": "function", "function": {...}}``, the shape a Chat
+            Completions request sends. Optional. When given, each input is
+            the request's shape: the row's fields (``messages`` by default)
+            and a ``tools`` field beside them, typed with
+            ``ChatCompletionTool``; a declaration in any other shape is
+            refused when the row is read, since the API would refuse the
+            request. ``row_schema`` keeps the input schema without the
+            tools, for a module that reads the row back and sends the
+            tools as the request's. For a tool-calling benchmark, where
+            every row brings its own functions.
         batch_size (int): Number of examples per yielded batch. ``None``
             accumulates everything into a single trailing batch.
         limit (int): Optional. Maximum number of *raw* (pre-repeat)
@@ -86,6 +103,7 @@ class Dataset:
         output_data_model=None,
         output_schema=None,
         output_template=None,
+        tools_template=None,
         batch_size=None,
         limit=None,
         repeat=1,
@@ -126,6 +144,7 @@ class Dataset:
         self.output_data_model = output_data_model
         self.output_schema = _coerce_schema(output_schema)
         self.output_template = output_template
+        self.tools_template = tools_template
         self.batch_size = batch_size
         self.limit = limit
         self.repeat = repeat
@@ -135,8 +154,46 @@ class Dataset:
         self._output_tmpl = (
             env.from_string(output_template) if output_template is not None else None
         )
+        self._tools_tmpl = (
+            env.from_string(tools_template) if tools_template is not None else None
+        )
+        # With a tools template the input is the request's shape: the row's
+        # own fields and the `tools` beside them. `row_schema` is the row
+        # alone, for whoever reads it back out of the request.
+        self.row_schema = None
+        if self._tools_tmpl is not None:
+            self.row_schema = (
+                self.input_schema
+                if self.input_schema is not None
+                else self.input_data_model.get_schema()
+            )
+            self.input_schema = _with_tools(self.row_schema)
 
-    def _make_input(self, rendered):
+    def _make_input(self, rendered, row=None):
+        if self._tools_tmpl is not None:
+            fields = orjson.loads(rendered)
+            if TOOLS_FIELD in fields:
+                raise ValueError(
+                    f"`input_template` renders a `{TOOLS_FIELD}` field, which "
+                    "`tools_template` fills: rename it."
+                )
+            tools = orjson.loads(self._tools_tmpl.render(**row))
+            if not isinstance(tools, list):
+                raise ValueError(
+                    "`tools_template` must render a JSON list of tool declarations; "
+                    f"got {type(tools).__name__}."
+                )
+            for tool in tools:
+                problem = tool_declaration_problem(tool)
+                if problem is not None:
+                    raise ValueError(
+                        "`tools_template` rendered a tool the API would refuse: "
+                        f"{problem}. Each one is {TOOL_SHAPE}, as a Chat "
+                        "Completions request sends it."
+                    )
+            return JsonDataModel(
+                schema=self.input_schema, json={**fields, TOOLS_FIELD: tools}
+            )
         if self.input_schema is not None:
             return JsonDataModel(schema=self.input_schema, json=orjson.loads(rendered))
         return self.input_data_model.model_validate_json(rendered)
@@ -174,7 +231,7 @@ class Dataset:
             if self.limit is not None and seen >= self.limit:
                 break
             seen += 1
-            x = self._make_input(self._input_tmpl.render(**row))
+            x = self._make_input(self._input_tmpl.render(**row), row)
             y = (
                 None
                 if inputs_only
@@ -265,6 +322,54 @@ def _batch(x_buf, y_buf, inputs_only):
     if inputs_only:
         return (x,)
     return (x, np.array(y_buf, dtype="object"))
+
+
+# A tool declaration as a Chat Completions request carries it.
+TOOL_SHAPE = (
+    '{"type": "function", "function": {"name": ..., "description": ..., '
+    '"parameters": {...}}}'
+)
+
+
+def tool_declaration_problem(tool):
+    """Why ``tool`` is not a Chat Completions tool declaration, or ``None``.
+
+    The declarations go to the provider verbatim, as the request's
+    ``tools``, so only the wire shape works: a bare
+    ``{name, description, parameters}`` is refused by the API, and better
+    refused here, with the shape to write.
+    """
+    if not isinstance(tool, dict):
+        return f"a tool declaration is a mapping, not {type(tool).__name__}"
+    if tool.get("type") != "function" or not isinstance(tool.get("function"), dict):
+        hint = (
+            ': wrap it as {"type": "function", "function": <the declaration>}'
+            if isinstance(tool.get("name"), str)
+            else ""
+        )
+        return 'a tool declaration is {"type": "function", "function": {...}}' + hint
+    name = tool["function"].get("name")
+    if not isinstance(name, str) or not name:
+        return "a tool declaration's `function` names the function (`name`)"
+    return None
+
+
+def _with_tools(schema):
+    """The row's ``schema`` with a request's ``tools`` beside its own fields."""
+    out = dict(schema)
+    out["properties"] = {
+        **(schema.get("properties") or {}),
+        TOOLS_FIELD: {
+            "type": "array",
+            "description": (
+                "The tools the model may call on this row, as a Chat Completions "
+                "request declares them."
+            ),
+            "items": ChatCompletionTool.get_schema(),
+        },
+    }
+    out["required"] = [*(schema.get("required") or []), TOOLS_FIELD]
+    return out
 
 
 def _coerce_schema(schema):

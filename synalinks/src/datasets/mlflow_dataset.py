@@ -83,6 +83,7 @@ class MLflowDataset(Dataset):
         output_schema (dict | str): See ``Dataset``.
         output_template (str): See ``Dataset``. When given, every record
             must carry expectations.
+        tools_template (str): See ``Dataset``.
         batch_size (int): Examples per yielded batch. Defaults to ``1``.
         limit (int): Optional. See ``Dataset``.
         repeat (int): See ``Dataset``.
@@ -100,6 +101,7 @@ class MLflowDataset(Dataset):
         output_data_model=None,
         output_schema=None,
         output_template=None,
+        tools_template=None,
         batch_size=1,
         limit=None,
         repeat=1,
@@ -113,6 +115,7 @@ class MLflowDataset(Dataset):
             output_data_model=output_data_model,
             output_schema=output_schema,
             output_template=output_template,
+            tools_template=tools_template,
             batch_size=batch_size,
             limit=limit,
             repeat=repeat,

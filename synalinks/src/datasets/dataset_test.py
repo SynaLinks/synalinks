@@ -6,9 +6,13 @@ import numpy as np
 import pytest
 
 from synalinks.src import testing
+from synalinks.src.backend import ChatMessages
 from synalinks.src.backend import DataModel
 from synalinks.src.backend import Field
+from synalinks.src.backend.pydantic.chat_completions import ChatCompletionTool
+from synalinks.src.datasets.dataset import TOOLS_FIELD
 from synalinks.src.datasets.dataset import Dataset
+from synalinks.src.datasets.dataset import tool_declaration_problem
 
 
 class Question(DataModel):
@@ -321,3 +325,106 @@ class DatasetDefaultsTest(testing.TestCase):
         (x,) = next(iter(ds))
         self.assertEqual(x[0].messages[0].role, "user")
         self.assertEqual(x[0].messages[0].content, "hi")
+
+
+def _tool(name):
+    return {
+        "type": "function",
+        "function": {
+            "name": name,
+            "description": f"The {name}.",
+            "parameters": {"type": "object", "properties": {}},
+        },
+    }
+
+
+class DatasetToolsTemplateTest(testing.TestCase):
+    """`tools_template`: each row brings its own tools, as a Chat Completions request."""
+
+    rows = [
+        {
+            "messages": [{"role": "user", "content": "Weather in Paris?"}],
+            "tools": [_tool("get_weather")],
+        },
+        {
+            "messages": [{"role": "user", "content": "Time in Rome?"}],
+            "tools": [_tool("get_time"), _tool("get_weather")],
+        },
+    ]
+
+    def test_each_input_is_the_request_the_row_makes(self):
+        ds = _RowDataset(
+            self.rows,
+            input_template='{"messages": {{ messages | tojson }}}',
+            tools_template="{{ tools | tojson }}",
+            batch_size=2,
+        )
+        [(x,)] = list(ds)
+        self.assertEqual(
+            [row.get_json() for row in x],
+            [
+                {
+                    "messages": self.rows[0]["messages"],
+                    TOOLS_FIELD: [_tool("get_weather")],
+                },
+                {
+                    "messages": self.rows[1]["messages"],
+                    TOOLS_FIELD: [_tool("get_time"), _tool("get_weather")],
+                },
+            ],
+        )
+        self.assertEqual(TOOLS_FIELD, "tools")
+        # The input schema is the request's: the row, and its tools typed as the
+        # API declares them.
+        self.assertEqual(
+            ds.input_schema["properties"][TOOLS_FIELD]["items"],
+            ChatCompletionTool.get_schema(),
+        )
+        self.assertIn(TOOLS_FIELD, ds.input_schema["required"])
+        # The row alone, for a module that reads it back out of the request.
+        self.assertEqual(ds.row_schema, ChatMessages.get_schema())
+
+    def test_a_custom_input_schema_gets_the_tools_beside_its_fields(self):
+        schema = {
+            "type": "object",
+            "properties": {"question": {"type": "string"}},
+            "required": ["question"],
+        }
+        ds = _RowDataset(
+            self.rows,
+            input_schema=schema,
+            input_template='{"question": {{ messages[-1].content | tojson }}}',
+            tools_template="{{ tools | tojson }}",
+        )
+        [(x,)] = list(ds)
+        self.assertEqual(
+            x[0].get_json(),
+            {"question": "Weather in Paris?", TOOLS_FIELD: [_tool("get_weather")]},
+        )
+        self.assertEqual(ds.row_schema, schema)
+        self.assertEqual(ds.input_schema["required"], ["question", TOOLS_FIELD])
+
+    def test_without_a_tools_template_nothing_changes(self):
+        ds = _RowDataset(
+            self.rows, input_template='{"messages": {{ messages | tojson }}}'
+        )
+        self.assertIsNone(ds.row_schema)
+        self.assertIsNone(ds.input_schema)
+        [(x,)] = list(ds)
+        self.assertEqual(set(x[0].get_json()), {"messages"})
+
+    def test_a_declaration_the_api_would_refuse_is_refused_when_the_row_is_read(self):
+        def dataset(tools_template, **kwargs):
+            kwargs.setdefault("input_template", '{"messages": {{ messages | tojson }}}')
+            return _RowDataset(self.rows, tools_template=tools_template, **kwargs)
+
+        with pytest.raises(ValueError, match='wrap it as {"type": "function"'):
+            list(dataset("{{ [{'name': 'get_weather', 'parameters': {}}] | tojson }}"))
+        with pytest.raises(ValueError, match="JSON list"):
+            list(dataset("{{ tools[0] | tojson }}"))
+        with pytest.raises(ValueError, match="names the function"):
+            list(dataset('[{"type": "function", "function": {}}]'))
+        with pytest.raises(ValueError, match="rename it"):
+            list(dataset("[]", input_template='{"messages": [], "tools": []}'))
+        self.assertIsNone(tool_declaration_problem(_tool("f")))
+        self.assertIn("mapping", tool_declaration_problem("f"))

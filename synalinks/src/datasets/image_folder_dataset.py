@@ -98,6 +98,7 @@ class ImageFolderDataset(Dataset):
         output_template (str): See `Dataset`. Omit for an inputs-only
             dataset (e.g. captioning at inference); provide it to build a
             supervised ``(image, target)`` dataset for training.
+        tools_template (str): See `Dataset`.
         batch_size (int): Examples per yielded batch. Defaults to 8.
         limit (int): Optional cap on the number of images consumed. With a
             limit set, ``__len__`` is also available.
@@ -117,6 +118,7 @@ class ImageFolderDataset(Dataset):
         output_data_model=None,
         output_schema=None,
         output_template: Optional[str] = None,
+        tools_template: Optional[str] = None,
         batch_size: int = 8,
         limit: Optional[int] = None,
         repeat: int = 1,
@@ -130,6 +132,7 @@ class ImageFolderDataset(Dataset):
             output_data_model=output_data_model,
             output_schema=output_schema,
             output_template=output_template,
+            tools_template=tools_template,
             batch_size=batch_size,
             limit=limit,
             repeat=repeat,
