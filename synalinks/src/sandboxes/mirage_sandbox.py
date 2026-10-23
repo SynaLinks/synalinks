@@ -91,6 +91,7 @@ try:
     from mirage import MountMode
     from mirage import Workspace
     from mirage.bridge.sync import run_async_from_sync
+    from mirage.types import PathSpec
 except (ImportError, OSError):  # pragma: no cover - mirage genuinely unusable
     # Kept as a backstop so an unusable mirage degrades to a clear error at
     # construction time rather than breaking `import synalinks`.
@@ -99,6 +100,7 @@ except (ImportError, OSError):  # pragma: no cover - mirage genuinely unusable
     RAMVFS = None
     Workspace = None
     run_async_from_sync = None
+    PathSpec = None
 
 
 DEFAULT_MOUNT = "/"
@@ -2136,14 +2138,25 @@ class MirageSandbox(Sandbox):
 
         The one write path behind `write_file`, ``files.write``, seeding and
         `merge`. Returns ``None`` on success, else the error message.
+
+        The file is replaced in one step through Mirage's dispatcher (which
+        applies the mount modes and policies a shell write gets), so a reader
+        never sees it empty or half-written, as it can between the truncate
+        and the write of ``cat >``. A relative ``path`` resolves against the
+        session's working directory.
         """
         if isinstance(data, str):
             data = data.encode("utf-8")
-        parent = posixpath.dirname(path.rstrip("/")) or "/"
-        command = "mkdir -p %s && cat > %s" % (shlex.quote(parent), shlex.quote(path))
-        _, stderr, exit_code = await self.execute(command, stdin=bytes(data), files=True)
-        if exit_code != 0:
-            return stderr.strip() or f"failed to write {path}"
+        cwd = self.workspace.get_session(self.session_id).cwd
+        target = PathSpec.from_str_path(path, cwd=cwd)
+        parent = posixpath.dirname(target.virtual.rstrip("/")) or "/"
+        try:
+            await self.workspace.dispatch(
+                "mkdir", PathSpec.from_str_path(parent), parents=True
+            )
+            await self.workspace.dispatch("write", target, data=bytes(data))
+        except Exception as exc:  # noqa: BLE001 - reported as the error message
+            return str(exc) or f"failed to write {path}"
         return None
 
     async def read_tree(self) -> Dict[str, str]:
