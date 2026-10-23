@@ -64,6 +64,72 @@ def supported_providers():
     return EmbeddingModel.supported_providers()
 
 
+@synalinks_export("synalinks.embedding_models.provider_info")
+def provider_info(provider):
+    """Returns what a frontend needs to set a embedding model provider up.
+
+    Shortcut for `EmbeddingModel.provider_info()`.
+
+    ```python
+    import synalinks
+
+    print(synalinks.embedding_models.provider_info("ollama"))
+    ```
+
+    Args:
+        provider (str): A provider prefix from `supported_providers()`.
+
+    Returns:
+        (dict): `provider`, `env`, `default_api_base` and `lists_models_from`.
+    """
+    return EmbeddingModel.provider_info(provider)
+
+
+@synalinks_export("synalinks.embedding_models.supported_models")
+async def supported_models(provider, api_base=None):
+    """Returns the embedding models a provider offers.
+
+    Shortcut for `EmbeddingModel.supported_models()`.
+
+    ```python
+    import synalinks
+
+    print(await synalinks.embedding_models.supported_models("ollama"))
+    ```
+
+    Args:
+        provider (str): A provider prefix from `supported_providers()`.
+        api_base (str): Optional. The server to ask, for a provider listed
+            from its server.
+
+    Returns:
+        (list): The sorted model IDs, ready to pass as `model`.
+    """
+    return await EmbeddingModel.supported_models(provider, api_base=api_base)
+
+
+@synalinks_export("synalinks.embedding_models.model_info")
+def model_info(model):
+    """Returns a embedding model's info from litellm's model table.
+
+    Shortcut for `EmbeddingModel.model_info()`.
+
+    ```python
+    import synalinks
+
+    print(synalinks.embedding_models.model_info("gemini/gemini-embedding-001"))
+    ```
+
+    Args:
+        model (str): The model, e.g. `"gemini/gemini-embedding-001"`.
+
+    Returns:
+        (dict): The model's context size, prices and capabilities, or `None`
+            when litellm does not know it.
+    """
+    return EmbeddingModel.model_info(model)
+
+
 @synalinks_export("synalinks.embedding_models.get")
 def get(identifier):
     """Retrieves a Synalinks EmbeddingModel instance.

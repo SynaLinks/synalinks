@@ -6,7 +6,10 @@ since your modifications would be overwritten.
 
 from synalinks.src.modules.decision_models import deserialize as deserialize
 from synalinks.src.modules.decision_models import get as get
+from synalinks.src.modules.decision_models import model_info as model_info
+from synalinks.src.modules.decision_models import provider_info as provider_info
 from synalinks.src.modules.decision_models import serialize as serialize
+from synalinks.src.modules.decision_models import supported_models as supported_models
 from synalinks.src.modules.decision_models import (
     supported_providers as supported_providers,
 )

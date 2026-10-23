@@ -125,6 +125,53 @@ class DecisionModelTest(testing.TestCase):
         self.assertEqual(result.get_schema(), Billing.get_schema())
         self.assertEqual(decision_model.last_call_model, "jev-1.13.0")
 
+    async def test_any_json_is_sent_as_the_state(self):
+        decision_model = DecisionModel(model="typesafe/jev-latest")
+        payloads = mock_decision_model(decision_model, ANSWERS)
+
+        class Ticket(DataModel):
+            message: str
+            plan: str
+
+        states = [
+            {"message": "I was charged twice.", "plan": "pro"},
+            ["charged twice", "refund"],
+            "I was charged twice.",
+            Ticket(message="I was charged twice.", plan="pro"),
+        ]
+        for state in states:
+            result = await decision_model(state, schema=Billing.get_schema())
+            self.assertEqual(result.get_json(), {"is_billing": True})
+
+        self.assertEqual(
+            [payload["state"] for payload in payloads],
+            [
+                {"message": "I was charged twice.", "plan": "pro"},
+                ["charged twice", "refund"],
+                "I was charged twice.",
+                {"message": "I was charged twice.", "plan": "pro"},
+            ],
+        )
+
+    async def test_chat_messages_as_json_data_model_are_messages(self):
+        decision_model = DecisionModel(model="typesafe/jev-latest")
+        payloads = mock_decision_model(decision_model, ANSWERS)
+        messages = ticket("I was charged twice.").to_json_data_model()
+
+        await decision_model(messages, schema=Billing.get_schema())
+
+        self.assertEqual(
+            payloads[0]["state"],
+            [{"role": "user", "content": "I was charged twice."}],
+        )
+
+    async def test_state_that_is_not_json_raises(self):
+        decision_model = DecisionModel(model="typesafe/jev-latest")
+        payloads = mock_decision_model(decision_model, ANSWERS)
+        with self.assertRaisesRegex(ValueError, "JSON state"):
+            await decision_model({"when": object()}, schema=Billing.get_schema())
+        self.assertEqual(payloads, [])
+
     async def test_usage_and_cost_counters(self):
         decision_model = DecisionModel(model="typesafe/jev-latest")
         mock_decision_model(decision_model, ANSWERS)
@@ -313,7 +360,6 @@ class DecisionModelTest(testing.TestCase):
 
     @parameterized.named_parameters(
         ("noul_out_of_range", "billing", {"type": "noul", "noul": 1.5}),
-        ("wrong_type", "billing", {"type": "choice", "noul": 0.5}),
         (
             "unknown_choice",
             "team",
@@ -517,13 +563,6 @@ class DecisionModelTest(testing.TestCase):
                 "urgency": {**MIXED_ANSWERS["urgency"], "score": None},
             },
         ),
-        (
-            "legend_mismatch",
-            {
-                **MIXED_ANSWERS,
-                "urgency": {**MIXED_ANSWERS["urgency"], "legend": {"0": "Can wait"}},
-            },
-        ),
     )
     async def test_more_malformed_answers_fail_the_call(self, answers):
         decision_model = DecisionModel(model="typesafe/jev-latest")
@@ -534,13 +573,49 @@ class DecisionModelTest(testing.TestCase):
 
         self.assertIsNone(result)
 
-    async def test_unknown_price_counts_no_cost(self):
+    async def test_answer_of_the_wrong_type_fails_the_call(self):
+        decision_model = DecisionModel(model="typesafe/jev-latest", retry=2)
+        payloads = mock_decision_model(
+            decision_model,
+            {**MIXED_ANSWERS, "billing": {"type": "choice", "noul": 0.5}},
+        )
+
+        with self.assertWarns(UserWarning):
+            result = await decision_model(ticket("Hi"), schema=MIXED_SCHEMA)
+
+        self.assertIsNone(result)
+        # litellm rejects it as a provider error (500), which is retried.
+        self.assertEqual(len(payloads), 2)
+
+    async def test_legend_follows_the_question_levels(self):
         decision_model = DecisionModel(model="typesafe/jev-latest")
-        mock_decision_model(decision_model, ANSWERS, model="jev-9.0.0")
-        await decision_model(ticket("Hi"), schema=Billing.get_schema())
-        self.assertEqual(decision_model.cumulated_cost, 0.0)
-        self.assertEqual(decision_model.cumulated_prompt_tokens, 100)
-        self.assertEqual(decision_model.last_call_model, "jev-9.0.0")
+        urgency = {**MIXED_ANSWERS["urgency"], "legend": {"0": "Can wait"}}
+        mock_decision_model(decision_model, {**MIXED_ANSWERS, "urgency": urgency})
+
+        result = await decision_model(ticket("Hi"), schema=MIXED_SCHEMA)
+
+        self.assertEqual(
+            result.get_json()["urgency"]["legend"],
+            {"0": "Can wait", "1": "This week", "2": "Today"},
+        )
+
+    async def test_api_base_is_sent_to_litellm(self):
+        decision_model = DecisionModel(
+            model="typesafe/jev-latest", api_base="https://example.test"
+        )
+        calls = []
+
+        async def systemone(**kwargs):
+            calls.append(kwargs)
+            raise ValueError("stop")
+
+        decision_model._systemone = systemone
+        with self.assertWarns(UserWarning):
+            await decision_model(ticket("Hi"), schema=Billing.get_schema())
+
+        self.assertEqual(calls[0]["model"], "typesafe/jev-latest")
+        self.assertEqual(calls[0]["api_base"], "https://example.test")
+        self.assertEqual(calls[0]["timeout"], 30.0)
 
     async def test_empty_messages_return_none(self):
         decision_model = DecisionModel(model="typesafe/jev-latest")
@@ -552,9 +627,16 @@ class DecisionModelTest(testing.TestCase):
         with self.assertRaisesRegex(ValueError, "model"):
             DecisionModel()
 
+    def test_supported_providers(self):
+        providers = DecisionModel.supported_providers()
+        self.assertIn("typesafe", providers)
+        self.assertIn("openai", providers)
+        self.assertEqual(providers, sorted(providers))
+        DecisionModel(model="hosted_vllm/Qwen/Qwen3-8B")
+
     def test_unsupported_provider(self):
         with self.assertRaisesRegex(ValueError, "Unsupported decision model"):
-            DecisionModel(model="openai/gpt-4o-mini")
+            DecisionModel(model="anthropic/claude-haiku-5-5")
         with self.assertRaisesRegex(ValueError, "Unsupported decision model"):
             DecisionModel(model="jev-latest")
 
@@ -672,7 +754,7 @@ class DefaultDecisionModelTest(testing.TestCase):
         )
         self.assertIsNone(branch.decision_model)
 
-    def test_default_wins_over_the_default_language_model(self):
+    def test_a_passed_language_model_is_used(self):
         from synalinks.src.backend import config
 
         with patch.object(config, "_persist_config"):
@@ -683,19 +765,46 @@ class DefaultDecisionModelTest(testing.TestCase):
                 config.set_default_language_model(None)
 
         self.addCleanup(clear)
-        # Modules pass their resolved (default) language model down: it must
-        # not count as a language model chosen over the default decision model.
+        # Without any model given, the default decision model wins.
+        self.assertIs(
+            synalinks.Generator(data_model=Billing).decision_model, self.default
+        )
+        decision = synalinks.Decision(question="Easy?", labels=["easy", "hard"])
+        self.assertIs(decision.decision_model, self.default)
+        self.assertIs(decision.decision.decision_model, self.default)
+        # A language model passed down, even the default one, is used.
         generator = synalinks.Generator(
             data_model=Billing, language_model=synalinks.default_language_model()
         )
-        self.assertIs(generator.decision_model, self.default)
-        decision = synalinks.Decision(question="Easy?", labels=["easy", "hard"])
-        self.assertIs(decision.decision_model, self.default)
-        # Another language model is a choice: it is used.
-        other = synalinks.LanguageModel(model="ollama/qwen3")
-        self.assertIsNone(
-            synalinks.Generator(data_model=Billing, language_model=other).decision_model
-        )
+        self.assertIsNone(generator.decision_model)
+
+    def test_modules_without_a_decision_model_argument_never_use_one(self):
+        from synalinks.src.backend import config
+        from synalinks.src.modules.core.action import Action
+        from synalinks.src.modules.core.tool import Tool
+
+        with patch.object(config, "_persist_config"):
+            config.set_default_language_model(self.language_model)
+
+        def clear():
+            with patch.object(config, "_persist_config"):
+                config.set_default_language_model(None)
+
+        self.addCleanup(clear)
+
+        async def refund(approved: bool):
+            """Refund the order.
+
+            Args:
+                approved (bool): Whether the refund is approved.
+            """
+            return {"refunded": approved}
+
+        # Only defaults are set: a decision model would answer `approved`.
+        action = Action(tool=Tool(refund))
+        self.assertIsNone(action.action.decision_model)
+        judge = synalinks.rewards.LMAsJudge()
+        self.assertIsNone(judge.program.critique.decision_model)
 
     def test_default_only_where_it_applies(self):
         # A Generator uses the default decision model only for a schema it

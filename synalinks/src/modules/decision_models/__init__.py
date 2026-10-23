@@ -64,6 +64,72 @@ def supported_providers():
     return DecisionModel.supported_providers()
 
 
+@synalinks_export("synalinks.decision_models.provider_info")
+def provider_info(provider):
+    """Returns what a frontend needs to set a decision model provider up.
+
+    Shortcut for `DecisionModel.provider_info()`.
+
+    ```python
+    import synalinks
+
+    print(synalinks.decision_models.provider_info("typesafe"))
+    ```
+
+    Args:
+        provider (str): A provider prefix from `supported_providers()`.
+
+    Returns:
+        (dict): `provider`, `env`, `default_api_base` and `lists_models_from`.
+    """
+    return DecisionModel.provider_info(provider)
+
+
+@synalinks_export("synalinks.decision_models.supported_models")
+async def supported_models(provider, api_base=None):
+    """Returns the decision models a provider offers.
+
+    Shortcut for `DecisionModel.supported_models()`.
+
+    ```python
+    import synalinks
+
+    print(await synalinks.decision_models.supported_models("typesafe"))
+    ```
+
+    Args:
+        provider (str): A provider prefix from `supported_providers()`.
+        api_base (str): Optional. The server to ask, for a provider listed
+            from its server.
+
+    Returns:
+        (list): The sorted model IDs, ready to pass as `model`.
+    """
+    return await DecisionModel.supported_models(provider, api_base=api_base)
+
+
+@synalinks_export("synalinks.decision_models.model_info")
+def model_info(model):
+    """Returns a decision model's info from litellm's model table.
+
+    Shortcut for `DecisionModel.model_info()`.
+
+    ```python
+    import synalinks
+
+    print(synalinks.decision_models.model_info("typesafe/jev-latest"))
+    ```
+
+    Args:
+        model (str): The model, e.g. `"typesafe/jev-latest"`.
+
+    Returns:
+        (dict): The model's context size, prices and capabilities, or `None`
+            when litellm does not know it.
+    """
+    return DecisionModel.model_info(model)
+
+
 @synalinks_export("synalinks.decision_models.get")
 def get(identifier):
     """Retrieves a Synalinks DecisionModel instance.
@@ -114,11 +180,12 @@ def get(identifier):
 def resolve_decision_model(decision_model=None, language_model=None):
     """Return the decision model a module that supports one uses, or `None`.
 
-    An explicit `decision_model` wins. Otherwise a language model other than
-    the default one means the module uses it. Otherwise the default decision
-    model (see `synalinks.set_default_decision_model`), when one is set, wins
-    over the default language model, including when a parent module passes
-    the default language model down as its `language_model`.
+    An explicit `decision_model` wins. Otherwise a `language_model`, even the
+    default one, means the module uses it: a parent without a `decision_model`
+    argument passes its language model down, so the modules it builds never
+    answer with a decision model. Otherwise the default decision model (see
+    `synalinks.set_default_decision_model`), when one is set, wins over the
+    default language model.
 
     Args:
         decision_model (str | dict | DecisionModel | None): The module's
@@ -133,9 +200,5 @@ def resolve_decision_model(decision_model=None, language_model=None):
     if decision_model is not None:
         return get(decision_model)
     if language_model is not None:
-        # Lazy import to avoid a backend -> modules cycle.
-        from synalinks.src.backend.config import default_language_model
-
-        if language_model is not default_language_model():
-            return None
+        return None
     return get(None)

@@ -76,8 +76,8 @@ put every question about an input in the same data model.
 
 ## The `decision_model` Argument
 
-A decision model is set up like a language model, with its API key in the
-environment (`TYPESAFE_API_KEY`, e.g. in a `.env` file):
+A decision model is set up like a language model, from any provider of litellm's
+decisions API, with its API key in the environment (`TYPESAFE_API_KEY` here):
 
 ```python
 decision_model = synalinks.DecisionModel(model="typesafe/jev-latest")
@@ -420,7 +420,7 @@ async def main():
     # Log every module call to the console.
     synalinks.enable_logging()
 
-    # Reads `TYPESAFE_API_KEY` (and `TYPESAFE_BASE_URL`) from the environment.
+    # Reads `TYPESAFE_API_KEY` (and `TYPESAFE_API_BASE`) from the environment.
     decision_model = synalinks.DecisionModel(model="typesafe/jev-latest")
     language_model = synalinks.LanguageModel(model="ollama/mistral:latest")
 
