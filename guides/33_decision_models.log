@@ -1,0 +1,2611 @@
+(DEBUG) [Synalinks]
+Call ID: fb811e1e-bf5c-4eff-b8a5-d5a82c39dd4d
+Parent call ID: None
+Module: Generator
+Module Name: generator
+Module Description: Use a `LanguageModel` (or a `DecisionModel`) to generate a data model from an
+Data Model JSON Schema:
+[
+  {
+    "additionalProperties": false,
+    "description": "A support ticket.",
+    "properties": {
+      "message": {
+        "description": "The customer message",
+        "title": "Message",
+        "type": "string"
+      }
+    },
+    "required": [
+      "message"
+    ],
+    "title": "Ticket",
+    "type": "object"
+  }
+]
+
+(DEBUG) [Synalinks]
+Call ID: fb811e1e-bf5c-4eff-b8a5-d5a82c39dd4d
+Parent call ID: None
+Module: Generator
+Module Name: generator
+Module Description: Use a `LanguageModel` (or a `DecisionModel`) to generate a data model from an
+Data Model JSON Schema:
+[
+  {
+    "$defs": {
+      "Rating": {
+        "description": "A discretized rating on a 5-level integer scale from 1 to 5.\n\n`Rating` is the integer, Likert-style counterpart of `Score`: instead\nof a float between 0.0 and 1.0, the language model picks one of five\nwhole numbers, 1 (worst) to 5 (best). Because `Rating` is both an `int`\nand an `Enum`, the JSON schema constrains the model to exactly those\nfive values while Python code can use the value in arithmetic\ndirectly (e.g. averaging several ratings, or dividing by 5 to get a\nscore between 0.2 and 1.0).\n\nReach for `Rating` when you want the familiar \"rate this from 1 to 5\"\nframing (star ratings, Likert surveys, rubric grades), and for `Score`\nor `FineScore` when you want a normalized float.\n\nThe labels are the spelled-out numbers `ONE` (1) through `FIVE` (5).\n\nExample:\n\n```python\nimport synalinks\n\nclass Review(synalinks.DataModel):\n    rating: synalinks.Rating = synalinks.Field(\n        description=\"Overall quality of the answer, from 1 (worst) to 5 (best)\",\n    )\n\n# Rating values are real ints, usable in arithmetic.\nassert synalinks.Rating.FOUR == 4\nnormalized = synalinks.Rating.FOUR / 5  # 0.8\n```",
+        "enum": [
+          1,
+          2,
+          3,
+          4,
+          5
+        ],
+        "title": "Rating",
+        "type": "integer"
+      }
+    },
+    "additionalProperties": false,
+    "description": "The questions a decision model answers about a ticket.",
+    "properties": {
+      "is_billing": {
+        "description": "Is the ticket about billing?",
+        "title": "Is Billing",
+        "type": "boolean"
+      },
+      "urgency": {
+        "description": "How urgent is the ticket?",
+        "enum": [
+          "low",
+          "medium",
+          "high"
+        ],
+        "title": "Urgency",
+        "type": "string"
+      },
+      "frustration": {
+        "$ref": "#/$defs/Rating",
+        "description": "How frustrated is the customer, from 1 (calm) to 5 (angry)?"
+      }
+    },
+    "required": [
+      "is_billing",
+      "urgency",
+      "frustration"
+    ],
+    "title": "Triage",
+    "type": "object"
+  }
+]
+
+(DEBUG) [Synalinks]
+Call ID: f300b795-872a-48b4-a1d5-aae3922968e5
+Parent call ID: None
+Module: Decision
+Module Name: decision
+Module Description: Perform a decision on the given input based on a question and a list of labels.
+Data Model JSON Schema:
+[
+  {
+    "additionalProperties": false,
+    "description": "A support ticket.",
+    "properties": {
+      "message": {
+        "description": "The customer message",
+        "title": "Message",
+        "type": "string"
+      }
+    },
+    "required": [
+      "message"
+    ],
+    "title": "Ticket",
+    "type": "object"
+  }
+]
+
+(DEBUG) [Synalinks]
+Call ID: f300b795-872a-48b4-a1d5-aae3922968e5
+Parent call ID: None
+Module: Decision
+Module Name: decision
+Module Description: Perform a decision on the given input based on a question and a list of labels.
+Data Model JSON Schema:
+[
+  {
+    "additionalProperties": false,
+    "properties": {
+      "choice": {
+        "enum": [
+          "billing",
+          "technical",
+          "sales"
+        ],
+        "title": "Choice",
+        "type": "string"
+      }
+    },
+    "required": [
+      "choice"
+    ],
+    "title": "DecisionModelAnswer",
+    "type": "object"
+  }
+]
+
+(DEBUG) [Synalinks]
+Call ID: 8acf926d-42d5-4a11-a926-3e3ff2a6e65c
+Parent call ID: None
+Module: MultiDecision
+Module Name: multi_decision
+Module Description: Perform a multi-label selection on the given input.
+Data Model JSON Schema:
+[
+  {
+    "additionalProperties": false,
+    "description": "A support ticket.",
+    "properties": {
+      "message": {
+        "description": "The customer message",
+        "title": "Message",
+        "type": "string"
+      }
+    },
+    "required": [
+      "message"
+    ],
+    "title": "Ticket",
+    "type": "object"
+  }
+]
+
+(DEBUG) [Synalinks]
+Call ID: 8acf926d-42d5-4a11-a926-3e3ff2a6e65c
+Parent call ID: None
+Module: MultiDecision
+Module Name: multi_decision
+Module Description: Perform a multi-label selection on the given input.
+Data Model JSON Schema:
+[
+  {
+    "additionalProperties": false,
+    "properties": {
+      "choices": {
+        "description": "The labels whose probability reaches the threshold.",
+        "items": {
+          "type": "string",
+          "enum": [
+            "payment",
+            "delivery",
+            "account"
+          ]
+        },
+        "title": "Choices",
+        "type": "array"
+      }
+    },
+    "required": [
+      "choices"
+    ],
+    "title": "MultiDecisionModelAnswer",
+    "type": "object"
+  }
+]
+
+[Synalinks]
+Call ID: b633fab7-1ef1-413e-9649-94d7bc4b0324
+Parent call ID: None
+Module: Functional
+Module Name: ticket_triage
+Module Description: Triage the support tickets
+Data Model JSON:
+[
+  {
+    "message": "I was charged twice for my order. Please fix this today!"
+  }
+]
+
+[Synalinks]
+Call ID: 22631180-7afe-4387-afc7-7ed57bebc205
+Parent call ID: b633fab7-1ef1-413e-9649-94d7bc4b0324
+Module: Generator
+Module Name: generator
+Module Description: Use a `LanguageModel` (or a `DecisionModel`) to generate a data model from an
+Data Model JSON:
+[
+  {
+    "message": "I was charged twice for my order. Please fix this today!"
+  }
+]
+
+[Synalinks]
+Call ID: a06fbd75-cecd-4d46-8474-901c62b1bf8a
+Parent call ID: 22631180-7afe-4387-afc7-7ed57bebc205
+Module: DecisionModel
+Module Name: decision_model
+Module Description: A decision model API wrapper.
+Data Model JSON:
+[
+  {
+    "messages": [
+      {
+        "role": "system",
+        "content": "\n<instructions>\nTriage the support tickets of an online shop.\n</instructions>\n"
+      },
+      {
+        "role": "user",
+        "content": "{'message': 'I was charged twice for my order. Please fix this today!'}"
+      }
+    ]
+  }
+]
+
+[Synalinks]
+Call ID: 4df67ad7-4d9d-4190-91fe-7d72c25b2f3f
+Parent call ID: a06fbd75-cecd-4d46-8474-901c62b1bf8a
+Module: Decision
+Module Name: decision
+Module Description: Perform a decision on the given input based on a question and a list of labels.
+Data Model JSON:
+[
+  {
+    "message": "I was charged twice for my order. Please fix this today!"
+  }
+]
+
+[Synalinks]
+Call ID: f19af8a4-51c9-4e7f-91c5-eff472f4e8cc
+Parent call ID: 4df67ad7-4d9d-4190-91fe-7d72c25b2f3f
+Module: Generator
+Module Name: generator_decision
+Module Description: Use a `LanguageModel` (or a `DecisionModel`) to generate a data model from an
+Data Model JSON:
+[
+  {
+    "message": "I was charged twice for my order. Please fix this today!",
+    "question": "Which team should handle the ticket?"
+  }
+]
+
+[Synalinks]
+Call ID: 83e31e1b-9920-4dc2-88e1-a80c6d84d399
+Parent call ID: f19af8a4-51c9-4e7f-91c5-eff472f4e8cc
+Module: DecisionModel
+Module Name: decision_model
+Module Description: A decision model API wrapper.
+Data Model JSON:
+[
+  {
+    "messages": [
+      {
+        "role": "system",
+        "content": "\n<instructions>\nYou will be given a question, your task is to answer step-by-step to choose\none the following labels: ['billing', 'technical', 'sales']\n</instructions>\n"
+      },
+      {
+        "role": "user",
+        "content": "{'message': 'I was charged twice for my order. Please fix this today!', 'question': 'Which team should handle the ticket?'}"
+      }
+    ]
+  }
+]
+
+[Synalinks]
+Call ID: a06fbd75-cecd-4d46-8474-901c62b1bf8a
+Parent call ID: 22631180-7afe-4387-afc7-7ed57bebc205
+Module: DecisionModel
+Module Name: decision_model
+Module Description: A decision model API wrapper.
+Data Model JSON:
+[
+  {
+    "is_billing": true,
+    "urgency": "high",
+    "frustration": 4
+  }
+]
+
+[Synalinks]
+Call ID: 22631180-7afe-4387-afc7-7ed57bebc205
+Parent call ID: b633fab7-1ef1-413e-9649-94d7bc4b0324
+Module: Generator
+Module Name: generator
+Module Description: Use a `LanguageModel` (or a `DecisionModel`) to generate a data model from an
+Data Model JSON:
+[
+  {
+    "is_billing": true,
+    "urgency": "high",
+    "frustration": 4
+  }
+]
+
+[Synalinks]
+Call ID: 83e31e1b-9920-4dc2-88e1-a80c6d84d399
+Parent call ID: f19af8a4-51c9-4e7f-91c5-eff472f4e8cc
+Module: DecisionModel
+Module Name: decision_model
+Module Description: A decision model API wrapper.
+Data Model JSON:
+[
+  {
+    "decision": {
+      "choice": "billing",
+      "probabilities": {
+        "billing": 0.9713759425582361,
+        "technical": 0.009066127235268012,
+        "sales": 0.019557930206495877
+      },
+      "confidence": 0.957063913837354
+    }
+  }
+]
+
+[Synalinks]
+Call ID: f19af8a4-51c9-4e7f-91c5-eff472f4e8cc
+Parent call ID: 4df67ad7-4d9d-4190-91fe-7d72c25b2f3f
+Module: Generator
+Module Name: generator_decision
+Module Description: Use a `LanguageModel` (or a `DecisionModel`) to generate a data model from an
+Data Model JSON:
+[
+  {
+    "decision": {
+      "choice": "billing",
+      "probabilities": {
+        "billing": 0.9713759425582361,
+        "technical": 0.009066127235268012,
+        "sales": 0.019557930206495877
+      },
+      "confidence": 0.957063913837354
+    }
+  }
+]
+
+[Synalinks]
+Call ID: 4df67ad7-4d9d-4190-91fe-7d72c25b2f3f
+Parent call ID: a06fbd75-cecd-4d46-8474-901c62b1bf8a
+Module: Decision
+Module Name: decision
+Module Description: Perform a decision on the given input based on a question and a list of labels.
+Data Model JSON:
+[
+  {
+    "choice": "billing"
+  }
+]
+
+[Synalinks]
+Call ID: 9bb29f68-f70d-4976-b32b-43b71c5183de
+Parent call ID: 83e31e1b-9920-4dc2-88e1-a80c6d84d399
+Module: MultiDecision
+Module Name: multi_decision
+Module Description: Perform a multi-label selection on the given input.
+Data Model JSON:
+[
+  {
+    "message": "I was charged twice for my order. Please fix this today!"
+  }
+]
+
+[Synalinks]
+Call ID: 08f6527f-dd40-44da-a349-84bde383bf16
+Parent call ID: 9bb29f68-f70d-4976-b32b-43b71c5183de
+Module: Generator
+Module Name: generator_multi_decision
+Module Description: Use a `LanguageModel` (or a `DecisionModel`) to generate a data model from an
+Data Model JSON:
+[
+  {
+    "message": "I was charged twice for my order. Please fix this today!",
+    "question": "Which topics does the ticket mention?"
+  }
+]
+
+[Synalinks]
+Call ID: 4305e965-1653-40eb-a3e0-5e45b2c956b4
+Parent call ID: 08f6527f-dd40-44da-a349-84bde383bf16
+Module: DecisionModel
+Module Name: decision_model
+Module Description: A decision model API wrapper.
+Data Model JSON:
+[
+  {
+    "messages": [
+      {
+        "role": "system",
+        "content": "\n<instructions>\nYou will be given a question, your task is to answer step-by-step to choose\none or more of the following labels: ['payment', 'delivery', 'account']\n</instructions>\n"
+      },
+      {
+        "role": "user",
+        "content": "{'message': 'I was charged twice for my order. Please fix this today!', 'question': 'Which topics does the ticket mention?'}"
+      }
+    ]
+  }
+]
+
+[Synalinks]
+Call ID: 4305e965-1653-40eb-a3e0-5e45b2c956b4
+Parent call ID: 08f6527f-dd40-44da-a349-84bde383bf16
+Module: DecisionModel
+Module Name: decision_model
+Module Description: A decision model API wrapper.
+Data Model JSON:
+[
+  {
+    "label_0": {
+      "noul": 0.9726211692854263
+    },
+    "label_1": {
+      "noul": 0.08889118337160506
+    },
+    "label_2": {
+      "noul": 0.26273200232540217
+    }
+  }
+]
+
+[Synalinks]
+Call ID: 08f6527f-dd40-44da-a349-84bde383bf16
+Parent call ID: 9bb29f68-f70d-4976-b32b-43b71c5183de
+Module: Generator
+Module Name: generator_multi_decision
+Module Description: Use a `LanguageModel` (or a `DecisionModel`) to generate a data model from an
+Data Model JSON:
+[
+  {
+    "label_0": {
+      "noul": 0.9726211692854263
+    },
+    "label_1": {
+      "noul": 0.08889118337160506
+    },
+    "label_2": {
+      "noul": 0.26273200232540217
+    }
+  }
+]
+
+[Synalinks]
+Call ID: 9bb29f68-f70d-4976-b32b-43b71c5183de
+Parent call ID: 83e31e1b-9920-4dc2-88e1-a80c6d84d399
+Module: MultiDecision
+Module Name: multi_decision
+Module Description: Perform a multi-label selection on the given input.
+Data Model JSON:
+[
+  {
+    "choices": [
+      "payment"
+    ]
+  }
+]
+
+[Synalinks]
+Call ID: b633fab7-1ef1-413e-9649-94d7bc4b0324
+Parent call ID: None
+Module: Functional
+Module Name: ticket_triage
+Module Description: Triage the support tickets
+Data Model JSON:
+[
+  {
+    "is_billing": true,
+    "urgency": "high",
+    "frustration": 4,
+    "choice": "billing",
+    "choices": [
+      "payment"
+    ]
+  }
+]
+
+(DEBUG) [Synalinks]
+Call ID: 03988b31-54da-45cf-a384-5154243ed9d3
+Parent call ID: None
+Module: Branch
+Module Name: branch
+Module Description: Use a `LanguageModel` to select which module(s) to call based on an
+Data Model JSON Schema:
+[
+  {
+    "additionalProperties": false,
+    "description": "User request.",
+    "properties": {
+      "query": {
+        "description": "The user query",
+        "title": "Query",
+        "type": "string"
+      }
+    },
+    "required": [
+      "query"
+    ],
+    "title": "Query",
+    "type": "object"
+  }
+]
+
+(DEBUG) [Synalinks]
+Call ID: cf464f19-7354-43b8-bb48-dd99b7917249
+Parent call ID: 03988b31-54da-45cf-a384-5154243ed9d3
+Module: Decision
+Module Name: decision_branch
+Module Description: Perform a decision on the given input based on a question and a list of labels.
+Data Model JSON Schema:
+[
+  {
+    "additionalProperties": false,
+    "description": "User request.",
+    "properties": {
+      "query": {
+        "description": "The user query",
+        "title": "Query",
+        "type": "string"
+      }
+    },
+    "required": [
+      "query"
+    ],
+    "title": "Query",
+    "type": "object"
+  }
+]
+
+(DEBUG) [Synalinks]
+Call ID: cf464f19-7354-43b8-bb48-dd99b7917249
+Parent call ID: 03988b31-54da-45cf-a384-5154243ed9d3
+Module: Decision
+Module Name: decision_branch
+Module Description: Perform a decision on the given input based on a question and a list of labels.
+Data Model JSON Schema:
+[
+  {
+    "additionalProperties": false,
+    "properties": {
+      "choice": {
+        "enum": [
+          "recall a fact",
+          "reason step by step"
+        ],
+        "title": "Choice",
+        "type": "string"
+      }
+    },
+    "required": [
+      "choice"
+    ],
+    "title": "DecisionModelAnswer",
+    "type": "object"
+  }
+]
+
+(DEBUG) [Synalinks]
+Call ID: 1d830b87-a94c-41d0-9666-94920a1b7cb2
+Parent call ID: cf464f19-7354-43b8-bb48-dd99b7917249
+Module: Generator
+Module Name: generator_1
+Module Description: Use a `LanguageModel` (or a `DecisionModel`) to generate a data model from an
+Data Model JSON Schema:
+[
+  {
+    "additionalProperties": false,
+    "properties": {
+      "query": {
+        "description": "The user query",
+        "title": "Query",
+        "type": "string"
+      },
+      "choice": {
+        "enum": [
+          "recall a fact",
+          "reason step by step"
+        ],
+        "title": "Choice",
+        "type": "string"
+      }
+    },
+    "required": [
+      "query",
+      "choice"
+    ],
+    "title": "Query",
+    "type": "object"
+  }
+]
+
+(DEBUG) [Synalinks]
+Call ID: 1d830b87-a94c-41d0-9666-94920a1b7cb2
+Parent call ID: cf464f19-7354-43b8-bb48-dd99b7917249
+Module: Generator
+Module Name: generator_1
+Module Description: Use a `LanguageModel` (or a `DecisionModel`) to generate a data model from an
+Data Model JSON Schema:
+[
+  {
+    "additionalProperties": false,
+    "description": "Final answer.",
+    "properties": {
+      "answer": {
+        "description": "The correct answer",
+        "title": "Answer",
+        "type": "string"
+      }
+    },
+    "required": [
+      "answer"
+    ],
+    "title": "Answer",
+    "type": "object"
+  }
+]
+
+(DEBUG) [Synalinks]
+Call ID: fbc21e05-70c4-4d5e-8b7b-7fc8b6dd53c1
+Parent call ID: 1d830b87-a94c-41d0-9666-94920a1b7cb2
+Module: ChainOfThought
+Module Name: chain_of_thought
+Module Description: Useful to answer in a step by step manner.
+Data Model JSON Schema:
+[
+  {
+    "additionalProperties": false,
+    "properties": {
+      "query": {
+        "description": "The user query",
+        "title": "Query",
+        "type": "string"
+      },
+      "choice": {
+        "enum": [
+          "recall a fact",
+          "reason step by step"
+        ],
+        "title": "Choice",
+        "type": "string"
+      }
+    },
+    "required": [
+      "query",
+      "choice"
+    ],
+    "title": "Query",
+    "type": "object"
+  }
+]
+
+(DEBUG) [Synalinks]
+Call ID: 4838eda4-68c2-44b1-a8e4-e2785eb43b7b
+Parent call ID: fbc21e05-70c4-4d5e-8b7b-7fc8b6dd53c1
+Module: Generator
+Module Name: generator_chain_of_thought
+Module Description: Use a `LanguageModel` (or a `DecisionModel`) to generate a data model from an
+Data Model JSON Schema:
+[
+  {
+    "additionalProperties": false,
+    "properties": {
+      "query": {
+        "description": "The user query",
+        "title": "Query",
+        "type": "string"
+      },
+      "choice": {
+        "enum": [
+          "recall a fact",
+          "reason step by step"
+        ],
+        "title": "Choice",
+        "type": "string"
+      }
+    },
+    "required": [
+      "query",
+      "choice"
+    ],
+    "title": "Query",
+    "type": "object"
+  }
+]
+
+(DEBUG) [Synalinks]
+Call ID: 4838eda4-68c2-44b1-a8e4-e2785eb43b7b
+Parent call ID: fbc21e05-70c4-4d5e-8b7b-7fc8b6dd53c1
+Module: Generator
+Module Name: generator_chain_of_thought
+Module Description: Use a `LanguageModel` (or a `DecisionModel`) to generate a data model from an
+Data Model JSON Schema:
+[
+  {
+    "additionalProperties": false,
+    "properties": {
+      "thinking": {
+        "description": "Your step by step thinking",
+        "title": "Thinking",
+        "type": "string"
+      },
+      "answer": {
+        "description": "The correct answer",
+        "title": "Answer",
+        "type": "string"
+      }
+    },
+    "required": [
+      "thinking",
+      "answer"
+    ],
+    "title": "Thinking",
+    "type": "object"
+  }
+]
+
+(DEBUG) [Synalinks]
+Call ID: f36b2aad-5043-450e-9399-ade09fa6715d
+Parent call ID: 4838eda4-68c2-44b1-a8e4-e2785eb43b7b
+Module: Generator
+Module Name: generator_chain_of_thought
+Module Description: Use a `LanguageModel` (or a `DecisionModel`) to generate a data model from an
+Data Model JSON Schema:
+[
+  {
+    "additionalProperties": false,
+    "properties": {
+      "query": {
+        "description": "The user query",
+        "title": "Query",
+        "type": "string"
+      },
+      "choice": {
+        "enum": [
+          "recall a fact",
+          "reason step by step"
+        ],
+        "title": "Choice",
+        "type": "string"
+      }
+    },
+    "required": [
+      "query",
+      "choice"
+    ],
+    "title": "Query",
+    "type": "object"
+  }
+]
+
+(DEBUG) [Synalinks]
+Call ID: f36b2aad-5043-450e-9399-ade09fa6715d
+Parent call ID: 4838eda4-68c2-44b1-a8e4-e2785eb43b7b
+Module: Generator
+Module Name: generator_chain_of_thought
+Module Description: Use a `LanguageModel` (or a `DecisionModel`) to generate a data model from an
+Data Model JSON Schema:
+[
+  {
+    "additionalProperties": false,
+    "properties": {
+      "thinking": {
+        "description": "Your step by step thinking",
+        "title": "Thinking",
+        "type": "string"
+      },
+      "answer": {
+        "description": "The correct answer",
+        "title": "Answer",
+        "type": "string"
+      }
+    },
+    "required": [
+      "thinking",
+      "answer"
+    ],
+    "title": "Thinking",
+    "type": "object"
+  }
+]
+
+(DEBUG) [Synalinks]
+Call ID: fbc21e05-70c4-4d5e-8b7b-7fc8b6dd53c1
+Parent call ID: 1d830b87-a94c-41d0-9666-94920a1b7cb2
+Module: ChainOfThought
+Module Name: chain_of_thought
+Module Description: Useful to answer in a step by step manner.
+Data Model JSON Schema:
+[
+  {
+    "additionalProperties": false,
+    "properties": {
+      "thinking": {
+        "description": "Your step by step thinking",
+        "title": "Thinking",
+        "type": "string"
+      },
+      "answer": {
+        "description": "The correct answer",
+        "title": "Answer",
+        "type": "string"
+      }
+    },
+    "required": [
+      "thinking",
+      "answer"
+    ],
+    "title": "Thinking",
+    "type": "object"
+  }
+]
+
+(DEBUG) [Synalinks]
+Call ID: 7f60e940-4a10-4a72-9029-567cbaf86632
+Parent call ID: f36b2aad-5043-450e-9399-ade09fa6715d
+Module: Decision
+Module Name: decision_branch
+Module Description: Perform a decision on the given input based on a question and a list of labels.
+Data Model JSON Schema:
+[
+  {
+    "additionalProperties": false,
+    "description": "User request.",
+    "properties": {
+      "query": {
+        "description": "The user query",
+        "title": "Query",
+        "type": "string"
+      }
+    },
+    "required": [
+      "query"
+    ],
+    "title": "Query",
+    "type": "object"
+  }
+]
+
+(DEBUG) [Synalinks]
+Call ID: 7f60e940-4a10-4a72-9029-567cbaf86632
+Parent call ID: f36b2aad-5043-450e-9399-ade09fa6715d
+Module: Decision
+Module Name: decision_branch
+Module Description: Perform a decision on the given input based on a question and a list of labels.
+Data Model JSON Schema:
+[
+  {
+    "additionalProperties": false,
+    "properties": {
+      "choice": {
+        "enum": [
+          "recall a fact",
+          "reason step by step"
+        ],
+        "title": "Choice",
+        "type": "string"
+      }
+    },
+    "required": [
+      "choice"
+    ],
+    "title": "DecisionModelAnswer",
+    "type": "object"
+  }
+]
+
+(DEBUG) [Synalinks]
+Call ID: d2f80dd6-0de3-49f8-bbc9-d54f646b102f
+Parent call ID: 7f60e940-4a10-4a72-9029-567cbaf86632
+Module: Generator
+Module Name: generator_1
+Module Description: Use a `LanguageModel` (or a `DecisionModel`) to generate a data model from an
+Data Model JSON Schema:
+[
+  {
+    "additionalProperties": false,
+    "properties": {
+      "query": {
+        "description": "The user query",
+        "title": "Query",
+        "type": "string"
+      },
+      "choice": {
+        "enum": [
+          "recall a fact",
+          "reason step by step"
+        ],
+        "title": "Choice",
+        "type": "string"
+      }
+    },
+    "required": [
+      "query",
+      "choice"
+    ],
+    "title": "Query",
+    "type": "object"
+  }
+]
+
+(DEBUG) [Synalinks]
+Call ID: d2f80dd6-0de3-49f8-bbc9-d54f646b102f
+Parent call ID: 7f60e940-4a10-4a72-9029-567cbaf86632
+Module: Generator
+Module Name: generator_1
+Module Description: Use a `LanguageModel` (or a `DecisionModel`) to generate a data model from an
+Data Model JSON Schema:
+[
+  {
+    "additionalProperties": false,
+    "description": "Final answer.",
+    "properties": {
+      "answer": {
+        "description": "The correct answer",
+        "title": "Answer",
+        "type": "string"
+      }
+    },
+    "required": [
+      "answer"
+    ],
+    "title": "Answer",
+    "type": "object"
+  }
+]
+
+(DEBUG) [Synalinks]
+Call ID: 7d2b3ed7-acb0-491e-afdf-fe50e395f82d
+Parent call ID: d2f80dd6-0de3-49f8-bbc9-d54f646b102f
+Module: ChainOfThought
+Module Name: chain_of_thought
+Module Description: Useful to answer in a step by step manner.
+Data Model JSON Schema:
+[
+  {
+    "additionalProperties": false,
+    "properties": {
+      "query": {
+        "description": "The user query",
+        "title": "Query",
+        "type": "string"
+      },
+      "choice": {
+        "enum": [
+          "recall a fact",
+          "reason step by step"
+        ],
+        "title": "Choice",
+        "type": "string"
+      }
+    },
+    "required": [
+      "query",
+      "choice"
+    ],
+    "title": "Query",
+    "type": "object"
+  }
+]
+
+(DEBUG) [Synalinks]
+Call ID: 02c38c28-91ed-444c-b798-0b9c160c661d
+Parent call ID: 7d2b3ed7-acb0-491e-afdf-fe50e395f82d
+Module: Generator
+Module Name: generator_chain_of_thought
+Module Description: Use a `LanguageModel` (or a `DecisionModel`) to generate a data model from an
+Data Model JSON Schema:
+[
+  {
+    "additionalProperties": false,
+    "properties": {
+      "query": {
+        "description": "The user query",
+        "title": "Query",
+        "type": "string"
+      },
+      "choice": {
+        "enum": [
+          "recall a fact",
+          "reason step by step"
+        ],
+        "title": "Choice",
+        "type": "string"
+      }
+    },
+    "required": [
+      "query",
+      "choice"
+    ],
+    "title": "Query",
+    "type": "object"
+  }
+]
+
+(DEBUG) [Synalinks]
+Call ID: 02c38c28-91ed-444c-b798-0b9c160c661d
+Parent call ID: 7d2b3ed7-acb0-491e-afdf-fe50e395f82d
+Module: Generator
+Module Name: generator_chain_of_thought
+Module Description: Use a `LanguageModel` (or a `DecisionModel`) to generate a data model from an
+Data Model JSON Schema:
+[
+  {
+    "additionalProperties": false,
+    "properties": {
+      "thinking": {
+        "description": "Your step by step thinking",
+        "title": "Thinking",
+        "type": "string"
+      },
+      "answer": {
+        "description": "The correct answer",
+        "title": "Answer",
+        "type": "string"
+      }
+    },
+    "required": [
+      "thinking",
+      "answer"
+    ],
+    "title": "Thinking",
+    "type": "object"
+  }
+]
+
+(DEBUG) [Synalinks]
+Call ID: 7d2b3ed7-acb0-491e-afdf-fe50e395f82d
+Parent call ID: d2f80dd6-0de3-49f8-bbc9-d54f646b102f
+Module: ChainOfThought
+Module Name: chain_of_thought
+Module Description: Useful to answer in a step by step manner.
+Data Model JSON Schema:
+[
+  {
+    "additionalProperties": false,
+    "properties": {
+      "thinking": {
+        "description": "Your step by step thinking",
+        "title": "Thinking",
+        "type": "string"
+      },
+      "answer": {
+        "description": "The correct answer",
+        "title": "Answer",
+        "type": "string"
+      }
+    },
+    "required": [
+      "thinking",
+      "answer"
+    ],
+    "title": "Thinking",
+    "type": "object"
+  }
+]
+
+(DEBUG) [Synalinks]
+Call ID: 03988b31-54da-45cf-a384-5154243ed9d3
+Parent call ID: None
+Module: Branch
+Module Name: branch
+Module Description: Use a `LanguageModel` to select which module(s) to call based on an
+Data Model JSON Schema:
+[
+  {
+    "additionalProperties": false,
+    "description": "Final answer.",
+    "properties": {
+      "answer": {
+        "description": "The correct answer",
+        "title": "Answer",
+        "type": "string"
+      }
+    },
+    "required": [
+      "answer"
+    ],
+    "title": "Answer",
+    "type": "object"
+  },
+  {
+    "additionalProperties": false,
+    "properties": {
+      "thinking": {
+        "description": "Your step by step thinking",
+        "title": "Thinking",
+        "type": "string"
+      },
+      "answer": {
+        "description": "The correct answer",
+        "title": "Answer",
+        "type": "string"
+      }
+    },
+    "required": [
+      "thinking",
+      "answer"
+    ],
+    "title": "Thinking",
+    "type": "object"
+  }
+]
+
+[Synalinks]
+Call ID: 78f119ce-3ea8-4a6d-b354-ea36691ccf62
+Parent call ID: None
+Module: Functional
+Module Name: conditional_reasoning
+Module Description: Think step by step only when the query needs it
+Data Model JSON:
+[
+  {
+    "query": "What is the capital of France?"
+  }
+]
+
+[Synalinks]
+Call ID: b40adafa-b13b-4677-93e6-99a1216e6242
+Parent call ID: 78f119ce-3ea8-4a6d-b354-ea36691ccf62
+Module: Branch
+Module Name: branch
+Module Description: Use a `LanguageModel` to select which module(s) to call based on an
+Data Model JSON:
+[
+  {
+    "query": "What is the capital of France?"
+  }
+]
+
+[Synalinks]
+Call ID: b298b57b-f844-487e-a0c3-abeb2354a1a2
+Parent call ID: b40adafa-b13b-4677-93e6-99a1216e6242
+Module: Decision
+Module Name: decision_branch
+Module Description: Perform a decision on the given input based on a question and a list of labels.
+Data Model JSON:
+[
+  {
+    "query": "What is the capital of France?"
+  }
+]
+
+[Synalinks]
+Call ID: 12fdaf6e-4aff-4063-bdc1-755628f012b0
+Parent call ID: b298b57b-f844-487e-a0c3-abeb2354a1a2
+Module: Generator
+Module Name: generator_decision_branch
+Module Description: Use a `LanguageModel` (or a `DecisionModel`) to generate a data model from an
+Data Model JSON:
+[
+  {
+    "query": "What is the capital of France?",
+    "question": "How should the query be answered?"
+  }
+]
+
+[Synalinks]
+Call ID: 36065484-72c7-471c-b30f-c68d3dbe230d
+Parent call ID: 12fdaf6e-4aff-4063-bdc1-755628f012b0
+Module: DecisionModel
+Module Name: decision_model
+Module Description: A decision model API wrapper.
+Data Model JSON:
+[
+  {
+    "messages": [
+      {
+        "role": "system",
+        "content": "\n<instructions>\nYou will be given a question, your task is to answer step-by-step to choose\none the following labels: ['recall a fact', 'reason step by step']\n</instructions>\n"
+      },
+      {
+        "role": "user",
+        "content": "{'query': 'What is the capital of France?', 'question': 'How should the query be answered?'}"
+      }
+    ]
+  }
+]
+
+[Synalinks]
+Call ID: 36065484-72c7-471c-b30f-c68d3dbe230d
+Parent call ID: 12fdaf6e-4aff-4063-bdc1-755628f012b0
+Module: DecisionModel
+Module Name: decision_model
+Module Description: A decision model API wrapper.
+Data Model JSON:
+[
+  {
+    "decision": {
+      "choice": "recall a fact",
+      "probabilities": {
+        "recall a fact": 0.9835272907701689,
+        "reason step by step": 0.016472709229830983
+      },
+      "confidence": 0.9670545815403377
+    }
+  }
+]
+
+[Synalinks]
+Call ID: 12fdaf6e-4aff-4063-bdc1-755628f012b0
+Parent call ID: b298b57b-f844-487e-a0c3-abeb2354a1a2
+Module: Generator
+Module Name: generator_decision_branch
+Module Description: Use a `LanguageModel` (or a `DecisionModel`) to generate a data model from an
+Data Model JSON:
+[
+  {
+    "decision": {
+      "choice": "recall a fact",
+      "probabilities": {
+        "recall a fact": 0.9835272907701689,
+        "reason step by step": 0.016472709229830983
+      },
+      "confidence": 0.9670545815403377
+    }
+  }
+]
+
+[Synalinks]
+Call ID: b298b57b-f844-487e-a0c3-abeb2354a1a2
+Parent call ID: b40adafa-b13b-4677-93e6-99a1216e6242
+Module: Decision
+Module Name: decision_branch
+Module Description: Perform a decision on the given input based on a question and a list of labels.
+Data Model JSON:
+[
+  {
+    "choice": "recall a fact"
+  }
+]
+
+[Synalinks]
+Call ID: 6530c108-87c6-45bc-9015-c14bd8ca6e05
+Parent call ID: 36065484-72c7-471c-b30f-c68d3dbe230d
+Module: Generator
+Module Name: generator_1
+Module Description: Use a `LanguageModel` (or a `DecisionModel`) to generate a data model from an
+Data Model JSON:
+[
+  {
+    "query": "What is the capital of France?",
+    "choice": "recall a fact"
+  }
+]
+
+[Synalinks]
+Call ID: 0d4c39fb-2081-45d0-8beb-2e436678a548
+Parent call ID: 6530c108-87c6-45bc-9015-c14bd8ca6e05
+Module: LanguageModel
+Module Name: language_model
+Module Description: A language model API wrapper.
+Data Model JSON:
+[
+  {
+    "messages": [
+      {
+        "role": "system",
+        "content": "\n<instructions>\nYour task is to answer with a JSON containing the following keys: ['answer']\n</instructions>\n"
+      },
+      {
+        "role": "user",
+        "content": "{'query': 'What is the capital of France?', 'choice': 'recall a fact'}"
+      }
+    ]
+  }
+]
+
+[Synalinks]
+Call ID: 0d4c39fb-2081-45d0-8beb-2e436678a548
+Parent call ID: 6530c108-87c6-45bc-9015-c14bd8ca6e05
+Module: LanguageModel
+Module Name: language_model
+Module Description: A language model API wrapper.
+Data Model JSON:
+[
+  {
+    "answer": "The capital of France is Paris."
+  }
+]
+
+[Synalinks]
+Call ID: 6530c108-87c6-45bc-9015-c14bd8ca6e05
+Parent call ID: 36065484-72c7-471c-b30f-c68d3dbe230d
+Module: Generator
+Module Name: generator_1
+Module Description: Use a `LanguageModel` (or a `DecisionModel`) to generate a data model from an
+Data Model JSON:
+[
+  {
+    "answer": "The capital of France is Paris."
+  }
+]
+
+[Synalinks]
+Call ID: b40adafa-b13b-4677-93e6-99a1216e6242
+Parent call ID: 78f119ce-3ea8-4a6d-b354-ea36691ccf62
+Module: Branch
+Module Name: branch
+Module Description: Use a `LanguageModel` to select which module(s) to call based on an
+Data Model JSON:
+[
+  {
+    "answer": "The capital of France is Paris."
+  }
+]
+
+[Synalinks]
+Call ID: 78f119ce-3ea8-4a6d-b354-ea36691ccf62
+Parent call ID: None
+Module: Functional
+Module Name: conditional_reasoning
+Module Description: Think step by step only when the query needs it
+Data Model JSON:
+[
+  {
+    "answer": "The capital of France is Paris."
+  }
+]
+
+[Synalinks]
+Call ID: 0d23700b-5538-4642-b485-01e2464eeea5
+Parent call ID: None
+Module: Functional
+Module Name: conditional_reasoning
+Module Description: Think step by step only when the query needs it
+Data Model JSON:
+[
+  {
+    "query": "A train leaves at 9:40 and arrives at 13:15. How long is the trip?"
+  }
+]
+
+[Synalinks]
+Call ID: 1f7c91fc-8acd-46b2-879b-840a7b8592c8
+Parent call ID: 0d23700b-5538-4642-b485-01e2464eeea5
+Module: Branch
+Module Name: branch
+Module Description: Use a `LanguageModel` to select which module(s) to call based on an
+Data Model JSON:
+[
+  {
+    "query": "A train leaves at 9:40 and arrives at 13:15. How long is the trip?"
+  }
+]
+
+[Synalinks]
+Call ID: fe374d56-c0db-4b49-90eb-26d3746faa00
+Parent call ID: 1f7c91fc-8acd-46b2-879b-840a7b8592c8
+Module: Decision
+Module Name: decision_branch
+Module Description: Perform a decision on the given input based on a question and a list of labels.
+Data Model JSON:
+[
+  {
+    "query": "A train leaves at 9:40 and arrives at 13:15. How long is the trip?"
+  }
+]
+
+[Synalinks]
+Call ID: 76f9df0b-ec19-42cf-bdc8-e4cb4a5fcbae
+Parent call ID: fe374d56-c0db-4b49-90eb-26d3746faa00
+Module: Generator
+Module Name: generator_decision_branch
+Module Description: Use a `LanguageModel` (or a `DecisionModel`) to generate a data model from an
+Data Model JSON:
+[
+  {
+    "query": "A train leaves at 9:40 and arrives at 13:15. How long is the trip?",
+    "question": "How should the query be answered?"
+  }
+]
+
+[Synalinks]
+Call ID: cbec027f-fa89-4ea5-bda7-401cf3fd1823
+Parent call ID: 76f9df0b-ec19-42cf-bdc8-e4cb4a5fcbae
+Module: DecisionModel
+Module Name: decision_model
+Module Description: A decision model API wrapper.
+Data Model JSON:
+[
+  {
+    "messages": [
+      {
+        "role": "system",
+        "content": "\n<instructions>\nYou will be given a question, your task is to answer step-by-step to choose\none the following labels: ['recall a fact', 'reason step by step']\n</instructions>\n"
+      },
+      {
+        "role": "user",
+        "content": "{'query': 'A train leaves at 9:40 and arrives at 13:15. How long is the trip?', 'question': 'How should the query be answered?'}"
+      }
+    ]
+  }
+]
+
+[Synalinks]
+Call ID: cbec027f-fa89-4ea5-bda7-401cf3fd1823
+Parent call ID: 76f9df0b-ec19-42cf-bdc8-e4cb4a5fcbae
+Module: DecisionModel
+Module Name: decision_model
+Module Description: A decision model API wrapper.
+Data Model JSON:
+[
+  {
+    "decision": {
+      "choice": "reason step by step",
+      "probabilities": {
+        "recall a fact": 0.06994936985427253,
+        "reason step by step": 0.9300506301457274
+      },
+      "confidence": 0.8601012602914548
+    }
+  }
+]
+
+[Synalinks]
+Call ID: 76f9df0b-ec19-42cf-bdc8-e4cb4a5fcbae
+Parent call ID: fe374d56-c0db-4b49-90eb-26d3746faa00
+Module: Generator
+Module Name: generator_decision_branch
+Module Description: Use a `LanguageModel` (or a `DecisionModel`) to generate a data model from an
+Data Model JSON:
+[
+  {
+    "decision": {
+      "choice": "reason step by step",
+      "probabilities": {
+        "recall a fact": 0.06994936985427253,
+        "reason step by step": 0.9300506301457274
+      },
+      "confidence": 0.8601012602914548
+    }
+  }
+]
+
+[Synalinks]
+Call ID: fe374d56-c0db-4b49-90eb-26d3746faa00
+Parent call ID: 1f7c91fc-8acd-46b2-879b-840a7b8592c8
+Module: Decision
+Module Name: decision_branch
+Module Description: Perform a decision on the given input based on a question and a list of labels.
+Data Model JSON:
+[
+  {
+    "choice": "reason step by step"
+  }
+]
+
+[Synalinks]
+Call ID: a2462c48-8611-4fe3-8240-985d13418f4e
+Parent call ID: cbec027f-fa89-4ea5-bda7-401cf3fd1823
+Module: ChainOfThought
+Module Name: chain_of_thought
+Module Description: Useful to answer in a step by step manner.
+Data Model JSON:
+[
+  {
+    "query": "A train leaves at 9:40 and arrives at 13:15. How long is the trip?",
+    "choice": "reason step by step"
+  }
+]
+
+[Synalinks]
+Call ID: 256d5613-8428-42ba-b29a-a313c3a77d63
+Parent call ID: a2462c48-8611-4fe3-8240-985d13418f4e
+Module: Generator
+Module Name: generator_chain_of_thought
+Module Description: Use a `LanguageModel` (or a `DecisionModel`) to generate a data model from an
+Data Model JSON:
+[
+  {
+    "query": "A train leaves at 9:40 and arrives at 13:15. How long is the trip?",
+    "choice": "reason step by step"
+  }
+]
+
+[Synalinks]
+Call ID: e9ecc5d7-f04b-4042-a458-42ee774826a3
+Parent call ID: 256d5613-8428-42ba-b29a-a313c3a77d63
+Module: LanguageModel
+Module Name: language_model
+Module Description: A language model API wrapper.
+Data Model JSON:
+[
+  {
+    "messages": [
+      {
+        "role": "system",
+        "content": "\n<instructions>\nYour task is to answer with a JSON containing the following keys: ['thinking', 'answer']\n</instructions>\n"
+      },
+      {
+        "role": "user",
+        "content": "{'query': 'A train leaves at 9:40 and arrives at 13:15. How long is the trip?', 'choice': 'reason step by step'}"
+      }
+    ]
+  }
+]
+
+[Synalinks]
+Call ID: e9ecc5d7-f04b-4042-a458-42ee774826a3
+Parent call ID: 256d5613-8428-42ba-b29a-a313c3a77d63
+Module: LanguageModel
+Module Name: language_model
+Module Description: A language model API wrapper.
+Data Model JSON:
+[
+  {
+    "thinking": "Let's break down the problem: The train leaves at 9:40 and arrives at 13:15. We first convert both times to a 24-hour clock format, as the time span may cross the 12-hour boundary. 9:40 and 13:15 are already in 24-hour format, so we don't need to convert them. Subtracting the departure time from the arrival time gives us the duration of the trip in hours. Finally, we convert the result into minutes by multiplying the total number of hours by 60 and adding the remaining minutes.",
+    "answer": "The duration of the trip is 3 hours and 35 minutes."
+  }
+]
+
+[Synalinks]
+Call ID: 256d5613-8428-42ba-b29a-a313c3a77d63
+Parent call ID: a2462c48-8611-4fe3-8240-985d13418f4e
+Module: Generator
+Module Name: generator_chain_of_thought
+Module Description: Use a `LanguageModel` (or a `DecisionModel`) to generate a data model from an
+Data Model JSON:
+[
+  {
+    "thinking": "Let's break down the problem: The train leaves at 9:40 and arrives at 13:15. We first convert both times to a 24-hour clock format, as the time span may cross the 12-hour boundary. 9:40 and 13:15 are already in 24-hour format, so we don't need to convert them. Subtracting the departure time from the arrival time gives us the duration of the trip in hours. Finally, we convert the result into minutes by multiplying the total number of hours by 60 and adding the remaining minutes.",
+    "answer": "The duration of the trip is 3 hours and 35 minutes."
+  }
+]
+
+[Synalinks]
+Call ID: a2462c48-8611-4fe3-8240-985d13418f4e
+Parent call ID: cbec027f-fa89-4ea5-bda7-401cf3fd1823
+Module: ChainOfThought
+Module Name: chain_of_thought
+Module Description: Useful to answer in a step by step manner.
+Data Model JSON:
+[
+  {
+    "thinking": "Let's break down the problem: The train leaves at 9:40 and arrives at 13:15. We first convert both times to a 24-hour clock format, as the time span may cross the 12-hour boundary. 9:40 and 13:15 are already in 24-hour format, so we don't need to convert them. Subtracting the departure time from the arrival time gives us the duration of the trip in hours. Finally, we convert the result into minutes by multiplying the total number of hours by 60 and adding the remaining minutes.",
+    "answer": "The duration of the trip is 3 hours and 35 minutes."
+  }
+]
+
+[Synalinks]
+Call ID: 1f7c91fc-8acd-46b2-879b-840a7b8592c8
+Parent call ID: 0d23700b-5538-4642-b485-01e2464eeea5
+Module: Branch
+Module Name: branch
+Module Description: Use a `LanguageModel` to select which module(s) to call based on an
+Data Model JSON:
+[
+  {
+    "thinking": "Let's break down the problem: The train leaves at 9:40 and arrives at 13:15. We first convert both times to a 24-hour clock format, as the time span may cross the 12-hour boundary. 9:40 and 13:15 are already in 24-hour format, so we don't need to convert them. Subtracting the departure time from the arrival time gives us the duration of the trip in hours. Finally, we convert the result into minutes by multiplying the total number of hours by 60 and adding the remaining minutes.",
+    "answer": "The duration of the trip is 3 hours and 35 minutes."
+  }
+]
+
+[Synalinks]
+Call ID: 0d23700b-5538-4642-b485-01e2464eeea5
+Parent call ID: None
+Module: Functional
+Module Name: conditional_reasoning
+Module Description: Think step by step only when the query needs it
+Data Model JSON:
+[
+  {
+    "thinking": "Let's break down the problem: The train leaves at 9:40 and arrives at 13:15. We first convert both times to a 24-hour clock format, as the time span may cross the 12-hour boundary. 9:40 and 13:15 are already in 24-hour format, so we don't need to convert them. Subtracting the departure time from the arrival time gives us the duration of the trip in hours. Finally, we convert the result into minutes by multiplying the total number of hours by 60 and adding the remaining minutes.",
+    "answer": "The duration of the trip is 3 hours and 35 minutes."
+  }
+]
+
+(DEBUG) [Synalinks]
+Call ID: 384508e4-0ccc-4b6c-884f-66c9617cbc09
+Parent call ID: None
+Module: SelfCritique
+Module Name: self_critique
+Module Description: Useful to critique the given inputs.
+Data Model JSON Schema:
+[
+  {
+    "additionalProperties": false,
+    "description": "Final answer.",
+    "properties": {
+      "answer": {
+        "description": "The correct answer",
+        "title": "Answer",
+        "type": "string"
+      }
+    },
+    "required": [
+      "answer"
+    ],
+    "title": "Answer",
+    "type": "object"
+  }
+]
+
+(DEBUG) [Synalinks]
+Call ID: 601ec0b5-c555-4e09-a338-b1393c7e9786
+Parent call ID: 384508e4-0ccc-4b6c-884f-66c9617cbc09
+Module: Generator
+Module Name: generator_self_critique
+Module Description: Use a `LanguageModel` (or a `DecisionModel`) to generate a data model from an
+Data Model JSON Schema:
+[
+  {
+    "additionalProperties": false,
+    "description": "Final answer.",
+    "properties": {
+      "answer": {
+        "description": "The correct answer",
+        "title": "Answer",
+        "type": "string"
+      }
+    },
+    "required": [
+      "answer"
+    ],
+    "title": "Answer",
+    "type": "object"
+  }
+]
+
+(DEBUG) [Synalinks]
+Call ID: 601ec0b5-c555-4e09-a338-b1393c7e9786
+Parent call ID: 384508e4-0ccc-4b6c-884f-66c9617cbc09
+Module: Generator
+Module Name: generator_self_critique
+Module Description: Use a `LanguageModel` (or a `DecisionModel`) to generate a data model from an
+Data Model JSON Schema:
+[
+  {
+    "additionalProperties": false,
+    "properties": {
+      "answer": {
+        "description": "The correct answer",
+        "title": "Answer",
+        "type": "string"
+      },
+      "reward": {
+        "title": "ScoreAnswer",
+        "type": "object",
+        "description": "How good are the provided inputs?",
+        "properties": {
+          "score": {
+            "title": "Score",
+            "type": "number",
+            "minimum": 0.0,
+            "maximum": 4.0,
+            "description": "The probability-weighted level index."
+          },
+          "legend": {
+            "title": "Legend",
+            "type": "object",
+            "description": "The description of each level, keyed by level index.",
+            "properties": {
+              "0": {
+                "title": "0",
+                "type": "string",
+                "description": "Very bad."
+              },
+              "1": {
+                "title": "1",
+                "type": "string",
+                "description": "Bad."
+              },
+              "2": {
+                "title": "2",
+                "type": "string",
+                "description": "Acceptable."
+              },
+              "3": {
+                "title": "3",
+                "type": "string",
+                "description": "Good."
+              },
+              "4": {
+                "title": "4",
+                "type": "string",
+                "description": "Very good."
+              }
+            },
+            "required": [
+              "0",
+              "1",
+              "2",
+              "3",
+              "4"
+            ],
+            "additionalProperties": false
+          },
+          "probabilities": {
+            "title": "Probabilities",
+            "type": "object",
+            "description": "The probability of each level, keyed by level index.",
+            "properties": {
+              "0": {
+                "title": "0",
+                "type": "number",
+                "minimum": 0.0,
+                "maximum": 1.0
+              },
+              "1": {
+                "title": "1",
+                "type": "number",
+                "minimum": 0.0,
+                "maximum": 1.0
+              },
+              "2": {
+                "title": "2",
+                "type": "number",
+                "minimum": 0.0,
+                "maximum": 1.0
+              },
+              "3": {
+                "title": "3",
+                "type": "number",
+                "minimum": 0.0,
+                "maximum": 1.0
+              },
+              "4": {
+                "title": "4",
+                "type": "number",
+                "minimum": 0.0,
+                "maximum": 1.0
+              }
+            },
+            "required": [
+              "0",
+              "1",
+              "2",
+              "3",
+              "4"
+            ],
+            "additionalProperties": false
+          },
+          "confidence": {
+            "title": "Confidence",
+            "type": "number",
+            "minimum": 0.0,
+            "maximum": 1.0,
+            "description": "How certain the decision model is, from 0 to 1."
+          }
+        },
+        "required": [
+          "score",
+          "legend",
+          "probabilities",
+          "confidence"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "required": [
+      "answer",
+      "reward"
+    ],
+    "title": "Answer",
+    "type": "object"
+  }
+]
+
+(DEBUG) [Synalinks]
+Call ID: 874a07f3-9632-44a3-816c-65c324ccf9af
+Parent call ID: 601ec0b5-c555-4e09-a338-b1393c7e9786
+Module: Generator
+Module Name: generator_self_critique
+Module Description: Use a `LanguageModel` (or a `DecisionModel`) to generate a data model from an
+Data Model JSON Schema:
+[
+  {
+    "additionalProperties": false,
+    "description": "Final answer.",
+    "properties": {
+      "answer": {
+        "description": "The correct answer",
+        "title": "Answer",
+        "type": "string"
+      }
+    },
+    "required": [
+      "answer"
+    ],
+    "title": "Answer",
+    "type": "object"
+  }
+]
+
+(DEBUG) [Synalinks]
+Call ID: 874a07f3-9632-44a3-816c-65c324ccf9af
+Parent call ID: 601ec0b5-c555-4e09-a338-b1393c7e9786
+Module: Generator
+Module Name: generator_self_critique
+Module Description: Use a `LanguageModel` (or a `DecisionModel`) to generate a data model from an
+Data Model JSON Schema:
+[
+  {
+    "additionalProperties": false,
+    "properties": {
+      "answer": {
+        "description": "The correct answer",
+        "title": "Answer",
+        "type": "string"
+      },
+      "reward": {
+        "title": "ScoreAnswer",
+        "type": "object",
+        "description": "How good are the provided inputs?",
+        "properties": {
+          "score": {
+            "title": "Score",
+            "type": "number",
+            "minimum": 0.0,
+            "maximum": 4.0,
+            "description": "The probability-weighted level index."
+          },
+          "legend": {
+            "title": "Legend",
+            "type": "object",
+            "description": "The description of each level, keyed by level index.",
+            "properties": {
+              "0": {
+                "title": "0",
+                "type": "string",
+                "description": "Very bad."
+              },
+              "1": {
+                "title": "1",
+                "type": "string",
+                "description": "Bad."
+              },
+              "2": {
+                "title": "2",
+                "type": "string",
+                "description": "Acceptable."
+              },
+              "3": {
+                "title": "3",
+                "type": "string",
+                "description": "Good."
+              },
+              "4": {
+                "title": "4",
+                "type": "string",
+                "description": "Very good."
+              }
+            },
+            "required": [
+              "0",
+              "1",
+              "2",
+              "3",
+              "4"
+            ],
+            "additionalProperties": false
+          },
+          "probabilities": {
+            "title": "Probabilities",
+            "type": "object",
+            "description": "The probability of each level, keyed by level index.",
+            "properties": {
+              "0": {
+                "title": "0",
+                "type": "number",
+                "minimum": 0.0,
+                "maximum": 1.0
+              },
+              "1": {
+                "title": "1",
+                "type": "number",
+                "minimum": 0.0,
+                "maximum": 1.0
+              },
+              "2": {
+                "title": "2",
+                "type": "number",
+                "minimum": 0.0,
+                "maximum": 1.0
+              },
+              "3": {
+                "title": "3",
+                "type": "number",
+                "minimum": 0.0,
+                "maximum": 1.0
+              },
+              "4": {
+                "title": "4",
+                "type": "number",
+                "minimum": 0.0,
+                "maximum": 1.0
+              }
+            },
+            "required": [
+              "0",
+              "1",
+              "2",
+              "3",
+              "4"
+            ],
+            "additionalProperties": false
+          },
+          "confidence": {
+            "title": "Confidence",
+            "type": "number",
+            "minimum": 0.0,
+            "maximum": 1.0,
+            "description": "How certain the decision model is, from 0 to 1."
+          }
+        },
+        "required": [
+          "score",
+          "legend",
+          "probabilities",
+          "confidence"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "required": [
+      "answer",
+      "reward"
+    ],
+    "title": "Answer",
+    "type": "object"
+  }
+]
+
+(DEBUG) [Synalinks]
+Call ID: 384508e4-0ccc-4b6c-884f-66c9617cbc09
+Parent call ID: None
+Module: SelfCritique
+Module Name: self_critique
+Module Description: Useful to critique the given inputs.
+Data Model JSON Schema:
+[
+  {
+    "additionalProperties": false,
+    "properties": {
+      "answer": {
+        "description": "The correct answer",
+        "title": "Answer",
+        "type": "string"
+      },
+      "reward": {
+        "title": "Reward",
+        "type": "number",
+        "minimum": 0.0,
+        "maximum": 1.0,
+        "description": "The reward value corresponding to the critique, normalized between 0.0 (very bad) and 1.0 (very good)"
+      }
+    },
+    "required": [
+      "answer",
+      "reward"
+    ],
+    "title": "Answer",
+    "type": "object"
+  }
+]
+
+[Synalinks]
+Call ID: c0795b39-404d-4043-aff7-cc2d104e7284
+Parent call ID: None
+Module: Functional
+Module Name: self_critique
+Module Description: Grade a reply
+Data Model JSON:
+[
+  {
+    "answer": "The trip takes 3 hours and 35 minutes."
+  }
+]
+
+[Synalinks]
+Call ID: 3176f848-8a9b-4a82-9c91-4e468d34cd04
+Parent call ID: c0795b39-404d-4043-aff7-cc2d104e7284
+Module: SelfCritique
+Module Name: self_critique
+Module Description: Useful to critique the given inputs.
+Data Model JSON:
+[
+  {
+    "answer": "The trip takes 3 hours and 35 minutes."
+  }
+]
+
+[Synalinks]
+Call ID: 77120849-195a-464b-a59e-12dd1cddd2e7
+Parent call ID: 3176f848-8a9b-4a82-9c91-4e468d34cd04
+Module: Generator
+Module Name: generator_self_critique
+Module Description: Use a `LanguageModel` (or a `DecisionModel`) to generate a data model from an
+Data Model JSON:
+[
+  {
+    "answer": "The trip takes 3 hours and 35 minutes."
+  }
+]
+
+[Synalinks]
+Call ID: c5654a5d-f042-4e47-a2e6-951716f9c81a
+Parent call ID: 77120849-195a-464b-a59e-12dd1cddd2e7
+Module: DecisionModel
+Module Name: decision_model
+Module Description: A decision model API wrapper.
+Data Model JSON:
+[
+  {
+    "messages": [
+      {
+        "role": "system",
+        "content": "\n<instructions>\nYour task is to carefully examine the provided inputs and grade them.\n</instructions>\n"
+      },
+      {
+        "role": "user",
+        "content": "{'answer': 'The trip takes 3 hours and 35 minutes.'}"
+      }
+    ]
+  }
+]
+
+[Synalinks]
+Call ID: c5654a5d-f042-4e47-a2e6-951716f9c81a
+Parent call ID: 77120849-195a-464b-a59e-12dd1cddd2e7
+Module: DecisionModel
+Module Name: decision_model
+Module Description: A decision model API wrapper.
+Data Model JSON:
+[
+  {
+    "reward": {
+      "score": 2.2718707329173458,
+      "legend": {
+        "0": "Very bad.",
+        "1": "Bad.",
+        "2": "Acceptable.",
+        "3": "Good.",
+        "4": "Very good."
+      },
+      "probabilities": {
+        "0": 0.09135757351834706,
+        "1": 0.15854609827831598,
+        "2": 0.3015716502641704,
+        "3": 0.28391737764597774,
+        "4": 0.1646073002931889
+      },
+      "confidence": 0.20467231371052863
+    }
+  }
+]
+
+[Synalinks]
+Call ID: 77120849-195a-464b-a59e-12dd1cddd2e7
+Parent call ID: 3176f848-8a9b-4a82-9c91-4e468d34cd04
+Module: Generator
+Module Name: generator_self_critique
+Module Description: Use a `LanguageModel` (or a `DecisionModel`) to generate a data model from an
+Data Model JSON:
+[
+  {
+    "answer": "The trip takes 3 hours and 35 minutes.",
+    "reward": {
+      "score": 2.2718707329173458,
+      "legend": {
+        "0": "Very bad.",
+        "1": "Bad.",
+        "2": "Acceptable.",
+        "3": "Good.",
+        "4": "Very good."
+      },
+      "probabilities": {
+        "0": 0.09135757351834706,
+        "1": 0.15854609827831598,
+        "2": 0.3015716502641704,
+        "3": 0.28391737764597774,
+        "4": 0.1646073002931889
+      },
+      "confidence": 0.20467231371052863
+    }
+  }
+]
+
+[Synalinks]
+Call ID: 3176f848-8a9b-4a82-9c91-4e468d34cd04
+Parent call ID: c0795b39-404d-4043-aff7-cc2d104e7284
+Module: SelfCritique
+Module Name: self_critique
+Module Description: Useful to critique the given inputs.
+Data Model JSON:
+[
+  {
+    "answer": "The trip takes 3 hours and 35 minutes.",
+    "reward": 0.5679676832293364
+  }
+]
+
+[Synalinks]
+Call ID: c0795b39-404d-4043-aff7-cc2d104e7284
+Parent call ID: None
+Module: Functional
+Module Name: self_critique
+Module Description: Grade a reply
+Data Model JSON:
+[
+  {
+    "answer": "The trip takes 3 hours and 35 minutes.",
+    "reward": 0.5679676832293364
+  }
+]
+
+[Synalinks]
+Call ID: 0c8e3114-d800-47cd-a61d-b7d1cc4b976a
+Parent call ID: None
+Module: RubricsAsJudgeProgram
+Module Name: rubrics_as_judge_program
+Module Description: Score each criterion with a language (or decision) model, then combine
+Data Model JSON:
+[
+  {
+    "answer": "The trip takes 3 hours and 35 minutes."
+  },
+  {
+    "answer": "Sure! The trip takes 3 hours and 35 minutes."
+  }
+]
+
+(DEBUG) [Synalinks]
+Call ID: cd3f33e6-13eb-4685-bd0f-aef3cda2726d
+Parent call ID: 0c8e3114-d800-47cd-a61d-b7d1cc4b976a
+Module: Generator
+Module Name: generator_rubrics_as_judge_program
+Module Description: Use a `LanguageModel` (or a `DecisionModel`) to generate a data model from an
+Data Model JSON Schema:
+[
+  {
+    "additionalProperties": false,
+    "properties": {
+      "gold_answer": {
+        "description": "The correct answer",
+        "title": "Gold Answer",
+        "type": "string"
+      },
+      "answer": {
+        "description": "The correct answer",
+        "title": "Answer",
+        "type": "string"
+      }
+    },
+    "required": [
+      "gold_answer",
+      "answer"
+    ],
+    "title": "Answer",
+    "type": "object"
+  }
+]
+
+(DEBUG) [Synalinks]
+Call ID: cd3f33e6-13eb-4685-bd0f-aef3cda2726d
+Parent call ID: 0c8e3114-d800-47cd-a61d-b7d1cc4b976a
+Module: Generator
+Module Name: generator_rubrics_as_judge_program
+Module Description: Use a `LanguageModel` (or a `DecisionModel`) to generate a data model from an
+Data Model JSON Schema:
+[
+  {
+    "title": "RubricGrades",
+    "type": "object",
+    "properties": {
+      "correct": {
+        "title": "ScoreAnswer",
+        "type": "object",
+        "description": "How well does the answer meet this criterion: The answer matches the reference answer.",
+        "properties": {
+          "score": {
+            "title": "Score",
+            "type": "number",
+            "minimum": 0.0,
+            "maximum": 4.0,
+            "description": "The probability-weighted level index."
+          },
+          "legend": {
+            "title": "Legend",
+            "type": "object",
+            "description": "The description of each level, keyed by level index.",
+            "properties": {
+              "0": {
+                "title": "0",
+                "type": "string",
+                "description": "Does not meet the criterion at all."
+              },
+              "1": {
+                "title": "1",
+                "type": "string",
+                "description": "Meets a small part of the criterion."
+              },
+              "2": {
+                "title": "2",
+                "type": "string",
+                "description": "Meets about half of the criterion."
+              },
+              "3": {
+                "title": "3",
+                "type": "string",
+                "description": "Meets most of the criterion, with minor gaps."
+              },
+              "4": {
+                "title": "4",
+                "type": "string",
+                "description": "Fully meets the criterion."
+              }
+            },
+            "required": [
+              "0",
+              "1",
+              "2",
+              "3",
+              "4"
+            ],
+            "additionalProperties": false
+          },
+          "probabilities": {
+            "title": "Probabilities",
+            "type": "object",
+            "description": "The probability of each level, keyed by level index.",
+            "properties": {
+              "0": {
+                "title": "0",
+                "type": "number",
+                "minimum": 0.0,
+                "maximum": 1.0
+              },
+              "1": {
+                "title": "1",
+                "type": "number",
+                "minimum": 0.0,
+                "maximum": 1.0
+              },
+              "2": {
+                "title": "2",
+                "type": "number",
+                "minimum": 0.0,
+                "maximum": 1.0
+              },
+              "3": {
+                "title": "3",
+                "type": "number",
+                "minimum": 0.0,
+                "maximum": 1.0
+              },
+              "4": {
+                "title": "4",
+                "type": "number",
+                "minimum": 0.0,
+                "maximum": 1.0
+              }
+            },
+            "required": [
+              "0",
+              "1",
+              "2",
+              "3",
+              "4"
+            ],
+            "additionalProperties": false
+          },
+          "confidence": {
+            "title": "Confidence",
+            "type": "number",
+            "minimum": 0.0,
+            "maximum": 1.0,
+            "description": "How certain the decision model is, from 0 to 1."
+          }
+        },
+        "required": [
+          "score",
+          "legend",
+          "probabilities",
+          "confidence"
+        ],
+        "additionalProperties": false
+      },
+      "concise": {
+        "title": "ScoreAnswer",
+        "type": "object",
+        "description": "How well does the answer meet this criterion: No preamble, no restating the question.",
+        "properties": {
+          "score": {
+            "title": "Score",
+            "type": "number",
+            "minimum": 0.0,
+            "maximum": 4.0,
+            "description": "The probability-weighted level index."
+          },
+          "legend": {
+            "title": "Legend",
+            "type": "object",
+            "description": "The description of each level, keyed by level index.",
+            "properties": {
+              "0": {
+                "title": "0",
+                "type": "string",
+                "description": "Does not meet the criterion at all."
+              },
+              "1": {
+                "title": "1",
+                "type": "string",
+                "description": "Meets a small part of the criterion."
+              },
+              "2": {
+                "title": "2",
+                "type": "string",
+                "description": "Meets about half of the criterion."
+              },
+              "3": {
+                "title": "3",
+                "type": "string",
+                "description": "Meets most of the criterion, with minor gaps."
+              },
+              "4": {
+                "title": "4",
+                "type": "string",
+                "description": "Fully meets the criterion."
+              }
+            },
+            "required": [
+              "0",
+              "1",
+              "2",
+              "3",
+              "4"
+            ],
+            "additionalProperties": false
+          },
+          "probabilities": {
+            "title": "Probabilities",
+            "type": "object",
+            "description": "The probability of each level, keyed by level index.",
+            "properties": {
+              "0": {
+                "title": "0",
+                "type": "number",
+                "minimum": 0.0,
+                "maximum": 1.0
+              },
+              "1": {
+                "title": "1",
+                "type": "number",
+                "minimum": 0.0,
+                "maximum": 1.0
+              },
+              "2": {
+                "title": "2",
+                "type": "number",
+                "minimum": 0.0,
+                "maximum": 1.0
+              },
+              "3": {
+                "title": "3",
+                "type": "number",
+                "minimum": 0.0,
+                "maximum": 1.0
+              },
+              "4": {
+                "title": "4",
+                "type": "number",
+                "minimum": 0.0,
+                "maximum": 1.0
+              }
+            },
+            "required": [
+              "0",
+              "1",
+              "2",
+              "3",
+              "4"
+            ],
+            "additionalProperties": false
+          },
+          "confidence": {
+            "title": "Confidence",
+            "type": "number",
+            "minimum": 0.0,
+            "maximum": 1.0,
+            "description": "How certain the decision model is, from 0 to 1."
+          }
+        },
+        "required": [
+          "score",
+          "legend",
+          "probabilities",
+          "confidence"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "required": [
+      "correct",
+      "concise"
+    ],
+    "additionalProperties": false
+  }
+]
+
+[Synalinks]
+Call ID: d055ef8b-80dd-42e8-8a5e-db8be6e86678
+Parent call ID: cd3f33e6-13eb-4685-bd0f-aef3cda2726d
+Module: Generator
+Module Name: generator_rubrics_as_judge_program
+Module Description: Use a `LanguageModel` (or a `DecisionModel`) to generate a data model from an
+Data Model JSON:
+[
+  {
+    "gold_answer": "The trip takes 3 hours and 35 minutes.",
+    "answer": "Sure! The trip takes 3 hours and 35 minutes."
+  }
+]
+
+[Synalinks]
+Call ID: a20fc05c-077e-4af5-9a34-64e8bbe0a61f
+Parent call ID: d055ef8b-80dd-42e8-8a5e-db8be6e86678
+Module: DecisionModel
+Module Name: decision_model
+Module Description: A decision model API wrapper.
+Data Model JSON:
+[
+  {
+    "messages": [
+      {
+        "role": "system",
+        "content": "<instructions>\nYour task is to grade the given answer against each criterion, independently.\n</instructions>\n\n<rubrics>\n\n<rubric>\n<name>\ncorrect\n</name>\n<description>\nThe answer matches the reference answer.\n</description>\n<weight>\n2\n</weight>\n</rubric>\n\n<rubric>\n<name>\nconcise\n</name>\n<description>\nNo preamble, no restating the question.\n</description>\n</rubric>\n\n</rubrics>\n"
+      },
+      {
+        "role": "user",
+        "content": "{'gold_answer': 'The trip takes 3 hours and 35 minutes.', 'answer': 'Sure! The trip takes 3 hours and 35 minutes.'}"
+      }
+    ]
+  }
+]
+
+[Synalinks]
+Call ID: a20fc05c-077e-4af5-9a34-64e8bbe0a61f
+Parent call ID: d055ef8b-80dd-42e8-8a5e-db8be6e86678
+Module: DecisionModel
+Module Name: decision_model
+Module Description: A decision model API wrapper.
+Data Model JSON:
+[
+  {
+    "correct": {
+      "score": 3.25396779506259,
+      "legend": {
+        "0": "Does not meet the criterion at all.",
+        "1": "Meets a small part of the criterion.",
+        "2": "Meets about half of the criterion.",
+        "3": "Meets most of the criterion, with minor gaps.",
+        "4": "Fully meets the criterion."
+      },
+      "probabilities": {
+        "0": 0.03824271168868315,
+        "1": 0.06487773397271288,
+        "2": 0.09441598852153014,
+        "3": 0.2095961792214786,
+        "4": 0.5928673865955952
+      },
+      "confidence": 0.3783064958854916
+    },
+    "concise": {
+      "score": 1.5730102590118522,
+      "legend": {
+        "0": "Does not meet the criterion at all.",
+        "1": "Meets a small part of the criterion.",
+        "2": "Meets about half of the criterion.",
+        "3": "Meets most of the criterion, with minor gaps.",
+        "4": "Fully meets the criterion."
+      },
+      "probabilities": {
+        "0": 0.24749292017726782,
+        "1": 0.236316051579202,
+        "2": 0.26665406773588757,
+        "3": 0.19476177006969492,
+        "4": 0.05477519043794761
+      },
+      "confidence": 0.1369882976005602
+    }
+  }
+]
+
+[Synalinks]
+Call ID: d055ef8b-80dd-42e8-8a5e-db8be6e86678
+Parent call ID: cd3f33e6-13eb-4685-bd0f-aef3cda2726d
+Module: Generator
+Module Name: generator_rubrics_as_judge_program
+Module Description: Use a `LanguageModel` (or a `DecisionModel`) to generate a data model from an
+Data Model JSON:
+[
+  {
+    "correct": {
+      "score": 3.25396779506259,
+      "legend": {
+        "0": "Does not meet the criterion at all.",
+        "1": "Meets a small part of the criterion.",
+        "2": "Meets about half of the criterion.",
+        "3": "Meets most of the criterion, with minor gaps.",
+        "4": "Fully meets the criterion."
+      },
+      "probabilities": {
+        "0": 0.03824271168868315,
+        "1": 0.06487773397271288,
+        "2": 0.09441598852153014,
+        "3": 0.2095961792214786,
+        "4": 0.5928673865955952
+      },
+      "confidence": 0.3783064958854916
+    },
+    "concise": {
+      "score": 1.5730102590118522,
+      "legend": {
+        "0": "Does not meet the criterion at all.",
+        "1": "Meets a small part of the criterion.",
+        "2": "Meets about half of the criterion.",
+        "3": "Meets most of the criterion, with minor gaps.",
+        "4": "Fully meets the criterion."
+      },
+      "probabilities": {
+        "0": 0.24749292017726782,
+        "1": 0.236316051579202,
+        "2": 0.26665406773588757,
+        "3": 0.19476177006969492,
+        "4": 0.05477519043794761
+      },
+      "confidence": 0.1369882976005602
+    }
+  }
+]
+
+[Synalinks]
+Call ID: 0c8e3114-d800-47cd-a61d-b7d1cc4b976a
+Parent call ID: None
+Module: RubricsAsJudgeProgram
+Module Name: rubrics_as_judge_program
+Module Description: Score each criterion with a language (or decision) model, then combine
+Data Model JSON:
+[
+  {
+    "critique": "correct: Meets most of the criterion, with minor gaps. (score 0.81, confidence 0.38)\nconcise: Meets about half of the criterion. (score 0.39, confidence 0.14)",
+    "correct": 0.8134919487656475,
+    "concise": 0.39325256475296305,
+    "reward": 0.6734121540947527
+  }
+]
+
+============================================================
+Triage: a Generator, a Decision and a MultiDecision
+============================================================
+{
+  "is_billing": true,
+  "urgency": "high",
+  "frustration": 4,
+  "choice": "billing",
+  "choices": [
+    "payment"
+  ]
+}
+============================================================
+Routing: a Branch decided by a decision model
+============================================================
+{
+  "answer": "The capital of France is Paris."
+}
+{
+  "thinking": "Let's break down the problem: The train leaves at 9:40 and arrives at 13:15. We first convert both times to a 24-hour clock format, as the time span may cross the 12-hour boundary. 9:40 and 13:15 are already in 24-hour format, so we don't need to convert them. Subtracting the departure time from the arrival time gives us the duration of the trip in hours. Finally, we convert the result into minutes by multiplying the total number of hours by 60 and adding the remaining minutes.",
+  "answer": "The duration of the trip is 3 hours and 35 minutes."
+}
+============================================================
+Grading: SelfCritique and RubricsAsJudge with a decision model
+============================================================
+{
+  "answer": "The trip takes 3 hours and 35 minutes.",
+  "reward": 0.5679676832293364
+}
+{
+  "critique": "correct: Meets most of the criterion, with minor gaps. (score 0.81, confidence 0.38)\nconcise: Meets about half of the criterion. (score 0.39, confidence 0.14)",
+  "correct": 0.8134919487656475,
+  "concise": 0.39325256475296305,
+  "reward": 0.6734121540947527
+}
+Decision model calls: 7
+Decision model cost: $0.000000
