@@ -67,10 +67,11 @@ def default_prompt_template():
         (str): The default prompt template.
     """
     return """
+{% if instructions %}
 <instructions>
 {{ instructions }}
 </instructions>
-{% if inputs_schema %}
+{% endif %}{% if inputs_schema %}
 <input_schema>
 {{ inputs_schema }}
 </input_schema>
