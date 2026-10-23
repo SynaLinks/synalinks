@@ -624,7 +624,9 @@ class DecisionModel(Module):
 
     Calls go through litellm's decisions API, so any provider it supports
     works (see `supported_providers()`), e.g. TypeSafe, OpenAI, Azure AI,
-    OpenRouter, Databricks or a self-hosted vLLM server.
+    OpenRouter, Databricks or a self-hosted vLLM server. A local Ollama
+    decision model runs as `ollama/<model>` (e.g. `"ollama/laya"`, after
+    `ollama pull laya`), on `http://localhost:11434` unless `api_base` is set.
 
     The modules that can use a decision model take it as their
     `decision_model` (never as their `language_model`): `Generator`,
@@ -1064,6 +1066,11 @@ class DecisionModel(Module):
         """
         logger = logging.getLogger(__name__)
         systemone = self._systemone or litellm.asystemone
+        model, api_base = self.model, self.api_base
+        if self.provider == "ollama":
+            # Ollama serves the SystemOne API, which litellm calls as `hosted_vllm`.
+            model = f"hosted_vllm/{self.model_id}"
+            api_base = api_base or model_catalog.PROVIDERS["ollama"]["default_api_base"]
 
         @retry(
             stop=stop_after_attempt(self.retry),
@@ -1077,10 +1084,10 @@ class DecisionModel(Module):
         async def _do_call():
             t0 = time.perf_counter()
             response = await systemone(
-                model=self.model,
+                model=model,
                 state=state,
                 questions=copy.deepcopy(questions),
-                api_base=self.api_base,
+                api_base=api_base,
                 timeout=self.timeout,
             )
             elapsed_s = time.perf_counter() - t0
@@ -1136,7 +1143,8 @@ class DecisionModel(Module):
 
         These are the values accepted before the `/` in `model`, e.g.
         `"typesafe"` in `"typesafe/jev-latest"`: the providers of litellm's
-        decisions API.
+        decisions API, and `"ollama"` for a local Ollama decision model
+        (e.g. `"ollama/laya"`).
 
         ```python
         import synalinks
@@ -1147,7 +1155,7 @@ class DecisionModel(Module):
         Returns:
             (list): The sorted list of supported provider prefixes.
         """
-        return sorted(supported_decisions_providers())
+        return sorted({*supported_decisions_providers(), "ollama"})
 
     @classmethod
     def provider_info(cls, provider):
@@ -1184,8 +1192,9 @@ class DecisionModel(Module):
         """Returns the decision models a provider offers.
 
         A self-hosted vLLM server (`hosted_vllm`) is asked for the models it
-        serves, and OpenRouter for its public list, keeping the models that
-        answer decisions. The other providers are listed from litellm's model
+        serves, Ollama for its models with the `decision` capability, and
+        OpenRouter for its public list, keeping the models that answer
+        decisions. The other providers are listed from litellm's model
         table: their decision models, and their chat models that also answer
         decisions (e.g. `openai/gpt-6-luna`). For OpenAI with `OPENAI_API_KEY`
         set, these are narrowed to the models the account can use, from
@@ -1226,7 +1235,9 @@ class DecisionModel(Module):
                 provider, info, api_base, keep=set(keep)
             )
         if info.get("server"):
-            return await model_catalog.server_models(provider, info, api_base)
+            return await model_catalog.server_models(
+                provider, info, api_base, ollama_capability="decision"
+            )
         catalog = model_catalog.catalog_models(
             provider, ("evaluation",), model_catalog.DECISIONS_ENDPOINT
         )

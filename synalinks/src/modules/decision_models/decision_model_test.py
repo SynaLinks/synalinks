@@ -634,6 +634,24 @@ class DecisionModelTest(testing.TestCase):
         self.assertEqual(calls[0]["api_base"], "https://example.test")
         self.assertEqual(calls[0]["timeout"], 30.0)
 
+    async def test_ollama_is_called_as_hosted_vllm(self):
+        calls = []
+
+        async def systemone(**kwargs):
+            calls.append(kwargs)
+            raise ValueError("stop")
+
+        for api_base in (None, "http://gpu:11434"):
+            decision_model = DecisionModel(model="ollama/laya", api_base=api_base)
+            decision_model._systemone = systemone
+            with self.assertWarns(UserWarning):
+                await decision_model(ticket("Hi"), schema=Billing.get_schema())
+
+        self.assertEqual(calls[0]["model"], "hosted_vllm/laya")
+        self.assertEqual(calls[0]["api_base"], "http://localhost:11434")
+        self.assertEqual(calls[1]["api_base"], "http://gpu:11434")
+        self.assertEqual(decision_model.get_config()["model"], "ollama/laya")
+
     async def test_empty_messages_return_none(self):
         decision_model = DecisionModel(model="typesafe/jev-latest")
         payloads = mock_decision_model(decision_model, ANSWERS)
@@ -648,6 +666,7 @@ class DecisionModelTest(testing.TestCase):
         providers = DecisionModel.supported_providers()
         self.assertIn("typesafe", providers)
         self.assertIn("openai", providers)
+        self.assertIn("ollama", providers)
         self.assertEqual(providers, sorted(providers))
         DecisionModel(model="hosted_vllm/Qwen/Qwen3-8B")
 

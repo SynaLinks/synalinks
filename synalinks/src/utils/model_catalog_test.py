@@ -17,6 +17,7 @@ OLLAMA_CAPABILITIES = {
     "llama3:latest": ["completion", "tools"],
     "llava:latest": ["completion", "vision"],
     "bge-m3:latest": ["embedding"],
+    "laya:latest": ["decision"],
 }
 
 
@@ -47,13 +48,15 @@ def openai_compatible(request):
 
 
 class SupportedModelsTest(testing.TestCase):
-    async def test_ollama_lists_chat_and_embedding_models_apart(self):
+    async def test_ollama_lists_chat_embedding_and_decision_models_apart(self):
         patcher, requests = mock_server(ollama)
         with patcher:
             chat = await LanguageModel.supported_models("ollama")
             embedding = await EmbeddingModel.supported_models("ollama")
+            decision = await DecisionModel.supported_models("ollama")
         self.assertEqual(chat, ["ollama/llama3:latest", "ollama/llava:latest"])
         self.assertEqual(embedding, ["ollama/bge-m3:latest"])
+        self.assertEqual(decision, ["ollama/laya:latest"])
         self.assertEqual(str(requests[0].url), "http://localhost:11434/api/tags")
 
     async def test_ollama_without_capabilities_keeps_every_model(self):
@@ -229,6 +232,10 @@ class ProviderInfoTest(testing.TestCase):
         self.assertTrue(cloudflare["env"][-1]["required"])
         self.assertEqual(
             DecisionModel.provider_info("hosted_vllm")["lists_models_from"], "server"
+        )
+        # Ollama, called as `hosted_vllm` by litellm, keeps its own entry.
+        self.assertEqual(
+            DecisionModel.provider_info("ollama"), LanguageModel.provider_info("ollama")
         )
 
     def test_every_supported_provider_has_info(self):
