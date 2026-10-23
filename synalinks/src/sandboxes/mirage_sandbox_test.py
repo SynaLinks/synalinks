@@ -284,17 +284,17 @@ class E2BCompatTest(_SandboxTestCase):
         with self.assertRaises(TimeoutException):
             await sandbox.commands.run("sleep 5", timeout=0.2)
 
-    async def test_internal_commands_stay_out_of_history(self):
-        # Mirage 0.0.6+ records executed lines in a /.bash_history view. Only
-        # what the agent typed belongs there, not the bootstrap or file I/O.
+    async def test_commands_stay_out_of_history(self):
+        # Mirage 0.0.6+ can record executed lines in a /.bash_history view; the
+        # sandbox records none, neither its own plumbing nor what the agent typed.
         sandbox = MirageSandbox(timeout=_TIMEOUT, confine=False)
         await sandbox.run_code("x = 1")
         await sandbox.write_file("/a.txt", "a")
         await sandbox.run_bash("echo typed-by-agent")
-        history = await sandbox.read_text("/.bash_history")
-        self.assertIn("echo typed-by-agent", history)
-        self.assertNotIn("base64", history)
-        self.assertNotIn("cat >", history)
+        history = await sandbox.run_bash("cat /.bash_history")
+        self.assertNotIn("typed-by-agent", history["stdout"])
+        self.assertNotIn("base64", history["stdout"])
+        self.assertNotIn("cat >", history["stdout"])
         # Internal views are not the agent's files.
         listed = (await sandbox.list_files())["files"]
         self.assertEqual(listed, ["/a.txt"])
@@ -1707,7 +1707,7 @@ class InfraSelfHealTest(_SandboxTestCase):
         sandbox = MirageSandbox(timeout=_TIMEOUT)
         calls = {"exec": 0, "rebuild": 0}
 
-        async def fake_execute(command, *, stdin=None, timeout=None, record=False):
+        async def fake_execute(command, *, stdin=None, timeout=None):
             calls["exec"] += 1
             if calls["exec"] == 1:
                 return ("", "confine-error: OSError(107, 'Transport endpoint ...')", 99)
@@ -1731,7 +1731,7 @@ class InfraSelfHealTest(_SandboxTestCase):
         sandbox = MirageSandbox(timeout=_TIMEOUT)
         calls = {"exec": 0, "rebuild": 0}
 
-        async def fake_execute(command, *, stdin=None, timeout=None, record=False):
+        async def fake_execute(command, *, stdin=None, timeout=None):
             calls["exec"] += 1
             return ("", "confine-error: still broken", 99)
 
@@ -1753,7 +1753,7 @@ class InfraSelfHealTest(_SandboxTestCase):
         sandbox = MirageSandbox(timeout=_TIMEOUT)
         calls = {"exec": 0, "rebuild": 0}
 
-        async def fake_execute(command, *, stdin=None, timeout=None, record=False):
+        async def fake_execute(command, *, stdin=None, timeout=None):
             calls["exec"] += 1
             if calls["exec"] == 1:
                 return ("", "OSError(107, 'Transport endpoint is not connected')", 99)
@@ -1776,7 +1776,7 @@ class InfraSelfHealTest(_SandboxTestCase):
         sandbox = MirageSandbox(timeout=_TIMEOUT)
         calls = {"exec": 0, "rebuild": 0}
 
-        async def fake_execute(command, *, stdin=None, timeout=None, record=False):
+        async def fake_execute(command, *, stdin=None, timeout=None):
             calls["exec"] += 1
             return ("", "Traceback ...\nValueError: boom", 1)
 

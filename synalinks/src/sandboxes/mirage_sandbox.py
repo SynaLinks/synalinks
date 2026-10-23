@@ -1595,17 +1595,12 @@ class MirageSandbox(Sandbox):
     def files_session(self) -> Dict[str, Any]:
         """The ``Workspace.shell`` session arguments of a file-tool command.
 
-        File tools run on the sandbox's session, so they see what it sees
-        (e.g. its ``/.bash_history``). But Mirage runs one line per session at
-        a time (mirage-ai 0.0.7+), so a file tool a snippet calls while its own
-        line runs would wait on that line forever: while the session is busy,
-        file tools run on a session of their own instead, created on first use,
-        in the working directory of the sandbox's session so relative paths
-        keep resolving the same way.
+        Mirage runs one line per session at a time (mirage-ai 0.0.7+), so a
+        file tool a snippet calls while its own line runs would wait on that
+        line forever. File tools therefore run on a session of their own,
+        created on first use, in the working directory of the sandbox's
+        session so relative paths resolve the same way.
         """
-        sessions = self.workspace._session_mgr
-        if not sessions.line_lock_for(self.session_id).locked():
-            return {"session_id": self.session_id}
         session_id = f"{self.session_id}-files"
         try:
             self.workspace.get_session(session_id)
@@ -1622,22 +1617,18 @@ class MirageSandbox(Sandbox):
         *,
         stdin: Optional[bytes] = None,
         timeout: Optional[float] = None,
-        record: bool = False,
         files: bool = False,
     ):
         """Run one Mirage command; return ``(stdout, stderr, exit_code)``.
 
         A ``timeout`` (seconds) bounds the whole command and, on expiry,
         surfaces as ``exit_code = 124`` with a ``TimeoutError`` on stderr,
-        mirroring the shell ``timeout`` convention. Mirage logs every recorded
-        line in the workspace's ``/.bash_history`` view, so only commands the
-        agent itself typed are recorded (``record=True``); the bootstrap
-        launch and file-tool plumbing would otherwise fill it. ``files`` runs
-        a file-tool command on the file tools' own session (see
-        `files_session`).
+        mirroring the shell ``timeout`` convention. No command is recorded in
+        Mirage's ``/.bash_history`` view. ``files`` runs a file-tool command on
+        the file tools' own session (see `files_session`).
         """
         session = self.files_session() if files else {"session_id": self.session_id}
-        coro = self.workspace.shell(command, stdin=stdin, record=record, **session)
+        coro = self.workspace.shell(command, stdin=stdin, record=False, **session)
         try:
             if timeout is not None:
                 result = await asyncio.wait_for(coro, timeout=timeout)
@@ -1664,9 +1655,9 @@ class MirageSandbox(Sandbox):
         budget runs out, so the workspace (and its mount) is rebuilt and the
         command retried once. ``make_command`` receives the confinement config,
         recomputed per attempt because a rebuild creates a fresh mount.
-        ``confine_shell`` marks an agent-typed shell command: its line is
-        recorded in history, and the config is advertised through
-        ``active_confine`` so any ``python3`` it spawns self-confines.
+        ``confine_shell`` marks an agent-typed shell command: the config is
+        advertised through ``active_confine`` so any ``python3`` it spawns
+        self-confines.
         """
         heals = 0
         while True:
@@ -1798,7 +1789,7 @@ class MirageSandbox(Sandbox):
             )
             try:
                 stdout, stderr, exit_code = await self.execute(
-                    command, stdin=stdin, timeout=timeout, record=confine_shell
+                    command, stdin=stdin, timeout=timeout
                 )
             finally:
                 if token is not None:
