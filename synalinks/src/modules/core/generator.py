@@ -98,6 +98,12 @@ Your task is to answer with a JSON containing the following keys: {data_model_fi
 """.strip()
 
 
+def default_decision_instructions(data_model_fields):
+    return f"""
+Your task is to answer the following questions about the inputs: {data_model_fields}
+""".strip()
+
+
 def format_chat_messages(inputs, system_message):
     """Format the inputs into chat messages behind a system message.
 
@@ -383,7 +389,10 @@ class Generator(Module):
         self.examples = examples
         if not instructions and self.schema:
             data_model_keys = list(self.schema["properties"].keys())
-            instructions = default_instructions(data_model_keys)
+            if self.decision_model is not None:
+                instructions = default_decision_instructions(data_model_keys)
+            else:
+                instructions = default_instructions(data_model_keys)
         self.instructions = instructions
         self.return_inputs = return_inputs
         self.temperature = temperature

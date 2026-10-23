@@ -457,6 +457,23 @@ class DecisionModelTest(testing.TestCase):
         with self.assertRaises(UnsupportedSchemaError):
             synalinks.Generator(data_model=Summary, decision_model=decision_model)
 
+    def test_generator_default_instructions(self):
+        from synalinks.src.modules import default_decision_instructions
+        from synalinks.src.modules import default_instructions
+
+        generator = synalinks.Generator(
+            data_model=Billing,
+            decision_model=DecisionModel(model="typesafe/jev-latest"),
+        )
+        self.assertEqual(
+            generator.instructions, default_decision_instructions(["is_billing"])
+        )
+        generator = synalinks.Generator(
+            data_model=Billing,
+            language_model=synalinks.LanguageModel(model="ollama/mistral"),
+        )
+        self.assertEqual(generator.instructions, default_instructions(["is_billing"]))
+
     def test_not_a_language_model(self):
         from synalinks.src.modules import language_models
 

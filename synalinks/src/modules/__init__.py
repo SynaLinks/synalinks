@@ -3,6 +3,7 @@ from synalinks.src.modules.core.action import Action
 from synalinks.src.modules.core.branch import Branch
 from synalinks.src.modules.core.decision import Decision
 from synalinks.src.modules.core.generator import Generator
+from synalinks.src.modules.core.generator import default_decision_instructions
 from synalinks.src.modules.core.generator import default_instructions
 from synalinks.src.modules.core.generator import default_prompt_template
 from synalinks.src.modules.core.identity import Identity
