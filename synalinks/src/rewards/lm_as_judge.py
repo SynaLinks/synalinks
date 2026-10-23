@@ -6,6 +6,7 @@ from synalinks.src.backend.pydantic.metrics import FineScore
 from synalinks.src.backend.pydantic.metrics import get_score_type
 from synalinks.src.backend.pydantic.metrics import serialize_score_type
 from synalinks.src.modules import SelfCritique
+from synalinks.src.modules import language_models
 from synalinks.src.modules.ttc.self_critique import CritiqueWithReward
 from synalinks.src.programs import Program
 from synalinks.src.rewards.reward_wrappers import ProgramAsJudge
@@ -46,8 +47,9 @@ class LMAsJudgeProgram(Program):
             trainable=trainable,
         )
         self.score_type = get_score_type(score_type or FineScore)
+        # A language model judge: its critique never uses a decision model.
         self.critique = SelfCritique(
-            language_model=language_model,
+            language_model=language_models.get(language_model),
             prompt_template=prompt_template,
             examples=examples,
             instructions=instructions,

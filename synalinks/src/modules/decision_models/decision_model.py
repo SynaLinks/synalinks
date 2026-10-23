@@ -4,11 +4,11 @@ import contextvars
 import copy
 import json
 import logging
-import os
 import time
 import warnings
 
-import httpx2
+import litellm
+from litellm.decisions.call import supported_decisions_providers
 from tenacity import before_sleep_log
 from tenacity import retry
 from tenacity import retry_if_exception
@@ -18,14 +18,14 @@ from synalinks.src.api_export import synalinks_export
 from synalinks.src.backend import ChatMessages
 from synalinks.src.backend import JsonDataModel
 from synalinks.src.backend import SymbolicDataModel
+from synalinks.src.backend import is_chat_messages
 from synalinks.src.backend.common.op_scope import current_op_scope
 from synalinks.src.modules.language_models.language_model import _message_to_wire
 from synalinks.src.modules.module import Module
 from synalinks.src.saving import serialization_lib
+from synalinks.src.utils import model_catalog
 from synalinks.src.utils.file_cache import FileCache
 from synalinks.src.utils.retry_utils import rate_limit_aware_wait
-
-SUPPORTED_PROVIDERS = ("typesafe",)
 
 QUESTION_TYPES = ("noul", "choice", "score")
 
@@ -33,17 +33,6 @@ QUESTION_TYPES = ("noul", "choice", "score")
 MAX_CHOICE_OPTIONS = 255
 MIN_SCORE_LEVELS = 2
 MAX_SCORE_LEVELS = 10
-
-TYPESAFE_API_KEY_ENV = "TYPESAFE_API_KEY"
-TYPESAFE_BASE_URL_ENV = "TYPESAFE_BASE_URL"
-DEFAULT_TYPESAFE_API_BASE = "https://api.typesafe.ai"
-
-# USD per input token, keyed by versioned model ID prefix. Output tokens are
-# free. The response reports the versioned ID even when an alias such as
-# `jev-latest` was requested, so the price follows the model that answered.
-INPUT_COST_PER_TOKEN = {
-    "jev-1.13": 0.042 / 1_000_000,
-}
 
 # Statuses an identical retry can fix: rate limiting (429), overload (529) and
 # transient server errors. Validation (422) and auth (401/403) errors are raised
@@ -558,16 +547,8 @@ def current_call_usage():
 
 
 def _is_retryable(exc):
-    if isinstance(exc, httpx2.HTTPStatusError):
-        return exc.response.status_code in RETRYABLE_STATUSES
-    return isinstance(exc, httpx2.TransportError)
-
-
-def _input_cost_per_token(model):
-    for prefix, cost in INPUT_COST_PER_TOKEN.items():
-        if model == prefix or model.startswith(prefix + "."):
-            return cost
-    return None
+    # litellm maps connection failures to status 500 and timeouts to 408.
+    return getattr(exc, "status_code", None) in RETRYABLE_STATUSES
 
 
 def _accumulate(obj, phase_prefix, increments):
@@ -609,8 +590,13 @@ class DecisionModel(Module):
     chat messages are sent as the `state`, so the system message (instructions
     and few-shot examples) is part of the context the questions are answered
     in, and each field of the output schema is one question, asked with the
-    field's `description`. The output follows the schema. The field type sets
-    the question type:
+    field's `description`. The output follows the schema.
+
+    The state can also be any JSON, when there is no conversation to judge: a
+    data model is sent as its JSON, and a dict, list, string or number as is,
+    e.g. ``await decision_model({"ticket": ..., "plan": "pro"}, schema=...)``.
+
+    The field type sets the question type:
 
     - `bool`: a yes/no (noul) question. The field is `True` when the
         probability of yes is at least 0.5.
@@ -636,14 +622,20 @@ class DecisionModel(Module):
     same state and are answered independently and in parallel, so ask several
     at once rather than making several calls.
 
+    Calls go through litellm's decisions API, so any provider it supports
+    works (see `supported_providers()`), e.g. TypeSafe, OpenAI, Azure AI,
+    OpenRouter, Databricks or a self-hosted vLLM server. A local Ollama
+    decision model runs as `ollama/<model>` (e.g. `"ollama/laya"`, after
+    `ollama pull laya`), on `http://localhost:11434` unless `api_base` is set.
+
     The modules that can use a decision model take it as their
     `decision_model` (never as their `language_model`): `Generator`,
     `Decision`, `MultiDecision`, `Branch`, `SelfCritique` and `RubricsAsJudge`
     (and the rubric rewards). `Decision`, `MultiDecision`, `SelfCritique` and
     `RubricsAsJudge` switch to a data model made of such questions (without
     `thinking` or `critique`) when given one. Set a default with
-    `synalinks.set_default_decision_model(...)`: these modules then use it
-    instead of the default language model, unless given a `language_model`.
+    `synalinks.set_default_decision_model(...)`: these modules use it only
+    when given neither model and no default language model is set.
 
     **Using TypeSafe models**
 
@@ -823,10 +815,11 @@ class DecisionModel(Module):
         asyncio.run(main())
     ```
 
-    The API key is read from `TYPESAFE_API_KEY` on every call (it is never
-    stored in the config). Without it, a call fails like any failed call: it
-    warns and returns `None`, or asks the `fallback` model. Set
-    `TYPESAFE_BASE_URL` (or `api_base`) to use another endpoint.
+    The API key is read by litellm from the provider's environment variable
+    on every call (e.g. `TYPESAFE_API_KEY`, `OPENAI_API_KEY`), so it is never
+    stored in the config. Without it, a call fails like any failed call: it
+    warns and returns `None`, or asks the `fallback` model. Set `api_base` (or
+    the provider's variable, e.g. `TYPESAFE_API_BASE`) to use another endpoint.
 
     **Note**: Use an `.env` file and `.gitignore` to keep your API keys out
     of the code and out of any config file you push to a repository.
@@ -836,7 +829,7 @@ class DecisionModel(Module):
             (e.g. `"typesafe/jev-latest"`). Pin a versioned ID
             (e.g. `"typesafe/jev-1.13.0"`) when you have tuned thresholds on it.
         api_base (str): Optional. The endpoint to use.
-        timeout (float): Optional. The timeout in seconds of each HTTP request
+        timeout (float): Optional. The timeout in seconds of each request
             (default to 30).
         retry (int): Optional. The number of attempts (default to 5).
         retry_max_wait (int): Optional. Max seconds to wait between retries when a
@@ -848,7 +841,7 @@ class DecisionModel(Module):
             by the full request (model, state and questions), and identical
             requests are answered from disk. (Default to None, disabled).
         cost_per_token (float): Optional. USD per input token, overriding the
-            built-in price table (e.g. for a custom plan).
+            cost litellm computes from its price table (e.g. for a custom plan).
         name (str): Optional. The name of the module.
         description (str): Optional. The description of the module.
         hooks (list): Optional. Hooks to attach to this module's calls.
@@ -878,10 +871,10 @@ class DecisionModel(Module):
         if model is None:
             raise ValueError("You need to set the `model` argument for any DecisionModel")
         provider, _, model_id = model.partition("/")
-        if provider not in SUPPORTED_PROVIDERS or not model_id:
+        if provider not in self.supported_providers() or not model_id:
             raise ValueError(
                 f"Unsupported decision model {model!r}. Use `<provider>/<model>` "
-                f"with a provider in {list(SUPPORTED_PROVIDERS)}, "
+                f"with a provider in {self.supported_providers()}, "
                 "e.g. `typesafe/jev-latest`."
             )
         self.model = model
@@ -901,8 +894,8 @@ class DecisionModel(Module):
         self.cache_dir = cache_dir
         self._file_cache = FileCache(cache_dir) if cache_dir else None
         self.cost_per_token = cost_per_token
-        # Test seam: an `httpx2` transport (e.g. `httpx2.MockTransport`).
-        self._transport = None
+        # Test seam: a stand-in for `litellm.asystemone`.
+        self._systemone = None
         # All-time counters across every call (training + inference), then
         # phase-scoped ones populated based on the `synalinks_op_scope` set by
         # the trainer: "inference", "reward" and "optimizer".
@@ -916,6 +909,8 @@ class DecisionModel(Module):
         self.last_call_elapsed_s = 0.0
         self.last_call_cost = 0.0
         self.last_call_model = None
+        # The state can be any JSON value, not only a data model.
+        self._allow_non_json_data_model_positional_args = True
         # No state depends on the input shape, so mark built up-front and
         # skip Module's auto-build path (which would try to trace `call`).
         self.built = True
@@ -943,10 +938,11 @@ class DecisionModel(Module):
         the schema only asks questions it can answer.
 
         Args:
-            messages (ChatMessages): The chat messages to evaluate, sent as the
-                `state`. Like with a `LanguageModel`, the system message
-                carries the instructions and examples, and the user message
-                the inputs.
+            messages (ChatMessages | DataModel | dict | list | str): The state
+                to evaluate. Chat messages are sent as the `state` like with a
+                `LanguageModel`: the system message carries the instructions
+                and examples, and the user message the inputs. Any other data
+                model is sent as its JSON, and any other JSON value as is.
             schema (dict): The output JSON schema. Each field is one question
                 (see the class docstring).
             tools (list): Not supported: decision models do not call tools.
@@ -963,20 +959,33 @@ class DecisionModel(Module):
         Raises:
             UnsupportedSchemaError: If the schema asks for something a decision
                 model cannot answer.
-            ValueError: If `tools` or `tool_schemas` are given.
+            ValueError: If `tools` or `tool_schemas` are given, or the state
+                is not JSON.
         """
         if tools or tool_schemas:
             raise ValueError(f"{self} does not call tools.")
-        if not messages:
+        if messages is None:
             return None
         questions, plain = questions_from_schema(schema)
         _CURRENT_CALL_USAGE.set(None)
-        typed_messages = (
-            messages
-            if hasattr(messages, "messages")
-            else ChatMessages(messages=messages.get("messages", []))
-        )
-        state = [_message_to_wire(message) for message in typed_messages.messages]
+        if not hasattr(messages, "get_json"):
+            state = messages
+        elif is_chat_messages(messages):
+            typed_messages = (
+                messages
+                if hasattr(messages, "messages")
+                else ChatMessages(messages=messages.get("messages", []))
+            )
+            state = [_message_to_wire(message) for message in typed_messages.messages]
+        else:
+            state = messages.get_json()
+        try:
+            json.dumps(state)
+        except (TypeError, ValueError) as e:
+            raise ValueError(
+                f"{self} needs a JSON state: chat messages, a data model, or a "
+                f"dict, list, string or number, got {type(state).__name__}."
+            ) from e
         cache_key = None
         if self._file_cache is not None:
             cache_key = self._file_cache.make_key(
@@ -1049,14 +1058,6 @@ class DecisionModel(Module):
         """
         questions_from_schema(schema)
 
-    def _endpoint(self):
-        api_base = (
-            self.api_base
-            or os.environ.get(TYPESAFE_BASE_URL_ENV)
-            or DEFAULT_TYPESAFE_API_BASE
-        )
-        return f"{api_base.rstrip('/')}/v1/systemone"
-
     async def _call_with_retry(self, state, questions):
         """Perform the API call with tenacity retry logic.
 
@@ -1064,16 +1065,12 @@ class DecisionModel(Module):
             (dict): The validated answers, keyed by question ID.
         """
         logger = logging.getLogger(__name__)
-        api_key = os.environ.get(TYPESAFE_API_KEY_ENV)
-        if not api_key:
-            raise ValueError(
-                f"`{TYPESAFE_API_KEY_ENV}` is not set; it is required to call {self}."
-            )
-        payload = {
-            "state": state,
-            "model": self.model_id,
-            "questions": copy.deepcopy(questions),
-        }
+        systemone = self._systemone or litellm.asystemone
+        model, api_base = self.model, self.api_base
+        if self.provider == "ollama":
+            # Ollama serves the SystemOne API, which litellm calls as `hosted_vllm`.
+            model = f"hosted_vllm/{self.model_id}"
+            api_base = api_base or model_catalog.PROVIDERS["ollama"]["default_api_base"]
 
         @retry(
             stop=stop_after_attempt(self.retry),
@@ -1086,18 +1083,15 @@ class DecisionModel(Module):
         )
         async def _do_call():
             t0 = time.perf_counter()
-            async with httpx2.AsyncClient(
-                transport=self._transport,
+            response = await systemone(
+                model=model,
+                state=state,
+                questions=copy.deepcopy(questions),
+                api_base=api_base,
                 timeout=self.timeout,
-            ) as client:
-                response = await client.post(
-                    self._endpoint(),
-                    json=payload,
-                    headers={"Authorization": f"Bearer {api_key}"},
-                )
-                response.raise_for_status()
+            )
             elapsed_s = time.perf_counter() - t0
-            body = response.json()
+            body = response.model_dump()
             # A malformed answer is a `ValueError`: not retried, it fails the
             # call (fallback or `None`) instead of reaching downstream code.
             answers = validate_answers(questions, body.get("answers"))
@@ -1105,11 +1099,12 @@ class DecisionModel(Module):
             usage = body.get("usage") or {}
             prompt_tokens = int(usage.get("input_tokens") or 0)
             completion_tokens = int(usage.get("output_tokens") or 0)
-            cost_per_token = (
-                self.cost_per_token
-                if self.cost_per_token is not None
-                else _input_cost_per_token(answered_by)
-            )
+            if self.cost_per_token is not None:
+                cost = prompt_tokens * self.cost_per_token
+            else:
+                cost = (getattr(response, "_hidden_params", None) or {}).get(
+                    "response_cost"
+                )
             increments = {
                 "calls": 1,
                 "prompt_tokens": prompt_tokens,
@@ -1117,8 +1112,8 @@ class DecisionModel(Module):
                 "tokens": prompt_tokens + completion_tokens,
                 "elapsed_s": elapsed_s,
             }
-            if cost_per_token is not None:
-                increments["cost"] = prompt_tokens * cost_per_token
+            if cost is not None:
+                increments["cost"] = cost
             self.last_call_prompt_tokens = prompt_tokens
             self.last_call_completion_tokens = completion_tokens
             self.last_call_tokens = prompt_tokens + completion_tokens
@@ -1147,7 +1142,9 @@ class DecisionModel(Module):
         """Returns the supported decision model provider prefixes.
 
         These are the values accepted before the `/` in `model`, e.g.
-        `"typesafe"` in `"typesafe/jev-latest"`.
+        `"typesafe"` in `"typesafe/jev-latest"`: the providers of litellm's
+        decisions API, and `"ollama"` for a local Ollama decision model
+        (e.g. `"ollama/laya"`).
 
         ```python
         import synalinks
@@ -1158,7 +1155,115 @@ class DecisionModel(Module):
         Returns:
             (list): The sorted list of supported provider prefixes.
         """
-        return list(SUPPORTED_PROVIDERS)
+        return sorted({*supported_decisions_providers(), "ollama"})
+
+    @classmethod
+    def provider_info(cls, provider):
+        """Returns what a frontend needs to set a provider up.
+
+        ```python
+        import synalinks
+
+        print(synalinks.DecisionModel.provider_info("typesafe"))
+        ```
+
+        Args:
+            provider (str): A provider prefix from `supported_providers()`.
+
+        Returns:
+            (dict): `provider`, `env` (the environment variables to set, each
+                `{"name", "required", "secret"}`), `default_api_base` (or
+                `None`) and `lists_models_from` (`"server"` when
+                `supported_models()` asks the provider's server, else
+                `"catalog"`).
+
+        Raises:
+            ValueError: If the provider is not supported.
+        """
+        model_catalog.check_provider(
+            provider, cls.supported_providers(), "decision model"
+        )
+        return model_catalog.provider_info(
+            provider, model_catalog.decision_provider(provider)
+        )
+
+    @classmethod
+    async def supported_models(cls, provider, api_base=None):
+        """Returns the decision models a provider offers.
+
+        A self-hosted vLLM server (`hosted_vllm`) is asked for the models it
+        serves, Ollama for its models with the `decision` capability, and
+        OpenRouter for its public list, keeping the models that answer
+        decisions. The other providers are listed from litellm's model
+        table: their decision models, and their chat models that also answer
+        decisions (e.g. `openai/gpt-6-luna`). For OpenAI with `OPENAI_API_KEY`
+        set, these are narrowed to the models the account can use, from
+        OpenAI's live list.
+
+        ```python
+        import synalinks
+
+        print(await synalinks.DecisionModel.supported_models("typesafe"))
+        ```
+
+        Args:
+            provider (str): A provider prefix from `supported_providers()`.
+            api_base (str): Optional. The server to ask, for a provider listed
+                from its server or from OpenAI's live list (defaults to its base
+                URL variable, then to its default endpoint, see
+                `provider_info()`).
+
+        Returns:
+            (list): The sorted model IDs, ready to pass as `model`
+                (e.g. `"typesafe/jev-latest"`).
+
+        Raises:
+            ValueError: If the provider is not supported, or no endpoint is
+                known to list its models from.
+            ConnectionError: If the provider's server cannot be reached.
+        """
+        model_catalog.check_provider(
+            provider, cls.supported_providers(), "decision model"
+        )
+        info = model_catalog.decision_provider(provider)
+        if provider == "openrouter":
+            # OpenRouter names a model by its vendor, as litellm's table does.
+            keep = model_catalog.catalog_models(
+                None, ("evaluation",), model_catalog.DECISIONS_ENDPOINT
+            )
+            return await model_catalog.server_models(
+                provider, info, api_base, keep=set(keep)
+            )
+        if info.get("server"):
+            return await model_catalog.server_models(
+                provider, info, api_base, ollama_capability="decision"
+            )
+        catalog = model_catalog.catalog_models(
+            provider, ("evaluation",), model_catalog.DECISIONS_ENDPOINT
+        )
+        return await model_catalog.account_models(provider, catalog, api_base)
+
+    @classmethod
+    def model_info(cls, model):
+        """Returns a model's info from litellm's model table.
+
+        ```python
+        import synalinks
+
+        print(synalinks.DecisionModel.model_info("typesafe/jev-latest"))
+        ```
+
+        Args:
+            model (str): The model, e.g. `"typesafe/jev-latest"`.
+
+        Returns:
+            (dict): `max_input_tokens`, `max_output_tokens`,
+                `input_cost_per_token`, `output_cost_per_token` (each `None`
+                when unknown) and `capabilities` (e.g. `["vision"]`), or
+                `None` when litellm does not know the model (e.g. a
+                self-hosted one).
+        """
+        return model_catalog.model_info(model)
 
     def _obj_type(self):
         return "DecisionModel"

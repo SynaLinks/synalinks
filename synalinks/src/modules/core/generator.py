@@ -98,6 +98,12 @@ Your task is to answer with a JSON containing the following keys: {data_model_fi
 """.strip()
 
 
+def default_decision_instructions(data_model_fields):
+    return f"""
+Your task is to answer the following questions about the inputs: {data_model_fields}
+""".strip()
+
+
 def format_chat_messages(inputs, system_message):
     """Format the inputs into chat messages behind a system message.
 
@@ -322,9 +328,10 @@ class Generator(Module):
         decision_model (DecisionModel): Optional. A decision model to answer
             with instead of the language model. Every field of the schema must
             be a question it can answer (see `DecisionModel.check_schema()`).
-            Without `decision_model` nor `language_model`, the default decision
-            model (see `synalinks.set_default_decision_model`) is used when it
-            can answer the schema, else the default language model.
+            Without `decision_model` nor `language_model`, the default language
+            model is used; without one, the default decision model (see
+            `synalinks.set_default_decision_model`) is used when it can answer
+            the schema.
     """
 
     def __init__(
@@ -382,7 +389,10 @@ class Generator(Module):
         self.examples = examples
         if not instructions and self.schema:
             data_model_keys = list(self.schema["properties"].keys())
-            instructions = default_instructions(data_model_keys)
+            if self.decision_model is not None:
+                instructions = default_decision_instructions(data_model_keys)
+            else:
+                instructions = default_instructions(data_model_keys)
         self.instructions = instructions
         self.return_inputs = return_inputs
         self.temperature = temperature

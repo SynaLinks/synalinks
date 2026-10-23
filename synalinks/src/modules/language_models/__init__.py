@@ -64,6 +64,72 @@ def supported_providers():
     return LanguageModel.supported_providers()
 
 
+@synalinks_export("synalinks.language_models.provider_info")
+def provider_info(provider):
+    """Returns what a frontend needs to set a language model provider up.
+
+    Shortcut for `LanguageModel.provider_info()`.
+
+    ```python
+    import synalinks
+
+    print(synalinks.language_models.provider_info("ollama"))
+    ```
+
+    Args:
+        provider (str): A provider prefix from `supported_providers()`.
+
+    Returns:
+        (dict): `provider`, `env`, `default_api_base` and `lists_models_from`.
+    """
+    return LanguageModel.provider_info(provider)
+
+
+@synalinks_export("synalinks.language_models.supported_models")
+async def supported_models(provider, api_base=None):
+    """Returns the language models a provider offers.
+
+    Shortcut for `LanguageModel.supported_models()`.
+
+    ```python
+    import synalinks
+
+    print(await synalinks.language_models.supported_models("ollama"))
+    ```
+
+    Args:
+        provider (str): A provider prefix from `supported_providers()`.
+        api_base (str): Optional. The server to ask, for a provider listed
+            from its server.
+
+    Returns:
+        (list): The sorted model IDs, ready to pass as `model`.
+    """
+    return await LanguageModel.supported_models(provider, api_base=api_base)
+
+
+@synalinks_export("synalinks.language_models.model_info")
+def model_info(model):
+    """Returns a language model's info from litellm's model table.
+
+    Shortcut for `LanguageModel.model_info()`.
+
+    ```python
+    import synalinks
+
+    print(synalinks.language_models.model_info("openai/gpt-4o-mini"))
+    ```
+
+    Args:
+        model (str): The model, e.g. `"openai/gpt-4o-mini"`.
+
+    Returns:
+        (dict): The model's context size, prices and capabilities, or `None`
+            when litellm does not know it.
+    """
+    return LanguageModel.model_info(model)
+
+
 @synalinks_export("synalinks.language_models.get")
 def get(identifier):
     """Retrieves a Synalinks LanguageModel instance.

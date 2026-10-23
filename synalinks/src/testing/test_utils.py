@@ -1,5 +1,7 @@
 # License Apache 2.0: (c) 2025-2026 Yoan Sallami (Synalinks Team)
 
+import contextvars
+
 import numpy as np
 
 from synalinks.src.backend import DataModel
@@ -12,6 +14,10 @@ class Query(DataModel):
 class AnswerWithRationale(DataModel):
     rationale: str
     answer: str
+
+
+# The HTTP handler of the `mock_decision_model` call running in this task.
+_MOCKED_DECISIONS = contextvars.ContextVar("synalinks_mocked_decisions", default=None)
 
 
 def load_test_data():
@@ -120,13 +126,17 @@ def load_test_data():
         [
             Query(query="What is the largest city in France?"),  # noqa: E501
             Query(query="What is the capital of Germany?"),  # noqa: E501
-            Query(query="Which French city is known for its film festival?"),  # noqa: E501
+            Query(
+                query="Which French city is known for its film festival?"
+            ),  # noqa: E501
             Query(query="What is the longest river in France?"),  # noqa: E501
             Query(query="Which French region is famous for champagne?"),  # noqa: E501
             Query(query="What is the capital of Spain?"),  # noqa: E501
             Query(query="Which sea borders southern France?"),  # noqa: E501
             Query(query="What is the national symbol of France?"),  # noqa: E501
-            Query(query="Which French city is home to the European Parliament?"),  # noqa: E501
+            Query(
+                query="Which French city is home to the European Parliament?"
+            ),  # noqa: E501
             Query(query="What is the highest point in the French Alps?"),  # noqa: E501
         ],
         dtype="object",
@@ -346,6 +356,9 @@ def named_product(*args, **kwargs):
 def mock_decision_model(decision_model, *responses, model="jev-1.13.0"):
     """Route a `DecisionModel`'s HTTP calls to canned responses.
 
+    The calls still go through litellm (error mapping, cost), only its HTTP
+    layer is replaced, and only for this decision model's calls.
+
     Each response answers one request, in order; the last one repeats. A
     response is either an `answers` dict, a callable taking the request
     payload and returning an `answers` dict, or an int HTTP error status.
@@ -360,25 +373,49 @@ def mock_decision_model(decision_model, *responses, model="jev-1.13.0"):
     """
     import json
 
-    import httpx2
+    import httpx
+    import litellm
+    from litellm.llms.custom_httpx.http_handler import AsyncHTTPHandler
+
+    original_post = AsyncHTTPHandler.post
+    if not getattr(original_post, "routes_mocked_decisions", False):
+
+        async def post(self, url, *args, **kwargs):
+            handler = _MOCKED_DECISIONS.get()
+            if handler is None:
+                return await original_post(self, url, *args, **kwargs)
+            return handler(url, kwargs.get("json") or kwargs.get("data"))
+
+        post.routes_mocked_decisions = True
+        AsyncHTTPHandler.post = post
 
     payloads = []
 
-    def handler(request):
-        payload = json.loads(request.content)
+    def handler(url, body):
+        payload = json.loads(body) if isinstance(body, (str, bytes)) else body
         response = responses[min(len(payloads), len(responses) - 1)]
         payloads.append(payload)
+        request = httpx.Request("POST", url)
         if isinstance(response, int):
-            return httpx2.Response(response, json={"error": "mocked"})
+            error = httpx.Response(response, json={"error": "mocked"}, request=request)
+            raise httpx.HTTPStatusError("mocked", request=request, response=error)
         answers = response(payload) if callable(response) else response
-        return httpx2.Response(
+        return httpx.Response(
             200,
             json={
                 "model": model,
                 "answers": answers,
                 "usage": {"input_tokens": 100, "output_tokens": 10},
             },
+            request=request,
         )
 
-    decision_model._transport = httpx2.MockTransport(handler)
+    async def systemone(**kwargs):
+        token = _MOCKED_DECISIONS.set(handler)
+        try:
+            return await litellm.asystemone(**kwargs)
+        finally:
+            _MOCKED_DECISIONS.reset(token)
+
+    decision_model._systemone = systemone
     return payloads

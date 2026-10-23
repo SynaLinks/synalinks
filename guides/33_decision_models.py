@@ -76,19 +76,23 @@ put every question about an input in the same data model.
 
 ## The `decision_model` Argument
 
-A decision model is set up like a language model, with its API key in the
-environment (`TYPESAFE_API_KEY`, e.g. in a `.env` file):
+A decision model is set up like a language model, from any provider of litellm's
+decisions API or a local Ollama decision model (here `kev`, after
+`ollama pull kev`). A hosted one such as `typesafe/jev-latest` reads its API
+key from the environment (`TYPESAFE_API_KEY`).
 
 ```python
-decision_model = synalinks.DecisionModel(model="typesafe/jev-latest")
+decision_model = synalinks.DecisionModel(model="ollama/kev")
 ```
 
 The modules that can decide take it through their own `decision_model`
 argument: `Generator`, `Decision`, `Branch`, `MultiDecision`, `SelfCritique`
 and `RubricsAsJudge`. It is never passed as a `language_model`, so a decision
 model cannot end up in a module that needs to write. With
-`synalinks.set_default_decision_model(...)`, these modules use it by default,
-the same way `set_default_language_model` works for language models.
+`synalinks.set_default_decision_model(...)`, these modules use it by default
+when no default language model is set: a default language model wins over a
+default decision model, and only a `decision_model` given to the module wins
+over the default language model.
 
 ## Decision Models in Modules
 
@@ -165,7 +169,7 @@ topics = await synalinks.MultiDecision(
     labels=["payment", "delivery", "account"],
     decision_model=decision_model,
 )(x0)
-# {"choices": ["payment", "account"]}
+# {"choices": ["payment"]}
 ```
 
 ### `Branch`
@@ -199,7 +203,7 @@ so it only works with a reward (`return_reward=True`, the default).
 
 ```python
 graded = await synalinks.SelfCritique(decision_model=decision_model)(reply)
-# {..., "reward": 0.75}
+# {..., "reward": 0.57}
 ```
 
 ### `RubricsAsJudge`
@@ -230,14 +234,14 @@ toxicity = synalinks.rewards.Toxicity(decision_model=decision_model)
 
 The pattern this enables is the one below: a decision model routes each query
 ([Guide 5](https://synalinks.github.io/synalinks/guides/Control%20Flow/)), and
-only the branch that needs it pays for a language model reasoning step by
+only the queries that need it pay for a language model reasoning step by
 step.
 
 ```mermaid
 graph LR
     Q[Query] --> D{Branch<br/>decision model}
-    D -->|easy| A1[Generator<br/>language model]
-    D -->|difficult| A2[ChainOfThought<br/>language model]
+    D -->|recall a fact| A1[Generator<br/>language model]
+    D -->|reason step by step| A2[ChainOfThought<br/>language model]
     A1 --> O[Answer]
     A2 --> O
 ```
@@ -330,11 +334,11 @@ The example below runs every module above with a decision model:
 1. **Triage**: a `Generator` answers the questions of its data model about a
    support ticket, a `Decision` picks the team that handles it, and a
    `MultiDecision` the topics it mentions.
-2. **Routing**: a `Branch` decided by the decision model sends easy queries to
-   a plain `Generator` and difficult ones to a `ChainOfThought`, both answered
-   by a language model.
+2. **Routing**: a `Branch` decided by the decision model sends the queries
+   that only recall a fact to a plain `Generator`, and the ones that need
+   reasoning to a `ChainOfThought`, both answered by a language model.
 3. **Grading**: a `SelfCritique` grades a reply, and a `RubricsAsJudge` grades
-   two answers against weighted criteria in one call.
+   an answer against a reference answer, on weighted criteria, in one call.
 
 ## Take-Home Summary
 
@@ -420,8 +424,8 @@ async def main():
     # Log every module call to the console.
     synalinks.enable_logging()
 
-    # Reads `TYPESAFE_API_KEY` (and `TYPESAFE_BASE_URL`) from the environment.
-    decision_model = synalinks.DecisionModel(model="typesafe/jev-latest")
+    # A local Ollama decision model (`ollama pull kev`), no API key needed.
+    decision_model = synalinks.DecisionModel(model="ollama/kev")
     language_model = synalinks.LanguageModel(model="ollama/mistral:latest")
 
     # -------------------------------------------------------------------------
@@ -468,9 +472,9 @@ async def main():
     print("=" * 60)
 
     inputs = synalinks.Input(data_model=Query)
-    (easy, difficult) = await synalinks.Branch(
-        question="What is the difficulty level of the query?",
-        labels=["easy", "difficult"],
+    (recall, reasoning) = await synalinks.Branch(
+        question="How should the query be answered?",
+        labels=["recall a fact", "reason step by step"],
         branches=[
             synalinks.Generator(
                 data_model=Answer,
@@ -484,7 +488,7 @@ async def main():
         decision_model=decision_model,
         return_decision=False,
     )(inputs)
-    outputs = easy | difficult
+    outputs = recall | reasoning
     router = synalinks.Program(
         inputs=inputs,
         outputs=outputs,
@@ -500,7 +504,7 @@ async def main():
         print(result.prettify_json())
 
     # -------------------------------------------------------------------------
-    # 3. Grade with rubrics: every criterion in one decision model call
+    # 3. Grade a reply, then grade an answer against a reference with rubrics
     # -------------------------------------------------------------------------
     print("=" * 60)
     print("Grading: SelfCritique and RubricsAsJudge with a decision model")
@@ -531,6 +535,8 @@ async def main():
             },
         ],
     )
+    # The reference answer, then the answer to grade: every criterion is
+    # graded in one decision model call.
     grades = await reward.program(
         [
             Answer(answer="The trip takes 3 hours and 35 minutes."),

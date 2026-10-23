@@ -16,6 +16,7 @@ from synalinks.src.backend import JsonDataModel
 from synalinks.src.backend.common.op_scope import current_op_scope
 from synalinks.src.modules.module import Module
 from synalinks.src.saving import serialization_lib
+from synalinks.src.utils import model_catalog
 from synalinks.src.utils.file_cache import FileCache
 from synalinks.src.utils.retry_utils import rate_limit_aware_wait
 
@@ -446,6 +447,99 @@ class EmbeddingModel(Module):
             (list): The sorted list of supported provider prefixes.
         """
         return list(SUPPORTED_PROVIDERS)
+
+    @classmethod
+    def provider_info(cls, provider):
+        """Returns what a frontend needs to set a provider up.
+
+        ```python
+        import synalinks
+
+        print(synalinks.EmbeddingModel.provider_info("ollama"))
+        ```
+
+        Args:
+            provider (str): A provider prefix from `supported_providers()`.
+
+        Returns:
+            (dict): `provider`, `env` (the environment variables to set, each
+                `{"name", "required", "secret"}`), `default_api_base` (or
+                `None`) and `lists_models_from` (`"server"` when
+                `supported_models()` asks the provider's server, else
+                `"catalog"`).
+
+        Raises:
+            ValueError: If the provider is not supported.
+        """
+        model_catalog.check_provider(
+            provider, cls.supported_providers(), "embedding model"
+        )
+        return model_catalog.provider_info(provider, model_catalog.PROVIDERS[provider])
+
+    @classmethod
+    async def supported_models(cls, provider, api_base=None):
+        """Returns the embedding models a provider offers.
+
+        Ollama is asked for the models it serves, keeping its embedding models.
+        The other providers are listed from litellm's model table; for OpenAI
+        with `OPENAI_API_KEY` set, narrowed to the models the account can use,
+        from OpenAI's live list.
+
+        ```python
+        import synalinks
+
+        print(await synalinks.EmbeddingModel.supported_models("ollama"))
+        ```
+
+        Args:
+            provider (str): A provider prefix from `supported_providers()`.
+            api_base (str): Optional. The server to ask, for a provider listed
+                from its server or from OpenAI's live list (defaults to its base
+                URL variable, then to its default endpoint, see
+                `provider_info()`).
+
+        Returns:
+            (list): The sorted model IDs, ready to pass as `model`
+                (e.g. `"gemini/gemini-embedding-001"`).
+
+        Raises:
+            ValueError: If the provider is not supported, or no endpoint is
+                known to list its models from.
+            ConnectionError: If the provider's server cannot be reached.
+        """
+        model_catalog.check_provider(
+            provider, cls.supported_providers(), "embedding model"
+        )
+        info = model_catalog.PROVIDERS[provider]
+        if info.get("server"):
+            return await model_catalog.server_models(
+                provider, info, api_base, ollama_capability="embedding"
+            )
+        return await model_catalog.account_models(
+            provider, model_catalog.catalog_models(provider, ("embedding",)), api_base
+        )
+
+    @classmethod
+    def model_info(cls, model):
+        """Returns a model's info from litellm's model table.
+
+        ```python
+        import synalinks
+
+        print(synalinks.EmbeddingModel.model_info("gemini/gemini-embedding-001"))
+        ```
+
+        Args:
+            model (str): The model, e.g. `"gemini/gemini-embedding-001"`.
+
+        Returns:
+            (dict): `max_input_tokens`, `max_output_tokens`,
+                `input_cost_per_token`, `output_cost_per_token` (each `None`
+                when unknown) and `capabilities` (e.g. `["vision"]`), or
+                `None` when litellm does not know the model (e.g. a
+                self-hosted one).
+        """
+        return model_catalog.model_info(model)
 
     def _obj_type(self):
         return "EmbeddingModel"

@@ -462,7 +462,9 @@ class MonitorStandardAttributesTest(testing.TestCase):
             self.assertIsNone(await dm(messages, schema=Billing.get_schema()))
         self.assertEqual(spans[0].status, "ERROR")
         self.assertFalse(spans[0].attributes["synalinks.success"])
-        self.assertIn("503", spans[0].attributes["synalinks.exception"])
+        self.assertIn(
+            "ServiceUnavailableError", spans[0].attributes["synalinks.exception"]
+        )
 
         # A fallback answers: its usage is on its own span, not on the
         # failed primary's too.

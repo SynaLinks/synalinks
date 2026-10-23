@@ -1,7 +1,23 @@
+<!-- colab-badge:start -->
+[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/SynaLinks/synalinks/blob/main/notebooks/guides/decision_models.ipynb)
+<!-- colab-badge:end -->
+
 ::: guides.33_decision_models
 
 ## Source
 
 ````python
---8 < --"guides/33_decision_models.py:367"
+--8<-- "guides/33_decision_models.py:371"
 ````
+
+## Run log { data-search-exclude }
+
+This guide calls `synalinks.enable_logging()`, so a full run traces every
+module call. The log below is the **unedited** output of running the guide
+above with local models.
+
+??? example "Full run log: `guides/33_decision_models.log`"
+
+    ```text
+    --8<-- "guides/33_decision_models.log"
+    ```
