@@ -338,6 +338,25 @@ def _tool(name):
     }
 
 
+def _dangling_refs(schema):
+    """The `$ref` targets of `schema` that its root `$defs` do not define."""
+    defs = set(schema.get("$defs") or {})
+    refs = set()
+
+    def walk(node):
+        if isinstance(node, dict):
+            if isinstance(node.get("$ref"), str):
+                refs.add(node["$ref"].rsplit("/", 1)[-1])
+            for value in node.values():
+                walk(value)
+        elif isinstance(node, list):
+            for value in node:
+                walk(value)
+
+    walk(schema)
+    return refs - defs
+
+
 class DatasetToolsTemplateTest(testing.TestCase):
     """`tools_template`: each row brings its own tools, as a Chat Completions request."""
 
@@ -375,12 +394,16 @@ class DatasetToolsTemplateTest(testing.TestCase):
         )
         self.assertEqual(TOOLS_FIELD, "tools")
         # The input schema is the request's: the row, and its tools typed as the
-        # API declares them.
-        self.assertEqual(
-            ds.input_schema["properties"][TOOLS_FIELD]["items"],
-            ChatCompletionTool.get_schema(),
-        )
+        # API declares them, with every `$ref` resolving from the root.
+        tool = dict(ChatCompletionTool.get_schema())
+        tool_defs = tool.pop("$defs")
+        self.assertEqual(ds.input_schema["properties"][TOOLS_FIELD]["items"], tool)
         self.assertIn(TOOLS_FIELD, ds.input_schema["required"])
+        self.assertEqual(
+            {k: v for k, v in ds.input_schema["$defs"].items() if k in tool_defs},
+            tool_defs,
+        )
+        self.assertEqual(_dangling_refs(ds.input_schema), set())
         # The row alone, for a module that reads it back out of the request.
         self.assertEqual(ds.row_schema, ChatMessages.get_schema())
 
@@ -403,6 +426,9 @@ class DatasetToolsTemplateTest(testing.TestCase):
         )
         self.assertEqual(ds.row_schema, schema)
         self.assertEqual(ds.input_schema["required"], ["question", TOOLS_FIELD])
+        # A row schema without `$defs` of its own gets the tool's at the root.
+        self.assertEqual(list(ds.input_schema), ["$defs", *schema])
+        self.assertEqual(_dangling_refs(ds.input_schema), set())
 
     def test_without_a_tools_template_nothing_changes(self):
         ds = _RowDataset(

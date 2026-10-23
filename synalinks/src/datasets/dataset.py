@@ -1,5 +1,7 @@
 # License Apache 2.0: (c) 2025-2026 Yoan Sallami (Synalinks Team)
 
+import copy
+
 import jinja2
 import numpy as np
 import orjson
@@ -355,8 +357,18 @@ def tool_declaration_problem(tool):
 
 
 def _with_tools(schema):
-    """The row's ``schema`` with a request's ``tools`` beside its own fields."""
-    out = dict(schema)
+    """The row's ``schema`` with a request's ``tools`` beside its own fields.
+
+    A ``$ref`` resolves from the document root, so the tool declaration's
+    own ``$defs`` (its ``function``) join the row schema's at the root
+    rather than staying nested under the ``tools`` items, where they would
+    dangle.
+    """
+    tool = copy.deepcopy(ChatCompletionTool.get_schema())
+    defs = {**(schema.get("$defs") or {}), **tool.pop("$defs", {})}
+    out = {k: v for k, v in schema.items() if k != "$defs"}
+    if defs:
+        out = {"$defs": defs, **out}
     out["properties"] = {
         **(schema.get("properties") or {}),
         TOOLS_FIELD: {
@@ -365,7 +377,7 @@ def _with_tools(schema):
                 "The tools the model may call on this row, as a Chat Completions "
                 "request declares them."
             ),
-            "items": ChatCompletionTool.get_schema(),
+            "items": tool,
         },
     }
     out["required"] = [*(schema.get("required") or []), TOOLS_FIELD]
