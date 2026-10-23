@@ -632,8 +632,8 @@ class DecisionModel(Module):
     (and the rubric rewards). `Decision`, `MultiDecision`, `SelfCritique` and
     `RubricsAsJudge` switch to a data model made of such questions (without
     `thinking` or `critique`) when given one. Set a default with
-    `synalinks.set_default_decision_model(...)`: these modules then use it
-    instead of the default language model, unless given a `language_model`.
+    `synalinks.set_default_decision_model(...)`: these modules use it only
+    when given neither model and no default language model is set.
 
     **Using TypeSafe models**
 

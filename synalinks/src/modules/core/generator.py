@@ -322,9 +322,10 @@ class Generator(Module):
         decision_model (DecisionModel): Optional. A decision model to answer
             with instead of the language model. Every field of the schema must
             be a question it can answer (see `DecisionModel.check_schema()`).
-            Without `decision_model` nor `language_model`, the default decision
-            model (see `synalinks.set_default_decision_model`) is used when it
-            can answer the schema, else the default language model.
+            Without `decision_model` nor `language_model`, the default language
+            model is used; without one, the default decision model (see
+            `synalinks.set_default_decision_model`) is used when it can answer
+            the schema.
     """
 
     def __init__(

@@ -183,8 +183,9 @@ def resolve_decision_model(decision_model=None, language_model=None):
     An explicit `decision_model` wins. Otherwise a `language_model`, even the
     default one, means the module uses it: a parent without a `decision_model`
     argument passes its language model down, so the modules it builds never
-    answer with a decision model. Otherwise the default decision model (see
-    `synalinks.set_default_decision_model`), when one is set, wins over the
+    answer with a decision model. Otherwise the default language model, when
+    one is set, wins over the default decision model (see
+    `synalinks.set_default_decision_model`), which is used only without a
     default language model.
 
     Args:
@@ -200,5 +201,9 @@ def resolve_decision_model(decision_model=None, language_model=None):
     if decision_model is not None:
         return get(decision_model)
     if language_model is not None:
+        return None
+    from synalinks.src.backend.config import default_language_model
+
+    if default_language_model() is not None:
         return None
     return get(None)

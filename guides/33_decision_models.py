@@ -87,8 +87,10 @@ The modules that can decide take it through their own `decision_model`
 argument: `Generator`, `Decision`, `Branch`, `MultiDecision`, `SelfCritique`
 and `RubricsAsJudge`. It is never passed as a `language_model`, so a decision
 model cannot end up in a module that needs to write. With
-`synalinks.set_default_decision_model(...)`, these modules use it by default,
-the same way `set_default_language_model` works for language models.
+`synalinks.set_default_decision_model(...)`, these modules use it by default
+when no default language model is set: a default language model wins over a
+default decision model, and only a `decision_model` given to the module wins
+over the default language model.
 
 ## Decision Models in Modules
 
