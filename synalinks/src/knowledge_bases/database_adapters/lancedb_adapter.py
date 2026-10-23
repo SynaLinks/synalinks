@@ -819,8 +819,7 @@ class LanceDBAdapter(DatabaseAdapter):
         try:
             for table in self._db.table_names():
                 con.register(table, self._db.open_table(table).to_arrow())
-            cursor = con.execute(sql, params) if params else con.execute(sql)
-            arrow_table = cursor.arrow().read_all()
+            arrow_table = con.sql(sql, params=params or None).to_arrow_table()
         finally:
             con.close()
         return format_search_results(arrow_table, output_format)

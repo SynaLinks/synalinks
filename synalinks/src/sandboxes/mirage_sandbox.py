@@ -87,8 +87,8 @@ from synalinks.src.utils.sandbox_fs_utils import render_patch
 
 try:
     import mirage
+    from mirage import RAMVFS
     from mirage import MountMode
-    from mirage import RAMResource
     from mirage import Workspace
     from mirage.bridge.sync import run_async_from_sync
 except (ImportError, OSError):  # pragma: no cover - mirage genuinely unusable
@@ -96,7 +96,7 @@ except (ImportError, OSError):  # pragma: no cover - mirage genuinely unusable
     # construction time rather than breaking `import synalinks`.
     mirage = None
     MountMode = None
-    RAMResource = None
+    RAMVFS = None
     Workspace = None
     run_async_from_sync = None
 
@@ -106,9 +106,10 @@ DEFAULT_MOUNT = "/"
 DEFAULT_CONTEXT = Context(id="default", language="python", cwd="/")
 
 # Mirage-internal views that are not the agent's files: devices, persisted
-# sessions and the shell history view (mirage-ai 0.0.6+). Skipped by file
-# listings, search, diffs, snapshots and `save`.
-INTERNAL_PATHS = ("/dev", "/.sessions", "/.bash_history")
+# sessions, the shell history view (mirage-ai 0.0.6+) and the built-in command
+# stubs (mirage-ai 0.0.7+). Skipped by file listings, search, diffs, snapshots
+# and `save`.
+INTERNAL_PATHS = ("/dev", "/.sessions", "/.bash_history", "/usr/bin")
 
 
 def rmtree(path: Optional[str]) -> None:
@@ -177,15 +178,15 @@ def sync_close_workspace(ws) -> None:
     """Release a Mirage workspace's FUSE mount, from any context, never raising.
 
     ``Workspace.close`` is a coroutine, but the actual unmount (``fusermount -u``,
-    or ``diskutil unmount`` on macOS) lives in Mirage's *synchronous*
-    ``close_sync_parts`` (the awaited part only drains cache tasks). So:
+    or ``diskutil unmount`` on macOS) is also reachable synchronously, through
+    ``remove_fuse_mount`` on each of the workspace's ``fuse_mountpoints``. So:
 
     * with **no running loop** (a finalizer, ``gc.collect``, interpreter exit, or
       a plain sync caller) we drive the full coroutine via ``asyncio.run``:
       unmount *and* cache drain;
     * with a **loop already running** (called from inside async code) we can't
-      block on it, so we release the mount synchronously via
-      ``close_sync_parts`` and skip the best-effort cache drain.
+      block on it, so we release the mounts synchronously via
+      ``remove_fuse_mount`` and skip the best-effort cache drain.
 
     Either way the FUSE mount is dropped, which is what prevents the leak that
     exhausts ``mount_max``.
@@ -211,9 +212,8 @@ def sync_close_workspace(ws) -> None:
         # the mount, which on macOS exhausts macFUSE's 64 devices within one
         # test run.
         try:
-            from mirage.workspace.workspace.lifecycle import close_sync_parts
-
-            close_sync_parts(ws)
+            for prefix in list(ws.fuse_mountpoints):
+                ws.remove_fuse_mount(prefix)
         except Exception:  # noqa: BLE001 - teardown must not raise
             pass
     release_mountpoint(getattr(ws, "synalinks_mountpoint", None))
@@ -245,13 +245,14 @@ active_confine: contextvars.ContextVar[Optional[Dict[str, Any]]] = contextvars.C
 
 
 def local_runtime_supported() -> bool:
-    """Whether the installed Mirage has the ``LocalRuntime.run(self, RunArgs)``
-    coroutine `confine_shell_python` wraps (the layout since mirage-ai 0.0.4)."""
+    """Whether the installed Mirage has the
+    ``LocalRuntime.interpret(self, engine, program, ctx)`` coroutine
+    `confine_shell_python` wraps (the layout since mirage-ai 0.0.7)."""
     try:
         from mirage.runtime.python.local import LocalRuntime
     except ImportError:
         return False
-    return inspect.iscoroutinefunction(getattr(LocalRuntime, "run", None))
+    return inspect.iscoroutinefunction(getattr(LocalRuntime, "interpret", None))
 
 
 def confine_shell_python(ws, vm: Optional[Dict[str, Any]] = None) -> bool:
@@ -259,8 +260,9 @@ def confine_shell_python(ws, vm: Optional[Dict[str, Any]] = None) -> bool:
 
     Mirage runs a shell's ``python3`` through the workspace's ``local`` runtime
     (a host CPython subprocess), not through our ``run_code`` bootstrap, so it
-    would otherwise run unconfined. This wraps ``run`` on *that workspace's*
-    runtime instance to prepend the confinement prologue whenever
+    would otherwise run unconfined. This wraps ``interpret`` on *that
+    workspace's* runtime instance (``run`` resolves the program, then calls
+    it) to prepend the confinement prologue whenever
     `active_confine` is set. Nothing process-wide is patched: other workspaces,
     and any other Mirage user in the process, are untouched.
 
@@ -277,19 +279,19 @@ def confine_shell_python(ws, vm: Optional[Dict[str, Any]] = None) -> bool:
     runtime = bindings.get("python3")
     if runtime is None or runtime_name(runtime) != "local":
         return True
-    run = getattr(runtime, "run", None)
-    if getattr(run, "confines_shell_python", False):
+    interpret = getattr(runtime, "interpret", None)
+    if getattr(interpret, "confines_shell_python", False):
         return True
-    if not inspect.iscoroutinefunction(run):
+    if not inspect.iscoroutinefunction(interpret):
         warnings.warn(
             "MirageSandbox: cannot confine run_bash's python3 (Mirage's local "
-            "runtime has no async `run`); shell python stays unconfined.",
+            "runtime has no async `interpret`); shell python stays unconfined.",
             RuntimeWarning,
             stacklevel=3,
         )
         return False
 
-    async def run_confined(args):
+    async def interpret_confined(engine, program, ctx):
         cfg = active_confine.get()
         if cfg is not None:
             # ``repr`` (not ``json.dumps``) so the embedded config is valid
@@ -299,13 +301,14 @@ def confine_shell_python(ws, vm: Optional[Dict[str, Any]] = None) -> bool:
                 + CONFINE_PROLOGUE_SRC
                 + "\n_confine_platform(%r)\n" % (cfg,)
             )
-            args = dataclasses.replace(args, code=prologue + args.code)
+            program = dataclasses.replace(program, code=prologue + program.code)
         if vm is not None:
-            return await run_in_microvm(vm, args)
-        return await run(args)
+            return await run_in_microvm(vm, program, ctx)
+        return await interpret(engine, program, ctx)
 
-    run_confined.confines_shell_python = True
-    runtime.run = run_confined  # instance attribute shadows the class method
+    interpret_confined.confines_shell_python = True
+    # An instance attribute shadows the class method.
+    runtime.interpret = interpret_confined
     return True
 
 
@@ -322,12 +325,13 @@ DEFAULT_RUNTIMES = ("local",)
 # Runtimes that keep execution inside a sandbox of Mirage's own: ``monty`` (a
 # Rust interpreter with "no host filesystem, environment, or network access"),
 # ``wasi`` and ``quickjs`` (CPython / quickjs-ng under wasmtime, whose file I/O
-# is routed through the workspace dispatch), and ``vfs`` (the workspace's own
-# command engine). ``local`` is deliberately absent: it reaches the host, and is
-# only safe under confinement once the run-python patch is installed, which the
-# call site checks. Deliberately an allowlist: an unrecognized runtime counts as
-# host-escaping rather than being trusted by default.
-SANDBOXED_RUNTIMES = frozenset({"monty", "wasi", "quickjs", "vfs"})
+# is routed through the workspace dispatch), and ``workspace`` (the workspace's
+# own command engine, named ``vfs`` before mirage-ai 0.0.7). ``local`` is
+# deliberately absent: it reaches the host, and is only safe under confinement
+# once the run-python patch is installed, which the call site checks.
+# Deliberately an allowlist: an unrecognized runtime counts as host-escaping
+# rather than being trusted by default.
+SANDBOXED_RUNTIMES = frozenset({"monty", "wasi", "quickjs", "workspace"})
 SANDBOXED_RUNTIMES_HINT = ", ".join(sorted(SANDBOXED_RUNTIMES))
 
 
@@ -499,7 +503,7 @@ class MirageFilesystem(Filesystem):
             raise FileNotFoundException(str(exc) or path) from exc
 
     async def shell(self, command: str) -> None:
-        _, stderr, exit_code = await self.sandbox.execute(command)
+        _, stderr, exit_code = await self.sandbox.execute(command, files=True)
         if exit_code != 0:
             raise OSError(stderr.strip() or f"command failed: {command}")
 
@@ -518,14 +522,14 @@ class MirageFilesystem(Filesystem):
             if data is None:
                 raise FileNotFoundException(path)
             return data
-        result = await self.sandbox.workspace.execute(
+        result = await self.sandbox.workspace.shell(
             "cat -- %s" % shlex.quote(path),
-            session_id=self.sandbox.session_id,
             record=False,
+            **self.sandbox.files_session(),
         )
         if result.exit_code != 0:
             raise FileNotFoundException(path)
-        data = bytearray(await maybe_await(result.stdout))
+        data = bytearray(await result.materialize_stdout())
         if format == "bytes":
             return data
 
@@ -959,9 +963,9 @@ class MirageSandbox(Sandbox):
             (host-safe: the agent's writes/edits never touch the real
             directory). ``None`` for an empty scratch filesystem.
         resources (dict): Optional. Mapping of virtual mount prefix → Mirage
-            resource (e.g. ``{"/": RAMResource()}``), or → a ``(resource,
+            resource (e.g. ``{"/": RAMVFS()}``), or → a ``(resource,
             MountMode)`` tuple to set that mount's access mode explicitly.
-            Defaults to a single in-memory ``RAMResource`` mounted at ``/``.
+            Defaults to a single in-memory ``RAMVFS`` mounted at ``/``.
             **Least-privilege default:** the root scratch mount is ``EXEC``
             (writable, runs ``python3``), but any *other* bare mount defaults to
             ``READ`` (read-only) so an external resource (S3, Postgres, disk) you
@@ -1127,9 +1131,7 @@ class MirageSandbox(Sandbox):
         self.session_id = session_id
         self.mode = mode if mode is not None else MountMode.EXEC
         self.workspace_kwargs = dict(workspace_kwargs or {})
-        raw_resources = (
-            resources if resources is not None else {DEFAULT_MOUNT: RAMResource()}
-        )
+        raw_resources = resources if resources is not None else {DEFAULT_MOUNT: RAMVFS()}
         # Least-privilege mounts: the root scratch mount stays EXEC (it must be
         # writable and run ``python3``), but any *other* bare mount defaults to
         # READ (read-only), so a destructive command/snippet cannot corrupt a
@@ -1590,26 +1592,43 @@ class MirageSandbox(Sandbox):
             },
         }
 
+    def files_session(self) -> Dict[str, Any]:
+        """The ``Workspace.shell`` session arguments of a file-tool command.
+
+        Mirage runs one line per session at a time (mirage-ai 0.0.7+), so a
+        file tool a snippet calls while its own line runs would wait on that
+        line forever. File tools therefore run on a session of their own,
+        created on first use, in the working directory of the sandbox's
+        session so relative paths resolve the same way.
+        """
+        session_id = f"{self.session_id}-files"
+        try:
+            self.workspace.get_session(session_id)
+        except KeyError:
+            self.workspace.create_session(session_id)
+        return {
+            "session_id": session_id,
+            "cwd": self.workspace.get_session(self.session_id).cwd,
+        }
+
     async def execute(
         self,
         command: str,
         *,
         stdin: Optional[bytes] = None,
         timeout: Optional[float] = None,
-        record: bool = False,
+        files: bool = False,
     ):
         """Run one Mirage command; return ``(stdout, stderr, exit_code)``.
 
         A ``timeout`` (seconds) bounds the whole command and, on expiry,
         surfaces as ``exit_code = 124`` with a ``TimeoutError`` on stderr,
-        mirroring the shell ``timeout`` convention. Mirage logs every recorded
-        line in the workspace's ``/.bash_history`` view, so only commands the
-        agent itself typed are recorded (``record=True``); the bootstrap
-        launch and file-tool plumbing would otherwise fill it.
+        mirroring the shell ``timeout`` convention. No command is recorded in
+        Mirage's ``/.bash_history`` view. ``files`` runs a file-tool command on
+        the file tools' own session (see `files_session`).
         """
-        coro = self.workspace.execute(
-            command, session_id=self.session_id, stdin=stdin, record=record
-        )
+        session = self.files_session() if files else {"session_id": self.session_id}
+        coro = self.workspace.shell(command, stdin=stdin, record=False, **session)
         try:
             if timeout is not None:
                 result = await asyncio.wait_for(coro, timeout=timeout)
@@ -1636,9 +1655,9 @@ class MirageSandbox(Sandbox):
         budget runs out, so the workspace (and its mount) is rebuilt and the
         command retried once. ``make_command`` receives the confinement config,
         recomputed per attempt because a rebuild creates a fresh mount.
-        ``confine_shell`` marks an agent-typed shell command: its line is
-        recorded in history, and the config is advertised through
-        ``active_confine`` so any ``python3`` it spawns self-confines.
+        ``confine_shell`` marks an agent-typed shell command: the config is
+        advertised through ``active_confine`` so any ``python3`` it spawns
+        self-confines.
         """
         heals = 0
         while True:
@@ -1770,7 +1789,7 @@ class MirageSandbox(Sandbox):
             )
             try:
                 stdout, stderr, exit_code = await self.execute(
-                    command, stdin=stdin, timeout=timeout, record=confine_shell
+                    command, stdin=stdin, timeout=timeout
                 )
             finally:
                 if token is not None:
@@ -2122,7 +2141,7 @@ class MirageSandbox(Sandbox):
             data = data.encode("utf-8")
         parent = posixpath.dirname(path.rstrip("/")) or "/"
         command = "mkdir -p %s && cat > %s" % (shlex.quote(parent), shlex.quote(path))
-        _, stderr, exit_code = await self.execute(command, stdin=bytes(data))
+        _, stderr, exit_code = await self.execute(command, stdin=bytes(data), files=True)
         if exit_code != 0:
             return stderr.strip() or f"failed to write {path}"
         return None
@@ -2218,7 +2237,7 @@ class MirageSandbox(Sandbox):
 
         Safe to call from any context (with or without a running event loop):
         the FUSE mount is released synchronously via Mirage's
-        ``close_sync_parts`` when a loop is already running, and via the full async
+        ``remove_fuse_mount`` when a loop is already running, and via the full async
         ``close`` otherwise. Teardown never raises.
         """
         self.killed = True
@@ -2286,16 +2305,16 @@ class MirageSandbox(Sandbox):
 
         ``resources`` overrides the mounts for the restored workspace (required
         when the original mounts carried redacted credentials); by default a
-        fresh in-memory ``RAMResource`` is mounted at ``/`` and the snapshot's
+        fresh in-memory ``RAMVFS`` is mounted at ``/`` and the snapshot's
         files are loaded into it. The restored sandbox is confined, and fails
         closed, exactly like a new one; pass ``confine=False`` to opt out.
         """
         require_mirage()
         payload = json.loads(data.decode("utf-8"))
-        mounts = resources if resources is not None else {DEFAULT_MOUNT: RAMResource()}
+        mounts = resources if resources is not None else {DEFAULT_MOUNT: RAMVFS()}
         ws = resolve_sync(
             Workspace.load(
-                io.BytesIO(base64.b64decode(payload["workspace"])), resources=mounts
+                io.BytesIO(base64.b64decode(payload["workspace"])), mounts=mounts
             )
         )
         # Same as `fork`: a loaded workspace comes back without the runtime
@@ -2579,7 +2598,7 @@ class MirageSandbox(Sandbox):
                     skipped.add(path)
                     continue
             _, stderr, exit_code = run_async_from_sync(
-                self.execute("rm -f -- %s" % shlex.quote(path))
+                self.execute("rm -f -- %s" % shlex.quote(path), files=True)
             )
             if exit_code != 0:
                 failed[path] = stderr.strip() or f"failed to delete {path}"
@@ -2638,7 +2657,9 @@ class MirageSandbox(Sandbox):
         Returns the decoded text (Mirage decodes bytes as UTF-8, replacing
         undecodable sequences); these tools target text files.
         """
-        stdout, _, exit_code = await self.execute("cat -- %s" % shlex.quote(path))
+        stdout, _, exit_code = await self.execute(
+            "cat -- %s" % shlex.quote(path), files=True
+        )
         return stdout if exit_code == 0 else None
 
     async def list_files(

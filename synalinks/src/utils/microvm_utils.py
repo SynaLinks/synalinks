@@ -854,14 +854,15 @@ class FsBridge:
         self._server.close()
 
 
-async def run_in_microvm(vm: Dict[str, Any], args) -> Any:
-    """Run one Mirage ``RunArgs`` in a fresh microVM; return a ``RunResult``.
+async def run_in_microvm(vm: Dict[str, Any], program, ctx) -> Any:
+    """Run one Mirage Python ``Program`` in a fresh microVM; return a ``RunResult``.
 
     ``vm`` holds the launch settings from `prepare_microvm` plus the sandbox's
     live ``hostdir``, ``fs`` (the ``MirageFS`` of its workspace), ``network``,
-    ``cpus`` and ``memory_mb``.
+    ``cpus`` and ``memory_mb``. ``program`` and ``ctx`` are what Mirage's
+    ``LocalRuntime.interpret`` receives.
     """
-    from mirage.runtime.python.bootstrap import bootstrap
+    from mirage.runtime.python.execution import prepare_source
     from mirage.runtime.python.flags import init_argv
     from mirage.runtime.types import RunResult
 
@@ -872,10 +873,10 @@ async def run_in_microvm(vm: Dict[str, Any], args) -> Any:
     bridge = None
     try:
         stdin_path = None
-        if args.stdin:
+        if program.stdin:
             stdin_path = os.path.join(jobdir, "stdin")
             with open(stdin_path, "wb") as fh:
-                fh.write(args.stdin)
+                fh.write(program.stdin)
         # Each live host-tool socket gets a vsock port; the guest entry proxies
         # a same-named guest socket onto it.
         sockets = sorted(glob.glob(os.path.join(hostdir, "rpc_*.sock")))
@@ -888,13 +889,17 @@ async def run_in_microvm(vm: Dict[str, Any], args) -> Any:
         bridge = FsBridge(vm["fs"], fs_sock)
         job = {
             "argv": [
-                *init_argv(args.flags),
+                *init_argv(ctx.flags),
                 "-c",
-                bootstrap(args.code, args.prog),
-                *args.args,
+                prepare_source(program, ctx.cwd),
+                *program.args,
             ],
             # The job's own environment only: never the host's.
-            "env": {"PATH": "/usr/local/bin:/usr/bin:/bin", "HOME": "/tmp", **args.env},
+            "env": {
+                "PATH": "/usr/local/bin:/usr/bin:/bin",
+                "HOME": "/tmp",
+                **(ctx.env or {}),
+            },
             "stdin": stdin_path,
             "vsock": vsock,
             "fs_port": fs_port,

@@ -23,7 +23,7 @@ dependencies = [
   "click",
   "datasets",
   "docstring-parser",
-  "duckdb",
+  "duckdb>=2.0.0",
   "fastmcp>=4",
   "graphviz",
   "greenlet",
@@ -37,7 +37,7 @@ dependencies = [
   # E2B's chart extraction for the sandbox's Result.chart (MIT).
   "e2b-charts>=1.0.0",
   "lancedb>=0.30.2",
-  "litellm==1.106.0",
+  "litellm>=1.106.0",
   "markdown-it-py",
   "matplotlib",
   "mcp>=2",
@@ -51,7 +51,7 @@ dependencies = [
   # needs to mount the virtual filesystem it pivots into. Missing libfuse is
   # detected by `_confinement_available` (synalinks/src/sandboxes/_confinement.py)
   # and fails closed under `require_confinement`.
-  "mirage-ai[fuse]>=0.0.6",
+  "mirage-ai[fuse]>=0.0.7",
   "optree",
   "orjson",
   "pillow",
