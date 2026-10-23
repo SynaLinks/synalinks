@@ -867,12 +867,12 @@ class MirageSandboxTest(_SandboxTestCase):
         self.assertEqual(caps["host_runtimes"], ["local"])
 
     async def test_non_root_mounts_default_to_read_only(self):
-        from mirage import RAMResource
+        from mirage import RAMVFS
 
         sandbox = MirageSandbox(
             timeout=_TIMEOUT,
             confine=False,
-            resources={"/": RAMResource(), "/data": RAMResource()},
+            resources={"/": RAMVFS(), "/data": RAMVFS()},
         )
         caps = sandbox.granted_capabilities()
         # root scratch stays writable+exec; an external mount is read-only.
@@ -880,13 +880,13 @@ class MirageSandboxTest(_SandboxTestCase):
         self.assertEqual(caps["mounts"]["/data"], "READ")
 
     async def test_explicit_mount_mode_tuple_is_honored(self):
+        from mirage import RAMVFS
         from mirage import MountMode
-        from mirage import RAMResource
 
         sandbox = MirageSandbox(
             timeout=_TIMEOUT,
             confine=False,
-            resources={"/": RAMResource(), "/rw": (RAMResource(), MountMode.WRITE)},
+            resources={"/": RAMVFS(), "/rw": (RAMVFS(), MountMode.WRITE)},
         )
         self.assertEqual(sandbox.granted_capabilities()["mounts"]["/rw"], "WRITE")
 
@@ -904,11 +904,11 @@ class MirageSandboxTest(_SandboxTestCase):
                 # The graceful strip-with-a-warning path; fail-closed (the
                 # default) raises instead, covered by the next test.
                 require_confinement=False,
-                workspace_kwargs={"runtimes": ["vfs", "not-a-vouched-runtime"]},
+                workspace_kwargs={"runtimes": ["workspace", "not-a-vouched-runtime"]},
             )
         self.assertEqual(sandbox.granted_capabilities()["host_runtimes"], [])
         # The vouched entry survives; only the unknown one is removed.
-        self.assertEqual(sandbox.workspace_kwargs["runtimes"], ["vfs"])
+        self.assertEqual(sandbox.workspace_kwargs["runtimes"], ["workspace"])
         sandbox.close()
 
     @unittest.skipUnless(_NAMESPACES_OK, _NS_REASON)
@@ -1046,6 +1046,17 @@ class MirageSandboxTest(_SandboxTestCase):
         self.assertEqual(page["start_line"], 2)
         self.assertEqual(page["end_line"], 3)
         self.assertTrue(page["truncated"])
+
+    async def test_file_tools_resolve_relative_paths_in_the_shell_cwd(self):
+        sandbox = MirageSandbox(timeout=_TIMEOUT, confine=False)
+        result = await sandbox.run_bash("mkdir -p /work && cd /work")
+        self.assertEqual(result["exit_code"], 0, result["stderr"])
+        self.assertIsNone(await sandbox.write("notes.txt", "hi\n"))
+        self.assertEqual(await sandbox.read_text("/work/notes.txt"), "hi\n")
+        self.assertEqual(await sandbox.read_text("notes.txt"), "hi\n")
+        # The file tools' session never moves the shell's working directory.
+        result = await sandbox.run_bash("pwd")
+        self.assertEqual(result["stdout"].strip(), "/work")
 
     async def test_list_files_glob(self):
         sandbox = MirageSandbox(timeout=_TIMEOUT)
@@ -1661,20 +1672,20 @@ class ShellPythonConfinementTest(_SandboxTestCase):
         from synalinks.src.sandboxes import mirage_sandbox as ms
 
         self.assertTrue(ms.local_runtime_supported())
-        class_run = LocalRuntime.run
+        class_interpret = LocalRuntime.interpret
         sandbox = MirageSandbox(timeout=_TIMEOUT, confine=False)
         other = MirageSandbox(timeout=_TIMEOUT, confine=False)
         self.assertTrue(ms.confine_shell_python(sandbox.workspace))
         runtime = sandbox.workspace._registry.runtime_bindings["python3"]
-        self.assertTrue(runtime.run.confines_shell_python)
+        self.assertTrue(runtime.interpret.confines_shell_python)
         # Idempotent, and scoped to this one workspace.
-        wrapped = runtime.run
+        wrapped = runtime.interpret
         self.assertTrue(ms.confine_shell_python(sandbox.workspace))
         bindings = sandbox.workspace._registry.runtime_bindings
-        self.assertIs(bindings["python3"].run, wrapped)
-        self.assertIs(LocalRuntime.run, class_run)
-        other_run = other.workspace._registry.runtime_bindings["python3"].run
-        self.assertFalse(getattr(other_run, "confines_shell_python", False))
+        self.assertIs(bindings["python3"].interpret, wrapped)
+        self.assertIs(LocalRuntime.interpret, class_interpret)
+        other_interpret = other.workspace._registry.runtime_bindings["python3"].interpret
+        self.assertFalse(getattr(other_interpret, "confines_shell_python", False))
 
     async def test_wrapped_runtime_passes_code_through_when_inactive(self):
         from synalinks.src.sandboxes import mirage_sandbox as ms

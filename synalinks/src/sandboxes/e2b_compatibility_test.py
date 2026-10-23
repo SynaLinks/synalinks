@@ -543,6 +543,21 @@ class E2BBehaviourTest(testing.TestCase):
         self.assertEqual((result.stdout, handle.exit_code), ("hello world", 0))
         self.assertEqual(await sandbox.commands.list(), [])
 
+    async def test_background_command_with_streamed_input(self):
+        sandbox = await self.sandbox()
+        handle = await sandbox.commands.run("cat", background=True, stdin=True)
+        async with sandbox.commands.stream_input(handle.pid) as stream:
+            await stream.send("hello ")
+            await stream.send(b"world")
+        result = await handle.wait()
+        self.assertEqual((result.stdout, handle.exit_code), ("hello world", 0))
+        with self.assertRaises(ours.SandboxException):
+            await stream.send("late")
+        with self.assertRaises(ours.NotFoundException):
+            await sandbox.commands.stream_input(12345).send("x")
+        with self.assertRaises(ours.NotSupportedException):
+            sandbox.pty.stream_input(handle.pid)
+
     async def test_background_command_kill_and_failure(self):
         sandbox = await self.sandbox()
         handle = await sandbox.commands.run("cat", background=True, stdin=True)

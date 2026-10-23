@@ -716,7 +716,7 @@ class DuckDBAdapter(DatabaseAdapter):
                 SELECT COUNT(*) 
                 FROM information_schema.tables 
                 WHERE table_schema='{MAIN_TABLE}' AND table_name='{table_name}';
-            """).fetchone()[0]
+            """).fetchall()[0][0]
 
             if exists:
                 return
@@ -831,7 +831,7 @@ class DuckDBAdapter(DatabaseAdapter):
                 f"SELECT 1 FROM {table_name} "
                 f"WHERE {self.vss_key} IS NOT NULL"
                 f")"
-            ).fetchone()[0]
+            ).fetchall()[0][0]
             if not has_embeddings:
                 return
 
@@ -1271,7 +1271,7 @@ class DuckDBAdapter(DatabaseAdapter):
                 f"SELECT COUNT(*) FROM information_schema.tables "
                 f"WHERE table_schema='{MAIN_TABLE}' AND table_name=?",
                 [old_name],
-            ).fetchone()[0]
+            ).fetchall()[0][0]
         if not exists:
             raise ValueError(
                 f"rename(): no table named {old_name!r} found in the knowledge base."
@@ -1362,12 +1362,11 @@ class DuckDBAdapter(DatabaseAdapter):
             placeholders = ", ".join(["?"] * len(ids))
             try:
                 sql = f"SELECT * FROM {table} WHERE {id_key} IN ({placeholders})"
-                cursor = con.execute(sql, ids)
+                rows = con.sql(sql, params=ids).to_arrow_table().to_pylist()
             except Exception as e:
                 warnings.warn(f"get(): SELECT from '{table}' failed. ({e})")
                 return None if return_single else results
 
-            rows = cursor.arrow().read_all().to_pylist()
             if not rows:
                 return None if return_single else results
 
@@ -1422,8 +1421,7 @@ class DuckDBAdapter(DatabaseAdapter):
         with self._connect(read_only=True) as con:
             sql = f"SELECT * FROM {table} LIMIT ? OFFSET ?"
             try:
-                cursor = con.execute(sql, [limit, offset])
-                rows = cursor.arrow().read_all().to_pylist()
+                rows = con.sql(sql, params=[limit, offset]).to_arrow_table().to_pylist()
             except duckdb.Error as e:
                 warnings.warn(f"Failed to read table '{table}': {e}")
                 return []
@@ -1532,7 +1530,7 @@ class DuckDBAdapter(DatabaseAdapter):
                 "SELECT COUNT(*) FROM information_schema.tables "
                 f"WHERE table_schema='{MAIN_TABLE}' AND table_name=?",
                 [table],
-            ).fetchone()[0]
+            ).fetchall()[0][0]
         if not exists:
             return False
 
@@ -1589,7 +1587,7 @@ class DuckDBAdapter(DatabaseAdapter):
                         f"got {stmt.type.name}."
                     )
         with self._connect(read_only=read_only) as con:
-            arrow_table = con.execute(sql, params or []).arrow().read_all()
+            arrow_table = con.sql(sql, params=params or None).to_arrow_table()
         return format_search_results(arrow_table, output_format)
 
     @contextmanager
@@ -1687,7 +1685,7 @@ class DuckDBAdapter(DatabaseAdapter):
                 self._hnsw_ef_search_override(con, ef_search),
             ):
                 try:
-                    arrow_table = con.execute(sql, params).arrow().read_all()
+                    arrow_table = con.sql(sql, params=params).to_arrow_table()
                 except Exception as e:
                     raise RuntimeError(f"Vector search failed for table '{label}': {e}")
             return format_search_results(arrow_table, output_format)
@@ -1714,7 +1712,7 @@ class DuckDBAdapter(DatabaseAdapter):
                 params.append(k)
 
                 try:
-                    rows = con.execute(sql, params).arrow().read_all().to_pylist()
+                    rows = con.sql(sql, params=params).to_arrow_table().to_pylist()
                 except Exception as e:
                     raise RuntimeError(f"Vector search failed for table '{label}': {e}")
 
@@ -1836,7 +1834,7 @@ class DuckDBAdapter(DatabaseAdapter):
         with self._connect(read_only=True) as con:
             for text in texts:
                 try:
-                    rows = con.execute(sql, [text, k]).arrow().read_all().to_pylist()
+                    rows = con.sql(sql, params=[text, k]).to_arrow_table().to_pylist()
                 except Exception as e:
                     raise RuntimeError(f"FTS query failed for table '{label}': {e}")
                 for row in rows:
@@ -1913,7 +1911,7 @@ class DuckDBAdapter(DatabaseAdapter):
 
         with self._connect(read_only=True) as con:
             try:
-                arrow_table = con.execute(sql, params).arrow().read_all()
+                arrow_table = con.sql(sql, params=params).to_arrow_table()
             except Exception as e:
                 raise RuntimeError(f"Regex query failed for table '{label}': {e}")
         return format_search_results(arrow_table, output_format)

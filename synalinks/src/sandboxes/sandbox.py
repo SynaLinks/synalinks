@@ -1138,6 +1138,38 @@ class Git:
         raise not_supported("git")
 
 
+class CommandInputHandle:
+    """E2B's ordered input handle to a background command's stdin, from
+    ``sandbox.commands.stream_input(pid)``: ``send`` writes in order, and
+    ``close`` (also on leaving an ``async with``) closes the stdin."""
+
+    def __init__(self, commands: "Commands", pid: int):
+        self.commands = commands
+        self.pid = pid
+        self.closed = False
+
+    async def send(self, data: Union[str, bytes]) -> None:
+        """Write ``data`` to the command's stdin."""
+        if self.closed:
+            raise SandboxException(
+                "Cannot send input after the input handle is closed. Open a new one "
+                "with `sandbox.commands.stream_input(pid)`."
+            )
+        await self.commands.send_stdin(self.pid, data)
+
+    async def close(self) -> None:
+        """Close the command's stdin (once)."""
+        if not self.closed:
+            self.closed = True
+            await self.commands.close_stdin(self.pid)
+
+    async def __aenter__(self) -> "CommandInputHandle":
+        return self
+
+    async def __aexit__(self, exc_type, exc_value, traceback) -> None:
+        await self.close()
+
+
 @synalinks_export("synalinks.sandboxes.Pty")
 class Pty:
     """``sandbox.pty``, E2B's pseudo-terminal API. Every method has E2B's
@@ -1153,6 +1185,9 @@ class Pty:
     async def send_stdin(
         self, pid: int, data: bytes, request_timeout: Optional[float] = None
     ) -> None:
+        raise not_supported("pty")
+
+    def stream_input(self, pid: int, *, timeout: Optional[float] = 60):
         raise not_supported("pty")
 
     async def create(
@@ -1391,6 +1426,15 @@ class Commands:
     ) -> None:
         """Close the stdin of the background command ``pid``."""
         await self.handle(pid).close_stdin()
+
+    def stream_input(
+        self, pid: int, *, timeout: Optional[float] = 60
+    ) -> CommandInputHandle:
+        """An ordered input handle to the stdin of the background command
+        ``pid``. A missing command surfaces on ``send`` or ``close``, as in E2B;
+        ``timeout`` is accepted for E2B compatibility (a local stdin write does
+        not wait)."""
+        return CommandInputHandle(self, pid)
 
     async def connect(
         self,
