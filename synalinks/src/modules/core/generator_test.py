@@ -436,6 +436,32 @@ class GeneratorModuleTest(testing.TestCase):
         print(msgs.prettify_json())
         self.assertTrue(len(msgs.messages) == 2)
 
+    def test_format_message_without_instructions_nor_schema_has_no_instructions_block(
+        self,
+    ):
+        # A generator with no structured output (a tool-calling one: the
+        # answer is the chat message, tool calls included) gets no default
+        # instructions, since those are written from the output schema's
+        # keys. The system message then has no `<instructions>` block at
+        # all, rather than one reading `None`.
+        class Query(DataModel):
+            query: str
+
+        language_model = LanguageModel(model="ollama_chat/deepseek-r1")
+
+        msgs = Generator(
+            language_model=language_model,
+            tool_schemas=[
+                {
+                    "type": "function",
+                    "function": {"name": "get_weather", "parameters": {}},
+                }
+            ],
+        ).format_messages(Query(query="What is the weather in Toulouse?"))
+        system_prompt = msgs.messages[0].content
+        self.assertNotIn("<instructions>", system_prompt)
+        self.assertNotIn("None", system_prompt)
+
     def test_format_message_with_examples(self):
         class Query(DataModel):
             query: str
