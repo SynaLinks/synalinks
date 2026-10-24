@@ -19,6 +19,7 @@ from typing import Union
 
 from pydantic import ConfigDict
 from pydantic import Field
+from pydantic import field_validator
 
 from synalinks.src.api_export import synalinks_export
 from synalinks.src.backend.pydantic.common import ChatMessage
@@ -41,12 +42,17 @@ class ChatCompletionFunctionCall(DataModel):
     name: str = Field(
         description="The name of the function to call",
     )
-    arguments: Union[str, Dict[str, Any]] = Field(
-        description=(
-            "JSON-encoded arguments for the function call (a parsed dict "
-            "is also accepted and kept as-is by the converters)"
-        ),
+    arguments: str = Field(
+        description="JSON-encoded arguments for the function call",
     )
+
+    @field_validator("arguments", mode="before")
+    @classmethod
+    def encode_arguments(cls, v):
+        """JSON-encode arguments given as a dict (or a list)."""
+        if isinstance(v, (dict, list)):
+            return json.dumps(v)
+        return v
 
 
 @synalinks_export(
@@ -522,15 +528,13 @@ def to_chat_completion_message(message):
     """Convert a synalinks `ChatMessage` to a `ChatCompletionMessage`.
 
     Performs the structural changes needed to match the OpenAI wire
-    format: each `ToolCall`'s `function.arguments` dict is JSON-encoded
-    into a string, and `Dict` content (the synalinks tool-result payload
-    extension) is JSON-encoded to a string since OpenAI's `tool` role
-    requires string content. The synalinks `reasoning_content` /
+    format: `Dict` content (the synalinks tool-result payload extension)
+    is JSON-encoded to a string since OpenAI's `tool` role requires string
+    content; tool-call `arguments`, a JSON-encoded string on both sides,
+    pass through. The synalinks `reasoning_content` /
     `thinking_blocks` fields map onto the wire `reasoning_content` /
     `thinking_blocks` (litellm provider extensions) so reasoning survives a
     round-trip, and `name`/`refusal`/`audio` are carried through verbatim.
-    A tool call whose `arguments` is already a JSON-encoded string (the
-    optional wire form) is passed through without re-encoding.
     Role handling mirrors the language-model wire path: an assistant
     message with empty content emits `content=null`, and the legacy
     `function` role carries its name in `name` (falling back to
@@ -557,11 +561,7 @@ def to_chat_completion_message(message):
                 type="function",
                 function=ChatCompletionFunctionCall(
                     name=tc.function.name,
-                    arguments=(
-                        tc.function.arguments
-                        if isinstance(tc.function.arguments, str)
-                        else json.dumps(tc.function.arguments)
-                    ),
+                    arguments=tc.function.arguments,
                 ),
             )
             for tc in message.tool_calls
@@ -622,10 +622,9 @@ def to_chat_completion_messages(messages):
 def from_chat_completion_message(message):
     """Convert a `ChatCompletionMessage` to a synalinks `ChatMessage`.
 
-    Each tool call's `function.arguments` conversion is type-driven: a
-    string is the wire encoding and is parsed back into a dict, while an
-    already-parsed dict is kept as-is (the `{id, type, function}` envelope
-    is preserved either way). The legacy `function` role is mapped to
+    Each tool call keeps its `{id, type, function}` envelope, its
+    `arguments` the JSON-encoded string they are on both sides. The legacy
+    `function` role is mapped to
     `tool` (its `name` doubles as the `tool_call_id` fallback so the
     result stays linked to its call). The `reasoning_content` /
     `thinking_blocks` provider extensions are mapped back onto the
@@ -637,10 +636,6 @@ def from_chat_completion_message(message):
 
     Returns:
         (ChatMessage): The synalinks message.
-
-    Raises:
-        json.JSONDecodeError: If a tool call's `arguments` string is
-            non-empty and not valid JSON.
     """
     role = message.role
     tool_call_id = message.tool_call_id
@@ -651,16 +646,13 @@ def from_chat_completion_message(message):
     if message.tool_calls:
         tool_calls = []
         for tc in message.tool_calls:
-            arguments = tc.function.arguments
-            if isinstance(arguments, str):
-                arguments = json.loads(arguments) if arguments else {}
             tool_calls.append(
                 ToolCall(
                     id=tc.id,
                     type="function",
                     function=ToolCallFunction(
                         name=tc.function.name,
-                        arguments=arguments,
+                        arguments=tc.function.arguments,
                     ),
                 )
             )

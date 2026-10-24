@@ -202,8 +202,8 @@ def _message_to_wire(message):
     wire-format dict.
 
     Delegates to `to_chat_completion_message`, the single source of truth
-    for the synalinks<->OpenAI mapping (tool-call envelope wrapping with
-    `arguments` JSON-encoded, dict content JSON-encoded on tool results,
+    for the synalinks<->OpenAI mapping (tool-call envelopes with their
+    JSON-encoded `arguments`, dict content JSON-encoded on tool results,
     and `thinking`/`thinking_blocks` mapped onto `reasoning_content`/
     `thinking_blocks` for DeepSeek- and Anthropic-style providers). Unset
     fields are dropped, but `content` is always emitted (as null when
@@ -1309,23 +1309,26 @@ class LanguageModel(Module):
                     if reasoning_content and schema_had_thinking:
                         json_instance["thinking"] = reasoning_content
                 else:
-                    # Parse OpenAI's nested tool-call envelope into the
-                    # synalinks `ToolCall` shape (`{id, type, function:
-                    # {name, arguments}}`), decoding the JSON `arguments`
-                    # string back into a dict.
+                    # OpenAI's nested tool-call envelope is the synalinks
+                    # `ToolCall` shape (`{id, type, function: {name,
+                    # arguments}}`), the `arguments` the JSON-encoded string
+                    # the model wrote: parsed when the tool is called.
                     parsed_tool_calls = None
                     if wire_tool_calls:
                         parsed_tool_calls = []
                         for tc in wire_tool_calls:
                             fn = _safe_get(tc, "function")
                             args = _safe_get(fn, "arguments", "")
+                            if isinstance(args, (dict, list)):
+                                args = orjson.dumps(args).decode()
                             parsed_tool_calls.append(
                                 {
                                     "id": _safe_get(tc, "id"),
                                     "type": "function",
                                     "function": {
                                         "name": _safe_get(fn, "name"),
-                                        "arguments": orjson.loads(args) if args else {},
+                                        # A call without arguments is sent back as `{}`.
+                                        "arguments": args or "{}",
                                     },
                                 }
                             )
