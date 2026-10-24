@@ -108,13 +108,11 @@ class LanguageModelTest(testing.TestCase):
     async def test_structured_output_via_tool_call_reads_the_arguments(
         self, mock_completion
     ):
-        # openrouter (like groq, cohere, bedrock) is asked for structured
-        # output as a forced `structured_output` tool call, so the JSON comes
-        # back as the call's arguments and `content` is empty. It used to be
-        # read from `content`, fail to parse, and score every row as None.
-        # Anthropic-backed ids are the one exception to the forced choice and
-        # have their own test below; any other vendor exercises this path.
-        language_model = LanguageModel(model="openrouter/openai/gpt-4o-mini")
+        # A reply can carry the structured output as a tool call (e.g. with a
+        # caller's own tool payload): the JSON is the call's arguments and
+        # `content` is empty. It used to be read from `content`, fail to parse,
+        # and score every row as None.
+        language_model = LanguageModel(model="bedrock/meta.llama3-70b-instruct-v1:0")
 
         class Answer(DataModel):
             answer: str
@@ -145,59 +143,117 @@ class LanguageModelTest(testing.TestCase):
         result = await language_model(messages, schema=Answer.get_schema())
         self.assertEqual(result.get_json(), {"answer": "B"})
 
-        # The tool's `parameters` is the whole JSON Schema object, not its
-        # bare property map.
-        tool = mock_completion.call_args.kwargs["tools"][0]["function"]
-        self.assertEqual(tool["name"], "structured_output")
-        self.assertEqual(tool["parameters"]["type"], "object")
-        self.assertIn("answer", tool["parameters"]["properties"])
+    @patch("litellm.acompletion")
+    async def test_openrouter_requires_endpoints_with_structured_outputs(
+        self, mock_completion
+    ):
+        # OpenRouter constrains the reply natively, but by default may route to
+        # an endpoint that ignores `response_format` and answers in prose.
+        language_model = LanguageModel(model="openrouter/anthropic/claude-fable-5.1")
+
+        class Answer(DataModel):
+            answer: str
+
+        mock_completion.return_value = {
+            "choices": [{"message": {"content": '{"answer": "B"}'}}]
+        }
+        messages = ChatMessages(
+            messages=[ChatMessage(role=ChatRole.USER, content="Pick a letter.")]
+        )
+        result = await language_model(messages, schema=Answer.get_schema())
+        self.assertEqual(result.get_json(), {"answer": "B"})
+
+        kwargs = mock_completion.call_args.kwargs
+        self.assertNotIn("tools", kwargs)
+        response_format = kwargs["response_format"]
+        self.assertEqual(response_format["type"], "json_schema")
+        self.assertTrue(response_format["json_schema"]["strict"])
+        self.assertIn("answer", response_format["json_schema"]["schema"]["properties"])
+        self.assertEqual(kwargs["provider"], {"require_parameters": True})
+
+        # The caller's own routing preferences are kept.
+        language_model = LanguageModel(
+            model="openrouter/anthropic/claude-fable-5.1",
+            provider={"order": ["anthropic"]},
+        )
+        await language_model(messages, schema=Answer.get_schema())
         self.assertEqual(
-            mock_completion.call_args.kwargs["tool_choice"]["function"]["name"],
-            "structured_output",
+            mock_completion.call_args.kwargs["provider"],
+            {"order": ["anthropic"], "require_parameters": True},
         )
 
     @patch("litellm.acompletion")
-    async def test_anthropic_via_openrouter_is_not_forced_to_call_the_tool(
-        self, mock_completion
-    ):
-        # Anthropic's newest models reject a forced tool choice with a 400
-        # ("type `tool` and `any` are not supported for this model"), so every
-        # cell of a sweep over `openrouter/anthropic/...` failed. They still
-        # call the tool when allowed to choose it, so the tool itself stays.
-        language_model = LanguageModel(model="openrouter/anthropic/claude-sonnet-4.5")
+    async def test_groq_asks_for_a_strict_json_schema(self, mock_completion):
+        # litellm sends it natively to strict-mode models, and falls back to a
+        # forced tool call itself for the others.
+        language_model = LanguageModel(model="groq/openai/gpt-oss-120b")
 
         class Answer(DataModel):
             answer: str
 
         mock_completion.return_value = {
-            "choices": [
-                {
-                    "message": {
-                        "content": None,
-                        "tool_calls": [
-                            {
-                                "id": "call_1",
-                                "type": "function",
-                                "function": {
-                                    "name": "structured_output",
-                                    "arguments": '{"answer": "B"}',
-                                },
-                            }
-                        ],
-                    }
-                }
-            ]
+            "choices": [{"message": {"content": '{"answer": "B"}'}}]
         }
-
         messages = ChatMessages(
             messages=[ChatMessage(role=ChatRole.USER, content="Pick a letter.")]
         )
         result = await language_model(messages, schema=Answer.get_schema())
         self.assertEqual(result.get_json(), {"answer": "B"})
+        kwargs = mock_completion.call_args.kwargs
+        self.assertNotIn("tools", kwargs)
+        self.assertEqual(kwargs["response_format"]["type"], "json_schema")
+        self.assertTrue(kwargs["response_format"]["json_schema"]["strict"])
 
-        self.assertEqual(mock_completion.call_args.kwargs["tool_choice"], "auto")
-        tool = mock_completion.call_args.kwargs["tools"][0]["function"]
-        self.assertEqual(tool["name"], "structured_output")
+    @patch("litellm.acompletion")
+    async def test_cohere_sends_its_schema_in_the_body(self, mock_completion):
+        # Cohere's v2 chat constrains the reply to `response_format.schema`,
+        # which litellm refuses as a parameter, so it travels in `extra_body`.
+        language_model = LanguageModel(
+            model="cohere/command-a-03-2025", extra_body={"safety_mode": "OFF"}
+        )
+
+        class Answer(DataModel):
+            answer: str
+
+        mock_completion.return_value = {
+            "choices": [{"message": {"content": '{"answer": "B"}'}}]
+        }
+        messages = ChatMessages(
+            messages=[ChatMessage(role=ChatRole.USER, content="Pick a letter.")]
+        )
+        result = await language_model(messages, schema=Answer.get_schema())
+        self.assertEqual(result.get_json(), {"answer": "B"})
+        kwargs = mock_completion.call_args.kwargs
+        self.assertNotIn("tools", kwargs)
+        self.assertNotIn("response_format", kwargs)
+        self.assertEqual(kwargs["extra_body"]["safety_mode"], "OFF")
+        response_format = kwargs["extra_body"]["response_format"]
+        self.assertEqual(response_format["type"], "json_object")
+        self.assertIn("answer", response_format["schema"]["properties"])
+
+    @patch("litellm.acompletion")
+    async def test_bedrock_asks_for_a_strict_json_schema(self, mock_completion):
+        # litellm maps it to bedrock's native `outputConfig.textFormat` where
+        # the model supports it, and falls back to a forced tool call itself.
+        language_model = LanguageModel(
+            model="bedrock/anthropic.claude-haiku-4-5-20251001-v1:0"
+        )
+
+        class Answer(DataModel):
+            answer: str
+
+        mock_completion.return_value = {
+            "choices": [{"message": {"content": '{"answer": "B"}'}}]
+        }
+        messages = ChatMessages(
+            messages=[ChatMessage(role=ChatRole.USER, content="Pick a letter.")]
+        )
+        result = await language_model(messages, schema=Answer.get_schema())
+        self.assertEqual(result.get_json(), {"answer": "B"})
+        kwargs = mock_completion.call_args.kwargs
+        self.assertNotIn("tools", kwargs)
+        self.assertEqual(kwargs["response_format"]["type"], "json_schema")
+        self.assertTrue(kwargs["response_format"]["json_schema"]["strict"])
 
     @patch("litellm.acompletion")
     async def test_a_caller_can_override_the_structured_output_payload(
@@ -206,45 +262,33 @@ class LanguageModelTest(testing.TestCase):
         # The branch picks a payload per provider, but a model it guesses wrong
         # about was impossible to drive: the branch overwrote whatever the
         # caller passed. Now it only fills in what is unset.
+        response_format = {"type": "json_object"}
         language_model = LanguageModel(
-            model="openrouter/openai/gpt-4o-mini", tool_choice="auto"
+            model="bedrock/meta.llama3-70b-instruct-v1:0",
+            response_format=response_format,
         )
 
         class Answer(DataModel):
             answer: str
 
         mock_completion.return_value = {
-            "choices": [
-                {
-                    "message": {
-                        "content": None,
-                        "tool_calls": [
-                            {
-                                "id": "call_1",
-                                "type": "function",
-                                "function": {
-                                    "name": "structured_output",
-                                    "arguments": '{"answer": "B"}',
-                                },
-                            }
-                        ],
-                    }
-                }
-            ]
+            "choices": [{"message": {"content": '{"answer": "B"}'}}]
         }
 
         messages = ChatMessages(
             messages=[ChatMessage(role=ChatRole.USER, content="Pick a letter.")]
         )
         await language_model(messages, schema=Answer.get_schema())
-        self.assertEqual(mock_completion.call_args.kwargs["tool_choice"], "auto")
+        self.assertEqual(
+            mock_completion.call_args.kwargs["response_format"], response_format
+        )
 
     @patch("litellm.acompletion")
     async def test_structured_output_tool_call_wins_over_a_content_preamble(
         self, mock_completion
     ):
-        # Some backends behind openrouter narrate before calling the tool.
-        language_model = LanguageModel(model="openrouter/openai/gpt-4o-mini")
+        # Some backends narrate before calling the tool.
+        language_model = LanguageModel(model="bedrock/meta.llama3-70b-instruct-v1:0")
 
         class Answer(DataModel):
             answer: str

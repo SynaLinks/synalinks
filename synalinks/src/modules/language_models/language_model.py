@@ -270,29 +270,6 @@ def _cached_message_to_chunks(json_instance):
     return iter([{"choices": [{"delta": delta}]}])
 
 
-# Anthropic's newest models refuse a forced tool choice outright ("tool_choice:
-# type `tool` and `any` are not supported for this model"), which is how every
-# `openrouter/...` id asks for structured output. Letting them choose the tool
-# works: they still call it, and the JSON still arrives as the call arguments.
-#
-# `response_format` is deliberately not the answer here. OpenRouter accepts it
-# and returns 200, but does not constrain the reply — both claude-opus-4.1 and
-# claude-fable-5.1 answer in prose — so the schema is silently lost rather than
-# refused, which is worse in a harness that scores the output.
-_FORCED_TOOL_CHOICE_REFUSED = ("openrouter/anthropic/",)
-
-
-def _structured_output_tool_choice(model):
-    """How to ask `model` for the `structured_output` tool.
-
-    Forced everywhere it is accepted, so a model cannot answer around the
-    schema; `"auto"` only for the ids known to reject being forced.
-    """
-    if model.startswith(_FORCED_TOOL_CHOICE_REFUSED):
-        return "auto"
-    return {"type": "function", "function": {"name": "structured_output"}}
-
-
 def _set_if_unset(kwargs, values):
     """Fill in `values` the caller did not set.
 
@@ -938,37 +915,13 @@ class LanguageModel(Module):
                         required.remove("thinking")
 
         if schema:
-            if (
-                self.model.startswith("groq")
-                or self.model.startswith("cohere")
-                or self.model.startswith("openrouter")
-                or self.model.startswith("bedrock")
-            ):
-                # Use a tool created on the fly. These providers either
-                # don't support native JSON schema (cohere, most bedrock
-                # models) or proxy heterogeneous backends with mixed
-                # support (openrouter), so tool-call structured output
-                # is the most reliable path. The tool's `parameters` is a
-                # JSON Schema object, so the whole schema goes in (its
-                # `type`, `required` and `additionalProperties` included),
-                # not just the property map. The reply then carries the
-                # JSON as the call's `arguments`; see `_do_call`.
-                _set_if_unset(
-                    kwargs,
-                    {
-                        "tools": [
-                            {
-                                "function": {
-                                    "name": "structured_output",
-                                    "description": "Generate a valid JSON output",
-                                    "parameters": schema,
-                                },
-                                "type": "function",
-                            }
-                        ],
-                        "tool_choice": _structured_output_tool_choice(self.model),
-                    },
+            if self.model.startswith("cohere"):
+                # Cohere's v2 chat constrains to `schema`; litellm refuses the param.
+                extra_body = dict(kwargs.get("extra_body") or {})
+                extra_body.setdefault(
+                    "response_format", {"type": "json_object", "schema": schema}
                 )
+                kwargs["extra_body"] = extra_body
             elif self.model.startswith("anthropic"):
                 # Use response_format for Anthropic - LiteLLM handles this correctly:
                 # - For newer models (sonnet-4.5, opus-4.1): uses native output_format
@@ -1003,11 +956,17 @@ class LanguageModel(Module):
                 or self.model.startswith("deepseek")
                 or self.model.startswith("together_ai")
                 or self.model.startswith("huggingface")
+                or self.model.startswith("openrouter")
+                or self.model.startswith("groq")
+                or self.model.startswith("bedrock")
             ):
                 # Use constrained structured output for openai/azure
-                # plus deepseek, together_ai and huggingface (TGI and
-                # Inference Providers) which expose OpenAI-compatible APIs
-                # that honor the same payload.
+                # plus deepseek, together_ai, huggingface (TGI and
+                # Inference Providers), openrouter, groq and bedrock, which
+                # honor the same payload (litellm maps it to bedrock's
+                # `outputConfig.textFormat`). For a groq or bedrock model
+                # without native support, litellm falls back to a forced tool
+                # call itself.
                 # OpenAI/Azure require the field  "additionalProperties"
                 # Also OpenAI/Azure disallow the field "description" in $ref
                 if "properties" in schema:
@@ -1027,6 +986,11 @@ class LanguageModel(Module):
                         }
                     },
                 )
+                if self.model.startswith("openrouter"):
+                    # Else an endpoint ignoring `response_format` answers in prose.
+                    provider = dict(kwargs.get("provider") or {})
+                    provider.setdefault("require_parameters", True)
+                    kwargs["provider"] = provider
             elif self.model.startswith("gemini"):
                 _set_if_unset(
                     kwargs,
@@ -1264,12 +1228,11 @@ class LanguageModel(Module):
                 if audio is not None and hasattr(audio, "model_dump"):
                     audio = audio.model_dump()
                 if schema and wire_tool_calls:
-                    # Structured output requested as a forced tool call
-                    # (groq, cohere, openrouter, bedrock): the JSON is the
+                    # A reply carrying the structured output as a tool call
+                    # (e.g. a caller's own tool payload): the JSON is the
                     # call's `arguments`, while `content` is empty or a
                     # short preamble. Read it wherever a tool call came
-                    # back, whatever the provider, so the request and the
-                    # parse never disagree on where the JSON lives.
+                    # back, whatever the provider.
                     arguments = _safe_get(
                         _safe_get(wire_tool_calls[0], "function"), "arguments", ""
                     )
