@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="200" height="200" viewBox="0 0 100 100" role="img" aria-label="Synalinks">
+  <title>Synalinks</title>
+  <!-- One line through two loops: a circle and a square, the neural and the symbolic. -->
+  <defs>
+    <linearGradient id="g" gradientUnits="userSpaceOnUse" x1="8" y1="30" x2="92" y2="70">
+      <stop offset="0" stop-color="#4e2275"/>
+      <stop offset="1" stop-color="#b07ddb"/>
+    </linearGradient>
+    <mask id="u" maskUnits="userSpaceOnUse" x="0" y="0" width="100" height="100"><rect width="100" height="100" fill="#fff"/><path d="M43.49 43.49 L56.51 56.51" stroke="#000" stroke-width="16"/></mask>
+  </defs>
+  <path d="M44 44 L64.8 64.8 Q69.75 69.75 74.7 64.8 L84.55 54.95 Q89.5 50 84.55 45.05 L74.7 35.2 Q69.75 30.25 64.8 35.2 L38.43 61.57 A16.36 16.36 0 1 1 38.43 38.43 Z" fill="none" stroke="url(#g)" stroke-width="9" stroke-linejoin="round" mask="url(#u)"/>
+  <path d="M43 43 L57 57" fill="none" stroke="url(#g)" stroke-width="9"/>
+</svg>
