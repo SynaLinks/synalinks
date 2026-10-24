@@ -91,6 +91,10 @@ class SupportedModelsTest(testing.TestCase):
             models = await LanguageModel.supported_models("sglang")
         self.assertEqual(models, ["sglang/Qwen/Qwen3-4B", "sglang/Qwen/Qwen3-8B"])
         self.assertEqual(str(requests[0].url), "http://localhost:30000/v1/models")
+        # SGLang answers decisions with any model it serves.
+        with patcher:
+            decision = await DecisionModel.supported_models("sglang")
+        self.assertEqual(decision, models)
 
     async def test_explicit_api_base_wins(self):
         patcher, requests = mock_server(openai_compatible)
@@ -243,6 +247,9 @@ class ProviderInfoTest(testing.TestCase):
         # Ollama, called as `hosted_vllm` by litellm, keeps its own entry.
         self.assertEqual(
             DecisionModel.provider_info("ollama"), LanguageModel.provider_info("ollama")
+        )
+        self.assertEqual(
+            DecisionModel.provider_info("sglang"), LanguageModel.provider_info("sglang")
         )
 
     def test_every_supported_provider_has_info(self):

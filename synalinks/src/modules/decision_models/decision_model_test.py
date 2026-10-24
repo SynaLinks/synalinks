@@ -652,6 +652,31 @@ class DecisionModelTest(testing.TestCase):
         self.assertEqual(calls[1]["api_base"], "http://gpu:11434")
         self.assertEqual(decision_model.get_config()["model"], "ollama/laya")
 
+    async def test_sglang_is_called_as_hosted_vllm(self):
+        calls = []
+
+        async def systemone(**kwargs):
+            calls.append(kwargs)
+            raise ValueError("stop")
+
+        with patch.dict(os.environ, {"SGLANG_API_BASE": "http://gpu:30000"}):
+            for api_base in (None, "http://box:9000"):
+                decision_model = DecisionModel(
+                    model="sglang/Qwen/Qwen3-8B", api_base=api_base
+                )
+                decision_model._systemone = systemone
+                with self.assertWarns(UserWarning):
+                    await decision_model(ticket("Hi"), schema=Billing.get_schema())
+        decision_model = DecisionModel(model="sglang/Qwen/Qwen3-8B")
+        decision_model._systemone = systemone
+        with self.assertWarns(UserWarning):
+            await decision_model(ticket("Hi"), schema=Billing.get_schema())
+
+        self.assertEqual(calls[0]["model"], "hosted_vllm/Qwen/Qwen3-8B")
+        self.assertEqual(calls[0]["api_base"], "http://gpu:30000")
+        self.assertEqual(calls[1]["api_base"], "http://box:9000")
+        self.assertEqual(calls[2]["api_base"], "http://localhost:30000/v1")
+
     async def test_empty_messages_return_none(self):
         decision_model = DecisionModel(model="typesafe/jev-latest")
         payloads = mock_decision_model(decision_model, ANSWERS)
@@ -667,6 +692,7 @@ class DecisionModelTest(testing.TestCase):
         self.assertIn("typesafe", providers)
         self.assertIn("openai", providers)
         self.assertIn("ollama", providers)
+        self.assertIn("sglang", providers)
         self.assertEqual(providers, sorted(providers))
         DecisionModel(model="hosted_vllm/Qwen/Qwen3-8B")
 

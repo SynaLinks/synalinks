@@ -135,8 +135,8 @@ def decision_provider(provider):
     """Return the `PROVIDERS`-like entry of a litellm decisions provider.
 
     Its environment variables and default endpoint come from litellm's
-    decisions config of the provider, except for Ollama, which litellm calls
-    as `hosted_vllm` and which keeps its `PROVIDERS` entry.
+    decisions config of the provider, except for Ollama and SGLang, which
+    litellm calls as `hosted_vllm` and which keep their `PROVIDERS` entry.
 
     Args:
         provider (str): A litellm decisions provider, e.g. `"typesafe"`.
@@ -144,8 +144,8 @@ def decision_provider(provider):
     Returns:
         (dict): The `env`, `default_api_base` and `server` of the provider.
     """
-    if provider == "ollama":
-        return PROVIDERS["ollama"]
+    if provider in ("ollama", "sglang"):
+        return PROVIDERS[provider]
     from litellm.types.utils import LlmProviders
     from litellm.utils import ProviderConfigManager
 
