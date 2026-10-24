@@ -108,13 +108,11 @@ class LanguageModelTest(testing.TestCase):
     async def test_structured_output_via_tool_call_reads_the_arguments(
         self, mock_completion
     ):
-        # openrouter (like groq, cohere, bedrock) is asked for structured
-        # output as a forced `structured_output` tool call, so the JSON comes
-        # back as the call's arguments and `content` is empty. It used to be
-        # read from `content`, fail to parse, and score every row as None.
-        # Anthropic-backed ids are the one exception to the forced choice and
-        # have their own test below; any other vendor exercises this path.
-        language_model = LanguageModel(model="openrouter/openai/gpt-4o-mini")
+        # groq (like cohere, bedrock) is asked for structured output as a
+        # forced `structured_output` tool call, so the JSON comes back as the
+        # call's arguments and `content` is empty. It used to be read from
+        # `content`, fail to parse, and score every row as None.
+        language_model = LanguageModel(model="groq/llama-3.3-70b-versatile")
 
         class Answer(DataModel):
             answer: str
@@ -157,47 +155,43 @@ class LanguageModelTest(testing.TestCase):
         )
 
     @patch("litellm.acompletion")
-    async def test_anthropic_via_openrouter_is_not_forced_to_call_the_tool(
+    async def test_openrouter_requires_endpoints_with_structured_outputs(
         self, mock_completion
     ):
-        # Anthropic's newest models reject a forced tool choice with a 400
-        # ("type `tool` and `any` are not supported for this model"), so every
-        # cell of a sweep over `openrouter/anthropic/...` failed. They still
-        # call the tool when allowed to choose it, so the tool itself stays.
-        language_model = LanguageModel(model="openrouter/anthropic/claude-sonnet-4.5")
+        # OpenRouter constrains the reply natively, but by default may route to
+        # an endpoint that ignores `response_format` and answers in prose.
+        language_model = LanguageModel(model="openrouter/anthropic/claude-fable-5.1")
 
         class Answer(DataModel):
             answer: str
 
         mock_completion.return_value = {
-            "choices": [
-                {
-                    "message": {
-                        "content": None,
-                        "tool_calls": [
-                            {
-                                "id": "call_1",
-                                "type": "function",
-                                "function": {
-                                    "name": "structured_output",
-                                    "arguments": '{"answer": "B"}',
-                                },
-                            }
-                        ],
-                    }
-                }
-            ]
+            "choices": [{"message": {"content": '{"answer": "B"}'}}]
         }
-
         messages = ChatMessages(
             messages=[ChatMessage(role=ChatRole.USER, content="Pick a letter.")]
         )
         result = await language_model(messages, schema=Answer.get_schema())
         self.assertEqual(result.get_json(), {"answer": "B"})
 
-        self.assertEqual(mock_completion.call_args.kwargs["tool_choice"], "auto")
-        tool = mock_completion.call_args.kwargs["tools"][0]["function"]
-        self.assertEqual(tool["name"], "structured_output")
+        kwargs = mock_completion.call_args.kwargs
+        self.assertNotIn("tools", kwargs)
+        response_format = kwargs["response_format"]
+        self.assertEqual(response_format["type"], "json_schema")
+        self.assertTrue(response_format["json_schema"]["strict"])
+        self.assertIn("answer", response_format["json_schema"]["schema"]["properties"])
+        self.assertEqual(kwargs["provider"], {"require_parameters": True})
+
+        # The caller's own routing preferences are kept.
+        language_model = LanguageModel(
+            model="openrouter/anthropic/claude-fable-5.1",
+            provider={"order": ["anthropic"]},
+        )
+        await language_model(messages, schema=Answer.get_schema())
+        self.assertEqual(
+            mock_completion.call_args.kwargs["provider"],
+            {"order": ["anthropic"], "require_parameters": True},
+        )
 
     @patch("litellm.acompletion")
     async def test_a_caller_can_override_the_structured_output_payload(
@@ -207,7 +201,7 @@ class LanguageModelTest(testing.TestCase):
         # about was impossible to drive: the branch overwrote whatever the
         # caller passed. Now it only fills in what is unset.
         language_model = LanguageModel(
-            model="openrouter/openai/gpt-4o-mini", tool_choice="auto"
+            model="groq/llama-3.3-70b-versatile", tool_choice="auto"
         )
 
         class Answer(DataModel):
@@ -243,8 +237,8 @@ class LanguageModelTest(testing.TestCase):
     async def test_structured_output_tool_call_wins_over_a_content_preamble(
         self, mock_completion
     ):
-        # Some backends behind openrouter narrate before calling the tool.
-        language_model = LanguageModel(model="openrouter/openai/gpt-4o-mini")
+        # Some backends narrate before calling the tool.
+        language_model = LanguageModel(model="groq/llama-3.3-70b-versatile")
 
         class Answer(DataModel):
             answer: str
