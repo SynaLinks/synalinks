@@ -3,6 +3,7 @@
 import asyncio
 import json
 import os
+import shutil
 import tempfile
 import warnings
 
@@ -10,6 +11,7 @@ from synalinks.src.api_export import synalinks_export
 from synalinks.src.modules.language_models.language_model import DeterministicStopError
 from synalinks.src.modules.language_models.language_model import LanguageModel
 from synalinks.src.saving.object_registration import register_synalinks_serializable
+from synalinks.src.utils import model_catalog
 
 # The providers reachable through a locally authenticated CLI, i.e. the
 # values accepted before the `/` in `model`.
@@ -136,6 +138,18 @@ _IGNORED_PARAMS = (
 
 _MAX_ERROR_CHARS = 500
 
+# The `model_catalog.PROVIDERS`-like entry of `codex/`: the login lives in
+# `CODEX_HOME` (default `~/.codex`) and the models are listed by the CLI.
+_CODEX_PROVIDER = {
+    "env": [model_catalog.env_var("CODEX_HOME", required=False, secret=False)],
+    "server": "codex",
+}
+
+_INSTALL_HINT = (
+    "Install it with `pip install 'synalinks[codex]'` (or `npm install -g "
+    "@openai/codex`), then sign in once with `codex login`."
+)
+
 # The system message of a completion that has none: without one, the CLI
 # would send its own coding-agent prompt (about 3,500 tokens) instead.
 _DEFAULT_INSTRUCTIONS = "Answer the user's message."
@@ -228,6 +242,24 @@ def _without_tools(catalog):
     }
 
 
+def _codex_executable():
+    """Returns the Codex CLI to run: the one of `synalinks[codex]`, else `codex`.
+
+    Raises:
+        ImportError: If neither is installed.
+    """
+    try:
+        import codex_cli_bin
+
+        return str(codex_cli_bin.bundled_codex_path())
+    except ImportError:
+        pass
+    executable = shutil.which("codex")
+    if executable is None:
+        raise ImportError(f"`OAuthLanguageModel` needs the Codex CLI. {_INSTALL_HINT}")
+    return executable
+
+
 def _write(directory, name, text):
     """Writes `text` to `name` in `directory`.
 
@@ -295,6 +327,7 @@ def _build_codex_command(
     schema_path=None,
     catalog_path=None,
     reasoning_effort=None,
+    executable="codex",
 ):
     """Builds the `codex exec` command line of one completion.
 
@@ -314,7 +347,7 @@ def _build_codex_command(
         coding-agent prompt.
     """
     command = [
-        "codex",
+        executable,
         "exec",
         "--ephemeral",
         "--skip-git-repo-check",
@@ -430,12 +463,17 @@ class OAuthLanguageModel(LanguageModel):
     that enforces a JSON schema server-side, which Synalinks relies on for
     constrained structured output.
 
-    Install the CLI and sign in once (interactive, opens a browser):
+    Install the CLI with the `codex` extra (or with
+    `npm install -g @openai/codex`) and sign in once (interactive, opens a
+    browser):
 
     ```bash
-    npm install -g @openai/codex
-    codex login
+    pip install 'synalinks[codex]'
+    "$(python -c 'import codex_cli_bin; print(codex_cli_bin.bundled_codex_path())')" login
     ```
+
+    The CLI of the extra is used when installed, else `codex` from the
+    `PATH`; without either, the first call raises an `ImportError`.
 
     Then use it like any other language model:
 
@@ -555,6 +593,8 @@ class OAuthLanguageModel(LanguageModel):
         # The tool-free model catalog, as JSON, read from the CLI on the
         # first call ("" if the CLI has none).
         self._catalog = None
+        # The path of the CLI, looked up on the first call.
+        self._codex = None
 
     async def call(
         self,
@@ -588,6 +628,8 @@ class OAuthLanguageModel(LanguageModel):
             )
         if streaming:
             raise ValueError("`OAuthLanguageModel` does not support streaming.")
+        if self._codex is None:
+            self._codex = _codex_executable()
         if schema:
             schema = _strict_schema(schema)
         return await super().call(messages, schema=schema, **kwargs)
@@ -633,6 +675,7 @@ class OAuthLanguageModel(LanguageModel):
                 schema_path=_write(tmp, "schema.json", schema and json.dumps(schema)),
                 catalog_path=_write(tmp, "models.json", catalog),
                 reasoning_effort=reasoning_effort,
+                executable=self._codex,
             )
             stdout, stderr, returncode = await self._run(command, prompt, cwd=workdir)
 
@@ -668,7 +711,7 @@ class OAuthLanguageModel(LanguageModel):
             (str): The catalog, or an empty string if the CLI printed none.
         """
         if self._catalog is None:
-            stdout, _, _ = await self._run(["codex", "debug", "models"], "")
+            stdout, _, _ = await self._run([self._codex, "debug", "models"], "")
             try:
                 self._catalog = json.dumps(_without_tools(json.loads(stdout)))
             except (ValueError, TypeError, KeyError):
@@ -699,8 +742,7 @@ class OAuthLanguageModel(LanguageModel):
             )
         except FileNotFoundError:
             raise DeterministicStopError(
-                f"The `{command[0]}` CLI was not found in the PATH. Install it "
-                f"and sign in with `{command[0]} login` to use {self}.",
+                f"The Codex CLI `{command[0]}` was not found. {_INSTALL_HINT}",
                 "cli_not_found",
             )
         try:
@@ -734,6 +776,62 @@ class OAuthLanguageModel(LanguageModel):
             (list): The sorted list of supported provider prefixes.
         """
         return list(OAUTH_PROVIDERS)
+
+    @classmethod
+    def provider_info(cls, provider):
+        """Returns what a frontend needs to set a provider up.
+
+        Args:
+            provider (str): A provider prefix from `supported_providers()`.
+
+        Returns:
+            (dict): `provider`, `env`, `default_api_base` (`None`) and
+                `lists_models_from` (`"server"`: the CLI lists them).
+
+        Raises:
+            ValueError: If the provider is not supported.
+        """
+        model_catalog.check_provider(
+            provider, cls.supported_providers(), "language model"
+        )
+        return model_catalog.provider_info(provider, _CODEX_PROVIDER)
+
+    @classmethod
+    async def supported_models(cls, provider, api_base=None):
+        """Returns the models the Codex CLI offers (those of its model picker).
+
+        Args:
+            provider (str): A provider prefix from `supported_providers()`.
+            api_base (str): Unused, accepted for compatibility with
+                `LanguageModel`.
+
+        Returns:
+            (list): The sorted model IDs, ready to pass as `model`
+                (e.g. `"codex/gpt-6.1-sol"`).
+
+        Raises:
+            ValueError: If the provider is not supported.
+            ImportError: If the Codex CLI is not installed.
+            ConnectionError: If the CLI prints no model catalog.
+        """
+        model_catalog.check_provider(
+            provider, cls.supported_providers(), "language model"
+        )
+        language_model = cls(model=f"{provider}/default")
+        stdout, stderr, _ = await language_model._run(
+            [_codex_executable(), "debug", "models"], ""
+        )
+        try:
+            models = json.loads(stdout)["models"]
+        except (ValueError, TypeError, KeyError) as e:
+            raise ConnectionError(
+                f"`codex debug models` printed no model catalog: {stderr.strip()}"
+            ) from e
+        return sorted(
+            f"{provider}/{model['slug']}"
+            for model in models
+            if model.get("visibility", "list") == "list"
+        )
 
     def supports_reasoning(self):
         """Whether the model takes a reasoning effort (always True).

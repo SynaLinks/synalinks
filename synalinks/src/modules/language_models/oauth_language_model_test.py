@@ -4,6 +4,7 @@ import asyncio
 import json
 import os
 import shutil
+import sys
 import warnings
 from typing import Dict
 from typing import List
@@ -354,7 +355,69 @@ class SplitMessagesTest(testing.TestCase):
         self.assertEqual(prompt, "[USER]\nHi\n\n[ASSISTANT]\nHello\n\n[USER]\nBye")
 
 
+class CodexExecutableTest(testing.TestCase):
+    def test_extra_binary_wins_over_the_path(self):
+        class Bundled:
+            @staticmethod
+            def bundled_codex_path():
+                return "/site-packages/codex_cli_bin/bin/codex"
+
+        with patch.dict(sys.modules, {"codex_cli_bin": Bundled}):
+            self.assertEqual(
+                oauth_language_model._codex_executable(),
+                "/site-packages/codex_cli_bin/bin/codex",
+            )
+
+    def test_path_binary_without_the_extra(self):
+        with patch.dict(sys.modules, {"codex_cli_bin": None}):
+            with patch.object(shutil, "which", return_value="/usr/bin/codex"):
+                self.assertEqual(
+                    oauth_language_model._codex_executable(), "/usr/bin/codex"
+                )
+
+    async def test_missing_cli_raises_on_the_first_call(self):
+        with patch.dict(sys.modules, {"codex_cli_bin": None}):
+            with patch.object(shutil, "which", return_value=None):
+                lm = OAuthLanguageModel(model="codex/gpt-6.1-sol")
+                with self.assertRaisesRegex(ImportError, r"synalinks\[codex\]"):
+                    await lm(_messages())
+                with self.assertRaisesRegex(ImportError, r"synalinks\[codex\]"):
+                    await OAuthLanguageModel.supported_models("codex")
+
+
 class OAuthLanguageModelTest(testing.TestCase):
+    def setUp(self):
+        super().setUp()
+        patcher = patch.object(
+            oauth_language_model, "_codex_executable", return_value="codex"
+        )
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def test_provider_info(self):
+        self.assertEqual(
+            OAuthLanguageModel.provider_info("codex"),
+            {
+                "provider": "codex",
+                "env": [{"name": "CODEX_HOME", "required": False, "secret": False}],
+                "default_api_base": None,
+                "lists_models_from": "server",
+            },
+        )
+        with self.assertRaisesRegex(ValueError, "Unsupported language model"):
+            OAuthLanguageModel.provider_info("openai")
+
+    async def test_supported_models_are_those_of_the_model_picker(self):
+        catalog = {
+            "models": [*_CATALOG["models"], {"slug": "internal", "visibility": "hide"}]
+        }
+        with patch(_RUN, Recorder(catalog=json.dumps(catalog))):
+            models = await OAuthLanguageModel.supported_models("codex")
+        self.assertEqual(models, ["codex/gpt-5.5", "codex/gpt-6.1-sol"])
+        with patch(_RUN, Recorder(catalog="")):
+            with self.assertRaisesRegex(ConnectionError, "no model catalog"):
+                await OAuthLanguageModel.supported_models("codex")
+
     def test_model_must_be_a_codex_model(self):
         for model in ("gpt-6.1-sol", "openai/gpt-6.1-sol", "codex/", "claude/sonnet"):
             with self.assertRaisesRegex(ValueError, "expects `model`"):
