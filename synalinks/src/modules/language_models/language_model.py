@@ -565,6 +565,22 @@ class LanguageModel(Module):
     )
     ```
 
+    **Using a ChatGPT subscription (no API key)**
+
+    The `codex/` prefix reaches OpenAI models through a ChatGPT subscription
+    login instead of an API key. It does not go through LiteLLM: use
+    `synalinks.OAuthLanguageModel`, which sends the requests through the
+    locally signed-in Codex CLI (see its documentation for the setup and
+    limitations).
+
+    ```python
+    import synalinks
+
+    language_model = synalinks.OAuthLanguageModel(
+        model="codex/gpt-6.1-sol",
+    )
+    ```
+
     To cascade models in case there is anything wrong with
     the model provider (hence making your pipelines more robust).
     Use the `fallback` argument like in this example:
@@ -598,10 +614,13 @@ class LanguageModel(Module):
       default reasoning behavior.
     - `"disable"`: actively turn native reasoning *off*. This only has an
       effect for providers that reason by default, i.e. ollama's thinking
-      models (`qwen3`, `deepseek-r1`, ...); it maps to ollama's `think=False`
-      toggle and is safely ignored by non-thinking ollama models. Opt-in
-      providers (OpenAI, Anthropic, Gemini, ...) reason only when explicitly
-      enabled, so there is nothing to send and this value is a no-op for them.
+      models (`qwen3`, `deepseek-r1`, ...), where it maps to ollama's
+      `think=False` toggle (safely ignored by non-thinking ollama models), and
+      the ChatGPT backend (`codex/`), where it sends the lowest effort every
+      model accepts (`"low"`: most of them cannot turn reasoning off).
+      Opt-in providers (OpenAI, Anthropic, Gemini, ...) reason only when
+      explicitly enabled, so there is nothing to send and this value is a
+      no-op for them.
     - any other value (e.g. `"low"`, `"medium"`, `"high"`): forwarded to the
       provider as the reasoning effort, but only when the model supports
       reasoning (otherwise it is silently dropped).
@@ -920,8 +939,11 @@ class LanguageModel(Module):
         #                ollama's thinking models (qwen3, deepseek-r1, ...), which
         #                reason unless told not to. `think=False` is the ollama
         #                toggle and is safely ignored by non-thinking ollama
-        #                models. Opt-in providers (OpenAI, Anthropic, Gemini, ...)
-        #                reason only when enabled, so there is nothing to send.
+        #                models. The ChatGPT backend (`codex/`) also reasons by
+        #                default: "disable" is handed to its transport, which
+        #                knows the lowest effort the CLI accepts. Opt-in
+        #                providers (OpenAI, Anthropic, Gemini, ...) reason only
+        #                when enabled, so there is nothing to send.
         #   otherwise -> forward the effort to litellm when the model supports it.
         reasoning_effort = kwargs.pop("reasoning_effort", "none")
         schema_had_thinking = bool(schema) and "thinking" in (
@@ -930,10 +952,12 @@ class LanguageModel(Module):
         if reasoning_effort == "disable":
             if self.model.startswith("ollama"):
                 kwargs["think"] = False
+            elif self.model.startswith("codex"):
+                kwargs["reasoning_effort"] = "disable"
         elif reasoning_effort != "none":
-            if litellm.supports_reasoning(model=self.model):
+            if self.supports_reasoning():
                 kwargs["reasoning_effort"] = reasoning_effort
-                if schema_had_thinking:
+                if schema_had_thinking and self.supports_reasoning_trace():
                     # The LM produces a native reasoning trace via
                     # `reasoning_content`; strip `thinking` from the LM
                     # schema to save tokens; we re-inject it after the call.
@@ -987,6 +1011,7 @@ class LanguageModel(Module):
                 or self.model.startswith("openrouter")
                 or self.model.startswith("groq")
                 or self.model.startswith("bedrock")
+                or self.model.startswith("codex")
             ):
                 # Use constrained structured output for openai/azure
                 # plus deepseek, together_ai, huggingface (TGI and
@@ -1152,6 +1177,30 @@ class LanguageModel(Module):
                 _CURRENT_CALL_USAGE.set({"error": str(e)})
                 return None
 
+    async def _acompletion(self, formatted_messages, **kwargs):
+        """Send one completion request and return the provider response.
+
+        This is the transport seam: everything around it (message
+        formatting, structured-output payload, cache, retry, fallback, usage
+        accounting and response parsing) is provider-agnostic. A subclass
+        that does not go through LiteLLM (e.g. `OAuthLanguageModel`)
+        overrides this method and returns a LiteLLM-shaped response.
+
+        Args:
+            formatted_messages (list): The chat messages in OpenAI wire shape.
+            **kwargs (keyword arguments): The request parameters.
+
+        Returns:
+            (ModelResponse): The provider response.
+        """
+        return await litellm.acompletion(
+            model=self.model,
+            messages=formatted_messages,
+            timeout=self.timeout,
+            caching=self.caching,
+            **kwargs,
+        )
+
     async def _call_with_retry(
         self, formatted_messages, schema, streaming, schema_had_thinking, **kwargs
     ):
@@ -1171,13 +1220,7 @@ class LanguageModel(Module):
             response_str = ""
             try:
                 t0 = time.perf_counter()
-                response = await litellm.acompletion(
-                    model=self.model,
-                    messages=formatted_messages,
-                    timeout=self.timeout,
-                    caching=self.caching,
-                    **kwargs,
-                )
+                response = await self._acompletion(formatted_messages, **kwargs)
                 elapsed_s = time.perf_counter() - t0
                 op_scope = current_op_scope()
                 response_cost = None
@@ -1297,7 +1340,11 @@ class LanguageModel(Module):
                             "structured output: " + refusal
                         )
                     json_instance = orjson.loads(response_str)
-                    if reasoning_content and schema_had_thinking:
+                    if (
+                        reasoning_content
+                        and schema_had_thinking
+                        and self.supports_reasoning_trace()
+                    ):
                         json_instance["thinking"] = reasoning_content
                 else:
                     # OpenAI's nested tool-call envelope is the synalinks
@@ -1468,6 +1515,29 @@ class LanguageModel(Module):
                 self-hosted one).
         """
         return model_catalog.model_info(model)
+    def supports_reasoning(self):
+        """Whether `reasoning_effort` is forwarded to the provider.
+
+        Looked up in litellm's model table: when True, the effort is sent
+        with the request (see also `supports_reasoning_trace()`).
+
+        Returns:
+            (bool): True if the model takes a reasoning effort.
+        """
+        return litellm.supports_reasoning(model=self.model)
+
+    def supports_reasoning_trace(self):
+        """Whether the native reasoning trace fills the `thinking` field.
+
+        When True and a reasoning effort is sent, the `thinking` field is left
+        out of the schema handed to the model and filled with the
+        `reasoning_content` of the response instead. When False, the model
+        writes `thinking` like any other field.
+
+        Returns:
+            (bool): True if the reasoning trace replaces `thinking`.
+        """
+        return True
 
     def supports_vision(self):
         """Whether the model accepts images in its input.

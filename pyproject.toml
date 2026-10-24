@@ -73,6 +73,11 @@ Issues = "https://github.com/SynaLinks/synalinks/issues"
 [project.scripts]
 synalinks = "synalinks.cli.main:cli"
 
+[project.optional-dependencies]
+codex = [
+    "openai-codex-cli-bin>=0.162.0",
+]
+
 [build-system]
 requires = ["setuptools>=61"]
 build-backend = "setuptools.build_meta"

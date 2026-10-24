@@ -278,6 +278,9 @@ from synalinks.src.modules.knowledge.update_knowledge import (
 from synalinks.src.modules.language_models.language_model import (
     LanguageModel as LanguageModel,
 )
+from synalinks.src.modules.language_models.oauth_language_model import (
+    OAuthLanguageModel as OAuthLanguageModel,
+)
 from synalinks.src.modules.masking.in_mask import InMask as InMask
 from synalinks.src.modules.masking.out_mask import OutMask as OutMask
 from synalinks.src.modules.merging.concat import Concat as Concat
