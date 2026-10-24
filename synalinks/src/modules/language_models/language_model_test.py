@@ -108,10 +108,10 @@ class LanguageModelTest(testing.TestCase):
     async def test_structured_output_via_tool_call_reads_the_arguments(
         self, mock_completion
     ):
-        # bedrock is asked for structured output as a forced
-        # `structured_output` tool call, so the JSON comes back as the call's
-        # arguments and `content` is empty. It used to be read from `content`,
-        # fail to parse, and score every row as None.
+        # A reply can carry the structured output as a tool call (e.g. with a
+        # caller's own tool payload): the JSON is the call's arguments and
+        # `content` is empty. It used to be read from `content`, fail to parse,
+        # and score every row as None.
         language_model = LanguageModel(model="bedrock/meta.llama3-70b-instruct-v1:0")
 
         class Answer(DataModel):
@@ -142,17 +142,6 @@ class LanguageModelTest(testing.TestCase):
         )
         result = await language_model(messages, schema=Answer.get_schema())
         self.assertEqual(result.get_json(), {"answer": "B"})
-
-        # The tool's `parameters` is the whole JSON Schema object, not its
-        # bare property map.
-        tool = mock_completion.call_args.kwargs["tools"][0]["function"]
-        self.assertEqual(tool["name"], "structured_output")
-        self.assertEqual(tool["parameters"]["type"], "object")
-        self.assertIn("answer", tool["parameters"]["properties"])
-        self.assertEqual(
-            mock_completion.call_args.kwargs["tool_choice"]["function"]["name"],
-            "structured_output",
-        )
 
     @patch("litellm.acompletion")
     async def test_openrouter_requires_endpoints_with_structured_outputs(
@@ -243,44 +232,56 @@ class LanguageModelTest(testing.TestCase):
         self.assertIn("answer", response_format["schema"]["properties"])
 
     @patch("litellm.acompletion")
-    async def test_a_caller_can_override_the_structured_output_payload(
-        self, mock_completion
-    ):
-        # The branch picks a payload per provider, but a model it guesses wrong
-        # about was impossible to drive: the branch overwrote whatever the
-        # caller passed. Now it only fills in what is unset.
+    async def test_bedrock_asks_for_a_strict_json_schema(self, mock_completion):
+        # litellm maps it to bedrock's native `outputConfig.textFormat` where
+        # the model supports it, and falls back to a forced tool call itself.
         language_model = LanguageModel(
-            model="bedrock/meta.llama3-70b-instruct-v1:0", tool_choice="auto"
+            model="bedrock/anthropic.claude-haiku-4-5-20251001-v1:0"
         )
 
         class Answer(DataModel):
             answer: str
 
         mock_completion.return_value = {
-            "choices": [
-                {
-                    "message": {
-                        "content": None,
-                        "tool_calls": [
-                            {
-                                "id": "call_1",
-                                "type": "function",
-                                "function": {
-                                    "name": "structured_output",
-                                    "arguments": '{"answer": "B"}',
-                                },
-                            }
-                        ],
-                    }
-                }
-            ]
+            "choices": [{"message": {"content": '{"answer": "B"}'}}]
+        }
+        messages = ChatMessages(
+            messages=[ChatMessage(role=ChatRole.USER, content="Pick a letter.")]
+        )
+        result = await language_model(messages, schema=Answer.get_schema())
+        self.assertEqual(result.get_json(), {"answer": "B"})
+        kwargs = mock_completion.call_args.kwargs
+        self.assertNotIn("tools", kwargs)
+        self.assertEqual(kwargs["response_format"]["type"], "json_schema")
+        self.assertTrue(kwargs["response_format"]["json_schema"]["strict"])
+
+    @patch("litellm.acompletion")
+    async def test_a_caller_can_override_the_structured_output_payload(
+        self, mock_completion
+    ):
+        # The branch picks a payload per provider, but a model it guesses wrong
+        # about was impossible to drive: the branch overwrote whatever the
+        # caller passed. Now it only fills in what is unset.
+        response_format = {"type": "json_object"}
+        language_model = LanguageModel(
+            model="bedrock/meta.llama3-70b-instruct-v1:0",
+            response_format=response_format,
+        )
+
+        class Answer(DataModel):
+            answer: str
+
+        mock_completion.return_value = {
+            "choices": [{"message": {"content": '{"answer": "B"}'}}]
         }
 
         messages = ChatMessages(
             messages=[ChatMessage(role=ChatRole.USER, content="Pick a letter.")]
         )
         await language_model(messages, schema=Answer.get_schema())
-        self.assertEqual(mock_completion.call_args.kwargs["tool_choice"], "auto")
+        self.assertEqual(
+            mock_completion.call_args.kwargs["response_format"], response_format
+        )
 
     @patch("litellm.acompletion")
     async def test_structured_output_tool_call_wins_over_a_content_preamble(

@@ -915,34 +915,7 @@ class LanguageModel(Module):
                         required.remove("thinking")
 
         if schema:
-            if self.model.startswith("bedrock"):
-                # Use a tool created on the fly. Most bedrock models don't
-                # support native JSON schema, so tool-call structured output
-                # is the most reliable path. The tool's `parameters` is a
-                # JSON Schema object, so the whole schema goes in (its
-                # `type`, `required` and `additionalProperties` included),
-                # not just the property map. The reply then carries the
-                # JSON as the call's `arguments`; see `_do_call`.
-                _set_if_unset(
-                    kwargs,
-                    {
-                        "tools": [
-                            {
-                                "function": {
-                                    "name": "structured_output",
-                                    "description": "Generate a valid JSON output",
-                                    "parameters": schema,
-                                },
-                                "type": "function",
-                            }
-                        ],
-                        "tool_choice": {
-                            "type": "function",
-                            "function": {"name": "structured_output"},
-                        },
-                    },
-                )
-            elif self.model.startswith("cohere"):
+            if self.model.startswith("cohere"):
                 # Cohere's v2 chat constrains to `schema`; litellm refuses the param.
                 extra_body = dict(kwargs.get("extra_body") or {})
                 extra_body.setdefault(
@@ -985,13 +958,15 @@ class LanguageModel(Module):
                 or self.model.startswith("huggingface")
                 or self.model.startswith("openrouter")
                 or self.model.startswith("groq")
+                or self.model.startswith("bedrock")
             ):
                 # Use constrained structured output for openai/azure
                 # plus deepseek, together_ai, huggingface (TGI and
-                # Inference Providers), openrouter and groq, which expose
-                # OpenAI-compatible APIs that honor the same payload. For a
-                # groq model without strict mode, litellm falls back to a
-                # forced tool call itself.
+                # Inference Providers), openrouter, groq and bedrock, which
+                # honor the same payload (litellm maps it to bedrock's
+                # `outputConfig.textFormat`). For a groq or bedrock model
+                # without native support, litellm falls back to a forced tool
+                # call itself.
                 # OpenAI/Azure require the field  "additionalProperties"
                 # Also OpenAI/Azure disallow the field "description" in $ref
                 if "properties" in schema:
@@ -1253,12 +1228,11 @@ class LanguageModel(Module):
                 if audio is not None and hasattr(audio, "model_dump"):
                     audio = audio.model_dump()
                 if schema and wire_tool_calls:
-                    # Structured output requested as a forced tool call
-                    # (bedrock): the JSON is the
+                    # A reply carrying the structured output as a tool call
+                    # (e.g. a caller's own tool payload): the JSON is the
                     # call's `arguments`, while `content` is empty or a
                     # short preamble. Read it wherever a tool call came
-                    # back, whatever the provider, so the request and the
-                    # parse never disagree on where the JSON lives.
+                    # back, whatever the provider.
                     arguments = _safe_get(
                         _safe_get(wire_tool_calls[0], "function"), "arguments", ""
                     )
