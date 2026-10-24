@@ -8,6 +8,7 @@ because every chat-shaped path (generators, agents, datasets, tool
 calling) depends on `ChatMessage` / `ChatMessages` / `ToolCall`.
 """
 
+import json
 import warnings
 from enum import Enum
 from typing import Any
@@ -52,23 +53,27 @@ class ChatRole(str, Enum):
 class ToolCallFunction(DataModel):
     """The `function` payload of a tool call (name + arguments).
 
-    `arguments` is a parsed dict by default, but the raw JSON-encoded
-    string used on the Chat Completions wire is also accepted, for users
-    who prefer to keep the wire encoding. The converters in
-    `backend.pydantic.chat_completions` are type-driven: a dict is
-    JSON-encoded at the wire edge while a string passes through verbatim,
-    and a wire string is parsed back into a dict.
+    `arguments` is the JSON-encoded string the model wrote, as on the Chat
+    Completions wire: kept as written (a model streams it as text, and
+    invalid JSON is the tool's error to report, not the model call's), and
+    parsed only when the tool is called (see `tool_arguments` in the agents'
+    utils). A dict given here is JSON-encoded.
     """
 
     name: str = Field(
         description="The name of the function called",
     )
-    arguments: Union[Dict[str, Any], str] = Field(
-        description=(
-            "The arguments of the tool call, as a parsed dict or as the "
-            "raw JSON-encoded string (chat-completion wire form)"
-        ),
+    arguments: str = Field(
+        description="The arguments of the tool call, as a JSON-encoded string",
     )
+
+    @field_validator("arguments", mode="before")
+    @classmethod
+    def encode_arguments(cls, v):
+        """JSON-encode arguments given as a dict (or a list)."""
+        if isinstance(v, (dict, list)):
+            return json.dumps(v)
+        return v
 
 
 @synalinks_export(
@@ -82,11 +87,8 @@ class ToolCallFunction(DataModel):
 class ToolCall(DataModel):
     """A tool call, shaped like an OpenAI Chat Completions tool call.
 
-    Mirrors the wire envelope (`{id, type, function: {name, arguments}}`)
-    except that `arguments` is a parsed dict by default rather than a
-    JSON-encoded string, so modules and agents can read it directly. The
-    string form is also accepted; the wire converters in
-    `backend.pydantic.chat_completions` handle either by type.
+    Mirrors the wire envelope (`{id, type, function: {name, arguments}}`),
+    `arguments` included: a JSON-encoded string.
     """
 
     id: str = Field(
@@ -134,8 +136,8 @@ class ChatMessage(DataModel):
     Its keys are in exact parity with the litellm-extended Chat Completions
     message (`backend.pydantic.chat_completions.ChatCompletionMessage`):
     same names on both sides, enforced by test. Only value types may differ
-    where synalinks is deliberately richer (e.g. parsed-dict tool-call
-    arguments, dict tool-result content). When adding a field, add its wire
+    where synalinks is deliberately richer (e.g. dict tool-result
+    content). When adding a field, add its wire
     twin in `chat_completions.py` too.
     """
 

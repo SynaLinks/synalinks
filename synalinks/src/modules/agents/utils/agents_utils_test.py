@@ -8,8 +8,10 @@ import os
 import tempfile
 
 from synalinks.src import testing
+from synalinks.src.modules.agents.utils.agents_utils import call_tool
 from synalinks.src.modules.agents.utils.agents_utils import discover_agents_md
 from synalinks.src.modules.agents.utils.agents_utils import find_agents_md
+from synalinks.src.modules.agents.utils.agents_utils import tool_arguments
 from synalinks.src.modules.agents.utils.agents_utils import tool_message_content
 
 
@@ -80,3 +82,29 @@ class ToolMessageContentTest(testing.TestCase):
     def test_results_without_images_are_unchanged(self):
         self.assertEqual(tool_message_content({"ok": True}), {"ok": True})
         self.assertEqual(tool_message_content("error: boom"), "error: boom")
+
+
+class ToolArgumentsTest(testing.TestCase):
+    def test_the_json_string_is_parsed(self):
+        function = {"name": "calculate", "arguments": '{"expression": "1 + 1"}'}
+        self.assertEqual(tool_arguments(function), {"expression": "1 + 1"})
+
+    def test_no_arguments_are_none(self):
+        self.assertEqual(tool_arguments({"name": "now", "arguments": ""}), {})
+
+    def test_arguments_that_are_no_json_object_say_so(self):
+        with self.assertRaisesRegex(ValueError, "'calculate' are not valid JSON"):
+            tool_arguments({"name": "calculate", "arguments": '{"expression": '})
+        with self.assertRaisesRegex(ValueError, "must be a JSON object"):
+            tool_arguments({"name": "calculate", "arguments": "[1, 2]"})
+
+    async def test_a_call_with_bad_arguments_fails_like_the_tool(self):
+        async def calculate(expression):
+            return {"result": eval(expression)}
+
+        result = await call_tool(
+            calculate, {"name": "calculate", "arguments": '{"expression": "2 * 3"}'}
+        )
+        self.assertEqual(result, {"result": 6})
+        with self.assertRaises(ValueError):
+            await call_tool(calculate, {"name": "calculate", "arguments": "not json"})

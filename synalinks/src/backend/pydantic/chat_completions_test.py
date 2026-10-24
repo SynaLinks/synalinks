@@ -73,8 +73,8 @@ class ChatCompletionsTest(testing.TestCase):
         self.assertEqual(rtc.id, "call_0")
         self.assertEqual(rtc.type, "function")
         self.assertEqual(rtc.function.name, "calculate")
-        # Back to a parsed dict internally.
-        self.assertEqual(rtc.function.arguments, {"expression": "1 + 1"})
+        # The JSON-encoded string, on both sides.
+        self.assertEqual(json.loads(rtc.function.arguments), {"expression": "1 + 1"})
 
     def test_reasoning_content_round_trip(self):
         msg = ChatMessage(
@@ -159,9 +159,8 @@ class ChatCompletionsTest(testing.TestCase):
         self.assertEqual(restored.name, "calculate")
         self.assertEqual(restored.tool_call_id, "calculate")
 
-    def test_string_arguments_pass_through_to_the_wire(self):
-        # A ChatMessage may hold arguments in the wire (JSON string) form;
-        # the already-encoded string passes through without re-encoding.
+    def test_string_arguments_pass_through_both_ways(self):
+        # Arguments are kept as the model wrote them, not re-encoded.
         msg = ChatMessage(
             role=ChatRole.ASSISTANT,
             tool_calls=[
@@ -176,14 +175,13 @@ class ChatCompletionsTest(testing.TestCase):
         )
         wire = to_chat_completion_message(msg)
         self.assertEqual(wire.tool_calls[0].function.arguments, '{"expression": "1 + 1"}')
-        # A wire string is known to be JSON-encoded, so it's parsed back.
         restored = from_chat_completion_message(wire)
         self.assertEqual(
-            restored.tool_calls[0].function.arguments, {"expression": "1 + 1"}
+            restored.tool_calls[0].function.arguments, '{"expression": "1 + 1"}'
         )
 
-    def test_dict_arguments_on_the_wire_are_kept(self):
-        # Type-driven conversion: a dict is already parsed, so it's kept as-is.
+    def test_dict_arguments_are_json_encoded(self):
+        # A dict given as arguments is encoded: arguments are always a string.
         wire = ChatCompletionMessage(
             role="assistant",
             tool_calls=[
@@ -196,7 +194,8 @@ class ChatCompletionsTest(testing.TestCase):
                 )
             ],
         )
+        self.assertEqual(wire.tool_calls[0].function.arguments, '{"expression": "1 + 1"}')
         restored = from_chat_completion_message(wire)
         self.assertEqual(
-            restored.tool_calls[0].function.arguments, {"expression": "1 + 1"}
+            restored.tool_calls[0].function.arguments, '{"expression": "1 + 1"}'
         )

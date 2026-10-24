@@ -27,7 +27,8 @@ def _lm_response(*, content=None, reasoning_content=None, tool_calls=None):
 
     `tool_calls` is a list of `{"name": ..., "arguments": {...}}` (flat
     synalinks shape); this helper wraps each into the OpenAI nested
-    `{id, type, function}` envelope and JSON-encodes the arguments.
+    `{id, type, function}` envelope and JSON-encodes the arguments (a
+    string is sent as written: what the model wrote, valid JSON or not).
     """
     message = {"content": content}
     if reasoning_content is not None:
@@ -39,7 +40,11 @@ def _lm_response(*, content=None, reasoning_content=None, tool_calls=None):
                 "type": "function",
                 "function": {
                     "name": tc["name"],
-                    "arguments": json.dumps(tc["arguments"]),
+                    "arguments": (
+                        tc["arguments"]
+                        if isinstance(tc["arguments"], str)
+                        else json.dumps(tc["arguments"])
+                    ),
                 },
             }
             for i, tc in enumerate(tool_calls)
@@ -252,6 +257,35 @@ class FunctionCallingAgentTest(testing.TestCase):
             any("153133" in json.dumps(m.get("content")) for m in tool_msgs),
             f"calculate result not found in tool messages: {tool_msgs}",
         )
+
+    @patch("litellm.acompletion")
+    async def test_arguments_that_are_no_json_are_the_tool_error(self, mock_completion):
+        """Invalid JSON arguments fail the call, as a tool error the model reads."""
+        language_model = LanguageModel(model="ollama/mistral")
+        inputs = Input(data_model=ChatMessages)
+        outputs = await FunctionCallingAgent(
+            language_model=language_model,
+            tools=[Tool(calculate)],
+            autonomous=True,
+            max_iterations=3,
+        )(inputs)
+        agent = Program(inputs=inputs, outputs=outputs, name="bad_arguments_test")
+        mock_completion.side_effect = [
+            _lm_response(
+                tool_calls=[{"name": "calculate", "arguments": '{"expression": "1 +'}]
+            ),
+            _lm_response(content="I could not compute it."),
+            _lm_response(content="Sorry, the calculation failed."),
+        ]
+        result = await agent(
+            ChatMessages(messages=[ChatMessage(role="user", content="1 + 1?")])
+        )
+        messages = result.get("messages", [])
+        (tool_call,) = next(m for m in messages if m.get("tool_calls"))["tool_calls"]
+        # Kept as the model wrote it.
+        self.assertEqual(tool_call["function"]["arguments"], '{"expression": "1 +')
+        (tool_message,) = [m for m in messages if m.get("role") == "tool"]
+        self.assertIn("not valid JSON", tool_message["content"])
 
     @patch("litellm.acompletion")
     async def test_autonomous_mode_complex_calculation(self, mock_completion):

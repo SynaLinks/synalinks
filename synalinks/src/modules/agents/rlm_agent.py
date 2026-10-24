@@ -22,6 +22,7 @@ from synalinks.src.backend import SymbolicDataModel
 from synalinks.src.backend import is_chat_messages
 from synalinks.src.modules.agents.function_calling_agent import FunctionCallingAgent
 from synalinks.src.modules.agents.utils.agents_utils import InputsSummary
+from synalinks.src.modules.agents.utils.agents_utils import call_tool
 from synalinks.src.modules.agents.utils.agents_utils import summarize_inputs
 from synalinks.src.modules.agents.utils.agents_utils import tool_message_content
 from synalinks.src.modules.core.tool import Tool
@@ -1524,13 +1525,12 @@ class RecursiveLanguageModelAgent(FunctionCallingAgent):
         for tool_call in native_tool_calls:
             function = tool_call.get("function") or {}
             tool_name = function.get("name")
-            tool_args = function.get("arguments") or {}
             tool_call_id = tool_call.get("id")
             if tool_name in extra_native_tools:
                 # spawn_subagents / merge_subagent / discard_subagent:
                 # native tools, invoked with the REPL idle.
                 try:
-                    result = await extra_native_tools[tool_name](**tool_args)
+                    result = await call_tool(extra_native_tools[tool_name], function)
                     content = result.get_json() if hasattr(result, "get_json") else result
                 except Exception as e:
                     content = {"error": f"{type(e).__name__}: {e}"}
@@ -1547,7 +1547,7 @@ class RecursiveLanguageModelAgent(FunctionCallingAgent):
                 }
             else:
                 try:
-                    result = await run_tool(**tool_args)
+                    result = await call_tool(run_tool, function)
                     content = result.get_json() if hasattr(result, "get_json") else result
                 except Exception as e:
                     content = {"error": f"{type(e).__name__}: {e}"}

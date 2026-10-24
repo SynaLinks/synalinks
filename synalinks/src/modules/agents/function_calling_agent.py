@@ -11,6 +11,7 @@ from synalinks.src.backend import JsonDataModel
 from synalinks.src.backend import SymbolicDataModel
 from synalinks.src.backend import is_chat_messages
 from synalinks.src.backend.common.op_scope import trajectory_scope
+from synalinks.src.modules.agents.utils.agents_utils import call_tool
 from synalinks.src.modules.agents.utils.agents_utils import discover_agents_md
 from synalinks.src.modules.agents.utils.agents_utils import merge_tools
 from synalinks.src.modules.agents.utils.agents_utils import resolve_workdir
@@ -217,9 +218,7 @@ class FunctionCallingAgent(Module):
                     "type": "function",
                     "function": {
                         "name": "calculate",
-                        "arguments": {
-                            "expression": "152648 + 485"
-                            }
+                        "arguments": "{\"expression\": \"152648 + 485\"}"
                         }
                     }
                 ]
@@ -778,10 +777,8 @@ class FunctionCallingAgent(Module):
         tool_calls_ids = []
         for tool_call in native_tool_calls:
             function = tool_call.get("function") or {}
-            tool_name = function.get("name")
-            tools_arguments = function.get("arguments") or {}
             tool_calls_ids.append(tool_call.get("id"))
-            tasks.append(self.tools[tool_name](**tools_arguments))
+            tasks.append(call_tool(self.tools[function.get("name")], function))
 
         tool_results = await asyncio.gather(*tasks, return_exceptions=True)
         for j, tool_result in enumerate(tool_results):
@@ -924,11 +921,8 @@ class FunctionCallingAgent(Module):
                 tool_calls = agent_messages[-1].get("tool_calls") or []
                 for tool_call in tool_calls:
                     function = tool_call.get("function") or {}
-                    tool_name = function.get("name")
-                    tools_arguments = function.get("arguments") or {}
-                    tool_call_id = tool_call.get("id")
-                    tool_calls_ids.append(tool_call_id)
-                    tasks.append(self.tools[tool_name](**tools_arguments))
+                    tool_calls_ids.append(tool_call.get("id"))
+                    tasks.append(call_tool(self.tools[function.get("name")], function))
 
                 tool_results = await asyncio.gather(*tasks, return_exceptions=True)
                 for j, tool_result in enumerate(tool_results):

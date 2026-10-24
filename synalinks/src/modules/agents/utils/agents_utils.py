@@ -174,6 +174,37 @@ def merge_tools(builtin_tools: List, extra_tools: Optional[List], *, kind: str) 
     return merged
 
 
+def tool_arguments(function):
+    """The arguments of a tool call's ``function``, parsed from the
+    JSON-encoded string a tool call keeps (``{}`` when there is none).
+
+    Raises:
+        ValueError: When they are not a JSON object, saying so in words the
+            model can act on: the call fails like a tool raising, and the
+            model reads why.
+    """
+    arguments = (function or {}).get("arguments")
+    if not arguments:
+        return {}
+    if isinstance(arguments, dict):
+        return arguments
+    name = (function or {}).get("name")
+    try:
+        parsed = json.loads(arguments)
+    except json.JSONDecodeError as e:
+        raise ValueError(f"The arguments of '{name}' are not valid JSON ({e}).") from e
+    if not isinstance(parsed, dict):
+        raise ValueError(f"The arguments of '{name}' must be a JSON object.")
+    return parsed
+
+
+async def call_tool(tool, function):
+    """Call ``tool`` with the arguments of a tool call's ``function``: one
+    coroutine, so arguments that do not parse fail the call like the tool
+    itself raising (``asyncio.gather(..., return_exceptions=True)``)."""
+    return await tool(**tool_arguments(function))
+
+
 def tool_message_content(result):
     """The content of the tool message reporting a tool's JSON `result`.
 
