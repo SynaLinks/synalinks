@@ -108,11 +108,11 @@ class LanguageModelTest(testing.TestCase):
     async def test_structured_output_via_tool_call_reads_the_arguments(
         self, mock_completion
     ):
-        # groq (like cohere, bedrock) is asked for structured output as a
-        # forced `structured_output` tool call, so the JSON comes back as the
-        # call's arguments and `content` is empty. It used to be read from
-        # `content`, fail to parse, and score every row as None.
-        language_model = LanguageModel(model="groq/llama-3.3-70b-versatile")
+        # bedrock is asked for structured output as a forced
+        # `structured_output` tool call, so the JSON comes back as the call's
+        # arguments and `content` is empty. It used to be read from `content`,
+        # fail to parse, and score every row as None.
+        language_model = LanguageModel(model="bedrock/meta.llama3-70b-instruct-v1:0")
 
         class Answer(DataModel):
             answer: str
@@ -194,6 +194,55 @@ class LanguageModelTest(testing.TestCase):
         )
 
     @patch("litellm.acompletion")
+    async def test_groq_asks_for_a_strict_json_schema(self, mock_completion):
+        # litellm sends it natively to strict-mode models, and falls back to a
+        # forced tool call itself for the others.
+        language_model = LanguageModel(model="groq/openai/gpt-oss-120b")
+
+        class Answer(DataModel):
+            answer: str
+
+        mock_completion.return_value = {
+            "choices": [{"message": {"content": '{"answer": "B"}'}}]
+        }
+        messages = ChatMessages(
+            messages=[ChatMessage(role=ChatRole.USER, content="Pick a letter.")]
+        )
+        result = await language_model(messages, schema=Answer.get_schema())
+        self.assertEqual(result.get_json(), {"answer": "B"})
+        kwargs = mock_completion.call_args.kwargs
+        self.assertNotIn("tools", kwargs)
+        self.assertEqual(kwargs["response_format"]["type"], "json_schema")
+        self.assertTrue(kwargs["response_format"]["json_schema"]["strict"])
+
+    @patch("litellm.acompletion")
+    async def test_cohere_sends_its_schema_in_the_body(self, mock_completion):
+        # Cohere's v2 chat constrains the reply to `response_format.schema`,
+        # which litellm refuses as a parameter, so it travels in `extra_body`.
+        language_model = LanguageModel(
+            model="cohere/command-a-03-2025", extra_body={"safety_mode": "OFF"}
+        )
+
+        class Answer(DataModel):
+            answer: str
+
+        mock_completion.return_value = {
+            "choices": [{"message": {"content": '{"answer": "B"}'}}]
+        }
+        messages = ChatMessages(
+            messages=[ChatMessage(role=ChatRole.USER, content="Pick a letter.")]
+        )
+        result = await language_model(messages, schema=Answer.get_schema())
+        self.assertEqual(result.get_json(), {"answer": "B"})
+        kwargs = mock_completion.call_args.kwargs
+        self.assertNotIn("tools", kwargs)
+        self.assertNotIn("response_format", kwargs)
+        self.assertEqual(kwargs["extra_body"]["safety_mode"], "OFF")
+        response_format = kwargs["extra_body"]["response_format"]
+        self.assertEqual(response_format["type"], "json_object")
+        self.assertIn("answer", response_format["schema"]["properties"])
+
+    @patch("litellm.acompletion")
     async def test_a_caller_can_override_the_structured_output_payload(
         self, mock_completion
     ):
@@ -201,7 +250,7 @@ class LanguageModelTest(testing.TestCase):
         # about was impossible to drive: the branch overwrote whatever the
         # caller passed. Now it only fills in what is unset.
         language_model = LanguageModel(
-            model="groq/llama-3.3-70b-versatile", tool_choice="auto"
+            model="bedrock/meta.llama3-70b-instruct-v1:0", tool_choice="auto"
         )
 
         class Answer(DataModel):
@@ -238,7 +287,7 @@ class LanguageModelTest(testing.TestCase):
         self, mock_completion
     ):
         # Some backends narrate before calling the tool.
-        language_model = LanguageModel(model="groq/llama-3.3-70b-versatile")
+        language_model = LanguageModel(model="bedrock/meta.llama3-70b-instruct-v1:0")
 
         class Answer(DataModel):
             answer: str
