@@ -4,6 +4,7 @@ import contextvars
 import copy
 import json
 import logging
+import os
 import time
 import warnings
 
@@ -627,6 +628,9 @@ class DecisionModel(Module):
     OpenRouter, Databricks or a self-hosted vLLM server. A local Ollama
     decision model runs as `ollama/<model>` (e.g. `"ollama/laya"`, after
     `ollama pull laya`), on `http://localhost:11434` unless `api_base` is set.
+    An SGLang server runs as `sglang/<model>` (any chat model it serves, or a
+    decision checkpoint such as Kev), on `SGLANG_API_BASE`, then
+    `http://localhost:30000`, unless `api_base` is set.
 
     The modules that can use a decision model take it as their
     `decision_model` (never as their `language_model`): `Generator`,
@@ -1067,10 +1071,14 @@ class DecisionModel(Module):
         logger = logging.getLogger(__name__)
         systemone = self._systemone or litellm.asystemone
         model, api_base = self.model, self.api_base
-        if self.provider == "ollama":
-            # Ollama serves the SystemOne API, which litellm calls as `hosted_vllm`.
+        if self.provider in ("ollama", "sglang"):
+            # Both serve the SystemOne API, which litellm calls as `hosted_vllm`.
             model = f"hosted_vllm/{self.model_id}"
-            api_base = api_base or model_catalog.PROVIDERS["ollama"]["default_api_base"]
+            if self.provider == "sglang":
+                api_base = api_base or os.environ.get("SGLANG_API_BASE")
+            api_base = (
+                api_base or model_catalog.PROVIDERS[self.provider]["default_api_base"]
+            )
 
         @retry(
             stop=stop_after_attempt(self.retry),
@@ -1143,8 +1151,8 @@ class DecisionModel(Module):
 
         These are the values accepted before the `/` in `model`, e.g.
         `"typesafe"` in `"typesafe/jev-latest"`: the providers of litellm's
-        decisions API, and `"ollama"` for a local Ollama decision model
-        (e.g. `"ollama/laya"`).
+        decisions API, `"ollama"` for a local Ollama decision model
+        (e.g. `"ollama/laya"`) and `"sglang"` for an SGLang server.
 
         ```python
         import synalinks
@@ -1155,7 +1163,7 @@ class DecisionModel(Module):
         Returns:
             (list): The sorted list of supported provider prefixes.
         """
-        return sorted({*supported_decisions_providers(), "ollama"})
+        return sorted({*supported_decisions_providers(), "ollama", "sglang"})
 
     @classmethod
     def provider_info(cls, provider):
@@ -1191,12 +1199,13 @@ class DecisionModel(Module):
     async def supported_models(cls, provider, api_base=None):
         """Returns the decision models a provider offers.
 
-        A self-hosted vLLM server (`hosted_vllm`) is asked for the models it
-        serves, Ollama for its models with the `decision` capability, and
-        OpenRouter for its public list, keeping the models that answer
-        decisions. The other providers are listed from litellm's model
-        table: their decision models, and their chat models that also answer
-        decisions (e.g. `openai/gpt-6-luna`). For OpenAI with `OPENAI_API_KEY`
+        A self-hosted vLLM or SGLang server is asked for the models it
+        serves (SGLang answers decisions with any of them), Ollama for its
+        models with the `decision` capability, and OpenRouter for its public
+        list, keeping the models that answer decisions. The other providers
+        are listed from litellm's model table: their decision models, and
+        their chat models that also answer decisions (e.g.
+        `openai/gpt-6-luna`). For OpenAI with `OPENAI_API_KEY`
         set, these are narrowed to the models the account can use, from
         OpenAI's live list.
 
