@@ -3,7 +3,7 @@
 environment variables each one needs, the models it serves and their info.
 
 Hosted providers list their models from litellm's model table. Self-hosted
-ones (Ollama, vLLM...) and open catalogs (OpenRouter, Doubleword) are asked
+ones (Ollama, vLLM, SGLang...) and open catalogs (OpenRouter, Doubleword) are asked
 for the models they actually serve.
 """
 
@@ -86,6 +86,14 @@ PROVIDERS = {
     "openrouter": {
         "env": [env_var("OPENROUTER_API_KEY")],
         "default_api_base": "https://openrouter.ai/api/v1",
+        "server": OPENAI_COMPATIBLE,
+    },
+    "sglang": {
+        "env": [
+            env_var("SGLANG_API_BASE", required=False, secret=False),
+            env_var("HOSTED_VLLM_API_KEY", required=False),
+        ],
+        "default_api_base": "http://localhost:30000/v1",
         "server": OPENAI_COMPATIBLE,
     },
     "together_ai": {"env": [env_var("TOGETHERAI_API_KEY")]},
@@ -294,7 +302,7 @@ async def server_models(provider, info, api_base=None, ollama_capability=None, k
                         if ollama_capability in caps
                     ]
             else:
-                # vLLM serves its OpenAI-compatible API under `/v1`.
+                # vLLM and SGLang serve their OpenAI-compatible API under `/v1`.
                 if not api_base.endswith("/v1"):
                     api_base = f"{api_base}/v1"
                 response = await client.get(f"{api_base}/models")

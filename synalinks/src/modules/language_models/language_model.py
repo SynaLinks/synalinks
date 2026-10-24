@@ -298,6 +298,7 @@ SUPPORTED_PROVIDERS = (
     "ollama",
     "openai",
     "openrouter",
+    "sglang",
     "together_ai",
     "vllm",
     "xai",
@@ -542,6 +543,28 @@ class LanguageModel(Module):
     )
     ```
 
+    **Using SGLang models**
+
+    SGLang serves an OpenAI-compatible API, on `http://localhost:30000/v1` by
+    default:
+
+    ```bash
+    python -m sglang.launch_server --model-path Qwen/Qwen3-8B
+    ```
+
+    The `sglang/` prefix is rewritten to `hosted_vllm/` internally (same wire
+    format) and `api_base` is defaulted to `SGLANG_API_BASE`, then to the local
+    server, so structured outputs flow through the JSON schema path. For a
+    server started with `--api-key`, set `HOSTED_VLLM_API_KEY`.
+
+    ```python
+    import synalinks
+
+    language_model = synalinks.LanguageModel(
+        model="sglang/Qwen/Qwen3-8B",
+    )
+    ```
+
     To cascade models in case there is anything wrong with
     the model provider (hence making your pipelines more robust).
     Use the `fallback` argument like in this example:
@@ -668,6 +691,11 @@ class LanguageModel(Module):
             model = model.replace("mirai", "hosted_vllm", 1)
             if not api_base:
                 api_base = "http://localhost:8000/v1"
+        if model_provider == "sglang":
+            # SGLang serves the same OpenAI-compatible API as vLLM.
+            model = model.replace("sglang", "hosted_vllm", 1)
+            if not api_base:
+                api_base = os.environ.get("SGLANG_API_BASE", "http://localhost:30000/v1")
         self.model = model
         if fallback is not None:
             # Lazy import: `get` lives in the package __init__ which imports
@@ -1328,10 +1356,10 @@ class LanguageModel(Module):
         These are the values accepted before the `/` in `model`, e.g.
         `"openai"` in `"openai/gpt-4o-mini"`. Some are routed to a different
         litellm provider internally (`ollama` to `ollama_chat`, `vllm` to
-        `hosted_vllm`, `doubleword` to `openai`, `mirai` to `hosted_vllm`); the
-        names listed here are the
-        ones to write in `model`. Other litellm providers can still be used
-        for plain chat completion, but structured output raises for them.
+        `hosted_vllm`, `doubleword` to `openai`, `mirai` and `sglang` to
+        `hosted_vllm`); the names listed here are the ones to write in `model`.
+        Other litellm providers can still be used for plain chat completion, but
+        structured output raises for them.
 
         ```python
         import synalinks
@@ -1376,8 +1404,8 @@ class LanguageModel(Module):
     async def supported_models(cls, provider, api_base=None):
         """Returns the language models a provider offers.
 
-        Self-hosted providers and open catalogs (Ollama, vLLM, Mirai, OpenRouter,
-        Doubleword) are asked for the models they serve, keeping the Ollama
+        Self-hosted providers and open catalogs (Ollama, vLLM, SGLang, Mirai,
+        OpenRouter, Doubleword) are asked for the models they serve, keeping the Ollama
         models that can chat. The others are listed from litellm's model table;
         for OpenAI with `OPENAI_API_KEY` set, narrowed to the models the account
         can use (with its fine-tuned models), from OpenAI's live list.

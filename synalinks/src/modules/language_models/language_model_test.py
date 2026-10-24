@@ -1020,6 +1020,7 @@ class SupportedProvidersTest(testing.TestCase):
             "ollama",
             "openai",
             "openrouter",
+            "sglang",
             "together_ai",
             "vllm",
             "xai",
@@ -1065,6 +1066,32 @@ class SupportedProvidersTest(testing.TestCase):
             model="mirai/Qwen3.8-27B-M", api_base="http://10.0.0.2:8080/v1"
         )
         self.assertEqual(lm.api_base, "http://10.0.0.2:8080/v1")
+
+    @patch("litellm.acompletion")
+    async def test_sglang_routes_to_local_hosted_vllm(self, mock_completion):
+        class Answer(DataModel):
+            answer: str
+
+        lm = LanguageModel(model="sglang/Qwen/Qwen3-8B")
+        self.assertEqual(lm.model, "hosted_vllm/Qwen/Qwen3-8B")
+        self.assertEqual(lm.api_base, "http://localhost:30000/v1")
+        mock_completion.return_value = {
+            "choices": [{"message": {"content": '{"answer": "B"}'}}]
+        }
+        result = await lm(_chat_messages(), schema=Answer.get_schema())
+        self.assertEqual(result.get_json(), {"answer": "B"})
+        called = mock_completion.call_args.kwargs
+        self.assertEqual(called["model"], "hosted_vllm/Qwen/Qwen3-8B")
+        self.assertEqual(called["api_base"], "http://localhost:30000/v1")
+        self.assertEqual(called["response_format"]["type"], "json_schema")
+
+    @patch.dict(os.environ, {"SGLANG_API_BASE": "http://gpu:30000/v1"})
+    def test_sglang_reads_its_base_url_variable(self):
+        self.assertEqual(
+            LanguageModel(model="sglang/Qwen/Qwen3-8B").api_base, "http://gpu:30000/v1"
+        )
+        lm = LanguageModel(model="sglang/Qwen/Qwen3-8B", api_base="http://box:9000/v1")
+        self.assertEqual(lm.api_base, "http://box:9000/v1")
 
     @patch("litellm.acompletion")
     async def test_huggingface_uses_native_json_schema(self, mock_completion):
