@@ -109,10 +109,13 @@ Plus everything you'd expect from a production-grade framework:
 
 Python 3.12 or newer, plus the code sandbox's system dependency for your OS.
 
-**Linux** (Debian / Ubuntu):
+**Linux**: install `fuse3`, which brings the libfuse of your distribution:
 
 ```shell
-sudo apt install fuse3 libfuse3-3
+sudo apt install fuse3      # Debian / Ubuntu
+sudo dnf install fuse3      # Fedora / RHEL
+sudo pacman -S fuse3        # Arch
+sudo zypper install fuse3   # openSUSE
 # Ubuntu 23.10+ only: allow the unprivileged user namespaces the sandbox needs
 sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
 ```

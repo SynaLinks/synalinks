@@ -43,9 +43,10 @@ jobs:
         run: uv pip install --group dev
       # The Linux sandbox backend pivots into a FUSE mount of the virtual
       # filesystem: install libfuse explicitly rather than rely on the image.
+      # `fuse3` pulls the release's libfuse (libfuse3-3 or libfuse3-4).
       - name: Install libfuse (Linux sandbox backend)
         if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y fuse3 libfuse3-3
+        run: sudo apt-get update && sudo apt-get install -y fuse3
       # GitHub's ubuntu-24.04 runners ship
       # kernel.apparmor_restrict_unprivileged_userns=1, which lets unshare()
       # create a user namespace but then neuters it so the /proc/self/setgroups
