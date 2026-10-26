@@ -682,8 +682,8 @@ def confinement_available() -> tuple[bool, str]:
         # then silently running unconfined when the mount does not come up.
         return False, (
             "confinement requires the libfuse user-space library, which could "
-            "not be loaded; install libfuse (Debian/Ubuntu: libfuse3-3 or "
-            "libfuse2) and the mirage-ai[fuse] extra"
+            "not be loaded; install the `fuse3` package of your distribution "
+            "and the mirage-ai[fuse] extra"
         )
     try:
         with open("/proc/sys/kernel/unprivileged_userns_clone") as fh:
