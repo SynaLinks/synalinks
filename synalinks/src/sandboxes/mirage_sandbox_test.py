@@ -1067,6 +1067,24 @@ class MirageSandboxTest(_SandboxTestCase):
         self.assertEqual(listing["files"], ["/src/a.py", "/src/sub/b.py"])
         self.assertEqual(listing["total"], 2)
 
+    async def test_list_files_absolute_glob(self):
+        # The file tools take and return absolute paths, so a glob written the
+        # same way, as an agent writes it, lists the same files as the
+        # relative form.
+        sandbox = MirageSandbox(timeout=_TIMEOUT)
+        await sandbox.write_file("/src/a.py", "1")
+        await sandbox.write_file("/src/sub/b.py", "2")
+        await sandbox.write_file("/notes.md", "3")
+        self.assertEqual(
+            (await sandbox.list_files("/src/**/*.py"))["files"],
+            (await sandbox.list_files("src/**/*.py"))["files"],
+        )
+        self.assertEqual(
+            (await sandbox.list_files("/**/*"))["files"],
+            ["/notes.md", "/src/a.py", "/src/sub/b.py"],
+        )
+        self.assertEqual((await sandbox.list_files("/*.md"))["files"], ["/notes.md"])
+
     async def test_list_files_glob_no_matches(self):
         sandbox = MirageSandbox(timeout=_TIMEOUT)
         await sandbox.write_file("/src/a.py", "1")
@@ -1107,6 +1125,13 @@ class MirageSandboxTest(_SandboxTestCase):
         self.assertEqual(result["total"], 1)
         self.assertEqual(result["matches"][0]["path"], "/s/a.py")
         self.assertEqual(result["matches"][0]["line"], 2)
+
+    async def test_search_files_absolute_glob(self):
+        sandbox = MirageSandbox(timeout=_TIMEOUT)
+        await sandbox.write_file("/s/a.py", "print('found')\n")
+        await sandbox.write_file("/t/b.py", "print('elsewhere')\n")
+        result = await sandbox.search_files("print", glob="/s/**/*.py")
+        self.assertEqual([m["path"] for m in result["matches"]], ["/s/a.py"])
 
     async def test_search_files_no_matches(self):
         sandbox = MirageSandbox(timeout=_TIMEOUT)

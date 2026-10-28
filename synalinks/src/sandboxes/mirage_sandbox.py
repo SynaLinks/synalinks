@@ -2684,8 +2684,9 @@ class MirageSandbox(Sandbox):
         or editing them.
 
         Args:
-            pattern (str): Glob pattern, e.g. ``'**/*.py'`` (``**`` crosses
-                directories). Defaults to ``'**/*'`` (every file).
+            pattern (str): Glob pattern over absolute virtual paths, e.g.
+                ``'/src/**/*.py'`` (``**`` crosses directories; the leading
+                slash is optional). Defaults to ``'**/*'`` (every file).
             offset (int): 1-based index of the first path to return. Defaults
                 to 1.
             limit (int): Maximum number of paths to return; 0 returns all
@@ -2883,8 +2884,9 @@ class MirageSandbox(Sandbox):
         Args:
             pattern (str): Regular expression to search for in file contents
                 (matched per line).
-            glob (str): Glob selecting which files to search, e.g.
-                ``'**/*.py'``. Defaults to ``'**/*'`` (all files).
+            glob (str): Glob over absolute virtual paths selecting which
+                files to search, e.g. ``'/src/**/*.py'`` (the leading slash is
+                optional). Defaults to ``'**/*'`` (all files).
             offset (int): 1-based index of the first match to return. Defaults
                 to 1.
             limit (int): Maximum number of matches to return; 0 returns all.

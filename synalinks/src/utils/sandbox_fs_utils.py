@@ -87,7 +87,13 @@ def glob_to_regex(pattern: str) -> "re.Pattern":
     ``*`` matches within a single path segment, ``**`` spans segments, and
     ``**/`` additionally matches zero leading directories so that
     ``**/x.py`` finds ``x.py`` at the root too.
+
+    The regex is matched against paths relative to the sandbox root (no
+    leading slash), so a leading slash in the pattern is dropped: the
+    absolute form the file tools return and take, ``'/src/**/*.py'``, lists
+    the same files as ``'src/**/*.py'``.
     """
+    pattern = pattern.lstrip("/")
     i, n = 0, len(pattern)
     out: List[str] = []
     while i < n:
