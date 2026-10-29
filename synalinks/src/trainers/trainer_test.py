@@ -148,6 +148,43 @@ class TestTrainer(testing.TestCase):
         )
 
     @patch("litellm.acompletion")
+    async def test_fit_and_evaluate_a_source_of_unknown_length(self, mock_completion):
+        """A source whose `__len__` raises, as a streaming dataset's does, is read to its end."""
+        mock_completion.return_value = {
+            "choices": [
+                {
+                    "message": {
+                        "content": json.dumps({"rationale": "Known.", "answer": "Paris"})
+                    }
+                }
+            ]
+        }
+
+        class Streaming:
+            def __init__(self, x, y):
+                self.x, self.y = x, y
+
+            def __iter__(self):
+                for i in range(len(self.x)):
+                    yield self.x[i : i + 1], self.y[i : i + 1]
+
+            def __len__(self):
+                raise NotImplementedError("Streaming datasets have unknown length.")
+
+        program = await program_test()
+        program.compile(
+            optimizer=optimizers.random_few_shot.RandomFewShot(),
+            reward=rewards.ExactMatch(in_mask=["answer"]),
+        )
+        (x_train, y_train), (x_test, y_test) = load_test_data()
+
+        await program.fit(
+            x=Streaming(x_train, y_train), epochs=1, validation_data=(x_test, y_test)
+        )
+        result = await program.evaluate(x=Streaming(x_test, y_test), return_dict=True)
+        self.assertIn("reward", result)
+
+    @patch("litellm.acompletion")
     async def test_evaluate_predicts_each_sample_once_when_unbuilt(self, mock_completion):
         """An unbuilt program must not be run twice on the batch it builds on.
 

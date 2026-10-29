@@ -29,6 +29,14 @@ from synalinks.src.utils import tracking
 from synalinks.src.utils.async_utils import run_maybe_nested
 
 
+def _size(x):
+    """`len(x)`, or `None` when `x` cannot tell (a generator, a streaming dataset)."""
+    try:
+        return len(x)
+    except (TypeError, NotImplementedError):
+        return None
+
+
 def _clone_metric(metric):
     """Return a fresh instance of `metric` with independent state.
 
@@ -702,8 +710,8 @@ class Trainer:
                 validation_batch_size=validation_batch_size,
                 validation_steps=validation_steps,
                 initial_epoch=initial_epoch,
-                train_size=len(x) if hasattr(x, "__len__") else None,
-                val_size=len(val_x) if validation_data is not None else 0,
+                train_size=_size(x),
+                val_size=_size(val_x) if validation_data is not None else 0,
                 program=self,
             )
 
@@ -945,7 +953,7 @@ class Trainer:
                 epochs=1,
                 steps=epoch_iterator.num_batches,
                 batch_size=batch_size,
-                test_size=len(x) if hasattr(x, "__len__") else None,
+                test_size=_size(x),
                 program=self,
             )
 
