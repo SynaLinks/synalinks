@@ -403,8 +403,14 @@ async def _evaluate_only(program, *fit_args, **fit_kwargs):
     if val is not None:
         x, y = val
     else:
-        x = fit_kwargs.get("x") or (fit_args[0] if len(fit_args) >= 1 else None)
-        y = fit_kwargs.get("y") or (fit_args[1] if len(fit_args) >= 2 else None)
+        # Not `or`: its truth test asks a dataset for its length, which a streamed
+        # one cannot tell, and an array of several rows has no truth value at all.
+        x = fit_kwargs.get("x")
+        if x is None and len(fit_args) >= 1:
+            x = fit_args[0]
+        y = fit_kwargs.get("y")
+        if y is None and len(fit_args) >= 2:
+            y = fit_args[1]
 
     eval_kwargs = {
         k: fit_kwargs[k]

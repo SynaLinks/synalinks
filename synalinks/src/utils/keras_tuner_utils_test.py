@@ -7,6 +7,8 @@ import sys
 import tempfile
 import types
 
+import numpy as np
+
 from synalinks.src import testing
 from synalinks.src.callbacks.history import History as SynalinksHistory
 from synalinks.src.utils import keras_tuner_utils
@@ -152,6 +154,35 @@ class HistoryReductionTest(testing.TestCase):
         default = types.SimpleNamespace(name="default_objective", direction="min")
         directions = _objective_directions(default)
         self.assertEqual(directions, {"default_objective": "min"})
+
+
+class EvaluateOnlyTest(testing.TestCase):
+    """`_evaluate_only` hands `program.evaluate` the data `fit` was given, as is."""
+
+    class _Program:
+        async def evaluate(self, x=None, y=None, **kwargs):
+            self.got = (x, y)
+            return {"reward": 1.0}
+
+    def test_a_source_of_unknown_length_is_passed_as_is(self):
+        class Streaming:
+            """A source that cannot tell its length, as a streamed Hugging Face split."""
+
+            def __len__(self):
+                raise NotImplementedError("unknown length")
+
+        program, data = self._Program(), Streaming()
+        result = asyncio.run(keras_tuner_utils._evaluate_only(program, x=data))
+        self.assertIs(program.got[0], data)
+        self.assertIsNone(program.got[1])
+        self.assertEqual(result, {"reward": 1.0, "val_reward": 1.0})
+
+    def test_arrays_passed_by_keyword_are_passed_as_is(self):
+        program = self._Program()
+        x, y = np.array(["a", "b"]), np.array(["c", "d"])
+        asyncio.run(keras_tuner_utils._evaluate_only(program, x=x, y=y))
+        self.assertIs(program.got[0], x)
+        self.assertIs(program.got[1], y)
 
 
 class ResolveErrorTest(testing.TestCase):
