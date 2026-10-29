@@ -376,7 +376,9 @@ class Monitor(Hook):
             parent_span=parent_span_obj,
             metadata=metadata or None,
             tags=tags or None,
-            experiment_id=self._experiment_id,
+            # Only a trace's root names its experiment: a child is in its
+            # root's, and MLflow fails to start a child that names one.
+            experiment_id=self._experiment_id if parent_span_obj is None else None,
         )
 
         # Store only in the module-level registry. Storing the span on the
