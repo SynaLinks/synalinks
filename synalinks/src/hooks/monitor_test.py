@@ -211,6 +211,33 @@ class MonitorExperimentTest(testing.TestCase):
         for call in mock_mlflow.start_span_no_context.call_args_list:
             self.assertEqual(call.kwargs["experiment_id"], "exp-mine")
 
+    @patch("synalinks.src.hooks.monitor.mlflow")
+    def test_a_child_span_starts_in_its_parent_trace(self, mock_mlflow):
+        """Only a trace's root names the experiment. MLflow fails to start a
+        child span that names one (`'_Span' object has no attribute '_span'`),
+        which lost every span under a program's root, its model calls too."""
+        root_span = AsyncMock()
+        root_span.set_attributes = lambda *a, **kw: None
+        root_span.set_inputs = lambda *a, **kw: None
+        root_span.end = lambda: None
+        mock_mlflow.start_span_no_context.return_value = root_span
+        mock_mlflow.set_experiment.return_value.experiment_id = "exp-mine"
+
+        monitor = Monitor(experiment_name="mine")
+        monitor.set_module(LanguageModel(model="ollama/mistral"))
+        messages = ChatMessages(
+            messages=[ChatMessage(role=ChatRole.USER, content="Hello")]
+        )
+        monitor.on_call_begin("root-call", inputs=(messages,))
+        monitor.on_call_begin(
+            "child-call", parent_call_id="root-call", inputs=(messages,)
+        )
+
+        root, child = mock_mlflow.start_span_no_context.call_args_list
+        self.assertEqual(root.kwargs["experiment_id"], "exp-mine")
+        self.assertIs(child.kwargs["parent_span"], root_span)
+        self.assertIsNone(child.kwargs["experiment_id"])
+
 
 class TraceContextTest(testing.TestCase):
     def test_no_context_by_default(self):
