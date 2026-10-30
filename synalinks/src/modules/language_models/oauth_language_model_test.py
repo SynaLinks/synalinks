@@ -22,8 +22,14 @@ from synalinks.src.modules.language_models import LanguageModel
 from synalinks.src.modules.language_models import OAuthLanguageModel
 from synalinks.src.modules.language_models import oauth_language_model
 from synalinks.src.modules.language_models.oauth_language_model import (
+    _build_app_server_command,
+)
+from synalinks.src.modules.language_models.oauth_language_model import (
     _build_codex_command,
 )
+from synalinks.src.modules.language_models.oauth_language_model import _default_effort
+from synalinks.src.modules.language_models.oauth_language_model import _dynamic_tools
+from synalinks.src.modules.language_models.oauth_language_model import _history_items
 from synalinks.src.modules.language_models.oauth_language_model import _parse_codex_events
 from synalinks.src.modules.language_models.oauth_language_model import _split_messages
 from synalinks.src.modules.language_models.oauth_language_model import _strict_schema
@@ -582,10 +588,8 @@ class OAuthLanguageModelTest(testing.TestCase):
         )
         self.assertFalse(any("temperature" in a for a in recorder.calls[0]["command"]))
 
-    async def test_tools_and_streaming_are_rejected(self):
+    async def test_streaming_is_rejected(self):
         lm = OAuthLanguageModel(model="codex/gpt-6.1-sol")
-        with self.assertRaisesRegex(ValueError, "tool calling"):
-            await lm(_messages(), tool_schemas=[{"type": "function"}])
         with self.assertRaisesRegex(ValueError, "streaming"):
             await lm(_messages(), streaming=True)
 
@@ -786,3 +790,563 @@ class OAuthLanguageModelTest(testing.TestCase):
         lm = OAuthLanguageModel(model="codex/gpt-6.1-sol", timeout=0.2)
         with self.assertRaisesRegex(RuntimeError, "timed out"):
             await lm._run(["sleep", "30"], "")
+
+
+# Tool calling through `codex app-server`.
+
+
+async def add(a: int, b: int):
+    """Adds two numbers.
+
+    Args:
+        a (int): The first number.
+        b (int): The second number.
+    """
+    return {"result": a + b}
+
+
+async def multiply(a: int, b: int):
+    """Multiplies two numbers.
+
+    Args:
+        a (int): The first number.
+        b (int): The second number.
+    """
+    return {"result": a * b}
+
+
+class Question(DataModel):
+    question: str = Field(description="The question")
+
+
+class Answer(DataModel):
+    result: int = Field(description="The result")
+
+
+_USAGE = {
+    "last": {
+        "inputTokens": 300,
+        "cachedInputTokens": 100,
+        "outputTokens": 30,
+        "reasoningOutputTokens": 10,
+    }
+}
+
+
+def _notification(method, **params):
+    return {"method": method, "params": params}
+
+
+class FakeAppServer:
+    """Stands in for `OAuthLanguageModel._app_server`: a scripted app-server.
+
+    `turns` lists what each `turn/start` produces, in order: `{"calls":
+    [(tool, arguments), ...]}` (the model calls tools: one `item/tool/call`
+    request each, the turn only completes once interrupted), `{"message":
+    text}` (the model answers), or `{"item": type}` (the model acted through
+    the CLI). Every request is recorded in `requests`, one process per
+    completion is counted in `processes`, and `config` is what `config/read`
+    returns.
+    """
+
+    def __init__(self, turns, config=None):
+        self.turns = list(turns)
+        self.config = config or {}
+        self.requests = []
+        self.notifications = []
+        self.commands = []
+        self.processes = 0
+        self._events = []
+        self._request_id = 0
+        self._call_id = 0
+
+    def __call__(self, command, cwd):
+        self.commands.append((command, cwd))
+        return self
+
+    async def __aenter__(self):
+        self.processes += 1
+        self._events = []
+        return self
+
+    async def __aexit__(self, *exc_info):
+        return False
+
+    def _completion(self, status):
+        return [
+            _notification("thread/tokenUsage/updated", threadId="t", tokenUsage=_USAGE),
+            _notification(
+                "turn/completed", threadId="t", turn={"id": "u", "status": status}
+            ),
+        ]
+
+    async def request(self, method, params=None):
+        self.requests.append((method, params))
+        if method == "initialize":
+            return {"userAgent": "synalinks/0.164.0"}
+        if method == "config/read":
+            return {"config": self.config}
+        if method == "thread/start":
+            return {"thread": {"id": "t"}}
+        if method == "thread/inject_items":
+            return {}
+        if method == "turn/start":
+            turn = self.turns.pop(0)
+            self._events = [
+                _notification("item/started", item={"type": "userMessage", "id": "m"})
+            ]
+            if "calls" in turn:
+                for tool, arguments in turn["calls"]:
+                    call = {
+                        "callId": f"call_{self._call_id}",
+                        "tool": tool,
+                        "arguments": arguments,
+                    }
+                    self._call_id += 1
+                    self._events.append(
+                        _notification(
+                            "item/started", item={"type": "dynamicToolCall", **call}
+                        )
+                    )
+                    self._request_id += 1
+                    self._events.append(
+                        {
+                            "id": self._request_id,
+                            "method": "item/tool/call",
+                            "params": {"threadId": "t", "turnId": "u", **call},
+                        }
+                    )
+            elif "item" in turn:
+                self._events.append(
+                    _notification("item/started", item={"type": turn["item"], "id": "x"})
+                )
+                self._events += self._completion("completed")
+            else:
+                self._events.append(
+                    _notification(
+                        "item/completed",
+                        item={"type": "agentMessage", "id": "a", "text": turn["message"]},
+                    )
+                )
+                self._events += self._completion("completed")
+            return {"turn": {"id": "u"}}
+        if method == "turn/interrupt":
+            self._events += self._completion("interrupted")
+            return {}
+        raise AssertionError(f"Unexpected request: {method}")
+
+    async def notify(self, method, params=None):
+        self.notifications.append(method)
+
+    async def next_event(self):
+        return self._events.pop(0) if self._events else None
+
+    def params(self, method):
+        """The params of the requests of `method`, one per process."""
+        return [params for name, params in self.requests if name == method]
+
+
+def _trajectory():
+    """A conversation where the model already called `add`."""
+    return ChatMessages(
+        messages=[
+            ChatMessage(role=ChatRole.SYSTEM, content="You compute."),
+            ChatMessage(role=ChatRole.USER, content="What is (17 + 25) * 3?"),
+            ChatMessage(
+                role=ChatRole.ASSISTANT,
+                content="",
+                tool_calls=[
+                    {
+                        "id": "call_0",
+                        "type": "function",
+                        "function": {"name": "add", "arguments": '{"a": 17, "b": 25}'},
+                    }
+                ],
+            ),
+            ChatMessage(
+                role=ChatRole.TOOL, tool_call_id="call_0", content='{"result": 42}'
+            ),
+        ]
+    )
+
+
+_TOOLS = [synalinks.Tool(add), synalinks.Tool(multiply)]
+
+
+class HistoryItemsTest(testing.TestCase):
+    def test_messages_become_response_items(self):
+        messages = [
+            {"role": "system", "content": "You compute."},
+            {"role": "user", "content": "What is (17 + 25) * 3?"},
+            {
+                "role": "assistant",
+                "content": "Adding first.",
+                "tool_calls": [
+                    {
+                        "id": "call_0",
+                        "type": "function",
+                        "function": {"name": "add", "arguments": {"a": 17, "b": 25}},
+                    }
+                ],
+            },
+            {"role": "tool", "tool_call_id": "call_0", "content": '{"result": 42}'},
+        ]
+        instructions, items = _history_items(messages)
+        self.assertEqual(instructions, "You compute.")
+        self.assertEqual(
+            items,
+            [
+                {
+                    "type": "message",
+                    "role": "user",
+                    "content": [{"type": "input_text", "text": "What is (17 + 25) * 3?"}],
+                },
+                {
+                    "type": "message",
+                    "role": "assistant",
+                    "content": [{"type": "output_text", "text": "Adding first."}],
+                },
+                {
+                    "type": "function_call",
+                    "call_id": "call_0",
+                    "name": "add",
+                    "arguments": '{"a": 17, "b": 25}',
+                },
+                {
+                    "type": "function_call_output",
+                    "call_id": "call_0",
+                    "output": '{"result": 42}',
+                },
+            ],
+        )
+
+    def test_dynamic_tools_from_wire_declarations(self):
+        self.assertEqual(
+            _dynamic_tools(
+                [{"name": "ping"}, {"name": "add", "parameters": {"type": "object"}}]
+            ),
+            [
+                {
+                    "type": "function",
+                    "name": "ping",
+                    "description": "",
+                    "inputSchema": {"type": "object", "properties": {}},
+                },
+                {
+                    "type": "function",
+                    "name": "add",
+                    "description": "",
+                    "inputSchema": {"type": "object"},
+                },
+            ],
+        )
+
+    def test_default_effort_comes_from_the_catalog(self):
+        catalog = json.dumps(_CATALOG)
+        self.assertEqual(_default_effort(catalog, "gpt-6.1-sol"), "low")
+        self.assertIsNone(_default_effort(catalog, "gpt-5.5"))
+        self.assertIsNone(_default_effort(catalog, None))
+        self.assertIsNone(_default_effort("", "gpt-6.1-sol"))
+
+
+class AppServerCommandTest(testing.TestCase):
+    def test_command_is_locked_down(self):
+        command = _build_app_server_command(catalog_path="/tmp/m.json", tools=True)
+        self.assertEqual(command[0], "codex")
+        self.assertEqual(command[-3:], ["app-server", "--listen", "stdio://"])
+        # The overrides of `codex exec`, plus what the app-server cannot
+        # ignore from the user's configuration, and no harness function.
+        for override in (
+            'web_search="disabled"',
+            "features.shell_tool=false",
+            'model_provider="openai"',
+            "notify=[]",
+            "tools.experimental_request_user_input.enabled=false",
+            'model_catalog_json="/tmp/m.json"',
+        ):
+            self.assertIn(override, command)
+        self.assertNotIn("exec", command)
+
+    def test_harness_function_stays_when_no_tool_is_declared(self):
+        # Without a declared function, the CLI would send the instructions
+        # twice: the key is only worth it with tools.
+        command = _build_app_server_command()
+        self.assertNotIn("tools.experimental_request_user_input.enabled=false", command)
+
+
+class AppServerToolCallingTest(testing.TestCase):
+    def setUp(self):
+        super().setUp()
+        patcher = patch.object(
+            oauth_language_model, "_codex_executable", return_value="codex"
+        )
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        self.recorder = Recorder()
+        run = patch(_RUN, self.recorder)
+        run.start()
+        self.addCleanup(run.stop)
+        # The fake streams nothing: no need to let a response end.
+        drain = patch.object(oauth_language_model, "_STREAM_DRAIN_S", 0)
+        drain.start()
+        self.addCleanup(drain.stop)
+
+    def _lm(self, fake, **kwargs):
+        lm = OAuthLanguageModel(model="codex/gpt-6.1-sol", retry_max_wait=0, **kwargs)
+        patcher = patch.object(OAuthLanguageModel, "_app_server", fake)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        return lm
+
+    async def test_tool_call_turn_is_native(self):
+        fake = FakeAppServer([{"calls": [("add", {"a": 17, "b": 25})]}])
+        lm = self._lm(fake, reasoning_effort="medium")
+        result = await lm(_user("What is (17 + 25) * 3?"), tools=_TOOLS)
+
+        self.assertEqual(
+            result.get_json(),
+            {
+                "role": "assistant",
+                "content": "",
+                "tool_calls": [
+                    {
+                        "id": "call_0",
+                        "type": "function",
+                        "function": {"name": "add", "arguments": '{"a": 17, "b": 25}'},
+                    }
+                ],
+            },
+        )
+        self.assertEqual(lm.last_call_finish_reason, "tool_calls")
+        self.assertEqual(fake.processes, 1)
+        self.assertEqual(
+            [method for method, _ in fake.requests],
+            ["initialize", "config/read", "thread/start", "turn/start", "turn/interrupt"],
+        )
+        self.assertEqual(fake.notifications, ["initialized"])
+        initialize = fake.params("initialize")[0]
+        self.assertEqual(initialize["capabilities"], {"experimentalApi": True})
+        thread = fake.params("thread/start")[0]
+        self.assertEqual(thread["model"], "gpt-6.1-sol")
+        self.assertEqual(thread["baseInstructions"], "Answer the user's message.")
+        self.assertEqual(thread["developerInstructions"], "")
+        self.assertTrue(thread["ephemeral"])
+        self.assertEqual(thread["sandbox"], "read-only")
+        self.assertEqual(thread["approvalPolicy"], "never")
+        self.assertEqual(thread["cwd"], fake.commands[0][1])
+        self.assertEqual(
+            [(t["type"], t["name"]) for t in thread["dynamicTools"]],
+            [("function", "add"), ("function", "multiply")],
+        )
+        self.assertEqual(thread["dynamicTools"][0]["description"], "Adds two numbers.")
+        self.assertEqual(thread["dynamicTools"][0]["inputSchema"]["required"], ["a", "b"])
+        turn = fake.params("turn/start")[0]
+        self.assertEqual(
+            turn["input"], [{"type": "text", "text": "What is (17 + 25) * 3?"}]
+        )
+        self.assertEqual(turn["effort"], "medium")
+        self.assertNotIn("outputSchema", turn)
+        # The catalog is read once with the CLI, and handed over without tools.
+        self.assertEqual(self.recorder.catalog_reads, 1)
+        self.assertIn('model_catalog_json="', " ".join(fake.commands[0][0]))
+
+    async def test_history_is_injected_as_response_items(self):
+        fake = FakeAppServer([{"calls": [("multiply", {"a": 42, "b": 3})]}])
+        lm = self._lm(fake)
+        result = await lm(_trajectory(), tools=_TOOLS)
+
+        self.assertEqual(
+            result.get_json()["tool_calls"][0]["function"]["name"], "multiply"
+        )
+        thread = fake.params("thread/start")[0]
+        self.assertEqual(thread["baseInstructions"], "You compute.")
+        self.assertEqual(
+            fake.params("thread/inject_items")[0]["items"],
+            [
+                {
+                    "type": "message",
+                    "role": "user",
+                    "content": [{"type": "input_text", "text": "What is (17 + 25) * 3?"}],
+                },
+                {
+                    "type": "function_call",
+                    "call_id": "call_0",
+                    "name": "add",
+                    "arguments": '{"a": 17, "b": 25}',
+                },
+                {
+                    "type": "function_call_output",
+                    "call_id": "call_0",
+                    "output": '{"result": 42}',
+                },
+            ],
+        )
+        # The turn starts on the history alone: no user message follows it.
+        self.assertEqual(fake.params("turn/start")[0]["input"], [])
+
+    async def test_default_effort_is_the_one_of_the_catalog(self):
+        fake = FakeAppServer([{"message": "126"}, {"message": "126"}])
+        lm = self._lm(fake)
+        await lm(_user("hi"), tools=_TOOLS, tool_choice="none")
+        self.assertEqual(fake.params("turn/start")[0]["effort"], "low")
+        await lm(
+            _user("hi"), tools=_TOOLS, tool_choice="none", reasoning_effort="disable"
+        )
+        self.assertEqual(fake.params("turn/start")[1]["effort"], "low")
+
+    async def test_tool_choice_none_declares_no_tool(self):
+        fake = FakeAppServer([{"message": "The result is 126."}])
+        lm = self._lm(fake)
+        result = await lm(_trajectory(), tools=_TOOLS, tool_choice="none")
+
+        self.assertEqual(result.get_json()["content"], "The result is 126.")
+        self.assertNotIn("tool_calls", result.get_json())
+        self.assertEqual(lm.last_call_finish_reason, "stop")
+        self.assertNotIn("dynamicTools", fake.params("thread/start")[0])
+        self.assertEqual(len(fake.params("thread/inject_items")[0]["items"]), 3)
+
+    async def test_usage_is_the_one_of_the_last_request(self):
+        fake = FakeAppServer([{"message": "126"}])
+        lm = self._lm(fake)
+        await lm(_user("hi"), tools=_TOOLS, tool_choice="none")
+        self.assertEqual(lm.last_call_prompt_tokens, 300)
+        self.assertEqual(lm.last_call_completion_tokens, 30)
+        self.assertEqual(lm.last_call_cached_tokens, 100)
+        self.assertEqual(lm.last_call_reasoning_tokens, 10)
+
+    async def test_structured_answer_over_a_tool_history(self):
+        fake = FakeAppServer([{"message": '{"result": 126}'}])
+        lm = self._lm(fake)
+        result = await lm(_trajectory(), schema=Answer.get_schema())
+
+        self.assertEqual(result.get_json(), {"result": 126})
+        turn = fake.params("turn/start")[0]
+        self.assertEqual(turn["outputSchema"]["required"], ["result"])
+        self.assertFalse(turn["outputSchema"]["additionalProperties"])
+        self.assertNotIn("dynamicTools", fake.params("thread/start")[0])
+
+    async def test_required_tool_choice_without_a_call_is_retried(self):
+        fake = FakeAppServer([{"message": "126"}, {"calls": [("add", {"a": 1, "b": 2})]}])
+        lm = self._lm(fake, retry=2)
+        result = await lm(_user("hi"), tools=_TOOLS, tool_choice="required")
+        self.assertEqual(result.get_json()["tool_calls"][0]["function"]["name"], "add")
+        self.assertEqual(fake.processes, 2)
+        self.assertIn(
+            "Call at least one of the tools",
+            fake.params("thread/start")[0]["baseInstructions"],
+        )
+
+    async def test_named_tool_choice_offers_that_tool_only(self):
+        fake = FakeAppServer([{"calls": [("multiply", {"a": 2, "b": 3})]}])
+        lm = self._lm(fake)
+        choice = {"type": "function", "function": {"name": "multiply"}}
+        result = await lm(_user("hi"), tools=_TOOLS, tool_choice=choice)
+        self.assertEqual(
+            result.get_json()["tool_calls"][0]["function"]["name"], "multiply"
+        )
+        thread = fake.params("thread/start")[0]
+        self.assertEqual([t["name"] for t in thread["dynamicTools"]], ["multiply"])
+        self.assertIn("Call the tool `multiply` now.", thread["baseInstructions"])
+
+    async def test_undeclared_named_tool_fails_before_any_process(self):
+        fake = FakeAppServer([])
+        lm = self._lm(fake, retry=3)
+        choice = {"type": "function", "function": {"name": "divide"}}
+        with warnings.catch_warnings(record=True):
+            warnings.simplefilter("always")
+            result = await lm(_user("hi"), tools=_TOOLS, tool_choice=choice)
+        self.assertIsNone(result)
+        self.assertEqual(fake.processes, 0)
+
+    async def test_tool_use_through_the_cli_fails_without_retry(self):
+        fake = FakeAppServer([{"item": "commandExecution"}])
+        lm = self._lm(fake, retry=3)
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            result = await lm(_user("hi"), tools=_TOOLS)
+        self.assertIsNone(result)
+        self.assertEqual(fake.processes, 1)
+        self.assertTrue(any("commandExecution" in str(w.message) for w in caught))
+
+    async def test_mcp_servers_of_the_user_config_are_disabled(self):
+        fake = FakeAppServer(
+            [{"message": "hi"}],
+            config={"mcp_servers": {"docs": {"command": "docs-mcp"}}},
+        )
+        lm = self._lm(fake)
+        await lm(_user("hi"), tools=_TOOLS, tool_choice="none")
+        self.assertEqual(
+            fake.params("thread/start")[0]["config"],
+            {"mcp_servers": {"docs": {"enabled": False}}},
+        )
+
+    async def test_native_shape_equals_the_litellm_path(self):
+        call = {
+            "id": "call_0",
+            "type": "function",
+            "function": {"name": "add", "arguments": '{"a": 17, "b": 25}'},
+        }
+        fake = FakeAppServer([{"calls": [("add", {"a": 17, "b": 25})]}])
+        lm = self._lm(fake)
+        ours = await lm(_user("hi"), tools=_TOOLS)
+        api = LanguageModel(model="openai/gpt-4o-mini")
+        with patch("litellm.acompletion") as mock_completion:
+            mock_completion.return_value = {
+                "choices": [
+                    {
+                        "finish_reason": "tool_calls",
+                        "message": {
+                            "role": "assistant",
+                            "content": None,
+                            "tool_calls": [call],
+                        },
+                    }
+                ],
+                "usage": {},
+            }
+            theirs = await api(_user("hi"), tools=_TOOLS)
+        self.assertEqual(ours.get_json(), theirs.get_json())
+
+    async def test_function_calling_agent_runs_unchanged(self):
+        fake = FakeAppServer(
+            [
+                {"calls": [("add", {"a": 17, "b": 25})]},
+                {"calls": [("multiply", {"a": 42, "b": 3})]},
+                {"message": "(17 + 25) * 3 = 126."},
+                {"message": '{"result": 126}'},
+            ]
+        )
+        lm = self._lm(fake)
+        inputs = synalinks.Input(data_model=Question)
+        outputs = await synalinks.FunctionCallingAgent(
+            data_model=Answer,
+            tools=_TOOLS,
+            language_model=lm,
+            autonomous=True,
+            max_iterations=4,
+            return_inputs_with_trajectory=True,
+        )(inputs)
+        program = synalinks.Program(inputs=inputs, outputs=outputs)
+        result = await program(Question(question="What is (17 + 25) * 3?"))
+
+        self.assertEqual(result.get_json()["result"], 126)
+        self.assertEqual(fake.processes, 4)
+        messages = result.get_json()["messages"]
+        self.assertEqual(
+            [(m["role"], m.get("tool_call_id")) for m in messages],
+            [
+                ("assistant", None),
+                ("tool", "call_0"),
+                ("assistant", None),
+                ("tool", "call_1"),
+            ],
+        )
+        self.assertEqual(messages[1]["content"], {"result": 42})
+        self.assertEqual(messages[3]["content"], {"result": 126})
+        # Each step sends the trajectory so far as native items, and the
+        # final answer is constrained by the schema over that same history.
+        injected = fake.params("thread/inject_items")
+        self.assertEqual([len(p["items"]) for p in injected], [3, 5, 5])
+        self.assertEqual(injected[-1]["items"][-1]["type"], "function_call_output")
+        self.assertIn("outputSchema", fake.params("turn/start")[-1])
+        self.assertNotIn("dynamicTools", fake.params("thread/start")[-1])
