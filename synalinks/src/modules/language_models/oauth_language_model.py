@@ -178,14 +178,19 @@ _NO_HARNESS_FUNCTION = "tools.experimental_request_user_input.enabled=false"
 # What the client says it is in the `initialize` handshake.
 _APP_SERVER_CLIENT = {"name": "synalinks", "version": __version__}
 
+# How long a turn is left running after the model's first tool call before
+# it is interrupted (see `_run_turn`). The call is dispatched as soon as its
+# item is streamed, before the response ends, and no notification says when
+# the stream ends (`thread/tokenUsage/updated` only comes with the end of the
+# turn): interrupted at once, the stream is dropped and the usage of the
+# response with it. Measured live on gpt-6-luna: without the delay, 1 tool
+# turn out of 4 reported no usage (8 out of 10 in an earlier series); with
+# one second, 8 out of 8 did.
+_STREAM_DRAIN_S = 1.0
+
 # The thread items a completion with tools may produce: the user message, the
 # answer, the reasoning, and the calls to the tools the request declared.
 # Anything else means the model acted through the CLI: the call is failed.
-# How long a turn is left running after the model's first tool call before
-# it is interrupted, so that the response's stream ends and its usage is
-# reported (see `_run_turn`).
-_STREAM_DRAIN_S = 1.0
-
 _ALLOWED_APP_SERVER_ITEMS = frozenset(
     {"userMessage", "agentMessage", "reasoning", "dynamicToolCall"}
 )
@@ -908,8 +913,9 @@ class OAuthLanguageModel(LanguageModel):
 
     Only the transport differs from `LanguageModel`: message formatting,
     cache, retry, `fallback`, usage counters and response parsing are
-    inherited. Each call spawns `codex exec` stripped down to a plain
-    completion endpoint:
+    inherited. A call without tools spawns `codex exec` stripped down to a
+    plain completion endpoint (a call with tools spawns `codex app-server`,
+    see below):
 
     - The output schema is passed with `--output-schema` and enforced by the
         backend in strict mode: every field is required and returned.
@@ -956,13 +962,14 @@ class OAuthLanguageModel(LanguageModel):
 
     **Limitations**
 
-    - The messages are not sent as a chat. The system and developer
-        messages become the instructions of the CLI, as one block; the rest
-        becomes a single prompt: a lone user message verbatim, a longer
-        conversation as a role-tagged transcript (`[USER]`, `[ASSISTANT]`).
-        Earlier assistant turns are therefore not sent as assistant
-        messages, and what reaches the backend is shaped by the CLI, which
-        can change between releases (`codex debug prompt-input` shows it).
+    - Without tools, the messages are not sent as a chat. The system and
+        developer messages become the instructions of the CLI, as one block;
+        the rest becomes a single prompt: a lone user message verbatim, a
+        longer conversation as a role-tagged transcript (`[USER]`,
+        `[ASSISTANT]`). Earlier assistant turns are therefore not sent as
+        assistant messages (a turn with tools sends them as items, see
+        above), and what reaches the backend is shaped by the CLI, which can
+        change between releases (`codex debug prompt-input` shows it).
         Results are not directly comparable with the same program on an
         API-key provider.
     - No streaming: `streaming=True` raises a `ValueError`.
@@ -972,9 +979,9 @@ class OAuthLanguageModel(LanguageModel):
         are disabled by name, its `developer_instructions`, `notify` and
         `model_provider` overridden, the effort set to the model's default
         of the catalog when the call sets none). `codex/default` takes the
-        model of that configuration there. `dynamicTools` and
-        `thread/inject_items` are experimental in the app-server protocol
-        of codex-cli 0.164.
+        model of that configuration there. `dynamicTools` is experimental
+        in the app-server protocol of codex-cli 0.164 (`thread/inject_items`
+        is not).
     - `tool_choice="required"` or a named tool have no native form: they
         are asked for in the instructions, and an answer without the call is
         retried. `parallel_tool_calls` is not controlled: the CLI sends
@@ -1364,11 +1371,8 @@ class OAuthLanguageModel(LanguageModel):
                     forbidden.add(str(method))
                 if not interrupted:
                     interrupted = True
-                    # The call is dispatched as soon as its item is streamed,
-                    # before the response ends: interrupted at once, the
-                    # stream is dropped and the usage of the response with it
-                    # (measured live: 8 of 10 tool-calling turns reported no
-                    # usage). The stream ends within the second.
+                    # Left to end its stream first, or its usage is lost
+                    # (see `_STREAM_DRAIN_S`).
                     await asyncio.sleep(_STREAM_DRAIN_S)
                     await app.request(
                         "turn/interrupt", {"threadId": thread_id, "turnId": turn_id}
