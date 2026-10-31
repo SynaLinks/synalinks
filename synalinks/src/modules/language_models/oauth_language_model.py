@@ -12,6 +12,7 @@ from synalinks.src.modules.language_models.language_model import DeterministicSt
 from synalinks.src.modules.language_models.language_model import LanguageModel
 from synalinks.src.saving.object_registration import register_synalinks_serializable
 from synalinks.src.utils import model_catalog
+from synalinks.src.version import __version__
 
 # The providers reachable through a locally authenticated CLI, i.e. the
 # values accepted before the `/` in `model`.
@@ -153,6 +154,47 @@ _INSTALL_HINT = (
 # The system message of a completion that has none: without one, the CLI
 # would send its own coding-agent prompt (about 3,500 tokens) instead.
 _DEFAULT_INSTRUCTIONS = "Answer the user's message."
+
+# A turn that declares tools, or whose history holds tool calls, goes through
+# `codex app-server` instead of `codex exec` (see `_AppServer`). The protocol
+# has no `--ignore-user-config`: these keys neutralise what the user's
+# `config.toml` could add to a request on top of `_CONFIG_OVERRIDES`. The
+# `mcp_servers` it declares are disabled per thread, by name (`config/read`).
+_APP_SERVER_OVERRIDES = (
+    'model_provider="openai"',
+    "notify=[]",
+)
+
+# Whatever the catalog says, the harness declares one function to the model,
+# `request_user_input` ("only available in Plan mode"), in the
+# `additional_tools` item of the request. The gpt-6 models call it, the CLI
+# refuses it, and each attempt costs a request that is not reported. This key
+# takes it out (captured with codex-cli 0.164 on a local provider), but only a
+# turn that declares tools gets it: when the request declares no function at
+# all, the CLI sends the instructions twice (measured live: 365 -> 105 input
+# tokens on a short system message, 2,435 -> 4,245 on a 2,100-token one).
+_NO_HARNESS_FUNCTION = "tools.experimental_request_user_input.enabled=false"
+
+# What the client says it is in the `initialize` handshake.
+_APP_SERVER_CLIENT = {"name": "synalinks", "version": __version__}
+
+# How long a turn is left running after the model's first tool call before
+# it is interrupted (see `_run_turn`). The call is dispatched as soon as its
+# item is streamed, and the CLI reads the rest of the response only once the
+# call is answered: nothing can announce the end of the stream before the
+# interrupt (`thread/tokenUsage/updated`, and even the internal raw
+# `rawResponse/completed`, follow it). Interrupted too early, the response's
+# `completed` event has not reached the CLI and its usage is lost. Measured
+# live on gpt-6-luna, tool turns with their usage reported: 3 out of 4 at
+# 0 s, 19 out of 20 at 0.25 s, 23 out of 24 at 0.5 s, 126 out of 126 at 1 s.
+_STREAM_DRAIN_S = 1.0
+
+# The thread items a completion with tools may produce: the user message, the
+# answer, the reasoning, and the calls to the tools the request declared.
+# Anything else means the model acted through the CLI: the call is failed.
+_ALLOWED_APP_SERVER_ITEMS = frozenset(
+    {"userMessage", "agentMessage", "reasoning", "dynamicToolCall"}
+)
 
 
 def _strict_schema(schema):
@@ -418,16 +460,23 @@ def _parse_codex_events(stdout):
     return content, usage, errors, sorted(forbidden)
 
 
-def _to_model_response(content, usage):
-    """Shapes a Codex turn like a LiteLLM chat completion response."""
+def _to_model_response(content, usage, *, tool_calls=None):
+    """Shapes a Codex turn like a LiteLLM chat completion response.
+
+    `tool_calls`, in the OpenAI wire shape, are set on the message as a
+    provider sets native ones, with the `tool_calls` finish reason.
+    """
     prompt_tokens = int(usage.get("input_tokens") or 0)
     completion_tokens = int(usage.get("output_tokens") or 0)
+    message = {"role": "assistant", "content": content}
+    if tool_calls:
+        message["tool_calls"] = tool_calls
     return {
         "choices": [
             {
                 "index": 0,
-                "finish_reason": "stop",
-                "message": {"role": "assistant", "content": content},
+                "finish_reason": "tool_calls" if tool_calls else "stop",
+                "message": message,
             }
         ],
         "usage": {
@@ -442,6 +491,376 @@ def _to_model_response(content, usage):
             },
         },
     }
+
+
+# Tool calling, native, through `codex app-server`: the tools of a request are
+# declared to the thread (`dynamicTools`), the earlier turns are appended to
+# its history as the Responses API items they are (`thread/inject_items`), and
+# the model's calls come back as `item/tool/call` requests. Synalinks keeps
+# the loop: the turn is interrupted at the first call, which is returned to
+# the caller as a native tool call; the CLI runs nothing. One process per
+# completion, like `codex exec`.
+
+
+def _tool_function(tool):
+    """Returns the `function` of a wire tool declaration."""
+    if not isinstance(tool, dict):
+        raise ValueError(f"A tool declaration must be a dict. Received: {tool!r}")
+    function = tool.get("function") if "function" in tool else tool
+    if not isinstance(function, dict) or not function.get("name"):
+        raise ValueError(f"A tool declaration has no `name`. Received: {tool!r}")
+    return function
+
+
+def _tool_choice_mode(tool_choice):
+    """Normalizes `tool_choice` into `(mode, tool name)`.
+
+    `mode` is `"auto"` (None or `"auto"`), `"none"`, `"required"` (also
+    Anthropic's `"any"`) or `"named"` (a dict naming one tool, in the OpenAI
+    `{"type": "function", "function": {"name": ...}}` or the
+    `{"type": "tool", "name": ...}` shape).
+
+    Raises:
+        ValueError: If `tool_choice` is none of these.
+    """
+    if tool_choice is None or tool_choice == "auto":
+        return "auto", None
+    if tool_choice == "none":
+        return "none", None
+    if tool_choice in ("required", "any"):
+        return "required", None
+    if isinstance(tool_choice, dict):
+        name = (tool_choice.get("function") or {}).get("name") or tool_choice.get("name")
+        if name:
+            return "named", name
+    raise ValueError(
+        "`tool_choice` must be None, 'auto', 'none', 'required' or a dict naming "
+        f"a tool. Received: {tool_choice!r}"
+    )
+
+
+def _offered_tools(tools, tool_choice=None):
+    """The `function`s of the wire tools the model may call under `tool_choice`.
+
+    Raises:
+        ValueError: If a tool is malformed, or `tool_choice` names a tool
+            that is not declared.
+    """
+    functions = [_tool_function(tool) for tool in tools or []]
+    mode, name = _tool_choice_mode(tool_choice)
+    if mode == "none":
+        return []
+    if mode == "named":
+        functions = [f for f in functions if f["name"] == name]
+        if not functions:
+            raise ValueError(
+                f"`tool_choice` names `{name}`, which is not a declared tool."
+            )
+    return functions
+
+
+def _dynamic_tools(functions):
+    """The `dynamicTools` of a thread, from wire `function` declarations."""
+    return [
+        {
+            "type": "function",
+            "name": function["name"],
+            "description": str(function.get("description") or ""),
+            "inputSchema": function.get("parameters")
+            or {"type": "object", "properties": {}},
+        }
+        for function in functions
+    ]
+
+
+def _tool_choice_instructions(tool_choice, parallel_tool_calls=None):
+    """The lines added to the instructions for what the protocol cannot say.
+
+    The app-server declares tools but takes no `tool_choice`: `"required"`
+    and a named tool are asked for in the instructions and checked on the
+    answer (`_app_server_completion` raises, and the base class retries).
+    """
+    mode, name = _tool_choice_mode(tool_choice)
+    lines = []
+    if mode == "required":
+        lines.append("Call at least one of the tools before answering.")
+    elif mode == "named":
+        lines.append(f"Call the tool `{name}` now.")
+    if parallel_tool_calls is False:
+        lines.append("Call at most one tool at a time.")
+    return "\n".join(lines)
+
+
+def _has_tool_history(formatted_messages):
+    """Whether the messages hold a tool call or a tool result."""
+    return any(
+        message.get("role") in ("tool", "function") or message.get("tool_calls")
+        for message in formatted_messages
+    )
+
+
+def _history_items(formatted_messages):
+    """Splits wire messages into `(instructions, items)`.
+
+    The system and developer messages become the instructions, as in
+    `_split_messages`. The other messages become the Responses API items the
+    thread's history takes as they are: a `message` per user or assistant
+    text, a `function_call` per tool call of an assistant message (its id
+    kept, its arguments as the JSON string the model wrote), and a
+    `function_call_output` per tool result, naming the call it answers.
+    """
+    instructions = []
+    items = []
+    for message in formatted_messages:
+        text = _message_text(message)
+        role = str(message.get("role") or "user")
+        if role in ("system", "developer"):
+            if text:
+                instructions.append(text)
+        elif role == "assistant":
+            if text:
+                items.append(
+                    {
+                        "type": "message",
+                        "role": "assistant",
+                        "content": [{"type": "output_text", "text": text}],
+                    }
+                )
+            for call in message.get("tool_calls") or []:
+                function = call.get("function") or {}
+                arguments = function.get("arguments") or "{}"
+                if not isinstance(arguments, str):
+                    arguments = json.dumps(arguments)
+                items.append(
+                    {
+                        "type": "function_call",
+                        "call_id": call.get("id"),
+                        "name": function.get("name"),
+                        "arguments": arguments,
+                    }
+                )
+        elif role in ("tool", "function"):
+            items.append(
+                {
+                    "type": "function_call_output",
+                    "call_id": message.get("tool_call_id") or message.get("name"),
+                    "output": text,
+                }
+            )
+        elif text:
+            items.append(
+                {
+                    "type": "message",
+                    "role": "user",
+                    "content": [{"type": "input_text", "text": text}],
+                }
+            )
+    return "\n\n".join(instructions), items
+
+
+def _build_app_server_command(executable="codex", catalog_path=None, tools=False):
+    """Builds the `codex app-server` command line of one completion.
+
+    The same `-c` overrides as `codex exec` (`_build_codex_command`), plus
+    `_APP_SERVER_OVERRIDES`: the app-server has no `--ignore-user-config`,
+    so what the user's `config.toml` could add is overridden key by key. The
+    rest of the lockdown (read-only sandbox, empty working directory, no
+    approval, ephemeral thread) is set on the thread. With `tools`, the
+    harness's own function is taken out (`_NO_HARNESS_FUNCTION`).
+    """
+    command = [executable]
+    for override in (*_CONFIG_OVERRIDES, *_APP_SERVER_OVERRIDES):
+        command += ["-c", override]
+    if tools:
+        command += ["-c", _NO_HARNESS_FUNCTION]
+    if catalog_path:
+        command += ["-c", f"model_catalog_json={json.dumps(catalog_path)}"]
+    command += ["app-server", "--listen", "stdio://"]
+    return command
+
+
+def _default_effort(catalog, cli_model):
+    """The default reasoning effort of `cli_model` in the CLI's catalog, or None.
+
+    `codex exec --ignore-user-config` leaves a call without effort at the
+    model's default; the app-server would apply the `model_reasoning_effort`
+    of the user's `config.toml` instead, so the default is sent explicitly.
+    """
+    try:
+        models = json.loads(catalog or "{}").get("models") or []
+    except ValueError:
+        return None
+    for model in models:
+        if model.get("slug") == cli_model:
+            return model.get("default_reasoning_level") or None
+    return None
+
+
+def _turn_usage(token_usage):
+    """The usage of the thread, in the `codex exec` keys.
+
+    The thread is started for the completion, so its total is the
+    completion's: with one request per turn it is the last response's
+    (measured live: equal on 23 tool turns out of 23), and a request the
+    harness makes on its own would show in it.
+    """
+    total = (token_usage or {}).get("total") or {}
+    return {
+        "input_tokens": total.get("inputTokens"),
+        "cached_input_tokens": total.get("cachedInputTokens"),
+        "output_tokens": total.get("outputTokens"),
+        "reasoning_output_tokens": total.get("reasoningOutputTokens"),
+    }
+
+
+class _AppServer:
+    """One `codex app-server` process, spoken to in JSON-RPC over stdio.
+
+    One JSON object per line, each way. `request` awaits the server's answer;
+    the notifications and the requests the server makes to the client
+    (`item/tool/call`...) are read with `next_event`, in order. The process
+    is killed if it outlives the context. Its stderr is kept (the tail of
+    it) for the error raised when it exits or closes its output.
+    """
+
+    def __init__(self, command, env, cwd):
+        self._command = command
+        self._env = env
+        self._cwd = cwd
+        self._process = None
+        self._next_id = 1
+        self._pending = {}
+        self._events = asyncio.Queue()
+        self._tasks = ()
+        self._stderr = ""
+        self._closed = False
+
+    async def __aenter__(self):
+        try:
+            self._process = await asyncio.create_subprocess_exec(
+                *self._command,
+                stdin=asyncio.subprocess.PIPE,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+                env=self._env,
+                cwd=self._cwd,
+            )
+        except FileNotFoundError:
+            raise DeterministicStopError(
+                f"The Codex CLI `{self._command[0]}` was not found. {_INSTALL_HINT}",
+                "cli_not_found",
+            )
+        self._tasks = (
+            asyncio.create_task(self._read()),
+            asyncio.create_task(self._read_stderr()),
+        )
+        return self
+
+    async def __aexit__(self, *exc_info):
+        if self._process.returncode is None:
+            # The server exits once its input closes; killed if it lingers.
+            try:
+                self._process.stdin.close()
+                await asyncio.wait_for(self._process.wait(), timeout=2)
+            except (asyncio.TimeoutError, OSError):
+                try:
+                    self._process.kill()
+                except ProcessLookupError:
+                    pass
+                await self._process.wait()
+        for task in self._tasks:
+            task.cancel()
+        await asyncio.gather(*self._tasks, return_exceptions=True)
+
+    async def _read(self):
+        while True:
+            line = await self._process.stdout.readline()
+            if not line:
+                self._closed = True
+                # Its exit code and the end of its stderr follow closely:
+                # waited for, briefly, so that the error says why.
+                try:
+                    await asyncio.wait_for(self._process.wait(), timeout=1)
+                except asyncio.TimeoutError:
+                    pass
+                await asyncio.wait(self._tasks[1:], timeout=1)
+                error = RuntimeError(self._exit_message("closed its output"))
+                for future in self._pending.values():
+                    if not future.done():
+                        future.set_exception(error)
+                await self._events.put(None)
+                return
+            try:
+                message = json.loads(line)
+            except ValueError:
+                continue
+            if "method" in message:
+                await self._events.put(message)
+                continue
+            future = self._pending.pop(message.get("id"), None)
+            if future is None or future.done():
+                continue
+            if "error" in message:
+                future.set_exception(
+                    RuntimeError(json.dumps(message["error"], ensure_ascii=False))
+                )
+            else:
+                future.set_result(message.get("result"))
+
+    async def _read_stderr(self):
+        while True:
+            chunk = await self._process.stderr.read(4096)
+            if not chunk:
+                return
+            text = self._stderr + chunk.decode("utf-8", errors="replace")
+            self._stderr = text[-_MAX_ERROR_CHARS:]
+
+    def _exit_message(self, what):
+        """The error of a server that `what`, with its exit code and stderr."""
+        code = self._process.returncode
+        state = f"exit code {code}" if code is not None else "still running"
+        message = f"`codex app-server` {what} ({state})"
+        tail = self._stderr.strip()
+        return f"{message}: {tail}" if tail else f"{message}."
+
+    async def _write(self, payload):
+        if self._closed:
+            raise RuntimeError(self._exit_message("closed its output"))
+        try:
+            self._process.stdin.write((json.dumps(payload) + "\n").encode("utf-8"))
+            await self._process.stdin.drain()
+        except (BrokenPipeError, ConnectionResetError) as e:
+            raise RuntimeError(self._exit_message("exited")) from e
+
+    async def request(self, method, params=None):
+        """Sends a request and returns its result.
+
+        Raises:
+            RuntimeError: If the server answers with an error, or exited.
+        """
+        request_id = self._next_id
+        self._next_id += 1
+        future = asyncio.get_running_loop().create_future()
+        self._pending[request_id] = future
+        await self._write(
+            {"jsonrpc": "2.0", "id": request_id, "method": method, "params": params}
+        )
+        return await future
+
+    async def notify(self, method, params=None):
+        await self._write({"jsonrpc": "2.0", "method": method, "params": params})
+
+    async def next_event(self):
+        """The next notification or server request.
+
+        Raises:
+            RuntimeError: Once the server closed its output.
+        """
+        event = await self._events.get()
+        if event is None:
+            await self._events.put(None)
+            raise RuntimeError(self._exit_message("closed its output"))
+        return event
 
 
 @synalinks_export(
@@ -495,8 +914,9 @@ class OAuthLanguageModel(LanguageModel):
 
     Only the transport differs from `LanguageModel`: message formatting,
     cache, retry, `fallback`, usage counters and response parsing are
-    inherited. Each call spawns `codex exec` stripped down to a plain
-    completion endpoint:
+    inherited. A call without tools spawns `codex exec` stripped down to a
+    plain completion endpoint (a call with tools spawns `codex app-server`,
+    see below):
 
     - The output schema is passed with `--output-schema` and enforced by the
         backend in strict mode: every field is required and returned.
@@ -514,21 +934,61 @@ class OAuthLanguageModel(LanguageModel):
     - The subprocess only inherits an allowlist of environment variables,
         so the API keys of the parent process are not exposed to it.
 
+    **Tool calling**
+
+    `tools` and `tool_schemas` are accepted as with `LanguageModel`, so a
+    `FunctionCallingAgent` (and the agents built on it) runs unchanged on a
+    `codex/` model. A turn that declares tools, or whose history holds tool
+    calls, goes through `codex app-server` (one process per completion too),
+    where tool calling is native:
+
+    - The tools are declared to the thread (`dynamicTools`): the model
+        sees them as the functions of the request, as on the API.
+    - The earlier turns are appended to the thread's history as the
+        Responses API items they are (`thread/inject_items`): user and
+        assistant messages, `function_call`, `function_call_output`. The
+        last user message starts the turn.
+    - The model's first call comes back as an `item/tool/call` request.
+        The turn is interrupted there and the call returned as a native
+        tool call, which the caller runs: Synalinks keeps the loop, the CLI
+        runs nothing. `tool_choice="none"` declares no tool; a structured
+        answer over a tool history uses the turn's `outputSchema`.
+    - The same lockdown applies: read-only sandbox without network, empty
+        working directory, no approval, ephemeral thread, tool-free catalog,
+        allowlisted environment. A thread item that is not a message, a
+        reasoning or a call to a declared tool fails the call. The one
+        function the harness declares on its own, `request_user_input`, is
+        taken out of a turn with tools: the gpt-6 models call it, the CLI
+        refuses it, and each attempt costs an unreported request.
+
     **Limitations**
 
-    - The messages are not sent as a chat. The system and developer
-        messages become the instructions of the CLI, as one block; the rest
-        becomes a single prompt: a lone user message verbatim, a longer
-        conversation as a role-tagged transcript (`[USER]`, `[ASSISTANT]`).
-        Earlier assistant turns are therefore not sent as assistant
-        messages, and what reaches the backend is shaped by the CLI, which
-        can change between releases (`codex debug prompt-input` shows it).
+    - Without tools, the messages are not sent as a chat. The system and
+        developer messages become the instructions of the CLI, as one block;
+        the rest becomes a single prompt: a lone user message verbatim, a
+        longer conversation as a role-tagged transcript (`[USER]`,
+        `[ASSISTANT]`). Earlier assistant turns are therefore not sent as
+        assistant messages (a turn with tools sends them as items, see
+        above), and what reaches the backend is shaped by the CLI, which can
+        change between releases (`codex debug prompt-input` shows it).
         Results are not directly comparable with the same program on an
         API-key provider.
-    - No tool calling and no streaming: `tools`, `tool_schemas` and
-        `streaming=True` raise a `ValueError`. Use an API-key provider for
-        the tool-calling generator of an agent.
-    - Text only: images and audio parts are dropped.
+    - No streaming: `streaming=True` raises a `ValueError`.
+    - A turn with tools goes through `codex app-server`, which has no
+        `--ignore-user-config`: the user's `config.toml` is loaded, and what
+        it could add to a request is overridden key by key (its MCP servers
+        are disabled by name, its `developer_instructions`, `notify` and
+        `model_provider` overridden, the effort set to the model's default
+        of the catalog when the call sets none). `codex/default` takes the
+        model of that configuration there. `dynamicTools` is experimental
+        in the app-server protocol of codex-cli 0.164 (`thread/inject_items`
+        is not).
+    - `tool_choice="required"` or a named tool have no native form: they
+        are asked for in the instructions, and an answer without the call is
+        retried. `parallel_tool_calls` is not controlled: the CLI sends
+        `parallel_tool_calls=false`, so a turn carries one call.
+    - Text only: images and audio parts are dropped, including those a
+        tool returns.
     - No sampling control: the CLI exposes neither `temperature` nor
         `max_tokens`, they are ignored with a warning. Do not rely on this
         class where a deterministic `temperature=0.0` judge is required.
@@ -612,27 +1072,27 @@ class OAuthLanguageModel(LanguageModel):
             messages (dict): A formatted dict of chat messages.
             schema (dict): The target JSON schema for structed output (optional).
                 If None, output a ChatMessage-like answer.
-            tools (list | dict): Not supported, must be empty.
-            tool_schemas (list): Not supported, must be empty.
+            tools (list | dict): Optional `synalinks.modules.Tool`s the LM may
+                call, as with `LanguageModel` (native, through the app-server:
+                see the class docstring). Mutually exclusive with `schema`.
+            tool_schemas (list): Optional wire-format tool declarations, as
+                with `LanguageModel`.
             streaming (bool): Not supported, must be False.
             **kwargs (keyword arguments): The additional keywords arguments
-                forwarded to the LM call.
+                forwarded to the LM call (e.g. `tool_choice`,
+                `reasoning_effort`).
         Returns:
             (dict): The generated structured response.
         """
-        if tools or tool_schemas:
-            raise ValueError(
-                "`OAuthLanguageModel` does not support tool calling: the CLI is "
-                "used as a plain completion endpoint. Use a `LanguageModel` for "
-                "the modules that pass `tools`."
-            )
         if streaming:
             raise ValueError("`OAuthLanguageModel` does not support streaming.")
         if self._codex is None:
             self._codex = _codex_executable()
         if schema:
             schema = _strict_schema(schema)
-        return await super().call(messages, schema=schema, **kwargs)
+        return await super().call(
+            messages, schema=schema, tools=tools, tool_schemas=tool_schemas, **kwargs
+        )
 
     async def _acompletion(self, formatted_messages, **kwargs):
         # As for any provider, `None` (what a module passes when it sets no
@@ -655,11 +1115,27 @@ class OAuthLanguageModel(LanguageModel):
                 f"{self} ignores the parameters {ignored}: the Codex CLI does not "
                 "expose them."
             )
-        instructions, prompt = _split_messages(formatted_messages)
+        tools = kwargs.pop("tools", None)
+        tool_choice = kwargs.pop("tool_choice", None)
+        parallel_tool_calls = kwargs.pop("parallel_tool_calls", None)
         cli_model = self.model.split("/", 1)[1]
         if cli_model == "default":
             cli_model = None
         catalog = await self._model_catalog()
+        if tools or _has_tool_history(formatted_messages):
+            # Declared tools, or earlier calls and results to send as the
+            # items they are: the app-server, the only transport with both.
+            return await self._app_server_completion(
+                formatted_messages,
+                cli_model,
+                catalog,
+                schema=schema,
+                tools=tools,
+                tool_choice=tool_choice,
+                parallel_tool_calls=parallel_tool_calls,
+                reasoning_effort=reasoning_effort,
+            )
+        instructions, prompt = _split_messages(formatted_messages)
 
         with tempfile.TemporaryDirectory(prefix="synalinks_oauth_") as tmp:
             # The model runs in an empty directory; the request files live
@@ -699,6 +1175,228 @@ class OAuthLanguageModel(LanguageModel):
                 raise DeterministicStopError(message, "invalid_request")
             raise RuntimeError(message)
         return _to_model_response(content, usage)
+
+    def _app_server(self, command, cwd):
+        """The app-server process of one completion (a seam for the tests)."""
+        env = {k: v for k, v in os.environ.items() if k in _ENV_ALLOWLIST}
+        return _AppServer(command, env, cwd)
+
+    async def _app_server_completion(
+        self,
+        formatted_messages,
+        cli_model,
+        catalog,
+        *,
+        schema=None,
+        tools=None,
+        tool_choice=None,
+        parallel_tool_calls=None,
+        reasoning_effort=None,
+    ):
+        """One completion through `codex app-server`.
+
+        The conversation with the server: `initialize`, `config/read` (the
+        MCP servers of the user's configuration, to disable), `thread/start`
+        (instructions, tools, lockdown), `thread/inject_items` (the earlier
+        turns), `turn/start` (the last user message, the output schema), then
+        the events of the turn until it completes; it is interrupted at the
+        model's first tool call. The calls received, if any, are returned as
+        native tool calls; else the answer.
+        """
+        try:
+            functions = _offered_tools(tools, tool_choice)
+        except ValueError as e:
+            raise DeterministicStopError(str(e), "invalid_request") from e
+        if functions and schema:
+            raise DeterministicStopError(
+                "`OAuthLanguageModel` cannot combine a `response_format` with "
+                "tools that may be called.",
+                "invalid_request",
+            )
+        instructions, items = _history_items(formatted_messages)
+        instructions = "\n\n".join(
+            text
+            for text in (
+                instructions or _DEFAULT_INSTRUCTIONS,
+                _tool_choice_instructions(tool_choice, parallel_tool_calls)
+                if functions
+                else "",
+            )
+            if text
+        )
+        # The last user message is the input of the turn; whatever precedes
+        # it is the history of the thread.
+        turn_input = []
+        if items and items[-1]["type"] == "message" and items[-1]["role"] == "user":
+            last = items.pop()
+            turn_input = [{"type": "text", "text": last["content"][0]["text"]}]
+        mode, _ = _tool_choice_mode(tool_choice)
+        reasoning_effort = reasoning_effort or _default_effort(catalog, cli_model)
+
+        with tempfile.TemporaryDirectory(prefix="synalinks_oauth_") as tmp:
+            workdir = os.path.join(tmp, "workdir")
+            os.mkdir(workdir)
+            command = _build_app_server_command(
+                executable=self._codex,
+                catalog_path=_write(tmp, "models.json", catalog),
+                tools=bool(functions),
+            )
+            async with self._app_server(command, workdir) as app:
+                try:
+                    turn = await asyncio.wait_for(
+                        self._run_turn(
+                            app,
+                            workdir,
+                            cli_model,
+                            instructions,
+                            items,
+                            turn_input,
+                            dynamic_tools=_dynamic_tools(functions),
+                            schema=schema,
+                            reasoning_effort=reasoning_effort,
+                        ),
+                        timeout=self.timeout,
+                    )
+                except asyncio.TimeoutError as e:
+                    raise RuntimeError(
+                        f"`{command[0]} app-server` timed out after {self.timeout}s."
+                    ) from e
+
+        content, usage, calls, errors, forbidden, status = turn
+        if forbidden:
+            raise DeterministicStopError(
+                f"The model used tools ({', '.join(forbidden)}) instead of "
+                "answering; the response is discarded.",
+                "tool_use",
+            )
+        if errors or status == "failed":
+            detail = "; ".join(dict.fromkeys(errors)) or f"turn {status}"
+            message = f"`{command[0]} app-server` failed: {detail[-_MAX_ERROR_CHARS:]}"
+            if "invalid_request_error" in detail:
+                raise DeterministicStopError(message, "invalid_request")
+            raise RuntimeError(message)
+        tool_calls = [
+            {
+                "id": call["callId"],
+                "type": "function",
+                "function": {
+                    "name": call["tool"],
+                    "arguments": json.dumps(call.get("arguments") or {}),
+                },
+            }
+            for call in calls
+        ]
+        if mode in ("required", "named") and not tool_calls:
+            # Retried by the base class, as an empty answer is.
+            raise ValueError(
+                f"The model called no tool although `tool_choice={tool_choice!r}`."
+            )
+        return _to_model_response(content, usage, tool_calls=tool_calls)
+
+    async def _run_turn(
+        self,
+        app,
+        workdir,
+        cli_model,
+        instructions,
+        items,
+        turn_input,
+        *,
+        dynamic_tools,
+        schema,
+        reasoning_effort,
+    ):
+        """Runs one turn on `app` and returns what it produced.
+
+        Returns:
+            (tuple): `(content, usage, calls, errors, forbidden, status)`:
+                the answer (None if the model called tools), the usage of its
+                last request, the `item/tool/call` params received, the error
+                messages, the sorted item types that reveal the model acted,
+                and the status of the turn.
+        """
+        await app.request(
+            "initialize",
+            {"clientInfo": _APP_SERVER_CLIENT, "capabilities": {"experimentalApi": True}},
+        )
+        await app.notify("initialized")
+        # The app-server loads the user's `config.toml`; its MCP servers would
+        # give the model tools. Disabled by name on this thread.
+        config = (await app.request("config/read", {}) or {}).get("config") or {}
+        mcp_servers = config.get("mcp_servers") or {}
+        thread_params = {
+            "model": cli_model,
+            "baseInstructions": instructions,
+            "developerInstructions": "",
+            "ephemeral": True,
+            "cwd": workdir,
+            "sandbox": "read-only",
+            "approvalPolicy": "never",
+            "config": {"mcp_servers": {name: {"enabled": False} for name in mcp_servers}},
+        }
+        if dynamic_tools:
+            thread_params["dynamicTools"] = dynamic_tools
+        thread = await app.request("thread/start", thread_params)
+        thread_id = thread["thread"]["id"]
+        if items:
+            await app.request(
+                "thread/inject_items", {"threadId": thread_id, "items": items}
+            )
+        turn_params = {"threadId": thread_id, "input": turn_input}
+        if schema:
+            turn_params["outputSchema"] = schema
+        if reasoning_effort:
+            turn_params["effort"] = reasoning_effort
+        turn = await app.request("turn/start", turn_params)
+        turn_id = turn["turn"]["id"]
+
+        content = None
+        usage = {}
+        calls = []
+        errors = []
+        forbidden = set()
+        status = None
+        interrupted = False
+        while True:
+            event = await app.next_event()
+            method = event.get("method")
+            params = event.get("params") or {}
+            if "id" in event:
+                # A request of the server. A tool call is what the turn is
+                # for: it is kept, never answered, and the turn is interrupted
+                # so that the caller runs the tool. Anything else (an approval,
+                # a question to the user) means the model acted.
+                if method == "item/tool/call":
+                    calls.append(params)
+                else:
+                    forbidden.add(str(method))
+                if not interrupted:
+                    interrupted = True
+                    # Left to end its stream first, or its usage is lost
+                    # (see `_STREAM_DRAIN_S`).
+                    await asyncio.sleep(_STREAM_DRAIN_S)
+                    await app.request(
+                        "turn/interrupt", {"threadId": thread_id, "turnId": turn_id}
+                    )
+            elif method in ("item/started", "item/completed"):
+                item = params.get("item") or {}
+                item_type = item.get("type")
+                if item_type not in _ALLOWED_APP_SERVER_ITEMS:
+                    forbidden.add(str(item_type))
+                elif item_type == "agentMessage" and method == "item/completed":
+                    content = item.get("text")
+            elif method == "thread/tokenUsage/updated":
+                usage = _turn_usage(params.get("tokenUsage"))
+            elif method == "error":
+                errors.append(str(params.get("message")))
+            elif method == "turn/completed":
+                turn = params.get("turn") or {}
+                status = turn.get("status")
+                error = turn.get("error")
+                if error and status != "interrupted":
+                    errors.append(str(error.get("message") or error))
+                break
+        return content, usage, calls, errors, sorted(forbidden), status
 
     async def _model_catalog(self):
         """Returns the tool-free model catalog of the CLI, as JSON.
