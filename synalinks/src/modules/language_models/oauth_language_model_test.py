@@ -21,6 +21,7 @@ from synalinks.src.backend import Field
 from synalinks.src.modules.language_models import LanguageModel
 from synalinks.src.modules.language_models import OAuthLanguageModel
 from synalinks.src.modules.language_models import oauth_language_model
+from synalinks.src.modules.language_models.oauth_language_model import _AppServer
 from synalinks.src.modules.language_models.oauth_language_model import (
     _build_app_server_command,
 )
@@ -824,12 +825,19 @@ class Answer(DataModel):
 
 
 _USAGE = {
-    "last": {
+    "total": {
         "inputTokens": 300,
         "cachedInputTokens": 100,
         "outputTokens": 30,
         "reasoningOutputTokens": 10,
-    }
+    },
+    # The last request of the thread, less than its total.
+    "last": {
+        "inputTokens": 200,
+        "cachedInputTokens": 50,
+        "outputTokens": 20,
+        "reasoningOutputTokens": 5,
+    },
 }
 
 
@@ -843,15 +851,18 @@ class FakeAppServer:
     `turns` lists what each `turn/start` produces, in order: `{"calls":
     [(tool, arguments), ...]}` (the model calls tools: one `item/tool/call`
     request each, the turn only completes once interrupted), `{"message":
-    text}` (the model answers), or `{"item": type}` (the model acted through
-    the CLI). Every request is recorded in `requests`, one process per
-    completion is counted in `processes`, and `config` is what `config/read`
-    returns.
+    text}` (the model answers), `{"item": type}` (the model acted through
+    the CLI), `{"fail": message}` (the turn fails) or `{"closed": True}`
+    (the server closes its output). Every request is recorded in `requests`,
+    one process per completion is counted in `processes`, `config` is what
+    `config/read` returns, and `errors` maps a method to the JSON-RPC error
+    the server answers it with.
     """
 
-    def __init__(self, turns, config=None):
+    def __init__(self, turns, config=None, errors=None):
         self.turns = list(turns)
         self.config = config or {}
+        self.errors = errors or {}
         self.requests = []
         self.notifications = []
         self.commands = []
@@ -872,16 +883,20 @@ class FakeAppServer:
     async def __aexit__(self, *exc_info):
         return False
 
-    def _completion(self, status):
+    def _completion(self, status, error=None):
         return [
             _notification("thread/tokenUsage/updated", threadId="t", tokenUsage=_USAGE),
             _notification(
-                "turn/completed", threadId="t", turn={"id": "u", "status": status}
+                "turn/completed",
+                threadId="t",
+                turn={"id": "u", "status": status, "error": error},
             ),
         ]
 
     async def request(self, method, params=None):
         self.requests.append((method, params))
+        if method in self.errors:
+            raise RuntimeError(json.dumps(self.errors[method]))
         if method == "initialize":
             return {"userAgent": "synalinks/0.164.0"}
         if method == "config/read":
@@ -921,6 +936,10 @@ class FakeAppServer:
                     _notification("item/started", item={"type": turn["item"], "id": "x"})
                 )
                 self._events += self._completion("completed")
+            elif "fail" in turn:
+                self._events += self._completion("failed", {"message": turn["fail"]})
+            elif "closed" in turn:
+                pass
             else:
                 self._events.append(
                     _notification(
@@ -939,7 +958,9 @@ class FakeAppServer:
         self.notifications.append(method)
 
     async def next_event(self):
-        return self._events.pop(0) if self._events else None
+        if not self._events:
+            raise RuntimeError("`codex app-server` closed its output (exit code 1).")
+        return self._events.pop(0)
 
     def params(self, method):
         """The params of the requests of `method`, one per process."""
@@ -1074,6 +1095,73 @@ class AppServerCommandTest(testing.TestCase):
         self.assertNotIn("tools.experimental_request_user_input.enabled=false", command)
 
 
+# A stdio JSON-RPC server standing in for `codex app-server`, run with
+# `sys.executable`: every request is answered with its method (`fail` with an
+# error), every notification is echoed back as `echo/<method>`, and `argv[2]`
+# is written to stderr. `die` exits on `initialize` without answering it;
+# `linger` outlives the close of its input.
+_FAKE_APP_SERVER = """
+import json, sys, time
+
+mode = sys.argv[1]
+sys.stderr.write(sys.argv[2])
+sys.stderr.flush()
+for line in sys.stdin:
+    message = json.loads(line)
+    if mode == "die" and message["method"] == "initialize":
+        sys.exit(3)
+    if "id" not in message:
+        reply = {"method": "echo/" + message["method"], "params": message["params"]}
+    elif message["method"] == "fail":
+        reply = {"id": message["id"], "error": {"code": 1, "message": "nope"}}
+    else:
+        reply = {"id": message["id"], "result": {"ok": message["method"]}}
+    sys.stdout.write(json.dumps(reply) + "\\n")
+    sys.stdout.flush()
+if mode == "linger":
+    time.sleep(30)
+"""
+
+
+def _fake_app_server(mode, stderr=""):
+    allowlist = oauth_language_model._ENV_ALLOWLIST
+    env = {k: v for k, v in os.environ.items() if k in allowlist}
+    command = [sys.executable, "-I", "-c", _FAKE_APP_SERVER, mode, stderr]
+    return _AppServer(command, env, None)
+
+
+class AppServerTransportTest(testing.TestCase):
+    async def test_requests_notifications_and_a_clean_exit(self):
+        async with _fake_app_server("echo") as app:
+            self.assertEqual(
+                await asyncio.gather(app.request("a"), app.request("b", {"x": 1})),
+                [{"ok": "a"}, {"ok": "b"}],
+            )
+            await app.notify("initialized", {"x": 1})
+            self.assertEqual(
+                await app.next_event(),
+                {"method": "echo/initialized", "params": {"x": 1}},
+            )
+            with self.assertRaisesRegex(RuntimeError, "nope"):
+                await app.request("fail")
+        # The server exits once its input closes: it is not killed.
+        self.assertEqual(app._process.returncode, 0)
+
+    async def test_a_dead_server_fails_the_pending_and_later_requests(self):
+        async with _fake_app_server("die", stderr="boom") as app:
+            with self.assertRaisesRegex(RuntimeError, r"exit code 3\): boom"):
+                await app.request("initialize")
+            with self.assertRaisesRegex(RuntimeError, "closed its output"):
+                await app.request("config/read")
+            with self.assertRaisesRegex(RuntimeError, "boom"):
+                await app.next_event()
+
+    async def test_a_lingering_server_is_killed(self):
+        async with _fake_app_server("linger") as app:
+            self.assertEqual(await app.request("ping"), {"ok": "ping"})
+        self.assertNotEqual(app._process.returncode, 0)
+
+
 class AppServerToolCallingTest(testing.TestCase):
     def setUp(self):
         super().setUp()
@@ -1205,7 +1293,7 @@ class AppServerToolCallingTest(testing.TestCase):
         self.assertNotIn("dynamicTools", fake.params("thread/start")[0])
         self.assertEqual(len(fake.params("thread/inject_items")[0]["items"]), 3)
 
-    async def test_usage_is_the_one_of_the_last_request(self):
+    async def test_usage_is_the_total_of_the_thread(self):
         fake = FakeAppServer([{"message": "126"}])
         lm = self._lm(fake)
         await lm(_user("hi"), tools=_TOOLS, tool_choice="none")
@@ -1350,3 +1438,39 @@ class AppServerToolCallingTest(testing.TestCase):
         self.assertEqual(injected[-1]["items"][-1]["type"], "function_call_output")
         self.assertIn("outputSchema", fake.params("turn/start")[-1])
         self.assertNotIn("dynamicTools", fake.params("thread/start")[-1])
+
+    async def test_failed_turn_is_retried_unless_the_request_was_rejected(self):
+        fake = FakeAppServer([{"fail": "boom"}, {"message": "126"}])
+        lm = self._lm(fake, retry=2)
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            result = await lm(_user("hi"), tools=_TOOLS)
+        self.assertEqual(result.get_json()["content"], "126")
+        self.assertEqual(fake.processes, 2)
+        self.assertTrue(any("boom" in str(w.message) for w in caught))
+
+        fake = FakeAppServer([{"fail": "invalid_request_error: bad schema"}])
+        lm = self._lm(fake, retry=3)
+        with warnings.catch_warnings(record=True):
+            warnings.simplefilter("always")
+            self.assertIsNone(await lm(_user("hi"), tools=_TOOLS))
+        self.assertEqual(fake.processes, 1)
+
+    async def test_closed_output_fails_the_turn(self):
+        fake = FakeAppServer([{"closed": True}, {"closed": True}])
+        lm = self._lm(fake, retry=2)
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            self.assertIsNone(await lm(_user("hi"), tools=_TOOLS))
+        self.assertEqual(fake.processes, 2)
+        self.assertTrue(any("closed its output" in str(w.message) for w in caught))
+
+    async def test_server_error_on_thread_start_is_reported(self):
+        error = {"code": -32600, "message": "unknown model"}
+        fake = FakeAppServer([], errors={"thread/start": error})
+        lm = self._lm(fake, retry=2)
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            self.assertIsNone(await lm(_user("hi"), tools=_TOOLS))
+        self.assertEqual(fake.processes, 2)
+        self.assertTrue(any("unknown model" in str(w.message) for w in caught))
