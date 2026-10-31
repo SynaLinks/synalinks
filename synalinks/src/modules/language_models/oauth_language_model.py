@@ -180,12 +180,13 @@ _APP_SERVER_CLIENT = {"name": "synalinks", "version": __version__}
 
 # How long a turn is left running after the model's first tool call before
 # it is interrupted (see `_run_turn`). The call is dispatched as soon as its
-# item is streamed, before the response ends, and no notification says when
-# the stream ends (`thread/tokenUsage/updated` only comes with the end of the
-# turn): interrupted at once, the stream is dropped and the usage of the
-# response with it. Measured live on gpt-6-luna: without the delay, 1 tool
-# turn out of 4 reported no usage (8 out of 10 in an earlier series); with
-# half a second, 4 out of 4 did; with one second, 14 out of 14.
+# item is streamed, and the CLI reads the rest of the response only once the
+# call is answered: nothing can announce the end of the stream before the
+# interrupt (`thread/tokenUsage/updated`, and even the internal raw
+# `rawResponse/completed`, follow it). Interrupted too early, the response's
+# `completed` event has not reached the CLI and its usage is lost. Measured
+# live on gpt-6-luna, tool turns with their usage reported: 3 out of 4 at
+# 0 s, 19 out of 20 at 0.25 s, 23 out of 24 at 0.5 s, 126 out of 126 at 1 s.
 _STREAM_DRAIN_S = 1.0
 
 # The thread items a completion with tools may produce: the user message, the
