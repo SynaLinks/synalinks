@@ -691,13 +691,19 @@ def _default_effort(catalog, cli_model):
 
 
 def _turn_usage(token_usage):
-    """The usage of the last request of a turn, in the `codex exec` keys."""
-    last = (token_usage or {}).get("last") or {}
+    """The usage of the thread, in the `codex exec` keys.
+
+    The thread is started for the completion, so its total is the
+    completion's: with one request per turn it is the last response's
+    (measured live: equal on 23 tool turns out of 23), and a request the
+    harness makes on its own would show in it.
+    """
+    total = (token_usage or {}).get("total") or {}
     return {
-        "input_tokens": last.get("inputTokens"),
-        "cached_input_tokens": last.get("cachedInputTokens"),
-        "output_tokens": last.get("outputTokens"),
-        "reasoning_output_tokens": last.get("reasoningOutputTokens"),
+        "input_tokens": total.get("inputTokens"),
+        "cached_input_tokens": total.get("cachedInputTokens"),
+        "output_tokens": total.get("outputTokens"),
+        "reasoning_output_tokens": total.get("reasoningOutputTokens"),
     }
 
 
@@ -707,7 +713,8 @@ class _AppServer:
     One JSON object per line, each way. `request` awaits the server's answer;
     the notifications and the requests the server makes to the client
     (`item/tool/call`...) are read with `next_event`, in order. The process
-    is killed if it outlives the context.
+    is killed if it outlives the context. Its stderr is kept (the tail of
+    it) for the error raised when it exits or closes its output.
     """
 
     def __init__(self, command, env, cwd):
@@ -718,7 +725,9 @@ class _AppServer:
         self._next_id = 1
         self._pending = {}
         self._events = asyncio.Queue()
-        self._reader = None
+        self._tasks = ()
+        self._stderr = ""
+        self._closed = False
 
     async def __aenter__(self):
         try:
@@ -726,7 +735,7 @@ class _AppServer:
                 *self._command,
                 stdin=asyncio.subprocess.PIPE,
                 stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.DEVNULL,
+                stderr=asyncio.subprocess.PIPE,
                 env=self._env,
                 cwd=self._cwd,
             )
@@ -735,12 +744,13 @@ class _AppServer:
                 f"The Codex CLI `{self._command[0]}` was not found. {_INSTALL_HINT}",
                 "cli_not_found",
             )
-        self._reader = asyncio.create_task(self._read())
+        self._tasks = (
+            asyncio.create_task(self._read()),
+            asyncio.create_task(self._read_stderr()),
+        )
         return self
 
     async def __aexit__(self, *exc_info):
-        if self._reader is not None:
-            self._reader.cancel()
         if self._process.returncode is None:
             # The server exits once its input closes; killed if it lingers.
             try:
@@ -752,16 +762,26 @@ class _AppServer:
                 except ProcessLookupError:
                     pass
                 await self._process.wait()
+        for task in self._tasks:
+            task.cancel()
+        await asyncio.gather(*self._tasks, return_exceptions=True)
 
     async def _read(self):
         while True:
             line = await self._process.stdout.readline()
             if not line:
+                self._closed = True
+                # Its exit code and the end of its stderr follow closely:
+                # waited for, briefly, so that the error says why.
+                try:
+                    await asyncio.wait_for(self._process.wait(), timeout=1)
+                except asyncio.TimeoutError:
+                    pass
+                await asyncio.wait(self._tasks[1:], timeout=1)
+                error = RuntimeError(self._exit_message("closed its output"))
                 for future in self._pending.values():
                     if not future.done():
-                        future.set_exception(
-                            RuntimeError("`codex app-server` closed its output.")
-                        )
+                        future.set_exception(error)
                 await self._events.put(None)
                 return
             try:
@@ -781,15 +801,36 @@ class _AppServer:
             else:
                 future.set_result(message.get("result"))
 
+    async def _read_stderr(self):
+        while True:
+            chunk = await self._process.stderr.read(4096)
+            if not chunk:
+                return
+            text = self._stderr + chunk.decode("utf-8", errors="replace")
+            self._stderr = text[-_MAX_ERROR_CHARS:]
+
+    def _exit_message(self, what):
+        """The error of a server that `what`, with its exit code and stderr."""
+        code = self._process.returncode
+        state = f"exit code {code}" if code is not None else "still running"
+        message = f"`codex app-server` {what} ({state})"
+        tail = self._stderr.strip()
+        return f"{message}: {tail}" if tail else f"{message}."
+
     async def _write(self, payload):
-        self._process.stdin.write((json.dumps(payload) + "\n").encode("utf-8"))
-        await self._process.stdin.drain()
+        if self._closed:
+            raise RuntimeError(self._exit_message("closed its output"))
+        try:
+            self._process.stdin.write((json.dumps(payload) + "\n").encode("utf-8"))
+            await self._process.stdin.drain()
+        except (BrokenPipeError, ConnectionResetError) as e:
+            raise RuntimeError(self._exit_message("exited")) from e
 
     async def request(self, method, params=None):
         """Sends a request and returns its result.
 
         Raises:
-            RuntimeError: If the server answers with an error.
+            RuntimeError: If the server answers with an error, or exited.
         """
         request_id = self._next_id
         self._next_id += 1
@@ -804,8 +845,16 @@ class _AppServer:
         await self._write({"jsonrpc": "2.0", "method": method, "params": params})
 
     async def next_event(self):
-        """The next notification or server request, None once the output closed."""
-        return await self._events.get()
+        """The next notification or server request.
+
+        Raises:
+            RuntimeError: Once the server closed its output.
+        """
+        event = await self._events.get()
+        if event is None:
+            await self._events.put(None)
+            raise RuntimeError(self._exit_message("closed its output"))
+        return event
 
 
 @synalinks_export(
@@ -1302,11 +1351,6 @@ class OAuthLanguageModel(LanguageModel):
         interrupted = False
         while True:
             event = await app.next_event()
-            if event is None:
-                errors.append(
-                    "`codex app-server` closed its output before the turn ended."
-                )
-                break
             method = event.get("method")
             params = event.get("params") or {}
             if "id" in event:
