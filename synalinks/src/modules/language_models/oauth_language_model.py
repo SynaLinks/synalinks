@@ -185,7 +185,7 @@ _APP_SERVER_CLIENT = {"name": "synalinks", "version": __version__}
 # turn): interrupted at once, the stream is dropped and the usage of the
 # response with it. Measured live on gpt-6-luna: without the delay, 1 tool
 # turn out of 4 reported no usage (8 out of 10 in an earlier series); with
-# one second, 8 out of 8 did.
+# half a second, 4 out of 4 did; with one second, 14 out of 14.
 _STREAM_DRAIN_S = 1.0
 
 # The thread items a completion with tools may produce: the user message, the
