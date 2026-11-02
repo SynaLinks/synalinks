@@ -98,6 +98,37 @@ def _chat_output_of(serialized_outputs, usage):
     return [choice]
 
 
+def experiment_id_of(client, name):
+    """Id of the MLflow experiment `name`, created when missing.
+
+    Not `mlflow.set_experiment`: it resets MLflow's tracer provider, which ends
+    the export of every span still open, so with MLflow's OTLP dual export the
+    copy of a trace lost its root and every span started before a module's
+    first call. The id is all a `Monitor` needs, since it names its experiment
+    on every trace and run it starts.
+
+    Args:
+        client (mlflow.MlflowClient): The client to resolve the name with.
+        name (str): The experiment name.
+
+    Returns:
+        (str): The experiment id.
+    """
+    experiment = client.get_experiment_by_name(name)
+    if experiment is None:
+        try:
+            return client.create_experiment(name)
+        except mlflow.exceptions.MlflowException:
+            # Created by another thread in between.
+            experiment = client.get_experiment_by_name(name)
+    if experiment.lifecycle_stage == "deleted":
+        raise mlflow.exceptions.MlflowException(
+            f"Cannot use the deleted experiment '{name}'. Restore it, or delete it "
+            "permanently to create a new one."
+        )
+    return experiment.experiment_id
+
+
 # Module-level logger. Keeping the logger off the `Monitor` instance is
 # load-bearing: the hook is attached to a Module and reachable from every
 # `TrackedDict` via the synalinks `Tracker`. A `logging.Logger` reaches the
@@ -316,7 +347,9 @@ class Monitor(Hook):
         # Kept to start each trace in it: MLflow's active experiment is
         # process-wide, so another thread setting its own would take this
         # hook's traces with it.
-        self._experiment_id = mlflow.set_experiment(self.experiment_name).experiment_id
+        self._experiment_id = experiment_id_of(
+            mlflow.MlflowClient(), self.experiment_name
+        )
         self._setup_done = True
 
     def _get_span_type(self):

@@ -73,7 +73,7 @@ class MonitorEndToEndTest(testing.TestCase):
         import logging
 
         monitor.logger = logging.getLogger("monitor_test")
-        monitor._setup_done = True  # skip mlflow.set_experiment
+        monitor._setup_done = True  # skip resolving the experiment
         return monitor
 
     @patch("synalinks.src.hooks.monitor.mlflow")
@@ -197,7 +197,8 @@ class MonitorExperimentTest(testing.TestCase):
         fake_span.set_status = lambda *a, **kw: None
         fake_span.end = lambda: None
         mock_mlflow.start_span_no_context.return_value = fake_span
-        mock_mlflow.set_experiment.return_value.experiment_id = "exp-mine"
+        lookup = mock_mlflow.MlflowClient.return_value.get_experiment_by_name
+        lookup.return_value.experiment_id = "exp-mine"
 
         monitor = Monitor(experiment_name="mine")
         lm = LanguageModel(model="ollama/mistral", hooks=[monitor])
@@ -221,7 +222,8 @@ class MonitorExperimentTest(testing.TestCase):
         root_span.set_inputs = lambda *a, **kw: None
         root_span.end = lambda: None
         mock_mlflow.start_span_no_context.return_value = root_span
-        mock_mlflow.set_experiment.return_value.experiment_id = "exp-mine"
+        lookup = mock_mlflow.MlflowClient.return_value.get_experiment_by_name
+        lookup.return_value.experiment_id = "exp-mine"
 
         monitor = Monitor(experiment_name="mine")
         monitor.set_module(LanguageModel(model="ollama/mistral"))
@@ -237,6 +239,39 @@ class MonitorExperimentTest(testing.TestCase):
         self.assertEqual(root.kwargs["experiment_id"], "exp-mine")
         self.assertIs(child.kwargs["parent_span"], root_span)
         self.assertIsNone(child.kwargs["experiment_id"])
+
+
+class MonitorTracerProviderTest(testing.TestCase):
+    def test_setup_leaves_the_tracer_provider_alone(self):
+        """`mlflow.set_experiment` resets MLflow's tracer provider, which ends
+        the export of every span still open: with MLflow's OTLP dual export,
+        the copy of a trace lost the program's root and every module span
+        started before a model's first call. Resolving the experiment, new or
+        existing, must leave the provider alone."""
+        import tempfile
+
+        import mlflow
+        from mlflow.tracing.provider import provider
+
+        previous_uri = mlflow.get_tracking_uri()
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
+            uri = "sqlite:///" + os.path.join(tmp, "mlflow.db").replace("\\", "/")
+            try:
+                mlflow.set_tracking_uri(uri)
+                mlflow.set_experiment("warmup")
+                with mlflow.start_span("warmup"):
+                    pass  # the provider is now initialized: a reset would run
+                with patch.object(provider, "reset") as reset:
+                    first = Monitor(tracking_uri=uri, experiment_name="mine")
+                    first._setup_mlflow()
+                    second = Monitor(tracking_uri=uri, experiment_name="mine")
+                    second._setup_mlflow()
+                reset.assert_not_called()
+                mine = mlflow.MlflowClient().get_experiment_by_name("mine")
+                self.assertEqual(first._experiment_id, mine.experiment_id)
+                self.assertEqual(second._experiment_id, mine.experiment_id)
+            finally:
+                mlflow.set_tracking_uri(previous_uri)
 
 
 class TraceContextTest(testing.TestCase):
