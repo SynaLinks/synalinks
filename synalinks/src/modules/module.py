@@ -46,6 +46,11 @@ else:
 # mirrors the `op_scope` ContextVar (see `backend/common/op_scope.py`).
 _CALL_CONTEXT = contextvars.ContextVar("synalinks_call_ctx", default=None)
 
+# The id of the module call running in this task: a child's call reads its
+# parent here. Not on the shared `CallContext`: nested calls, siblings included,
+# all share that one object, so a sibling would read the call that ran before it.
+_CURRENT_CALL_ID = contextvars.ContextVar("synalinks_call_id", default=None)
+
 
 @synalinks_export(["synalinks.Module", "synalinks.modules.Module"])
 class Module(BackendModule, Operation, SynalinksSaveable):
@@ -545,7 +550,8 @@ class Module(BackendModule, Operation, SynalinksSaveable):
 
         call_context, call_ctx_token = self._enter_call_context()
 
-        parent_call_id = call_context.call_id if call_context.call_id else None
+        parent_call_id = _CURRENT_CALL_ID.get()
+        call_id_token = _CURRENT_CALL_ID.set(call_id)
 
         call_context.call_id = call_id
 
@@ -557,72 +563,76 @@ class Module(BackendModule, Operation, SynalinksSaveable):
                 kwargs=kwargs,
             )
 
-        #####################################
-        # 0. Convert tuple inputs to list for convenience
-        if isinstance(args, tuple):
-            args = list(args)
-
-        #####################################
-        # 1. Convert any DataModel positional arguments to JsonDataModel
-        # This operation is performed to make the computation backend independent
-        # and the making the data models dynamically modifiable
-
-        # Used to avoid expensive `tree` operations in the most common case.
-        if len(args) == 1 and backend.is_data_model(args[0]):
-            args[0] = args[0].to_json_data_model(name="inputs_" + self.name)
-        else:
-            args = self._maybe_convert_inputs(args)
-
-        ##########################################################
-        # 2. Enforce that only JsonDataModels or SymbolicDataModel
-        # can be passed positionally.
-        if not self._allow_non_json_data_model_positional_args:
-            for arg in tree.flatten(args):
-                if not is_json_data_model_or_symbolic_data_model(arg) and arg is not None:
-                    raise ValueError(
-                        "Only input JsonDataModel, DataModel or SymbolicDataModel"
-                        " may be passed as positional arguments. The following argument "
-                        f"value should be passed as a keyword argument: {arg} "
-                        f"(of type {type(arg)})"
-                    )
-
-        # Caches info about `call()` signature, args, kwargs.
-        call_spec = CallSpec(self._call_signature, args, kwargs)
-
-        ############################################
-        # 3. Check input spec for 1st positional arg.
-        # TODO: consider extending this to all args and kwargs.
-        self._assert_input_compatibility(call_spec.first_arg)
-
-        ################
-        # 4. Call build
-        with self._open_name_scope():
-            await self._maybe_build(call_spec)
-
-        ##########################
-        # 5. Infer training value
-        # Training phase for `Module.call` is set via (in order of priority):
-        # (1) The `training` argument passed to this `Module.call`, if not None
-        # (2) The training argument of an outer `Module.call`.
-        # (4) Any non-None default value for `training` in the call signature
-        # (5) False (treating the module as if it's in inference)
-
-        # This is the value explicitly passed by the user
-        training = call_spec.user_arguments_dict.get("training", None)
-        if training is None:
-            # Wasn't passed explicitly: use context value
-            training = call_context.training
-            if training is None:
-                # Get signature default value
-                training = call_spec.arguments_dict.get("training", None)
-        call_context.training = training
-        if self._call_has_training_arg and training is not None:
-            # Only populate arg if it has a concrete value
-            kwargs["training"] = training
-
-        ####################
-        # 6. Call the module.
         try:
+            #####################################
+            # 0. Convert tuple inputs to list for convenience
+            if isinstance(args, tuple):
+                args = list(args)
+
+            #####################################
+            # 1. Convert any DataModel positional arguments to JsonDataModel
+            # This operation is performed to make the computation backend independent
+            # and the making the data models dynamically modifiable
+
+            # Used to avoid expensive `tree` operations in the most common case.
+            if len(args) == 1 and backend.is_data_model(args[0]):
+                args[0] = args[0].to_json_data_model(name="inputs_" + self.name)
+            else:
+                args = self._maybe_convert_inputs(args)
+
+            ##########################################################
+            # 2. Enforce that only JsonDataModels or SymbolicDataModel
+            # can be passed positionally.
+            if not self._allow_non_json_data_model_positional_args:
+                for arg in tree.flatten(args):
+                    if (
+                        not is_json_data_model_or_symbolic_data_model(arg)
+                        and arg is not None
+                    ):
+                        raise ValueError(
+                            "Only input JsonDataModel, DataModel or SymbolicDataModel"
+                            " may be passed as positional arguments."
+                            " The following argument "
+                            f"value should be passed as a keyword argument: {arg} "
+                            f"(of type {type(arg)})"
+                        )
+
+            # Caches info about `call()` signature, args, kwargs.
+            call_spec = CallSpec(self._call_signature, args, kwargs)
+
+            ############################################
+            # 3. Check input spec for 1st positional arg.
+            # TODO: consider extending this to all args and kwargs.
+            self._assert_input_compatibility(call_spec.first_arg)
+
+            ################
+            # 4. Call build
+            with self._open_name_scope():
+                await self._maybe_build(call_spec)
+
+            ##########################
+            # 5. Infer training value
+            # Training phase for `Module.call` is set via (in order of priority):
+            # (1) The `training` argument passed to this `Module.call`, if not None
+            # (2) The training argument of an outer `Module.call`.
+            # (4) Any non-None default value for `training` in the call signature
+            # (5) False (treating the module as if it's in inference)
+
+            # This is the value explicitly passed by the user
+            training = call_spec.user_arguments_dict.get("training", None)
+            if training is None:
+                # Wasn't passed explicitly: use context value
+                training = call_context.training
+                if training is None:
+                    # Get signature default value
+                    training = call_spec.arguments_dict.get("training", None)
+            call_context.training = training
+            if self._call_has_training_arg and training is not None:
+                # Only populate arg if it has a concrete value
+                kwargs["training"] = training
+
+            ####################
+            # 6. Call the module.
             with self._open_name_scope():
                 outputs = await super().__call__(*args, **kwargs)
 
@@ -632,10 +642,13 @@ class Module(BackendModule, Operation, SynalinksSaveable):
             if self._hooks:
                 self._hooks.on_call_end(
                     call_id=call_id,
+                    parent_call_id=parent_call_id,
                     exception=str(e),
                 )
             raise e
         finally:
+            _CURRENT_CALL_ID.reset(call_id_token)
+            call_context.call_id = parent_call_id
             # Destroy call context if we created it
             self._maybe_reset_call_context(call_ctx_token)
         if self._hooks:
