@@ -41,6 +41,8 @@ Method names **and return types** follow the [E2B](https://e2b.dev/docs) `AsyncS
 | `await sandbox.files.make_dir(path)` | `bool` (`False` if it already existed) |
 | `await sandbox.is_running()` | `bool` |
 | `await sandbox.kill()` | `True` |
+| `await sandbox.aclose()` | `None` (same as `kill`, repeat calls do nothing) |
+| `sandbox.close()` | `None` (sync, best effort: background commands keep running) |
 
 Differences from E2B:
 

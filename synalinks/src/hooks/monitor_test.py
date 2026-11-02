@@ -2,6 +2,7 @@
 
 import os
 from unittest.mock import AsyncMock
+from unittest.mock import MagicMock
 from unittest.mock import patch
 
 from mlflow.entities import SpanType
@@ -17,6 +18,7 @@ from synalinks.src.hooks.monitor import MLFLOW_TRACE_SESSION_KEY
 from synalinks.src.hooks.monitor import MLFLOW_TRACE_USER_KEY
 from synalinks.src.hooks.monitor import Monitor
 from synalinks.src.hooks.monitor import current_trace_context
+from synalinks.src.hooks.monitor import experiment_id_of
 from synalinks.src.hooks.monitor import root_trace_ids_since
 from synalinks.src.hooks.monitor import root_trace_mark
 from synalinks.src.hooks.monitor import trace_context
@@ -73,7 +75,7 @@ class MonitorEndToEndTest(testing.TestCase):
         import logging
 
         monitor.logger = logging.getLogger("monitor_test")
-        monitor._setup_done = True  # skip mlflow.set_experiment
+        monitor._setup_done = True  # skip resolving the experiment
         return monitor
 
     @patch("synalinks.src.hooks.monitor.mlflow")
@@ -197,7 +199,8 @@ class MonitorExperimentTest(testing.TestCase):
         fake_span.set_status = lambda *a, **kw: None
         fake_span.end = lambda: None
         mock_mlflow.start_span_no_context.return_value = fake_span
-        mock_mlflow.set_experiment.return_value.experiment_id = "exp-mine"
+        lookup = mock_mlflow.MlflowClient.return_value.get_experiment_by_name
+        lookup.return_value.experiment_id = "exp-mine"
 
         monitor = Monitor(experiment_name="mine")
         lm = LanguageModel(model="ollama/mistral", hooks=[monitor])
@@ -221,7 +224,8 @@ class MonitorExperimentTest(testing.TestCase):
         root_span.set_inputs = lambda *a, **kw: None
         root_span.end = lambda: None
         mock_mlflow.start_span_no_context.return_value = root_span
-        mock_mlflow.set_experiment.return_value.experiment_id = "exp-mine"
+        lookup = mock_mlflow.MlflowClient.return_value.get_experiment_by_name
+        lookup.return_value.experiment_id = "exp-mine"
 
         monitor = Monitor(experiment_name="mine")
         monitor.set_module(LanguageModel(model="ollama/mistral"))
@@ -237,6 +241,77 @@ class MonitorExperimentTest(testing.TestCase):
         self.assertEqual(root.kwargs["experiment_id"], "exp-mine")
         self.assertIs(child.kwargs["parent_span"], root_span)
         self.assertIsNone(child.kwargs["experiment_id"])
+
+
+class MonitorTracerProviderTest(testing.TestCase):
+    def test_setup_leaves_the_tracer_provider_alone(self):
+        """`mlflow.set_experiment` resets MLflow's tracer provider, which ends
+        the export of every span still open: with MLflow's OTLP dual export,
+        the copy of a trace lost the program's root and every module span
+        started before a model's first call. Resolving the experiment, new or
+        existing, must leave the provider alone."""
+        import tempfile
+
+        import mlflow
+        from mlflow.tracing.provider import provider
+
+        previous_uri = mlflow.get_tracking_uri()
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
+            uri = "sqlite:///" + os.path.join(tmp, "mlflow.db").replace("\\", "/")
+            try:
+                mlflow.set_tracking_uri(uri)
+                warmup = mlflow.MlflowClient().create_experiment("warmup")
+                # The provider is now initialized: a reset would run.
+                mlflow.start_span_no_context("warmup", experiment_id=warmup).end()
+                with patch.object(provider, "reset") as reset:
+                    first = Monitor(tracking_uri=uri, experiment_name="mine")
+                    first._setup_mlflow()
+                    second = Monitor(tracking_uri=uri, experiment_name="mine")
+                    second._setup_mlflow()
+                reset.assert_not_called()
+                mine = mlflow.MlflowClient().get_experiment_by_name("mine")
+                self.assertEqual(first._experiment_id, mine.experiment_id)
+                self.assertEqual(second._experiment_id, mine.experiment_id)
+            finally:
+                mlflow.set_tracking_uri(previous_uri)
+                # Nothing traced later exports to the deleted store.
+                mlflow.tracing.provider.reset()
+
+
+class ExperimentIdOfTest(testing.TestCase):
+    def _client(self, found=None, create_error=None):
+        client = MagicMock()
+        client.get_experiment_by_name.return_value = found
+        client.create_experiment.return_value = "exp-new"
+        client.create_experiment.side_effect = create_error
+        return client
+
+    def test_an_existing_experiment_is_used(self):
+        found = MagicMock(experiment_id="exp-1", lifecycle_stage="active")
+        client = self._client(found=found)
+        self.assertEqual(experiment_id_of(client, "mine"), "exp-1")
+        client.create_experiment.assert_not_called()
+
+    def test_a_missing_experiment_is_created(self):
+        self.assertEqual(experiment_id_of(self._client(), "mine"), "exp-new")
+
+    def test_a_deleted_experiment_is_refused(self):
+        import mlflow
+
+        found = MagicMock(experiment_id="exp-1", lifecycle_stage="deleted")
+        with self.assertRaises(mlflow.exceptions.MlflowException):
+            experiment_id_of(self._client(found=found), "mine")
+
+    def test_a_failed_creation_says_why(self):
+        """Only a creation that lost a race to another thread finds the
+        experiment afterwards; any other failure is MLflow's to report."""
+        import mlflow
+
+        refused = mlflow.exceptions.MlflowException("permission denied")
+        client = self._client(create_error=refused)
+        with self.assertRaises(mlflow.exceptions.MlflowException) as raised:
+            experiment_id_of(client, "mine")
+        self.assertIs(raised.exception, refused)
 
 
 class TraceContextTest(testing.TestCase):

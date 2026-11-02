@@ -26,6 +26,23 @@ class _EchoSandbox(Sandbox):
 
 
 class SandboxBaseTest(testing.TestCase):
+    async def test_aclose_kills_the_sandbox_once(self):
+        sandbox = await _EchoSandbox.create()
+        await sandbox.aclose()
+        await sandbox.aclose()
+        self.assertFalse(await sandbox.is_running())
+        self.assertNotIn(sandbox.sandbox_id, Sandbox.live_sandboxes)
+
+    async def test_close_kills_the_sandbox_without_awaiting(self):
+        sandbox = await _EchoSandbox.create()
+        await sandbox.set_timeout(3600)
+        timer = sandbox.lifetime_timer
+        sandbox.close()
+        sandbox.close()
+        self.assertFalse(await sandbox.is_running())
+        self.assertNotIn(sandbox.sandbox_id, Sandbox.live_sandboxes)
+        self.assertTrue(timer.cancelled())
+
     async def test_create_builds_the_subclass(self):
         # E2B's `timeout` is the sandbox lifetime; other keyword arguments go
         # to the constructor.

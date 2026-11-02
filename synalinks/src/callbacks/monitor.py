@@ -464,7 +464,9 @@ class Monitor(Callback):
         if experiment_name is None and self.program is not None:
             experiment_name = self.program.name or "synalinks_experiment"
 
-        self._experiment_id = mlflow.set_experiment(experiment_name).experiment_id
+        self._experiment_id = monitor_hook.experiment_id_of(
+            mlflow.MlflowClient(), experiment_name
+        )
 
     def _start_run(self, run_name_suffix="", tags=None):
         """Start a new MLflow run, or resume one (`run_id` / `resume`)."""

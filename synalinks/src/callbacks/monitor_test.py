@@ -66,14 +66,18 @@ class MonitorSetupAndRunTest(testing.TestCase):
         with patch.object(monitor_module, "mlflow") as mlf:
             cb._setup_mlflow()
         mlf.set_tracking_uri.assert_called_once_with("http://example")
-        mlf.set_experiment.assert_called_once_with("my_prog")
+        mlf.MlflowClient.return_value.get_experiment_by_name.assert_called_once_with(
+            "my_prog"
+        )
 
     def test_setup_falls_back_to_default_experiment_name(self):
         cb = Monitor()
         cb.set_program(_FakeProgram(name=""))
         with patch.object(monitor_module, "mlflow") as mlf:
             cb._setup_mlflow()
-        mlf.set_experiment.assert_called_once_with("synalinks_experiment")
+        mlf.MlflowClient.return_value.get_experiment_by_name.assert_called_once_with(
+            "synalinks_experiment"
+        )
 
     def test_start_run_tags_with_program_metadata(self):
         cb = Monitor(run_name="base", tags={"extra": "v"})
@@ -105,7 +109,8 @@ class MonitorSetupAndRunTest(testing.TestCase):
         since `_setup_mlflow`; the run still starts in this callback's."""
         cb = Monitor(experiment_name="mine")
         with patch.object(monitor_module, "mlflow") as mlf:
-            mlf.set_experiment.return_value.experiment_id = "exp-mine"
+            lookup = mlf.MlflowClient.return_value.get_experiment_by_name
+            lookup.return_value.experiment_id = "exp-mine"
             mlf.start_run.return_value = _FakeRun()
             cb._setup_mlflow()
             mlf.set_experiment("theirs")
@@ -208,8 +213,8 @@ class MonitorLifecycleTest(testing.TestCase):
             cb.on_epoch_begin(0)
             cb.on_epoch_end(0, logs={"loss": 0.5})
             cb.on_train_end(logs={"loss": 0.4})
-        # set_experiment from _setup_mlflow + start_run for training
-        mlf.set_experiment.assert_called_once()
+        # the experiment from _setup_mlflow + start_run for training
+        mlf.MlflowClient.return_value.get_experiment_by_name.assert_called_once()
         mlf.start_run.assert_called_once()
         # epoch end + fit duration at train end = 2 metrics calls
         self.assertEqual(mlf.log_metrics.call_count, 2)
@@ -324,7 +329,8 @@ class MonitorResumeTest(testing.TestCase):
         cb = Monitor(run_name="nightly", resume=True)
         cb.set_program(_FakeProgram())
         with patch.object(monitor_module, "mlflow") as mlf:
-            mlf.set_experiment.return_value.experiment_id = "exp-1"
+            lookup = mlf.MlflowClient.return_value.get_experiment_by_name
+            lookup.return_value.experiment_id = "exp-1"
             cb._setup_mlflow()
             client = mlf.MlflowClient.return_value
             client.search_runs.return_value = [_FakeRun(run_id="found-1")]
@@ -382,7 +388,9 @@ class MonitorResumeTest(testing.TestCase):
             patch.object(monitor_module, "mlflow_experiment_name", return_value="obs"),
         ):
             cb._setup_mlflow()
-        mlf.set_experiment.assert_called_once_with("obs")
+        mlf.MlflowClient.return_value.get_experiment_by_name.assert_called_once_with(
+            "obs"
+        )
 
 
 class MonitorThreadSafetyTest(testing.TestCase):
@@ -700,7 +708,8 @@ class MonitorModelLoggingTest(testing.TestCase):
 
     def _mlf(self, mlf, model_id="m-1"):
         mlf.start_run.return_value = _FakeRun(run_id="run-train")
-        mlf.set_experiment.return_value.experiment_id = "exp-1"
+        lookup = mlf.MlflowClient.return_value.get_experiment_by_name
+        lookup.return_value.experiment_id = "exp-1"
         mlf.initialize_logged_model.return_value.model_id = model_id
         return mlf
 

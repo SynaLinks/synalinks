@@ -230,6 +230,18 @@ class KnowledgeBase(SynalinksSaveable):
         # serialization path. Callers must re-supply the key when
         # constructing a new KnowledgeBase against an encrypted file.
 
+    def close(self) -> None:
+        """Close the SQL and graph stores this knowledge base opened. Idempotent.
+
+        Call it when you are done with a knowledge base rather than waiting for
+        the garbage collector: every open Ladybug graph store reserves 8 TiB of
+        address space, so a process can only hold about 15 at once. The
+        knowledge base must not be used afterwards.
+        """
+        for adapter in (self.sql_adapter, self.graph_adapter):
+            if adapter is not None:
+                adapter.close()
+
     async def update(
         self,
         data_model_or_data_models: Union[Any, List[Any], Dataset],
