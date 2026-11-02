@@ -1092,7 +1092,7 @@ class LadybugAdapter(GraphDatabaseAdapter):
                 except Exception as e:  # noqa: BLE001
                     warnings.warn(f"Failed to drop table {name!r}: {e}")
 
-        self.close()
+        self._con.close()
         self._con = lb.Connection(self._db)
         # Absent when called from the constructor, before `_setup_schema`.
         for registry in ("_pk_keys", "_fts_columns", "_synth_models"):
@@ -5090,9 +5090,18 @@ class LadybugAdapter(GraphDatabaseAdapter):
     # ------------------------------------------------------------------
 
     def close(self) -> None:
-        """Close the underlying Ladybug connection. Idempotent."""
+        """Close the Ladybug connection and database. Idempotent.
+
+        Closing the database is what gives back its address space: each open
+        one reserves `max_db_size` (8 TiB by default) of the process's 128 TiB,
+        so about 15 can be open at once.
+        """
         try:
             self._con.close()
+        except Exception:
+            pass
+        try:
+            self._db.close()
         except Exception:
             pass
 

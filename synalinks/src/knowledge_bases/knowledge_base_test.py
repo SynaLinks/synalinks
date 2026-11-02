@@ -1714,6 +1714,22 @@ class _RecordingGraphAdapter(GraphDatabaseAdapter):
 
 
 class KnowledgeBaseGraphDelegationTest(testing.TestCase):
+    def test_close_releases_both_stores(self):
+        temp_dir = self.get_temp_dir()
+        knowledge_bases = []
+        # About 15 Ladybug databases fit in a process at once, and every
+        # knowledge base here stays referenced.
+        for i in range(20):
+            kb = KnowledgeBase(
+                uri=f"duckdb://{temp_dir}/{i}.db",
+                graph_uri="ladybug://:memory:",
+                name=f"close_{i}",
+            )
+            knowledge_bases.append(kb)
+            kb.close()
+            kb.close()
+            self.assertIsNone(kb.sql_adapter._con)
+
     """Verify KnowledgeBase's graph methods delegate with the right
     arguments, and that calling them on a SQL-only adapter raises a
     clear NotImplementedError instead of an opaque AttributeError."""

@@ -797,6 +797,15 @@ class LadybugAdapterTest(testing.TestCase):
         # Second call must not raise.
         adapter.close()
 
+    def test_close_releases_the_database_address_space(self):
+        # About 15 Ladybug databases fit in a process at once, so this runs out
+        # of address space unless `close` releases the database, even though
+        # every adapter stays referenced.
+        adapters = []
+        for _ in range(20):
+            adapters.append(self._adapter())
+            adapters[-1].close()
+
     def test_repr_includes_path(self):
         adapter = self._adapter()
         text = repr(adapter)

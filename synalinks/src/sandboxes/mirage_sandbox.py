@@ -2231,12 +2231,6 @@ class MirageSandbox(Sandbox):
 
     async def release(self) -> None:
         """Release the FUSE mount, workspace and host state (for ``kill``)."""
-        await self.aclose()
-
-    async def aclose(self) -> None:
-        """Async release of the workspace and host state directory."""
-        self.killed = True
-        Sandbox.live_sandboxes.pop(self.identifier, None)
         self.discard_state()
         ws = getattr(self, "workspace", None)
         if ws is not None:
@@ -2253,8 +2247,7 @@ class MirageSandbox(Sandbox):
         ``remove_fuse_mount`` when a loop is already running, and via the full async
         ``close`` otherwise. Teardown never raises.
         """
-        self.killed = True
-        Sandbox.live_sandboxes.pop(getattr(self, "identifier", None), None)
+        super().close()
         self.discard_state()
         sync_close_workspace(getattr(self, "workspace", None))
         rmtree(getattr(self, "hostdir", None))

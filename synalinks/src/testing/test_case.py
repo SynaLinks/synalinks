@@ -36,6 +36,35 @@ class TestCase(
         _config._DEFAULT_DECISION_MODEL = None
         _config._DEFAULT_DECISION_MODEL_IDENTIFIER = None
         self._zero_retry_backoff()
+        self._close_ladybug_adapters_after_test()
+
+    def _close_ladybug_adapters_after_test(self):
+        """Close every `LadybugAdapter` a test opens when that test ends.
+
+        Most tests never close their knowledge base, and each open Ladybug
+        database reserves 8 TiB of address space until it is released. Left to
+        the garbage collector, the suite can run out of it between two
+        collections.
+        """
+        from unittest import mock
+
+        from synalinks.src.knowledge_bases.graph_database_adapters import (
+            ladybug_adapter,
+        )
+
+        adapters = []
+        original_init = ladybug_adapter.LadybugAdapter.__init__
+
+        def tracking_init(adapter, *args, **kwargs):
+            adapters.append(adapter)
+            original_init(adapter, *args, **kwargs)
+
+        patcher = mock.patch.object(
+            ladybug_adapter.LadybugAdapter, "__init__", tracking_init
+        )
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        self.addCleanup(lambda: [adapter.close() for adapter in adapters])
 
     def _zero_retry_backoff(self):
         """Make tenacity retry waits instant for the duration of each test.

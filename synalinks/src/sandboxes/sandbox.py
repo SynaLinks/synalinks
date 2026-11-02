@@ -1782,6 +1782,24 @@ class Sandbox(SynalinksSaveable):
         await self.release()
         return True
 
+    async def aclose(self) -> None:
+        """Shut the sandbox down, as ``kill`` does. Idempotent."""
+        await self.kill()
+
+    def close(self) -> None:
+        """Best-effort, synchronous ``aclose`` for code that cannot await.
+
+        Marks the sandbox dead and releases what can be released without a
+        coroutine. Unlike ``aclose`` it leaves background commands running, so
+        prefer ``aclose`` wherever a coroutine can be awaited. Backends with
+        resources override this. Idempotent.
+        """
+        self.killed = True
+        timer = getattr(self, "lifetime_timer", None)
+        if timer is not None:
+            timer.cancel()
+        Sandbox.live_sandboxes.pop(getattr(self, "identifier", None), None)
+
     @request_deadline
     async def is_running(self, request_timeout: Optional[float] = None) -> bool:
         """Whether the sandbox is still usable (``kill`` not yet called)."""
