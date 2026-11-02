@@ -189,6 +189,11 @@ _APP_SERVER_CLIENT = {"name": "synalinks", "version": __version__}
 # 0 s, 19 out of 20 at 0.25 s, 23 out of 24 at 0.5 s, 126 out of 126 at 1 s.
 _STREAM_DRAIN_S = 1.0
 
+# The longest line read from the app-server. One JSON-RPC message is one line,
+# and a tool call or an answer can be far longer than asyncio's 64 KiB default,
+# past which `readline` raises.
+_MAX_APP_SERVER_LINE_BYTES = 64 * 1024 * 1024
+
 # The thread items a completion with tools may produce: the user message, the
 # answer, the reasoning, and the calls to the tools the request declared.
 # Anything else means the model acted through the CLI: the call is failed.
@@ -744,6 +749,7 @@ class _AppServer:
                 stderr=asyncio.subprocess.PIPE,
                 env=self._env,
                 cwd=self._cwd,
+                limit=_MAX_APP_SERVER_LINE_BYTES,
             )
         except FileNotFoundError:
             raise DeterministicStopError(

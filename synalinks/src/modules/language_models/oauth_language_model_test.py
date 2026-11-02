@@ -1097,7 +1097,8 @@ class AppServerCommandTest(testing.TestCase):
 
 # A stdio JSON-RPC server standing in for `codex app-server`, run with
 # `sys.executable`: every request is answered with its method (`fail` with an
-# error), every notification is echoed back as `echo/<method>`, and `argv[2]`
+# error, `big` with a line past asyncio's default limit), every notification is
+# echoed back as `echo/<method>`, and `argv[2]`
 # is written to stderr. `die` exits on `initialize` without answering it;
 # `linger` outlives the close of its input.
 _FAKE_APP_SERVER = """
@@ -1114,6 +1115,8 @@ for line in sys.stdin:
         reply = {"method": "echo/" + message["method"], "params": message["params"]}
     elif message["method"] == "fail":
         reply = {"id": message["id"], "error": {"code": 1, "message": "nope"}}
+    elif message["method"] == "big":
+        reply = {"id": message["id"], "result": {"ok": "x" * 100000}}
     else:
         reply = {"id": message["id"], "result": {"ok": message["method"]}}
     sys.stdout.write(json.dumps(reply) + "\\n")
@@ -1146,6 +1149,11 @@ class AppServerTransportTest(testing.TestCase):
                 await app.request("fail")
         # The server exits once its input closes: it is not killed.
         self.assertEqual(app._process.returncode, 0)
+
+    async def test_a_message_past_the_default_stream_limit_is_read(self):
+        async with _fake_app_server("echo") as app:
+            result = await asyncio.wait_for(app.request("big"), timeout=10)
+        self.assertEqual(len(result["ok"]), 100000)
 
     async def test_a_dead_server_fails_the_pending_and_later_requests(self):
         async with _fake_app_server("die", stderr="boom") as app:
