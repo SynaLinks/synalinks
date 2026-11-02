@@ -119,12 +119,15 @@ def experiment_id_of(client, name):
         try:
             return client.create_experiment(name)
         except mlflow.exceptions.MlflowException:
-            # Created by another thread in between.
+            # Created by another thread in between, or a failure of its own.
             experiment = client.get_experiment_by_name(name)
+            if experiment is None:
+                raise
     if experiment.lifecycle_stage == "deleted":
         raise mlflow.exceptions.MlflowException(
             f"Cannot use the deleted experiment '{name}'. Restore it, or delete it "
-            "permanently to create a new one."
+            "permanently to create a new one.",
+            error_code=mlflow.protos.databricks_pb2.INVALID_PARAMETER_VALUE,
         )
     return experiment.experiment_id
 

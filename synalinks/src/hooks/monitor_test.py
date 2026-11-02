@@ -2,6 +2,7 @@
 
 import os
 from unittest.mock import AsyncMock
+from unittest.mock import MagicMock
 from unittest.mock import patch
 
 from mlflow.entities import SpanType
@@ -17,6 +18,7 @@ from synalinks.src.hooks.monitor import MLFLOW_TRACE_SESSION_KEY
 from synalinks.src.hooks.monitor import MLFLOW_TRACE_USER_KEY
 from synalinks.src.hooks.monitor import Monitor
 from synalinks.src.hooks.monitor import current_trace_context
+from synalinks.src.hooks.monitor import experiment_id_of
 from synalinks.src.hooks.monitor import root_trace_ids_since
 from synalinks.src.hooks.monitor import root_trace_mark
 from synalinks.src.hooks.monitor import trace_context
@@ -258,9 +260,9 @@ class MonitorTracerProviderTest(testing.TestCase):
             uri = "sqlite:///" + os.path.join(tmp, "mlflow.db").replace("\\", "/")
             try:
                 mlflow.set_tracking_uri(uri)
-                mlflow.set_experiment("warmup")
-                with mlflow.start_span("warmup"):
-                    pass  # the provider is now initialized: a reset would run
+                warmup = mlflow.MlflowClient().create_experiment("warmup")
+                # The provider is now initialized: a reset would run.
+                mlflow.start_span_no_context("warmup", experiment_id=warmup).end()
                 with patch.object(provider, "reset") as reset:
                     first = Monitor(tracking_uri=uri, experiment_name="mine")
                     first._setup_mlflow()
@@ -272,6 +274,44 @@ class MonitorTracerProviderTest(testing.TestCase):
                 self.assertEqual(second._experiment_id, mine.experiment_id)
             finally:
                 mlflow.set_tracking_uri(previous_uri)
+                # Nothing traced later exports to the deleted store.
+                mlflow.tracing.provider.reset()
+
+
+class ExperimentIdOfTest(testing.TestCase):
+    def _client(self, found=None, create_error=None):
+        client = MagicMock()
+        client.get_experiment_by_name.return_value = found
+        client.create_experiment.return_value = "exp-new"
+        client.create_experiment.side_effect = create_error
+        return client
+
+    def test_an_existing_experiment_is_used(self):
+        found = MagicMock(experiment_id="exp-1", lifecycle_stage="active")
+        client = self._client(found=found)
+        self.assertEqual(experiment_id_of(client, "mine"), "exp-1")
+        client.create_experiment.assert_not_called()
+
+    def test_a_missing_experiment_is_created(self):
+        self.assertEqual(experiment_id_of(self._client(), "mine"), "exp-new")
+
+    def test_a_deleted_experiment_is_refused(self):
+        import mlflow
+
+        found = MagicMock(experiment_id="exp-1", lifecycle_stage="deleted")
+        with self.assertRaises(mlflow.exceptions.MlflowException):
+            experiment_id_of(self._client(found=found), "mine")
+
+    def test_a_failed_creation_says_why(self):
+        """Only a creation that lost a race to another thread finds the
+        experiment afterwards; any other failure is MLflow's to report."""
+        import mlflow
+
+        refused = mlflow.exceptions.MlflowException("permission denied")
+        client = self._client(create_error=refused)
+        with self.assertRaises(mlflow.exceptions.MlflowException) as raised:
+            experiment_id_of(client, "mine")
+        self.assertIs(raised.exception, refused)
 
 
 class TraceContextTest(testing.TestCase):
