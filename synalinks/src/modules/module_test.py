@@ -259,3 +259,59 @@ class ModuleTest(testing.TestCase):
 
     async def test_concurrent_children_share_their_parent(self):
         await self._hook_parents(gather=True)
+
+    async def _parent_after_a_failure(self, failing_hook):
+        # A call that fails before it runs (a hook's begin, or a bad positional
+        # argument) must not leave its id behind for the next call in the task.
+        from synalinks.src.hooks.hook import Hook
+
+        class Query(backend.DataModel):
+            x: int
+
+        class Echo(modules.Module):
+            async def call(self, inputs, training=False):
+                return inputs
+
+            async def compute_output_spec(self, inputs, training=False):
+                return inputs
+
+        class Recording(Hook):
+            def __init__(self, seen, fail):
+                super().__init__()
+                self.seen, self.fail = seen, fail
+
+            def on_call_begin(self, call_id, parent_call_id=None, **kwargs):
+                self.seen.append(("begin", parent_call_id))
+                if self.fail:
+                    raise RuntimeError("broken hook")
+
+            def on_call_end(self, call_id, parent_call_id=None, **kwargs):
+                self.seen.append(("end", kwargs.get("exception")))
+
+        seen = []
+        broken = Echo(name="broken")
+        hook = Recording(seen, fail=failing_hook)
+        hook.set_module(broken)
+        broken.add_hook(hook)
+        with self.assertRaises(Exception):
+            if failing_hook:
+                await broken(Query(x=1).to_json_data_model())
+            else:
+                await broken("not a data model")
+        if not failing_hook:
+            self.assertEqual(seen[-1][0], "end")
+            self.assertIsNotNone(seen[-1][1])
+
+        seen.clear()
+        after = Echo(name="after")
+        hook = Recording(seen, fail=False)
+        hook.set_module(after)
+        after.add_hook(hook)
+        await after(Query(x=1).to_json_data_model())
+        self.assertEqual(seen[0], ("begin", None))
+
+    async def test_a_hook_failing_at_begin_leaves_no_parent_behind(self):
+        await self._parent_after_a_failure(failing_hook=True)
+
+    async def test_a_call_failing_before_it_runs_ends_its_hooks(self):
+        await self._parent_after_a_failure(failing_hook=False)

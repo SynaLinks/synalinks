@@ -555,15 +555,15 @@ class Module(BackendModule, Operation, SynalinksSaveable):
 
         call_context.call_id = call_id
 
-        if self._hooks:
-            self._hooks.on_call_begin(
-                call_id=call_id,
-                parent_call_id=parent_call_id,
-                inputs=args,
-                kwargs=kwargs,
-            )
-
         try:
+            if self._hooks:
+                self._hooks.on_call_begin(
+                    call_id=call_id,
+                    parent_call_id=parent_call_id,
+                    inputs=args,
+                    kwargs=kwargs,
+                )
+
             #####################################
             # 0. Convert tuple inputs to list for convenience
             if isinstance(args, tuple):
