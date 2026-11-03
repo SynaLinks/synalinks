@@ -35,8 +35,8 @@ else:
     )
 
 
-# Per-call execution context (`call_id`, `parent_call_id`, `training`,
-# `entry_module`). Stored in a `contextvars.ContextVar` rather than the
+# Per-call execution context (`training`, `entry_module`, `cost`; the running
+# call's id is `_CURRENT_CALL_ID`'s). Stored in a `contextvars.ContextVar` rather than the
 # `threading.local` global state: an asyncio event loop runs many coroutines on
 # a single OS thread, so a thread-local context is shared (and corrupted)
 # between modules awaited concurrently, e.g. `asyncio.gather(modA(x), modB(x))`

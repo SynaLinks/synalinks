@@ -315,3 +315,36 @@ class ModuleTest(testing.TestCase):
 
     async def test_a_call_failing_before_it_runs_ends_its_hooks(self):
         await self._parent_after_a_failure(failing_hook=False)
+
+    async def test_a_functional_programs_second_node_reports_the_program(self):
+        from synalinks.src.hooks.hook import Hook
+        from synalinks.src.modules.core.identity import Identity
+        from synalinks.src.modules.core.input_module import Input
+        from synalinks.src.programs.program import Program
+
+        class Query(backend.DataModel):
+            x: int
+
+        class Recording(Hook):
+            def __init__(self, seen):
+                super().__init__()
+                self.seen = seen
+
+            def on_call_begin(self, call_id, parent_call_id=None, **kwargs):
+                self.seen.append((self.module.name, call_id, parent_call_id))
+
+        x0 = Input(data_model=Query)
+        x1 = await Identity(name="first")(x0)
+        x2 = await Identity(name="second")(x1)
+        program = Program(inputs=x0, outputs=x2, name="two_steps")
+        seen = []
+        for module in {id(m): m for m in program._flatten_modules()}.values():
+            hook = Recording(seen)
+            hook.set_module(module)
+            module.add_hook(hook)
+        await program(Query(x=1).to_json_data_model())
+
+        names = {call_id: name for name, call_id, _ in seen}
+        parents = {name: names.get(parent) for name, _, parent in seen}
+        self.assertEqual(parents["first"], "two_steps")
+        self.assertEqual(parents["second"], "two_steps")
