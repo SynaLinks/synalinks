@@ -169,7 +169,10 @@ class LanguageModelTest(testing.TestCase):
         self.assertEqual(response_format["type"], "json_schema")
         self.assertTrue(response_format["json_schema"]["strict"])
         self.assertIn("answer", response_format["json_schema"]["schema"]["properties"])
-        self.assertEqual(kwargs["provider"], {"require_parameters": True})
+        self.assertEqual(
+            kwargs["provider"],
+            {"require_parameters": True, "ignore": ["coreweave", "nebius"]},
+        )
 
         # The caller's own routing preferences are kept.
         language_model = LanguageModel(
@@ -179,7 +182,42 @@ class LanguageModelTest(testing.TestCase):
         await language_model(messages, schema=Answer.get_schema())
         self.assertEqual(
             mock_completion.call_args.kwargs["provider"],
-            {"order": ["anthropic"], "require_parameters": True},
+            {
+                "order": ["anthropic"],
+                "require_parameters": True,
+                "ignore": ["coreweave", "nebius"],
+            },
+        )
+
+    @patch("litellm.acompletion")
+    async def test_openrouter_blacklist_adds_to_the_callers_and_spares_a_chosen_one(
+        self, mock_completion
+    ):
+        """The blacklist is added to the caller's own `ignore`, without
+        repeating a name; a provider the caller routes to on purpose (`order`,
+        `only`) is not ignored."""
+
+        class Answer(DataModel):
+            answer: str
+
+        mock_completion.return_value = {
+            "choices": [{"message": {"content": '{"answer": "B"}'}}]
+        }
+        messages = ChatMessages(
+            messages=[ChatMessage(role=ChatRole.USER, content="Pick a letter.")]
+        )
+        language_model = LanguageModel(
+            model="openrouter/moonshotai/kimi-k2.7-code",
+            provider={"ignore": ["Venice", "CoreWeave"], "only": ["Nebius"]},
+        )
+        await language_model(messages, schema=Answer.get_schema())
+        self.assertEqual(
+            mock_completion.call_args.kwargs["provider"],
+            {
+                "ignore": ["Venice", "CoreWeave"],
+                "only": ["Nebius"],
+                "require_parameters": True,
+            },
         )
 
     @patch("litellm.acompletion")

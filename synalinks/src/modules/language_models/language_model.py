@@ -53,6 +53,17 @@ def _safe_get(obj, key, default=None):
 # through instead of consuming the retry budget.
 DETERMINISTIC_FINISH_REASONS = frozenset({"length", "content_filter", "safety"})
 
+# OpenRouter providers never routed a structured call, each for a defect seen
+# when the call was pinned to it. A caller's own `provider.ignore` is added
+# to these; one it routes to on purpose (`order`, `only`) is not ignored.
+OPENROUTER_IGNORED_PROVIDERS = (
+    # Ignores a strict `json_schema`: answers in prose, or reasoning then JSON.
+    "coreweave",
+    # Returns no reasoning trace with a reasoning effort, so a `thinking` the
+    # schema leaves to the trace comes back empty.
+    "nebius",
+)
+
 _EMPTY_RESPONSE_CAUSES = {
     "length": (
         "the completion token budget was exhausted before any content or "
@@ -1043,6 +1054,20 @@ class LanguageModel(Module):
                     # Else an endpoint ignoring `response_format` answers in prose.
                     provider = dict(kwargs.get("provider") or {})
                     provider.setdefault("require_parameters", True)
+                    chosen = {
+                        str(name).lower()
+                        for key in ("order", "only")
+                        for name in provider.get(key) or ()
+                    }
+                    ignored = list(provider.get("ignore") or ())
+                    known = {str(name).lower() for name in ignored}
+                    ignored += [
+                        name
+                        for name in OPENROUTER_IGNORED_PROVIDERS
+                        if name not in known and name not in chosen
+                    ]
+                    if ignored:
+                        provider["ignore"] = ignored
                     kwargs["provider"] = provider
             elif self.model.startswith("gemini"):
                 _set_if_unset(
