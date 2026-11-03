@@ -194,3 +194,157 @@ class ModuleTest(testing.TestCase):
         await outer(Query(query="b").to_json_data_model())
         self.assertEqual(outer.symbolic_calls, 1)
         self.assertEqual(outer.concrete_calls, 2)
+
+    async def _hook_parents(self, gather):
+        # A parent awaiting two children, one after the other or concurrently:
+        # each child's hooks must name the parent's call as their parent.
+        from synalinks.src.hooks.hook import Hook
+
+        class Query(backend.DataModel):
+            x: int
+
+        class Recording(Hook):
+            def __init__(self, seen):
+                super().__init__()
+                self.seen = seen
+
+            def on_call_begin(self, call_id, parent_call_id=None, **kwargs):
+                self.seen.append(("begin", self.module.name, call_id, parent_call_id))
+
+            def on_call_end(self, call_id, parent_call_id=None, **kwargs):
+                self.seen.append(("end", self.module.name, call_id, parent_call_id))
+
+        class Child(modules.Module):
+            async def call(self, inputs, training=False):
+                await asyncio.sleep(0)
+                return inputs
+
+            async def compute_output_spec(self, inputs, training=False):
+                return inputs
+
+        class Parent(modules.Module):
+            def __init__(self, **kwargs):
+                super().__init__(**kwargs)
+                self.a = Child(name="a")
+                self.b = Child(name="b")
+
+            async def call(self, inputs, training=False):
+                if gather:
+                    await asyncio.gather(self.a(inputs), self.b(inputs))
+                else:
+                    await self.a(inputs)
+                    await self.b(inputs)
+                return inputs
+
+            async def compute_output_spec(self, inputs, training=False):
+                return inputs
+
+        seen = []
+        parent = Parent(name="parent")
+        for module in (parent, parent.a, parent.b):
+            hook = Recording(seen)
+            hook.set_module(module)
+            module.add_hook(hook)
+        await parent(Query(x=1).to_json_data_model())
+
+        ids = {name: call_id for _, name, call_id, _ in seen}
+        parents = {(event, name): parent_id for event, name, _, parent_id in seen}
+        self.assertIsNone(parents[("begin", "parent")])
+        for name in ("a", "b"):
+            self.assertEqual(parents[("begin", name)], ids["parent"])
+            self.assertEqual(parents[("end", name)], ids["parent"])
+
+    async def test_sequential_children_share_their_parent(self):
+        await self._hook_parents(gather=False)
+
+    async def test_concurrent_children_share_their_parent(self):
+        await self._hook_parents(gather=True)
+
+    async def _parent_after_a_failure(self, failing_hook):
+        # A call that fails before it runs (a hook's begin, or a bad positional
+        # argument) must not leave its id behind for the next call in the task.
+        from synalinks.src.hooks.hook import Hook
+
+        class Query(backend.DataModel):
+            x: int
+
+        class Echo(modules.Module):
+            async def call(self, inputs, training=False):
+                return inputs
+
+            async def compute_output_spec(self, inputs, training=False):
+                return inputs
+
+        class Recording(Hook):
+            def __init__(self, seen, fail):
+                super().__init__()
+                self.seen, self.fail = seen, fail
+
+            def on_call_begin(self, call_id, parent_call_id=None, **kwargs):
+                self.seen.append(("begin", parent_call_id))
+                if self.fail:
+                    raise RuntimeError("broken hook")
+
+            def on_call_end(self, call_id, parent_call_id=None, **kwargs):
+                self.seen.append(("end", kwargs.get("exception")))
+
+        seen = []
+        broken = Echo(name="broken")
+        hook = Recording(seen, fail=failing_hook)
+        hook.set_module(broken)
+        broken.add_hook(hook)
+        with self.assertRaises(Exception):
+            if failing_hook:
+                await broken(Query(x=1).to_json_data_model())
+            else:
+                await broken("not a data model")
+        if not failing_hook:
+            self.assertEqual(seen[-1][0], "end")
+            self.assertIsNotNone(seen[-1][1])
+
+        seen.clear()
+        after = Echo(name="after")
+        hook = Recording(seen, fail=False)
+        hook.set_module(after)
+        after.add_hook(hook)
+        await after(Query(x=1).to_json_data_model())
+        self.assertEqual(seen[0], ("begin", None))
+
+    async def test_a_hook_failing_at_begin_leaves_no_parent_behind(self):
+        await self._parent_after_a_failure(failing_hook=True)
+
+    async def test_a_call_failing_before_it_runs_ends_its_hooks(self):
+        await self._parent_after_a_failure(failing_hook=False)
+
+    async def test_a_functional_programs_second_node_reports_the_program(self):
+        from synalinks.src.hooks.hook import Hook
+        from synalinks.src.modules.core.identity import Identity
+        from synalinks.src.modules.core.input_module import Input
+        from synalinks.src.programs.program import Program
+
+        class Query(backend.DataModel):
+            x: int
+
+        class Recording(Hook):
+            def __init__(self, seen):
+                super().__init__()
+                self.seen = seen
+
+            def on_call_begin(self, call_id, parent_call_id=None, **kwargs):
+                self.seen.append((self.module.name, call_id, parent_call_id))
+
+        x0 = Input(data_model=Query)
+        x1 = await Identity(name="first")(x0)
+        x2 = await Identity(name="second")(x1)
+        program = Program(inputs=x0, outputs=x2, name="two_steps")
+        seen = []
+        for module in {id(m): m for m in program._flatten_modules()}.values():
+            hook = Recording(seen)
+            hook.set_module(module)
+            module.add_hook(hook)
+        await program(Query(x=1).to_json_data_model())
+
+        names = {call_id: name for name, call_id, _ in seen}
+        parents = {name: names.get(parent) for name, _, parent in seen}
+        self.assertEqual(parents["first"], "two_steps")
+        self.assertEqual(parents["second"], "two_steps")
