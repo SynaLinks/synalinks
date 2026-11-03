@@ -1345,7 +1345,9 @@ class LanguageModel(Module):
                         and schema_had_thinking
                         and self.supports_reasoning_trace()
                     ):
-                        json_instance["thinking"] = reasoning_content
+                        # First, where the schema holds it: the thinking comes
+                        # before the answer, as it would had the model written it.
+                        json_instance = {"thinking": reasoning_content, **json_instance}
                 else:
                     # OpenAI's nested tool-call envelope is the synalinks
                     # `ToolCall` shape (`{id, type, function: {name,

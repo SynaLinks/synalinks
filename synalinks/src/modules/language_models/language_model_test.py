@@ -511,6 +511,48 @@ class LanguageModelTest(testing.TestCase):
         await lm(messages, reasoning_effort="disable")
         self.assertNotIn("think", mock_completion.call_args.kwargs)
 
+    @patch("litellm.acompletion")
+    async def test_native_reasoning_fills_thinking_before_the_answer(
+        self, mock_completion
+    ):
+        """With a reasoning effort, `thinking` is stripped from the schema sent
+        and filled from the response's `reasoning_content` after the call. It
+        comes back first, where the schema holds it, not appended after the
+        answer's fields.
+        """
+
+        class Thought(DataModel):
+            thinking: str
+            answer: str
+
+        mock_completion.return_value = {
+            "choices": [
+                {
+                    "message": {
+                        "content": '{"answer": "Toulouse"}',
+                        "reasoning_content": "Aerospace and robotics: Toulouse.",
+                    }
+                }
+            ]
+        }
+        messages = ChatMessages(
+            messages=[ChatMessage(role=ChatRole.USER, content="Which city?")]
+        )
+        lm = LanguageModel(model="openai/o3-mini")
+        with patch.object(LanguageModel, "supports_reasoning", return_value=True):
+            result = await lm(
+                messages, schema=Thought.get_schema(), reasoning_effort="low"
+            )
+
+        sent = mock_completion.call_args.kwargs["response_format"]["json_schema"]
+        self.assertNotIn("thinking", sent["schema"]["properties"])
+        self.assertEqual(
+            list(result.get_json()), ["thinking", "answer"], result.get_json()
+        )
+        self.assertEqual(
+            result.get_json()["thinking"], "Aerospace and robotics: Toulouse."
+        )
+
 
 class MultimodalWireTest(testing.TestCase):
     """End-to-end per-modality check at the provider boundary.
