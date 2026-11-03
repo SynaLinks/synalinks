@@ -281,7 +281,13 @@ class Trainer:
         self.run_eagerly = run_eagerly
         self.stop_training = False
         self.compiled = True
-        self._reward_tracker = metrics_module.Mean(name="reward")
+        self._reward_tracker = metrics_module.reduction_metrics.RewardTracker(
+            reduction=(
+                self._compile_reward.reduction
+                if self._compile_reward is not None
+                else "mean"
+            ),
+        )
         # Rewards are maximized: lets callbacks resolve `mode="auto"` for
         # `reward` / `val_reward` without an explicit `mode`.
         self._reward_tracker.direction = "up"
@@ -1118,13 +1124,7 @@ class Trainer:
                 y=val_y,
                 y_pred=y_pred,
             )
-            reduction = (
-                self._compile_reward.reduction
-                if self._compile_reward is not None
-                else "mean"
-            )
-            scalar_reward = rewards_module.reduce_rewards(rewards, reduction)
-            await self._reward_tracker.update_state(scalar_reward)
+            await self._reward_tracker.update_state(rewards)
             metrics = await self.compute_metrics(val_x, val_y, y_pred)
 
         if return_dict:
@@ -1176,11 +1176,7 @@ class Trainer:
         self._per_sample_targets = (
             [None if t is None else t.get_json() for t in y] if y is not None else None
         )
-        reduction = (
-            self._compile_reward.reduction if self._compile_reward is not None else "mean"
-        )
-        scalar_reward = rewards_module.reduce_rewards(rewards, reduction)
-        await self._reward_tracker.update_state(scalar_reward)
+        await self._reward_tracker.update_state(rewards)
 
         metrics = await self.compute_metrics(x, y, y_pred)
 
