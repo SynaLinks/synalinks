@@ -518,7 +518,7 @@ class LanguageModelTest(testing.TestCase):
         """With a reasoning effort, `thinking` is stripped from the schema sent
         and filled from the response's `reasoning_content` after the call. It
         comes back first, where the schema holds it, not appended after the
-        answer's fields.
+        answer's fields, and replaces a `thinking` the model wrote anyway.
         """
 
         class Thought(DataModel):
@@ -529,7 +529,7 @@ class LanguageModelTest(testing.TestCase):
             "choices": [
                 {
                     "message": {
-                        "content": '{"answer": "Toulouse"}',
+                        "content": '{"answer": "Toulouse", "thinking": "placeholder"}',
                         "reasoning_content": "Aerospace and robotics: Toulouse.",
                     }
                 }
