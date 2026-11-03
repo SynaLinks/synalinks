@@ -702,7 +702,7 @@ class Optimizer(SynalinksSaveable):
                 rewards=rewards,
             )
 
-        await self.reward_tracker.update_state(scalar_reward)
+        await self.reward_tracker.update_state(rewards)
         metrics = await self.program.compute_metrics(val_x, val_y, val_y_pred)
         return metrics
 

@@ -302,6 +302,79 @@ class TestTrainer(testing.TestCase):
         self.assertEqual(history.history["reward"], [1.0])
         self.assertEqual(history.history["val_reward"], [1.0])
 
+    @patch("litellm.acompletion")
+    async def test_evaluate_reward_is_per_sample_mean_with_uneven_last_batch(
+        self, mock_completion
+    ):
+        """The reported reward is the compiled reduction over every evaluated
+        sample, whatever the batching: a short last batch must not weigh as much
+        as a full one, and sum/min/max are not averaged across batches."""
+        mock_answer = AnswerWithRationale(rationale="It is well known.", answer="Paris")
+        mock_completion.return_value = {
+            "choices": [{"message": {"content": json.dumps(mock_answer.get_json())}}]
+        }
+        x = np.array([Query(query="q")] * 3, dtype="object")
+        y = np.array(
+            [
+                AnswerWithRationale(rationale="r", answer=answer)
+                for answer in ("Paris", "Paris", "Lyon")
+            ],
+            dtype="object",
+        )
+        expected = {"mean": 2 / 3, "none": 2 / 3, "sum": 2.0, "min": 0.0, "max": 1.0}
+
+        for reduction, value in expected.items():
+            program = ExampleProgram(
+                data_model=AnswerWithRationale,
+                language_model=LanguageModel(model="ollama/mistral"),
+            )
+            program.compile(
+                reward=rewards.RewardFunctionWrapper(
+                    rewards.exact_match, in_mask=["answer"], reduction=reduction
+                )
+            )
+            for batch_size in (2, 3):
+                result = await program.evaluate(
+                    x=x, y=y, batch_size=batch_size, return_dict=True
+                )
+                self.assertAlmostEqual(result["reward"], value, msg=reduction)
+
+    @patch("litellm.acompletion")
+    async def test_train_reward_is_per_sample_mean_with_uneven_batches(
+        self, mock_completion
+    ):
+        """The training reward is the mean over scored samples, not the mean of
+        per-step means: a step scored on fewer samples weighs less."""
+        mock_answer = AnswerWithRationale(rationale="It is well known.", answer="Paris")
+        mock_completion.return_value = {
+            "choices": [{"message": {"content": json.dumps(mock_answer.get_json())}}]
+        }
+        program = ExampleProgram(
+            data_model=AnswerWithRationale,
+            language_model=LanguageModel(model="ollama/mistral"),
+        )
+        program.compile(
+            optimizer=optimizers.random_few_shot.RandomFewShot(),
+            reward=rewards.ExactMatch(in_mask=["answer"]),
+        )
+        x = np.array([Query(query="q")] * 3, dtype="object")
+        y = np.array(
+            [
+                AnswerWithRationale(rationale="r", answer=answer)
+                for answer in ("Paris", "Paris", "Lyon")
+            ],
+            dtype="object",
+        )
+        await program(x[0])
+        program.reset_metrics()
+
+        for step, batch in enumerate((slice(0, 2), slice(2, 3))):
+            await program.train_on_batch(
+                step=step, x=x[batch], y=y[batch], val_x=x[batch], val_y=y[batch]
+            )
+
+        self.assertAlmostEqual(program._reward_tracker.result(), 2 / 3)
+
     async def test_fit_without_validation_data_says_why(self):
         program = await program_test()
         program.compile(

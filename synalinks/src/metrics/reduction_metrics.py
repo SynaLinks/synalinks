@@ -2,6 +2,8 @@
 # Original authors: François Chollet et al. (Keras Team)
 # License Apache 2.0: (c) 2025-2026 Yoan Sallami (Synalinks Team)
 
+from typing import Optional
+
 from synalinks.src import ops
 from synalinks.src import rewards
 from synalinks.src import tree
@@ -178,6 +180,63 @@ class Mean(Metric):
                 self.total_with_count.get("total"),
                 self.total_with_count.get("count"),
             )
+        )
+
+
+class RewardStats(DataModel):
+    total: float = 0.0
+    count: int = 0
+    min: Optional[float] = None
+    max: Optional[float] = None
+
+
+class RewardTracker(Metric):
+    """Track per-sample rewards and report them with the reward's reduction.
+
+    Statistics are kept over every sample seen since the last reset, so the
+    result does not depend on how the samples were split into batches.
+    ``"none"``/``None`` report the mean, like the other scalar reward consumers.
+
+    Args:
+        reduction (str): One of ``"mean"``, ``"sum"``, ``"min"``, ``"max"``,
+            ``"none"`` or ``None``.
+        name (str): Optional name of the tracker.
+    """
+
+    def __init__(self, reduction="mean", name="reward"):
+        super().__init__(name=name)
+        self.reduction = reduction
+        self.stats = self.add_variable(data_model=RewardStats, name="total_with_count")
+
+    async def update_state(self, values):
+        values = numpy.convert_to_tensor(values).ravel()
+        if not values.size:
+            return
+        current_min = self.stats.get("min")
+        current_max = self.stats.get("max")
+        batch_min = float(numpy.min(values))
+        batch_max = float(numpy.max(values))
+        self.stats.update(
+            {
+                "total": float(self.stats.get("total") + numpy.sum(values)),
+                "count": int(self.stats.get("count") + values.size),
+                "min": batch_min if current_min is None else min(current_min, batch_min),
+                "max": batch_max if current_max is None else max(current_max, batch_max),
+            }
+        )
+
+    def reset_state(self):
+        self.stats.assign(RewardStats())
+
+    def result(self):
+        if not self.stats.get("count"):
+            return 0.0
+        if self.reduction == "sum":
+            return float(self.stats.get("total"))
+        if self.reduction in ("min", "max"):
+            return float(self.stats.get(self.reduction))
+        return float(
+            numpy.divide_no_nan(self.stats.get("total"), self.stats.get("count"))
         )
 
 
