@@ -1,8 +1,12 @@
 # License Apache 2.0: (c) 2025-2026 Yoan Sallami (Synalinks Team)
 
 import base64
+import json
 import os
+import threading
 import warnings
+from http.server import BaseHTTPRequestHandler
+from http.server import HTTPServer
 from unittest.mock import patch
 
 import httpx
@@ -25,6 +29,7 @@ from synalinks.src.backend import Image
 from synalinks.src.backend.common.op_scope import _OP_SCOPE
 from synalinks.src.modules.core.tool import Tool
 from synalinks.src.modules.language_models import LanguageModel
+from synalinks.src.modules.language_models import language_model as language_model_module
 from synalinks.src.modules.language_models.language_model import _tool_to_wire
 
 _SAMPLE_IMAGE = os.path.join(
@@ -1621,3 +1626,218 @@ class ToolResultAudioTest(testing.TestCase):
         sent = mock_completion.call_args.kwargs["messages"]
         self.assertEqual(len(sent), 3)
         self.assertIn("1 audio clip(s) omitted", sent[2]["content"])
+
+
+class _EngineStub(BaseHTTPRequestHandler):
+    """A self-hosted engine: metadata routes, a streamed probe, chat replies."""
+
+    model_info = None
+    server_info = None
+    capabilities = None
+    reasoning = False
+
+    def _reply(self, status, payload=None, sse=None):
+        data = (
+            "".join(f"data: {json.dumps(c)}\n\n" for c in sse) + "data: [DONE]\n\n"
+            if sse is not None
+            else json.dumps(payload)
+        ).encode()
+        self.send_response(status)
+        self.send_header(
+            "Content-Type", "text/event-stream" if sse else "application/json"
+        )
+        self.send_header("Content-Length", str(len(data)))
+        self.end_headers()
+        self.wfile.write(data)
+
+    def do_GET(self):
+        self.server.paths.append(self.path)
+        if self.path.startswith("/model_info") and self.model_info is not None:
+            return self._reply(200, self.model_info)
+        if self.path.startswith("/server_info") and self.server_info is not None:
+            return self._reply(200, self.server_info)
+        self._reply(404, {"detail": "Not Found"})
+
+    def do_POST(self):
+        self.server.paths.append(self.path)
+        body = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
+        if self.path == "/api/show":
+            return self._reply(200, {"capabilities": self.capabilities or []})
+        if body.get("stream"):
+            self.server.probes.append(body)
+            key = "reasoning_content" if self.reasoning else "content"
+            delta = {"role": "assistant", key: "Okay"}
+            chunk = {
+                "id": "x",
+                "object": "chat.completion.chunk",
+                "created": 0,
+                "model": body["model"],
+                "choices": [{"index": 0, "delta": delta, "finish_reason": None}],
+            }
+            return self._reply(200, sse=[chunk])
+        self.server.requests.append(body)
+        schema = (body.get("response_format") or {}).get("json_schema") or {}
+        fields = (schema.get("schema") or {}).get("properties") or {}
+        answer = {"answer": "Paris"}
+        if "thinking" in fields:
+            answer = {"thinking": "written by the model", **answer}
+        message = {"role": "assistant", "content": json.dumps(answer)}
+        if self.reasoning:
+            message["reasoning_content"] = "native trace"
+        self._reply(
+            200,
+            {
+                "id": "x",
+                "object": "chat.completion",
+                "created": 0,
+                "model": body["model"],
+                "choices": [{"index": 0, "finish_reason": "stop", "message": message}],
+                "usage": {"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2},
+            },
+        )
+
+    def log_message(self, *args):
+        pass
+
+
+class _Thought(DataModel):
+    thinking: str
+    answer: str
+
+
+class NativeReasoningDetectionTest(testing.TestCase):
+    """Self-hosted engines are asked once, before the first request, whether
+    they return a reasoning trace; that decides the effort sent and whether
+    `thinking` is left out of the schema."""
+
+    def setUp(self):
+        super().setUp()
+        language_model_module._NATIVE_REASONING.clear()
+        language_model_module._NATIVE_REASONING_PENDING.clear()
+
+    def _serve(self, **behavior):
+        handler = type("Handler", (_EngineStub,), behavior)
+        server = HTTPServer(("127.0.0.1", 0), handler)
+        server.paths, server.probes, server.requests = [], [], []
+        threading.Thread(
+            target=server.serve_forever, kwargs={"poll_interval": 0.01}, daemon=True
+        ).start()
+        self.addCleanup(server.shutdown)
+        return server, f"http://127.0.0.1:{server.server_port}"
+
+    async def _ask(self, lm, effort="low"):
+        messages = ChatMessages(messages=[ChatMessage(role=ChatRole.USER, content="?")])
+        result = await lm(messages, schema=_Thought.get_schema(), reasoning_effort=effort)
+        return result.get_json()
+
+    async def test_vllm_with_reasoning_parser_is_probed_once(self):
+        server, base = self._serve(reasoning=True)
+        lm = LanguageModel(model="vllm/Qwen/Qwen3-8B", api_base=f"{base}/v1")
+
+        result = await self._ask(lm)
+        await self._ask(lm)
+        await self._ask(LanguageModel(model="vllm/Qwen/Qwen3-8B", api_base=f"{base}/v1"))
+
+        self.assertEqual(len(server.probes), 1)
+        self.assertEqual(server.probes[0]["max_tokens"], 16)
+        sent = server.requests[0]
+        self.assertEqual(sent["reasoning_effort"], "low")
+        self.assertEqual(sent["chat_template_kwargs"], {"enable_thinking": True})
+        self.assertNotIn(
+            "thinking", sent["response_format"]["json_schema"]["schema"]["properties"]
+        )
+        self.assertEqual(result, {"thinking": "native trace", "answer": "Paris"})
+
+    async def test_vllm_without_reasoning_parser_keeps_thinking(self):
+        server, base = self._serve(reasoning=False)
+        lm = LanguageModel(model="vllm/meta-llama/Llama-3.1-8B", api_base=f"{base}/v1")
+
+        result = await self._ask(lm)
+
+        self.assertEqual(len(server.probes), 1)
+        sent = server.requests[0]
+        self.assertNotIn("reasoning_effort", sent)
+        self.assertNotIn("chat_template_kwargs", sent)
+        self.assertIn(
+            "thinking", sent["response_format"]["json_schema"]["schema"]["properties"]
+        )
+        self.assertEqual(result["thinking"], "written by the model")
+
+    async def test_sglang_model_info_answers_without_a_probe(self):
+        server, base = self._serve(
+            reasoning=True, model_info={"reasoning_parser": "qwen3"}
+        )
+        lm = LanguageModel(model="sglang/Qwen/Qwen3-8B", api_base=f"{base}/v1")
+
+        result = await self._ask(lm)
+
+        self.assertEqual(server.probes, [])
+        self.assertEqual(result, {"thinking": "native trace", "answer": "Paris"})
+
+    async def test_vllm_dev_mode_server_info_answers_without_a_probe(self):
+        server, base = self._serve(
+            reasoning=True,
+            server_info={
+                "vllm_config": {"reasoning_config": {"reasoning_parser": "qwen3"}}
+            },
+        )
+        lm = LanguageModel(model="vllm/Qwen/Qwen3-8B", api_base=f"{base}/v1")
+
+        await self._ask(lm)
+
+        self.assertEqual(server.probes, [])
+        self.assertIn("/server_info?config_format=json", server.paths)
+
+    async def test_disable_turns_the_chat_template_switch_off_without_a_probe(self):
+        server, base = self._serve(reasoning=True)
+        lm = LanguageModel(model="vllm/Qwen/Qwen3-8B", api_base=f"{base}/v1")
+
+        await self._ask(lm, effort="disable")
+
+        self.assertEqual(server.probes, [])
+        self.assertEqual(
+            server.requests[0]["chat_template_kwargs"], {"enable_thinking": False}
+        )
+
+    async def test_openai_compatible_endpoint_is_probed(self):
+        server, base = self._serve(reasoning=True)
+        lm = LanguageModel(
+            model="doubleword/Qwen/Qwen3-235B-A22B", api_base=f"{base}/v1", api_key="k"
+        )
+
+        result = await self._ask(lm)
+
+        self.assertEqual(len(server.probes), 1)
+        self.assertEqual(server.requests[0]["reasoning_effort"], "low")
+        self.assertNotIn("chat_template_kwargs", server.requests[0])
+        self.assertEqual(result["thinking"], "native trace")
+
+    async def test_ollama_capabilities_decide(self):
+        _, base = self._serve(capabilities=["completion", "thinking"])
+        thinking = LanguageModel(model="ollama/qwen3:8b", api_base=base)
+        self.assertTrue(await thinking.supports_native_reasoning())
+
+        _, base = self._serve(capabilities=["completion"])
+        plain = LanguageModel(model="ollama/llama3.2", api_base=base)
+        self.assertFalse(await plain.supports_native_reasoning())
+
+    async def test_unreachable_server_counts_as_no_native_reasoning(self):
+        server, base = self._serve()
+        server.shutdown()
+        server.server_close()
+        lm = LanguageModel(model="vllm/Qwen/Qwen3-8B", api_base=f"{base}/v1", retry=1)
+
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            self.assertFalse(await lm.supports_native_reasoning())
+        self.assertTrue(any("thinking` stays" in str(w.message) for w in caught))
+
+    async def test_missing_trace_leaves_thinking_empty(self):
+        server, base = self._serve(
+            model_info={"reasoning_parser": "qwen3"}, reasoning=False
+        )
+        lm = LanguageModel(model="sglang/Qwen/Qwen3-8B", api_base=f"{base}/v1")
+
+        result = await self._ask(lm)
+
+        self.assertEqual(result, {"thinking": "", "answer": "Paris"})

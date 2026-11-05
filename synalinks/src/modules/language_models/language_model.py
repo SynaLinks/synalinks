@@ -1,5 +1,6 @@
 # License Apache 2.0: (c) 2025-2026 Yoan Sallami (Synalinks Team)
 
+import asyncio
 import contextvars
 import copy
 import logging
@@ -175,6 +176,10 @@ def _extract_lm_extras(usage, response):
 # `Monitor` hook writes it as span attributes). A ContextVar rather than an
 # instance attribute so concurrent calls on one LM never see each other's.
 _CURRENT_CALL_USAGE = contextvars.ContextVar("synalinks_lm_call_usage", default=None)
+
+# Per-process cache of `LanguageModel.supports_native_reasoning` by (api_base, model).
+_NATIVE_REASONING = {}
+_NATIVE_REASONING_PENDING = {}
 
 
 def current_call_usage():
@@ -626,15 +631,19 @@ class LanguageModel(Module):
     - `"disable"`: actively turn native reasoning *off*. This only has an
       effect for providers that reason by default, i.e. ollama's thinking
       models (`qwen3`, `deepseek-r1`, ...), where it maps to ollama's
-      `think=False` toggle (safely ignored by non-thinking ollama models), and
-      the ChatGPT backend (`codex/`), where it sends the lowest effort every
-      model accepts (`"low"`: most of them cannot turn reasoning off).
+      `think=False` toggle (safely ignored by non-thinking ollama models),
+      vLLM/SGLang (`vllm/`, `sglang/`, `mirai/`), where it sets the chat
+      template's `enable_thinking=False` (ignored by templates without it),
+      and the ChatGPT backend (`codex/`), where it sends the lowest effort
+      every model accepts (`"low"`: most of them cannot turn reasoning off).
       Opt-in providers (OpenAI, Anthropic, Gemini, ...) reason only when
       explicitly enabled, so there is nothing to send and this value is a
       no-op for them.
     - any other value (e.g. `"low"`, `"medium"`, `"high"`): forwarded to the
-      provider as the reasoning effort, but only when the model supports
-      reasoning (otherwise it is silently dropped).
+      provider as the reasoning effort, but only when the model reasons
+      natively (otherwise it is dropped). A self-hosted model is asked once,
+      before its first such request (see `supports_native_reasoning()`); the
+      native trace then fills a `thinking` field instead of the model.
 
     ```python
     import synalinks
@@ -954,20 +963,24 @@ class LanguageModel(Module):
         #                default: "disable" is handed to its transport, which
         #                knows the lowest effort the CLI accepts. Opt-in
         #                providers (OpenAI, Anthropic, Gemini, ...) reason only
-        #                when enabled, so there is nothing to send.
-        #   otherwise -> forward the effort to litellm when the model supports it.
+        #                when enabled, so there is nothing to send. vLLM/SGLang
+        #                get the chat template's `enable_thinking=False`.
+        #   otherwise -> forward the effort when the model reasons natively.
         reasoning_effort = kwargs.pop("reasoning_effort", "none")
         schema_had_thinking = bool(schema) and "thinking" in (
             schema.get("properties") or {}
         )
+        enable_thinking = None
         if reasoning_effort == "disable":
             if self.model.startswith("ollama"):
                 kwargs["think"] = False
             elif self.model.startswith("codex"):
                 kwargs["reasoning_effort"] = "disable"
+            enable_thinking = False
         elif reasoning_effort != "none":
-            if self.supports_reasoning():
+            if await self.supports_native_reasoning():
                 kwargs["reasoning_effort"] = reasoning_effort
+                enable_thinking = True
                 if schema_had_thinking and self.supports_reasoning_trace():
                     # The LM produces a native reasoning trace via
                     # `reasoning_content`; strip `thinking` from the LM
@@ -976,6 +989,14 @@ class LanguageModel(Module):
                     required = schema.get("required")
                     if isinstance(required, list) and "thinking" in required:
                         required.remove("thinking")
+        if enable_thinking is not None and self.model.startswith("hosted_vllm"):
+            # Chat templates without the variable ignore it.
+            extra_body = dict(kwargs.get("extra_body") or {})
+            extra_body["chat_template_kwargs"] = {
+                "enable_thinking": enable_thinking,
+                **(extra_body.get("chat_template_kwargs") or {}),
+            }
+            kwargs["extra_body"] = extra_body
 
         if schema:
             if self.model.startswith("cohere"):
@@ -1375,6 +1396,9 @@ class LanguageModel(Module):
                         # had the model written it.
                         json_instance.pop("thinking", None)
                         json_instance = {"thinking": reasoning_content, **json_instance}
+                    elif schema_had_thinking and "thinking" not in json_instance:
+                        # Left to a trace this response did not carry.
+                        json_instance = {"thinking": "", **json_instance}
                 else:
                     # OpenAI's nested tool-call envelope is the synalinks
                     # `ToolCall` shape (`{id, type, function: {name,
@@ -1544,6 +1568,7 @@ class LanguageModel(Module):
                 self-hosted one).
         """
         return model_catalog.model_info(model)
+
     def supports_reasoning(self):
         """Whether `reasoning_effort` is forwarded to the provider.
 
@@ -1554,6 +1579,122 @@ class LanguageModel(Module):
             (bool): True if the model takes a reasoning effort.
         """
         return litellm.supports_reasoning(model=self.model)
+
+    async def supports_native_reasoning(self):
+        """Whether the model reasons natively, known before any request.
+
+        Decides, ahead of a call with a reasoning effort, whether the effort is
+        forwarded and whether `thinking` is left out of the schema (filled from
+        the response's `reasoning_content` instead). A model in litellm's table
+        is answered from it (`supports_reasoning()`). A self-hosted one is asked
+        once per `(api_base, model)` and process, the result shared by every
+        instance:
+
+        - Ollama: `/api/show` lists the ``thinking`` capability.
+        - vLLM / SGLang (`vllm/`, `sglang/`, `mirai/`): `/model_info` (SGLang)
+          or `/server_info` (vLLM with ``VLLM_SERVER_DEV_MODE=1``) reports a
+          reasoning parser; otherwise a streamed probe of at most 16 tokens
+          checks that the server returns a reasoning trace.
+        - Any other OpenAI-compatible endpoint (`openai/` with an `api_base`,
+          e.g. `doubleword/`): the same probe.
+
+        An unreachable server or a failed probe counts as no native reasoning:
+        `thinking` stays in the schema and the model writes it itself.
+
+        Returns:
+            (bool): True if the model returns a native reasoning trace.
+        """
+        if self.supports_reasoning():
+            return True
+        hosted_vllm = self.model.startswith("hosted_vllm")
+        ollama = self.model.startswith("ollama")
+        if not (
+            hosted_vllm or ollama or (self.model.startswith("openai") and self.api_base)
+        ):
+            return False
+        key = (self.api_base, self.model)
+        if key in _NATIVE_REASONING:
+            return _NATIVE_REASONING[key]
+
+        async def detect():
+            root = (self.api_base or "").rstrip("/").removesuffix("/v1")
+            try:
+                # Bounded: a server that never answers must not stall the call.
+                async with asyncio.timeout(30):
+                    async with httpx.AsyncClient(timeout=10) as client:
+                        if ollama:
+                            response = await client.post(
+                                f"{root}/api/show",
+                                json={"model": self.model.split("/", 1)[1]},
+                            )
+                            response.raise_for_status()
+                            return "thinking" in (
+                                response.json().get("capabilities") or []
+                            )
+                        if hosted_vllm:
+                            response = await client.get(f"{root}/model_info")
+                            if (
+                                response.is_success
+                                and "reasoning_parser" in response.json()
+                            ):
+                                return bool(response.json()["reasoning_parser"])
+                            response = await client.get(
+                                f"{root}/server_info", params={"config_format": "json"}
+                            )
+                            if response.is_success:
+                                config = response.json().get("vllm_config") or {}
+                                return any(
+                                    (config.get(section) or {}).get("reasoning_parser")
+                                    for section in (
+                                        "reasoning_config",
+                                        "structured_outputs_config",
+                                    )
+                                )
+                    extra = (
+                        {
+                            "extra_body": {
+                                "chat_template_kwargs": {"enable_thinking": True}
+                            }
+                        }
+                        if hosted_vllm
+                        else {}
+                    )
+                    stream = await self._acompletion(
+                        [{"role": "user", "content": "Hi"}],
+                        **{
+                            **self.default_kwargs,
+                            "api_base": self.api_base,
+                            "max_tokens": 16,
+                            "stream": True,
+                            "reasoning_effort": "low",
+                            **extra,
+                        },
+                    )
+                    async for chunk in stream:
+                        delta = chunk.choices[0].delta if chunk.choices else None
+                        if delta is None:
+                            continue
+                        if getattr(delta, "reasoning_content", None):
+                            return True
+                        if getattr(delta, "content", None):
+                            return False
+                    return False
+            except Exception as e:
+                warnings.warn(
+                    f"Could not detect native reasoning for {self.model} at "
+                    f"{self.api_base}, `thinking` stays in the schema: {e}"
+                )
+                return False
+
+        loop = asyncio.get_running_loop()
+        pending = _NATIVE_REASONING_PENDING.get(key)
+        if pending is None or pending.get_loop() is not loop:
+            pending = loop.create_task(detect())
+            _NATIVE_REASONING_PENDING[key] = pending
+        result = await pending
+        _NATIVE_REASONING[key] = result
+        _NATIVE_REASONING_PENDING.pop(key, None)
+        return result
 
     def supports_reasoning_trace(self):
         """Whether the native reasoning trace fills the `thinking` field.
