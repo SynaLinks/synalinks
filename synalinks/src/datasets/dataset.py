@@ -1,6 +1,7 @@
 # License Apache 2.0: (c) 2025-2026 Yoan Sallami (Synalinks Team)
 
 import jinja2
+import jinja2.sandbox
 import numpy as np
 import orjson
 
@@ -149,7 +150,9 @@ class Dataset:
         self.limit = limit
         self.repeat = repeat
 
-        env = jinja2.Environment(undefined=jinja2.StrictUndefined)
+        # Sandboxed: a row template is a user's text, and a plain environment lets one reach
+        # Python (`cycler.__init__.__globals__.os`) and run a command.
+        env = jinja2.sandbox.SandboxedEnvironment(undefined=jinja2.StrictUndefined)
         self._input_tmpl = env.from_string(input_template)
         self._output_tmpl = (
             env.from_string(output_template) if output_template is not None else None
