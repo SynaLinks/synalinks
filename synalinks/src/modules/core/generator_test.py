@@ -416,6 +416,20 @@ class GeneratorModuleTest(testing.TestCase):
         self.assertIn("predicted-answer", rendered)
         self.assertIn("gold-answer", rendered)
 
+    def test_a_prompt_template_cannot_reach_python(self):
+        import jinja2
+
+        class Query(DataModel):
+            query: str
+
+        generator = Generator(
+            data_model=Query,
+            language_model=LanguageModel(model="ollama_chat/deepseek-r1"),
+            prompt_template="{{ cycler.__init__.__globals__.os.popen('id').read() }}",
+        )
+        with self.assertRaises(jinja2.exceptions.SecurityError):
+            generator.format_messages(Query(query="hi"))
+
     def test_format_message_with_instructions(self):
         class Query(DataModel):
             query: str

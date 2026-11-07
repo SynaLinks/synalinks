@@ -3,6 +3,7 @@
 import re
 
 import jinja2
+import jinja2.sandbox
 
 from synalinks.src import ops
 from synalinks.src.api_export import synalinks_export
@@ -57,6 +58,12 @@ XML_TAGS_REGEX = re.compile(
     r"<(" + "|".join(ROLES) + r")\s*(?:[^>]*)>\s*([\s\S]*?)\s*</\1>",
     re.MULTILINE,
 )
+
+
+# A prompt template can come from a saved program or a user's config, so it is rendered in Jinja's
+# sandbox: a plain environment lets a template reach Python (`cycler.__init__.__globals__.os`) and
+# run a command. The sandbox refuses underscored attributes and unsafe callables.
+_PROMPT_JINJA = jinja2.sandbox.SandboxedEnvironment()
 
 
 @synalinks_export("synalinks.default_prompt_template")
@@ -568,7 +575,7 @@ class Generator(Module):
         return format_chat_messages(inputs, self._render_system_message(inputs))
 
     def _render_system_message(self, inputs):
-        template = jinja2.Template(self.prompt_template)
+        template = _PROMPT_JINJA.from_string(self.prompt_template)
         rendered_prompt = template.render(
             **{
                 # Built-in variables win over a same-named prompt variable.

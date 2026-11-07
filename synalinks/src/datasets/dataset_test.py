@@ -39,6 +39,20 @@ class _RowDataset(Dataset):
 
 
 class DatasetCoreTest(testing.TestCase):
+    def test_a_row_template_cannot_reach_python(self):
+        import jinja2
+
+        ds = _RowDataset(
+            [{"q": "x"}],
+            input_data_model=Question,
+            input_template=json.dumps(
+                {"question": "{{ cycler.__init__.__globals__.os.popen('id').read() }}"}
+            ),
+            batch_size=1,
+        )
+        with pytest.raises(jinja2.exceptions.SecurityError):
+            list(ds)
+
     def test_inputs_only_yields_single_element_tuple(self):
         rows = [{"q": "what is 1+1?"}, {"q": "capital of France?"}]
         ds = _RowDataset(
