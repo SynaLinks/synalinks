@@ -397,18 +397,22 @@ def normalize_text(text):
     return remove_articles(remove_punctuation(text.strip().lower()))
 
 
-def normalize_and_tokenize(text):
+def normalize_and_tokenize(text, keep_articles=False):
     """
     Normalize the text and tokenize it into words.
 
     Args:
         text (str): The text to process.
+        keep_articles (bool): If True, skip the removal of the articles
+            (`a`, `an`, `the`) and of the words `of` and `is`.
+            Defaults to False.
 
     Returns:
         (list): A list of normalized words.
     """
     text = text.lower()
-    text = remove_articles(text)
+    if not keep_articles:
+        text = remove_articles(text)
     text = remove_punctuation(text)
     return text.split()
 

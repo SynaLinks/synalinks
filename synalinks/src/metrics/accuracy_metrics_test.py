@@ -72,6 +72,63 @@ class AccuracyTest(testing.TestCase):
         state = metric.variables[0]
         _ = json.dumps(state.get_json())
 
+    async def test_single_letter_answer_with_keep_articles(self):
+        class Answer(DataModel):
+            answer: str
+
+        # "A" is an article: by default it is stripped and nothing is left to
+        # compare. `keep_articles=True` scores multiple-choice letters correctly.
+        for letter in ("A", "B"):
+            metric = Accuracy(average="weighted", keep_articles=True)
+            score = await metric(Answer(answer=letter), Answer(answer=letter))
+            self.assertAlmostEqual(score, 1.0, delta=3 * backend.epsilon())
+
+        metric = Accuracy(average="weighted", keep_articles=True)
+        score = await metric(Answer(answer="A"), Answer(answer="B"))
+        self.assertAlmostEqual(score, 0.0, delta=3 * backend.epsilon())
+
+    async def test_articles_removed_by_default(self):
+        class Answer(DataModel):
+            answer: str
+
+        y_true = Answer(answer="The capital")
+        y_pred = Answer(answer="capital")
+
+        metric = Accuracy(average="weighted")
+        score = await metric(y_true, y_pred)
+        self.assertAlmostEqual(score, 1.0, delta=3 * backend.epsilon())
+
+        # With the article kept, "the" is an extra token: 1 shared over 2.
+        metric = Accuracy(average="weighted", keep_articles=True)
+        score = await metric(y_true, y_pred)
+        self.assertAlmostEqual(score, 0.5, delta=3 * backend.epsilon())
+
+    async def test_tokens_are_summed_over_rows(self):
+        class Answer(DataModel):
+            answer: str
+
+        # Documents the aggregation described in the class docstring: tokens
+        # are summed over rows, so the wrong row adds 2 to the denominator and
+        # the score is 1 / (1 + 2), not the mean of 1.0 and 0.0.
+        metric = Accuracy(average="weighted", keep_articles=True)
+        await metric.update_state(Answer(answer="B"), Answer(answer="B"))
+        await metric.update_state(Answer(answer="C"), Answer(answer="D"))
+        self.assertAlmostEqual(metric.result(), 1.0 / 3.0, delta=3 * backend.epsilon())
+
+    def test_keep_articles_config_round_trip(self):
+        metric = Accuracy(keep_articles=True)
+        clone = Accuracy.from_config(metric.get_config())
+        self.assertTrue(clone.keep_articles)
+        self.assertFalse(Accuracy.from_config(Accuracy().get_config()).keep_articles)
+
+    def test_subclasses_config_round_trip(self):
+        # The subclasses do not tokenize: the `keep_articles` option must not
+        # leak into their config, or `from_config` would reject it.
+        for metric_class in (BinaryAccuracy, CategoricalAccuracy):
+            config = metric_class().get_config()
+            self.assertNotIn("keep_articles", config)
+            metric_class.from_config(config)
+
 
 class BinaryAccuracyTest(testing.TestCase):
     async def test_same_boolean_fields(self):

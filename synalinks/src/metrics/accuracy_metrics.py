@@ -38,6 +38,22 @@ class Accuracy(Metric):
     fields are flattened and the score computed for each one
     independently before being averaged.
 
+    Text is normalized the SQuAD way before tokenizing: it is lowercased,
+    punctuation is stripped and the words `a`, `an`, `the`, `of` and `is`
+    are removed. A one-letter answer such as the multiple-choice option
+    `"A"` therefore becomes empty and scores 0, even against itself. Pass
+    `keep_articles=True` to skip that removal when the answers are short
+    labels or letters.
+
+    Note:
+        For each field, tokens are added up over all the samples, so the
+        result is `sum(|intersection|) / sum(|union|)`, not the mean of the
+        per-sample scores, and it is not the fraction of correct answers.
+        With one-token answers, a wrong answer adds 0 to the numerator and 2 to
+        the denominator (the two different tokens), so 8 correct answers out
+        of 20 score `8 / (8 + 2 * 12) = 0.25`, not `0.4`. Use the
+        `synalinks.rewards.ExactMatch` reward for the fraction of exactly
+        correct answers.
 
     Example:
 
@@ -45,6 +61,13 @@ class Accuracy(Metric):
     program.compile(
         metrics=[
             synalinks.metrics.Accuracy(),
+        ],
+    )
+
+    # For multiple-choice letters ("A", "B", ...), keep the articles.
+    program.compile(
+        metrics=[
+            synalinks.metrics.Accuracy(keep_articles=True),
         ],
     )
     ```
@@ -70,6 +93,9 @@ class Accuracy(Metric):
             are kept (combined with ``in_mask`` via OR).
         out_mask_pattern (str): (Optional) Regex pattern; fields whose names match
             are dropped (combined with ``out_mask`` via OR).
+        keep_articles (bool): (Optional) If `True`, do not remove the words `a`,
+            `an`, `the`, `of` and `is` before tokenizing. Use it for
+            multiple-choice letters or other short labels. Defaults to `False`.
     """
 
     direction = "up"
@@ -82,6 +108,7 @@ class Accuracy(Metric):
         out_mask=None,
         in_mask_pattern=None,
         out_mask_pattern=None,
+        keep_articles=False,
     ):
         super().__init__(
             name=name,
@@ -101,6 +128,7 @@ class Accuracy(Metric):
             name="state_" + self.name,
         )
         self.average = average
+        self.keep_articles = keep_articles
         self.axis = None
         if self.average != "micro":
             self.axis = 0
@@ -159,8 +187,12 @@ class Accuracy(Metric):
         # drop the unmatched ones and inflate the score. The "" fill has no
         # tokens, so an unmatched leaf scores 0 over the other side's tokens.
         for yt, yp in zip_longest(y_true, y_pred, fillvalue=""):
-            y_true_tokens = nlp_utils.normalize_and_tokenize(str(yt))
-            y_pred_tokens = nlp_utils.normalize_and_tokenize(str(yp))
+            y_true_tokens = nlp_utils.normalize_and_tokenize(
+                str(yt), keep_articles=self.keep_articles
+            )
+            y_pred_tokens = nlp_utils.normalize_and_tokenize(
+                str(yp), keep_articles=self.keep_articles
+            )
             common_tokens = set(y_true_tokens) & set(y_pred_tokens)
             union_tokens = set(y_true_tokens) | set(y_pred_tokens)
             correct.append(len(common_tokens))
@@ -238,6 +270,10 @@ class Accuracy(Metric):
             "name": self.name,
             "average": self.average,
         }
+        # Only emitted when set: `BinaryAccuracy` and `CategoricalAccuracy`
+        # inherit this method but do not accept `keep_articles`.
+        if self.keep_articles:
+            config["keep_articles"] = True
         base_config = super().get_config()
         return {**base_config, **config}
 

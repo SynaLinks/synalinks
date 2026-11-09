@@ -141,3 +141,11 @@ class NLPUtilsTest(testing.TestCase):
             normalize_and_tokenize("The Quick Brown Fox!"), ["quick", "brown", "fox"]
         )
         self.assertEqual(normalize_and_tokenize("An Apple a Day..."), ["apple", "day"])
+
+    def test_normalize_and_tokenize_keep_articles(self):
+        self.assertEqual(
+            normalize_and_tokenize("The Quick Brown Fox!", keep_articles=True),
+            ["the", "quick", "brown", "fox"],
+        )
+        self.assertEqual(normalize_and_tokenize("A", keep_articles=True), ["a"])
+        self.assertEqual(normalize_and_tokenize("A"), [])
