@@ -713,9 +713,9 @@ class LanguageModel(Module):
         if model_provider == "ollama":
             # Switch from `ollama` to `ollama_chat`
             # because it have better performance due to the chat prompts
-            model = model.replace("ollama", "ollama_chat")
+            model = model.replace("ollama", "ollama_chat", 1)
         if model_provider == "vllm":
-            model = model.replace("vllm", "hosted_vllm")
+            model = model.replace("vllm", "hosted_vllm", 1)
         if model_provider == "doubleword":
             # Doubleword is OpenAI-compatible (strict JSON schema + same
             # request/response shape); route via litellm's `openai`
@@ -1586,10 +1586,14 @@ class LanguageModel(Module):
         Decides, ahead of a call with a reasoning effort, whether the effort is
         forwarded and whether `thinking` is left out of the schema (filled from
         the response's `reasoning_content` instead). A model in litellm's table
-        is answered from it (`supports_reasoning()`). A self-hosted one is asked
-        once per `(api_base, model)` and process, the result shared by every
-        instance:
+        is answered from it (`supports_reasoning()`). An OpenRouter model or a
+        self-hosted one is asked once per `(api_base, model)` and process, the
+        result shared by every instance:
 
+        - OpenRouter (`openrouter/`): its `/models` list names ``reasoning``
+          among the model's `supported_parameters` (litellm's table does not
+          cover OpenRouter). A model missing from the list (retired, unknown)
+          does not reason natively.
         - Ollama: `/api/show` lists the ``thinking`` capability.
         - vLLM / SGLang (`vllm/`, `sglang/`, `mirai/`): `/model_info` (SGLang)
           or `/server_info` (vLLM with ``VLLM_SERVER_DEV_MODE=1``) reports a
@@ -1598,18 +1602,22 @@ class LanguageModel(Module):
         - Any other OpenAI-compatible endpoint (`openai/` with an `api_base`,
           e.g. `doubleword/`): the same probe.
 
-        An unreachable server or a failed probe counts as no native reasoning:
+        An unreachable server, list or probe counts as no native reasoning:
         `thinking` stays in the schema and the model writes it itself.
 
         Returns:
             (bool): True if the model returns a native reasoning trace.
         """
-        if self.supports_reasoning():
+        openrouter = self.model.startswith("openrouter")
+        if not openrouter and self.supports_reasoning():
             return True
         hosted_vllm = self.model.startswith("hosted_vllm")
         ollama = self.model.startswith("ollama")
         if not (
-            hosted_vllm or ollama or (self.model.startswith("openai") and self.api_base)
+            openrouter
+            or hosted_vllm
+            or ollama
+            or (self.model.startswith("openai") and self.api_base)
         ):
             return False
         key = (self.api_base, self.model)
@@ -1622,6 +1630,22 @@ class LanguageModel(Module):
                 # Bounded: a server that never answers must not stall the call.
                 async with asyncio.timeout(30):
                     async with httpx.AsyncClient(timeout=10) as client:
+                        if openrouter:
+                            api_base = (
+                                self.api_base
+                                or model_catalog.PROVIDERS["openrouter"][
+                                    "default_api_base"
+                                ]
+                            )
+                            response = await client.get(f"{api_base.rstrip('/')}/models")
+                            response.raise_for_status()
+                            name = self.model.split("/", 1)[1]
+                            return any(
+                                entry.get("id") == name
+                                and "reasoning"
+                                in (entry.get("supported_parameters") or [])
+                                for entry in response.json().get("data") or []
+                            )
                         if ollama:
                             response = await client.post(
                                 f"{root}/api/show",

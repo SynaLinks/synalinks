@@ -1633,6 +1633,7 @@ class _EngineStub(BaseHTTPRequestHandler):
 
     model_info = None
     server_info = None
+    models = None
     capabilities = None
     reasoning = False
 
@@ -1656,6 +1657,8 @@ class _EngineStub(BaseHTTPRequestHandler):
             return self._reply(200, self.model_info)
         if self.path.startswith("/server_info") and self.server_info is not None:
             return self._reply(200, self.server_info)
+        if self.path == "/api/v1/models" and self.models is not None:
+            return self._reply(200, {"data": self.models})
         self._reply(404, {"detail": "Not Found"})
 
     def do_POST(self):
@@ -1841,3 +1844,62 @@ class NativeReasoningDetectionTest(testing.TestCase):
         result = await self._ask(lm)
 
         self.assertEqual(result, {"thinking": "", "answer": "Paris"})
+
+    async def test_openrouter_model_list_decides(self):
+        server, base = self._serve(
+            reasoning=True,
+            models=[
+                {
+                    "id": "qwen/qwen3.8-27b",
+                    "supported_parameters": ["reasoning", "response_format"],
+                },
+                {"id": "openai/gpt-4o-mini", "supported_parameters": ["tools"]},
+            ],
+        )
+        api_base = f"{base}/api/v1"
+        thinking = LanguageModel(model="openrouter/qwen/qwen3.8-27b", api_base=api_base)
+        plain = LanguageModel(model="openrouter/openai/gpt-4o-mini", api_base=api_base)
+        retired = LanguageModel(model="openrouter/qwen/qwen3-8b", api_base=api_base)
+
+        self.assertTrue(await thinking.supports_native_reasoning())
+        self.assertFalse(await plain.supports_native_reasoning())
+        self.assertFalse(await retired.supports_native_reasoning())
+        self.assertEqual(server.probes, [])
+
+    async def test_openrouter_reasoning_model_fills_thinking_from_the_trace(self):
+        server, base = self._serve(
+            reasoning=True,
+            models=[{"id": "qwen/qwen3.8-27b", "supported_parameters": ["reasoning"]}],
+        )
+        lm = LanguageModel(model="openrouter/qwen/qwen3.8-27b", api_base=f"{base}/api/v1")
+
+        result = await self._ask(lm)
+        await self._ask(lm)
+
+        self.assertEqual(server.paths.count("/api/v1/models"), 1)
+        sent = server.requests[0]
+        self.assertNotIn(
+            "thinking", sent["response_format"]["json_schema"]["schema"]["properties"]
+        )
+        self.assertNotIn("chat_template_kwargs", sent)
+        self.assertEqual(result, {"thinking": "native trace", "answer": "Paris"})
+
+    async def test_openrouter_list_unreachable_keeps_thinking(self):
+        server, base = self._serve()
+        server.shutdown()
+        server.server_close()
+        lm = LanguageModel(model="openrouter/qwen/qwen3.8-27b", api_base=f"{base}/api/v1")
+
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            self.assertFalse(await lm.supports_native_reasoning())
+        self.assertTrue(any("thinking` stays" in str(w.message) for w in caught))
+
+
+class ProviderPrefixRewriteTest(testing.TestCase):
+    def test_only_the_provider_prefix_is_rewritten(self):
+        vllm = LanguageModel(model="vllm/RedHatAI/Qwen3-8B-vllm-FP8", api_base="http://x")
+        ollama = LanguageModel(model="ollama/me/ollama-tuned")
+
+        self.assertEqual(vllm.model, "hosted_vllm/RedHatAI/Qwen3-8B-vllm-FP8")
+        self.assertEqual(ollama.model, "ollama_chat/me/ollama-tuned")
