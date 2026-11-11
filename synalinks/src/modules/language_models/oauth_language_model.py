@@ -1537,20 +1537,15 @@ class OAuthLanguageModel(LanguageModel):
             if model.get("visibility", "list") == "list"
         )
 
-    def supports_reasoning(self):
+    # The CLI returns a one-line reasoning summary, not on every turn.
+    _reasoning_trace = False
+
+    async def supports_reasoning(self):
         """Whether the model takes a reasoning effort (always True).
 
         The effort reaches the CLI as `model_reasoning_effort`.
         """
         return True
-
-    def supports_reasoning_trace(self):
-        """Whether the reasoning trace fills the `thinking` field (always False).
-
-        The CLI only returns a one-line summary of the reasoning, and not on
-        every turn: the model writes the `thinking` field itself.
-        """
-        return False
 
     def supports_vision(self):
         """Whether the model accepts images in its input (always False)."""

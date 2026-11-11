@@ -177,7 +177,7 @@ def _extract_lm_extras(usage, response):
 # instance attribute so concurrent calls on one LM never see each other's.
 _CURRENT_CALL_USAGE = contextvars.ContextVar("synalinks_lm_call_usage", default=None)
 
-# Per-process cache of `LanguageModel.supports_native_reasoning` by (api_base, model).
+# Per-process cache of `LanguageModel.supports_reasoning` by (api_base, model).
 _NATIVE_REASONING = {}
 _NATIVE_REASONING_PENDING = {}
 
@@ -642,7 +642,7 @@ class LanguageModel(Module):
     - any other value (e.g. `"low"`, `"medium"`, `"high"`): forwarded to the
       provider as the reasoning effort, but only when the model reasons
       natively (otherwise it is dropped). A self-hosted model is asked once,
-      before its first such request (see `supports_native_reasoning()`); the
+      before its first such request (see `supports_reasoning()`); the
       native trace then fills a `thinking` field instead of the model.
 
     ```python
@@ -978,10 +978,10 @@ class LanguageModel(Module):
                 kwargs["reasoning_effort"] = "disable"
             enable_thinking = False
         elif reasoning_effort != "none":
-            if await self.supports_native_reasoning():
+            if await self.supports_reasoning():
                 kwargs["reasoning_effort"] = reasoning_effort
                 enable_thinking = True
-                if schema_had_thinking and self.supports_reasoning_trace():
+                if schema_had_thinking and self._reasoning_trace:
                     # The LM produces a native reasoning trace via
                     # `reasoning_content`; strip `thinking` from the LM
                     # schema to save tokens; we re-inject it after the call.
@@ -1389,7 +1389,7 @@ class LanguageModel(Module):
                     if (
                         reasoning_content
                         and schema_had_thinking
-                        and self.supports_reasoning_trace()
+                        and self._reasoning_trace
                     ):
                         # The trace replaces whatever the model wrote there, and
                         # comes first, where the schema holds it, as it would
@@ -1569,26 +1569,18 @@ class LanguageModel(Module):
         """
         return model_catalog.model_info(model)
 
-    def supports_reasoning(self):
-        """Whether `reasoning_effort` is forwarded to the provider.
+    # False when the transport returns no full trace: the model writes `thinking`.
+    _reasoning_trace = True
 
-        Looked up in litellm's model table: when True, the effort is sent
-        with the request (see also `supports_reasoning_trace()`).
-
-        Returns:
-            (bool): True if the model takes a reasoning effort.
-        """
-        return litellm.supports_reasoning(model=self.model)
-
-    async def supports_native_reasoning(self):
+    async def supports_reasoning(self):
         """Whether the model reasons natively, known before any request.
 
         Decides, ahead of a call with a reasoning effort, whether the effort is
         forwarded and whether `thinking` is left out of the schema (filled from
         the response's `reasoning_content` instead). A model in litellm's table
-        is answered from it (`supports_reasoning()`). An OpenRouter model or a
-        self-hosted one is asked once per `(api_base, model)` and process, the
-        result shared by every instance:
+        is answered from it. An OpenRouter model or a self-hosted one is asked
+        once per `(api_base, model)` and process, the result shared by every
+        instance:
 
         - OpenRouter (`openrouter/`): its `/models` list names ``reasoning``
           among the model's `supported_parameters` (litellm's table does not
@@ -1605,11 +1597,18 @@ class LanguageModel(Module):
         An unreachable server, list or probe counts as no native reasoning:
         `thinking` stays in the schema and the model writes it itself.
 
+        ```python
+        import synalinks
+
+        lm = synalinks.LanguageModel(model="openrouter/qwen/qwen3.8-27b")
+        print(await lm.supports_reasoning())  # True
+        ```
+
         Returns:
             (bool): True if the model returns a native reasoning trace.
         """
         openrouter = self.model.startswith("openrouter")
-        if not openrouter and self.supports_reasoning():
+        if not openrouter and litellm.supports_reasoning(model=self.model):
             return True
         hosted_vllm = self.model.startswith("hosted_vllm")
         ollama = self.model.startswith("ollama")
@@ -1719,19 +1718,6 @@ class LanguageModel(Module):
         _NATIVE_REASONING[key] = result
         _NATIVE_REASONING_PENDING.pop(key, None)
         return result
-
-    def supports_reasoning_trace(self):
-        """Whether the native reasoning trace fills the `thinking` field.
-
-        When True and a reasoning effort is sent, the `thinking` field is left
-        out of the schema handed to the model and filled with the
-        `reasoning_content` of the response instead. When False, the model
-        writes `thinking` like any other field.
-
-        Returns:
-            (bool): True if the reasoning trace replaces `thinking`.
-        """
-        return True
 
     def supports_vision(self):
         """Whether the model accepts images in its input.

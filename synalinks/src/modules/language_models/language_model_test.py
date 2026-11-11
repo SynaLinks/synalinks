@@ -1818,11 +1818,11 @@ class NativeReasoningDetectionTest(testing.TestCase):
     async def test_ollama_capabilities_decide(self):
         _, base = self._serve(capabilities=["completion", "thinking"])
         thinking = LanguageModel(model="ollama/qwen3:8b", api_base=base)
-        self.assertTrue(await thinking.supports_native_reasoning())
+        self.assertTrue(await thinking.supports_reasoning())
 
         _, base = self._serve(capabilities=["completion"])
         plain = LanguageModel(model="ollama/llama3.2", api_base=base)
-        self.assertFalse(await plain.supports_native_reasoning())
+        self.assertFalse(await plain.supports_reasoning())
 
     async def test_unreachable_server_counts_as_no_native_reasoning(self):
         server, base = self._serve()
@@ -1832,7 +1832,7 @@ class NativeReasoningDetectionTest(testing.TestCase):
 
         with warnings.catch_warnings(record=True) as caught:
             warnings.simplefilter("always")
-            self.assertFalse(await lm.supports_native_reasoning())
+            self.assertFalse(await lm.supports_reasoning())
         self.assertTrue(any("thinking` stays" in str(w.message) for w in caught))
 
     async def test_missing_trace_leaves_thinking_empty(self):
@@ -1861,9 +1861,9 @@ class NativeReasoningDetectionTest(testing.TestCase):
         plain = LanguageModel(model="openrouter/openai/gpt-4o-mini", api_base=api_base)
         retired = LanguageModel(model="openrouter/qwen/qwen3-8b", api_base=api_base)
 
-        self.assertTrue(await thinking.supports_native_reasoning())
-        self.assertFalse(await plain.supports_native_reasoning())
-        self.assertFalse(await retired.supports_native_reasoning())
+        self.assertTrue(await thinking.supports_reasoning())
+        self.assertFalse(await plain.supports_reasoning())
+        self.assertFalse(await retired.supports_reasoning())
         self.assertEqual(server.probes, [])
 
     async def test_openrouter_reasoning_model_fills_thinking_from_the_trace(self):
@@ -1892,7 +1892,7 @@ class NativeReasoningDetectionTest(testing.TestCase):
 
         with warnings.catch_warnings(record=True) as caught:
             warnings.simplefilter("always")
-            self.assertFalse(await lm.supports_native_reasoning())
+            self.assertFalse(await lm.supports_reasoning())
         self.assertTrue(any("thinking` stays" in str(w.message) for w in caught))
 
 
