@@ -160,23 +160,22 @@ class DeepAgentInstantiationTest(testing.TestCase):
             },
         )
 
-    @patch.object(LanguageModel, "supports_audio", return_value=True)
+    @patch("litellm.acompletion")
+    @patch.object(LanguageModel, "supports_audio", return_value=False)
     @patch.object(LanguageModel, "supports_vision", return_value=True)
-    async def test_media_tools_follow_the_model_capabilities(self, vision, audio):
+    async def test_media_tools_join_at_the_first_call(self, vision, audio, completion):
+        completion.side_effect = lambda *a, **k: _lm_response(content="ok")
         lm = LanguageModel(model="ollama/gemma3")
         agent = DeepAgent(language_model=lm, name="media")
-        self.assertIn("read_image", agent.tools)
-        self.assertIn("read_audio", agent.tools)
-        self.assertIn("read_image", agent.instructions)
-        self.assertIn("read_audio", agent.instructions)
-        audio.return_value = False
-        agent = DeepAgent(language_model=lm, name="images_only")
+        self.assertNotIn("read_image", agent.tools)
+        self.assertNotIn("read_image", agent.instructions)
+
+        await agent.call(ChatMessages(messages=[]))
+        await agent.call(ChatMessages(messages=[]))
+
         self.assertIn("read_image", agent.tools)
         self.assertNotIn("read_audio", agent.tools)
-        self.assertNotIn("read_audio", agent.instructions)
-        subagent = DeepAgent(language_model=lm, _subagent_depth=1, name="sub")
-        self.assertIn("read_image", subagent.instructions)
-        self.assertIn("subagent", subagent.instructions)
+        self.assertEqual(vision.await_count, 1)
 
     async def test_agent_appends_user_tools(self):
         wd = self._workdir()

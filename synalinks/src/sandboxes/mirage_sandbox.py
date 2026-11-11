@@ -2734,9 +2734,9 @@ class MirageSandbox(Sandbox):
     async def read_image(self, path: str) -> dict:
         """Look at an image file from the mounted virtual filesystem.
 
-        Reach for this to see an image, e.g. a chart a script saved: it is
-        shown to you with the result. A large image is scaled down to what
-        you can read.
+        Reach for this to see an image, e.g. a chart a script saved with
+        `plt.savefig`: it is shown to you with the result. A large image is
+        scaled down to what you can read.
 
         Args:
             path (str): Absolute virtual path of the image, e.g.

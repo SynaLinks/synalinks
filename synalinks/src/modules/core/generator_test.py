@@ -13,6 +13,7 @@ from synalinks.src.backend import DataModel
 from synalinks.src.backend.common.op_scope import op_scope
 from synalinks.src.modules import Generator
 from synalinks.src.modules import Input
+from synalinks.src.modules import default_chat_instructions
 from synalinks.src.modules.language_models import LanguageModel
 from synalinks.src.modules.language_models.language_model import StreamingIterator
 from synalinks.src.programs import Program
@@ -450,14 +451,9 @@ class GeneratorModuleTest(testing.TestCase):
         print(msgs.prettify_json())
         self.assertTrue(len(msgs.messages) == 2)
 
-    def test_format_message_without_instructions_nor_schema_has_no_instructions_block(
+    def test_format_message_without_instructions_nor_schema_has_chat_instructions(
         self,
     ):
-        # A generator with no structured output (a tool-calling one: the
-        # answer is the chat message, tool calls included) gets no default
-        # instructions, since those are written from the output schema's
-        # keys. The system message then has no `<instructions>` block at
-        # all, rather than one reading `None`.
         class Query(DataModel):
             query: str
 
@@ -473,8 +469,7 @@ class GeneratorModuleTest(testing.TestCase):
             ],
         ).format_messages(Query(query="What is the weather in Toulouse?"))
         system_prompt = msgs.messages[0].content
-        self.assertNotIn("<instructions>", system_prompt)
-        self.assertNotIn("None", system_prompt)
+        self.assertEqual(system_prompt.strip(), default_chat_instructions())
 
     def test_format_message_with_examples(self):
         class Query(DataModel):

@@ -18,6 +18,7 @@ from synalinks.src.backend import ChatMessages
 from synalinks.src.backend import ChatRole
 from synalinks.src.backend import DataModel
 from synalinks.src.backend import Field
+from synalinks.src.backend import Image
 from synalinks.src.modules.language_models import LanguageModel
 from synalinks.src.modules.language_models import OAuthLanguageModel
 from synalinks.src.modules.language_models import oauth_language_model
@@ -48,6 +49,7 @@ _CATALOG = {
         {
             "slug": "gpt-6.1-sol",
             "default_reasoning_level": "low",
+            "input_modalities": ["text", "image"],
             "tool_mode": "code_mode_only",
             "multi_agent_version": "v2",
             "apply_patch_tool_type": "freeform",
@@ -277,6 +279,7 @@ class ModelCatalogTest(testing.TestCase):
             {
                 "slug": "gpt-6.1-sol",
                 "default_reasoning_level": "low",
+                "input_modalities": ["text", "image"],
                 "tool_mode": None,
                 "multi_agent_version": None,
                 "apply_patch_tool_type": None,
@@ -413,6 +416,15 @@ class OAuthLanguageModelTest(testing.TestCase):
         )
         with self.assertRaisesRegex(ValueError, "Unsupported language model"):
             OAuthLanguageModel.provider_info("openai")
+
+    async def test_input_modalities_come_from_the_catalog(self):
+        with patch(_RUN, Recorder()):
+            sol = OAuthLanguageModel(model="codex/gpt-6.1-sol")
+            self.assertTrue(await sol.supports_vision())
+            self.assertFalse(await sol.supports_audio())
+            # No `input_modalities`, or no entry at all: text only.
+            for model in ("codex/gpt-5.5", "codex/default", "codex/unknown"):
+                self.assertFalse(await OAuthLanguageModel(model=model).supports_vision())
 
     async def test_supported_models_are_those_of_the_model_picker(self):
         catalog = {
@@ -1193,6 +1205,67 @@ class AppServerToolCallingTest(testing.TestCase):
         patcher.start()
         self.addCleanup(patcher.stop)
         return lm
+
+    async def test_images_go_through_the_app_server_in_place(self):
+        fake = FakeAppServer([{"message": "A cat, then a dog."}])
+        lm = self._lm(fake)
+        messages = ChatMessages(
+            messages=[
+                ChatMessage(
+                    role=ChatRole.USER,
+                    content=["First:", Image(data="QUJD", mime_type="image/png")],
+                ),
+                ChatMessage(role=ChatRole.ASSISTANT, content="Seen."),
+                ChatMessage(
+                    role=ChatRole.USER,
+                    content=[Image(data="REVG", mime_type="image/jpeg"), "And this?"],
+                ),
+            ]
+        )
+        result = await lm(messages)
+
+        self.assertEqual(result.get_json()["content"], "A cat, then a dog.")
+        self.assertEqual(self.recorder.calls, [])
+        history = fake.params("thread/inject_items")[0]["items"]
+        self.assertEqual(
+            history[0]["content"],
+            [
+                {"type": "input_text", "text": "First:"},
+                {"type": "input_image", "image_url": "data:image/png;base64,QUJD"},
+            ],
+        )
+        self.assertEqual(
+            fake.params("turn/start")[0]["input"],
+            [
+                {"type": "image", "url": "data:image/jpeg;base64,REVG"},
+                {"type": "text", "text": "And this?"},
+            ],
+        )
+
+    async def test_images_a_tool_returns_stay_in_its_result(self):
+        fake = FakeAppServer([{"message": "A red square."}])
+        lm = self._lm(fake)
+        messages = _trajectory()
+        messages.messages[-1] = ChatMessage(
+            role=ChatRole.TOOL,
+            tool_call_id="call_0",
+            content=['{"saved": "/plot.png"}', Image(data="QUJD", mime_type="image/png")],
+        )
+        await lm(messages)
+
+        items = fake.params("thread/inject_items")[0]["items"]
+        self.assertEqual(
+            items[-1],
+            {
+                "type": "function_call_output",
+                "call_id": "call_0",
+                "output": [
+                    {"type": "input_text", "text": '{"saved": "/plot.png"}'},
+                    {"type": "input_image", "image_url": "data:image/png;base64,QUJD"},
+                ],
+            },
+        )
+        self.assertNotIn("user", [item.get("role") for item in items[1:]])
 
     async def test_tool_call_turn_is_native(self):
         fake = FakeAppServer([{"calls": [("add", {"a": 17, "b": 25})]}])

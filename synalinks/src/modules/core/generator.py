@@ -75,9 +75,7 @@ def default_prompt_template():
     """
     return """
 {% if instructions %}
-<instructions>
 {{ instructions }}
-</instructions>
 {% endif %}{% if inputs_schema %}
 <input_schema>
 {{ inputs_schema }}
@@ -109,6 +107,10 @@ def default_decision_instructions(data_model_fields):
     return f"""
 Your task is to answer the following questions about the inputs: {data_model_fields}
 """.strip()
+
+
+def default_chat_instructions():
+    return "Your task is to answer the last user message."
 
 
 def format_chat_messages(inputs, system_message):
@@ -400,6 +402,8 @@ class Generator(Module):
                 instructions = default_decision_instructions(data_model_keys)
             else:
                 instructions = default_instructions(data_model_keys)
+        elif not instructions:
+            instructions = default_chat_instructions()
         self.instructions = instructions
         self.return_inputs = return_inputs
         self.temperature = temperature

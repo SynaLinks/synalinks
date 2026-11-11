@@ -9,7 +9,7 @@ from http.server import BaseHTTPRequestHandler
 from http.server import HTTPServer
 from unittest.mock import patch
 
-import httpx
+import litellm
 from litellm.types.utils import Choices
 from litellm.types.utils import CompletionTokensDetailsWrapper
 from litellm.types.utils import Message
@@ -1399,46 +1399,24 @@ class CurrentCallUsageTest(testing.TestCase):
 
 
 class CapabilitiesTest(testing.TestCase):
-    def test_supports_vision_follows_litellm_model_table(self):
-        self.assertTrue(LanguageModel(model="openai/gpt-4o-mini").supports_vision())
-        self.assertFalse(LanguageModel(model="deepseek/deepseek-chat").supports_vision())
+    def setUp(self):
+        super().setUp()
+        language_model_module._DETECTED.clear()
+        language_model_module._DETECTING.clear()
 
-    @patch("httpx.post")
-    def test_supports_vision_asks_ollama_for_its_capabilities(self, mock_post):
-        mock_post.return_value = httpx.Response(
-            200,
-            json={"capabilities": ["completion", "vision"]},
-            request=httpx.Request("POST", "http://localhost:11434/api/show"),
-        )
-        self.assertTrue(LanguageModel(model="ollama/gemma3").supports_vision())
-        self.assertEqual(mock_post.call_args.kwargs["json"], {"model": "gemma3"})
-        mock_post.return_value = httpx.Response(
-            200,
-            json={"capabilities": ["completion", "tools"]},
-            request=httpx.Request("POST", "http://localhost:11434/api/show"),
-        )
-        self.assertFalse(LanguageModel(model="ollama/qwen3").supports_vision())
-
-    @patch("httpx.post", side_effect=httpx.ConnectError("refused"))
-    def test_supports_vision_is_false_when_ollama_is_unreachable(self, mock_post):
-        self.assertFalse(LanguageModel(model="ollama/gemma3").supports_vision())
-
-    def test_supports_audio_follows_litellm_model_table(self):
-        self.assertTrue(LanguageModel(model="gemini/gemini-2.5-flash").supports_audio())
+    async def test_supports_vision_follows_litellm_model_table(self):
+        self.assertTrue(await LanguageModel(model="openai/gpt-4o-mini").supports_vision())
         self.assertFalse(
-            LanguageModel(model="anthropic/claude-sonnet-4-5").supports_audio()
+            await LanguageModel(model="deepseek/deepseek-chat").supports_vision()
         )
 
-    @patch("httpx.post")
-    def test_supports_audio_asks_ollama_for_its_capabilities(self, mock_post):
-        mock_post.return_value = httpx.Response(
-            200,
-            json={"capabilities": ["completion", "audio"]},
-            request=httpx.Request("POST", "http://localhost:11434/api/show"),
+    async def test_supports_audio_follows_litellm_model_table(self):
+        self.assertTrue(
+            await LanguageModel(model="gemini/gemini-2.5-flash").supports_audio()
         )
-        lm = LanguageModel(model="ollama/gemma3n")
-        self.assertTrue(lm.supports_audio())
-        self.assertFalse(lm.supports_vision())
+        self.assertFalse(
+            await LanguageModel(model="anthropic/claude-sonnet-4-5").supports_audio()
+        )
 
     def test_supports_softprompt_only_on_vllm(self):
         self.assertTrue(LanguageModel(model="vllm/qwen").supports_softprompt())
@@ -1499,9 +1477,10 @@ class ToolResultImagesTest(testing.TestCase):
         self.assertEqual(len(sent), 4)
         self.assertEqual(sent[3]["content"][1]["type"], "image_url")
 
+    @patch.object(LanguageModel, "supports_vision", return_value=True)
     @patch("litellm.acompletion")
     async def test_openrouter_claude_moves_images_to_a_user_message(
-        self, mock_completion
+        self, mock_completion, _
     ):
         # OpenRouter speaks the OpenAI format, whose tool messages are text
         # only, even when the model behind it is Claude.
@@ -1609,8 +1588,9 @@ class ToolResultAudioTest(testing.TestCase):
             {"type": "input_audio", "input_audio": {"data": "QUJD", "format": "wav"}},
         )
 
+    @patch.object(LanguageModel, "supports_audio", return_value=False)
     @patch("litellm.acompletion")
-    async def test_openrouter_claude_gets_an_audio_note(self, mock_completion):
+    async def test_openrouter_claude_gets_an_audio_note(self, mock_completion, _):
         mock_completion.return_value = {"choices": [{"message": {"content": "ok"}}]}
         await LanguageModel(model="openrouter/anthropic/claude-sonnet-4.5")(
             self._messages()
@@ -1633,6 +1613,7 @@ class _EngineStub(BaseHTTPRequestHandler):
 
     model_info = None
     server_info = None
+    models = None
     capabilities = None
     reasoning = False
 
@@ -1656,6 +1637,8 @@ class _EngineStub(BaseHTTPRequestHandler):
             return self._reply(200, self.model_info)
         if self.path.startswith("/server_info") and self.server_info is not None:
             return self._reply(200, self.server_info)
+        if self.path == "/api/v1/models" and self.models is not None:
+            return self._reply(200, {"data": self.models})
         self._reply(404, {"detail": "Not Found"})
 
     def do_POST(self):
@@ -1705,15 +1688,13 @@ class _Thought(DataModel):
     answer: str
 
 
-class NativeReasoningDetectionTest(testing.TestCase):
-    """Self-hosted engines are asked once, before the first request, whether
-    they return a reasoning trace; that decides the effort sent and whether
-    `thinking` is left out of the schema."""
+class ProviderMetadataTest(testing.TestCase):
+    """What a provider's endpoint reports decides reasoning, vision and audio."""
 
     def setUp(self):
         super().setUp()
-        language_model_module._NATIVE_REASONING.clear()
-        language_model_module._NATIVE_REASONING_PENDING.clear()
+        language_model_module._DETECTED.clear()
+        language_model_module._DETECTING.clear()
 
     def _serve(self, **behavior):
         handler = type("Handler", (_EngineStub,), behavior)
@@ -1815,11 +1796,11 @@ class NativeReasoningDetectionTest(testing.TestCase):
     async def test_ollama_capabilities_decide(self):
         _, base = self._serve(capabilities=["completion", "thinking"])
         thinking = LanguageModel(model="ollama/qwen3:8b", api_base=base)
-        self.assertTrue(await thinking.supports_native_reasoning())
+        self.assertTrue(await thinking.supports_reasoning())
 
         _, base = self._serve(capabilities=["completion"])
         plain = LanguageModel(model="ollama/llama3.2", api_base=base)
-        self.assertFalse(await plain.supports_native_reasoning())
+        self.assertFalse(await plain.supports_reasoning())
 
     async def test_unreachable_server_counts_as_no_native_reasoning(self):
         server, base = self._serve()
@@ -1829,7 +1810,7 @@ class NativeReasoningDetectionTest(testing.TestCase):
 
         with warnings.catch_warnings(record=True) as caught:
             warnings.simplefilter("always")
-            self.assertFalse(await lm.supports_native_reasoning())
+            self.assertFalse(await lm.supports_reasoning())
         self.assertTrue(any("thinking` stays" in str(w.message) for w in caught))
 
     async def test_missing_trace_leaves_thinking_empty(self):
@@ -1841,3 +1822,142 @@ class NativeReasoningDetectionTest(testing.TestCase):
         result = await self._ask(lm)
 
         self.assertEqual(result, {"thinking": "", "answer": "Paris"})
+
+    async def test_openrouter_model_list_decides(self):
+        server, base = self._serve(
+            reasoning=True,
+            models=[
+                {
+                    "id": "qwen/qwen3.8-27b",
+                    "supported_parameters": ["reasoning", "response_format"],
+                },
+                {"id": "openai/gpt-4o-mini", "supported_parameters": ["tools"]},
+            ],
+        )
+        api_base = f"{base}/api/v1"
+        thinking = LanguageModel(model="openrouter/qwen/qwen3.8-27b", api_base=api_base)
+        plain = LanguageModel(model="openrouter/openai/gpt-4o-mini", api_base=api_base)
+        retired = LanguageModel(model="openrouter/qwen/qwen3-8b", api_base=api_base)
+
+        self.assertTrue(await thinking.supports_reasoning())
+        self.assertFalse(await plain.supports_reasoning())
+        self.assertFalse(await retired.supports_reasoning())
+        self.assertEqual(server.probes, [])
+
+    async def test_openrouter_reasoning_model_fills_thinking_from_the_trace(self):
+        server, base = self._serve(
+            reasoning=True,
+            models=[{"id": "qwen/qwen3.8-27b", "supported_parameters": ["reasoning"]}],
+        )
+        lm = LanguageModel(model="openrouter/qwen/qwen3.8-27b", api_base=f"{base}/api/v1")
+
+        result = await self._ask(lm)
+        await self._ask(lm)
+
+        self.assertEqual(server.paths.count("/api/v1/models"), 1)
+        sent = server.requests[0]
+        self.assertNotIn(
+            "thinking", sent["response_format"]["json_schema"]["schema"]["properties"]
+        )
+        self.assertNotIn("chat_template_kwargs", sent)
+        self.assertEqual(result, {"thinking": "native trace", "answer": "Paris"})
+
+    async def test_openrouter_list_unreachable_keeps_thinking(self):
+        server, base = self._serve()
+        server.shutdown()
+        server.server_close()
+        lm = LanguageModel(model="openrouter/qwen/qwen3.8-27b", api_base=f"{base}/api/v1")
+
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            self.assertFalse(await lm.supports_reasoning())
+        self.assertTrue(
+            any("capabilities are taken as absent" in str(w.message) for w in caught)
+        )
+
+    async def test_ollama_capabilities_decide_vision_and_audio(self):
+        server, base = self._serve(capabilities=["completion", "vision"])
+        lm = LanguageModel(model="ollama/gemma3", api_base=base)
+
+        self.assertTrue(await lm.supports_vision())
+        self.assertFalse(await lm.supports_audio())
+        self.assertFalse(await lm.supports_reasoning())
+        self.assertEqual(server.paths.count("/api/show"), 1)
+
+    async def test_openrouter_input_modalities_decide_vision_and_audio(self):
+        server, base = self._serve(
+            models=[
+                {
+                    "id": "google/gemini-2.5-flash",
+                    "architecture": {"input_modalities": ["text", "image", "audio"]},
+                },
+                {
+                    "id": "openai/gpt-audio",
+                    "architecture": {"input_modalities": ["text", "audio"]},
+                },
+            ],
+        )
+        api_base = f"{base}/api/v1"
+        gemini = LanguageModel(
+            model="openrouter/google/gemini-2.5-flash", api_base=api_base
+        )
+        audio = LanguageModel(model="openrouter/openai/gpt-audio", api_base=api_base)
+
+        self.assertTrue(await gemini.supports_vision())
+        self.assertTrue(await gemini.supports_audio())
+        self.assertFalse(await audio.supports_vision())
+        self.assertTrue(await audio.supports_audio())
+        self.assertEqual(server.paths.count("/api/v1/models"), 2)
+
+    async def test_sglang_model_info_decides_vision_and_audio(self):
+        _, base = self._serve(
+            model_info={
+                "reasoning_parser": None,
+                "has_image_understanding": True,
+                "has_audio_understanding": False,
+            }
+        )
+        lm = LanguageModel(
+            model="sglang/Qwen/Qwen2.5-VL-7B-Instruct", api_base=f"{base}/v1"
+        )
+
+        self.assertTrue(await lm.supports_vision())
+        self.assertFalse(await lm.supports_audio())
+
+    async def test_vllm_reports_no_modality_so_litellm_decides(self):
+        _, base = self._serve()
+        lm = LanguageModel(
+            model="vllm/Qwen/Qwen2.5-VL-7B-Instruct", api_base=f"{base}/v1"
+        )
+
+        self.assertFalse(await lm.supports_vision())
+        litellm.register_model(
+            {"hosted_vllm/Qwen/Qwen2.5-VL-7B-Instruct": {"supports_vision": True}}
+        )
+        self.addCleanup(
+            litellm.model_cost.pop, "hosted_vllm/Qwen/Qwen2.5-VL-7B-Instruct", None
+        )
+        self.assertTrue(await lm.supports_vision())
+
+    async def test_unreachable_endpoint_counts_as_no_media(self):
+        server, base = self._serve()
+        server.shutdown()
+        server.server_close()
+        lm = LanguageModel(model="openrouter/google/gemini-2.5-flash", api_base=base)
+
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            self.assertFalse(await lm.supports_vision())
+            self.assertFalse(await lm.supports_audio())
+        self.assertEqual(
+            sum("capabilities are taken as absent" in str(w.message) for w in caught), 1
+        )
+
+
+class ProviderPrefixRewriteTest(testing.TestCase):
+    def test_only_the_provider_prefix_is_rewritten(self):
+        vllm = LanguageModel(model="vllm/RedHatAI/Qwen3-8B-vllm-FP8", api_base="http://x")
+        ollama = LanguageModel(model="ollama/me/ollama-tuned")
+
+        self.assertEqual(vllm.model, "hosted_vllm/RedHatAI/Qwen3-8B-vllm-FP8")
+        self.assertEqual(ollama.model, "ollama_chat/me/ollama-tuned")
