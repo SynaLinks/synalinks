@@ -548,6 +548,41 @@ class LanguageModel(Module):
     )
     ```
 
+    **Using vLLM models**
+
+    vLLM serves an OpenAI-compatible API, on `http://localhost:8000/v1` by
+    default. Serve a reasoning model with its reasoning parser, so the trace
+    comes back as `reasoning_content` and fills `thinking`, and forbid free
+    whitespace in structured outputs:
+
+    ```bash
+    vllm serve Qwen/Qwen3-8B \\
+    --reasoning-parser qwen3 \\
+    --structured-outputs-config '{"backend": "xgrammar", "disable_any_whitespace": true}'
+    ```
+
+    With vLLM's default structured-output settings the JSON grammar allows
+    any amount of whitespace between tokens, and a model (small ones above
+    all) can get stuck emitting newlines and tabs until it runs out of
+    tokens (`finish_reason: length`), leaving an unparsable `{`;
+    `disable_any_whitespace` makes it write compact JSON instead. Serving with
+    ``VLLM_SERVER_DEV_MODE=1`` lets `supports_reasoning()` read the reasoning
+    parser from `/server_info` instead of probing the model with a short
+    request.
+
+    The `vllm/` prefix is rewritten to `hosted_vllm/` internally and
+    `api_base` is defaulted to `HOSTED_VLLM_API_BASE`, then to the local
+    server. For a server started with `--api-key`, set `HOSTED_VLLM_API_KEY`.
+
+    ```python
+    import synalinks
+
+    language_model = synalinks.LanguageModel(
+        model="vllm/Qwen/Qwen3-8B",
+        api_base="http://localhost:8000/v1",
+    )
+    ```
+
     **Using Mirai models**
 
     Mirai is an on-device inference engine for Apple silicon, similar to
