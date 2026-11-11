@@ -65,6 +65,21 @@ OPENROUTER_IGNORED_PROVIDERS = (
     "nebius",
 )
 
+# Providers sent their own off switch for `reasoning_effort="disable"`.
+DISABLES_REASONING = (
+    "anthropic",
+    "azure",
+    "bedrock",
+    "deepseek",
+    "gemini",
+    "groq",
+    "mistral",
+    "openai",
+    "openrouter",
+    "together_ai",
+    "xai",
+)
+
 _EMPTY_RESPONSE_CAUSES = {
     "length": (
         "the completion token budget was exhausted before any content or "
@@ -678,17 +693,28 @@ class LanguageModel(Module):
 
     - `"none"` (the default): send nothing, leaving the model at its provider
       default reasoning behavior.
-    - `"disable"`: actively turn native reasoning *off*. This only has an
-      effect for providers that reason by default, i.e. ollama's thinking
-      models (`qwen3`, `deepseek-r1`, ...), where it maps to ollama's
-      `think=False` toggle (safely ignored by non-thinking ollama models),
-      vLLM/SGLang (`vllm/`, `sglang/`, `mirai/`), where it sets the chat
-      template's `enable_thinking=False` (ignored by templates without it),
-      and the ChatGPT backend (`codex/`), where it sends the lowest effort
-      every model accepts (`"low"`: most of them cannot turn reasoning off).
-      Opt-in providers (OpenAI, Anthropic, Gemini, ...) reason only when
-      explicitly enabled, so there is nothing to send and this value is a
-      no-op for them.
+    - `"disable"`: actively turn native reasoning *off*, for a model that
+      reasons by default. Each provider gets its own switch:
+
+      - Ollama: `think=False` (ignored by non-thinking models).
+      - vLLM/SGLang (`vllm/`, `sglang/`, `mirai/`): the chat template's
+        `enable_thinking=False` (ignored by templates without it).
+      - OpenRouter, Together AI: `reasoning={"enabled": False}`.
+      - Anthropic, Claude on Bedrock: `thinking={"type": "disabled"}`
+        (`"between_tools"` on Claude Sonnet 5.5, which refuses `"disabled"`).
+      - DeepSeek, Cohere's reasoning models: `thinking={"type": "disabled"}`.
+      - OpenAI, Azure, Mistral, Groq, other Bedrock models:
+        `reasoning_effort="none"`.
+      - Gemini: a zero thinking budget (Gemini 2.5), the lowest thinking
+        level (Gemini 3 and later).
+
+      Sent only when the model reasons natively (see `supports_reasoning()`;
+      Cohere's by their name). A model that cannot stop reasoning gets its
+      lowest effort instead (`"none"` would be refused): xAI's Grok and the
+      always-thinking Claude models (`"low"`), the OpenAI models without
+      `"none"` (`"minimal"`, else `"low"`), Mistral Large 4 and GLM 5 (`"low"`),
+      Groq's models other than Qwen (`"low"`), Gemini 2.5 Pro (its smallest
+      thinking budget, 128 tokens), and the ChatGPT backend (`codex/`).
     - any other value (e.g. `"low"`, `"medium"`, `"high"`): forwarded to the
       provider as the reasoning effort, but only when the model reasons
       natively (otherwise it is dropped). A self-hosted model is asked once,
@@ -1003,30 +1029,68 @@ class LanguageModel(Module):
                 wire_tools.extend(tool_schemas)
             kwargs["tools"] = wire_tools
 
-        # Handle reasoning_effort:
-        #   "none"    -> send nothing; leave the model at its provider default.
-        #   "disable" -> actively turn native reasoning OFF. This only needs an
-        #                explicit flag where reasoning is ON by default, i.e.
-        #                ollama's thinking models (qwen3, deepseek-r1, ...), which
-        #                reason unless told not to. `think=False` is the ollama
-        #                toggle and is safely ignored by non-thinking ollama
-        #                models. The ChatGPT backend (`codex/`) also reasons by
-        #                default: "disable" is handed to its transport, which
-        #                knows the lowest effort the CLI accepts. Opt-in
-        #                providers (OpenAI, Anthropic, Gemini, ...) reason only
-        #                when enabled, so there is nothing to send. vLLM/SGLang
-        #                get the chat template's `enable_thinking=False`.
-        #   otherwise -> forward the effort when the model reasons natively.
+        # The `reasoning_effort` values are documented in the class docstring.
         reasoning_effort = kwargs.pop("reasoning_effort", "none")
         schema_had_thinking = bool(schema) and "thinking" in (
             schema.get("properties") or {}
         )
         enable_thinking = None
+        prefix = self.model.split("/", 1)[0]
         if reasoning_effort == "disable":
-            if self.model.startswith("ollama"):
+            if prefix in ("ollama", "ollama_chat"):
                 kwargs["think"] = False
-            elif self.model.startswith("codex"):
+            elif prefix == "codex":
                 kwargs["reasoning_effort"] = "disable"
+            elif prefix == "cohere" and "reasoning" in self.model:
+                # Cohere's reasoning models think by default (not in litellm's table).
+                extra_body = dict(kwargs.get("extra_body") or {})
+                extra_body.setdefault("thinking", {"type": "disabled"})
+                kwargs["extra_body"] = extra_body
+            elif (
+                prefix in DISABLES_REASONING
+                and not (prefix == "openai" and self.api_base)
+                and await self.supports_reasoning()
+            ):
+                row = (
+                    litellm.model_cost.get(self.model)
+                    or litellm.model_cost.get(self.model.split("/", 1)[1])
+                    or {}
+                )
+                levels = row.get("reasoning_effort_levels") or []
+                claude = prefix == "anthropic" or (
+                    prefix == "bedrock" and "claude" in self.model
+                )
+                if prefix == "openrouter":
+                    # Only to a reasoner: with `require_parameters`, another has no route.
+                    kwargs.setdefault("reasoning", {"enabled": False})
+                elif claude and "sonnet-5-5" in self.model:
+                    # Sonnet 5.5 refuses `disabled`; this skips its up-front thinking.
+                    kwargs.setdefault("thinking", {"type": "between_tools"})
+                elif claude and not row.get("thinking_always_on"):
+                    kwargs.setdefault("thinking", {"type": "disabled"})
+                elif claude or prefix == "xai":
+                    kwargs["reasoning_effort"] = "low"
+                elif prefix == "gemini":
+                    # Gemini 2.5 Pro cannot turn thinking off: its smallest budget.
+                    kwargs["reasoning_effort"] = (
+                        "minimal" if "gemini-2.5-pro" in self.model else "disable"
+                    )
+                elif prefix == "groq":
+                    # Of Groq's reasoning models only Qwen takes `none` (its docs).
+                    kwargs["reasoning_effort"] = "none" if "qwen" in self.model else "low"
+                elif prefix == "mistral" and any(
+                    n in self.model for n in ("large-4", "glm-5")
+                ):
+                    # Mistral's docs: no `none` (litellm's table says otherwise).
+                    kwargs["reasoning_effort"] = "low"
+                elif prefix in ("deepseek", "together_ai"):
+                    kwargs["reasoning_effort"] = "none"
+                elif row.get("supports_none_reasoning_effort") or "none" in levels:
+                    kwargs["reasoning_effort"] = "none"
+                elif row.get("supports_minimal_reasoning_effort"):
+                    kwargs["reasoning_effort"] = "minimal"
+                else:
+                    kwargs["reasoning_effort"] = levels[0] if levels else "low"
             enable_thinking = False
         elif reasoning_effort != "none":
             if await self.supports_reasoning():
