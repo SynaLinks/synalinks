@@ -177,9 +177,24 @@ def _extract_lm_extras(usage, response):
 # instance attribute so concurrent calls on one LM never see each other's.
 _CURRENT_CALL_USAGE = contextvars.ContextVar("synalinks_lm_call_usage", default=None)
 
-# Per-process cache of `LanguageModel.supports_reasoning` by (api_base, model).
-_NATIVE_REASONING = {}
-_NATIVE_REASONING_PENDING = {}
+# What a provider reports about a model, by (kind, api_base, model), per process.
+_DETECTED = {}
+_DETECTING = {}
+
+
+async def _detect_once(key, detect):
+    """Run `detect()` once per `key` and process, concurrent callers sharing it."""
+    if key in _DETECTED:
+        return _DETECTED[key]
+    loop = asyncio.get_running_loop()
+    pending = _DETECTING.get(key)
+    if pending is None or pending.get_loop() is not loop:
+        pending = loop.create_task(detect())
+        _DETECTING[key] = pending
+    result = await pending
+    _DETECTED[key] = result
+    _DETECTING.pop(key, None)
+    return result
 
 
 def current_call_usage():
@@ -933,13 +948,14 @@ class LanguageModel(Module):
         if media_kinds & {"image_url", "input_audio"}:
             formatted_messages = place_tool_result_media(
                 formatted_messages,
-                native=(
+                native=self._tool_result_images
+                or (
                     provider in ("anthropic", "vertex_ai", "bedrock")
                     and "claude" in self.model
                 )
                 or (provider in ("gemini", "vertex_ai") and "gemini-3" in self.model),
-                vision="image_url" in media_kinds and self.supports_vision(),
-                audio="input_audio" in media_kinds and self.supports_audio(),
+                vision="image_url" in media_kinds and await self.supports_vision(),
+                audio="input_audio" in media_kinds and await self.supports_audio(),
             )
         if tools or tool_schemas:
             wire_tools = []
@@ -1572,29 +1588,101 @@ class LanguageModel(Module):
     # False when the transport returns no full trace: the model writes `thinking`.
     _reasoning_trace = True
 
+    # True when the transport takes images inside a tool result, for any model.
+    _tool_result_images = False
+
+    async def model_metadata(self):
+        """What the provider's own endpoint reports about this model.
+
+        Asked once per `(api_base, model)` and process, the result shared by
+        every instance, and read by `supports_reasoning()`,
+        `supports_vision()` and `supports_audio()`:
+
+        - OpenRouter (`openrouter/`): the model's entry in its `/models` list
+          (`supported_parameters`, `architecture.input_modalities`, ...).
+        - Ollama: `/api/show` (`capabilities`, ...).
+        - SGLang (`sglang/`, or any `vllm/` / `mirai/` server answering it):
+          `/model_info` (`reasoning_parser`, `has_image_understanding`,
+          `has_audio_understanding`, ...).
+
+        ```python
+        import synalinks
+
+        lm = synalinks.LanguageModel(model="openrouter/qwen/qwen3.8-27b")
+        metadata = await lm.model_metadata()
+        print(metadata["architecture"]["input_modalities"])  # ['text', 'image', ...]
+        ```
+
+        Returns:
+            (dict): The reported metadata; empty for another provider, a model
+            the provider does not list, or an endpoint that cannot be reached
+            (with a warning).
+        """
+        provider = self.model.split("/", 1)[0]
+        if provider not in ("openrouter", "ollama_chat", "ollama", "hosted_vllm"):
+            return {}
+        name = self.model.split("/", 1)[1]
+
+        async def fetch():
+            api_base = (self.api_base or "").rstrip("/")
+            try:
+                # Bounded: a server that never answers must not stall the call.
+                async with asyncio.timeout(30):
+                    async with httpx.AsyncClient(timeout=10) as client:
+                        if provider == "openrouter":
+                            api_base = api_base or model_catalog.PROVIDERS["openrouter"][
+                                "default_api_base"
+                            ].rstrip("/")
+                            response = await client.get(f"{api_base}/models")
+                            response.raise_for_status()
+                            return next(
+                                (
+                                    entry
+                                    for entry in response.json().get("data") or []
+                                    if entry.get("id") == name
+                                ),
+                                {},
+                            )
+                        root = api_base.removesuffix("/v1")
+                        if provider == "hosted_vllm":
+                            # vLLM serves no `/model_info`: nothing reported.
+                            response = await client.get(f"{root}/model_info")
+                            return response.json() if response.is_success else {}
+                        response = await client.post(
+                            f"{root}/api/show", json={"model": name}
+                        )
+                        response.raise_for_status()
+                        return response.json()
+            except Exception as e:
+                warnings.warn(
+                    f"Could not read what {api_base or provider} reports about "
+                    f"{self.model}, its capabilities are taken as absent: {e}"
+                )
+                return {}
+
+        return await _detect_once(("metadata", self.api_base, self.model), fetch)
+
     async def supports_reasoning(self):
         """Whether the model reasons natively, known before any request.
 
         Decides, ahead of a call with a reasoning effort, whether the effort is
         forwarded and whether `thinking` is left out of the schema (filled from
         the response's `reasoning_content` instead). A model in litellm's table
-        is answered from it. An OpenRouter model or a self-hosted one is asked
-        once per `(api_base, model)` and process, the result shared by every
-        instance:
+        is answered from it, the others from what their provider reports
+        (`model_metadata()`):
 
-        - OpenRouter (`openrouter/`): its `/models` list names ``reasoning``
-          among the model's `supported_parameters` (litellm's table does not
-          cover OpenRouter). A model missing from the list (retired, unknown)
-          does not reason natively.
-        - Ollama: `/api/show` lists the ``thinking`` capability.
-        - vLLM / SGLang (`vllm/`, `sglang/`, `mirai/`): `/model_info` (SGLang)
-          or `/server_info` (vLLM with ``VLLM_SERVER_DEV_MODE=1``) reports a
-          reasoning parser; otherwise a streamed probe of at most 16 tokens
-          checks that the server returns a reasoning trace.
+        - OpenRouter (`openrouter/`): ``reasoning`` among the model's
+          `supported_parameters` (litellm's table does not cover OpenRouter).
+        - Ollama: the ``thinking`` capability.
+        - SGLang: the `/model_info` reasoning parser.
+        - vLLM (`vllm/`, `mirai/`): the `/server_info` reasoning parser (served
+          with ``VLLM_SERVER_DEV_MODE=1``); otherwise a streamed probe of at
+          most 16 tokens checks that the server returns a reasoning trace.
         - Any other OpenAI-compatible endpoint (`openai/` with an `api_base`,
           e.g. `doubleword/`): the same probe.
 
-        An unreachable server, list or probe counts as no native reasoning:
+        The vLLM and OpenAI-compatible answers are cached like the metadata.
+        An unreachable server or a failed probe counts as no native reasoning:
         `thinking` stays in the schema and the model writes it itself.
 
         ```python
@@ -1610,69 +1698,39 @@ class LanguageModel(Module):
         openrouter = self.model.startswith("openrouter")
         if not openrouter and litellm.supports_reasoning(model=self.model):
             return True
+        if openrouter:
+            metadata = await self.model_metadata()
+            return "reasoning" in (metadata.get("supported_parameters") or [])
+        if self.model.startswith("ollama"):
+            metadata = await self.model_metadata()
+            return "thinking" in (metadata.get("capabilities") or [])
         hosted_vllm = self.model.startswith("hosted_vllm")
-        ollama = self.model.startswith("ollama")
-        if not (
-            openrouter
-            or hosted_vllm
-            or ollama
-            or (self.model.startswith("openai") and self.api_base)
-        ):
+        if hosted_vllm:
+            metadata = await self.model_metadata()
+            if "reasoning_parser" in metadata:
+                return bool(metadata["reasoning_parser"])
+        elif not (self.model.startswith("openai") and self.api_base):
             return False
-        key = (self.api_base, self.model)
-        if key in _NATIVE_REASONING:
-            return _NATIVE_REASONING[key]
 
         async def detect():
             root = (self.api_base or "").rstrip("/").removesuffix("/v1")
             try:
                 # Bounded: a server that never answers must not stall the call.
                 async with asyncio.timeout(30):
-                    async with httpx.AsyncClient(timeout=10) as client:
-                        if openrouter:
-                            api_base = (
-                                self.api_base
-                                or model_catalog.PROVIDERS["openrouter"][
-                                    "default_api_base"
-                                ]
-                            )
-                            response = await client.get(f"{api_base.rstrip('/')}/models")
-                            response.raise_for_status()
-                            name = self.model.split("/", 1)[1]
-                            return any(
-                                entry.get("id") == name
-                                and "reasoning"
-                                in (entry.get("supported_parameters") or [])
-                                for entry in response.json().get("data") or []
-                            )
-                        if ollama:
-                            response = await client.post(
-                                f"{root}/api/show",
-                                json={"model": self.model.split("/", 1)[1]},
-                            )
-                            response.raise_for_status()
-                            return "thinking" in (
-                                response.json().get("capabilities") or []
-                            )
-                        if hosted_vllm:
-                            response = await client.get(f"{root}/model_info")
-                            if (
-                                response.is_success
-                                and "reasoning_parser" in response.json()
-                            ):
-                                return bool(response.json()["reasoning_parser"])
+                    if hosted_vllm:
+                        async with httpx.AsyncClient(timeout=10) as client:
                             response = await client.get(
                                 f"{root}/server_info", params={"config_format": "json"}
                             )
-                            if response.is_success:
-                                config = response.json().get("vllm_config") or {}
-                                return any(
-                                    (config.get(section) or {}).get("reasoning_parser")
-                                    for section in (
-                                        "reasoning_config",
-                                        "structured_outputs_config",
-                                    )
+                        if response.is_success:
+                            config = response.json().get("vllm_config") or {}
+                            return any(
+                                (config.get(section) or {}).get("reasoning_parser")
+                                for section in (
+                                    "reasoning_config",
+                                    "structured_outputs_config",
                                 )
+                            )
                     extra = (
                         {
                             "extra_body": {
@@ -1709,78 +1767,67 @@ class LanguageModel(Module):
                 )
                 return False
 
-        loop = asyncio.get_running_loop()
-        pending = _NATIVE_REASONING_PENDING.get(key)
-        if pending is None or pending.get_loop() is not loop:
-            pending = loop.create_task(detect())
-            _NATIVE_REASONING_PENDING[key] = pending
-        result = await pending
-        _NATIVE_REASONING[key] = result
-        _NATIVE_REASONING_PENDING.pop(key, None)
-        return result
+        return await _detect_once(("reasoning", self.api_base, self.model), detect)
 
-    def supports_vision(self):
+    async def supports_vision(self):
         """Whether the model accepts images in its input.
 
-        An Ollama model is asked for its capabilities (its server reports
-        ``vision`` for the multimodal ones); any other model is looked up in
-        litellm's model table, where an unlisted model counts as text-only.
-        Register a self-hosted vision model with `litellm.register_model`
+        Answered from what the provider reports (`model_metadata()`): ``image``
+        among an OpenRouter model's `input_modalities`, the ``vision``
+        capability of an Ollama model, SGLang's `has_image_understanding`.
+        Any other model is looked up in litellm's model table, where an
+        unlisted model counts as text-only: vLLM reports no modality, so
+        register a self-hosted vision model with `litellm.register_model`
         (``supports_vision: True``) to make it pass.
 
         ```python
         import synalinks
 
-        lm = synalinks.LanguageModel(model="openai/gpt-4o-mini")
-        print(lm.supports_vision())  # True
+        lm = synalinks.LanguageModel(model="openrouter/openai/gpt-4o-mini")
+        print(await lm.supports_vision())  # True
         ```
 
         Returns:
             (bool): True if the model can read images.
         """
+        metadata = await self.model_metadata()
+        if self.model.startswith("openrouter"):
+            architecture = metadata.get("architecture") or {}
+            return "image" in (architecture.get("input_modalities") or [])
         if self.model.startswith("ollama"):
-            return "vision" in self.ollama_capabilities()
+            return "vision" in (metadata.get("capabilities") or [])
+        if "has_image_understanding" in metadata:
+            return bool(metadata["has_image_understanding"])
         return bool(litellm.supports_vision(model=self.model))
 
-    def supports_audio(self):
+    async def supports_audio(self):
         """Whether the model accepts audio in its input.
 
-        Looked up like `supports_vision`: an Ollama model reports ``audio``
-        among its capabilities, any other model is looked up in litellm's
-        model table (`litellm.register_model` with ``supports_audio_input:
-        True`` makes an unlisted one pass).
+        Answered like `supports_vision()`: ``audio`` among an OpenRouter
+        model's `input_modalities`, the ``audio`` capability of an Ollama
+        model, SGLang's `has_audio_understanding`, otherwise litellm's model
+        table (`litellm.register_model` with ``supports_audio_input: True``
+        makes an unlisted one pass).
 
         ```python
         import synalinks
 
         lm = synalinks.LanguageModel(model="gemini/gemini-2.5-flash")
-        print(lm.supports_audio())  # True
+        print(await lm.supports_audio())  # True
         ```
 
         Returns:
             (bool): True if the model can listen to audio.
         """
+        metadata = await self.model_metadata()
+        if self.model.startswith("openrouter"):
+            architecture = metadata.get("architecture") or {}
+            return "audio" in (architecture.get("input_modalities") or [])
         if self.model.startswith("ollama"):
-            return "audio" in self.ollama_capabilities()
+            return "audio" in (metadata.get("capabilities") or [])
+        if "has_audio_understanding" in metadata:
+            return bool(metadata["has_audio_understanding"])
         return bool(litellm.supports_audio_input(model=self.model))
-
-    def ollama_capabilities(self):
-        """The capabilities an Ollama server reports for this model.
-
-        Returns:
-            (list): E.g. ``["completion", "vision", "tools"]``; empty when the
-            server cannot be reached or does not know the model.
-        """
-        try:
-            response = httpx.post(
-                f"{self.api_base}/api/show",
-                json={"model": self.model.split("/", 1)[1]},
-                timeout=10,
-            )
-            response.raise_for_status()
-        except httpx.HTTPError:
-            return []
-        return response.json().get("capabilities") or []
 
     def supports_softprompt(self):
         """Whether the provider accepts soft prompts (prompt embeddings).

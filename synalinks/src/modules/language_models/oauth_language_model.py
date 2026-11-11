@@ -604,21 +604,48 @@ def _has_tool_history(formatted_messages):
     )
 
 
+def _input_items(content):
+    """The Responses API input items of a wire message's content, in order."""
+    items = []
+    for part in content if isinstance(content, list) else [content or ""]:
+        kind = part.get("type") if isinstance(part, dict) else "text"
+        if kind == "image_url":
+            image = part.get("image_url")
+            url = image.get("url") if isinstance(image, dict) else image
+            items.append({"type": "input_image", "image_url": url})
+        elif kind == "input_audio":
+            audio = part.get("input_audio") or {}
+            items.append(
+                {
+                    "type": "input_audio",
+                    "audio_url": f"data:audio/{audio.get('format') or 'wav'};"
+                    f"base64,{audio.get('data') or ''}",
+                }
+            )
+        elif text := _message_text({"content": [part]}):
+            items.append({"type": "input_text", "text": text})
+    return items
+
+
 def _history_items(formatted_messages):
     """Splits wire messages into `(instructions, items)`.
 
     The system and developer messages become the instructions, as in
     `_split_messages`. The other messages become the Responses API items the
     thread's history takes as they are: a `message` per user or assistant
-    text, a `function_call` per tool call of an assistant message (its id
-    kept, its arguments as the JSON string the model wrote), and a
-    `function_call_output` per tool result, naming the call it answers.
+    text (a user one keeping its images and audio, in place), a
+    `function_call` per tool call of an assistant message (its id kept, its
+    arguments as the JSON string the model wrote), and a
+    `function_call_output` per tool result, naming the call it answers (its
+    images kept in it).
     """
     instructions = []
     items = []
     for message in formatted_messages:
-        text = _message_text(message)
         role = str(message.get("role") or "user")
+        text = (
+            _message_text(message) if role in ("system", "developer", "assistant") else ""
+        )
         if role in ("system", "developer"):
             if text:
                 instructions.append(text)
@@ -645,21 +672,20 @@ def _history_items(formatted_messages):
                     }
                 )
         elif role in ("tool", "function"):
+            output = _input_items(message.get("content"))
+            if all(item["type"] == "input_text" for item in output):
+                output = "\n".join(item["text"] for item in output)
             items.append(
                 {
                     "type": "function_call_output",
                     "call_id": message.get("tool_call_id") or message.get("name"),
-                    "output": text,
+                    "output": output,
                 }
             )
-        elif text:
-            items.append(
-                {
-                    "type": "message",
-                    "role": "user",
-                    "content": [{"type": "input_text", "text": text}],
-                }
-            )
+        else:
+            content = _input_items(message.get("content"))
+            if content:
+                items.append({"type": "message", "role": "user", "content": content})
     return "\n\n".join(instructions), items
 
 
@@ -993,8 +1019,11 @@ class OAuthLanguageModel(LanguageModel):
         are asked for in the instructions, and an answer without the call is
         retried. `parallel_tool_calls` is not controlled: the CLI sends
         `parallel_tool_calls=false`, so a turn carries one call.
-    - Text only: images and audio parts are dropped, including those a
-        tool returns.
+    - Images (and audio, for a model that takes it) are sent through the
+        app-server, in place in the conversation; which a model takes is
+        read from its `input_modalities` in the CLI's catalog (see
+        `supports_vision()`). The images a tool returns stay in its result;
+        its audio follows in a user message.
     - No sampling control: the CLI exposes neither `temperature` nor
         `max_tokens`, they are ignored with a warning. Do not rely on this
         class where a deterministic `temperature=0.0` judge is required.
@@ -1128,9 +1157,15 @@ class OAuthLanguageModel(LanguageModel):
         if cli_model == "default":
             cli_model = None
         catalog = await self._model_catalog()
-        if tools or _has_tool_history(formatted_messages):
-            # Declared tools, or earlier calls and results to send as the
-            # items they are: the app-server, the only transport with both.
+        media = any(
+            isinstance(part, dict) and part.get("type") in ("image_url", "input_audio")
+            for message in formatted_messages
+            if isinstance(message.get("content"), list)
+            for part in message["content"]
+        )
+        if tools or media or _has_tool_history(formatted_messages):
+            # Declared tools, earlier calls and results, or images and audio
+            # to send as the items they are, in place: the app-server.
             return await self._app_server_completion(
                 formatted_messages,
                 cli_model,
@@ -1224,9 +1259,11 @@ class OAuthLanguageModel(LanguageModel):
             text
             for text in (
                 instructions or _DEFAULT_INSTRUCTIONS,
-                _tool_choice_instructions(tool_choice, parallel_tool_calls)
-                if functions
-                else "",
+                (
+                    _tool_choice_instructions(tool_choice, parallel_tool_calls)
+                    if functions
+                    else ""
+                ),
             )
             if text
         )
@@ -1234,8 +1271,13 @@ class OAuthLanguageModel(LanguageModel):
         # it is the history of the thread.
         turn_input = []
         if items and items[-1]["type"] == "message" and items[-1]["role"] == "user":
-            last = items.pop()
-            turn_input = [{"type": "text", "text": last["content"][0]["text"]}]
+            for part in items.pop()["content"]:
+                if part["type"] == "input_text":
+                    turn_input.append({"type": "text", "text": part["text"]})
+                elif part["type"] == "input_image":
+                    turn_input.append({"type": "image", "url": part["image_url"]})
+                else:
+                    turn_input.append({"type": "audio", "url": part["audio_url"]})
         mode, _ = _tool_choice_mode(tool_choice)
         reasoning_effort = reasoning_effort or _default_effort(catalog, cli_model)
 
@@ -1540,6 +1582,9 @@ class OAuthLanguageModel(LanguageModel):
     # The CLI returns a one-line reasoning summary, not on every turn.
     _reasoning_trace = False
 
+    # A `function_call_output` takes images, whatever the model.
+    _tool_result_images = True
+
     async def supports_reasoning(self):
         """Whether the model takes a reasoning effort (always True).
 
@@ -1547,13 +1592,36 @@ class OAuthLanguageModel(LanguageModel):
         """
         return True
 
-    def supports_vision(self):
-        """Whether the model accepts images in its input (always False)."""
-        return False
+    async def supports_vision(self):
+        """Whether the model accepts images in its input.
 
-    def supports_audio(self):
-        """Whether the model accepts audio in its input (always False)."""
-        return False
+        Read from the model's `input_modalities` in the CLI's catalog
+        (`codex debug models`). `codex/default` takes them when every model
+        of the catalog does; a model the catalog does not list does not.
+        """
+        return await self._takes("image")
+
+    async def supports_audio(self):
+        """Whether the model accepts audio in its input.
+
+        Read from the catalog like `supports_vision()`.
+        """
+        return await self._takes("audio")
+
+    async def _takes(self, modality):
+        """Whether the CLI's catalog lists `modality` among the model's inputs."""
+        if self._codex is None:
+            self._codex = _codex_executable()
+        try:
+            models = json.loads(await self._model_catalog() or "{}").get("models") or []
+        except ValueError:
+            return False
+        cli_model = self.model.split("/", 1)[1]
+        if cli_model != "default":
+            models = [model for model in models if model.get("slug") == cli_model]
+        return bool(models) and all(
+            modality in (model.get("input_modalities") or []) for model in models
+        )
 
     def _obj_type(self):
         return "OAuthLanguageModel"

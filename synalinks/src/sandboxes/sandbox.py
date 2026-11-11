@@ -2594,7 +2594,8 @@ class Sandbox(SynalinksSaveable):
         """Look at an image file from the sandbox filesystem.
 
         The image is shown to you with the result, e.g. a chart a script
-        saved. A large image is scaled down to what you can read.
+        saved with `plt.savefig`. A large image is scaled down to what you
+        can read.
 
         Args:
             path (str): Absolute virtual path of the image, e.g.

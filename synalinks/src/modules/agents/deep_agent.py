@@ -23,30 +23,13 @@ from synalinks.src.sandboxes.mirage_sandbox import MirageSandbox
 from synalinks.src.saving import serialization_lib
 
 
-def file_tool_names(images: bool = False, audio: bool = False) -> str:
-    """The deep agent's file tools, with the media ones its model takes.
-
-    Args:
-        images: Whether the model reads images (offers ``read_image``).
-        audio: Whether the model reads audio (offers ``read_audio``).
-    """
-    media = [name for name, on in (("read_image", images), ("read_audio", audio)) if on]
-    return ", ".join(
-        ["read_file", *media, "list_files", "search_files", "write_file", "edit_file"]
-    )
-
-
-def get_default_instructions(
-    workdir: Optional[str], images: bool = False, audio: bool = False
-) -> str:
+def get_default_instructions(workdir: Optional[str]) -> str:
     """Default system instructions for the deep agent.
 
     Args:
         workdir: Absolute path of the agent's working directory, or
             ``None`` for an empty in-memory workspace. Embedded in the
             prompt so the LM knows where it's operating.
-        images: Whether the model reads images (``read_image`` is offered).
-        audio: Whether the model reads audio (``read_audio`` is offered).
 
     Returns:
         A prompt string describing the tool plan.
@@ -58,30 +41,18 @@ def get_default_instructions(
             "Workdir: (none), an empty in-memory workspace; "
             "create files with `write_file`."
         )
-    media_lines = ""
-    if images:
-        media_lines += (
-            "\n   Use `read_image` to look at an image file, e.g. a chart a script"
-            "\n   saved with `plt.savefig`."
-        )
-    if audio:
-        media_lines += (
-            "\n   Use `read_audio` to listen to an audio file, up to 300 seconds"
-            "\n   per call (raise `offset` to listen further in)."
-        )
     return f"""
 You are a software engineering assistant working inside a sandboxed,
 copy-on-write filesystem.
 
 {workdir_line}
-Available tools: {file_tool_names(images, audio)}, run_bash
 
 Plan:
 1. Use `list_files` to discover files (glob, e.g. `**/*.py`).
 2. Use `search_files` to grep file contents by regex across a glob.
 3. Use `read_file` to read a file; it returns the requested lines with
    1-based `start_line` / `end_line`. Page through long files with
-   `offset` / `limit` (raise `offset` to read further in).{media_lines}
+   `offset` / `limit` (raise `offset` to read further in).
 4. Use `edit_file` for surgical changes (preferred over `write_file`).
 5. Use `run_bash` to run shell commands against the filesystem: pipes,
    redirects, globs, `&&`, loops, and `python3` (e.g. `python3 script.py`
@@ -121,19 +92,13 @@ Nothing a subagent does affects your files until you `merge_subagent` it.
 """.strip()
 
 
-def get_subagent_instructions(images: bool = False, audio: bool = False) -> str:
-    """System instructions for a spawned subagent (depth >= 1).
-
-    Args:
-        images: Whether the model reads images (``read_image`` is offered).
-        audio: Whether the model reads audio (``read_audio`` is offered).
-    """
-    return f"""
+def get_subagent_instructions() -> str:
+    """System instructions for a spawned subagent (depth >= 1)."""
+    return """
 You are a subagent working on a private, isolated branch of a sandboxed,
 copy-on-write filesystem. The files you see were inherited from the parent
 agent at the moment you were spawned; your edits stay on your branch and
-affect no one else. Available tools: {file_tool_names(images, audio)},
-run_bash.
+affect no one else.
 
 Plan:
 1. Explore with `list_files` / `search_files` / `read_file`.
@@ -397,22 +362,12 @@ class DeepAgent(FunctionCallingAgent):
         # first use so it can't shadow a workdir file (see `_materialize_inputs`).
         self._inputs_path: Optional[str] = None
 
-        # The media tools are offered only to a model that takes the media.
-        primary_language_model = (
-            _get_lm(language_model) if language_model is not None else None
-        )
-        self.reads_images = bool(
-            primary_language_model and primary_language_model.supports_vision()
-        )
-        self.reads_audio = bool(
-            primary_language_model and primary_language_model.supports_audio()
-        )
+        # Whether `read_image` / `read_audio` were weighed (see `call`).
+        self._media_tools_checked = False
         if instructions is None and self._subagent_depth:
-            instructions = get_subagent_instructions(self.reads_images, self.reads_audio)
+            instructions = get_subagent_instructions()
         elif instructions is None:
-            instructions = get_default_instructions(
-                self.workdir, self.reads_images, self.reads_audio
-            )
+            instructions = get_default_instructions(self.workdir)
         if self._subagents_enabled:
             instructions = instructions + "\n\n" + get_subagent_tools_guidance()
 
@@ -444,12 +399,8 @@ class DeepAgent(FunctionCallingAgent):
         )
 
     def _get_builtin_tools(self):
-        builtin_fns = [self.sandbox.read_file]
-        if self.reads_images:
-            builtin_fns.append(self.sandbox.read_image)
-        if self.reads_audio:
-            builtin_fns.append(self.sandbox.read_audio)
-        builtin_fns += [
+        builtin_fns = [
+            self.sandbox.read_file,
             self.sandbox.list_files,
             self.sandbox.search_files,
             self.sandbox.write_file,
@@ -491,6 +442,16 @@ class DeepAgent(FunctionCallingAgent):
         return summarize_inputs(inputs_json, inputs_file=self._inputs_path)
 
     async def call(self, inputs, training=False):
+        if not self._media_tools_checked and self.language_model is not None:
+            # Offered only to a model whose provider reports it takes the media.
+            for supported, fn in (
+                (self.language_model.supports_vision, self.sandbox.read_image),
+                (self.language_model.supports_audio, self.sandbox.read_audio),
+            ):
+                tool = Tool(fn)
+                if tool.name not in self.tools and await supported():
+                    self.tools[tool.name] = tool
+            self._media_tools_checked = True
         # Subagent branches are scoped to a single turn: a handle from a
         # previous call must not survive into the next one.
         self._subagents = {}
