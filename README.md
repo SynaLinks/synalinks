@@ -95,9 +95,11 @@ Many frameworks exist today; here is what Synalinks does differently:
 
 Plus everything you'd expect from a production-grade framework:
 
-- **NEW**: Now all agents support [Agent Skills](https://agentskills.io/home), `AGENTS.md` and sub-agents.
+- **NEW**: [Decision models](https://synalinks.github.io/synalinks/guides/Decision%20Models/) for the steps that only decide (routing, classification, guards, grading): they answer typed questions with calibrated probabilities, always pick one of your options, and are much faster and cheaper than a language model.
+- **NEW**: The [Recursive Language Model agent](https://synalinks.github.io/synalinks/guides/Recursive%20Language%20Model%20Agent/) is now multimodal: the plots and images its code displays (`plt.show()`, `display(image)`) are shown to the model with the output.
+- All agents support [Agent Skills](https://agentskills.io/home), `AGENTS.md` and sub-agents.
 - **[Constrained structured outputs](https://synalinks.github.io/synalinks/guides/Data%20Models/)** (JSON) for correctness
-- **Chat Completions-compatible message API**: messages mirror the OpenAI Chat Completions format key-for-key + litellm-extended with `reasoning_content` and `thinking_blocks` so provider reasoning survives multi-turn round-trips.Also handle **[multimodal inputs](https://synalinks.github.io/synalinks/guides/Multimodal%20Inputs/)** (images & audio as standard content parts)
+- **Chat Completions-compatible message API**: messages mirror the OpenAI Chat Completions format key-for-key + litellm-extended with `reasoning_content` and `thinking_blocks` so provider reasoning survives multi-turn round-trips. Also handles **[multimodal inputs](https://synalinks.github.io/synalinks/guides/Multimodal%20Inputs/)** (images & audio as standard content parts)
 - **Versionable**, JSON-serializable [pipelines](https://synalinks.github.io/synalinks/guides/Programs/)
 - **Automatic [async & parallel execution](https://synalinks.github.io/synalinks/guides/Programs/)** by default
 - **[Metrics](https://synalinks.github.io/synalinks/guides/Metrics/), [rewards](https://synalinks.github.io/synalinks/guides/Rewards/) & [datasets](https://synalinks.github.io/synalinks/guides/Datasets/)** built-in
