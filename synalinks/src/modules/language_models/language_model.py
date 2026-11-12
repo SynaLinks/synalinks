@@ -341,6 +341,7 @@ SUPPORTED_PROVIDERS = (
     "huggingface",
     "mirai",
     "mistral",
+    "nebius",
     "ollama",
     "openai",
     "openrouter",
@@ -513,6 +514,19 @@ class LanguageModel(Module):
 
     language_model = synalinks.LanguageModel(
         model="together_ai/meta-llama/Meta-Llama-3.1-70B-Instruct-Turbo",
+    )
+    ```
+
+    **Using Nebius models**
+
+    ```python
+    import synalinks
+    import os
+
+    os.environ["NEBIUS_API_KEY"] = "your-api-key"
+
+    language_model = synalinks.LanguageModel(
+        model="nebius/meta-llama/Llama-3.3-70B-Instruct",
     )
     ```
 
@@ -1159,10 +1173,11 @@ class LanguageModel(Module):
                 or self.model.startswith("groq")
                 or self.model.startswith("bedrock")
                 or self.model.startswith("codex")
+                or self.model.startswith("nebius")
             ):
                 # Use constrained structured output for openai/azure
                 # plus deepseek, together_ai, huggingface (TGI and
-                # Inference Providers), openrouter, groq and bedrock, which
+                # Inference Providers), openrouter, groq, nebius and bedrock, which
                 # honor the same payload (litellm maps it to bedrock's
                 # `outputConfig.textFormat`). For a groq or bedrock model
                 # without native support, litellm falls back to a forced tool

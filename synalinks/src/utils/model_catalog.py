@@ -72,6 +72,12 @@ PROVIDERS = {
         "server": OPENAI_COMPATIBLE,
     },
     "mistral": {"env": [env_var("MISTRAL_API_KEY")]},
+    "nebius": {
+        "env": [
+            env_var("NEBIUS_API_KEY"),
+            env_var("NEBIUS_API_BASE", required=False, secret=False),
+        ]
+    },
     "ollama": {
         "env": [],
         "default_api_base": "http://localhost:11434",
