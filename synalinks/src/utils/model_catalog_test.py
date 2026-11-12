@@ -183,6 +183,15 @@ class SupportedModelsTest(testing.TestCase):
         self.assertEqual(models, sorted(models))
 
     @patch.dict(os.environ, {}, clear=True)
+    @patch.dict(os.environ, {"OPENAI_API_KEY": "sk-test"}, clear=True)
+    async def test_uberllm_asks_its_server(self):
+        patcher, requests = mock_server(openai_compatible)
+        with patcher:
+            models = await LanguageModel.supported_models("uberllm")
+        self.assertEqual(models, ["uberllm/Qwen/Qwen3-4B", "uberllm/Qwen/Qwen3-8B"])
+        self.assertEqual(str(requests[0].url), "https://api.uberllm.dev/v1/models")
+        self.assertEqual(requests[0].headers["Authorization"], "Bearer sk-test")
+
     async def test_openai_decision_models_are_the_ones_serving_decisions(self):
         models = await DecisionModel.supported_models("openai")
         self.assertIn("openai/gpt-6-luna", models)
