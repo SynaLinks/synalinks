@@ -1146,6 +1146,7 @@ class SupportedProvidersTest(testing.TestCase):
             "huggingface",
             "mirai",
             "mistral",
+            "nebius",
             "ollama",
             "openai",
             "openrouter",
@@ -1169,6 +1170,33 @@ class SupportedProvidersTest(testing.TestCase):
         providers = LanguageModel.supported_providers()
         providers.append("nope")
         self.assertNotIn("nope", LanguageModel.supported_providers())
+
+    def test_nebius_is_a_provider_with_its_key_and_endpoint(self):
+        info = LanguageModel.provider_info("nebius")
+        self.assertEqual(
+            [(v["name"], v["required"], v["secret"]) for v in info["env"]],
+            [("NEBIUS_API_KEY", True, True), ("NEBIUS_API_BASE", False, False)],
+        )
+        self.assertEqual(info["lists_models_from"], "catalog")
+
+    @patch("litellm.acompletion")
+    async def test_nebius_structured_output_sends_a_strict_json_schema(
+        self, mock_completion
+    ):
+        class Answer(DataModel):
+            answer: str
+
+        lm = LanguageModel(model="nebius/meta-llama/Llama-3.3-70B-Instruct")
+        mock_completion.return_value = {
+            "choices": [{"message": {"content": '{"answer": "B"}'}}]
+        }
+        result = await lm(_chat_messages(), schema=Answer.get_schema())
+        self.assertEqual(result.get_json(), {"answer": "B"})
+        called = mock_completion.call_args.kwargs
+        self.assertEqual(called["response_format"]["type"], "json_schema")
+        self.assertTrue(called["response_format"]["json_schema"]["strict"])
+        # Not routed through OpenRouter: no provider preferences are added.
+        self.assertNotIn("provider", called)
 
     @patch("litellm.acompletion")
     async def test_mirai_routes_to_local_hosted_vllm(self, mock_completion):

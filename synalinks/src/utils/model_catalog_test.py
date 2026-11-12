@@ -176,6 +176,13 @@ class SupportedModelsTest(testing.TestCase):
         self.assertEqual(chat, sorted(chat))
 
     @patch.dict(os.environ, {}, clear=True)
+    async def test_nebius_lists_its_chat_models_from_litellm(self):
+        models = await LanguageModel.supported_models("nebius")
+        self.assertTrue(models)
+        self.assertTrue(all(m.startswith("nebius/") for m in models))
+        self.assertEqual(models, sorted(models))
+
+    @patch.dict(os.environ, {}, clear=True)
     async def test_openai_decision_models_are_the_ones_serving_decisions(self):
         models = await DecisionModel.supported_models("openai")
         self.assertIn("openai/gpt-6-luna", models)
