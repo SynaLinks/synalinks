@@ -91,7 +91,27 @@ try:
     from mirage import MountMode
     from mirage import Workspace
     from mirage.bridge.sync import run_async_from_sync
+    from mirage.policy import Deny
+    from mirage.policy import Policy
     from mirage.types import PathSpec
+
+    class CutNetworkPolicy(Policy):
+        """Refuse Mirage's host-side network commands in a cut-network sandbox.
+
+        Mirage's shell runs ``curl`` and ``wget`` in the host process, outside
+        the confined child's network namespace, so without this a confined
+        sandbox whose network is cut (or limited to ``allowed_hosts``) could
+        still reach any host, loopback and cloud metadata included.
+        """
+
+        async def pre_command(self, ctx):
+            if ctx.command in HOST_NETWORK_COMMANDS:
+                return Deny(
+                    "network is cut in this sandbox (use http_fetch when "
+                    "allowed_hosts is set)"
+                )
+            return None
+
 except (ImportError, OSError):  # pragma: no cover - mirage genuinely unusable
     # Kept as a backstop so an unusable mirage degrades to a clear error at
     # construction time rather than breaking `import synalinks`.
@@ -101,6 +121,7 @@ except (ImportError, OSError):  # pragma: no cover - mirage genuinely unusable
     Workspace = None
     run_async_from_sync = None
     PathSpec = None
+    CutNetworkPolicy = None
 
 
 DEFAULT_MOUNT = "/"
@@ -323,6 +344,9 @@ def confine_shell_python(ws, vm: Optional[Dict[str, Any]] = None) -> bool:
 # the namespace/seccomp prologue to every ``python3`` the shell spawns, exactly
 # as ``run_code``'s own bootstrap self-confines.
 DEFAULT_RUNTIMES = ("local",)
+
+# Mirage shell commands that open connections from the host process.
+HOST_NETWORK_COMMANDS = frozenset({"curl", "wget"})
 
 # Runtimes that keep execution inside a sandbox of Mirage's own: ``monty`` (a
 # Rust interpreter with "no host filesystem, environment, or network access"),
@@ -1013,7 +1037,8 @@ class MirageSandbox(Sandbox):
         confine_network (bool): Optional. Keep **full** network access inside a
             confined run (skip the network namespace). All-or-nothing and not
             filtered; prefer ``allowed_hosts`` for restricted egress. Defaults
-            to ``False`` (no network).
+            to ``False`` (no network), which also refuses the shell's ``curl``
+            and ``wget``: Mirage runs them in the host process, outside the cut.
         allowed_hosts (list): Optional. Egress allowlist. When set, a host-
             mediated ``http_fetch`` tool is bound that reaches only these hosts
             (exact, or ``*.example.com`` for subdomains + apex; redirects are
@@ -1406,6 +1431,9 @@ class MirageSandbox(Sandbox):
             # Each workspace has its own runtime instances, so every new one
             # (construction, reset, heal, fork) needs its ``python3`` wrapped.
             self.run_python_patched = confine_shell_python(ws, self.vm)
+            if not self.confine_network:
+                # ``Workspace.copy`` drops coded policies, so each workspace gets its own.
+                ws.policies.add(CutNetworkPolicy())
         if not self.require_confinement:
             return
         if not self.fuse_mountpoint and self.backend == "namespaces":
