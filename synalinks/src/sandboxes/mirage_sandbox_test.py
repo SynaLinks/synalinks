@@ -1458,6 +1458,40 @@ class MirageSandboxConfineTest(_SandboxTestCase):
         finally:
             sandbox.close()
 
+    async def test_confine_refuses_host_side_network_commands(self):
+        # Mirage runs curl / wget in the host process, outside the network cut.
+        import http.server
+        import threading
+
+        server = http.server.HTTPServer(
+            ("127.0.0.1", 0), http.server.SimpleHTTPRequestHandler
+        )
+        threading.Thread(target=server.serve_forever, daemon=True).start()
+        url = f"http://127.0.0.1:{server.server_port}/"
+        sandboxes = [
+            MirageSandbox(timeout=_TIMEOUT, confine=True),
+            MirageSandbox(timeout=_TIMEOUT, confine=True, allowed_hosts=["example.com"]),
+        ]
+        open_net = MirageSandbox(timeout=_TIMEOUT, confine=True, confine_network=True)
+        try:
+            sandboxes += await sandboxes[0].fork()
+            for sandbox in sandboxes:
+                for command in (
+                    f"curl -s {url}",
+                    f"wget -qO- {url}",
+                    f"bash -c 'curl -s {url}'",
+                    f"echo {url} | xargs curl -s",
+                ):
+                    result = await sandbox.run_bash(command)
+                    self.assertNotIn("Directory listing", result["stdout"], command)
+                    self.assertIn("Permission denied", result["stderr"], command)
+            reached = await open_net.run_bash(f"curl -s {url}")
+            self.assertIn("Directory listing", reached["stdout"])
+        finally:
+            server.shutdown()
+            for sandbox in [*sandboxes, open_net]:
+                sandbox.close()
+
     async def test_confine_python_shares_virtual_filesystem(self):
         sandbox = MirageSandbox(timeout=_TIMEOUT, confine=True)
         try:
