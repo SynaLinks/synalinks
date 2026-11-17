@@ -462,8 +462,9 @@ class FunctionCallingAgentTest(testing.TestCase):
     ):
         """Autonomous agent with data_model=None and use_chain_of_thought=True.
 
-        Exercises the CoT-based tool_calls_generator and the no-schema
-        final_generator together.
+        The CoT step generator reasons natively (`reasoning_content`) and
+        replies in `content`: a reply without tool calls is the answer, its
+        reasoning kept.
         """
         language_model = LanguageModel(model="ollama/mistral")
         tools = [Tool(calculate)]
@@ -481,24 +482,17 @@ class FunctionCallingAgentTest(testing.TestCase):
             name="autonomous_no_schema_cot_test",
         )
 
-        tool_calls_done = {
-            "thinking": "Nothing to do.",
-            "tool_calls": [],
-        }
-        final_message = {
-            "choices": [
-                {
-                    "message": {
-                        "content": "Done.",
-                        "reasoning_content": "No work needed.",
-                    }
-                }
-            ]
-        }
-
         mock_completion.side_effect = [
-            {"choices": [{"message": {"content": json.dumps(tool_calls_done)}}]},
-            final_message,
+            {
+                "choices": [
+                    {
+                        "message": {
+                            "content": "Done.",
+                            "reasoning_content": "No work needed.",
+                        }
+                    }
+                ]
+            }
         ]
 
         input_messages = ChatMessages(messages=[ChatMessage(role="user", content="hi")])
@@ -510,6 +504,7 @@ class FunctionCallingAgentTest(testing.TestCase):
         self.assertEqual(last.get("role"), "assistant")
         self.assertEqual(last.get("content"), "Done.")
         self.assertEqual(last.get("reasoning_content"), "No work needed.")
+        self.assertEqual(mock_completion.call_count, 1)
 
     @patch("litellm.acompletion")
     async def test_autonomous_mode_streaming_final_answer(self, mock_completion):

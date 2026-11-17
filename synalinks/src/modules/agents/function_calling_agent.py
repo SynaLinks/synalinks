@@ -889,14 +889,14 @@ class FunctionCallingAgent(Module):
 
     def _is_answer(self, step):
         """Whether a step's reply is the answer (hook): text without tool
-        calls, where no schema is due. A chain-of-thought step's text is its
-        reasoning; RLM answers through `submit`, never in a step's text."""
+        calls, where no schema is due. (A chain-of-thought step reasons in
+        `reasoning_content`; its `content` is a reply like any other.) RLM
+        answers through `submit`, never in a step's text."""
         return bool(
             step
             and not step.get("tool_calls")
             and step.get("content")
             and not self.schema
-            and not self.use_chain_of_thought
         )
 
     def _take_output_call(self, native_tool_calls, agent_messages):
