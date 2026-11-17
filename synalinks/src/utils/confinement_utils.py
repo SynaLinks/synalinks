@@ -11,20 +11,6 @@ import warnings
 from typing import Optional
 from typing import Tuple
 
-# Whether libfuse can be loaded. `/dev/fuse` is the kernel device; the mount
-# confinement pivots into also needs the libfuse user-space library, which
-# mfusepy (the mirage-ai[fuse] extra) loads at import and raises OSError when
-# it is missing. A host can easily have the device and not the library (slim
-# containers), so `confinement_available` checks both and fails closed rather
-# than passing the probe and then silently running unconfined.
-try:
-    import mfusepy as _mfusepy  # noqa: F401
-
-    _LIBFUSE_AVAILABLE = True
-except (ImportError, OSError):  # pragma: no cover - no mfusepy / no libfuse
-    _LIBFUSE_AVAILABLE = False
-
-
 # Rootless in-process confinement, shared by the ``run_code`` bootstrap and the
 # ``run_bash`` ``_run_python`` patch: enter fresh user/mount/PID(/net)
 # namespaces, fork (PID namespaces only apply to children) so the child is PID 1
@@ -673,7 +659,12 @@ def confinement_available() -> tuple[bool, str]:
         except OSError:
             pass
         return False, reason
-    if not _LIBFUSE_AVAILABLE:
+    try:
+        # Imported here, not at module load: mfusepy dlopens libfuse, and
+        # macFUSE's libfuse then warns on every fork of any process that
+        # merely imported synalinks.
+        import mfusepy  # noqa: F401
+    except (ImportError, OSError):  # pragma: no cover - no mfusepy / no libfuse
         # `/dev/fuse` above is the kernel device; the mount also needs the
         # libfuse user-space library, which mfusepy loads at import. A host can
         # easily have the first and not the second (slim containers, or the
