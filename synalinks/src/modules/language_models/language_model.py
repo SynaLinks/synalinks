@@ -956,9 +956,9 @@ class LanguageModel(Module):
             tools (list | dict): Optional iterable or `{name: Tool}` mapping of
                 `synalinks.modules.Tool` the LM may call. Mutually exclusive
                 with `schema`: schema forces structured output, tools let the
-                LM choose; they cannot both apply to the same call. In the
-                function-calling agent pattern, the tool-call generator uses
-                `tools` and the final generator uses `schema`.
+                LM choose; they cannot both apply to the same call. The
+                function-calling agent declares its structured answer as one
+                more tool (its `final_answer`), not as a `schema`.
             tool_schemas (list): Optional iterable of already-wire-formatted
                 tool declaration dicts (OpenAI `{"type": "function", ...}`
                 shape) passed through verbatim, appended after any converted
@@ -978,8 +978,9 @@ class LanguageModel(Module):
             raise ValueError(
                 "`schema` and `tools` cannot be passed to the same LM call: "
                 "schema forces structured output, while tools let the LM choose "
-                "which to call. Split into two calls: typically the tool-call "
-                "generator uses `tools` and the final generator uses `schema`."
+                "which to call. Declare the structured answer as one more tool "
+                "(as the function-calling agent's `final_answer`), or split into "
+                "two calls."
             )
         # Cleared per call: a cache hit or a streamed call has no choice to
         # read it from and must not report the previous call's reason.

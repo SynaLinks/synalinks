@@ -1,6 +1,10 @@
 # License Apache 2.0: (c) 2025-2026 Yoan Sallami (Synalinks Team)
 
 import asyncio
+import json
+import time
+
+import jsonschema
 
 from synalinks.src import ops
 from synalinks.src.api_export import synalinks_export
@@ -10,6 +14,8 @@ from synalinks.src.backend import ChatRole
 from synalinks.src.backend import JsonDataModel
 from synalinks.src.backend import SymbolicDataModel
 from synalinks.src.backend import is_chat_messages
+from synalinks.src.backend.common.op_scope import current_op_scope
+from synalinks.src.backend.common.op_scope import current_trajectory_start
 from synalinks.src.backend.common.op_scope import trajectory_scope
 from synalinks.src.modules.agents.utils.agents_utils import call_tool
 from synalinks.src.modules.agents.utils.agents_utils import discover_agents_md
@@ -24,6 +30,7 @@ from synalinks.src.modules.agents.utils.skills_utils import resolve_skills_paths
 from synalinks.src.modules.core.generator import Generator
 from synalinks.src.modules.language_models import get as _get_lm
 from synalinks.src.modules.language_models.language_model import StreamingIterator
+from synalinks.src.modules.language_models.language_model import _cached_message_to_chunks
 from synalinks.src.modules.module import Module
 from synalinks.src.modules.ttc.chain_of_thought import ChainOfThought
 from synalinks.src.saving import serialization_lib
@@ -123,8 +130,8 @@ class FunctionCallingAgent(Module):
     - Non-autonomous: It will return the tool arguments as a ChatMessage.
 
     In *autonomous* mode, the agent accept **any kind of data model input**
-    and perform a final inference to eventually format its final answer if a
-    `data_model` or `schema` is provided.
+    and answers in the structure of the `data_model` or `schema` when one is
+    provided (see "How the answer is given" below).
 
     Example:
 
@@ -409,6 +416,15 @@ class FunctionCallingAgent(Module):
         asyncio.run(main())
     ```
 
+    How the answer is given (as LangChain's agents do): each step is one LM
+    call in which the model either calls tools or answers. A reply without
+    tool calls *is* the answer; it is not asked for again, since a second
+    call samples anew, and a model that still wants a tool then writes the
+    call as text. With a `schema`, the answer is a call to a `final_answer`
+    tool whose parameters are the schema (LangChain's `ToolStrategy`), with
+    `tool_choice="required"`; arguments that do not fit the schema go back to
+    the model as that call's error and the loop goes on.
+
     Args:
         schema (dict): The target JSON schema.
             If not provided use the `data_model` to infer it.
@@ -428,8 +444,11 @@ class FunctionCallingAgent(Module):
             are a list of tuples containing input/output JSON pairs.
         instructions (str): The default instructions being a string containing
             instructions for the language model.
-        final_instructions (str): Optional. The instructions for the final generator
-            that produces the structured output. If not provided, use the same
+        final_instructions (str): Optional. The instructions for the final
+            generator. The answer is normally the step's own (see "How the
+            answer is given" above); the final generator only writes it when a
+            step gives none: an empty reply, a schema the model answered in
+            prose, or `max_iterations` spent. If not provided, use the same
             instructions as the tool calls generator.
         temperature (float): Optional. The temperature for the LM call.
         max_tokens (int): Optional. Maximum number of tokens to generate. Default
@@ -486,7 +505,9 @@ class FunctionCallingAgent(Module):
             effect when no `data_model`/`schema` is provided. When streaming,
             the agent returns a `StreamingIterator` instead of a wrapped
             trajectory; the caller iterates it to consume the final response.
-            (Default to False).
+            The step that answers is read whole before it is handed over (a
+            model may write a few words, then call a tool, in one reply), so
+            the stream starts once it is written. (Default to False).
         name (str): Optional. The name of the module.
         description (str): Optional. The description of the module.
     """
@@ -589,6 +610,12 @@ class FunctionCallingAgent(Module):
                     f"Tool(...)."
                 )
             self.tools[tool.name] = tool
+        # With a schema, the answer is a call to this tool (see `_step`).
+        self._output_tool_name = None
+        if self.schema:
+            self._output_tool_name = "final_answer"
+            while self._output_tool_name in self.tools:
+                self._output_tool_name += "_"
 
         self.autonomous = autonomous
         self.return_inputs_with_trajectory = return_inputs_with_trajectory
@@ -763,7 +790,8 @@ class FunctionCallingAgent(Module):
         """Handle an assistant turn carrying no tool calls (hook).
 
         Returns True to break the loop (the base agent's behavior), or False to
-        keep iterating after, e.g., nudging the model.
+        keep iterating after, e.g., nudging the model. On a break, a reply that
+        `_is_answer` is the answer; otherwise the final generator writes one.
         """
         return True
 
@@ -807,26 +835,120 @@ class FunctionCallingAgent(Module):
                 )
         return False
 
-    async def _final_result(self, trajectory, ctx, training):
-        """Produce the final answer data model from the trajectory (hook)."""
-        return await self._final_answer(trajectory, self._native_tools(ctx))
+    def _output_tool_schemas(self):
+        """The structured answer as a tool, in OpenAI wire shape (hook):
+        LangChain's `ToolStrategy`. None without a schema."""
+        if not self._output_tool_name:
+            return None
+        return [
+            {
+                "type": "function",
+                "function": {
+                    "name": self._output_tool_name,
+                    "description": (
+                        "Give the final answer, in the required structure. "
+                        "Call it once you have what the answer needs."
+                    ),
+                    "parameters": self.schema,
+                },
+            }
+        ]
 
-    async def _final_answer(self, trajectory, tools):
-        """The final generator's answer over a trajectory that used `tools`.
+    async def _step(self, trajectory, ctx, training=False):
+        """One step: a single LM call in which the model calls tools or answers.
 
-        The trajectory is full of tool calls and results, so a model may still
-        want one more call while it writes the answer. Sent without the
-        tools, nothing tells the provider to parse that call, and the model's
-        raw tool-call syntax (Kimi K2's ``<|tool_calls_section_begin|>``,
-        DeepSeek's ``<｜tool▁calls▁begin｜>``, ...) comes back as the
-        answer's text. So, unless the answer is structured (a schema and tools
-        cannot share an LM call), the tools go along with
-        ``tool_choice="none"``: declared, so the call is parsed rather than
-        leaked, and forbidden, so the model writes the answer.
+        Returns the assistant message (a `JsonDataModel`, with `tool_calls`
+        when it calls tools), or None. With a schema, the output tool goes
+        along and a call is required (see the class docstring). A streaming
+        agent's answer comes back as a `StreamingIterator` over it, timed from
+        the step's start: the step is read whole first, since a model may write
+        a few words and then call a tool in the same reply.
         """
-        if self.schema or not tools:
-            return await self.final_generator(trajectory)
-        return await self.final_generator(trajectory, tools=tools, tool_choice="none")
+        kwargs = {}
+        output_tools = self._output_tool_schemas()
+        if output_tools:
+            kwargs.update(tool_schemas=output_tools, tool_choice="required")
+        start = time.perf_counter()
+        step = await self.tool_calls_generator(
+            trajectory, tools=self._native_tools(ctx), **kwargs
+        )
+        if not (self.streaming and self._is_answer(step)):
+            return step
+        answer = StreamingIterator(
+            _cached_message_to_chunks(step.get_json()),
+            language_model=self.language_model,
+            op_scope=current_op_scope(),
+            request_start=start,
+            trajectory_start=current_trajectory_start(),
+        )
+        if current_op_scope() is None and not training:
+            return answer
+        # In a batched loop or training the prediction must be concrete to be
+        # scored: drained (its timing recorded), as the generators do.
+        return await answer.aconsume(name=step.name)
+
+    def _is_answer(self, step):
+        """Whether a step's reply is the answer (hook): text without tool
+        calls, where no schema is due. A chain-of-thought step's text is its
+        reasoning; RLM answers through `submit`, never in a step's text."""
+        return bool(
+            step
+            and not step.get("tool_calls")
+            and step.get("content")
+            and not self.schema
+            and not self.use_chain_of_thought
+        )
+
+    def _take_output_call(self, native_tool_calls, agent_messages):
+        """Read the step's call to the output tool, if any.
+
+        Appends a result for every output call (and, once an answer is
+        accepted, for the other calls of the step, which are not run). Returns
+        `(answer, other_calls)`: the structured answer when the arguments fit
+        the schema, else None, and the calls left to run.
+        """
+        output_calls = [
+            call
+            for call in native_tool_calls
+            if (call.get("function") or {}).get("name") == self._output_tool_name
+        ]
+        if not self._output_tool_name or not output_calls:
+            return None, native_tool_calls
+        others = [call for call in native_tool_calls if call not in output_calls]
+        answer, error = None, None
+        try:
+            arguments = (output_calls[0].get("function") or {}).get("arguments") or "{}"
+            payload = json.loads(arguments) if isinstance(arguments, str) else arguments
+            jsonschema.validate(payload, self.schema)
+            answer = JsonDataModel(
+                json=payload, schema=self.schema, name="final_generator_" + self.name
+            )
+        except (ValueError, jsonschema.ValidationError) as e:
+            message = e.message if isinstance(e, jsonschema.ValidationError) else str(e)
+            error = f"error: the answer does not fit the required structure: {message}"
+        for call in output_calls if answer is None else native_tool_calls:
+            if call is output_calls[0]:
+                content = error or "Answer accepted."
+            elif call in output_calls:
+                content = "error: give the answer in a single call."
+            else:
+                content = "Not run: the answer was given in the same step."
+            agent_messages.append(
+                ChatMessage(
+                    role=ChatRole.TOOL, tool_call_id=call.get("id"), content=content
+                ).get_json()
+            )
+        return answer, ([] if answer is not None else others)
+
+    async def _final_result(self, trajectory, ctx, training):
+        """Produce the final answer data model from the trajectory (hook).
+
+        The answer the steps gave, if any; otherwise the final generator writes
+        one (an empty reply, a schema answered in prose, `max_iterations`
+        spent)."""
+        if isinstance(ctx, dict) and ctx.get("answer") is not None:
+            return ctx["answer"]
+        return await self.final_generator(trajectory)
 
     async def _wrap_final(self, final_result, agent_messages, training):
         """Wrap the final answer into the agent's return value (shared)."""
@@ -849,9 +971,10 @@ class FunctionCallingAgent(Module):
             return final_result
         # Without schema: append the final ChatMessage to the trajectory.
         # Interactive streaming returns the lazy StreamingIterator for the
-        # caller to consume; inside a batched loop the final generator has
-        # already drained it to a concrete ChatMessage, so fall through to the
-        # normal trajectory wrapping below (keeping the prediction scorable).
+        # caller to consume; inside a batched loop the answer (the step's, or
+        # the final generator's) was already drained to a concrete ChatMessage,
+        # so fall through to the normal trajectory wrapping below (keeping the
+        # prediction scorable).
         if isinstance(final_result, StreamingIterator):
             return final_result
         if final_result:
@@ -883,16 +1006,21 @@ class FunctionCallingAgent(Module):
         `max_steps=1`.
         """
         for _ in range(max_steps):
-            tool_calls = await self.tool_calls_generator(
-                trajectory, tools=self._native_tools(ctx)
-            )
+            tool_calls = await self._step(trajectory, ctx, training)
             if not tool_calls:
                 self._on_empty_generation(agent_messages, ctx)
+                break
+            if isinstance(tool_calls, StreamingIterator):
+                # The answer, being streamed.
+                ctx["answer"] = tool_calls
                 break
 
             native_tool_calls = tool_calls.get("tool_calls") or []
             if not native_tool_calls:
                 if await self._on_no_tool_calls(tool_calls, agent_messages, ctx):
+                    if self._is_answer(tool_calls):
+                        # The reply is the answer: not asked for again.
+                        ctx["answer"] = tool_calls
                     break
                 trajectory.update({"messages": agent_messages})
                 continue
@@ -900,7 +1028,14 @@ class FunctionCallingAgent(Module):
             # The generator returned an assistant ChatMessage with native
             # `tool_calls`; append it as-is rather than rebuilding from scratch.
             agent_messages.append(tool_calls.get_json())
-            terminated = await self._dispatch_tool_calls(
+            answer, native_tool_calls = self._take_output_call(
+                native_tool_calls, agent_messages
+            )
+            if answer is not None:
+                ctx["answer"] = answer
+                trajectory.update({"messages": agent_messages})
+                break
+            terminated = bool(native_tool_calls) and await self._dispatch_tool_calls(
                 native_tool_calls, agent_messages, ctx
             )
             trajectory.update({"messages": agent_messages})
@@ -950,17 +1085,52 @@ class FunctionCallingAgent(Module):
 
         trajectory.update({"messages": agent_messages})
 
-        tool_calls = await self.tool_calls_generator(
-            trajectory, tools=list(self.tools.values())
-        )
+        tool_calls = await self._step(trajectory, ctx, training)
+        if isinstance(tool_calls, StreamingIterator):
+            # The answer, being streamed.
+            return tool_calls
 
-        # If no tool calls, call final generator
-        # without appending the empty tool calls message
-        if not tool_calls or not tool_calls.get("tool_calls"):
-            final_result = await self._final_answer(trajectory, list(self.tools.values()))
+        answer = None
+        calls = (tool_calls.get("tool_calls") if tool_calls else None) or []
+        if any(
+            (c.get("function") or {}).get("name") == self._output_tool_name for c in calls
+        ):
+            # A call to the output tool is the answer: its results are
+            # recorded now, as no later call will run it.
+            assistant_message = ChatMessage(**tool_calls.get_json())
+            agent_messages.append(assistant_message.get_json())
+            new_messages.append(assistant_message)
+            start = len(agent_messages)
+            answer, _ = self._take_output_call(calls, agent_messages)
+            new_messages.extend(ChatMessage(**m) for m in agent_messages[start:])
+            if answer is None:
+                # Not the required structure: the model sees why next step.
+                trajectory.update({"messages": agent_messages})
+                return JsonDataModel(
+                    json=ChatMessages(
+                        messages=(
+                            [ChatMessage(**m) for m in agent_messages]
+                            if self.return_inputs_with_trajectory
+                            else new_messages
+                        )
+                    ).get_json(),
+                    schema=ChatMessages.get_schema(),
+                    name=self.name,
+                )
+        elif not calls and self._is_answer(tool_calls):
+            # The reply is the answer: not asked for again.
+            answer = tool_calls
+
+        if answer is not None or not calls:
+            # Without an answer from the step (empty, or prose where a schema
+            # is due), the final generator writes it, without appending the
+            # empty tool calls message.
+            final_result = answer
+            if final_result is None:
+                final_result = await self.final_generator(trajectory)
             # Interactive streaming hands the lazy iterator back; in a batched
-            # loop the final generator has already drained it to a concrete
-            # result, so fall through to the normal wrapping below.
+            # loop the answer was already drained to a concrete result, so fall
+            # through to the normal wrapping below.
             if isinstance(final_result, StreamingIterator):
                 return final_result
             if self.schema:
@@ -1066,9 +1236,9 @@ class FunctionCallingAgent(Module):
 
             _ = await self.tool_calls_generator(inputs, tools=list(self.tools.values()))
 
-            # The output can be either the final generator output (when no tool calls)
-            # or ChatMessages (when there are tool calls)
-            # We use ChatMessages as the output spec since it's the common case
+            # The output can be either the answer (when no tool calls) or
+            # ChatMessages (when there are tool calls). We use ChatMessages as
+            # the output spec since it's the common case.
             return SymbolicDataModel(
                 schema=ChatMessages.get_schema(),
                 name=self.name,

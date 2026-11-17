@@ -500,9 +500,7 @@ class Generator(Module):
             tool_schemas=tool_schemas,
             streaming=streaming,
             reasoning_effort=self.reasoning_effort,
-            # Only when asked: e.g. `"none"` keeps the tools declared (so the
-            # provider still parses the model's tool syntax) while forbidding
-            # a call.
+            # Only when asked (e.g. the agent's `"required"`, with its output tool).
             **({"tool_choice": tool_choice} if tool_choice is not None else {}),
             **sampling,
         )
