@@ -1495,6 +1495,17 @@ class RecursiveLanguageModelAgent(FunctionCallingAgent):
     def _requires_tools(self):
         return False
 
+    # RLM answers through `submit()` inside a snippet, its own output tool: no
+    # `final_answer` tool, and a step's text is never the answer.
+    def _is_answer(self, step):
+        return False
+
+    def _output_tool_schemas(self):
+        return None
+
+    def _take_output_call(self, native_tool_calls, agent_messages):
+        return None, native_tool_calls
+
     def _on_empty_generation(self, agent_messages, ctx):
         # RLM simply stops the loop on an empty generation (no message added).
         return None
@@ -1625,8 +1636,7 @@ class RecursiveLanguageModelAgent(FunctionCallingAgent):
                 )
                 return self._wrap_trajectory(agent_messages)
         else:
-            # Declared but forbidden tools: a leftover call is parsed, not leaked as text.
-            final_result = await self._final_answer(trajectory, self._native_tools(ctx))
+            final_result = await self.final_generator(trajectory)
             if not self.schema:
                 # Schemaless fallback: the final generator emits a ChatMessage.
                 if final_result:

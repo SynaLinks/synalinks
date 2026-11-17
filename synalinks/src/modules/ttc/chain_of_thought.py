@@ -207,9 +207,15 @@ class ChainOfThought(Module):
             name="generator_" + self.name,
         )
 
-    async def call(self, inputs, tools=None, tool_schemas=None, training=False):
+    async def call(
+        self, inputs, tools=None, tool_schemas=None, tool_choice=None, training=False
+    ):
         return await self.generator(
-            inputs, tools=tools, tool_schemas=tool_schemas, training=training
+            inputs,
+            tools=tools,
+            tool_schemas=tool_schemas,
+            tool_choice=tool_choice,
+            training=training,
         )
 
     def get_config(self):
