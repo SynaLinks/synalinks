@@ -299,8 +299,8 @@ class SQLAgent(FunctionCallingAgent):
             extra schema call.
         final_instructions (str): Instructions for the final-answer
             generator. Defaults to ``instructions``.
-        temperature (float): LM sampling temperature. Defaults to None (the model's own default applies).
-            for deterministic SQL generation.
+        temperature (float): LM sampling temperature, set low for deterministic
+            SQL generation. Defaults to None (the model's own default applies).
         max_tokens (int): Optional. Maximum number of tokens to generate.
             Default None (the model's own default; caps generation length).
         top_p (float): Optional. Nucleus sampling probability. Default None

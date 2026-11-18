@@ -171,7 +171,8 @@ class RetrieveKnowledge(Module):
         examples (list): Example inputs/outputs for few-shot learning.
         instructions (str): Custom instructions for the search query generator.
         seed_instructions (str): Seed instructions for variability.
-        temperature (float): Temperature for the language model. Defaults to None (the model's own default applies).
+        temperature (float): Temperature for the language model. Defaults to None
+            (the model's own default applies).
         max_tokens (int): Optional. Default None (model's own default). Caps the
             generation length.
         top_p (float): Optional. Default None (model's own default). Nucleus

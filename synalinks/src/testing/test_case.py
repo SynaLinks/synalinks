@@ -48,9 +48,7 @@ class TestCase(
         """
         from unittest import mock
 
-        from synalinks.src.knowledge_bases.graph_database_adapters import (
-            ladybug_adapter,
-        )
+        from synalinks.src.knowledge_bases.graph_database_adapters import ladybug_adapter
 
         adapters = []
         original_init = ladybug_adapter.LadybugAdapter.__init__
