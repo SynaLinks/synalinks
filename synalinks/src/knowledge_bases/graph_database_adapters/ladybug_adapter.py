@@ -1428,7 +1428,7 @@ class LadybugAdapter(GraphDatabaseAdapter):
 
         bindings["__embedding"] = embedding
         bindings["__max_dist"] = self._max_distance_for_threshold()
-        index_name = f"{label.lower()}_vec"
+        nearest = self._vector_call(label, "$__embedding", "1")
 
         # CREATE pattern with every property inline: PK, embedding,
         # and any SET-able prop alike. This is what Branch 1 fires
@@ -1439,17 +1439,13 @@ class LadybugAdapter(GraphDatabaseAdapter):
         create_clause = f"CREATE (n:{label} {{{', '.join(create_inline)}}})"
 
         query = (
-            f"CALL QUERY_VECTOR_INDEX('{label}', '{index_name}', "
-            f"$__embedding, 1) "
-            f"YIELD node, distance "
+            f"{nearest} "
             f"WITH count(CASE WHEN distance <= $__max_dist THEN 1 END) AS hits "
             f"UNWIND CASE WHEN hits = 0 THEN [1] ELSE [] END AS _ "
             f"{create_clause} "
             f"RETURN n.{pk_key} AS id "
             f"UNION "
-            f"CALL QUERY_VECTOR_INDEX('{label}', '{index_name}', "
-            f"$__embedding, 1) "
-            f"YIELD node, distance "
+            f"{nearest} "
             f"WITH node, distance WHERE distance <= $__max_dist "
             f"RETURN node.{pk_key} AS id"
         )
@@ -1603,14 +1599,16 @@ class LadybugAdapter(GraphDatabaseAdapter):
             bindings[key] = value
         set_part = " SET " + ", ".join(set_clauses) if set_clauses else ""
 
+        subj_call = self._vector_call(
+            subj_label, "$__subj_emb", "1", node="s", distance="subj_dist"
+        )
+        obj_call = self._vector_call(
+            obj_label, "$__obj_emb", "1", node="o", distance="obj_dist"
+        )
         query = (
-            f"CALL QUERY_VECTOR_INDEX('{subj_label}', "
-            f"'{subj_label.lower()}_vec', $__subj_emb, 1) "
-            f"YIELD node AS s, distance AS subj_dist "
+            f"{subj_call} "
             f"WITH s, subj_dist WHERE subj_dist <= $__max_dist "
-            f"CALL QUERY_VECTOR_INDEX('{obj_label}', "
-            f"'{obj_label.lower()}_vec', $__obj_emb, 1) "
-            f"YIELD node AS o, distance AS obj_dist "
+            f"{obj_call} "
             f"WITH s, o, subj_dist, obj_dist "
             f"WHERE obj_dist <= $__max_dist "
             f"MERGE (s)-[r:{rel_label}]->(o){set_part} "
@@ -1713,60 +1711,7 @@ class LadybugAdapter(GraphDatabaseAdapter):
         if new_label != old_label:
             if new_label in node_tables or new_label in rel_tables:
                 raise ValueError(f"rename(): a table named {new_label!r} already exists.")
-
-            # Indices are name-bound to the old label; drop them first so
-            # we can rebuild under the new naming convention afterwards.
-            # (Only NODE tables carry FTS/HNSW indices in this adapter.)
-            if kind == "NODE":
-                for table, name, idx_type in self._existing_indices():
-                    if table != old_label:
-                        continue
-                    try:
-                        if idx_type == "FTS":
-                            self._con.execute(
-                                f"CALL DROP_FTS_INDEX('{old_label}', '{name}')"
-                            )
-                        elif idx_type == "HNSW":
-                            self._con.execute(
-                                f"CALL DROP_VECTOR_INDEX('{old_label}', '{name}')"
-                            )
-                    except Exception as e:  # noqa: BLE001
-                        warnings.warn(
-                            f"rename(): failed to drop {idx_type} index "
-                            f"{name!r} on {old_label!r}: {e}"
-                        )
-
-            self._con.execute(f"ALTER TABLE {old_label} RENAME TO {new_label}")
-
-            # Migrate the per-label registries.
-            if old_label in self._pk_keys:
-                self._pk_keys[new_label] = self._pk_keys.pop(old_label)
-            self._synth_models.pop(old_label, None)
-
-            if kind == "NODE":
-                # Rebuild indices under the new label so searches that
-                # address them by the {label}_vec / {label}_fts convention
-                # keep working.
-                fts_cols = self._fts_columns.pop(old_label, None)
-                if fts_cols:
-                    self._fts_columns[new_label] = fts_cols
-                    try:
-                        self._create_fts_index(new_label, fts_cols)
-                    except Exception as e:  # noqa: BLE001
-                        warnings.warn(
-                            f"rename(): FTS index rebuild failed for "
-                            f"{new_label!r}; entity_fulltext_search results "
-                            f"may be unavailable. ({e})"
-                        )
-                if self.embedding_model and self.vector_dim:
-                    try:
-                        self._create_vector_index(new_label)
-                    except Exception as e:  # noqa: BLE001
-                        warnings.warn(
-                            f"rename(): vector index rebuild failed for "
-                            f"{new_label!r}; entity_similarity_search will "
-                            f"be unavailable. ({e})"
-                        )
+            self._rename_table(kind, old_label, new_label)
 
         # Build the post-rename symbolic model.
         if kind == "NODE":
@@ -1781,6 +1726,66 @@ class LadybugAdapter(GraphDatabaseAdapter):
             if "description" in old_schema:
                 schema["description"] = old_schema["description"]
         return SymbolicDataModel(schema=schema, name=new_label)
+
+    def _rename_table(self, kind: str, old_label: str, new_label: str) -> None:
+        """Rename the ``kind`` (``"NODE"`` / ``"REL"``) table ``old_label`` to
+        ``new_label``, its indices and the per-label registries with it."""
+        # Indices are name-bound to the old label; drop them first so
+        # we can rebuild under the new naming convention afterwards.
+        # (Only NODE tables carry FTS/HNSW indices in this adapter.)
+        if kind == "NODE":
+            for table, name, idx_type in self._existing_indices():
+                if table != old_label:
+                    continue
+                try:
+                    if idx_type == "FTS":
+                        self._con.execute(f"CALL DROP_FTS_INDEX('{old_label}', '{name}')")
+                    elif idx_type == "HNSW":
+                        self._con.execute(
+                            f"CALL DROP_VECTOR_INDEX('{old_label}', '{name}')"
+                        )
+                except Exception as e:  # noqa: BLE001
+                    warnings.warn(
+                        f"rename(): failed to drop {idx_type} index "
+                        f"{name!r} on {old_label!r}: {e}"
+                    )
+
+        self._con.execute(f"ALTER TABLE {old_label} RENAME TO {new_label}")
+
+        # Migrate the per-label registries.
+        if old_label in self._pk_keys:
+            self._pk_keys[new_label] = self._pk_keys.pop(old_label)
+        self._synth_models.pop(old_label, None)
+
+        if kind == "NODE":
+            # Rebuild indices under the new label so searches that
+            # address them by the {label}_vec / {label}_fts convention
+            # keep working.
+            self._rebuild_indices(old_label, new_label)
+
+    def _rebuild_indices(self, old_label: str, new_label: str) -> None:
+        """Recreate the FTS and vector indices of renamed NODE table
+        ``old_label`` under ``new_label``."""
+        fts_cols = self._fts_columns.pop(old_label, None)
+        if fts_cols:
+            self._fts_columns[new_label] = fts_cols
+            try:
+                self._create_fts_index(new_label, fts_cols)
+            except Exception as e:  # noqa: BLE001
+                warnings.warn(
+                    f"rename(): FTS index rebuild failed for "
+                    f"{new_label!r}; entity_fulltext_search results "
+                    f"may be unavailable. ({e})"
+                )
+        if self.embedding_model and self.vector_dim:
+            try:
+                self._create_vector_index(new_label)
+            except Exception as e:  # noqa: BLE001
+                warnings.warn(
+                    f"rename(): vector index rebuild failed for "
+                    f"{new_label!r}; entity_similarity_search will "
+                    f"be unavailable. ({e})"
+                )
 
     # ------------------------------------------------------------------
     # Get / delete
@@ -1894,9 +1899,12 @@ class LadybugAdapter(GraphDatabaseAdapter):
                 f"in `entity_models` at construction time."
             )
 
+        # The id is read before the delete: a deleted node's properties are
+        # gone on engines that enforce it (Relate), so `RETURN n.<pk>` after
+        # `DETACH DELETE n` is not portable.
         with self._execute(
             f"MATCH (n:{label}) WHERE n.{pk_key} IN $ids "
-            f"DETACH DELETE n RETURN n.{pk_key} AS id",
+            f"WITH n, n.{pk_key} AS id DETACH DELETE n RETURN id",
             {"ids": ids},
         ) as r:
             deleted = len(r.get_all())
@@ -2159,6 +2167,49 @@ class LadybugAdapter(GraphDatabaseAdapter):
             return {}
         return {"efs": ef_search}
 
+    # The engine-specific index calls. Every search and upsert builds its
+    # Cypher around these three, so an adapter for another Cypher engine
+    # (`RelateAdapter`) overrides them and inherits the rest.
+
+    def _vector_call(
+        self,
+        label: str,
+        vector: str,
+        k: str,
+        kwargs_fragment: str = "",
+        node: str = "node",
+        distance: str = "distance",
+    ) -> str:
+        """``CALL`` the vector index of ``label`` for the ``k`` nodes nearest to
+        ``vector``, yielding them as ``node`` with their ``distance`` (lower is
+        closer). ``vector`` and ``k`` are Cypher expressions (``"$vec"``,
+        ``"1"``); ``kwargs_fragment`` comes from `_build_algo_kwargs`."""
+        yielded = (
+            "node, distance"
+            if (node, distance) == ("node", "distance")
+            else f"node AS {node}, distance AS {distance}"
+        )
+        return (
+            f"CALL QUERY_VECTOR_INDEX('{label}', '{label.lower()}_vec', "
+            f"{vector}, {k}{kwargs_fragment}) YIELD {yielded}"
+        )
+
+    def _fulltext_call(
+        self, label: str, query: str, k: str, kwargs_fragment: str = ""
+    ) -> str:
+        """``CALL`` the full-text index of ``label`` for the top ``k`` matches of
+        ``query`` (a Cypher expression), exposing ``node`` and its BM25 ``score``
+        (higher is better)."""
+        return (
+            f"CALL QUERY_FTS_INDEX('{label}', '{label.lower()}_fts', {query}, "
+            f"top := {k}{kwargs_fragment})"
+        )
+
+    def _fulltext_query_text(self, text: str, conjunctive: bool) -> str:
+        """The query text `_fulltext_call` is bound to. Ladybug takes the text as
+        is (``conjunctive`` travels as a procedure kwarg)."""
+        return text
+
     def _build_algo_kwargs(
         self,
         kwargs: Dict[str, Any],
@@ -2307,33 +2358,9 @@ class LadybugAdapter(GraphDatabaseAdapter):
                 f"multi-label clustering."
             )
 
-        algo_spec = self._COMMUNITY_ALGORITHMS[algorithm]
-        community_column = algo_spec["column"]
-
-        # Build the keyword-arg fragment from the user's params, but
-        # only forward keys the algorithm actually accepts. This keeps
-        # the cross-algorithm signature stable on our side while
-        # quietly dropping params Ladybug doesn't know about for the
-        # selected algo.
-        algo_kwargs: Dict[str, Any] = {}
-        if max_iterations is not None:
-            algo_kwargs["maxIterations"] = max_iterations
-        kwargs_fragment, kwargs_bind = self._build_algo_kwargs(
-            algo_kwargs, algo_spec["supported_params"]
+        rows = self._community_rows(
+            algorithm, sanitized_nodes, sanitized_rels, max_iterations
         )
-
-        with self._projected_graph(
-            sanitized_nodes, sanitized_rels, purpose="community detection"
-        ) as proj_name:
-            # node._LABEL / node._ID are Ladybug internals; we return
-            # the whole struct and unpack in Python so we can also
-            # look up the per-label PK via ``self._pk_keys``.
-            rows = self._con.execute(
-                f"CALL {algorithm.upper()}('{proj_name}'"
-                f"{kwargs_fragment}) "
-                f"RETURN node, {community_column} AS comm_id",
-                kwargs_bind,
-            ).get_all()
 
         # Assign each node to a community. Louvain marks isolated
         # nodes (degree 0) with ``-1``; we promote them to their own
@@ -2413,6 +2440,42 @@ class LadybugAdapter(GraphDatabaseAdapter):
             kgs.append(KnowledgeGraph(entities=entities, relations=relations))
         return KnowledgeGraphs(knowledge_graphs=kgs)
 
+    def _community_rows(
+        self,
+        algorithm: str,
+        node_labels: List[str],
+        rel_labels: List[str],
+        max_iterations: Optional[int],
+    ) -> List[tuple]:
+        """``[(node, community_id), ...]`` for every node of ``node_labels``,
+        computed by the ``algo`` extension. ``node`` is the raw node struct
+        (``_LABEL`` / ``_ID`` plus properties); Louvain gives isolated nodes
+        community ``-1``."""
+        algo_spec = self._COMMUNITY_ALGORITHMS[algorithm]
+        community_column = algo_spec["column"]
+
+        # Build the keyword-arg fragment from the user's params, but
+        # only forward keys the algorithm actually accepts. This keeps
+        # the cross-algorithm signature stable on our side while
+        # quietly dropping params Ladybug doesn't know about for the
+        # selected algo.
+        algo_kwargs: Dict[str, Any] = {}
+        if max_iterations is not None:
+            algo_kwargs["maxIterations"] = max_iterations
+        kwargs_fragment, kwargs_bind = self._build_algo_kwargs(
+            algo_kwargs, algo_spec["supported_params"]
+        )
+
+        with self._projected_graph(
+            node_labels, rel_labels, purpose="community detection"
+        ) as proj_name:
+            return self._con.execute(
+                f"CALL {algorithm.upper()}('{proj_name}'"
+                f"{kwargs_fragment}) "
+                f"RETURN node, {community_column} AS comm_id",
+                kwargs_bind,
+            ).get_all()
+
     # ------------------------------------------------------------------
     # PageRank
     # ------------------------------------------------------------------
@@ -2477,25 +2540,14 @@ class LadybugAdapter(GraphDatabaseAdapter):
         if not sanitized_nodes:
             return format_search_results([], output_format)
 
-        algo_kwargs: Dict[str, Any] = {
-            "dampingFactor": damping_factor,
-            "maxIterations": max_iterations,
-        }
-        if tolerance is not None:
-            algo_kwargs["tolerance"] = tolerance
-        if normalize_initial is not None:
-            algo_kwargs["normalizeInitial"] = normalize_initial
-        kwargs_fragment, kwargs_bind = self._build_algo_kwargs(
-            algo_kwargs, self._PAGERANK_SUPPORTED_PARAMS
+        rows = self._pagerank_rows(
+            sanitized_nodes,
+            sanitized_rels,
+            damping_factor=damping_factor,
+            max_iterations=max_iterations,
+            tolerance=tolerance,
+            normalize_initial=normalize_initial,
         )
-
-        with self._projected_graph(
-            sanitized_nodes, sanitized_rels, purpose="pagerank"
-        ) as proj_name:
-            rows = self._con.execute(
-                f"CALL PAGE_RANK('{proj_name}'{kwargs_fragment}) RETURN node, rank",
-                kwargs_bind,
-            ).get_all()
 
         # Shape rows into [{<pk>: <pk_value>, "label": ..., "node": ...,
         # "rank": ...}]. The pk column name varies per label, mirroring
@@ -2517,6 +2569,36 @@ class LadybugAdapter(GraphDatabaseAdapter):
         if k is not None:
             records = records[:k]
         return format_search_results(records, output_format)
+
+    def _pagerank_rows(
+        self,
+        node_labels: List[str],
+        rel_labels: List[str],
+        *,
+        damping_factor: float,
+        max_iterations: int,
+        tolerance: Optional[float],
+        normalize_initial: Optional[bool],
+    ) -> List[tuple]:
+        """``[(node, rank), ...]`` for every node of ``node_labels``, computed
+        by the ``algo`` extension's ``PAGE_RANK``."""
+        algo_kwargs: Dict[str, Any] = {
+            "dampingFactor": damping_factor,
+            "maxIterations": max_iterations,
+        }
+        if tolerance is not None:
+            algo_kwargs["tolerance"] = tolerance
+        if normalize_initial is not None:
+            algo_kwargs["normalizeInitial"] = normalize_initial
+        kwargs_fragment, kwargs_bind = self._build_algo_kwargs(
+            algo_kwargs, self._PAGERANK_SUPPORTED_PARAMS
+        )
+
+        with self._projected_graph(node_labels, rel_labels, purpose="pagerank") as proj:
+            return self._con.execute(
+                f"CALL PAGE_RANK('{proj}'{kwargs_fragment}) RETURN node, rank",
+                kwargs_bind,
+            ).get_all()
 
     # ------------------------------------------------------------------
     # GraphRAG-style local / global search
@@ -2604,7 +2686,6 @@ class LadybugAdapter(GraphDatabaseAdapter):
         if not vectors:
             return KnowledgeGraph(entities=[], relations=[])
 
-        vec_index = f"{label.lower()}_vec"
         vec_kwargs_frag, vec_kwargs_bind = self._build_algo_kwargs(
             self._collect_vector_query_kwargs(ef_search),
             self._VECTOR_QUERY_SUPPORTED_PARAMS,
@@ -2618,13 +2699,14 @@ class LadybugAdapter(GraphDatabaseAdapter):
             f"-[:{rel}*1..{max_hops}]-" if rel is not None else f"-[*1..{max_hops}]-"
         )
 
+        seed_call = self._vector_call(
+            label, "$vec", "$k", vec_kwargs_frag, node="seed", distance="dist"
+        )
         query = (
-            f"CALL QUERY_VECTOR_INDEX('{label}', '{vec_index}', "
-            f"$vec, $k{vec_kwargs_frag}) "
-            f"YIELD node AS seed, distance AS dist "
+            f"{seed_call} "
             f"WITH seed, dist WHERE {seed_filter} "
             f"OPTIONAL MATCH p = (seed){hop_pattern}(n) "
-            f"RETURN seed, nodes(p) AS nodes, rels(p) AS rels"
+            f"RETURN seed, nodes(p) AS nodes, relationships(p) AS rels"
         )
 
         # Pass 1: collect every node struct (indexed by internal id so
@@ -2694,6 +2776,15 @@ class LadybugAdapter(GraphDatabaseAdapter):
         """Return the set of column names on NODE table ``label``."""
         rows = self._con.execute(f"CALL TABLE_INFO('{label}') RETURN *").get_all()
         return {col_name for _, col_name, _, _, _ in rows}
+
+    def _add_stamp_columns(self, label: str) -> None:
+        """Add the ``community`` / ``rank`` columns `build_communities` writes
+        to NODE table ``label``, when it lacks them."""
+        existing = self._node_columns(label)
+        if self._COMMUNITY_COLUMN not in existing:
+            self._con.execute(f"ALTER TABLE {label} ADD {self._COMMUNITY_COLUMN} INT64")
+        if self._RANK_COLUMN not in existing:
+            self._con.execute(f"ALTER TABLE {label} ADD {self._RANK_COLUMN} DOUBLE")
 
     async def build_communities(
         self,
@@ -2794,13 +2885,7 @@ class LadybugAdapter(GraphDatabaseAdapter):
                         f"{self._COMMUNITY_COLUMN!r}/{self._RANK_COLUMN!r} as "
                         f"internal columns. Rename the conflicting field(s)."
                     )
-            existing = self._node_columns(label)
-            if self._COMMUNITY_COLUMN not in existing:
-                self._con.execute(
-                    f"ALTER TABLE {label} ADD {self._COMMUNITY_COLUMN} INT64"
-                )
-            if self._RANK_COLUMN not in existing:
-                self._con.execute(f"ALTER TABLE {label} ADD {self._RANK_COLUMN} DOUBLE")
+            self._add_stamp_columns(label)
 
         # Write community + rank back, one node at a time (Ladybug binds
         # scalar params per statement; same per-node write shape as the
@@ -3107,8 +3192,7 @@ class LadybugAdapter(GraphDatabaseAdapter):
         best: Dict[Any, Dict[str, Any]] = {}
         for vec in vectors:
             with self._execute(
-                f"CALL QUERY_VECTOR_INDEX('{label}', "
-                f"'{label.lower()}_vec', $vec, $k{vec_kwargs_frag}) "
+                f"{self._vector_call(label, '$vec', '$k', vec_kwargs_frag)} "
                 f"RETURN node.{pk_key} AS {pk_key}, node, distance",
                 {"vec": vec, "k": k, **vec_kwargs_bind},
             ) as r:
@@ -3174,13 +3258,15 @@ class LadybugAdapter(GraphDatabaseAdapter):
         # ``id``); the Python dedup keys off it directly.
         pk_key = self._pk_keys.get(label, "id")
         best: Dict[Any, Dict[str, Any]] = {}
-        index_name = f"{label.lower()}_fts"
         for query_text in texts:
             with self._execute(
-                f"CALL QUERY_FTS_INDEX('{label}', '{index_name}', $q, "
-                f"top := $k{fts_kwargs_frag}) "
+                f"{self._fulltext_call(label, '$q', '$k', fts_kwargs_frag)} "
                 f"RETURN node.{pk_key} AS {pk_key}, node, score",
-                {"q": query_text, "k": k, **fts_kwargs_bind},
+                {
+                    "q": self._fulltext_query_text(query_text, conjunctive),
+                    "k": k,
+                    **fts_kwargs_bind,
+                },
             ) as r:
                 cols = r.get_column_names()
                 for row in r.get_all():
@@ -3546,8 +3632,6 @@ class LadybugAdapter(GraphDatabaseAdapter):
         nodes: Dict[str, Any] = {}
 
         pk_key = self._pk_keys.get(label, "id")
-        fts_index = f"{label.lower()}_fts"
-        vec_index = f"{label.lower()}_vec"
         # Widen each branch's candidate pool to 5*k before RRF fusion.
         # If we asked each branch for only k results, the actual top-k
         # by combined score is often outside one branch's top-k,
@@ -3563,8 +3647,7 @@ class LadybugAdapter(GraphDatabaseAdapter):
         )
         for keyword_text, vec in zip(keyword_list, vectors):
             vec_branch = (
-                f"CALL QUERY_VECTOR_INDEX('{label}', '{vec_index}', "
-                f"$vec, $candidate_k{vec_kwargs_frag}) "
+                f"{self._vector_call(label, '$vec', '$candidate_k', vec_kwargs_frag)} "
                 f"RETURN node.{pk_key} AS {pk_key}, node AS node, "
                 f"distance AS metric, 'vec' AS source"
             )
@@ -3576,14 +3659,16 @@ class LadybugAdapter(GraphDatabaseAdapter):
             # The BM25 branch only runs when a keyword is available for
             # this slot (a vectors-only call with no keywords skips it).
             if keyword_text is not None:
+                fts_call = self._fulltext_call(
+                    label, "$q", "$candidate_k", fts_kwargs_frag
+                )
                 query = (
-                    f"CALL QUERY_FTS_INDEX('{label}', '{fts_index}', $q, "
-                    f"top := $candidate_k{fts_kwargs_frag}) "
+                    f"{fts_call} "
                     f"RETURN node.{pk_key} AS {pk_key}, node AS node, "
                     f"score AS metric, 'fts' AS source "
                     f"UNION ALL " + vec_branch
                 )
-                bindings["q"] = keyword_text
+                bindings["q"] = self._fulltext_query_text(keyword_text, conjunctive)
                 bindings.update(fts_kwargs_bind)
             else:
                 query = vec_branch
@@ -3759,9 +3844,6 @@ class LadybugAdapter(GraphDatabaseAdapter):
         if not vectors:
             return format_search_results([], output_format)
 
-        subj_vec_index = f"{subj_label.lower()}_vec"
-        obj_vec_index = f"{obj_label.lower()}_vec"
-
         vec_kwargs_frag, vec_kwargs_bind = self._build_algo_kwargs(
             self._collect_vector_query_kwargs(ef_search),
             self._VECTOR_QUERY_SUPPORTED_PARAMS,
@@ -3772,18 +3854,20 @@ class LadybugAdapter(GraphDatabaseAdapter):
         # ``__subj_pk`` / ``__obj_pk`` decouple the Cypher result
         # from the user-facing PK column names; Python re-flattens
         # them with collision handling in `_flatten_endpoint_pks`.
+        subj_call = self._vector_call(
+            subj_label, "$vec", "$k", vec_kwargs_frag, node="s", distance="d"
+        )
+        obj_call = self._vector_call(
+            obj_label, "$vec", "$k", vec_kwargs_frag, node="o", distance="d"
+        )
         query = (
-            f"CALL QUERY_VECTOR_INDEX('{subj_label}', '{subj_vec_index}', "
-            f"$vec, $k{vec_kwargs_frag}) "
-            f"YIELD node AS s, distance AS d "
+            f"{subj_call} "
             f"MATCH (s)-[r:{label}]->(o:{obj_label}) "
             f"RETURN s AS subj, r AS rel, o AS obj, d AS distance, "
             f"s.{subj_pk} AS __subj_pk, o.{obj_pk} AS __obj_pk, "
             f"'subj' AS matched_on "
             f"UNION ALL "
-            f"CALL QUERY_VECTOR_INDEX('{obj_label}', '{obj_vec_index}', "
-            f"$vec, $k{vec_kwargs_frag}) "
-            f"YIELD node AS o, distance AS d "
+            f"{obj_call} "
             f"MATCH (s:{subj_label})-[r:{label}]->(o) "
             f"RETURN s AS subj, r AS rel, o AS obj, d AS distance, "
             f"s.{subj_pk} AS __subj_pk, o.{obj_pk} AS __obj_pk, "
@@ -4171,7 +4255,7 @@ class LadybugAdapter(GraphDatabaseAdapter):
              valid hop count. When ``label`` is set, the pattern
              tightens to ``[:label*min..max]`` so every hop must be
              of that type.
-          6. Return ``nodes(p)`` / ``rels(p)`` / ``length(p)`` along
+          6. Return ``nodes(p)`` / ``relationships(p)`` / ``length(p)`` along
              with the two distances.
 
         Same chained-CALL shape `_merge_relation_by_vector`
@@ -4232,9 +4316,6 @@ class LadybugAdapter(GraphDatabaseAdapter):
                 f"represents one (subj, obj) query."
             )
 
-        subj_vec_index = f"{subj_label.lower()}_vec"
-        obj_vec_index = f"{obj_label.lower()}_vec"
-
         vec_kwargs_frag, vec_kwargs_bind = self._build_algo_kwargs(
             self._collect_vector_query_kwargs(ef_search),
             self._VECTOR_QUERY_SUPPORTED_PARAMS,
@@ -4253,18 +4334,20 @@ class LadybugAdapter(GraphDatabaseAdapter):
         else:
             path_pattern = f"-[*{min_hops}..{max_hops}]->"
 
+        subj_call = self._vector_call(
+            subj_label, "$subj_vec", "$k", vec_kwargs_frag, node="s", distance="subj_dist"
+        )
+        obj_call = self._vector_call(
+            obj_label, "$obj_vec", "$k", vec_kwargs_frag, node="o", distance="obj_dist"
+        )
         query = (
-            f"CALL QUERY_VECTOR_INDEX('{subj_label}', '{subj_vec_index}', "
-            f"$subj_vec, $k{vec_kwargs_frag}) "
-            f"YIELD node AS s, distance AS subj_dist "
+            f"{subj_call} "
             f"WITH s, subj_dist WHERE {subj_filter} "
-            f"CALL QUERY_VECTOR_INDEX('{obj_label}', '{obj_vec_index}', "
-            f"$obj_vec, $k{vec_kwargs_frag}) "
-            f"YIELD node AS o, distance AS obj_dist "
+            f"{obj_call} "
             f"WITH s, o, subj_dist, obj_dist WHERE {obj_filter} "
             f"MATCH p = (s){path_pattern}(o) "
             f"RETURN s AS subj, o AS obj, "
-            f"nodes(p) AS nodes, rels(p) AS rels, length(p) AS length, "
+            f"nodes(p) AS nodes, relationships(p) AS rels, length(p) AS length, "
             f"subj_dist AS subj_distance, obj_dist AS obj_distance, "
             f"s.{subj_pk} AS __subj_pk, o.{obj_pk} AS __obj_pk"
         )
@@ -4588,7 +4671,7 @@ class LadybugAdapter(GraphDatabaseAdapter):
             f"MATCH p = (s:{subj_label}){path_pattern}(o:{obj_label}) "
             f"WHERE s.{subj_pk} IN $subj_pks AND o.{obj_pk} IN $obj_pks "
             f"RETURN s AS subj, o AS obj, "
-            f"nodes(p) AS nodes, rels(p) AS rels, length(p) AS length, "
+            f"nodes(p) AS nodes, relationships(p) AS rels, length(p) AS length, "
             f"s.{subj_pk} AS __subj_pk, o.{obj_pk} AS __obj_pk",
             {
                 "subj_pks": list(subj_score.keys()),
@@ -4733,7 +4816,7 @@ class LadybugAdapter(GraphDatabaseAdapter):
             f"MATCH p = (s:{subj_label}){path_pattern}(o:{obj_label}) "
             f"WHERE s.{subj_pk} IN $subj_pks AND o.{obj_pk} IN $obj_pks "
             f"RETURN s AS subj, o AS obj, "
-            f"nodes(p) AS nodes, rels(p) AS rels, length(p) AS length, "
+            f"nodes(p) AS nodes, relationships(p) AS rels, length(p) AS length, "
             f"s.{subj_pk} AS __subj_pk, o.{obj_pk} AS __obj_pk",
             {
                 "subj_pks": list(subj_score.keys()),
@@ -4865,7 +4948,7 @@ class LadybugAdapter(GraphDatabaseAdapter):
             f"MATCH p = (s:{subj_label}){path_pattern}(o:{obj_label}) "
             f"WHERE s.{subj_pk} IN $subj_pks AND o.{obj_pk} IN $obj_pks "
             f"RETURN s AS subj, o AS obj, "
-            f"nodes(p) AS nodes, rels(p) AS rels, length(p) AS length, "
+            f"nodes(p) AS nodes, relationships(p) AS rels, length(p) AS length, "
             f"s.{subj_pk} AS __subj_pk, o.{obj_pk} AS __obj_pk",
             {
                 "subj_pks": list(subj_pks),
@@ -5032,7 +5115,7 @@ class LadybugAdapter(GraphDatabaseAdapter):
             f"MATCH p = (s:{subj_label}){path_pattern}(o:{obj_label}) "
             f"WHERE s.{subj_pk} IN $subj_pks AND o.{obj_pk} IN $obj_pks "
             f"RETURN s AS subj, o AS obj, "
-            f"nodes(p) AS nodes, rels(p) AS rels, length(p) AS length, "
+            f"nodes(p) AS nodes, relationships(p) AS rels, length(p) AS length, "
             f"s.{subj_pk} AS __subj_pk, o.{obj_pk} AS __obj_pk",
             {
                 "subj_pks": list(subj_score.keys()),

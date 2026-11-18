@@ -1,5 +1,5 @@
 version = 1
-revision = 5
+revision = 3
 requires-python = ">=3.12"
 resolution-markers = [
     "python_full_version >= '3.15' and sys_platform == 'win32'",
@@ -3423,6 +3423,15 @@ wheels = [
 ]
 
 [[package]]
+name = "networkx"
+version = "3.7"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/dc/76/3af777226b63a5e64a6b36b1ec5855c14e2b94a37096d4760e595fc43511/networkx-3.7.tar.gz", hash = "sha256:fd77a511bd90f39f3d016351345b52cf5319b813bdca01de3f755d3cca62e96a", size = 1866482, upload-time = "2026-09-21T16:45:16.974Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/7e/cd/fe58041e9011f307c490e3e17dd48cc516448f7c698a3f2d9d9d65d7e6a8/networkx-3.7-py3-none-any.whl", hash = "sha256:e3fd2c13a7814cee3746340d8d7f8598a67f16a58bf47fb7f8793fab6efca1b0", size = 2142205, upload-time = "2026-09-21T16:45:14.609Z" },
+]
+
+[[package]]
 name = "numpy"
 version = "2.5.4"
 source = { registry = "https://pypi.org/simple" }
@@ -4732,6 +4741,19 @@ wheels = [
 ]
 
 [[package]]
+name = "relate-db"
+version = "1.0.2"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/6c/3e/1da1f2929ce46eb69959ac324bc37c4f834fe009d38ee9cbd0e1679bd3c8/relate_db-1.0.2.tar.gz", hash = "sha256:595ba4f7b3f5287d39ecf5513c3cf6025a14ca1414c15a5cd63e232e967e3aeb", size = 4760963, upload-time = "2026-11-16T11:06:34.179Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/64/4d/ccfb030bca40c529ac406234b18978d8f881c5a2be6e0a501f3f62d5ab36/relate_db-1.0.2-cp39-abi3-macosx_10_12_x86_64.whl", hash = "sha256:5385cc525368d975ec88505fa7c4bfe1beea820760f00a4266bdcd62490fd217", size = 10110129, upload-time = "2026-11-16T11:06:22Z" },
+    { url = "https://files.pythonhosted.org/packages/4e/04/7dd15fe7f2ba430027556e4707fcc288dab51972184b498a9c4f10868b18/relate_db-1.0.2-cp39-abi3-macosx_11_0_arm64.whl", hash = "sha256:c07c4038a198190897858e1d515753118523d89f33b690977734708471b39360", size = 9322862, upload-time = "2026-11-16T11:06:24.479Z" },
+    { url = "https://files.pythonhosted.org/packages/52/38/79823c27daf3bbade03ce4968eeed59210e0ec29c33fa03005375c73b21f/relate_db-1.0.2-cp39-abi3-manylinux2014_aarch64.manylinux_2_17_aarch64.whl", hash = "sha256:44f587a0cff1ea0a3d92d352c3db014f6d8bdc0ae93aec77db75f5e1cfae4081", size = 9789537, upload-time = "2026-11-16T11:06:26.954Z" },
+    { url = "https://files.pythonhosted.org/packages/55/23/6465356774cad3a9cbcf4c91f5f90a80d760fd1b544b1249573f493cbde5/relate_db-1.0.2-cp39-abi3-manylinux2014_x86_64.manylinux_2_17_x86_64.whl", hash = "sha256:117640a465b68c53090c8f9c41c338be813f2d515e79095e57c3672c247eee3d", size = 10390454, upload-time = "2026-11-16T11:06:29.319Z" },
+    { url = "https://files.pythonhosted.org/packages/bc/26/049e046bfdc362faa9b6e71c770b2ed30e5b15713692fa15368c8132f015/relate_db-1.0.2-cp39-abi3-win_amd64.whl", hash = "sha256:4ac2a211e7a7d38ee674e62b0b56baac4479df63d7c68412e1e7903962e24880", size = 10118983, upload-time = "2026-11-16T11:06:31.939Z" },
+]
+
+[[package]]
 name = "requests"
 version = "2.34.2"
 source = { registry = "https://pypi.org/simple" }
@@ -5289,14 +5311,20 @@ dependencies = [
 codex = [
     { name = "openai-codex-cli-bin" },
 ]
+relate = [
+    { name = "networkx" },
+    { name = "relate-db" },
+]
 
 [package.dev-dependencies]
 dev = [
     { name = "e2b-code-interpreter" },
     { name = "keras-tuner" },
     { name = "mkdocstrings", extra = ["python"] },
+    { name = "networkx" },
     { name = "pytest" },
     { name = "pytest-cov" },
+    { name = "relate-db" },
     { name = "zensical" },
 ]
 
@@ -5326,6 +5354,7 @@ requires-dist = [
     { name = "mirage-ai", extras = ["fuse"], specifier = ">=0.0.7" },
     { name = "mlflow", specifier = ">=3.16.1" },
     { name = "namex" },
+    { name = "networkx", marker = "extra == 'relate'", specifier = ">=3.0" },
     { name = "numpy" },
     { name = "openai-codex-cli-bin", marker = "extra == 'codex'", specifier = ">=0.162.0" },
     { name = "optree" },
@@ -5333,21 +5362,24 @@ requires-dist = [
     { name = "pillow" },
     { name = "pydantic" },
     { name = "pydotplus" },
+    { name = "relate-db", marker = "extra == 'relate'", specifier = ">=1.0.2" },
     { name = "rich" },
     { name = "skills-ref", specifier = ">=0.1.1" },
     { name = "soundfile", specifier = ">=0.12" },
     { name = "synaops", specifier = ">=0.2.1" },
     { name = "tenacity" },
 ]
-provides-extras = ["codex"]
+provides-extras = ["codex", "relate"]
 
 [package.metadata.requires-dev]
 dev = [
     { name = "e2b-code-interpreter", specifier = ">=2.10.0" },
     { name = "keras-tuner", specifier = ">=1.4" },
     { name = "mkdocstrings", extras = ["python"], specifier = ">=1.0.4" },
+    { name = "networkx", specifier = ">=3.0" },
     { name = "pytest", specifier = ">=8.3" },
     { name = "pytest-cov", specifier = ">=5.0" },
+    { name = "relate-db", specifier = ">=1.0.2" },
     { name = "zensical", specifier = ">=0.0.46" },
 ]
 
@@ -6302,7 +6334,6 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/20/b3/0e3f822ab105f503504a0149a9cce6da59fa9626e9c68243c66b02e51efb/zensical-0.0.71-cp311-abi3-macosx_10_12_x86_64.whl", hash = "sha256:57cad23c56a98d87a5eefa7948a98b6ecb479dc99fd7af312cd146555f55f060", size = 18136451, upload-time = "2026-10-16T14:19:12.764Z" },
     { url = "https://files.pythonhosted.org/packages/5a/75/71dbdc5106a4153b8daed4b0161965dce9e3333b9e27bd9cf4470dac07bf/zensical-0.0.71-cp311-abi3-macosx_11_0_arm64.whl", hash = "sha256:81c069cc667946e0a505cc01b99d5ba44883c57f51b95bd5a38003007c5cb6cd", size = 17670227, upload-time = "2026-10-16T14:19:15.679Z" },
     { url = "https://files.pythonhosted.org/packages/84/bd/86f0d0ae73ce27d72bb49575c2a91da9d686916cf06980b03b2b480ab688/zensical-0.0.71-cp311-abi3-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:bcae388415698cac874e662e667fc0683833cec747607c89037b7e9ad9828830", size = 18167627, upload-time = "2026-10-16T14:19:18.043Z" },
-    { url = "https://files.pythonhosted.org/packages/5d/31/ce1812644068b0080fa3be630a6d10411867af5557b0c7dda7d5d3ae7cc7/zensical-0.0.71-cp311-abi3-manylinux_2_17_armv7l.manylinux2014_armv7l.whl", hash = "sha256:0b34f58a7f565d956651baf90389aafca5c37a407a72768f30293e415589b932", size = 18108972, upload-time = "2026-10-16T14:19:20.88Z" },
     { url = "https://files.pythonhosted.org/packages/d2/f4/4f341c2dfd6fc7cf79c87287b835916570a4333e9dfef19374ba0ed8d842/zensical-0.0.71-cp311-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:fc8ed534717b61f285dc217f165f901f8b8a6142ef37cdd5544976cd99b5720c", size = 18651322, upload-time = "2026-10-16T14:19:23.773Z" },
     { url = "https://files.pythonhosted.org/packages/2e/12/4e3c0430d5646509967e82340df51d9d83c5a5fc232302fd094d938171d5/zensical-0.0.71-cp311-abi3-musllinux_1_2_aarch64.whl", hash = "sha256:1e9e39aefdca4b3383b43014e117b27a1ca9f9ac4b25eefa9195099e5a566e2f", size = 18341323, upload-time = "2026-10-16T14:19:26.505Z" },
     { url = "https://files.pythonhosted.org/packages/61/14/797afbdbeaadd671c44cd3d9740d1f67ecda70a931133c155542a4d6b5cf/zensical-0.0.71-cp311-abi3-musllinux_1_2_x86_64.whl", hash = "sha256:d22b8924e5145d94bf85b81bd2a8afaeb32e78c8a1ddeb7f4201fc8902547221", size = 18908964, upload-time = "2026-10-16T14:19:29.382Z" },
