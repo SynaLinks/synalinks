@@ -116,11 +116,25 @@ class NoTargetsTest(testing.TestCase):
 
     @patch("litellm.acompletion")
     async def test_evaluate_an_unbuilt_program(self, mock_completion):
-        # Interactive, the agent's final generator is never traced: the
-        # program is unbuilt, and evaluating builds it on a batch with no `y`.
+        # A subclassed program is not traced at construction: it is unbuilt,
+        # and evaluating builds it on a batch with no `y`.
         mock_completion.return_value = FINAL
-        program = await agent_program(autonomous=False)
-        self.assertFalse(all(module.built for module in program._flatten_modules()))
+
+        class InteractiveAgent(programs.Program):
+            def __init__(self):
+                super().__init__(name="agent")
+                self.agent = FunctionCallingAgent(
+                    language_model=LanguageModel(model="ollama/mistral"),
+                    tools=[modules.Tool(calculate)],
+                    autonomous=False,
+                    max_iterations=2,
+                )
+
+            async def call(self, inputs, training=False):
+                return await self.agent(inputs, training=training)
+
+        program = InteractiveAgent()
+        self.assertFalse(program.built)
         program.compile(reward=GradedTurn())
         self.assertEqual((await program.evaluate(x=questions(2)))["reward"], 1.0)
 
