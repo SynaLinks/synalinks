@@ -33,6 +33,32 @@ class ToolModuleTest(testing.TestCase):
         # No state to build: an agent program holding it is built as made.
         self.assertTrue(tool.built)
 
+    def test_description_keeps_a_wrapped_summary_and_its_paragraphs(self):
+        """A summary over two lines, and the paragraphs before Args, are the
+        description: docstring_parser alone keeps the first line only."""
+
+        @synalinks.saving.register_synalinks_serializable()
+        async def search(regex: str):
+            """Find the predicates of a layer and read their
+            files: how you discover what the layer knows.
+
+            Name matches come first.
+
+            Args:
+                regex (str): A regular expression.
+            """
+            return {"regex": regex}
+
+        tool = Tool(func=search)
+        expected = (
+            "Find the predicates of a layer and read their\n"
+            "files: how you discover what the layer knows.\n\n"
+            "Name matches come first."
+        )
+        self.assertEqual(tool.description, expected)
+        self.assertEqual(tool.get_tool_schema()["description"], expected)
+        self.assertEqual(tool.get_input_schema()["description"], expected)
+
     def test_init_with_custom_name(self):
         """Test initialization with custom name and description."""
 

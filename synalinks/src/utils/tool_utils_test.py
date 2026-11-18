@@ -52,6 +52,21 @@ class ToolUtilsTest(testing.TestCase):
 
 
 class JsonSchemaTypeTest(testing.TestCase):
+    def test_description_keeps_a_wrapped_summary(self):
+        async def search(regex: str):
+            """Find the predicates of a layer and read their
+            files: how you discover what the layer knows.
+
+            Args:
+                regex (str): A regular expression.
+            """
+            return {"regex": regex}
+
+        tool = Tool(search)
+        expected = "Find the predicates of a layer and read their\nfiles: how you discover what the layer knows."
+        self.assertEqual(tool.description, expected)
+        self.assertEqual(tool.get_tool_schema()["description"], expected)
+
     def test_basic_types(self):
         self.assertEqual(json_schema_type(int), "integer")
         self.assertEqual(json_schema_type(float), "number")
