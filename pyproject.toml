@@ -51,7 +51,7 @@ dependencies = [
   # needs to mount the virtual filesystem it pivots into. Missing libfuse is
   # detected by `_confinement_available` (synalinks/src/sandboxes/_confinement.py)
   # and fails closed under `require_confinement`.
-  "mirage-ai[fuse]>=0.0.7",
+  "mirage-ai[fuse]>=0.0.8",
   "optree",
   "orjson",
   "pillow",

@@ -65,15 +65,11 @@ class ChainOfThoughtModuleTest(testing.TestCase):
             self.assertIn("thinking", gen_schema["properties"])
             self.assertIn("answer", gen_schema["properties"])
 
-    @patch("litellm.supports_reasoning")
     @patch("litellm.acompletion")
-    async def test_thinking_stripped_from_lm_call_and_reinjected(
-        self, mock_completion, mock_supports_reasoning
-    ):
+    async def test_thinking_stripped_from_lm_call_and_reinjected(self, mock_completion):
         """When reasoning is enabled and supported, the LM call schema has
         `thinking` removed (saving tokens) and the field is filled back in
         from `reasoning_content` after the call."""
-        mock_supports_reasoning.return_value = True
 
         class Query(DataModel):
             query: str = Field(description="The user query")
@@ -81,7 +77,9 @@ class ChainOfThoughtModuleTest(testing.TestCase):
         class Answer(DataModel):
             answer: str = Field(description="The correct answer")
 
-        language_model = LanguageModel(model="anthropic/claude-3-5-sonnet")
+        language_model = LanguageModel(
+            model="anthropic/claude-3-5-sonnet", supports_reasoning=True
+        )
 
         x0 = Input(data_model=Query)
         x1 = await ChainOfThought(
@@ -116,14 +114,12 @@ class ChainOfThoughtModuleTest(testing.TestCase):
         self.assertIn("answer", sent_schema["properties"])
         self.assertNotIn("thinking", sent_schema["properties"])
 
-    @patch("litellm.supports_reasoning")
     @patch("litellm.acompletion")
     async def test_thinking_kept_in_lm_call_when_model_lacks_reasoning_support(
-        self, mock_completion, mock_supports_reasoning
+        self, mock_completion
     ):
         """If the model doesn't support reasoning, the LM call schema must
         keep `thinking` so the model can fill it via prompting."""
-        mock_supports_reasoning.return_value = False
 
         class Query(DataModel):
             query: str = Field(description="The user query")
@@ -131,7 +127,7 @@ class ChainOfThoughtModuleTest(testing.TestCase):
         class Answer(DataModel):
             answer: str = Field(description="The correct answer")
 
-        language_model = LanguageModel(model="ollama/mistral")
+        language_model = LanguageModel(model="ollama/mistral", supports_reasoning=False)
 
         x0 = Input(data_model=Query)
         x1 = await ChainOfThought(
@@ -164,14 +160,12 @@ class ChainOfThoughtModuleTest(testing.TestCase):
         ]
         self.assertIn("thinking", sent_schema["properties"])
 
-    @patch("litellm.supports_reasoning")
     @patch("litellm.acompletion")
     async def test_user_schema_with_thinking_overridden_by_reasoning_content(
-        self, mock_completion, mock_supports_reasoning
+        self, mock_completion
     ):
         """If a user explicitly defines a data_model with a `thinking`
         field, the LanguageModel overrides it from `reasoning_content`."""
-        mock_supports_reasoning.return_value = True
 
         class Query(DataModel):
             query: str = Field(description="The user query")
@@ -180,7 +174,7 @@ class ChainOfThoughtModuleTest(testing.TestCase):
             thinking: str = Field(description="The reasoning trace")
             answer: str = Field(description="The correct answer")
 
-        language_model = LanguageModel(model="ollama/mistral")
+        language_model = LanguageModel(model="ollama/mistral", supports_reasoning=True)
 
         x0 = Input(data_model=Query)
         x1 = await ChainOfThought(
@@ -212,19 +206,15 @@ class ChainOfThoughtModuleTest(testing.TestCase):
         self.assertEqual(result_json["thinking"], "France's capital is Paris.")
         self.assertEqual(result_json["answer"], "Paris")
 
-    @patch("litellm.supports_reasoning")
     @patch("litellm.acompletion")
-    async def test_chain_of_thought_without_data_model(
-        self, mock_completion, mock_supports_reasoning
-    ):
+    async def test_chain_of_thought_without_data_model(self, mock_completion):
         """ChainOfThought with data_model=None returns a ChatMessage and
         populates the reasoning_content field from the LM's reasoning_content."""
-        mock_supports_reasoning.return_value = True
 
         class Query(DataModel):
             query: str = Field(description="The user query")
 
-        language_model = LanguageModel(model="ollama/mistral")
+        language_model = LanguageModel(model="ollama/mistral", supports_reasoning=True)
 
         x0 = Input(data_model=Query)
         x1 = await ChainOfThought(

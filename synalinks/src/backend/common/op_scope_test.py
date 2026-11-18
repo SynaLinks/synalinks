@@ -10,6 +10,7 @@ from synalinks.src.backend.common.op_scope import current_op_scope
 from synalinks.src.backend.common.op_scope import current_trajectory_start
 from synalinks.src.backend.common.op_scope import op_scope
 from synalinks.src.backend.common.op_scope import trajectory_scope
+from synalinks.src.utils.async_utils import run_maybe_nested
 
 
 class TrajectoryScopeTest(testing.TestCase):
@@ -144,3 +145,70 @@ class PhaseClockTest(testing.TestCase):
             self.time.now = 4.0
         self.assertEqual(outer.read("reward"), 4.0)
         self.assertEqual(inner.read("inference"), 2.0)
+
+
+class NestedRunScopeTest(testing.TestCase):
+    """A region run through `run_maybe_nested` (the trainer builds an unbuilt
+    program that way) leaves its caller outside of it once it ends."""
+
+    def _scoped(self, clock):
+        async def region():
+            with op_scope("inference", clock=clock):
+                await asyncio.sleep(0)
+
+        return region()
+
+    def test_no_scope_left_behind_from_sync_code(self):
+        clock = PhaseClock()
+        run_maybe_nested(self._scoped(clock))
+        self.assertIsNone(current_op_scope())
+        self.assertIsNone(op_scope_module._OP_FRAME.get())
+
+    def test_no_scope_left_behind_inside_a_running_loop(self):
+        clock = PhaseClock()
+
+        async def main():
+            run_maybe_nested(self._scoped(clock))
+            return current_op_scope(), op_scope_module._OP_FRAME.get()
+
+        self.assertEqual(asyncio.run(main()), (None, None))
+
+    def test_scope_inside_another_is_restored_after_a_nested_run(self):
+        clock = PhaseClock()
+        with op_scope("optimizer", clock=clock):
+            run_maybe_nested(self._scoped(clock))
+            self.assertEqual(current_op_scope(), "optimizer")
+            self.assertEqual(op_scope_module._OP_FRAME.get(), ("optimizer", clock))
+        self.assertIsNone(current_op_scope())
+
+
+class StaleFrameTest(testing.TestCase):
+    """A frame the context still holds after its region ended (left by any
+    path) never suspends a phase the clock is not running."""
+
+    def setUp(self):
+        super().setUp()
+        self.time = _FakeTime()
+        patcher = mock.patch.object(op_scope_module.time, "perf_counter", self.time)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def test_clock_keeps_accruing_each_batch(self):
+        clock = PhaseClock()
+        # The first batch's region, then its frame left behind.
+        with op_scope("inference", clock=clock):
+            self.time.now = 1.0
+        op_scope_module._OP_FRAME.set(("inference", clock))
+        try:
+            for batch in range(2):
+                with op_scope("reward", clock=clock):
+                    self.time.now += 0.5
+                    self.assertEqual(clock._active["inference"], 0)
+                with op_scope("inference", clock=clock):
+                    self.time.now += 1.0
+            # Every batch's inference counted: 1s, then 1s for each later one.
+            self.assertEqual(clock.read("inference"), 3.0)
+            self.assertEqual(clock.read("reward"), 1.0)
+            self.assertTrue(all(count == 0 for count in clock._active.values()))
+        finally:
+            op_scope_module._OP_FRAME.set(None)

@@ -1203,6 +1203,17 @@ class FunctionCallingAgent(Module):
         # (Module._maybe_build) splats a synthetic `kwargs` entry in here when
         # tracing; mirror that signature so symbolic build doesn't fail with
         # "unexpected keyword argument 'kwargs'".
+        #
+        # The final generator is built in every mode, whether or not the
+        # output spec below is derived from it: interactive mode calls it at
+        # runtime when the LM answers without tools, and its variables must
+        # exist for saving, loading and training regardless.
+        if not self.autonomous and not is_chat_messages(inputs):
+            raise ValueError(
+                "In interactive mode, the FunctionCallingAgent "
+                "needs an ChatMessages-like data model as inputs"
+            )
+        final_result = await self.final_generator(inputs)
         if self.autonomous:
             _ = await self.tool_calls_generator(inputs, tools=list(self.tools.values()))
             if self.schema:
@@ -1219,21 +1230,14 @@ class FunctionCallingAgent(Module):
                         name=self.name,
                     )
                 else:
-                    return await self.final_generator(inputs)
+                    return final_result
             else:
                 # Without schema: return ChatMessages with final message appended
-                _ = await self.final_generator(inputs)
                 return SymbolicDataModel(
                     schema=ChatMessages.get_schema(),
                     name=self.name,
                 )
         else:
-            if not is_chat_messages(inputs):
-                raise ValueError(
-                    "In interactive mode, the FunctionCallingAgent "
-                    "needs an ChatMessages-like data model as inputs"
-                )
-
             _ = await self.tool_calls_generator(inputs, tools=list(self.tools.values()))
 
             # The output can be either the answer (when no tool calls) or

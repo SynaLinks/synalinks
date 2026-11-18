@@ -9,7 +9,6 @@ from http.server import BaseHTTPRequestHandler
 from http.server import HTTPServer
 from unittest.mock import patch
 
-import litellm
 from litellm.types.utils import Choices
 from litellm.types.utils import CompletionTokensDetailsWrapper
 from litellm.types.utils import Message
@@ -29,7 +28,6 @@ from synalinks.src.backend import Image
 from synalinks.src.backend.common.op_scope import _OP_SCOPE
 from synalinks.src.modules.core.tool import Tool
 from synalinks.src.modules.language_models import LanguageModel
-from synalinks.src.modules.language_models import language_model as language_model_module
 from synalinks.src.modules.language_models.language_model import _tool_to_wire
 
 _SAMPLE_IMAGE = os.path.join(
@@ -592,7 +590,9 @@ class LanguageModelTest(testing.TestCase):
         }
         for model, sent in expected.items():
             with self.subTest(model=model):
-                await LanguageModel(model=model)(messages, reasoning_effort="disable")
+                # Every model expecting an off switch reasons natively.
+                lm = LanguageModel(model=model, supports_reasoning=bool(sent))
+                await lm(messages, reasoning_effort="disable")
                 kwargs = mock_completion.call_args.kwargs
                 keys = ("thinking", "reasoning_effort", "extra_body")
                 got = {k: kwargs[k] for k in keys if k in kwargs}
@@ -1471,24 +1471,37 @@ class CurrentCallUsageTest(testing.TestCase):
 
 
 class CapabilitiesTest(testing.TestCase):
-    def setUp(self):
-        super().setUp()
-        language_model_module._DETECTED.clear()
-        language_model_module._DETECTING.clear()
+    async def test_flags_decide_the_capabilities(self):
+        lm = LanguageModel(
+            model="deepseek/deepseek-chat",
+            supports_reasoning=True,
+            supports_vision=True,
+            supports_audio=True,
+        )
+        self.assertTrue(await lm.supports_reasoning())
+        self.assertTrue(await lm.supports_vision())
+        self.assertTrue(await lm.supports_audio())
 
-    async def test_supports_vision_follows_litellm_model_table(self):
-        self.assertTrue(await LanguageModel(model="openai/gpt-4o-mini").supports_vision())
-        self.assertFalse(
-            await LanguageModel(model="deepseek/deepseek-chat").supports_vision()
-        )
+        off = LanguageModel(model="gemini/gemini-2.5-flash", supports_audio=False)
+        self.assertFalse(await off.supports_audio())
 
-    async def test_supports_audio_follows_litellm_model_table(self):
-        self.assertTrue(
-            await LanguageModel(model="gemini/gemini-2.5-flash").supports_audio()
+    async def test_flags_survive_serialization(self):
+        lm = LanguageModel(
+            model="vllm/Qwen/Qwen3-8B",
+            api_base="http://x/v1",
+            supports_reasoning=True,
+            supports_vision=False,
         )
-        self.assertFalse(
-            await LanguageModel(model="anthropic/claude-sonnet-4-5").supports_audio()
-        )
+        restored = LanguageModel.from_config(lm.get_config())
+        self.assertTrue(await restored.supports_reasoning())
+        self.assertFalse(await restored.supports_vision())
+        self.assertFalse(await restored.supports_audio())
+
+    async def test_capabilities_are_off_unless_flagged(self):
+        lm = LanguageModel(model="openai/gpt-4o")
+        self.assertFalse(await lm.supports_reasoning())
+        self.assertFalse(await lm.supports_vision())
+        self.assertFalse(await lm.supports_audio())
 
     def test_supports_softprompt_only_on_vllm(self):
         self.assertTrue(LanguageModel(model="vllm/qwen").supports_softprompt())
@@ -1527,7 +1540,9 @@ class ToolResultImagesTest(testing.TestCase):
     @patch("litellm.acompletion")
     async def test_anthropic_keeps_images_in_the_tool_result(self, mock_completion):
         mock_completion.return_value = {"choices": [{"message": {"content": "ok"}}]}
-        await LanguageModel(model="anthropic/claude-sonnet-4-5")(self._messages())
+        await LanguageModel(model="anthropic/claude-sonnet-4-5", supports_vision=True)(
+            self._messages()
+        )
         sent = mock_completion.call_args.kwargs["messages"]
         self.assertEqual(len(sent), 3)
         self.assertEqual(sent[2]["content"][1]["type"], "image_url")
@@ -1535,7 +1550,9 @@ class ToolResultImagesTest(testing.TestCase):
     @patch("litellm.acompletion")
     async def test_gemini_3_keeps_images_in_the_tool_result(self, mock_completion):
         mock_completion.return_value = {"choices": [{"message": {"content": "ok"}}]}
-        await LanguageModel(model="gemini/gemini-3-flash-preview")(self._messages())
+        await LanguageModel(model="gemini/gemini-3-flash-preview", supports_vision=True)(
+            self._messages()
+        )
         sent = mock_completion.call_args.kwargs["messages"]
         self.assertEqual(len(sent), 3)
         self.assertEqual(sent[2]["content"][1]["type"], "image_url")
@@ -1544,7 +1561,9 @@ class ToolResultImagesTest(testing.TestCase):
     async def test_gemini_2_moves_images_to_a_user_message(self, mock_completion):
         # Multimodal function responses are Gemini 3 only.
         mock_completion.return_value = {"choices": [{"message": {"content": "ok"}}]}
-        await LanguageModel(model="gemini/gemini-2.5-flash")(self._messages())
+        await LanguageModel(model="gemini/gemini-2.5-flash", supports_vision=True)(
+            self._messages()
+        )
         sent = mock_completion.call_args.kwargs["messages"]
         self.assertEqual(len(sent), 4)
         self.assertEqual(sent[3]["content"][1]["type"], "image_url")
@@ -1572,7 +1591,9 @@ class ToolResultImagesTest(testing.TestCase):
     @patch("litellm.acompletion")
     async def test_openai_moves_images_to_a_user_message(self, mock_completion):
         mock_completion.return_value = {"choices": [{"message": {"content": "ok"}}]}
-        await LanguageModel(model="openai/gpt-4o-mini")(self._messages())
+        await LanguageModel(model="openai/gpt-4o-mini", supports_vision=True)(
+            self._messages()
+        )
         sent = mock_completion.call_args.kwargs["messages"]
         self.assertEqual(len(sent), 4)
         self.assertIsInstance(sent[2]["content"], str)
@@ -1619,7 +1640,9 @@ class ToolResultAudioTest(testing.TestCase):
     @patch("litellm.acompletion")
     async def test_gemini_gets_the_audio_in_a_user_message(self, mock_completion):
         mock_completion.return_value = {"choices": [{"message": {"content": "ok"}}]}
-        await LanguageModel(model="gemini/gemini-2.5-flash")(self._messages())
+        await LanguageModel(model="gemini/gemini-2.5-flash", supports_audio=True)(
+            self._messages()
+        )
         sent = mock_completion.call_args.kwargs["messages"]
         self.assertEqual(len(sent), 4)
         self.assertIn("1 audio clip(s) attached", sent[2]["content"])
@@ -1635,7 +1658,9 @@ class ToolResultAudioTest(testing.TestCase):
         messages.messages[2].content.append(
             Image(data="QUJD", mime_type="image/png").to_content_part()
         )
-        await LanguageModel(model="anthropic/claude-sonnet-4-5")(messages)
+        await LanguageModel(model="anthropic/claude-sonnet-4-5", supports_vision=True)(
+            messages
+        )
         sent = mock_completion.call_args.kwargs["messages"]
         self.assertEqual(len(sent), 3)
         text, image = sent[2]["content"]
@@ -1674,14 +1699,16 @@ class ToolResultAudioTest(testing.TestCase):
     @patch("litellm.acompletion")
     async def test_model_without_audio_gets_a_note(self, mock_completion):
         mock_completion.return_value = {"choices": [{"message": {"content": "ok"}}]}
-        await LanguageModel(model="anthropic/claude-sonnet-4-5")(self._messages())
+        await LanguageModel(model="anthropic/claude-sonnet-4-5", supports_vision=True)(
+            self._messages()
+        )
         sent = mock_completion.call_args.kwargs["messages"]
         self.assertEqual(len(sent), 3)
         self.assertIn("1 audio clip(s) omitted", sent[2]["content"])
 
 
 class _EngineStub(BaseHTTPRequestHandler):
-    """A self-hosted engine: metadata routes, a streamed probe, chat replies."""
+    """A self-hosted engine: metadata routes, streamed and plain chat replies."""
 
     model_info = None
     server_info = None
@@ -1760,13 +1787,8 @@ class _Thought(DataModel):
     answer: str
 
 
-class ProviderMetadataTest(testing.TestCase):
-    """What a provider's endpoint reports decides reasoning, vision and audio."""
-
-    def setUp(self):
-        super().setUp()
-        language_model_module._DETECTED.clear()
-        language_model_module._DETECTING.clear()
+class CapabilityFlagsTest(testing.TestCase):
+    """The constructor flags decide reasoning; the server is never asked."""
 
     def _serve(self, **behavior):
         handler = type("Handler", (_EngineStub,), behavior)
@@ -1783,65 +1805,45 @@ class ProviderMetadataTest(testing.TestCase):
         result = await lm(messages, schema=_Thought.get_schema(), reasoning_effort=effort)
         return result.get_json()
 
-    async def test_vllm_with_reasoning_parser_is_probed_once(self):
+    def _schema_fields(self, sent):
+        return sent["response_format"]["json_schema"]["schema"]["properties"]
+
+    async def test_vllm_flagged_as_reasoner_forwards_the_effort(self):
         server, base = self._serve(reasoning=True)
-        lm = LanguageModel(model="vllm/Qwen/Qwen3-8B", api_base=f"{base}/v1")
+        lm = LanguageModel(
+            model="vllm/Qwen/Qwen3-8B", api_base=f"{base}/v1", supports_reasoning=True
+        )
 
         result = await self._ask(lm)
-        await self._ask(lm)
-        await self._ask(LanguageModel(model="vllm/Qwen/Qwen3-8B", api_base=f"{base}/v1"))
 
-        self.assertEqual(len(server.probes), 1)
-        self.assertEqual(server.probes[0]["max_tokens"], 16)
+        self.assertEqual(server.probes, [])
+        self.assertEqual(server.paths, ["/v1/chat/completions"])
         sent = server.requests[0]
         self.assertEqual(sent["reasoning_effort"], "low")
         self.assertEqual(sent["chat_template_kwargs"], {"enable_thinking": True})
-        self.assertNotIn(
-            "thinking", sent["response_format"]["json_schema"]["schema"]["properties"]
-        )
+        self.assertNotIn("thinking", self._schema_fields(sent))
         self.assertEqual(result, {"thinking": "native trace", "answer": "Paris"})
 
-    async def test_vllm_without_reasoning_parser_keeps_thinking(self):
-        server, base = self._serve(reasoning=False)
-        lm = LanguageModel(model="vllm/meta-llama/Llama-3.1-8B", api_base=f"{base}/v1")
-
-        result = await self._ask(lm)
-
-        self.assertEqual(len(server.probes), 1)
-        sent = server.requests[0]
-        self.assertNotIn("reasoning_effort", sent)
-        self.assertNotIn("chat_template_kwargs", sent)
-        self.assertIn(
-            "thinking", sent["response_format"]["json_schema"]["schema"]["properties"]
+    async def test_unflagged_self_hosted_model_keeps_thinking(self):
+        server, base = self._serve(reasoning=True)
+        for model in ("vllm/Qwen/Qwen3-8B", "sglang/Qwen/Qwen3-8B"):
+            await self._ask(LanguageModel(model=model, api_base=f"{base}/v1"))
+        await self._ask(
+            LanguageModel(
+                model="doubleword/Qwen/Qwen3-235B-A22B",
+                api_base=f"{base}/v1",
+                api_key="k",
+            )
         )
-        self.assertEqual(result["thinking"], "written by the model")
-
-    async def test_sglang_model_info_answers_without_a_probe(self):
-        server, base = self._serve(
-            reasoning=True, model_info={"reasoning_parser": "qwen3"}
-        )
-        lm = LanguageModel(model="sglang/Qwen/Qwen3-8B", api_base=f"{base}/v1")
-
-        result = await self._ask(lm)
 
         self.assertEqual(server.probes, [])
-        self.assertEqual(result, {"thinking": "native trace", "answer": "Paris"})
+        self.assertEqual(set(server.paths), {"/v1/chat/completions"})
+        for sent in server.requests:
+            self.assertNotIn("reasoning_effort", sent)
+            self.assertNotIn("chat_template_kwargs", sent)
+            self.assertIn("thinking", self._schema_fields(sent))
 
-    async def test_vllm_dev_mode_server_info_answers_without_a_probe(self):
-        server, base = self._serve(
-            reasoning=True,
-            server_info={
-                "vllm_config": {"reasoning_config": {"reasoning_parser": "qwen3"}}
-            },
-        )
-        lm = LanguageModel(model="vllm/Qwen/Qwen3-8B", api_base=f"{base}/v1")
-
-        await self._ask(lm)
-
-        self.assertEqual(server.probes, [])
-        self.assertIn("/server_info?config_format=json", server.paths)
-
-    async def test_disable_turns_the_chat_template_switch_off_without_a_probe(self):
+    async def test_disable_turns_the_chat_template_switch_off(self):
         server, base = self._serve(reasoning=True)
         lm = LanguageModel(model="vllm/Qwen/Qwen3-8B", api_base=f"{base}/v1")
 
@@ -1852,98 +1854,45 @@ class ProviderMetadataTest(testing.TestCase):
             server.requests[0]["chat_template_kwargs"], {"enable_thinking": False}
         )
 
-    async def test_openai_compatible_endpoint_is_probed(self):
-        server, base = self._serve(reasoning=True)
-        lm = LanguageModel(
-            model="doubleword/Qwen/Qwen3-235B-A22B", api_base=f"{base}/v1", api_key="k"
-        )
-
-        result = await self._ask(lm)
-
-        self.assertEqual(len(server.probes), 1)
-        self.assertEqual(server.requests[0]["reasoning_effort"], "low")
-        self.assertNotIn("chat_template_kwargs", server.requests[0])
-        self.assertEqual(result["thinking"], "native trace")
-
-    async def test_ollama_capabilities_decide(self):
-        _, base = self._serve(capabilities=["completion", "thinking"])
-        thinking = LanguageModel(model="ollama/qwen3:8b", api_base=base)
-        self.assertTrue(await thinking.supports_reasoning())
-
-        _, base = self._serve(capabilities=["completion"])
-        plain = LanguageModel(model="ollama/llama3.2", api_base=base)
-        self.assertFalse(await plain.supports_reasoning())
-
-    async def test_unreachable_server_counts_as_no_native_reasoning(self):
-        server, base = self._serve()
-        server.shutdown()
-        server.server_close()
-        lm = LanguageModel(model="vllm/Qwen/Qwen3-8B", api_base=f"{base}/v1", retry=1)
-
-        with warnings.catch_warnings(record=True) as caught:
-            warnings.simplefilter("always")
-            self.assertFalse(await lm.supports_reasoning())
-        self.assertTrue(any("thinking` stays" in str(w.message) for w in caught))
-
     async def test_missing_trace_leaves_thinking_empty(self):
-        server, base = self._serve(
-            model_info={"reasoning_parser": "qwen3"}, reasoning=False
+        _, base = self._serve(reasoning=False)
+        lm = LanguageModel(
+            model="sglang/Qwen/Qwen3-8B", api_base=f"{base}/v1", supports_reasoning=True
         )
-        lm = LanguageModel(model="sglang/Qwen/Qwen3-8B", api_base=f"{base}/v1")
 
         result = await self._ask(lm)
 
         self.assertEqual(result, {"thinking": "", "answer": "Paris"})
 
-    async def test_openrouter_model_list_decides(self):
-        server, base = self._serve(
-            reasoning=True,
-            models=[
-                {
-                    "id": "qwen/qwen3.8-27b",
-                    "supported_parameters": ["reasoning", "response_format"],
-                },
-                {"id": "openai/gpt-4o-mini", "supported_parameters": ["tools"]},
-            ],
+    async def test_openrouter_flagged_reasoner_fills_thinking_from_the_trace(self):
+        server, base = self._serve(reasoning=True)
+        lm = LanguageModel(
+            model="openrouter/qwen/qwen3.8-27b",
+            api_base=f"{base}/api/v1",
+            supports_reasoning=True,
         )
-        api_base = f"{base}/api/v1"
-        thinking = LanguageModel(model="openrouter/qwen/qwen3.8-27b", api_base=api_base)
-        plain = LanguageModel(model="openrouter/openai/gpt-4o-mini", api_base=api_base)
-        retired = LanguageModel(model="openrouter/qwen/qwen3-8b", api_base=api_base)
-
-        self.assertTrue(await thinking.supports_reasoning())
-        self.assertFalse(await plain.supports_reasoning())
-        self.assertFalse(await retired.supports_reasoning())
-        self.assertEqual(server.probes, [])
-
-    async def test_openrouter_reasoning_model_fills_thinking_from_the_trace(self):
-        server, base = self._serve(
-            reasoning=True,
-            models=[{"id": "qwen/qwen3.8-27b", "supported_parameters": ["reasoning"]}],
-        )
-        lm = LanguageModel(model="openrouter/qwen/qwen3.8-27b", api_base=f"{base}/api/v1")
 
         result = await self._ask(lm)
-        await self._ask(lm)
 
-        self.assertEqual(server.paths.count("/api/v1/models"), 1)
+        self.assertNotIn("/api/v1/models", server.paths)
         sent = server.requests[0]
-        self.assertNotIn(
-            "thinking", sent["response_format"]["json_schema"]["schema"]["properties"]
-        )
+        self.assertNotIn("thinking", self._schema_fields(sent))
         self.assertNotIn("chat_template_kwargs", sent)
         self.assertEqual(result, {"thinking": "native trace", "answer": "Paris"})
 
     async def test_openrouter_disable_turns_reasoning_off_for_a_reasoner(self):
-        server, base = self._serve(
-            models=[
-                {"id": "qwen/qwen3.8-27b", "supported_parameters": ["reasoning"]},
-                {"id": "openai/gpt-4o-mini", "supported_parameters": ["tools"]},
-            ],
-        )
+        server, base = self._serve()
         api_base = f"{base}/api/v1"
-        thinking = LanguageModel(model="openrouter/qwen/qwen3.8-27b", api_base=api_base)
-        plain = LanguageModel(model="openrouter/openai/gpt-4o-mini", api_base=api_base)
+        thinking = LanguageModel(
+            model="openrouter/qwen/qwen3.8-27b",
+            api_base=api_base,
+            supports_reasoning=True,
+        )
+        plain = LanguageModel(
+            model="openrouter/openai/gpt-4o-mini",
+            api_base=api_base,
+            supports_reasoning=False,
+        )
 
         await self._ask(thinking, effort="disable")
         await self._ask(plain, effort="disable")
@@ -1952,96 +1901,13 @@ class ProviderMetadataTest(testing.TestCase):
         self.assertNotIn("reasoning_effort", server.requests[0])
         self.assertNotIn("reasoning", server.requests[1])
 
-    async def test_openrouter_list_unreachable_keeps_thinking(self):
-        server, base = self._serve()
-        server.shutdown()
-        server.server_close()
-        lm = LanguageModel(model="openrouter/qwen/qwen3.8-27b", api_base=f"{base}/api/v1")
+    async def test_ollama_is_never_asked_its_capabilities(self):
+        server, base = self._serve(capabilities=["completion", "thinking", "vision"])
+        lm = LanguageModel(model="ollama/qwen3:8b", api_base=base)
 
-        with warnings.catch_warnings(record=True) as caught:
-            warnings.simplefilter("always")
-            self.assertFalse(await lm.supports_reasoning())
-        self.assertTrue(
-            any("capabilities are taken as absent" in str(w.message) for w in caught)
-        )
-
-    async def test_ollama_capabilities_decide_vision_and_audio(self):
-        server, base = self._serve(capabilities=["completion", "vision"])
-        lm = LanguageModel(model="ollama/gemma3", api_base=base)
-
-        self.assertTrue(await lm.supports_vision())
-        self.assertFalse(await lm.supports_audio())
         self.assertFalse(await lm.supports_reasoning())
-        self.assertEqual(server.paths.count("/api/show"), 1)
-
-    async def test_openrouter_input_modalities_decide_vision_and_audio(self):
-        server, base = self._serve(
-            models=[
-                {
-                    "id": "google/gemini-2.5-flash",
-                    "architecture": {"input_modalities": ["text", "image", "audio"]},
-                },
-                {
-                    "id": "openai/gpt-audio",
-                    "architecture": {"input_modalities": ["text", "audio"]},
-                },
-            ],
-        )
-        api_base = f"{base}/api/v1"
-        gemini = LanguageModel(
-            model="openrouter/google/gemini-2.5-flash", api_base=api_base
-        )
-        audio = LanguageModel(model="openrouter/openai/gpt-audio", api_base=api_base)
-
-        self.assertTrue(await gemini.supports_vision())
-        self.assertTrue(await gemini.supports_audio())
-        self.assertFalse(await audio.supports_vision())
-        self.assertTrue(await audio.supports_audio())
-        self.assertEqual(server.paths.count("/api/v1/models"), 2)
-
-    async def test_sglang_model_info_decides_vision_and_audio(self):
-        _, base = self._serve(
-            model_info={
-                "reasoning_parser": None,
-                "has_image_understanding": True,
-                "has_audio_understanding": False,
-            }
-        )
-        lm = LanguageModel(
-            model="sglang/Qwen/Qwen2.5-VL-7B-Instruct", api_base=f"{base}/v1"
-        )
-
-        self.assertTrue(await lm.supports_vision())
-        self.assertFalse(await lm.supports_audio())
-
-    async def test_vllm_reports_no_modality_so_litellm_decides(self):
-        _, base = self._serve()
-        lm = LanguageModel(
-            model="vllm/Qwen/Qwen2.5-VL-7B-Instruct", api_base=f"{base}/v1"
-        )
-
         self.assertFalse(await lm.supports_vision())
-        litellm.register_model(
-            {"hosted_vllm/Qwen/Qwen2.5-VL-7B-Instruct": {"supports_vision": True}}
-        )
-        self.addCleanup(
-            litellm.model_cost.pop, "hosted_vllm/Qwen/Qwen2.5-VL-7B-Instruct", None
-        )
-        self.assertTrue(await lm.supports_vision())
-
-    async def test_unreachable_endpoint_counts_as_no_media(self):
-        server, base = self._serve()
-        server.shutdown()
-        server.server_close()
-        lm = LanguageModel(model="openrouter/google/gemini-2.5-flash", api_base=base)
-
-        with warnings.catch_warnings(record=True) as caught:
-            warnings.simplefilter("always")
-            self.assertFalse(await lm.supports_vision())
-            self.assertFalse(await lm.supports_audio())
-        self.assertEqual(
-            sum("capabilities are taken as absent" in str(w.message) for w in caught), 1
-        )
+        self.assertEqual(server.paths, [])
 
 
 class ProviderPrefixRewriteTest(testing.TestCase):
