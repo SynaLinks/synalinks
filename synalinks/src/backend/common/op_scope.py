@@ -119,26 +119,40 @@ class op_scope:
     def __init__(self, phase, clock=None):
         self.phase = phase
         self.clock = clock
-        self._scope_token = None
-        self._frame_token = None
+        self._previous_scope = None
+        self._previous_frame = None
         self._suspended = None
 
     def __enter__(self):
         clock = self.clock or default_phase_clock()
         self.clock = clock
         parent = _OP_FRAME.get()
-        # Suspend the enclosing phase only when it runs on the same clock;
-        # another program's phase keeps running on its own clock.
-        self._suspended = parent[0] if parent and parent[1] is clock else None
+        # Suspend the enclosing phase only when it runs on the same clock
+        # (another program's phase keeps running on its own clock), and only
+        # while that clock has it running: a frame the context still holds
+        # once its region is over would otherwise take the phase's count below
+        # zero, and the clock would stop accruing it.
+        self._suspended = (
+            parent[0]
+            if parent and parent[1] is clock and clock._active.get(parent[0], 0) > 0
+            else None
+        )
         clock._switch(self._suspended, self.phase)
-        self._frame_token = _OP_FRAME.set((self.phase, clock))
-        self._scope_token = _OP_SCOPE.set(self.phase)
+        self._previous_frame = parent
+        self._previous_scope = _OP_SCOPE.get()
+        _OP_FRAME.set((self.phase, clock))
+        _OP_SCOPE.set(self.phase)
         return self
 
     def __exit__(self, *exc_info):
         self.clock._switch(self.phase, self._suspended)
-        _OP_SCOPE.reset(self._scope_token)
-        _OP_FRAME.reset(self._frame_token)
+        # Restored with `set`, not `reset(token)`: a reset leaves the variable
+        # unset, and a nested run (`async_utils.run_maybe_nested`) copies back
+        # into its caller only the variables its context holds, so the caller
+        # would keep the scope the region set. Set, the value it goes back to
+        # is copied back too.
+        _OP_SCOPE.set(self._previous_scope)
+        _OP_FRAME.set(self._previous_frame)
         return False
 
 
