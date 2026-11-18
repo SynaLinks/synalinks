@@ -78,7 +78,8 @@ All objects are JSON-serializable via `synalinks.saving`. Custom objects need `@
 - Use `uvx ruff` for linting with config in `pyproject.toml`
 - Use `black` for formatting with 90 char line length
 - Tests are colocated with source files using `*_test.py` suffix
-- All module `call()` methods are async
+- All module `call()` and `build()`methods are async
+- OOP for modules, utilitary functions in `utils` folder
 
 ## API Structure
 
