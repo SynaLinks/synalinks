@@ -1673,6 +1673,11 @@ class RecursiveLanguageModelAgent(FunctionCallingAgent):
         # only the tool's signature/docstring shape the prompt.
         spec_tool = self._build_run_python_code_tool(None)
         _ = await self.tool_calls_generator(generator_inputs, tools=[spec_tool])
+        # The final generator is built in every mode, whether or not the
+        # output spec below is derived from it: interactive mode calls it at
+        # runtime on submit, and its variables must exist for saving,
+        # loading and training regardless.
+        final_result = await self.final_generator(inputs)
         if not self.autonomous:
             # Interactive mode: the common case is returning the trajectory.
             # When the LM emits empty code the runtime returns the final
@@ -1684,7 +1689,6 @@ class RecursiveLanguageModelAgent(FunctionCallingAgent):
         if not self.schema:
             # Schemaless autonomous: final generator produces a ChatMessage
             # appended to the trajectory; output spec is ChatMessages.
-            _ = await self.final_generator(inputs)
             return SymbolicDataModel(
                 schema=ChatMessages.get_schema(),
                 name=self.name,
@@ -1701,7 +1705,7 @@ class RecursiveLanguageModelAgent(FunctionCallingAgent):
                 ),
                 name=self.name,
             )
-        return await self.final_generator(inputs)
+        return final_result
 
     def get_config(self):
         config = super().get_config()

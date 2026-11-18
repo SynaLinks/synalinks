@@ -1183,6 +1183,38 @@ class FunctionCallingAgentTest(testing.TestCase):
         self.assertLessEqual(max(per_call_counts), 1)
 
 
+class FinalGeneratorAlwaysBuiltTest(testing.TestCase):
+    """The final generator is built in every mode, not only when the output
+    spec is derived from it: its variables must exist to save, load and train."""
+
+    async def test_final_generator_built_in_every_mode(self):
+        class Query(DataModel):
+            query: str = Field(description="The user query")
+
+        class Answer(DataModel):
+            answer: str = Field(description="The answer")
+
+        language_model = LanguageModel(model="ollama/mistral")
+        for autonomous in (True, False):
+            for data_model in (Answer, None):
+                for return_inputs_with_trajectory in (False, True):
+                    with self.subTest(
+                        autonomous=autonomous,
+                        schema=data_model is not None,
+                        return_inputs_with_trajectory=return_inputs_with_trajectory,
+                    ):
+                        inputs = Input(data_model=Query if autonomous else ChatMessages)
+                        agent = FunctionCallingAgent(
+                            data_model=data_model,
+                            language_model=language_model,
+                            tools=[Tool(calculate)],
+                            autonomous=autonomous,
+                            return_inputs_with_trajectory=return_inputs_with_trajectory,
+                        )
+                        _ = await agent(inputs)
+                        self.assertTrue(agent.final_generator.built)
+
+
 class SkillsToolWiringTest(testing.TestCase):
     """The built-in `read_skill` tool added when Agent Skills are configured."""
 
