@@ -149,7 +149,8 @@ class TestTrainer(testing.TestCase):
 
     @patch("litellm.acompletion")
     async def test_fit_and_evaluate_a_source_of_unknown_length(self, mock_completion):
-        """A source whose `__len__` raises, as a streaming dataset's does, is read to its end."""
+        """A source whose `__len__` raises, as a streaming dataset's does, is read to
+        its end."""
         mock_completion.return_value = {
             "choices": [
                 {

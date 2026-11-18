@@ -150,8 +150,8 @@ class Dataset:
         self.limit = limit
         self.repeat = repeat
 
-        # Sandboxed: a row template is a user's text, and a plain environment lets one reach
-        # Python (`cycler.__init__.__globals__.os`) and run a command.
+        # Sandboxed: a row template is a user's text, and a plain environment lets
+        # one reach Python (`cycler.__init__.__globals__.os`) and run a command.
         env = jinja2.sandbox.SandboxedEnvironment(undefined=jinja2.StrictUndefined)
         self._input_tmpl = env.from_string(input_template)
         self._output_tmpl = (
