@@ -101,6 +101,21 @@ def json_schema_type(py_type: typing.Any) -> JsonSchema:
     raise ValueError(f"Cannot convert {py_type} to a JSON schema type")
 
 
+def docstring_description(docstring: docstring_parser.Docstring) -> str:
+    """A docstring's whole description: its summary and the paragraphs after
+    it, without the Args/Returns sections.
+
+    `docstring_parser` cuts the summary at its first line break: a summary
+    wrapped over two lines keeps only its first line in `short_description`,
+    and the rest of the sentence starts `long_description`.
+    """
+    short = docstring.short_description or ""
+    long = docstring.long_description or ""
+    if not long:
+        return short
+    return short + ("\n\n" if docstring.blank_after_short_description else "\n") + long
+
+
 def get_param_schema(
     param_name: str,
     param: inspect.Parameter,
@@ -180,7 +195,7 @@ class Tool(SynalinksSaveable):
 
     @property
     def description(self) -> str:
-        return self._docstring.short_description or ""
+        return docstring_description(self._docstring)
 
     @property
     def name(self) -> str:
@@ -189,7 +204,7 @@ class Tool(SynalinksSaveable):
     def get_tool_schema(self):
         schema = {
             "additionalProperties": False,
-            "description": self._docstring.short_description,
+            "description": self.description,
             "properties": self._params_schema,
             "required": self._required_params,
             "title": self.name.title().replace("_", " "),
