@@ -17,6 +17,7 @@ from synalinks.src.backend.pydantic.media import Audio
 from synalinks.src.backend.pydantic.media import Image
 from synalinks.src.modules.module import Module
 from synalinks.src.saving import serialization_lib
+from synalinks.src.utils.tool_utils import docstring_description
 
 JsonSchema = typing.Union[
     typing.Dict[str, typing.Any],
@@ -186,7 +187,8 @@ class Tool(Module):
         func (Callable): The async function to wrap as a tool.
         name (str): Optional. The name of the module. Defaults to the function name.
         description (str): Optional. The description of the module.
-            Defaults to the function's docstring short description.
+            Defaults to the function's docstring description (its summary
+            and the paragraphs before the Args section).
         trainable (bool): Whether the module's variables should be trainable.
             Defaults to False since tools typically don't have trainable state.
     """
@@ -219,9 +221,9 @@ class Tool(Module):
         if not name:
             name = self._func.__name__
 
-        # Use docstring short description if no description provided
+        # Use the docstring's description if no description provided
         if not description:
-            description = self._docstring.short_description or ""
+            description = docstring_description(self._docstring)
 
         if not description:
             logging.warning(
@@ -325,7 +327,7 @@ class Tool(Module):
         """
         return {
             "additionalProperties": False,
-            "description": self._docstring.short_description,
+            "description": docstring_description(self._docstring),
             "properties": self._params_schema,
             "required": self._required_params,
             "title": self.name.title().replace("_", " "),
@@ -404,7 +406,7 @@ class Tool(Module):
         """
         schema = {
             "additionalProperties": False,
-            "description": self._docstring.short_description,
+            "description": docstring_description(self._docstring),
             "properties": self._params_schema,
             "required": self._required_params,
             "title": self.name.title().replace("_", " "),
