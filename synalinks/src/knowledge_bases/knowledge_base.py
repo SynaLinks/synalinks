@@ -122,10 +122,12 @@ class KnowledgeBase(SynalinksSaveable):
             When both ``uri`` and ``graph_uri`` are omitted, defaults to
             ``{synalinks_home()}/{name or 'database'}.db``. Pass ``uri``
             alone to opt out of the graph-side default.
-        graph_uri (str): Graph store connection URI
-            (``"ladybug://path/to/graph.lb"`` or
-            ``"ladybug://:memory:"``). When both URIs are omitted,
-            defaults to ``{synalinks_home()}/{name or 'database'}.lb``.
+        graph_uri (str): Graph store connection URI: LadybugDB
+            (``"ladybug://path/to/graph.lb"`` or ``"ladybug://:memory:"``)
+            or Relate by Neo4j (``"relate://path/to/graph.relate"`` or
+            ``"relate://:memory:"``, with ``pip install 'synalinks[relate]'``).
+            When both URIs are omitted, defaults to
+            ``{synalinks_home()}/{name or 'database'}.lb`` (LadybugDB).
             Pass ``graph_uri`` alone to opt out of the SQL-side default.
         data_models (list): Optional list of DataModel or SymbolicDataModel
             classes to create tables for in the SQL store.
@@ -196,10 +198,10 @@ class KnowledgeBase(SynalinksSaveable):
 
         if want_graph:
             # `encryption_key` is intentionally NOT forwarded here:
-            # LadybugDB has no encryption-at-rest support. A user that
-            # passes it for a dual-adapter KB gets DuckDB encryption
-            # for the SQL side and an unencrypted Ladybug graph store
-            # (which is the same as if they'd omitted the kwarg).
+            # neither LadybugDB nor Relate has encryption at rest. A user
+            # that passes it for a dual-adapter KB gets DuckDB encryption
+            # for the SQL side and an unencrypted graph store (which is
+            # the same as if they'd omitted the kwarg).
             self.graph_adapter = graph_database_adapters.get(graph_uri)(
                 uri=graph_uri,
                 entity_models=entity_models,
@@ -902,7 +904,8 @@ class KnowledgeBase(SynalinksSaveable):
         if not isinstance(self.graph_adapter, GraphDatabaseAdapter):
             raise NotImplementedError(
                 "Graph operations require a graph database adapter "
-                "(pass graph_uri='ladybug://...' at construction time)."
+                "(pass graph_uri='ladybug://...' or 'relate://...' at "
+                "construction time)."
             )
 
     async def update_entities(

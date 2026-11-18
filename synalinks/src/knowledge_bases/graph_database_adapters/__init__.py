@@ -4,6 +4,9 @@ from synalinks.src.knowledge_bases.graph_database_adapters.graph_database_adapte
 from synalinks.src.knowledge_bases.graph_database_adapters.ladybug_adapter import (
     LadybugAdapter,
 )
+from synalinks.src.knowledge_bases.graph_database_adapters.relate_adapter import (
+    RelateAdapter,
+)
 
 
 def get(uri):
@@ -17,4 +20,6 @@ def get(uri):
         return LadybugAdapter
     if uri.startswith("ladybug"):
         return LadybugAdapter
+    if uri.startswith("relate"):
+        return RelateAdapter
     raise ValueError(f"No graph database adapter registered for uri: {uri!r}")

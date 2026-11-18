@@ -77,6 +77,12 @@ synalinks = "synalinks.cli.main:cli"
 codex = [
     "openai-codex-cli-bin>=0.162.0",
 ]
+# Relate by Neo4j as the graph store: KnowledgeBase(graph_uri="relate://...").
+# Relate has no graph algorithms: PageRank and communities come from networkx.
+relate = [
+    "relate-db>=1.0.2",
+    "networkx>=3.0",
+]
 
 [build-system]
 requires = ["setuptools>=61"]
@@ -180,4 +186,7 @@ dev = [
     "zensical>=0.0.46",
     # Only to check the sandbox against E2B's own SDK (e2b_compatibility_test).
     "e2b-code-interpreter>=2.10.0",
+    # The optional Relate graph store, so its adapter tests always run.
+    "relate-db>=1.0.2",
+    "networkx>=3.0",
 ]
