@@ -862,6 +862,7 @@ async def run_in_microvm(vm: Dict[str, Any], program, ctx) -> Any:
     ``cpus`` and ``memory_mb``. ``program`` and ``ctx`` are what Mirage's
     ``LocalRuntime.interpret`` receives.
     """
+    from mirage.io.types import materialize
     from mirage.runtime.python.execution import prepare_source
     from mirage.runtime.python.flags import init_argv
     from mirage.runtime.types import RunResult
@@ -873,10 +874,12 @@ async def run_in_microvm(vm: Dict[str, Any], program, ctx) -> Any:
     bridge = None
     try:
         stdin_path = None
-        if program.stdin:
+        # Mirage hands stdin as a stream (`SharedInput`), not bytes.
+        stdin = await materialize(program.stdin)
+        if stdin:
             stdin_path = os.path.join(jobdir, "stdin")
             with open(stdin_path, "wb") as fh:
-                fh.write(program.stdin)
+                fh.write(stdin)
         # Each live host-tool socket gets a vsock port; the guest entry proxies
         # a same-named guest socket onto it.
         sockets = sorted(glob.glob(os.path.join(hostdir, "rpc_*.sock")))
