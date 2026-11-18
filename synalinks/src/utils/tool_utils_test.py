@@ -63,7 +63,10 @@ class JsonSchemaTypeTest(testing.TestCase):
             return {"regex": regex}
 
         tool = Tool(search)
-        expected = "Find the predicates of a layer and read their\nfiles: how you discover what the layer knows."
+        expected = (
+            "Find the predicates of a layer and read their\n"
+            "files: how you discover what the layer knows."
+        )
         self.assertEqual(tool.description, expected)
         self.assertEqual(tool.get_tool_schema()["description"], expected)
 

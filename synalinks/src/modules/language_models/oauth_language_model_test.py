@@ -417,14 +417,15 @@ class OAuthLanguageModelTest(testing.TestCase):
         with self.assertRaisesRegex(ValueError, "Unsupported language model"):
             OAuthLanguageModel.provider_info("openai")
 
-    async def test_input_modalities_come_from_the_catalog(self):
-        with patch(_RUN, Recorder()):
-            sol = OAuthLanguageModel(model="codex/gpt-6.1-sol")
-            self.assertTrue(await sol.supports_vision())
-            self.assertFalse(await sol.supports_audio())
-            # No `input_modalities`, or no entry at all: text only.
-            for model in ("codex/gpt-5.5", "codex/default", "codex/unknown"):
-                self.assertFalse(await OAuthLanguageModel(model=model).supports_vision())
+    async def test_capabilities_default_to_true(self):
+        lm = OAuthLanguageModel(model="codex/gpt-6.1-sol")
+        self.assertTrue(await lm.supports_reasoning())
+        self.assertTrue(await lm.supports_vision())
+        self.assertTrue(await lm.supports_audio())
+        off = OAuthLanguageModel(model="codex/gpt-5.5", supports_audio=False)
+        self.assertFalse(await off.supports_audio())
+        restored = OAuthLanguageModel.from_config(off.get_config())
+        self.assertFalse(await restored.supports_audio())
 
     async def test_supported_models_are_those_of_the_model_picker(self):
         catalog = {

@@ -1067,11 +1067,24 @@ class OAuthLanguageModel(LanguageModel):
         name (str): The name of the language model (Optional).
         description (str): The description of the language model (Optional).
         hooks (list): The hooks of the language model (Optional).
+        supports_reasoning (bool): Optional. Whether the model takes a
+            reasoning effort (Default to True).
+        supports_vision (bool): Optional. Whether the model takes images
+            (Default to True).
+        supports_audio (bool): Optional. Whether the model takes audio
+            (Default to True).
         **default_kwargs (keyword arguments): The default parameters of
             every call (e.g. `reasoning_effort`).
     """
 
-    def __init__(self, model=None, **kwargs):
+    def __init__(
+        self,
+        model=None,
+        supports_reasoning=True,
+        supports_vision=True,
+        supports_audio=True,
+        **kwargs,
+    ):
         if model is None:
             raise ValueError("You need to set the `model` argument for any LanguageModel")
         provider, separator, cli_model = model.partition("/")
@@ -1081,7 +1094,13 @@ class OAuthLanguageModel(LanguageModel):
                 f"a provider among {list(OAUTH_PROVIDERS)} (e.g. 'codex/gpt-6.1-sol'). "
                 f"Received: model={model!r}"
             )
-        super().__init__(model=model, **kwargs)
+        super().__init__(
+            model=model,
+            supports_reasoning=supports_reasoning,
+            supports_vision=supports_vision,
+            supports_audio=supports_audio,
+            **kwargs,
+        )
         # The ignored parameters already reported, so that a parameter set on
         # every call (e.g. the `temperature` of a `Generator`) warns once.
         self._reported_ignored_params = set()
@@ -1584,44 +1603,6 @@ class OAuthLanguageModel(LanguageModel):
 
     # A `function_call_output` takes images, whatever the model.
     _tool_result_images = True
-
-    async def supports_reasoning(self):
-        """Whether the model takes a reasoning effort (always True).
-
-        The effort reaches the CLI as `model_reasoning_effort`.
-        """
-        return True
-
-    async def supports_vision(self):
-        """Whether the model accepts images in its input.
-
-        Read from the model's `input_modalities` in the CLI's catalog
-        (`codex debug models`). `codex/default` takes them when every model
-        of the catalog does; a model the catalog does not list does not.
-        """
-        return await self._takes("image")
-
-    async def supports_audio(self):
-        """Whether the model accepts audio in its input.
-
-        Read from the catalog like `supports_vision()`.
-        """
-        return await self._takes("audio")
-
-    async def _takes(self, modality):
-        """Whether the CLI's catalog lists `modality` among the model's inputs."""
-        if self._codex is None:
-            self._codex = _codex_executable()
-        try:
-            models = json.loads(await self._model_catalog() or "{}").get("models") or []
-        except ValueError:
-            return False
-        cli_model = self.model.split("/", 1)[1]
-        if cli_model != "default":
-            models = [model for model in models if model.get("slug") == cli_model]
-        return bool(models) and all(
-            modality in (model.get("input_modalities") or []) for model in models
-        )
 
     def _obj_type(self):
         return "OAuthLanguageModel"

@@ -3,7 +3,7 @@
 from synalinks.src.api_export import synalinks_export
 
 # Unique source of truth for the version number.
-__version__ = "0.10.029"
+__version__ = "0.10.030"
 
 
 @synalinks_export("synalinks.version")

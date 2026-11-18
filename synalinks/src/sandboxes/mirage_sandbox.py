@@ -1426,7 +1426,7 @@ class MirageSandbox(Sandbox):
             # the same ``MirageFS`` a host FUSE mount would run.
             from mirage.fuse.fs import MirageFS
 
-            self.vm["fs"] = MirageFS(ws.fs, root_prefix=DEFAULT_MOUNT)
+            self.vm["fs"] = MirageFS(ws.vfs, root_prefix=DEFAULT_MOUNT)
         if self.confine:
             # Each workspace has its own runtime instances, so every new one
             # (construction, reset, heal, fork) needs its ``python3`` wrapped.
