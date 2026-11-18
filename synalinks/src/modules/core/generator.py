@@ -60,9 +60,10 @@ XML_TAGS_REGEX = re.compile(
 )
 
 
-# A prompt template can come from a saved program or a user's config, so it is rendered in Jinja's
-# sandbox: a plain environment lets a template reach Python (`cycler.__init__.__globals__.os`) and
-# run a command. The sandbox refuses underscored attributes and unsafe callables.
+# A prompt template can come from a saved program or a user's config, so it is
+# rendered in Jinja's sandbox: a plain environment lets a template reach Python
+# (`cycler.__init__.__globals__.os`) and run a command. The sandbox refuses
+# underscored attributes and unsafe callables.
 _PROMPT_JINJA = jinja2.sandbox.SandboxedEnvironment()
 
 

@@ -176,8 +176,8 @@ class Text2SQL(Module):
             base's table titles.
         seed_instructions (list): Optional seed instructions for
             prompt optimization.
-        temperature (float): LM sampling temperature. Defaults to None (the model's own default applies).
-            for deterministic SQL generation.
+        temperature (float): LM sampling temperature, set low for deterministic
+            SQL generation. Defaults to None (the model's own default applies).
         max_tokens (int): Optional. Default None (model's own default). Caps the
             generation length.
         top_p (float): Optional. Default None (model's own default). Nucleus

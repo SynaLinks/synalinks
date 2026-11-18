@@ -347,7 +347,8 @@ class VectorRAGAgent(FunctionCallingAgent):
             tables and the configured ``search_type``.
         final_instructions (str): Instructions for the final-answer
             generator. Defaults to ``instructions``.
-        temperature (float): LM sampling temperature. Defaults to None (the model's own default applies).
+        temperature (float): LM sampling temperature. Defaults to None (the
+            model's own default applies).
         max_tokens (int): Optional. Maximum number of tokens to generate.
             Default None (the model's own default; caps generation length).
         top_p (float): Optional. Nucleus sampling probability. Default None
