@@ -1136,6 +1136,7 @@ class SupportedProvidersTest(testing.TestCase):
         self.assertEqual(providers, sorted(providers))
         for provider in (
             "anthropic",
+            "atlascloud",
             "azure",
             "bedrock",
             "cohere",
@@ -1170,6 +1171,46 @@ class SupportedProvidersTest(testing.TestCase):
         providers = LanguageModel.supported_providers()
         providers.append("nope")
         self.assertNotIn("nope", LanguageModel.supported_providers())
+
+    def test_atlascloud_is_a_provider_with_its_key_and_endpoint(self):
+        info = LanguageModel.provider_info("atlascloud")
+        self.assertEqual(
+            [(v["name"], v["required"], v["secret"]) for v in info["env"]],
+            [("ATLASCLOUD_API_KEY", True, True)],
+        )
+        self.assertEqual(info["default_api_base"], "https://api.atlascloud.ai/v1")
+        self.assertEqual(info["lists_models_from"], "server")
+
+    @patch("litellm.acompletion")
+    async def test_atlascloud_routes_to_openai_with_its_endpoint_and_key(
+        self, mock_completion
+    ):
+        class Answer(DataModel):
+            answer: str
+
+        with patch.dict(os.environ, {"ATLASCLOUD_API_KEY": "atlas-key"}):
+            lm = LanguageModel(model="atlascloud/deepseek-ai/deepseek-v4-flash")
+        mock_completion.return_value = {
+            "choices": [{"message": {"content": '{"answer": "B"}'}}]
+        }
+        result = await lm(_chat_messages(), schema=Answer.get_schema())
+        self.assertEqual(result.get_json(), {"answer": "B"})
+        called = mock_completion.call_args.kwargs
+        self.assertEqual(called["model"], "openai/deepseek-ai/deepseek-v4-flash")
+        self.assertEqual(called["api_base"], "https://api.atlascloud.ai/v1")
+        self.assertEqual(called["api_key"], "atlas-key")
+        self.assertEqual(called["response_format"]["type"], "json_schema")
+        self.assertTrue(called["response_format"]["json_schema"]["strict"])
+
+    def test_atlascloud_keeps_an_explicit_api_base_and_key(self):
+        with patch.dict(os.environ, {"ATLASCLOUD_API_KEY": "atlas-key"}):
+            lm = LanguageModel(
+                model="atlascloud/qwen/qwen3.5-397b-a17b",
+                api_base="http://10.0.0.2:8080/v1",
+                api_key="explicit",
+            )
+        self.assertEqual(lm.api_base, "http://10.0.0.2:8080/v1")
+        self.assertEqual(lm.default_kwargs["api_key"], "explicit")
 
     def test_nebius_is_a_provider_with_its_key_and_endpoint(self):
         info = LanguageModel.provider_info("nebius")

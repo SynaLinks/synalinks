@@ -3,8 +3,8 @@
 environment variables each one needs, the models it serves and their info.
 
 Hosted providers list their models from litellm's model table. Self-hosted
-ones (Ollama, vLLM, SGLang...) and open catalogs (OpenRouter, Doubleword) are asked
-for the models they actually serve.
+ones (Ollama, vLLM, SGLang...) and open catalogs (OpenRouter, Atlas Cloud,
+Doubleword) are asked for the models they actually serve.
 """
 
 import asyncio
@@ -42,6 +42,11 @@ def env_var(name, required=True, secret=True):
 # (`None` for the providers listed from litellm's model table).
 PROVIDERS = {
     "anthropic": {"env": [env_var("ANTHROPIC_API_KEY")]},
+    "atlascloud": {
+        "env": [env_var("ATLASCLOUD_API_KEY")],
+        "default_api_base": "https://api.atlascloud.ai/v1",
+        "server": OPENAI_COMPATIBLE,
+    },
     "azure": {
         "env": [
             env_var("AZURE_API_KEY"),
