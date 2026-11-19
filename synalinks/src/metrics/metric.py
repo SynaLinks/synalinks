@@ -71,6 +71,12 @@ class Metric(SynalinksSaveable):
             }
         )
 
+    async def close(self):
+        """Release what this metric holds. Idempotent.
+
+        Nothing, for most metrics; a judge's program, for one wrapping a judge.
+        """
+
     def reset_state(self):
         """Reset all of the metric state variables.
 

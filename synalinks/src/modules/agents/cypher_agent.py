@@ -442,7 +442,7 @@ class CypherAgent(FunctionCallingAgent):
             )
         # Domain attributes the `_get_builtin_tools` hook depends on must be set
         # before `super().__init__()` (which calls the hook).
-        self.knowledge_base = _get_kb(knowledge_base)
+        self.knowledge_base = self._own(_get_kb(knowledge_base), given=knowledge_base)
         # Fail fast if the KB has no graph adapter: the tools all
         # call graph methods, so a SQL-only KB would only error at
         # tool-invocation time inside the agent loop.

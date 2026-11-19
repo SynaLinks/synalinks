@@ -81,6 +81,12 @@ class Reward(SynalinksSaveable):
     async def call(self, y_true, y_pred):
         raise NotImplementedError
 
+    async def close(self):
+        """Release what this reward holds. Idempotent.
+
+        Nothing, for most rewards; its program, for a judge.
+        """
+
     def get_config(self):
         return {
             "name": self.name,

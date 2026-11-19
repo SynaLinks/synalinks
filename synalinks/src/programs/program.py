@@ -367,6 +367,19 @@ class Program(Trainer, Module):
             )
         raise ValueError("Provide either a module name or module index at `get_module`.")
 
+    async def close(self):
+        """Release what the program holds, its compiled reward and metrics' included.
+
+        A judge compiled in (an agent judge's sandbox, say) is closed with the
+        program, so a reward or metric shared between programs is closed with
+        the first: compile each program with its own. Idempotent; the program
+        must not be used afterwards. See `Module.close`.
+        """
+        await super().close()
+        for compiled in (self._compile_reward, self._compile_metrics):
+            if compiled is not None:
+                await compiled.close()
+
     def summary(
         self,
         line_length=None,

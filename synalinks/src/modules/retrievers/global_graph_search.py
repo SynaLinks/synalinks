@@ -78,7 +78,7 @@ class GlobalGraphSearch(Module):
             description=description,
             trainable=trainable,
         )
-        self.knowledge_base = _get_kb(knowledge_base)
+        self.knowledge_base = self._own(_get_kb(knowledge_base), given=knowledge_base)
         self.node_labels = node_labels
         self.rel_labels = rel_labels
 

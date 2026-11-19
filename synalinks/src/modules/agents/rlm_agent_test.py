@@ -13,7 +13,9 @@ from synalinks.src.modules.core.input_module import Input
 from synalinks.src.modules.core.tool import Tool
 from synalinks.src.modules.language_models import LanguageModel
 from synalinks.src.programs import Program
+from synalinks.src.sandboxes.mirage_sandbox import ForkSnapshot
 from synalinks.src.sandboxes.mirage_sandbox import MirageSandbox
+from synalinks.src.sandboxes.sandbox import Sandbox
 from synalinks.src.saving.object_registration import register_synalinks_serializable
 
 
@@ -782,6 +784,58 @@ class RLMFinalGeneratorAlwaysBuiltTest(testing.TestCase):
                         self.assertTrue(agent.final_generator.built)
 
 
+class RLMSandboxLifecycleTest(testing.TestCase):
+    """A sandbox built for one call is closed when the call ends; one handed in is not."""
+
+    async def _program(self, **kwargs):
+        inputs = Input(data_model=Query)
+        outputs = await RecursiveLanguageModelAgent(
+            data_model=Answer,
+            language_model=LanguageModel(model="ollama/mistral"),
+            max_iterations=1,
+            **kwargs,
+        )(inputs)
+        return Program(inputs=inputs, outputs=outputs)
+
+    @patch("litellm.acompletion")
+    async def test_a_sandbox_built_for_a_call_is_closed_when_it_ends(
+        self, mock_completion
+    ):
+        mock_completion.side_effect = lambda *a, **k: _exec_tool_call(
+            "submit(result={'answer': 'done'})"
+        )
+        program = await self._program()
+        live = set(Sandbox.live_sandboxes)
+        self.assertEqual((await program(Query(query="hi"))).get("answer"), "done")
+        self.assertEqual(set(Sandbox.live_sandboxes) - live, set())
+
+    @patch("litellm.acompletion")
+    async def test_a_sandbox_built_for_a_call_is_closed_when_the_call_fails(
+        self, mock_completion
+    ):
+        mock_completion.side_effect = RuntimeError("provider down")
+        program = await self._program()
+        live = set(Sandbox.live_sandboxes)
+        try:
+            await program(Query(query="hi"))
+        except Exception:  # noqa: BLE001 - however the call ends
+            pass
+        self.assertEqual(set(Sandbox.live_sandboxes) - live, set())
+
+    @patch("litellm.acompletion")
+    async def test_a_sandbox_handed_in_stays_open_for_its_owner(self, mock_completion):
+        mock_completion.side_effect = lambda *a, **k: _exec_tool_call(
+            "submit(result={'answer': 'done'})"
+        )
+        sandbox = MirageSandbox()
+        program = await self._program(sandbox=sandbox)
+        await program(Query(query="hi"))
+        await program.close()
+        self.assertFalse(getattr(sandbox, "killed", False))
+        self.assertIn(sandbox.identifier, Sandbox.live_sandboxes)
+        await sandbox.aclose()
+
+
 class RLMSubagentTest(testing.TestCase):
     """REPL-aware subagents: fork (REPL+files), parallel, parent-reviewed merge."""
 
@@ -926,6 +980,7 @@ class RLMSubagentTest(testing.TestCase):
         await sandbox.run_code("parentvar = 1")
         registry = {}
         tools = agent._build_subagent_tools(sandbox, registry, [0], {"adopted": False})
+        live = set(Sandbox.live_sandboxes)
 
         out = (await tools["spawn_subagents"](tasks=["do the thing"])).get_json()
         subs = out["subagents"]
@@ -935,6 +990,10 @@ class RLMSubagentTest(testing.TestCase):
         self.assertEqual(sub["result"], "computed subvar")
         # Parent REPL is untouched until merge: `subvar` is not defined there.
         self.assertIsNotNone((await sandbox.run_code("print(subvar)")).error)
-        # The fork carries the subagent's REPL var.
-        fork = registry["subagent_0"]
-        self.assertIn("7", "".join((await fork.run_code("print(subvar)")).logs.stdout))
+        # The fork is closed once the subagent is done; its branch, REPL var
+        # included, is kept as a snapshot that a merge adopts.
+        branch = registry["subagent_0"]
+        self.assertIsInstance(branch, ForkSnapshot)
+        self.assertEqual(set(Sandbox.live_sandboxes) - live, set())
+        sandbox.merge(branch, repl=True)
+        self.assertIn("7", "".join((await sandbox.run_code("print(subvar)")).logs.stdout))

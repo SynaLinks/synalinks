@@ -17,6 +17,7 @@ from synalinks.src.modules.language_models import LanguageModel
 from synalinks.src.rewards.deep_agent_as_judge import DeepAgentAsJudge
 from synalinks.src.rewards.deep_agent_as_judge import DeepAgentAsJudgeProgram
 from synalinks.src.sandboxes.mirage_sandbox import MirageSandbox
+from synalinks.src.sandboxes.sandbox import Sandbox
 from synalinks.src.saving.object_registration import register_synalinks_serializable
 
 
@@ -83,7 +84,7 @@ class DeepAgentAsJudgeTest(testing.TestCase):
                         "name": "run_bash",
                         "arguments": {
                             "command": (
-                                "cat /inputs.json | python3 -c \"import json, sys; "
+                                'cat /inputs.json | python3 -c "import json, sys; '
                                 "exec(json.load(sys.stdin)['code'])\""
                             )
                         },
@@ -137,10 +138,10 @@ class DeepAgentAsJudgeTest(testing.TestCase):
                         "name": "run_bash",
                         "arguments": {
                             "command": (
-                                "cat /inputs.json | python3 -c \"import json, sys; "
+                                'cat /inputs.json | python3 -c "import json, sys; '
                                 "print(json.load(sys.stdin)['code'])\" > /solution.py"
                                 " && cat /solution.py /test_solution.py | python3 -c "
-                                "\"import sys; exec(sys.stdin.read())\""
+                                '"import sys; exec(sys.stdin.read())"'
                             )
                         },
                     }
@@ -369,3 +370,30 @@ class DeepAgentAsJudgeTest(testing.TestCase):
         self.assertIs(restored.program.score_type, Rating10)
         self.assertIs(rewards.ALL_OBJECTS_DICT["deepagentasjudge"], DeepAgentAsJudge)
         self.assertIs(rewards.ALL_OBJECTS_DICT["deep_agent_as_judge"], DeepAgentAsJudge)
+
+
+class DeepAgentAsJudgeCloseTest(testing.TestCase):
+    async def test_closing_a_program_closes_the_judge_it_was_compiled_with(self):
+        from synalinks.src.modules.core.generator import Generator
+        from synalinks.src.modules.core.input_module import Input
+        from synalinks.src.programs import Program
+
+        class Q(DataModel):
+            question: str
+
+        class A(DataModel):
+            answer: str
+
+        lm = LanguageModel(model="ollama/mistral")
+        judge = DeepAgentAsJudge(language_model=lm)
+        sandbox = judge.program.agent.sandbox
+        inputs = Input(data_model=Q)
+        program = Program(
+            inputs=inputs,
+            outputs=await Generator(data_model=A, language_model=lm)(inputs),
+        )
+        program.compile(reward=judge)
+        self.assertIn(sandbox.identifier, Sandbox.live_sandboxes)
+        await program.close()
+        self.assertTrue(sandbox.killed)
+        self.assertNotIn(sandbox.identifier, Sandbox.live_sandboxes)

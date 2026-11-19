@@ -16,6 +16,9 @@ from synalinks.src.modules.core.input_module import Input
 from synalinks.src.modules.core.tool import Tool
 from synalinks.src.modules.language_models import LanguageModel
 from synalinks.src.programs import Program
+from synalinks.src.sandboxes.mirage_sandbox import ForkSnapshot
+from synalinks.src.sandboxes.mirage_sandbox import MirageSandbox
+from synalinks.src.sandboxes.sandbox import Sandbox
 
 
 async def stamp_now(label: str):
@@ -466,3 +469,40 @@ class DeepAgentSubagentTest(testing.TestCase):
         self.assertEqual(
             (await agent.sandbox.read_file("/sub.txt"))["content"], "from sub"
         )
+
+
+class DeepAgentSandboxLifecycleTest(testing.TestCase):
+    """The agent closes the sandbox it built, never one it was handed.
+
+    A subagent's fork is closed as soon as the subagent is done.
+    """
+
+    def _lm(self):
+        return LanguageModel(model="ollama/mistral")
+
+    async def test_close_releases_the_sandbox_it_built(self):
+        agent = DeepAgent(language_model=self._lm(), name="own")
+        self.assertIn(agent.sandbox.identifier, Sandbox.live_sandboxes)
+        await agent.close()
+        self.assertTrue(agent.sandbox.killed)
+        self.assertNotIn(agent.sandbox.identifier, Sandbox.live_sandboxes)
+
+    async def test_close_leaves_a_sandbox_it_was_handed(self):
+        sandbox = MirageSandbox()
+        agent = DeepAgent(language_model=self._lm(), sandbox=sandbox, name="given")
+        await agent.close()
+        self.assertFalse(getattr(sandbox, "killed", False))
+        await sandbox.aclose()
+
+    @patch("litellm.acompletion")
+    async def test_a_subagents_fork_is_closed_when_it_finishes(self, mock_completion):
+        mock_completion.side_effect = lambda *a, **k: _lm_response(content="done")
+        agent = DeepAgent(language_model=self._lm(), max_subagent_depth=1, name="fk")
+        live = set(Sandbox.live_sandboxes)
+        await agent.spawn_subagents(["a", "b", "c"])
+        # No fork outlives its subagent; each branch is kept as a snapshot.
+        self.assertEqual(set(Sandbox.live_sandboxes) - live, set())
+        self.assertTrue(
+            all(isinstance(b, ForkSnapshot) for b in agent._subagents.values())
+        )
+        await agent.close()

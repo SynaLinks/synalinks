@@ -185,6 +185,68 @@ class EvaluateOnlyTest(testing.TestCase):
         self.assertIs(program.got[1], y)
 
 
+class TrialProgramClosedTest(testing.TestCase):
+    """The program a trial built is closed when the trial ends, however it ends."""
+
+    class _Program:
+        optimizer = None
+
+        def __init__(self, fails=False):
+            self.fails = fails
+            self.closed = 0
+
+        async def evaluate(self, x=None, y=None, **kwargs):
+            if self.fails:
+                raise RuntimeError("the provider is down")
+            return {"reward": 1.0}
+
+        async def close(self):
+            self.closed += 1
+
+    def _tuner(self, program):
+        return types.SimpleNamespace(
+            hypermodel=types.SimpleNamespace(build=lambda hp: program),
+            oracle=types.SimpleNamespace(
+                objective=types.SimpleNamespace(name="reward", direction="max")
+            ),
+        )
+
+    def _trial(self):
+        return types.SimpleNamespace(hyperparameters=None)
+
+    def test_a_trial_closes_its_program(self):
+        program = self._Program()
+        asyncio.run(
+            keras_tuner_utils._run_trial_async(self._tuner(program), self._trial(), x=[1])
+        )
+        self.assertEqual(program.closed, 1)
+
+    def test_a_failed_trial_closes_its_program_and_keeps_its_error(self):
+        program = self._Program(fails=True)
+        with self.assertRaisesRegex(RuntimeError, "provider is down"):
+            asyncio.run(
+                keras_tuner_utils._run_trial_async(
+                    self._tuner(program), self._trial(), x=[1]
+                )
+            )
+        self.assertEqual(program.closed, 1)
+
+    def test_a_program_with_nothing_to_close_is_left_alone(self):
+        class Bare:
+            """Any object a hypermodel returns, with no `close`."""
+
+            optimizer = None
+
+            async def evaluate(self, x=None, y=None, **kwargs):
+                return {"reward": 1.0}
+
+        program = Bare()
+        result = asyncio.run(
+            keras_tuner_utils._run_trial_async(self._tuner(program), self._trial(), x=[1])
+        )
+        self.assertEqual(result["reward"], 1.0)
+
+
 class ResolveErrorTest(testing.TestCase):
     """When `keras_tuner` can't be imported, the message should tell the
     user exactly what to fix (call `disable_keras_backend()` or install

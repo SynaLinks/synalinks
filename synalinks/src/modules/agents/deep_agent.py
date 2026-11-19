@@ -19,6 +19,7 @@ from synalinks.src.modules.agents.utils.agents_utils import summarize_inputs
 from synalinks.src.modules.agents.utils.agents_utils import unique_inputs_path
 from synalinks.src.modules.core.tool import Tool
 from synalinks.src.modules.language_models import get as _get_lm
+from synalinks.src.modules.module import release_resource
 from synalinks.src.sandboxes.mirage_sandbox import MirageSandbox
 from synalinks.src.saving import serialization_lib
 
@@ -349,10 +350,11 @@ class DeepAgent(FunctionCallingAgent):
         # (or this agent, when spawning a subagent) may supply a ready-made
         # sandbox, e.g. a `fork()` of a parent's filesystem. Built before
         # `super().__init__()` because `_get_builtin_tools` binds its file tools.
+        # One it builds is its own, released by `close`; one supplied stays the caller's.
         self.sandbox = (
             sandbox
             if sandbox is not None
-            else MirageSandbox(workdir=self.workdir, timeout=self.timeout)
+            else self._own(MirageSandbox(workdir=self.workdir, timeout=self.timeout))
         )
         # Subagent branches (forks) awaiting the parent's review, keyed by
         # handle; reset per `call()`, populated by `spawn_subagents`.
@@ -516,6 +518,15 @@ class DeepAgent(FunctionCallingAgent):
             )
             if isinstance(fork, Exception):  # E2B's fork returns failures
                 raise fork
+            # The fork is closed the moment the subagent is done, however it
+            # ended; its branch is kept as a snapshot, which `merge_subagent`
+            # applies as it would the fork.
+            try:
+                return await run_subagent(index, prompt, fork)
+            finally:
+                await release_resource(fork)
+
+        async def run_subagent(index: int, prompt: str, fork):
             subagent = DeepAgent(
                 sandbox=fork,
                 language_model=self.sub_language_model,
@@ -548,7 +559,8 @@ class DeepAgent(FunctionCallingAgent):
                 messages=[ChatMessage(role=ChatRole.USER, content=prompt)]
             )
             output = await program(messages)
-            return fork, _final_answer_text(output)
+            snapshot = await fork.snapshot() if hasattr(fork, "snapshot") else fork
+            return snapshot, _final_answer_text(output)
 
         results = await asyncio.gather(
             *(run_one(i, p) for i, p in enumerate(prompts)),
@@ -568,15 +580,15 @@ class DeepAgent(FunctionCallingAgent):
                     }
                 )
                 continue
-            fork, answer = result
-            self._subagents[handle] = fork
+            branch, answer = result
+            self._subagents[handle] = branch
             report.append(
                 {
                     "handle": handle,
                     "task": prompt,
                     "result": answer,
-                    "diff": fork.diff(),
-                    "patch": fork.patch(),
+                    "diff": branch.diff(),
+                    "patch": branch.patch(),
                 }
             )
         return {"subagents": report}
@@ -604,10 +616,10 @@ class DeepAgent(FunctionCallingAgent):
             dict: ``{written, deleted, conflicts, skipped}`` virtual paths, or
             ``error`` for an unknown handle.
         """
-        fork = self._subagents.get(handle)
-        if fork is None:
+        branch = self._subagents.get(handle)
+        if branch is None:
             return {"error": f"unknown subagent handle: {handle!r}"}
-        return self.sandbox.merge(fork, paths=paths, force=force)
+        return self.sandbox.merge(branch, paths=paths, force=force)
 
     async def discard_subagent(self, handle: str) -> dict:
         """Drop a subagent's branch without applying any of its changes.

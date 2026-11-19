@@ -2,6 +2,7 @@
 # Original authors: François Chollet et al. (Keras Team)
 # License Apache 2.0: (c) 2025-2026 Yoan Sallami (Synalinks Team)
 
+import inspect
 from typing import Optional
 
 from synalinks.src import ops
@@ -341,6 +342,12 @@ class MeanMetricWrapper(Mean):
             )
         values = await self._fn(y_true, y_pred, **self._fn_kwargs)
         return await super().update_state(values)
+
+    async def close(self):
+        """Close the reward this metric wraps (a judge's program). Idempotent."""
+        closer = getattr(self._fn, "close", None)
+        if closer is not None and inspect.iscoroutinefunction(closer):
+            await closer()
 
     def get_config(self):
         """Returns the serializable config of the metric."""

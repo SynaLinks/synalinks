@@ -173,7 +173,7 @@ class RegexSearch(Module):
             description=description,
             trainable=trainable,
         )
-        self.knowledge_base = _get_kb(knowledge_base)
+        self.knowledge_base = self._own(_get_kb(knowledge_base), given=knowledge_base)
         self.language_model = _get_lm(language_model)
 
         if schema is None and data_model is not None:
