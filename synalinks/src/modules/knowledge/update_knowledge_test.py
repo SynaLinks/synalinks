@@ -267,3 +267,31 @@ class GraphWrapperUpdateTest(testing.TestCase):
             "MATCH (a:Person)-[:Knows]->(b:Person) RETURN a.name AS a, b.name AS b"
         )
         self.assertEqual(len(edges), 1)
+
+
+class UpdateKnowledgeCloseTest(testing.TestCase):
+    """A knowledge base the module built is closed with it; one handed in is not."""
+
+    def setUp(self):
+        super().setUp()
+        self.temp_dir = tempfile.mkdtemp()
+        self.uri = "duckdb://" + os.path.join(self.temp_dir, "close.db")
+
+    def tearDown(self):
+        import shutil
+
+        shutil.rmtree(self.temp_dir, ignore_errors=True)
+        super().tearDown()
+
+    async def test_a_knowledge_base_built_from_a_uri_is_closed_with_the_module(self):
+        module = UpdateKnowledge(knowledge_base=self.uri)
+        self.assertIsNotNone(module.knowledge_base.sql_adapter._con)
+        await module.close()
+        self.assertIsNone(module.knowledge_base.sql_adapter._con)
+
+    async def test_a_knowledge_base_handed_in_stays_open(self):
+        knowledge_base = KnowledgeBase(uri=self.uri, data_models=[Document])
+        module = UpdateKnowledge(knowledge_base=knowledge_base)
+        await module.close()
+        self.assertIsNotNone(knowledge_base.sql_adapter._con)
+        knowledge_base.close()

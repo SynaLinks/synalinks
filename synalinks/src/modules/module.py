@@ -52,6 +52,25 @@ _CALL_CONTEXT = contextvars.ContextVar("synalinks_call_ctx", default=None)
 _CURRENT_CALL_ID = contextvars.ContextVar("synalinks_call_id", default=None)
 
 
+async def release_resource(resource):
+    """Release a sandbox, a knowledge base, anything with `aclose` or `close`.
+
+    Never raises.
+
+    Teardown runs in `finally` blocks and after errors: a resource that fails
+    to close is warned about, not allowed to replace the error being handled.
+    """
+    try:
+        closer = getattr(resource, "aclose", None) or getattr(resource, "close", None)
+        if closer is None:
+            return
+        result = closer()
+        if inspect.isawaitable(result):
+            await result
+    except Exception as e:  # noqa: BLE001
+        warnings.warn(f"Could not close {resource!r}: {e}")
+
+
 @synalinks_export(["synalinks.Module", "synalinks.modules.Module"])
 class Module(BackendModule, Operation, SynalinksSaveable):
     """This is the class from which all modules inherit.
@@ -787,6 +806,50 @@ class Module(BackendModule, Operation, SynalinksSaveable):
                     + elapsed_s,
                 )
         _CALL_CONTEXT.reset(token)
+
+    async def close(self):
+        """Release what this module and its submodules opened. Idempotent.
+
+        A module holds resources only where it created them: a sandbox an
+        agent built for itself, a knowledge base built from a URI or a config
+        rather than handed in as an instance. Those are released here; a
+        sandbox or knowledge base the caller passed in is the caller's, and
+        stays open. Submodules and tracked metrics are closed too, so closing
+        a `Program` releases everything in it.
+
+        Await it when done with a module, rather than waiting for the garbage
+        collector: a sandbox is a mount and a host directory, a knowledge base
+        a database connection. The module must not be used afterwards.
+
+        Subclasses that hold other resources override it and
+        `await super().close()`.
+
+        ```python
+        program = synalinks.Program(inputs=inputs, outputs=outputs)
+        try:
+            await program(x)
+        finally:
+            await program.close()
+        ```
+        """
+        for module in list(self._modules):
+            await module.close()
+        for metric in list(self._metrics):
+            await metric.close()
+        owned = self.__dict__.get("_owned_resources") or []
+        while owned:
+            await release_resource(owned.pop())
+
+    def _own(self, resource, given=None):
+        """Mark `resource` as one this module created, for `close` to release; returns it.
+
+        `given` is what the caller passed: when `resource` is that very
+        object, the caller created it and keeps it, so it is not owned.
+        """
+        if resource is not None and resource is not given:
+            # Not tracked: a resource is not a variable, module or metric.
+            self.__dict__.setdefault("_owned_resources", []).append(resource)
+        return resource
 
     def _flatten_modules(self, include_self=True, recursive=True):
         modules = []

@@ -71,7 +71,7 @@ class UpdateKnowledge(Module):
             description=description,
             trainable=trainable,
         )
-        self.knowledge_base = _get_kb(knowledge_base)
+        self.knowledge_base = self._own(_get_kb(knowledge_base), given=knowledge_base)
 
     async def _update_relations_with_endpoints(self, relations):
         """Upsert the relations' endpoint entities, then the relations.

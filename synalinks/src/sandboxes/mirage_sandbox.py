@@ -197,6 +197,51 @@ def release_mountpoint(path: Optional[str]) -> None:
         pass
 
 
+def fuse_loops(ws) -> list:
+    """The event loops serving a Mirage workspace's FUSE mounts, to stop on close.
+
+    Mirage (0.0.8) gives each mount a ``MirageFS`` that runs a loop of its own
+    on a daemon thread, forever: unmounting leaves the thread and the loop (an
+    epoll handle and a socket pair) behind, one per sandbox. They are reached
+    through Mirage's private state, so any change there yields none rather
+    than an error. Collect them before closing the workspace; the managers go
+    with it.
+    """
+    loops = []
+    try:
+        managers = list(ws._kernel_mounts._managers.values())
+    except Exception:  # noqa: BLE001 - Mirage's internals, not a contract
+        return loops
+    for manager in managers:
+        args = getattr(getattr(manager, "_thread", None), "_args", None) or ()
+        loop = getattr(args[1], "_loop", None) if len(args) > 1 else None
+        if isinstance(loop, asyncio.AbstractEventLoop):
+            loops.append(loop)
+    return loops
+
+
+def stop_loops(loops, timeout: float = 2.0) -> None:
+    """Stop and close loops running on threads of their own (`fuse_loops`).
+
+    Never raises.
+    """
+    for loop in loops:
+        try:
+            if not loop.is_closed():
+                loop.call_soon_threadsafe(loop.stop)
+        except Exception:  # noqa: BLE001 - already closed
+            pass
+    deadline = time.monotonic() + timeout
+    for loop in loops:
+        while loop.is_running() and time.monotonic() < deadline:
+            time.sleep(0.005)
+        try:
+            if not loop.is_running() and not loop.is_closed():
+                loop.close()
+        except Exception:  # noqa: BLE001 - teardown must not raise
+            pass
+
+
 def sync_close_workspace(ws) -> None:
     """Release a Mirage workspace's FUSE mount, from any context, never raising.
 
@@ -216,6 +261,7 @@ def sync_close_workspace(ws) -> None:
     """
     if ws is None:
         return
+    serving = fuse_loops(ws)
     try:
         loop = asyncio.get_running_loop()
     except RuntimeError:
@@ -240,6 +286,7 @@ def sync_close_workspace(ws) -> None:
         except Exception:  # noqa: BLE001 - teardown must not raise
             pass
     release_mountpoint(getattr(ws, "synalinks_mountpoint", None))
+    stop_loops(serving)
 
 
 def finalize_workspace(state: dict) -> None:
@@ -2262,8 +2309,10 @@ class MirageSandbox(Sandbox):
         self.discard_state()
         ws = getattr(self, "workspace", None)
         if ws is not None:
+            serving = fuse_loops(ws)
             await maybe_await(ws.close())
             release_mountpoint(getattr(ws, "synalinks_mountpoint", None))
+            stop_loops(serving)
         rmtree(getattr(self, "hostdir", None))
         self.disarm_finalizer()
 
@@ -2492,6 +2541,20 @@ class MirageSandbox(Sandbox):
             except Exception as exc:  # noqa: BLE001 - E2B reports per-child failures
                 children.append(exc)
         return children
+
+    async def snapshot(self) -> "ForkSnapshot":
+        """What `diff`, `patch` and `merge` read of this sandbox, kept after it is closed.
+
+        A forked child (a subagent's branch) is closed as soon as its work is
+        done; its snapshot is reviewed and merged in its place:
+        ``parent.merge(await child.snapshot(), ...)`` applies what
+        ``parent.merge(child, ...)`` would, REPL adoption included.
+        """
+        return ForkSnapshot(
+            fork_base=dict(self.fork_base or {}),
+            tree=await self.read_tree(),
+            state=self.read_state_bytes(),
+        )
 
     def diff(self) -> dict:
         """Filesystem changes this sandbox made relative to its branch base.
@@ -2959,3 +3022,28 @@ class MirageSandbox(Sandbox):
         if content is None:
             return {"error": f"file not found: {path}"}
         return await self.run_python_code(content)
+
+
+class ForkSnapshot:
+    """A closed fork's branch, as `MirageSandbox.snapshot` keeps it.
+
+    Its base, its files and its REPL state.
+
+    It answers what `diff`, `patch` and `merge` read of a sandbox, so a
+    subagent's sandbox can be closed the moment the subagent finishes and its
+    branch still be reviewed and merged.
+    """
+
+    def __init__(self, fork_base, tree, state=None):
+        self.fork_base = fork_base
+        self.tree = tree
+        self.state = state
+
+    async def read_tree(self) -> Dict[str, str]:
+        return dict(self.tree)
+
+    def read_state_bytes(self) -> Optional[bytes]:
+        return self.state
+
+    diff = MirageSandbox.diff
+    patch = MirageSandbox.patch

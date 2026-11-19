@@ -172,6 +172,10 @@ class ProgramAsJudge(Reward):
         )
         self.program = program
 
+    async def close(self):
+        """Close the judge's program: an agent judge's sandbox, say. Idempotent."""
+        await self.program.close()
+
     async def call(self, y_true, y_pred):
         result = await self.program([y_true, y_pred])
         if result is None:

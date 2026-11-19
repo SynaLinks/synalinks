@@ -348,3 +348,52 @@ class ModuleTest(testing.TestCase):
         parents = {name: names.get(parent) for name, _, parent in seen}
         self.assertEqual(parents["first"], "two_steps")
         self.assertEqual(parents["second"], "two_steps")
+
+
+class _Resource:
+    """A sandbox or a database connection, as far as `close` is concerned."""
+
+    def __init__(self, fails=False):
+        self.closed = 0
+        self.fails = fails
+
+    async def aclose(self):
+        self.closed += 1
+        if self.fails:
+            raise RuntimeError("cannot close")
+
+
+class _Holder(modules.Module):
+    """Holds a resource it was handed and one it built, and a child doing the same."""
+
+    def __init__(self, given=None, child=None, **kwargs):
+        super().__init__(**kwargs)
+        self.given = self._own(given, given=given)
+        self.made = self._own(_Resource())
+        self.child = child
+
+    async def call(self, inputs, training=False):
+        return inputs
+
+
+class ModuleCloseTest(testing.TestCase):
+    async def test_close_releases_what_the_module_built_not_what_it_was_given(self):
+        given = _Resource()
+        holder = _Holder(given=given)
+        await holder.close()
+        self.assertEqual((holder.made.closed, given.closed), (1, 0))
+
+    async def test_close_reaches_submodules_and_is_idempotent(self):
+        child = _Holder()
+        parent = _Holder(child=child)
+        await parent.close()
+        await parent.close()
+        # Released once, however many times the module is closed.
+        self.assertEqual((parent.made.closed, child.made.closed), (1, 1))
+
+    async def test_a_resource_that_fails_to_close_warns_and_the_rest_still_close(self):
+        holder = _Holder(child=_Holder())
+        holder._own(_Resource(fails=True))
+        with self.assertWarnsRegex(UserWarning, "cannot close"):
+            await holder.close()
+        self.assertEqual((holder.made.closed, holder.child.made.closed), (1, 1))

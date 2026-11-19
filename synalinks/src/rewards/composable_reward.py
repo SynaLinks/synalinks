@@ -117,13 +117,16 @@ class ComposableReward(Reward):
         )
         return await reward.call(y_true, y_pred)
 
+    async def close(self):
+        """Close each reward this one combines. Idempotent."""
+        for reward in self.rewards:
+            await reward.close()
+
     def get_config(self):
         config = super().get_config()
         config.update(
             {
-                "rewards": serialization_lib.serialize_synalinks_object(
-                    self.rewards
-                ),
+                "rewards": serialization_lib.serialize_synalinks_object(self.rewards),
                 "weights": self.weights,
             }
         )

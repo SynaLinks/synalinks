@@ -747,13 +747,18 @@ class FunctionCallingAgent(Module):
         # point -- including every tool-calling round below.
         with trajectory_scope():
             trajectory, ctx = await self._begin_call(inputs, training, **kwargs)
-            agent_messages = trajectory.get("messages")
+            try:
+                agent_messages = trajectory.get("messages")
 
-            if self.autonomous:
-                return await self._run_autonomous(
+                if self.autonomous:
+                    return await self._run_autonomous(
+                        trajectory, agent_messages, ctx, training
+                    )
+                return await self._run_interactive(
                     trajectory, agent_messages, ctx, training
                 )
-            return await self._run_interactive(trajectory, agent_messages, ctx, training)
+            finally:
+                await self._end_call(ctx)
 
     async def _begin_call(self, inputs, training, **kwargs):
         """Build the working trajectory and an opaque per-call context (hook).
@@ -772,6 +777,13 @@ class FunctionCallingAgent(Module):
                 inputs, ChatMessages(), name="trajectory_" + self.name
             )
         return trajectory, {}
+
+    async def _end_call(self, ctx):
+        """Release what `_begin_call` opened for this call, however it ended (hook).
+
+        The base agent opens nothing. Subclasses release their per-call
+        resources here (e.g. RLM closes a sandbox it built for the call).
+        """
 
     def _native_tools(self, ctx):
         """Tools advertised to the step generator each turn (hook)."""

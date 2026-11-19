@@ -369,15 +369,26 @@ async def _run_trial_async(tuner, trial, *fit_args, **fit_kwargs):
         under both its bare name (`reward`) and a `val_` prefix
         (`val_reward`) so objectives written for either fit-mode or
         evaluate-mode resolve.
+
+    The trial's program is closed when the trial ends, however it ends
+    (`Program.close`): the sandboxes and knowledge bases it opened, its
+    judges' included, do not outlive it. A hypermodel hands each trial a
+    program of its own; one it reuses across trials is closed after the first.
     """
     program = tuner.hypermodel.build(trial.hyperparameters)
     if inspect.isawaitable(program):
         program = await program
-    if program.optimizer is None:
-        result = await _evaluate_only(program, *fit_args, **fit_kwargs)
-    else:
-        history = await program.fit(*fit_args, **fit_kwargs)
-        result = _history_to_metrics_dict(history, tuner.oracle.objective)
+    try:
+        if program.optimizer is None:
+            result = await _evaluate_only(program, *fit_args, **fit_kwargs)
+        else:
+            history = await program.fit(*fit_args, **fit_kwargs)
+            result = _history_to_metrics_dict(history, tuner.oracle.objective)
+    finally:
+        # Never raises: a close that fails warns, and the trial keeps its outcome.
+        from synalinks.src.modules.module import release_resource
+
+        await release_resource(program)
     _attach_multi_objective_aggregate(result, tuner.oracle.objective)
     return result
 

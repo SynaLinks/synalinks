@@ -27,6 +27,7 @@ from synalinks.src.modules.agents.utils.agents_utils import summarize_inputs
 from synalinks.src.modules.agents.utils.agents_utils import tool_message_content
 from synalinks.src.modules.core.tool import Tool
 from synalinks.src.modules.language_models import get as _get_lm
+from synalinks.src.modules.module import release_resource
 from synalinks.src.sandboxes.mirage_sandbox import MirageSandbox
 from synalinks.src.sandboxes.sandbox import Sandbox
 from synalinks.src.sandboxes.sandbox import TimeoutException
@@ -1253,6 +1254,15 @@ class RecursiveLanguageModelAgent(FunctionCallingAgent):
                 (fork,) = await sandbox.fork(name=f"{self.name}_sub{index}", confine=None)
                 if isinstance(fork, Exception):
                     raise fork
+                # The fork is closed the moment the subagent is done, however
+                # it ended; its branch (files and REPL) is kept as a snapshot,
+                # which `merge_subagent` applies as it would the fork.
+                try:
+                    return await run_subagent(index, prompt, fork)
+                finally:
+                    await release_resource(fork)
+
+            async def run_subagent(index, prompt, fork):
                 subagent = RecursiveLanguageModelAgent(
                     language_model=self.sub_language_model,
                     sub_language_model=self.sub_language_model,
@@ -1285,7 +1295,8 @@ class RecursiveLanguageModelAgent(FunctionCallingAgent):
                     messages=[ChatMessage(role=ChatRole.USER, content=prompt)]
                 )
                 result = await program(messages)
-                return fork, _subagent_answer(result)
+                snapshot = await fork.snapshot() if hasattr(fork, "snapshot") else fork
+                return snapshot, _subagent_answer(result)
 
             results = await asyncio.gather(
                 *(run_one(i, p) for i, p in enumerate(prompts)),
@@ -1304,15 +1315,15 @@ class RecursiveLanguageModelAgent(FunctionCallingAgent):
                         }
                     )
                     continue
-                fork, answer = res
-                registry[handle] = fork
+                branch, answer = res
+                registry[handle] = branch
                 report.append(
                     {
                         "handle": handle,
                         "task": prompt,
                         "result": answer,
-                        "diff": fork.diff(),
-                        "patch": fork.patch(),
+                        "diff": branch.diff(),
+                        "patch": branch.patch(),
                     }
                 )
             return {"subagents": report}
@@ -1414,77 +1425,95 @@ class RecursiveLanguageModelAgent(FunctionCallingAgent):
         # caller (or the agent's owner) keep REPL state alive across calls; the
         # third is the stateless-per-call default. A freshly built sandbox is
         # seeded from `workdir` when one is set.
+        # A sandbox built here is this call's own: `_end_call` closes it.
+        owned = None
         if sandbox is None:
             if self.sandbox is not None:
                 sandbox = self.sandbox
             elif self.workdir is not None:
-                sandbox = self.sandbox_type(workdir=self.workdir, timeout=self.timeout)
+                sandbox = owned = self.sandbox_type(
+                    workdir=self.workdir, timeout=self.timeout
+                )
             else:
-                sandbox = self.sandbox_type(timeout=self.timeout)
+                sandbox = owned = self.sandbox_type(timeout=self.timeout)
 
-        if self._file_tools_enabled:
-            for name in _FILE_TOOL_NAMES:
-                if name not in call_tools and name not in self.native_tools:
-                    call_tools[name] = Tool(getattr(sandbox, name))
-
-        # The per-turn snippet is delivered as a native `run_python_code` tool
-        # call, the only tool the LM can call, wrapping the sandbox's own
-        # `run_python_code`. The sandbox-side tools (submit, llm_query, user
-        # tools) are NOT exposed to the LM; they live inside the sandbox as
-        # plain synchronous functions (advertised in the instructions). Bind
-        # them onto the sandbox so every `run_python_code` snippet can reach them.
-        external_functions = {
-            name: _adapt_tool_for_sandbox(t) for name, t in call_tools.items()
-        }
-        sandbox.bind_functions(external_functions)
-        # Persist the full input payload as `inputs` in the sandbox namespace.
-        # The per-run `inputs=` binding does not persist, so copy it into a real
-        # variable once; every snippet then reads it via `inputs[field]`. The
-        # name is also PINNED (``__rlm_pinned__``): the sandbox re-asserts it at
-        # the start of every run, so a snippet that assigns over ``inputs`` —
-        # LLM-written code does — breaks only itself, not the rest of the call.
         try:
-            bind = await sandbox.run_code(
-                "inputs = _rlm_inputs\n__rlm_pinned__ = {'inputs': _rlm_inputs}",
-                inputs={"_rlm_inputs": inputs_json},
-            )
-        except TimeoutException as exc:
-            raise RuntimeError(
-                f"failed to bind `inputs` into the sandbox: {exc}"
-            ) from exc
-        if bind.error:
-            raise RuntimeError(
-                "failed to bind `inputs` into the sandbox: "
-                f"{bind.error.name}: {bind.error.value}"
-            )
-        run_tool = self._build_run_python_code_tool(sandbox)
+            if self._file_tools_enabled:
+                for name in _FILE_TOOL_NAMES:
+                    if name not in call_tools and name not in self.native_tools:
+                        call_tools[name] = Tool(getattr(sandbox, name))
 
-        # Subagent tools (spawn / merge / discard) are *native* tools the LM
-        # calls directly alongside run_python_code, never from inside a
-        # snippet, so the REPL is idle when they fork/merge it. Built fresh per
-        # call with a private fork registry and a single-REPL-adoption guard.
-        subagent_registry = {}
-        extra_native_tools = {}
-        if self._subagents_enabled:
-            extra_native_tools = self._build_subagent_tools(
-                sandbox, subagent_registry, [0], {"adopted": False}
-            )
-        # User-supplied `native_tools` join them: same dispatch path, same
-        # provider schema, same `Unknown tool` message listing what is
-        # callable. They are deliberately absent from `call_tools`, so they
-        # are neither bound into the sandbox namespace nor advertised in the
-        # instructions as snippet-reachable.
-        extra_native_tools = {**extra_native_tools, **self.native_tools}
+            # The per-turn snippet is delivered as a native `run_python_code` tool
+            # call, the only tool the LM can call, wrapping the sandbox's own
+            # `run_python_code`. The sandbox-side tools (submit, llm_query, user
+            # tools) are NOT exposed to the LM; they live inside the sandbox as
+            # plain synchronous functions (advertised in the instructions). Bind
+            # them onto the sandbox so every `run_python_code` snippet can reach them.
+            external_functions = {
+                name: _adapt_tool_for_sandbox(t) for name, t in call_tools.items()
+            }
+            sandbox.bind_functions(external_functions)
+            # Persist the full input payload as `inputs` in the sandbox namespace.
+            # The per-run `inputs=` binding does not persist, so copy it into a real
+            # variable once; every snippet then reads it via `inputs[field]`. The
+            # name is also PINNED (``__rlm_pinned__``): the sandbox re-asserts it at
+            # the start of every run, so a snippet that assigns over ``inputs`` —
+            # LLM-written code does — breaks only itself, not the rest of the call.
+            try:
+                bind = await sandbox.run_code(
+                    "inputs = _rlm_inputs\n__rlm_pinned__ = {'inputs': _rlm_inputs}",
+                    inputs={"_rlm_inputs": inputs_json},
+                )
+            except TimeoutException as exc:
+                raise RuntimeError(
+                    f"failed to bind `inputs` into the sandbox: {exc}"
+                ) from exc
+            if bind.error:
+                raise RuntimeError(
+                    "failed to bind `inputs` into the sandbox: "
+                    f"{bind.error.name}: {bind.error.value}"
+                )
+            run_tool = self._build_run_python_code_tool(sandbox)
 
-        ctx = {
-            "sandbox": sandbox,
-            "run_tool": run_tool,
-            "extra_native_tools": extra_native_tools,
-            "submit_holder": submit_holder,
-            "native_tools": [run_tool, *extra_native_tools.values()],
-            "submitted_final": None,
-        }
+            # Subagent tools (spawn / merge / discard) are *native* tools the LM
+            # calls directly alongside run_python_code, never from inside a
+            # snippet, so the REPL is idle when they fork/merge it. Built fresh per
+            # call with a private fork registry and a single-REPL-adoption guard.
+            subagent_registry = {}
+            extra_native_tools = {}
+            if self._subagents_enabled:
+                extra_native_tools = self._build_subagent_tools(
+                    sandbox, subagent_registry, [0], {"adopted": False}
+                )
+            # User-supplied `native_tools` join them: same dispatch path, same
+            # provider schema, same `Unknown tool` message listing what is
+            # callable. They are deliberately absent from `call_tools`, so they
+            # are neither bound into the sandbox namespace nor advertised in the
+            # instructions as snippet-reachable.
+            extra_native_tools = {**extra_native_tools, **self.native_tools}
+
+            ctx = {
+                "sandbox": sandbox,
+                "run_tool": run_tool,
+                "extra_native_tools": extra_native_tools,
+                "submit_holder": submit_holder,
+                "native_tools": [run_tool, *extra_native_tools.values()],
+                "submitted_final": None,
+                "owned_sandbox": owned,
+            }
+        except BaseException:
+            if owned is not None:
+                await release_resource(owned)
+            raise
         return trajectory, ctx
+
+    async def _end_call(self, ctx):
+        # The sandbox built for this call (none when one was passed to the
+        # call or the constructor: that one is its owner's to close).
+        owned = ctx.get("owned_sandbox")
+        if owned is not None:
+            ctx["owned_sandbox"] = None
+            await release_resource(owned)
 
     def _native_tools(self, ctx):
         # The LM calls `run_python_code`, the subagent tools, and any tool
