@@ -52,6 +52,10 @@ _CALL_CONTEXT = contextvars.ContextVar("synalinks_call_ctx", default=None)
 _CURRENT_CALL_ID = contextvars.ContextVar("synalinks_call_id", default=None)
 
 
+# The modules a `close` reached, so one held twice (or a cycle) is closed once.
+_CLOSING = contextvars.ContextVar("synalinks_closing", default=None)
+
+
 async def release_resource(resource):
     """Release a sandbox, a knowledge base, anything with `aclose` or `close`.
 
@@ -832,13 +836,47 @@ class Module(BackendModule, Operation, SynalinksSaveable):
             await program.close()
         ```
         """
-        for module in list(self._modules):
-            await module.close()
-        for metric in list(self._metrics):
-            await metric.close()
-        owned = self.__dict__.get("_owned_resources") or []
-        while owned:
-            await release_resource(owned.pop())
+        token = None
+        closing = _CLOSING.get()
+        if closing is None:
+            closing = set()
+            token = _CLOSING.set(closing)
+        try:
+            if id(self) in closing:
+                return
+            closing.add(id(self))
+            for child in self._children_to_close():
+                await child.close()
+            owned = self.__dict__.get("_owned_resources") or []
+            while owned:
+                await release_resource(owned.pop())
+        finally:
+            if token is not None:
+                _CLOSING.reset(token)
+
+    def _children_to_close(self):
+        """Submodules and metrics, tracked or held as plain attributes.
+
+        A module built where tracking is off (inside `compile`, a metric's
+        clone and the judge it wraps) holds its submodules untracked: they
+        are found among its attributes, alone or in a list, tuple or dict.
+        """
+        children = {}
+        for child in [*self._modules, *self._metrics]:
+            children.setdefault(id(child), child)
+        for name, value in vars(self).items():
+            if name.startswith("_tracker"):
+                continue
+            if isinstance(value, dict):
+                values = value.values()
+            elif isinstance(value, (list, tuple)):
+                values = value
+            else:
+                values = (value,)
+            for item in values:
+                if isinstance(item, (Module, Metric)) and item is not self:
+                    children.setdefault(id(item), item)
+        return list(children.values())
 
     def _own(self, resource, given=None):
         """Mark `resource` as one this module created, for `close` to release; returns it.
