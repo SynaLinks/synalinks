@@ -397,3 +397,26 @@ class DeepAgentAsJudgeCloseTest(testing.TestCase):
         await program.close()
         self.assertTrue(sandbox.killed)
         self.assertNotIn(sandbox.identifier, Sandbox.live_sandboxes)
+
+    async def test_a_program_compiled_but_never_run_closes_too(self):
+        from synalinks.src import metrics
+        from synalinks.src.modules.core.generator import Generator
+        from synalinks.src.modules.core.input_module import Input
+        from synalinks.src.programs import Program
+
+        class Q(DataModel):
+            question: str
+
+        class A(DataModel):
+            answer: str
+
+        lm = LanguageModel(model="ollama/mistral")
+        judge = DeepAgentAsJudge(language_model=lm)
+        inputs = Input(data_model=Q)
+        program = Program(
+            inputs=inputs,
+            outputs=await Generator(data_model=A, language_model=lm)(inputs),
+        )
+        program.compile(reward=judge, metrics=[metrics.MeanMetricWrapper(judge)])
+        await program.close()
+        self.assertTrue(judge.program.agent.sandbox.killed)

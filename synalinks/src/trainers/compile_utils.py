@@ -360,7 +360,9 @@ class CompileMetrics(metrics_module.Metric):
     async def close(self):
         """Close every metric compiled in, built or user-passed. Idempotent."""
         seen = set()
-        for metric in [*(self._flat_metrics or []), *tree.flatten(self._user_metrics)]:
+        # A program compiled but never run has built nothing yet.
+        built = getattr(self, "_flat_metrics", None) or []
+        for metric in [*built, *tree.flatten(self._user_metrics)]:
             if isinstance(metric, metrics_module.Metric) and id(metric) not in seen:
                 seen.add(id(metric))
                 await metric.close()
@@ -795,7 +797,7 @@ class CompileReward(rewards_module.Reward):
     async def close(self):
         """Close every reward compiled in, resolved or user-passed. Idempotent."""
         seen = set()
-        flat = [r.reward for r in self._flat_rewards or []]
+        flat = [r.reward for r in getattr(self, "_flat_rewards", None) or []]
         for reward in [*flat, *tree.flatten(self._user_reward)]:
             reward = getattr(reward, "reward", reward)  # a weighted reward, unwrapped
             if isinstance(reward, rewards_module.Reward) and id(reward) not in seen:
