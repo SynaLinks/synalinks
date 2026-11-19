@@ -220,6 +220,11 @@ class DeepAgentAsJudgeProgram(Program):
 
     @classmethod
     def from_config(cls, config):
+        return cls(**cls.resolve_config(config))
+
+    @staticmethod
+    def resolve_config(config):
+        """The constructor's arguments from a config, deserialized; nothing built."""
         config = dict(config)
         for key in ("language_model", "sub_language_model", "sandbox"):
             value = config.pop(key, None)
@@ -232,7 +237,8 @@ class DeepAgentAsJudgeProgram(Program):
             serialization_lib.deserialize_synalinks_object(tool)
             for tool in config.pop("tools", [])
         ]
-        return cls(tools=tools or None, **config)
+        config["tools"] = tools or None
+        return config
 
 
 @synalinks_export(
@@ -441,23 +447,10 @@ class DeepAgentAsJudge(ProgramAsJudge):
     @classmethod
     def from_config(cls, config):
         config = dict(config)
-        program = serialization_lib.deserialize_synalinks_object(config.pop("program"))
-        return cls(
-            language_model=program.language_model,
-            sub_language_model=program.sub_language_model,
-            tools=program.tools,
-            prompt_template=program.prompt_template,
-            examples=program.examples,
-            instructions=program.instructions,
-            final_instructions=program.final_instructions,
-            score_type=program.score_type,
-            max_iterations=program.max_iterations,
-            use_chain_of_thought=program.use_chain_of_thought,
-            timeout=program.timeout,
-            workdir=program.workdir,
-            skills=program.skills,
-            sandbox=program.sandbox,
-            max_subagent_depth=program.max_subagent_depth,
-            reset_sandbox=program.reset_sandbox,
-            **config,
-        )
+        # The program's arguments, not the program: building it would build its
+        # agent's sandbox, only for this judge to build another and drop it.
+        program = config.pop("program")
+        arguments = DeepAgentAsJudgeProgram.resolve_config(program["config"])
+        for key in ("name", "description", "trainable"):
+            arguments.pop(key, None)
+        return cls(**arguments, **config)

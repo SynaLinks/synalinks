@@ -397,3 +397,21 @@ class ModuleCloseTest(testing.TestCase):
         with self.assertWarnsRegex(UserWarning, "cannot close"):
             await holder.close()
         self.assertEqual((holder.made.closed, holder.child.made.closed), (1, 1))
+
+    async def test_close_reaches_a_submodule_built_where_tracking_is_off(self):
+        # As a metric's clone is built inside `compile`: its submodules are not tracked.
+        from synalinks.src.utils import tracking
+
+        with tracking.DotNotTrackScope():
+            parent = _Holder(child=_Holder())
+        self.assertEqual(parent._modules, [])
+        await parent.close()
+        self.assertEqual(parent.child.made.closed, 1)
+
+    async def test_a_module_held_twice_or_in_a_cycle_is_closed_once(self):
+        child = _Holder()
+        parent = _Holder(child=child)
+        parent.again = [child]
+        child.back = parent  # a cycle
+        await parent.close()
+        self.assertEqual((parent.made.closed, child.made.closed), (1, 1))
