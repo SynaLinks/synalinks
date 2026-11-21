@@ -590,18 +590,29 @@ def remove(path: str) -> None:
 
 
 def extract_layer(data: bytes, root: str) -> None:
-    """Apply one image layer to ``root``: OCI whiteouts, no device nodes."""
+    """Apply one image layer to ``root``: OCI whiteouts, no device nodes.
+
+    Whiteouts bypass tarfile's ``filter="tar"``, so their directory is resolved
+    (following symlinks from lower layers) and must stay inside ``root``, as
+    tarfile itself enforces for regular members.
+    """
+    real_root = os.path.realpath(root)
     with tarfile.open(fileobj=io.BytesIO(data)) as tar:
         members = []
         for member in tar.getmembers():
             parent, base = os.path.split(member.name)
+            if base.startswith(".wh."):
+                directory = os.path.realpath(os.path.join(real_root, parent))
+                name = base[len(".wh.") :]
+                inside = os.path.commonpath([real_root, directory]) == real_root
+                if not inside or name in ("", ".", ".."):
+                    raise tarfile.OutsideDestinationError(member, directory)
             if base == ".wh..wh..opq":  # opaque dir: drop what lower layers put there
-                directory = os.path.join(root, parent)
                 if os.path.isdir(directory):
                     for entry in os.listdir(directory):
                         remove(os.path.join(directory, entry))
             elif base.startswith(".wh."):  # whiteout: delete one lower-layer entry
-                remove(os.path.join(root, parent, base[len(".wh.") :]))
+                remove(os.path.join(directory, name))
             elif not (member.ischr() or member.isblk() or member.isfifo()):
                 members.append(member)
         tar.extractall(root, members=members, filter="tar")

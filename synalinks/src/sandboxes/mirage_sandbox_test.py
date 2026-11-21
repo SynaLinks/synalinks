@@ -2479,6 +2479,37 @@ class MicrovmBridgeTest(testing.TestCase):
         extract_layer(layer([("etc/.wh.gone", b"")]), root)
         self.assertEqual(sorted(os.listdir(os.path.join(root, "etc"))), ["keep"])
 
+    def test_layer_whiteouts_stay_inside_the_rootfs(self):
+        # Regression #237: whiteouts bypassed tarfile's filter and deleted host files.
+        import io
+        import tarfile
+
+        from synalinks.src.utils.microvm_utils import extract_layer
+
+        def layer(name, linkname=None):
+            buf = io.BytesIO()
+            with tarfile.open(fileobj=buf, mode="w") as tar:
+                info = tarfile.TarInfo(name)
+                if linkname:
+                    info.type, info.linkname = tarfile.SYMTYPE, linkname
+                tar.addfile(info)
+            return buf.getvalue()
+
+        base = tempfile.mkdtemp()
+        root = os.path.join(base, "rootfs")
+        victim = os.path.join(base, "victim")
+        os.makedirs(root)
+        os.makedirs(victim)
+        open(os.path.join(victim, "precious"), "w").close()
+        with self.assertRaises(tarfile.OutsideDestinationError):
+            extract_layer(layer("../victim/.wh.precious"), root)
+        extract_layer(layer("link", linkname=victim), root)
+        with self.assertRaises(tarfile.OutsideDestinationError):
+            extract_layer(layer("link/.wh..wh..opq"), root)
+        with self.assertRaises(tarfile.OutsideDestinationError):
+            extract_layer(layer("link/.wh.precious"), root)
+        self.assertEqual(os.listdir(victim), ["precious"])
+
 
 @unittest.skipUnless(_MICROVM_OK, _VM_REASON)
 class MicrovmConfineTest(_SandboxTestCase):
