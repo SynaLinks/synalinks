@@ -1,26 +1,22 @@
 # License Apache 2.0: (c) 2025-2026 Yoan Sallami (Synalinks Team)
 
-import asyncio
 import json
 from typing import Dict
 from typing import List
 from typing import Optional
 
 from synalinks.src.api_export import synalinks_export
-from synalinks.src.backend import ChatMessage
-from synalinks.src.backend import ChatMessages
-from synalinks.src.backend import ChatRole
 from synalinks.src.backend import SymbolicDataModel
 from synalinks.src.backend import is_strictly_chat_messages
 from synalinks.src.modules.agents.function_calling_agent import FunctionCallingAgent
 from synalinks.src.modules.agents.utils.agents_utils import InputsSummary
+from synalinks.src.modules.agents.utils.agents_utils import discard_subagent_branch
 from synalinks.src.modules.agents.utils.agents_utils import resolve_workdir
-from synalinks.src.modules.agents.utils.agents_utils import subagent_answer
+from synalinks.src.modules.agents.utils.agents_utils import spawn_subagents_on_forks
 from synalinks.src.modules.agents.utils.agents_utils import summarize_inputs
 from synalinks.src.modules.agents.utils.agents_utils import unique_inputs_path
 from synalinks.src.modules.core.tool import Tool
 from synalinks.src.modules.language_models import get as _get_lm
-from synalinks.src.modules.module import release_resource
 from synalinks.src.sandboxes.mirage_sandbox import MirageSandbox
 from synalinks.src.saving import serialization_lib
 
@@ -477,35 +473,13 @@ class DeepAgent(FunctionCallingAgent):
             top-level ``error`` when ``tasks`` is empty.
         """
         prompts = [self._coerce_task(t) for t in (tasks or [])]
-        if not prompts:
-            return {"error": "no tasks provided"}
-
-        # Local imports: agent modules avoid importing `Program` at module
-        # scope to sidestep package-init import cycles.
-        from synalinks.src.modules.core.input_module import Input
-        from synalinks.src.programs.program import Program
-
-        async def run_one(index: int, prompt: str):
-            # Subagents inherit the parent's confinement (``confine=None``):
-            # when this agent's sandbox is confined, the subagent is confined to
-            # its OWN fork (host hidden, network cut, isolated filesystem, and
-            # the parent's egress/mount/seccomp posture); when the parent runs
-            # unconfined, so does the subagent.
-            (fork,) = await self.sandbox.fork(
-                name=f"{self.name}_sub{index}", confine=None
-            )
-            if isinstance(fork, Exception):  # E2B's fork returns failures
-                raise fork
-            # The fork is closed the moment the subagent is done, however it
-            # ended; its branch is kept as a snapshot, which `merge_subagent`
-            # applies as it would the fork.
-            try:
-                return await run_subagent(index, prompt, fork)
-            finally:
-                await release_resource(fork)
-
-        async def run_subagent(index: int, prompt: str, fork):
-            subagent = DeepAgent(
+        # Handles are reserved up front so concurrent spawns never share one.
+        start = self._subagent_counter
+        self._subagent_counter += len(prompts)
+        return await spawn_subagents_on_forks(
+            self.sandbox,
+            prompts,
+            lambda index, fork: DeepAgent(
                 sandbox=fork,
                 language_model=self.sub_language_model,
                 sub_language_model=self.sub_language_model,
@@ -522,54 +496,11 @@ class DeepAgent(FunctionCallingAgent):
                 return_inputs_with_trajectory=False,
                 autonomous=True,
                 name=f"{self.name}_sub{index}",
-            )
-            # Run the subagent through a Program, the canonical execution
-            # path: it builds once against a symbolic Input (LM-free) and
-            # gives the subagent the same lifecycle as a top-level DeepAgent.
-            inputs = Input(data_model=ChatMessages)
-            outputs = await subagent(inputs)
-            program = Program(
-                inputs=inputs,
-                outputs=outputs,
-                name=f"{self.name}_sub{index}_program",
-            )
-            messages = ChatMessages(
-                messages=[ChatMessage(role=ChatRole.USER, content=prompt)]
-            )
-            output = await program(messages)
-            snapshot = await fork.snapshot() if hasattr(fork, "snapshot") else fork
-            return snapshot, subagent_answer(output)
-
-        results = await asyncio.gather(
-            *(run_one(i, p) for i, p in enumerate(prompts)),
-            return_exceptions=True,
+            ),
+            name=self.name,
+            registry=self._subagents,
+            start=start,
         )
-
-        report = []
-        for prompt, result in zip(prompts, results):
-            handle = f"subagent_{self._subagent_counter}"
-            self._subagent_counter += 1
-            if isinstance(result, Exception):
-                report.append(
-                    {
-                        "handle": handle,
-                        "task": prompt,
-                        "error": f"{type(result).__name__}: {result}",
-                    }
-                )
-                continue
-            branch, answer = result
-            self._subagents[handle] = branch
-            report.append(
-                {
-                    "handle": handle,
-                    "task": prompt,
-                    "result": answer,
-                    "diff": branch.diff(),
-                    "patch": branch.patch(),
-                }
-            )
-        return {"subagents": report}
 
     async def merge_subagent(
         self, handle: str, paths: Optional[List[str]] = None, force: bool = False
@@ -608,9 +539,7 @@ class DeepAgent(FunctionCallingAgent):
         Returns:
             dict: ``{discarded: handle}``, or ``error`` for an unknown handle.
         """
-        if self._subagents.pop(handle, None) is None:
-            return {"error": f"unknown subagent handle: {handle!r}"}
-        return {"discarded": handle}
+        return discard_subagent_branch(self._subagents, handle)
 
     async def compute_output_spec(self, inputs, training=False):
         # Mirror the runtime shape: data inputs become an InputsSummary; only a

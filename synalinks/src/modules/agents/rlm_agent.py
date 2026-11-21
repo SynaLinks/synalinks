@@ -24,7 +24,8 @@ from synalinks.src.modules.agents.function_calling_agent import FunctionCallingA
 from synalinks.src.modules.agents.utils.agents_utils import InputsSummary
 from synalinks.src.modules.agents.utils.agents_utils import call_tool
 from synalinks.src.modules.agents.utils.agents_utils import check_public_tool_name
-from synalinks.src.modules.agents.utils.agents_utils import subagent_answer
+from synalinks.src.modules.agents.utils.agents_utils import discard_subagent_branch
+from synalinks.src.modules.agents.utils.agents_utils import spawn_subagents_on_forks
 from synalinks.src.modules.agents.utils.agents_utils import summarize_inputs
 from synalinks.src.modules.agents.utils.agents_utils import tool_message_content
 from synalinks.src.modules.core.tool import Tool
@@ -1195,8 +1196,6 @@ class RecursiveLanguageModelAgent(FunctionCallingAgent):
         a handle ``counter``, and ``repl_state`` tracking the single REPL
         adoption allowed per turn.
         """
-        from synalinks.src.modules.core.input_module import Input
-        from synalinks.src.programs.program import Program
 
         async def spawn_subagents(tasks: List[str]) -> dict:
             """Run subagents in parallel, each on an isolated fork of the sandbox.
@@ -1221,28 +1220,13 @@ class RecursiveLanguageModelAgent(FunctionCallingAgent):
                 is empty.
             """
             prompts = [str(t) for t in (tasks or [])]
-            if not prompts:
-                return {"error": "no tasks provided"}
-
-            async def run_one(index, prompt):
-                # Subagents inherit the parent's confinement (``confine=None``):
-                # when this sandbox is confined, the subagent is confined to its
-                # OWN fork (host hidden, network cut, isolated filesystem, and
-                # the parent's egress/mount/seccomp posture); when the parent
-                # runs unconfined, so does the subagent.
-                (fork,) = await sandbox.fork(name=f"{self.name}_sub{index}", confine=None)
-                if isinstance(fork, Exception):
-                    raise fork
-                # The fork is closed the moment the subagent is done, however
-                # it ended; its branch (files and REPL) is kept as a snapshot,
-                # which `merge_subagent` applies as it would the fork.
-                try:
-                    return await run_subagent(index, prompt, fork)
-                finally:
-                    await release_resource(fork)
-
-            async def run_subagent(index, prompt, fork):
-                subagent = RecursiveLanguageModelAgent(
+            # Handles are reserved up front so concurrent spawns never share one.
+            start = counter[0]
+            counter[0] += len(prompts)
+            return await spawn_subagents_on_forks(
+                sandbox,
+                prompts,
+                lambda index, fork: RecursiveLanguageModelAgent(
                     language_model=self.sub_language_model,
                     sub_language_model=self.sub_language_model,
                     sandbox=fork,
@@ -1262,50 +1246,11 @@ class RecursiveLanguageModelAgent(FunctionCallingAgent):
                     return_inputs_with_trajectory=False,
                     autonomous=True,
                     name=f"{self.name}_sub{index}",
-                )
-                # Run through a Program (the canonical path): it builds once
-                # against a symbolic Input and gets the standard lifecycle.
-                inp = Input(data_model=ChatMessages)
-                out = await subagent(inp)
-                program = Program(
-                    inputs=inp, outputs=out, name=f"{self.name}_sub{index}_prog"
-                )
-                messages = ChatMessages(
-                    messages=[ChatMessage(role=ChatRole.USER, content=prompt)]
-                )
-                result = await program(messages)
-                snapshot = await fork.snapshot() if hasattr(fork, "snapshot") else fork
-                return snapshot, subagent_answer(result)
-
-            results = await asyncio.gather(
-                *(run_one(i, p) for i, p in enumerate(prompts)),
-                return_exceptions=True,
+                ),
+                name=self.name,
+                registry=registry,
+                start=start,
             )
-            report = []
-            for prompt, res in zip(prompts, results):
-                handle = f"subagent_{counter[0]}"
-                counter[0] += 1
-                if isinstance(res, Exception):
-                    report.append(
-                        {
-                            "handle": handle,
-                            "task": prompt,
-                            "error": f"{type(res).__name__}: {res}",
-                        }
-                    )
-                    continue
-                branch, answer = res
-                registry[handle] = branch
-                report.append(
-                    {
-                        "handle": handle,
-                        "task": prompt,
-                        "result": answer,
-                        "diff": branch.diff(),
-                        "patch": branch.patch(),
-                    }
-                )
-            return {"subagents": report}
 
         async def merge_subagent(
             handle: str,
@@ -1363,9 +1308,7 @@ class RecursiveLanguageModelAgent(FunctionCallingAgent):
                 dict: ``{discarded: handle}``, or ``error`` for an unknown
                 handle.
             """
-            if registry.pop(handle, None) is None:
-                return {"error": f"unknown subagent handle: {handle!r}"}
-            return {"discarded": handle}
+            return discard_subagent_branch(registry, handle)
 
         return {
             "spawn_subagents": Tool(spawn_subagents, name="spawn_subagents"),
