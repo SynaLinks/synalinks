@@ -1676,6 +1676,10 @@ class RecursiveLanguageModelAgent(FunctionCallingAgent):
                     if self.sandbox is not None
                     else None
                 ),
+                "native_tools": [
+                    serialization_lib.serialize_synalinks_object(tool)
+                    for tool in self.native_tools.values()
+                ],
             }
         )
         return config
@@ -1699,4 +1703,8 @@ class RecursiveLanguageModelAgent(FunctionCallingAgent):
             )
         else:
             config.pop("sandbox", None)
+        config["native_tools"] = [
+            serialization_lib.deserialize_synalinks_object(tool)
+            for tool in config.pop("native_tools", [])
+        ] or None
         return super().from_config(config)

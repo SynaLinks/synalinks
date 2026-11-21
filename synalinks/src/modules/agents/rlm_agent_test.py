@@ -750,6 +750,7 @@ class RecursiveLanguageModelAgentTest(testing.TestCase):
             language_model=primary,
             sub_language_model=cheap,
             max_llm_calls=7,
+            native_tools=[Tool(cube)],
         )
         config = agent.get_config()
         self.assertEqual(config["max_llm_calls"], 7)
@@ -757,6 +758,7 @@ class RecursiveLanguageModelAgentTest(testing.TestCase):
         restored = RecursiveLanguageModelAgent.from_config(config)
         self.assertEqual(restored.max_llm_calls, 7)
         self.assertEqual(restored.sub_language_model.model, "ollama_chat/llama3")
+        self.assertEqual(list(restored.native_tools), ["cube"])
 
 
 class RLMFinalGeneratorAlwaysBuiltTest(testing.TestCase):

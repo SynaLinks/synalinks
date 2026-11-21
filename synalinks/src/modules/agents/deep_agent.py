@@ -345,8 +345,10 @@ class DeepAgent(FunctionCallingAgent):
             instructions = get_subagent_instructions()
         elif instructions is None:
             instructions = get_default_instructions(self.workdir)
-        if self._subagents_enabled:
-            instructions = instructions + "\n\n" + get_subagent_tools_guidance()
+        guidance = get_subagent_tools_guidance()
+        # Idempotent: a round-tripped config already carries the guidance.
+        if self._subagents_enabled and guidance not in instructions:
+            instructions = instructions + "\n\n" + guidance
 
         super().__init__(
             schema=schema,

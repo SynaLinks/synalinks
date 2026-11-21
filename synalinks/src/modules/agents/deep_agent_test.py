@@ -355,6 +355,8 @@ class DeepAgentSubagentTest(testing.TestCase):
         restored = DeepAgent.from_config(config)
         self.assertEqual(restored.max_subagent_depth, 2)
         self.assertTrue(restored._subagents_enabled)
+        # Guidance is appended idempotently, not doubled on round-trip.
+        self.assertEqual(restored.instructions, agent.instructions)
 
     async def test_merge_subagent_applies_fork_changes(self):
         agent = DeepAgent(language_model=self._lm(), max_subagent_depth=1, name="m")
