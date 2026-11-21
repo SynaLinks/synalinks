@@ -247,7 +247,8 @@ class CompileRewardMultiOutputTest(testing.TestCase):
     async def test_reward_weights_and_trackers(self):
         y_true = [Answer(answer="x"), Answer(answer="y")]
         y_pred = [Answer(answer="x"), Answer(answer="WRONG")]
-        for weights, expected in (([1.0, 0.0], 1.0), ([0.0, 1.0], 0.0), ([5.0, 5.0], 5.0)):
+        cases = (([1.0, 0.0], 1.0), ([0.0, 1.0], 0.0), ([5.0, 5.0], 5.0))
+        for weights, expected in cases:
             cr = CompileReward([ExactMatch(), ExactMatch()], reward_weights=weights)
             self.assertEqual(float(await cr(y_true, y_pred)), expected)
             self.assertEqual(await cr.compute_batch([y_true], [y_pred]), [expected])
