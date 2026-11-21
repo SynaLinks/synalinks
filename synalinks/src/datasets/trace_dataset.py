@@ -65,8 +65,6 @@ class TraceDataset(Dataset):
     ```python
     dataset = synalinks.datasets.TraceDataset(
         module="generator",
-        input_data_model=Query,
-        input_template="{{ messages[-1].content }}",
         output_data_model=Answer,
         output_template="{{ outputs | tojson }}",
     )
