@@ -146,11 +146,13 @@ class Operation:
                     config.pop(key, None)
             return config
         else:
-            raise NotImplementedError(textwrap.dedent(f"""
+            raise NotImplementedError(
+                textwrap.dedent(f"""
         Object {self.__class__.__name__} was created by passing
         non-serializable argument values in `__init__()`,
         and therefore the object must override `get_config()` in
-        order to be serializable. Please implement `get_config()`."""))
+        order to be serializable. Please implement `get_config()`.""")
+            )
 
     @classmethod
     def from_config(cls, config):
