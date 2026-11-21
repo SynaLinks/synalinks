@@ -248,3 +248,29 @@ class ChatCompletionsTest(testing.TestCase):
             {"model": "gpt-4o", "messages": [message], "verbosity": "low"}
         )
         self.assertEqual(request.messages[0].content, "Paris.")
+
+    def test_request_tools_match_the_language_model_wire(self):
+        from synalinks.src.backend.pydantic.chat_completions import (
+            to_chat_completion_request,
+        )
+        from synalinks.src.backend.pydantic.common import ChatMessages
+        from synalinks.src.modules.core.tool import Tool
+        from synalinks.src.modules.language_models.language_model import _tool_to_wire
+
+        async def lookup(term: str):
+            """Look a term up.
+
+            Args:
+                term (str): The term to look up.
+            """
+            return {"result": term}
+
+        tool = Tool(lookup)
+        request = to_chat_completion_request(
+            ChatMessages(messages=[ChatMessage(role=ChatRole.USER, content="hi")]),
+            "gpt-4o-mini",
+            tools=[tool],
+        )
+        self.assertEqual(
+            request.model_dump(exclude_none=True)["tools"], [_tool_to_wire(tool)]
+        )

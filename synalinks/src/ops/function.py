@@ -133,7 +133,7 @@ class Function(Operation):
         self._assert_input_compatibility(inputs)
         return await self._run_through_graph(inputs, operation_fn=lambda op: op)
 
-    async def _run_through_graph(self, inputs, operation_fn, call_fn=None):
+    async def _run_through_graph(self, inputs, operation_fn):
         """Execute the graph.
 
         At each node we compute outputs via
@@ -150,14 +150,9 @@ class Function(Operation):
         depth_keys = list(nodes_by_depth.keys())
         depth_keys.sort(reverse=True)
 
-        async def compute_node(node, operation_fn, call_fn):
+        async def compute_node(node):
             args, kwargs = node.arguments.fill_in(data_model_dict)
-            op = operation_fn(node.operation)
-            if call_fn is not None:
-                outputs = await call_fn(op, *args, **kwargs)
-            else:
-                outputs = await op(*args, **kwargs)
-            return outputs
+            return await operation_fn(node.operation)(*args, **kwargs)
 
         for depth in depth_keys:
             computable = [
@@ -167,9 +162,7 @@ class Function(Operation):
                 and not node.is_input
                 and all(id(x) in data_model_dict for x in node.input_data_models)
             ]
-            results = await asyncio.gather(
-                *(compute_node(node, operation_fn, call_fn) for node in computable)
-            )
+            results = await asyncio.gather(*(compute_node(node) for node in computable))
             for node, result in zip(computable, results):
                 for x, y in zip(node.outputs, tree.flatten(result)):
                     data_model_dict[id(x)] = y

@@ -404,15 +404,7 @@ class Tool(Module):
         Returns:
             dict: The JSON schema describing the tool's input parameters.
         """
-        schema = {
-            "additionalProperties": False,
-            "description": docstring_description(self._docstring),
-            "properties": self._params_schema,
-            "required": self._required_params,
-            "title": self.name.title().replace("_", " "),
-            "type": "object",
-        }
-        return schema
+        return self.get_input_schema()
 
     def get_config(self):
         config = {

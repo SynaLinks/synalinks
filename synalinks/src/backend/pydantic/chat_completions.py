@@ -704,21 +704,6 @@ def from_chat_completion_messages(messages):
     return ChatMessages(messages=[from_chat_completion_message(m) for m in messages])
 
 
-def _tool_to_chat_completion_tool(tool):
-    return ChatCompletionTool(
-        type="function",
-        function=ChatCompletionToolFunction(
-            name=tool.name,
-            description=tool.description or None,
-            parameters={
-                "type": "object",
-                "properties": dict(tool._params_schema),
-                "required": list(tool._required_params),
-            },
-        ),
-    )
-
-
 @synalinks_export(
     [
         "synalinks.backend.to_chat_completion_request",
@@ -738,21 +723,23 @@ def to_chat_completion_request(messages, model, *, tools=None, **kwargs):
         messages (ChatMessages): The synalinks conversation.
         model (str): The target model id (e.g. `"gpt-4o-mini"`).
         tools (Iterable | Mapping | None): Optional synalinks tool
-            callables. A `{name: Tool}` mapping is also accepted (its
-            values are used). Each tool must expose `name`,
-            `description`, `_params_schema`, and `_required_params`
-            (synalinks `Tool` instances do).
+            instances. A `{name: Tool}` mapping is also accepted (its
+            values are used). Each is declared as a `LanguageModel` sends
+            it: the tool's `get_tool_schema()` as `parameters`.
         **kwargs: Forwarded to `ChatCompletionRequest`.
 
     Returns:
         (ChatCompletionRequest): The OpenAI-shaped request body.
     """
+    # The declarations a `LanguageModel` sends, so the request matches the wire.
+    from synalinks.src.modules.language_models.language_model import _tool_to_wire
+
     oa_messages = to_chat_completion_messages(messages)
     oa_tools = None
     if tools:
         if isinstance(tools, dict):
             tools = tools.values()
-        oa_tools = [_tool_to_chat_completion_tool(t) for t in tools]
+        oa_tools = [ChatCompletionTool(**_tool_to_wire(t)) for t in tools]
     return ChatCompletionRequest(
         model=model,
         messages=oa_messages,
