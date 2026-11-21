@@ -363,7 +363,8 @@ monitor = synalinks.hooks.Monitor(
 )
 
 # Add to a specific module
-generator = synalinks.Generator(data_model=Answer, hooks=[monitor])
+generator = synalinks.Generator(data_model=Answer, language_model=language_model)
+generator.add_hook(monitor)
 ```
 
 ## Training Metrics and Artifacts
