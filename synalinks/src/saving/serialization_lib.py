@@ -371,10 +371,12 @@ def deserialize_synalinks_object(config, custom_objects=None, safe_mode=True, **
         config: Python dict describing the object.
         custom_objects: Python dict containing a mapping between custom
             object names the corresponding classes or functions.
-        safe_mode: Boolean, whether to disallow unsafe `lambda` deserialization.
+        safe_mode: Boolean, whether to disallow unsafe deserialization: `lambda`
+            objects, and classes or functions that are neither Synalinks
+            objects nor registered (`register_synalinks_serializable()` or
+            `custom_objects`), whose modules would have to be imported.
             When `safe_mode=False`, loading an object has the potential to
-            trigger arbitrary code execution. This argument is only
-            applicable to the Synalinks v3 model format. Defaults to `True`.
+            trigger arbitrary code execution. Defaults to `True`.
 
     Returns:
         The object described by the `config` dictionary.
@@ -541,6 +543,7 @@ def deserialize_synalinks_object(config, custom_objects=None, safe_mode=True, **
             obj_type="function",
             full_config=config,
             custom_objects=custom_objects,
+            safe_mode=safe_mode,
         )
 
     # Below, handling of all classes.
@@ -557,6 +560,7 @@ def deserialize_synalinks_object(config, custom_objects=None, safe_mode=True, **
         obj_type="class",
         full_config=config,
         custom_objects=custom_objects,
+        safe_mode=safe_mode,
     )
 
     if isinstance(cls, types.FunctionType):
@@ -599,7 +603,13 @@ def deserialize_synalinks_object(config, custom_objects=None, safe_mode=True, **
 
 
 def _retrieve_class_or_fn(
-    name, registered_name, module, obj_type, full_config, custom_objects=None
+    name,
+    registered_name,
+    module,
+    obj_type,
+    full_config,
+    custom_objects=None,
+    safe_mode=True,
 ):
     # If there is a custom object registered via
     # `register_synalinks_serializable()`, that takes precedence.
@@ -638,6 +648,16 @@ def _retrieve_class_or_fn(
 
         # Otherwise, attempt to retrieve the class object given the `module`
         # and `class_name`. Import the module, find the class.
+        if safe_mode and module.split(".")[0] != "synalinks":
+            raise TypeError(
+                f"Could not deserialize {obj_type} '{name}' from module "
+                f"'{module}': in `safe_mode`, only Synalinks objects and objects "
+                "registered with `@synalinks.saving.register_synalinks_serializable()` "
+                "(or passed via `custom_objects`) can be loaded. If you trust the "
+                "source of the saved program, call "
+                "`synalinks.config.enable_unsafe_deserialization()` before loading. "
+                f"Full object config: {full_config}"
+            )
         try:
             mod = importlib.import_module(module)
         except ModuleNotFoundError:
