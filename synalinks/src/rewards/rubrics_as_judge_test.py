@@ -92,6 +92,18 @@ class RubricsAsJudgeTest(testing.TestCase):
                     {"name": "a-b", "description": "two"},
                 ],
             )
+        prefix = "The answer cites at least one source for each claim"
+        reward = RubricsAsJudge(
+            language_model=LanguageModel(model="ollama/mistral"),
+            rubrics=[f"{prefix} made", f"{prefix}, in order"],
+        )
+        self.assertEqual(
+            [rubric.name for rubric in reward.program.rubrics],
+            [
+                "the_answer_cites_at_least_one_source_for",
+                "the_answer_cites_at_least_one_source_for_2",
+            ],
+        )
         with self.assertRaisesRegex(ValueError, "weights must be positive"):
             Rubric(name="correct", description="Correct.", weight=0)
 

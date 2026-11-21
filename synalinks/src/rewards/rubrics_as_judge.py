@@ -274,7 +274,13 @@ class RubricsAsJudgeProgram(Module):
             rubrics = get_rubric(rubrics)
         if not rubrics:
             raise ValueError("`rubrics` is required and must not be empty.")
-        self.rubrics = [parse_rubric(rubric) for rubric in rubrics]
+        self.rubrics = []
+        for rubric in rubrics:
+            parsed = parse_rubric(rubric)
+            # A plain description's name is a truncated prefix: suffix it if taken.
+            if isinstance(rubric, str) and parsed.name in [r.name for r in self.rubrics]:
+                parsed.name = f"{parsed.name}_{len(self.rubrics) + 1}"
+            self.rubrics.append(parsed)
         names = [rubric.name for rubric in self.rubrics]
         if len(set(names)) != len(names):
             raise ValueError(f"Duplicate rubric names after normalization: {names}.")
