@@ -76,6 +76,19 @@ class ImageFolderDatasetTest(testing.TestCase):
         labels = sorted(t.get_json()["content"] for t in y)
         self.assertEqual(labels, ["", "cat"])
 
+    def test_class_folder_named_like_the_root_keeps_its_label(self):
+        root = os.path.join(self.tmp, "dog")
+        _write_bytes(os.path.join(root, "dog", "1.png"))
+        _write_bytes(os.path.join(root, "puppy", "1.png"))
+        ds = ImageFolderDataset(
+            root=root,
+            output_template='{"role":"assistant","content":{{ label | tojson }}}',
+            batch_size=10,
+        )
+        x, y = next(iter(ds))
+        labels = sorted(t.get_json()["content"] for t in y)
+        self.assertEqual(labels, ["dog", "puppy"])
+
     def test_non_recursive_skips_subdirs(self):
         _write_bytes(os.path.join(self.tmp, "top.png"))
         _write_bytes(os.path.join(self.tmp, "sub", "deep.png"))
