@@ -95,7 +95,11 @@ class ResourceLoadTest(testing.TestCase):
         threads, fds = threading.active_count(), len(os.listdir("/proc/self/fd"))
         for _ in range(RUNS):
             await run()
-        gc.collect()
+            # Collect each run's cyclic garbage as it comes: left to pile up, it
+            # raises the allocator's high-water mark, which RSS keeps after a
+            # late collect though nothing is retained. A leak is kept alive and
+            # still shows.
+            gc.collect()
         self.assertEqual(set(Sandbox.live_sandboxes) - live, set())
         self.assertLessEqual(threading.active_count(), threads)
         self.assertLessEqual(len(os.listdir("/proc/self/fd")), fds)
