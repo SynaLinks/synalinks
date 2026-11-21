@@ -878,15 +878,30 @@ class LanceDBAdapter(DatabaseAdapter):
         """Run SQL over the LanceDB tables via DuckDB.
 
         LanceDB has no SQL engine; DuckDB scans each table (registered as an
-        Arrow view under its table name) so arbitrary read-only ``SELECT`` /
-        joins / aggregates work.
+        Arrow view under its table name) so ``SELECT`` / joins / aggregates
+        work. Only ``SELECT`` statements are accepted (the views are read-only
+        snapshots, so a write could not reach LanceDB), and the connection has
+        no access to the host's files.
         """
         import duckdb
 
+        try:
+            statements = duckdb.extract_statements(sql)
+        except duckdb.Error as e:
+            raise duckdb.InvalidInputException(f"Invalid SQL: {e}") from e
+        if not statements:
+            raise duckdb.InvalidInputException("Empty SQL query.")
+        for stmt in statements:
+            if stmt.type != duckdb.StatementType.SELECT:
+                raise duckdb.InvalidInputException(
+                    f"LanceDB SQL only permits SELECT statements; got {stmt.type.name}."
+                )
         con = duckdb.connect(":memory:")
         try:
             for table in self._db.table_names():
                 con.register(table, self._db.open_table(table).to_arrow())
+            # Blocks `read_csv('/etc/passwd')`, `COPY ... TO`; cannot be re-enabled.
+            con.execute("SET enable_external_access=false;")
             arrow_table = con.sql(sql, params=params or None).to_arrow_table()
         finally:
             con.close()
