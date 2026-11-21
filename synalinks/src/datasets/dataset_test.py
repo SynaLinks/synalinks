@@ -2,6 +2,7 @@
 
 import json
 
+import jsonschema
 import numpy as np
 import pytest
 
@@ -401,10 +402,17 @@ class DatasetToolsTemplateTest(testing.TestCase):
         self.assertEqual(TOOLS_FIELD, "tools")
         # The input schema is the request's: the row, and its tools typed as the
         # API declares them.
+        tool_schema = ChatCompletionTool.get_schema()
         self.assertEqual(
             ds.input_schema["properties"][TOOLS_FIELD]["items"],
-            ChatCompletionTool.get_schema(),
+            {k: v for k, v in tool_schema.items() if k != "$defs"},
         )
+        # Its `$ref`s resolve against the root, so the rows validate.
+        self.assertLessEqual(
+            tool_schema["$defs"].items(), ds.input_schema["$defs"].items()
+        )
+        for row in x:
+            jsonschema.validate(row.get_json(), ds.input_schema)
         self.assertIn(TOOLS_FIELD, ds.input_schema["required"])
         # The row alone, for a module that reads it back out of the request.
         self.assertEqual(ds.row_schema, ChatMessages.get_schema())

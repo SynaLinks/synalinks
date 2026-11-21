@@ -393,8 +393,13 @@ def tool_declaration_problem(tool):
 
 
 def _with_tools(schema):
-    """The row's ``schema`` with a request's ``tools`` beside its own fields."""
+    """The row's ``schema`` with a request's ``tools`` beside its own fields.
+
+    The tool schema's ``$defs`` move to the root, where its ``$ref`` resolve.
+    """
+    tool = ChatCompletionTool.get_schema()
     out = dict(schema)
+    out["$defs"] = {**(schema.get("$defs") or {}), **tool.pop("$defs", {})}
     out["properties"] = {
         **(schema.get("properties") or {}),
         TOOLS_FIELD: {
@@ -403,7 +408,7 @@ def _with_tools(schema):
                 "The tools the model may call on this row, as a Chat Completions "
                 "request declares them."
             ),
-            "items": ChatCompletionTool.get_schema(),
+            "items": tool,
         },
     }
     out["required"] = [*(schema.get("required") or []), TOOLS_FIELD]
