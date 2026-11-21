@@ -829,7 +829,7 @@ class LanguageModel(Module):
             self.api_base = api_base
         if self.model.startswith("hosted_vllm") and not api_base:
             self.api_base = os.environ.get(
-                "HOSTED_VLLM_API_BASE", "http://localhost:8000"
+                "HOSTED_VLLM_API_BASE", "http://localhost:8000/v1"
             )
         self.timeout = timeout
         self.retry = retry
