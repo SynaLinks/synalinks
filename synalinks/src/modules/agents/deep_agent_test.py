@@ -1,5 +1,6 @@
 # License Apache 2.0: (c) 2025-2026 Yoan Sallami (Synalinks Team)
 
+import asyncio
 import json
 import os
 import shutil
@@ -12,6 +13,7 @@ from synalinks.src import testing
 from synalinks.src.backend import ChatMessages
 from synalinks.src.backend import DataModel
 from synalinks.src.modules.agents.deep_agent import DeepAgent
+from synalinks.src.modules.agents.function_calling_agent import FunctionCallingAgent
 from synalinks.src.modules.core.input_module import Input
 from synalinks.src.modules.core.tool import Tool
 from synalinks.src.modules.language_models import LanguageModel
@@ -363,7 +365,7 @@ class DeepAgentSubagentTest(testing.TestCase):
         (fork,) = await agent.sandbox.fork()
         await fork.write_file("/new.txt", "child")
         await fork.write_file("/keep.txt", "edited by child")
-        agent._subagents["subagent_0"] = fork
+        agent._call_state["subagents"]["subagent_0"] = fork
 
         report = await agent.merge_subagent("subagent_0")
         self.assertCountEqual(report["written"], ["/keep.txt", "/new.txt"])
@@ -378,7 +380,7 @@ class DeepAgentSubagentTest(testing.TestCase):
         (fork,) = await agent.sandbox.fork()
         await fork.write_file("/wanted.txt", "yes")
         await fork.write_file("/skipped.txt", "no")
-        agent._subagents["subagent_0"] = fork
+        agent._call_state["subagents"]["subagent_0"] = fork
 
         report = await agent.merge_subagent("subagent_0", paths=["/wanted.txt"])
         self.assertEqual(report["written"], ["/wanted.txt"])
@@ -391,11 +393,11 @@ class DeepAgentSubagentTest(testing.TestCase):
 
     async def test_discard_subagent_drops_branch(self):
         agent = DeepAgent(language_model=self._lm(), max_subagent_depth=1, name="d")
-        agent._subagents["subagent_0"] = (await agent.sandbox.fork())[0]
+        agent._call_state["subagents"]["subagent_0"] = (await agent.sandbox.fork())[0]
         self.assertEqual(
             await agent.discard_subagent("subagent_0"), {"discarded": "subagent_0"}
         )
-        self.assertNotIn("subagent_0", agent._subagents)
+        self.assertNotIn("subagent_0", agent._call_state["subagents"])
 
     async def test_spawn_subagents_empty(self):
         agent = DeepAgent(language_model=self._lm(), max_subagent_depth=1, name="e")
@@ -421,19 +423,33 @@ class DeepAgentSubagentTest(testing.TestCase):
             self.assertEqual(s["diff"], {"written": [], "deleted": []})
             self.assertIsInstance(s["result"], str)
         # Forks are registered for later merge; parent filesystem is untouched.
-        self.assertEqual(set(agent._subagents), {"subagent_0", "subagent_1"})
+        self.assertEqual(
+            set(agent._call_state["subagents"]), {"subagent_0", "subagent_1"}
+        )
         self.assertEqual(agent.sandbox.changes()["written"], ["/parent.txt"])
 
-    @patch("litellm.acompletion")
-    async def test_subagent_handles_reset_each_call(self, mock_completion):
-        # Handles from one turn must not leak into the next.
-        mock_completion.side_effect = lambda *a, **k: _lm_response(content="ok")
-        agent = DeepAgent(language_model=self._lm(), max_subagent_depth=1, name="reset")
-        await agent.spawn_subagents(["a"])
-        self.assertEqual(set(agent._subagents), {"subagent_0"})
-        # A new turn clears the registry and restarts handle numbering.
-        await agent.call(ChatMessages(messages=[]))
-        self.assertEqual(agent._subagents, {})
+    async def test_concurrent_calls_get_their_own_state(self):
+        # Batched predict / evaluate run calls concurrently: each sees only its
+        # own subagent handles and inputs file, never a previous call's.
+        agent = DeepAgent(language_model=self._lm(), max_subagent_depth=1, name="conc")
+        agent._call_state["subagents"]["stale"] = None
+
+        class Doc(DataModel):
+            q: str
+
+        async def fake_call(self_, inputs, training=False):
+            self_._call_state["subagents"][inputs.get("inputs_file")] = None
+            await asyncio.sleep(0.01)
+            read = await self_.sandbox.read_file(inputs.get("inputs_file"))
+            return set(self_._call_state["subagents"]), json.loads(read["content"])["q"]
+
+        with patch.object(FunctionCallingAgent, "call", fake_call):
+            a, b = await asyncio.gather(agent.call(Doc(q="A")), agent.call(Doc(q="B")))
+            again = await agent.call(Doc(q="C"))
+        self.assertEqual(a, ({"inputs.json"}, "A"))
+        self.assertEqual(b, ({"inputs.1.json"}, "B"))
+        self.assertEqual(again, ({"inputs.json"}, "C"))
+        agent.sandbox.close()
 
     @patch("litellm.acompletion")
     async def test_spawn_then_merge_a_writing_subagent(self, mock_completion):
@@ -503,6 +519,9 @@ class DeepAgentSandboxLifecycleTest(testing.TestCase):
         # No fork outlives its subagent; each branch is kept as a snapshot.
         self.assertEqual(set(Sandbox.live_sandboxes) - live, set())
         self.assertTrue(
-            all(isinstance(b, ForkSnapshot) for b in agent._subagents.values())
+            all(
+                isinstance(b, ForkSnapshot)
+                for b in agent._call_state["subagents"].values()
+            )
         )
         await agent.close()
