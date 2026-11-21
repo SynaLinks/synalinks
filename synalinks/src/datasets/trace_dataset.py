@@ -338,11 +338,3 @@ class TraceDataset(Dataset):
                 ]
             for example in examples:
                 yield self._row(*example)
-
-    def __len__(self):
-        if self.limit is None:
-            raise NotImplementedError(
-                "Recorded traces have unknown length. "
-                "Pass `limit=...` if you need __len__."
-            )
-        return self._total_batches(self.limit)

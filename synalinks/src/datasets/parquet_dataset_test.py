@@ -186,6 +186,31 @@ class ParquetDatasetTest(testing.TestCase):
         # Limit caps the source: 10 rows / 4 = ceil → 3.
         self.assertEqual(len(ds), 3)
 
+    def test_len_with_limit_larger_than_source(self):
+        path = os.path.join(self.tmp, "small.parquet")
+        _write_parquet(path, {"q": ["a"] * 3})
+        ds = ParquetDataset(
+            path=path,
+            input_data_model=Question,
+            input_template='{"question": {{ q | tojson }}}',
+            limit=100,
+        )
+        self.assertEqual(len(ds), 3)
+
+    @pytest.mark.skipif(not os.path.isdir("/proc/self/fd"), reason="needs /proc")
+    def test_does_not_keep_files_open(self):
+        paths = [os.path.join(self.tmp, f"{i}.parquet") for i in range(20)]
+        for p in paths:
+            _write_parquet(p, {"q": ["a"]})
+        before = len(os.listdir("/proc/self/fd"))
+        ds = ParquetDataset(
+            path=paths,
+            input_data_model=Question,
+            input_template='{"question": {{ q | tojson }}}',
+        )
+        self.assertEqual(len(list(ds)), 20)
+        self.assertLessEqual(len(os.listdir("/proc/self/fd")), before)
+
     def test_len_sums_multiple_files(self):
         a = os.path.join(self.tmp, "a.parquet")
         b = os.path.join(self.tmp, "b.parquet")

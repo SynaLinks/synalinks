@@ -1,13 +1,13 @@
 # License Apache 2.0: (c) 2025-2026 Yoan Sallami (Synalinks Team)
 
 import os
-from typing import Iterator
 from typing import Optional
 
 from synalinks.src.api_export import synalinks_export
 from synalinks.src.backend import DataModel
 from synalinks.src.backend import Field
 from synalinks.src.datasets.dataset import Dataset
+from synalinks.src.utils.datasets_utils import iter_files
 
 
 @synalinks_export(
@@ -81,7 +81,8 @@ class TextDataset(Dataset):
 
     Args:
         root (str): Directory to walk. Must exist.
-        encoding (str): Source encoding. Defaults to ``"utf-8"``.
+        encoding (str): Source encoding. Defaults to ``"utf-8-sig"``
+            (UTF-8, with or without a byte order mark).
         recursive (bool): When True (default), descend into
             subdirectories. When False, only direct children of
             ``root`` are read.
@@ -102,7 +103,7 @@ class TextDataset(Dataset):
         self,
         root: str,
         *,
-        encoding: str = "utf-8",
+        encoding: str = "utf-8-sig",
         recursive: bool = True,
         glob_pattern: str = ".txt",
         input_data_model=None,
@@ -132,35 +133,11 @@ class TextDataset(Dataset):
         self.recursive = recursive
         self.glob_pattern = glob_pattern.lower()
 
-    def _iter_files(self) -> Iterator[str]:
-        if self.recursive:
-            # os.walk's order is filesystem-dependent; sort filenames
-            # within each directory so the dataset is deterministic
-            # across reruns on the same corpus.
-            for dirpath, _, filenames in os.walk(self.root):
-                for name in sorted(filenames):
-                    if name.lower().endswith(self.glob_pattern):
-                        yield os.path.join(dirpath, name)
-        else:
-            for name in sorted(os.listdir(self.root)):
-                full = os.path.join(self.root, name)
-                if os.path.isfile(full) and name.lower().endswith(self.glob_pattern):
-                    yield full
-
     def _iter_rows(self):
-        for path in self._iter_files():
+        for path in iter_files(self.root, self.glob_pattern, self.recursive):
             with open(path, "r", encoding=self.encoding) as f:
                 text = f.read()
             yield {
                 "filepath": os.path.relpath(path, self.root),
                 "text": text,
             }
-
-    def __len__(self):
-        if self.limit is None:
-            raise NotImplementedError(
-                "TextDataset has unknown length without `limit=...`. "
-                "Pass a limit if you need __len__ (e.g. for the progress "
-                "bar shown by KnowledgeBase.update)."
-            )
-        return self._total_batches(self.limit)

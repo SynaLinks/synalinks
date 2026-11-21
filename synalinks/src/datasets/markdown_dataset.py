@@ -4,7 +4,6 @@ import os
 import re
 from typing import Any
 from typing import Dict
-from typing import Iterator
 from typing import List
 from typing import Optional
 
@@ -14,6 +13,7 @@ from synalinks.src.api_export import synalinks_export
 from synalinks.src.backend import DataModel
 from synalinks.src.backend import Field
 from synalinks.src.datasets.dataset import Dataset
+from synalinks.src.utils.datasets_utils import iter_files
 
 
 @synalinks_export(
@@ -187,7 +187,7 @@ def parse_markdown_sections(text: str) -> List[Dict[str, Any]]:
         if whole.strip():
             sections.append({"section_name": "", "level": 0, "path": "", "text": whole})
 
-    stack: List[str] = []  # names of currently-open ancestor headings
+    stack: List[tuple] = []  # (level, name) of currently-open ancestor headings
     for idx, h in enumerate(headings):
         body_start = h["end"]
         body_end = headings[idx + 1]["start"] if idx + 1 < len(headings) else len(lines)
@@ -195,10 +195,10 @@ def parse_markdown_sections(text: str) -> List[Dict[str, Any]]:
 
         # Pop ancestors at the same or deeper level: a new h2 closes
         # any open h2 / h3 / h4 / ... sibling, but leaves the parent h1.
-        while len(stack) >= h["level"]:
+        while stack and stack[-1][0] >= h["level"]:
             stack.pop()
-        stack.append(h["name"])
-        path = " / ".join(stack)
+        stack.append((h["level"], h["name"]))
+        path = " / ".join(name for _, name in stack)
 
         sections.append(
             {
@@ -210,15 +210,6 @@ def parse_markdown_sections(text: str) -> List[Dict[str, Any]]:
         )
 
     return sections
-
-
-def _derive_title(filepath: str, sections: List[Dict[str, Any]]) -> str:
-    """First h1's text, else the file basename without extension."""
-    for s in sections:
-        if s["level"] == 1:
-            return s["section_name"]
-    stem, _ = os.path.splitext(os.path.basename(filepath))
-    return stem
 
 
 _DEFAULT_INPUT_TEMPLATE = (
@@ -264,7 +255,8 @@ class MarkdownDataset(Dataset):
 
     Args:
         root (str): Directory to walk. Must exist.
-        encoding (str): Source encoding. Defaults to ``"utf-8"``.
+        encoding (str): Source encoding. Defaults to ``"utf-8-sig"``
+            (UTF-8, with or without a byte order mark).
         recursive (bool): When True (default), descend into
             subdirectories.
         glob_pattern (str): Filename suffix to match
@@ -283,7 +275,7 @@ class MarkdownDataset(Dataset):
         self,
         root: str,
         *,
-        encoding: str = "utf-8",
+        encoding: str = "utf-8-sig",
         recursive: bool = True,
         glob_pattern: str = ".md",
         input_data_model=None,
@@ -313,23 +305,8 @@ class MarkdownDataset(Dataset):
         self.recursive = recursive
         self.glob_pattern = glob_pattern.lower()
 
-    def _iter_files(self) -> Iterator[str]:
-        if self.recursive:
-            # os.walk's order is filesystem-dependent; sort filenames
-            # within each directory so the dataset is deterministic
-            # across reruns on the same corpus.
-            for dirpath, _, filenames in os.walk(self.root):
-                for name in sorted(filenames):
-                    if name.lower().endswith(self.glob_pattern):
-                        yield os.path.join(dirpath, name)
-        else:
-            for name in sorted(os.listdir(self.root)):
-                full = os.path.join(self.root, name)
-                if os.path.isfile(full) and name.lower().endswith(self.glob_pattern):
-                    yield full
-
     def _iter_rows(self):
-        for path in self._iter_files():
+        for path in iter_files(self.root, self.glob_pattern, self.recursive):
             with open(path, "r", encoding=self.encoding) as f:
                 text = f.read()
             relpath = os.path.relpath(path, self.root)
@@ -347,14 +324,10 @@ class MarkdownDataset(Dataset):
             ]
             yield {
                 "filepath": relpath,
-                "title": _derive_title(relpath, raw_sections),
+                # The first h1, else the file name without its extension.
+                "title": next(
+                    (s["section_name"] for s in raw_sections if s["level"] == 1),
+                    os.path.splitext(os.path.basename(relpath))[0],
+                ),
                 "sections": sections,
             }
-
-    def __len__(self):
-        if self.limit is None:
-            raise NotImplementedError(
-                "MarkdownDataset has unknown length without "
-                "`limit=...`. Pass a limit if you need __len__."
-            )
-        return self._total_batches(self.limit)

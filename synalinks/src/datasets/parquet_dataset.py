@@ -1,6 +1,5 @@
 # License Apache 2.0: (c) 2025-2026 Yoan Sallami (Synalinks Team)
 
-import os
 from typing import List
 from typing import Optional
 from typing import Union
@@ -9,6 +8,7 @@ import pyarrow.parquet as pa_parquet
 
 from synalinks.src.api_export import synalinks_export
 from synalinks.src.datasets.dataset import Dataset
+from synalinks.src.utils.datasets_utils import resolve_paths
 
 
 @synalinks_export(
@@ -104,38 +104,25 @@ class ParquetDataset(Dataset):
             repeat=repeat,
         )
 
-        if isinstance(path, (str, os.PathLike)):
-            paths = [os.fspath(path)]
-        else:
-            paths = [os.fspath(p) for p in path]
-        if not paths:
-            raise ValueError("`path` must name at least one Parquet file.")
-        for p in paths:
-            if not os.path.exists(p):
-                raise FileNotFoundError(f"Parquet file not found: {p}")
-        self.paths = paths
+        self.paths = resolve_paths(path, "Parquet")
 
         self.columns = list(columns) if columns is not None else None
         self.batch_size_rows = batch_size_rows
 
-        # Open each file once at construction time. ``ParquetFile`` only
-        # reads the footer metadata at this point (no row data), so
-        # this is cheap even for many large files.
-        self._files = [pa_parquet.ParquetFile(p) for p in self.paths]
+        # Footer metadata only (no row data, file closed): validates each file.
+        self._num_rows = sum(pa_parquet.read_metadata(p).num_rows for p in self.paths)
 
     def _iter_rows(self):
-        for pf in self._files:
-            for batch in pf.iter_batches(
-                batch_size=self.batch_size_rows,
-                columns=self.columns,
-            ):
-                for row in batch.to_pylist():
-                    yield row
+        for path in self.paths:
+            with pa_parquet.ParquetFile(path) as pf:
+                for batch in pf.iter_batches(
+                    batch_size=self.batch_size_rows,
+                    columns=self.columns,
+                ):
+                    yield from batch.to_pylist()
 
     def __len__(self):
+        num_rows = self._num_rows
         if self.limit is not None:
-            num_rows = self.limit
-        else:
-            # Pull row counts from footer metadata; no row data is read.
-            num_rows = sum(pf.metadata.num_rows for pf in self._files)
+            num_rows = min(num_rows, self.limit)
         return self._total_batches(num_rows)

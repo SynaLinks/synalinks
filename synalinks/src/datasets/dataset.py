@@ -1,6 +1,9 @@
 # License Apache 2.0: (c) 2025-2026 Yoan Sallami (Synalinks Team)
 
+import itertools
+
 import jinja2
+import jinja2.meta
 import jinja2.sandbox
 import numpy as np
 import orjson
@@ -160,6 +163,16 @@ class Dataset:
         self._tools_tmpl = (
             env.from_string(tools_template) if tools_template is not None else None
         )
+        self._template_vars = (
+            set().union(
+                *(
+                    jinja2.meta.find_undeclared_variables(env.parse(t))
+                    for t in (input_template, output_template, tools_template)
+                    if t is not None
+                )
+            )
+            - env.globals.keys()
+        )
         # With a tools template the input is the request's shape: the row's
         # own fields and the `tools` beside them. `row_schema` is the row
         # alone, for whoever reads it back out of the request.
@@ -170,7 +183,25 @@ class Dataset:
                 if self.input_schema is not None
                 else self.input_data_model.get_schema()
             )
-            self.input_schema = _with_tools(self.row_schema)
+            # The tool schema's `$defs` move to the root, where its `$ref` resolve.
+            tool = ChatCompletionTool.get_schema()
+            row = self.row_schema
+            self.input_schema = {
+                **row,
+                "$defs": {**(row.get("$defs") or {}), **tool.pop("$defs", {})},
+                "properties": {
+                    **(row.get("properties") or {}),
+                    TOOLS_FIELD: {
+                        "type": "array",
+                        "description": (
+                            "The tools the model may call on this row, as a Chat "
+                            "Completions request declares them."
+                        ),
+                        "items": tool,
+                    },
+                },
+                "required": [*(row.get("required") or []), TOOLS_FIELD],
+            }
 
     def _make_input(self, rendered, row=None):
         if self._tools_tmpl is not None:
@@ -234,12 +265,21 @@ class Dataset:
             if self.limit is not None and seen >= self.limit:
                 break
             seen += 1
-            x = self._make_input(self._input_tmpl.render(**row), row)
-            y = (
-                None
-                if inputs_only
-                else self._make_target(self._output_tmpl.render(**row))
-            )
+            try:
+                x = self._make_input(self._input_tmpl.render(**row), row)
+                y = (
+                    None
+                    if inputs_only
+                    else self._make_target(self._output_tmpl.render(**row))
+                )
+            except (jinja2.UndefinedError, TypeError) as e:
+                missing = sorted(self._template_vars - row.keys())
+                if not missing:
+                    raise
+                raise ValueError(
+                    f"Row {seen - 1}: the templates use {missing}, missing from "
+                    f"the row's columns {sorted(row)}."
+                ) from e
             for _ in range(self.repeat):
                 x_buf.append(x)
                 if not inputs_only:
@@ -265,8 +305,21 @@ class Dataset:
         return iter(self)
 
     def __len__(self):
-        """Number of batches, if known. Override when the size is finite."""
-        raise NotImplementedError
+        """Number of batches, if known.
+
+        Without a ``limit`` the size of a streaming source is unknown and
+        this raises; override it when the size is known up front. With a
+        ``limit``, the rows are counted up to the limit, so a source
+        smaller than the limit reports its real size.
+        """
+        if self.limit is None:
+            raise NotImplementedError(
+                f"{type(self).__name__} has unknown length without a limit. "
+                "Pass `limit=...` if you need __len__."
+            )
+        return self._total_batches(
+            sum(1 for _ in itertools.islice(self._iter_rows(), self.limit))
+        )
 
     def materialize(self):
         """Iterate the dataset to exhaustion and concatenate every batch.
@@ -355,24 +408,6 @@ def tool_declaration_problem(tool):
     if not isinstance(name, str) or not name:
         return "a tool declaration's `function` names the function (`name`)"
     return None
-
-
-def _with_tools(schema):
-    """The row's ``schema`` with a request's ``tools`` beside its own fields."""
-    out = dict(schema)
-    out["properties"] = {
-        **(schema.get("properties") or {}),
-        TOOLS_FIELD: {
-            "type": "array",
-            "description": (
-                "The tools the model may call on this row, as a Chat Completions "
-                "request declares them."
-            ),
-            "items": ChatCompletionTool.get_schema(),
-        },
-    }
-    out["required"] = [*(schema.get("required") or []), TOOLS_FIELD]
-    return out
 
 
 def _coerce_schema(schema):

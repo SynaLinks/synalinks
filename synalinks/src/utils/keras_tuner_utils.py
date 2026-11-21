@@ -69,36 +69,12 @@ raised pointing the user at the fix.
 import asyncio
 import functools
 import inspect
+import os
 
 from synalinks.src.api_export import synalinks_export
 from synalinks.src.utils.async_utils import _close_loop
 from synalinks.src.utils.async_utils import _LoopCoroRunner
 from synalinks.src.utils.async_utils import run_maybe_nested
-
-
-def _close_litellm_async_clients(loop):
-    """Best-effort: close litellm's cached async HTTP client(s) on ``loop``.
-
-    litellm caches a module-level async httpx client bound to the first event
-    loop it touches. Closing it ON the search loop, before that loop is torn
-    down, prevents an httpx pool being left bound to a dead loop, which GC would
-    otherwise try to close on a closed loop, emitting a final "Event loop is
-    closed" and occasionally wedging interpreter exit. litellm is a hard
-    dependency, but its teardown API varies by version, so every step is guarded
-    and failure is non-fatal (the loop still closes cleanly without it).
-    """
-    try:
-        import litellm
-
-        closer = getattr(litellm, "close_litellm_async_clients", None)
-        if closer is None:
-            return
-        result = closer()
-        if inspect.isawaitable(result):
-            loop.run_until_complete(result)
-    except Exception:
-        pass
-
 
 _TUNER_CLASS_NAMES = (
     "RandomSearch",
@@ -323,9 +299,15 @@ def _resolve_kt_tuner(name):
                 return super().search(*fit_args, **fit_kwargs)
             finally:
                 self._synalinks_search_loop = None
-                # Close litellm's async client ON this loop before tearing it
-                # down, so nothing httpx-related is left bound to a dead loop.
-                _close_litellm_async_clients(loop)
+                # Close litellm's cached async client ON this loop, before its teardown.
+                try:  # best effort: litellm's teardown API varies by version
+                    import litellm
+
+                    closing = litellm.close_litellm_async_clients()
+                    if inspect.isawaitable(closing):
+                        loop.run_until_complete(closing)
+                except Exception:
+                    pass
                 _close_loop(loop)
 
         def run_trial(self, trial, *fit_args, **fit_kwargs):
@@ -344,11 +326,19 @@ def _resolve_kt_tuner(name):
             with _LoopCoroRunner(loop) as runner:
                 return runner.run(coro)
 
+        def _get_checkpoint_fname(self, trial_id):
+            return os.path.join(self.get_trial_dir(trial_id), "program.variables.json")
+
+        def load_model(self, trial):
+            program = self.hypermodel.build(trial.hyperparameters)
+            program.load_variables(self._get_checkpoint_fname(trial.trial_id))
+            return program
+
     _SynalinksAwareTuner.__name__ = name
     _SynalinksAwareTuner.__qualname__ = name
     _SynalinksAwareTuner.__doc__ = (
         f"Synalinks-aware `keras_tuner.{name}`. "
-        f"See `synalinks.utils.keras_tuner_utils` for usage."
+        "See the `synalinks.src.utils.keras_tuner_utils` module docstring for usage."
     )
     _REAL_SUBCLASSES[name] = _SynalinksAwareTuner
     return _SynalinksAwareTuner
@@ -370,26 +360,55 @@ async def _run_trial_async(tuner, trial, *fit_args, **fit_kwargs):
         (`val_reward`) so objectives written for either fit-mode or
         evaluate-mode resolve.
 
+    Hyperband's per-trial budget (`tuner/epochs`, `tuner/initial_epoch`) is
+    applied to `fit`, and a trial continuing an earlier one (`tuner/trial_id`)
+    starts from that trial's variables. Each trial's variables are saved in its
+    trial directory, which is what `tuner.get_best_models()` loads.
+
     The trial's program is closed when the trial ends, however it ends
     (`Program.close`): the sandboxes and knowledge bases it opened, its
     judges' included, do not outlive it. A hypermodel hands each trial a
     program of its own; one it reuses across trials is closed after the first.
     """
-    program = tuner.hypermodel.build(trial.hyperparameters)
+    hp = trial.hyperparameters
+    objective = tuner.oracle.objective
+    if "tuner/epochs" in hp.values:
+        fit_kwargs["epochs"] = hp.values["tuner/epochs"]
+        fit_kwargs["initial_epoch"] = hp.values["tuner/initial_epoch"]
+    program = tuner.hypermodel.build(hp)
     if inspect.isawaitable(program):
         program = await program
     try:
+        if "tuner/trial_id" in hp.values:
+            program.load_variables(
+                tuner._get_checkpoint_fname(hp.values["tuner/trial_id"])
+            )
         if program.optimizer is None:
             result = await _evaluate_only(program, *fit_args, **fit_kwargs)
         else:
             history = await program.fit(*fit_args, **fit_kwargs)
-            result = _history_to_metrics_dict(history, tuner.oracle.objective)
+            # An objective metric keeps its best epoch, any other its last one.
+            directions = getattr(objective, "name_to_direction", None) or {
+                getattr(objective, "name", None): getattr(objective, "direction", None)
+            }
+            result = {}
+            for name, values in (getattr(history, "history", None) or {}).items():
+                if values:
+                    best = {"max": max, "min": min}.get(directions.get(name))
+                    result[name] = best(values) if best else values[-1]
+        program.save_variables(tuner._get_checkpoint_fname(trial.trial_id))
     finally:
         # Never raises: a close that fails warns, and the trial keeps its outcome.
         from synalinks.src.modules.module import release_resource
 
         await release_resource(program)
-    _attach_multi_objective_aggregate(result, tuner.oracle.objective)
+    # `kt.MultiObjective` scores the trial under its own name ("multi_objective").
+    if (
+        hasattr(objective, "has_value")
+        and objective.name not in result
+        and objective.has_value(result)
+    ):
+        result[objective.name] = objective.get_value(result)
     return result
 
 
@@ -432,68 +451,6 @@ async def _evaluate_only(program, *fit_args, **fit_kwargs):
     # Mirror each metric under a `val_` prefix so objectives match
     # regardless of which dispatch (fit / evaluate) the caller assumed.
     return {**metrics, **{f"val_{k}": v for k, v in metrics.items()}}
-
-
-def _history_to_metrics_dict(history, objective):
-    """Flatten a synalinks `History` into the dict keras-tuner expects.
-
-    For each metric in `history.history`:
-      - if the metric is part of the oracle's objective, take the best
-        value across epochs (`max` for "max" direction, `min` for "min"),
-      - otherwise, take the final-epoch value (kt records it but does not
-        use it for ranking).
-    """
-    hist = getattr(history, "history", None) or {}
-    directions = _objective_directions(objective)
-
-    result = {}
-    for metric_name, values in hist.items():
-        if not values:
-            continue
-        direction = directions.get(metric_name)
-        if direction == "max":
-            result[metric_name] = max(values)
-        elif direction == "min":
-            result[metric_name] = min(values)
-        else:
-            result[metric_name] = values[-1]
-    return result
-
-
-def _attach_multi_objective_aggregate(result, objective):
-    """Add the `MultiObjective` aggregate (if any) into the result dict.
-
-    `kt.MultiObjective` looks up the trial's score by the objective's
-    synthetic `.name` (e.g. `"multi_objective"`). Single-objective specs
-    expose `.name` too but the metric is already keyed by that name in
-    `result`, so the call is a no-op in that case.
-    """
-    name = getattr(objective, "name", None)
-    has_value = getattr(objective, "has_value", None)
-    get_value = getattr(objective, "get_value", None)
-    if (
-        name
-        and name not in result
-        and callable(has_value)
-        and callable(get_value)
-        and has_value(result)
-    ):
-        result[name] = get_value(result)
-
-
-def _objective_directions(objective):
-    """Return a `{metric_name: direction}` map from a kt objective spec.
-
-    Handles `Objective`, `MultiObjective`, and the `DefaultObjective` that
-    kt installs when none is passed.
-    """
-    # `MultiObjective` exposes `.name_to_direction` directly.
-    name_to_direction = getattr(objective, "name_to_direction", None)
-    if name_to_direction is not None:
-        return dict(name_to_direction)
-    if hasattr(objective, "name") and hasattr(objective, "direction"):
-        return {objective.name: objective.direction}
-    return {}
 
 
 def _make_stub(name, kt_doc_hint):

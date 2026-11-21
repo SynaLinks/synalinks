@@ -13,6 +13,9 @@ from typing import List
 from typing import Literal
 from typing import Optional
 
+import mlflow
+from mlflow.entities import SpanType
+
 from synalinks.src import tree
 from synalinks.src.api_export import synalinks_export
 from synalinks.src.backend import DataModel
@@ -22,15 +25,6 @@ from synalinks.src.backend.config import mlflow_experiment_name
 from synalinks.src.backend.config import mlflow_tracking_uri
 from synalinks.src.hooks.hook import Hook
 from synalinks.src.utils.async_utils import run_maybe_nested
-
-try:
-    import mlflow
-    from mlflow.entities import SpanType
-
-    MLFLOW_AVAILABLE = True
-except ImportError:
-    MLFLOW_AVAILABLE = False
-    SpanType = None
 
 # Standard MLflow span attribute keys (`mlflow.tracing.constant`), read by
 # the UI for chat rendering and by the trace-level token/cost roll-ups.
@@ -327,11 +321,6 @@ class Monitor(Hook):
         experiment_name=None,
     ):
         super().__init__()
-        if not MLFLOW_AVAILABLE:
-            raise ImportError(
-                "mlflow is required for the Monitor hook. "
-                "Install it with: pip install mlflow"
-            )
 
         # Use provided values or fall back to global config
         self.tracking_uri = tracking_uri or mlflow_tracking_uri()
@@ -357,9 +346,6 @@ class Monitor(Hook):
 
     def _get_span_type(self):
         """Determine the MLflow span type based on the module class."""
-        if SpanType is None:
-            return None
-
         module_class = self.module.__class__.__name__
 
         # Map module types to MLflow span types

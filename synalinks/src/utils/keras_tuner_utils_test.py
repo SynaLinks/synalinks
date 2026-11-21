@@ -19,8 +19,6 @@ from synalinks.src.utils.keras_tuner_utils import GridSearch
 from synalinks.src.utils.keras_tuner_utils import Hyperband
 from synalinks.src.utils.keras_tuner_utils import Objective
 from synalinks.src.utils.keras_tuner_utils import RandomSearch
-from synalinks.src.utils.keras_tuner_utils import _history_to_metrics_dict
-from synalinks.src.utils.keras_tuner_utils import _objective_directions
 
 
 def _is_managed_module(name: str) -> bool:
@@ -101,60 +99,58 @@ class StubExportTest(testing.TestCase):
 
 
 class HistoryReductionTest(testing.TestCase):
-    """`_history_to_metrics_dict` is the bit we own; keras-tuner doesn't
-    know how to unwrap a synalinks History on its own."""
+    """A fitted trial reports its synalinks `History` as the dict keras-tuner
+    expects; keras-tuner doesn't know how to unwrap it on its own."""
 
-    def _make_history(self, history_dict):
-        h = SynalinksHistory()
-        h.history = history_dict
-        return h
+    def _reduce(self, history_dict, objective):
+        history = SynalinksHistory()
+        history.history = history_dict
+
+        class Program:
+            optimizer = object()
+            save_variables = lambda *args: None
+
+            async def fit(self, *args, **kwargs):
+                return history
+
+        tuner = types.SimpleNamespace(
+            hypermodel=types.SimpleNamespace(build=lambda hp: Program()),
+            _get_checkpoint_fname=lambda trial_id: None,
+            oracle=types.SimpleNamespace(objective=objective),
+        )
+        trial = types.SimpleNamespace(
+            hyperparameters=types.SimpleNamespace(values={}), trial_id="0"
+        )
+        return asyncio.run(keras_tuner_utils._run_trial_async(tuner, trial, x=[1]))
 
     def test_single_objective_max_picks_max_across_epochs(self):
-        history = self._make_history(
-            {
-                "reward": [0.1, 0.7, 0.4],
-                "val_reward": [0.2, 0.5, 0.9],
-            }
-        )
         obj = types.SimpleNamespace(name="val_reward", direction="max")
-        result = _history_to_metrics_dict(history, obj)
+        result = self._reduce(
+            {"reward": [0.1, 0.7, 0.4], "val_reward": [0.2, 0.5, 0.9]}, obj
+        )
         self.assertEqual(result["val_reward"], 0.9)
         # Non-objective metrics use the *last* value, not the best.
         self.assertEqual(result["reward"], 0.4)
 
     def test_single_objective_min_picks_min_across_epochs(self):
-        history = self._make_history({"loss": [1.0, 0.3, 0.6]})
         obj = types.SimpleNamespace(name="loss", direction="min")
-        result = _history_to_metrics_dict(history, obj)
+        result = self._reduce({"loss": [1.0, 0.3, 0.6]}, obj)
         self.assertEqual(result["loss"], 0.3)
 
     def test_multi_objective_reduces_each_metric_in_its_own_direction(self):
-        history = self._make_history(
-            {
-                "loss": [1.0, 0.4, 0.5],
-                "reward": [0.2, 0.9, 0.7],
-            }
-        )
         # MultiObjective exposes `name_to_direction` directly.
         multi = types.SimpleNamespace(
             name_to_direction={"loss": "min", "reward": "max"},
         )
-        result = _history_to_metrics_dict(history, multi)
+        result = self._reduce({"loss": [1.0, 0.4, 0.5], "reward": [0.2, 0.9, 0.7]}, multi)
         self.assertEqual(result["loss"], 0.4)
         self.assertEqual(result["reward"], 0.9)
 
     def test_empty_metric_lists_are_skipped(self):
-        history = self._make_history({"reward": [], "val_reward": [0.5]})
         obj = types.SimpleNamespace(name="val_reward", direction="max")
-        result = _history_to_metrics_dict(history, obj)
+        result = self._reduce({"reward": [], "val_reward": [0.5]}, obj)
         self.assertNotIn("reward", result)
         self.assertEqual(result["val_reward"], 0.5)
-
-    def test_objective_directions_handles_default_objective(self):
-        # kt's `DefaultObjective` has name="default_objective", direction="min".
-        default = types.SimpleNamespace(name="default_objective", direction="min")
-        directions = _objective_directions(default)
-        self.assertEqual(directions, {"default_objective": "min"})
 
 
 class EvaluateOnlyTest(testing.TestCase):
@@ -191,6 +187,7 @@ class TrialProgramClosedTest(testing.TestCase):
 
     class _Program:
         optimizer = None
+        save_variables = lambda *args: None
 
         def __init__(self, fails=False):
             self.fails = fails
@@ -207,13 +204,16 @@ class TrialProgramClosedTest(testing.TestCase):
     def _tuner(self, program):
         return types.SimpleNamespace(
             hypermodel=types.SimpleNamespace(build=lambda hp: program),
+            _get_checkpoint_fname=lambda trial_id: None,
             oracle=types.SimpleNamespace(
                 objective=types.SimpleNamespace(name="reward", direction="max")
             ),
         )
 
     def _trial(self):
-        return types.SimpleNamespace(hyperparameters=None)
+        return types.SimpleNamespace(
+            hyperparameters=types.SimpleNamespace(values={}), trial_id="0"
+        )
 
     def test_a_trial_closes_its_program(self):
         program = self._Program()
@@ -237,6 +237,7 @@ class TrialProgramClosedTest(testing.TestCase):
             """Any object a hypermodel returns, with no `close`."""
 
             optimizer = None
+            save_variables = lambda *args: None
 
             async def evaluate(self, x=None, y=None, **kwargs):
                 return {"reward": 1.0}
@@ -346,6 +347,7 @@ class TunerEndToEndTest(testing.TestCase):
 
             class _FakeProgram:
                 optimizer = object()  # truthy → dispatch to fit() branch
+                save_variables = lambda *args: None
 
                 async def fit(self_inner, *args, **kwargs):
                     # Reward peaks at x=0.3; RandomSearch with enough trials
@@ -435,6 +437,7 @@ class TunerEndToEndTest(testing.TestCase):
 
             class _FailingProgram:
                 optimizer = object()  # truthy → dispatch to fit() branch
+                save_variables = lambda *args: None
 
                 async def fit(self_inner, *args, **kwargs):
                     raise ValueError("trial-boom")
@@ -516,6 +519,7 @@ class TunerEndToEndTest(testing.TestCase):
 
             class _FakeProgram:
                 optimizer = object()
+                save_variables = lambda *args: None
 
                 async def fit(self_inner, *args, **kwargs):
                     h = SynalinksHistory()
@@ -551,6 +555,7 @@ class TunerEndToEndTest(testing.TestCase):
 
             class _FakeProgram:
                 optimizer = object()  # truthy → dispatch to fit() branch
+                save_variables = lambda *args: None
 
                 async def fit(self_inner, *args, **kwargs):
                     h = SynalinksHistory()
@@ -576,7 +581,7 @@ class TunerEndToEndTest(testing.TestCase):
     def test_multi_objective_drives_search_end_to_end(self):
         """Multi-objective: pass a list of `Objective`s to the tuner. kt
         wraps them in a `MultiObjective`, and we reduce each metric in
-        its own direction inside `_history_to_metrics_dict`."""
+        its own direction when the trial reports its History."""
         disable_keras_backend()
         seen = []
 
@@ -586,6 +591,7 @@ class TunerEndToEndTest(testing.TestCase):
 
             class _FakeProgram:
                 optimizer = object()  # truthy → dispatch to fit() branch
+                save_variables = lambda *args: None
 
                 async def fit(self_inner, *args, **kwargs):
                     h = SynalinksHistory()
@@ -635,6 +641,7 @@ class TunerEndToEndTest(testing.TestCase):
 
             class _FakeProgram:
                 optimizer = object()  # truthy → dispatch to fit() branch
+                save_variables = lambda *args: None
 
                 async def fit(self_inner, *args, **kwargs):
                     h = SynalinksHistory()
@@ -655,6 +662,57 @@ class TunerEndToEndTest(testing.TestCase):
         tuner.search()
         best = tuner.get_best_hyperparameters(num_trials=1)[0]
         self.assertLess(abs(best.get("x") - 0.8), 0.3)
+
+    def test_hyperband_applies_budget_and_get_best_models_loads_variables(self):
+        disable_keras_backend()
+        fits = []
+
+        async def build(hp):
+            hp.Float("x", 0.0, 1.0)
+
+            class _FakeProgram:
+                optimizer = object()
+                loaded = None
+
+                async def fit(self_inner, *args, epochs=1, initial_epoch=0, **kwargs):
+                    fits.append((epochs, initial_epoch))
+                    h = SynalinksHistory()
+                    h.history = {"val_reward": [hp.get("x")]}
+                    return h
+
+                def save_variables(self_inner, path):
+                    with open(path, "w") as f:
+                        f.write("{}")
+
+                def load_variables(self_inner, path):
+                    self_inner.loaded = path
+
+            return _FakeProgram()
+
+        tuner = Hyperband(
+            build,
+            objective=Objective("val_reward", direction="max"),
+            max_epochs=4,
+            factor=2,
+            hyperband_iterations=1,
+            directory=self._tmpdir,
+            project_name="hyperband_budget",
+            overwrite=True,
+            seed=3,
+        )
+        tuner.search(epochs=1)
+        budgets = [
+            (
+                t.hyperparameters.get("tuner/epochs"),
+                t.hyperparameters.get("tuner/initial_epoch"),
+            )
+            for t in sorted(tuner.oracle.trials.values(), key=lambda t: int(t.trial_id))
+        ]
+        self.assertEqual(fits, budgets)
+        self.assertGreater(max(epochs for epochs, _ in fits), 1)
+        best_trial = tuner.oracle.get_best_trials(1)[0]
+        (best,) = tuner.get_best_models(num_models=1)
+        self.assertEqual(best.loaded, tuner._get_checkpoint_fname(best_trial.trial_id))
 
     def test_sweep_records_each_models_own_metrics(self):
         """End-to-end guard for BOTH tuner-sweep metric-sharing bugs.

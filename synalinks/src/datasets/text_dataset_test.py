@@ -52,6 +52,14 @@ class TextDatasetTest(testing.TestCase):
         (x,) = next(iter(ds))
         self.assertEqual([item.filepath for item in x], ["a.txt", "b.txt", "c.txt"])
 
+    def test_directories_walked_in_sorted_order(self):
+        subdirs = "zyxwvutsrqponmlkjihgfedcba"
+        for sub in subdirs:
+            _write(os.path.join(self.tmp, sub, "doc.txt"), sub)
+        ds = TextDataset(root=self.tmp, batch_size=None)
+        (x,) = ds.materialize()
+        self.assertEqual([item.text for item in x], sorted(subdirs))
+
     def test_only_matching_suffix_is_read(self):
         _write(os.path.join(self.tmp, "keep.txt"), "yes")
         _write(os.path.join(self.tmp, "skip.md"), "no")

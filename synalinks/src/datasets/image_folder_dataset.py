@@ -1,11 +1,11 @@
 # License Apache 2.0: (c) 2025-2026 Yoan Sallami (Synalinks Team)
 
 import os
-from typing import Iterator
 from typing import Optional
 
 from synalinks.src.api_export import synalinks_export
 from synalinks.src.datasets.dataset import Dataset
+from synalinks.src.utils.datasets_utils import iter_files
 
 # Image file extensions recognized by default (lower-cased, case-insensitive
 # match). A superset of what every provider accepts; the resolver inlines
@@ -145,37 +145,18 @@ class ImageFolderDataset(Dataset):
         self.recursive = recursive
         self.extensions = tuple(ext.lower() for ext in extensions)
 
-    def _iter_files(self) -> Iterator[str]:
-        if self.recursive:
-            # os.walk's order is filesystem-dependent; sort within each
-            # directory so the dataset is deterministic across reruns.
-            for dirpath, _, filenames in os.walk(self.root):
-                for name in sorted(filenames):
-                    if name.lower().endswith(self.extensions):
-                        yield os.path.join(dirpath, name)
-        else:
-            for name in sorted(os.listdir(self.root)):
-                full = os.path.join(self.root, name)
-                if os.path.isfile(full) and name.lower().endswith(self.extensions):
-                    yield full
-
     def _iter_rows(self):
-        for path in self._iter_files():
+        for path in iter_files(self.root, self.extensions, self.recursive):
             abspath = os.path.abspath(path)
-            parent = os.path.basename(os.path.dirname(abspath))
-            root_name = os.path.basename(os.path.abspath(self.root))
+            parent = os.path.dirname(abspath)
             yield {
                 "file_uri": f"file://{abspath}",
                 "image_path": os.path.relpath(path, self.root),
                 "name": os.path.splitext(os.path.basename(path))[0],
-                "label": "" if parent == root_name else parent,
+                "label": (
+                    ""
+                    if parent == os.path.abspath(self.root)
+                    else os.path.basename(parent)
+                ),
                 "prompt": self.prompt,
             }
-
-    def __len__(self):
-        if self.limit is None:
-            raise NotImplementedError(
-                "ImageFolderDataset has unknown length without `limit=...`. "
-                "Pass a limit if you need __len__ (e.g. for a progress bar)."
-            )
-        return self._total_batches(self.limit)
