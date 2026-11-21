@@ -254,7 +254,10 @@ class AgentAsJudgeTest(testing.TestCase):
         )
         config = reward.program.get_config()
         self.assertEqual(config["score_type"], "Rating10")
+        # The default instructions are resolved for the agent, not stored.
+        self.assertIsNone(config["instructions"])
         program = AgentAsJudgeProgram.from_config(config)
+        self.assertEqual(program.agent.instructions, reward.program.agent.instructions)
         self.assertIs(program.score_type, Rating10)
         self.assertEqual(program.max_iterations, 2)
         self.assertEqual(list(program.agent.tools), ["calculate"])

@@ -151,6 +151,7 @@ class AgentAsJudgeProgram(Program):
             trainable=trainable,
         )
         self.score_type = get_score_type(score_type or Rating20)
+        self.instructions = instructions
         if instructions is None:
             instructions = default_agent_judge_instructions(self.score_type)
         self.agent = FunctionCallingAgent(
@@ -173,7 +174,6 @@ class AgentAsJudgeProgram(Program):
         self.tools = tools
         self.prompt_template = prompt_template
         self.examples = examples
-        self.instructions = instructions
         self.final_instructions = final_instructions
         self.max_iterations = max_iterations
         self.use_chain_of_thought = use_chain_of_thought
@@ -213,15 +213,21 @@ class AgentAsJudgeProgram(Program):
 
     @classmethod
     def from_config(cls, config):
+        return cls(**cls.resolve_config(config))
+
+    @staticmethod
+    def resolve_config(config):
+        """The constructor's arguments from a config, deserialized; nothing built."""
         config = dict(config)
-        language_model = serialization_lib.deserialize_synalinks_object(
+        config["language_model"] = serialization_lib.deserialize_synalinks_object(
             config.pop("language_model")
         )
         tools = [
             serialization_lib.deserialize_synalinks_object(tool)
             for tool in config.pop("tools", [])
         ]
-        return cls(language_model=language_model, tools=tools or None, **config)
+        config["tools"] = tools or None
+        return config
 
 
 @synalinks_export(
@@ -369,6 +375,8 @@ class AgentAsJudge(ProgramAsJudge):
             are dropped (combined with ``out_mask`` via OR).
     """
 
+    program_class = AgentAsJudgeProgram
+
     def __init__(
         self,
         language_model=None,
@@ -410,23 +418,4 @@ class AgentAsJudge(ProgramAsJudge):
             out_mask=out_mask,
             in_mask_pattern=in_mask_pattern,
             out_mask_pattern=out_mask_pattern,
-        )
-
-    @classmethod
-    def from_config(cls, config):
-        config = dict(config)
-        program = serialization_lib.deserialize_synalinks_object(config.pop("program"))
-        return cls(
-            language_model=program.language_model,
-            tools=program.tools,
-            prompt_template=program.prompt_template,
-            examples=program.examples,
-            instructions=program.instructions,
-            final_instructions=program.final_instructions,
-            score_type=program.score_type,
-            max_iterations=program.max_iterations,
-            use_chain_of_thought=program.use_chain_of_thought,
-            workdir=program.workdir,
-            skills=program.skills,
-            **config,
         )

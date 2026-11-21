@@ -158,6 +158,9 @@ class ProgramAsJudge(Reward):
             are dropped (combined with ``out_mask`` via OR).
     """
 
+    # Set by a judge that builds its own program from its arguments.
+    program_class = None
+
     def __init__(
         self,
         program,
@@ -203,9 +206,18 @@ class ProgramAsJudge(Reward):
 
     @classmethod
     def from_config(cls, config):
-        if "program" in config:
-            config = serialization_lib.deserialize_synalinks_object(config)
-        return cls(**config)
+        if cls.program_class is None:
+            if "program" in config:
+                config = serialization_lib.deserialize_synalinks_object(config)
+            return cls(**config)
+        # A judge that builds its own program takes the program's arguments, not
+        # the program: building it would also build what it opens (a sandbox).
+        config = dict(config)
+        program = config.pop("program")
+        arguments = cls.program_class.resolve_config(program["config"])
+        for key in ("name", "description", "trainable"):
+            arguments.pop(key, None)
+        return cls(**arguments, **config)
 
     def __repr__(self):
         return f"<ProgramAsJudge({self.program})>"

@@ -419,14 +419,20 @@ class RubricsAsJudgeProgram(Module):
 
     @classmethod
     def from_config(cls, config):
-        language_model = serialization_lib.deserialize_synalinks_object(
+        return cls(**cls.resolve_config(config))
+
+    @staticmethod
+    def resolve_config(config):
+        """The constructor's arguments from a config, deserialized; nothing built."""
+        config = dict(config)
+        config["language_model"] = serialization_lib.deserialize_synalinks_object(
             config.pop("language_model")
         )
         if "decision_model" in config:
             config["decision_model"] = serialization_lib.deserialize_synalinks_object(
                 config.pop("decision_model")
             )
-        return cls(language_model=language_model, **config)
+        return config
 
 
 @synalinks_export(
@@ -460,6 +466,8 @@ class RubricsAsJudge(ProgramAsJudge):
             not write a critique, so the `critique` lists the level and
             confidence of each criterion instead.
     """
+
+    program_class = RubricsAsJudgeProgram
 
     def __init__(
         self,
@@ -495,20 +503,3 @@ class RubricsAsJudge(ProgramAsJudge):
             in_mask_pattern=in_mask_pattern,
             out_mask_pattern=out_mask_pattern,
         )
-
-    @classmethod
-    def from_config(cls, config):
-        program = serialization_lib.deserialize_synalinks_object(config.pop("program"))
-        kwargs = {
-            "language_model": program.language_model,
-            "prompt_template": program.prompt_template,
-            "examples": program.examples,
-            "instructions": program.instructions,
-            "score_type": program.score_type,
-            **config,
-        }
-        if program.decision_model is not None:
-            kwargs["decision_model"] = program.decision_model
-        if cls is RubricsAsJudge:
-            kwargs["rubrics"] = [rubric.get_json() for rubric in program.rubrics]
-        return cls(**kwargs)

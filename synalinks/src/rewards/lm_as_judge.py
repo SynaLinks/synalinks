@@ -111,10 +111,16 @@ class LMAsJudgeProgram(Program):
 
     @classmethod
     def from_config(cls, config):
-        language_model = serialization_lib.deserialize_synalinks_object(
+        return cls(**cls.resolve_config(config))
+
+    @staticmethod
+    def resolve_config(config):
+        """The constructor's arguments from a config, deserialized; nothing built."""
+        config = dict(config)
+        config["language_model"] = serialization_lib.deserialize_synalinks_object(
             config.pop("language_model")
         )
-        return cls(language_model=language_model, **config)
+        return config
 
 
 @synalinks_export(
@@ -166,6 +172,8 @@ class LMAsJudge(ProgramAsJudge):
             are dropped (combined with ``out_mask`` via OR).
     """
 
+    program_class = LMAsJudgeProgram
+
     def __init__(
         self,
         language_model=None,
@@ -195,17 +203,4 @@ class LMAsJudge(ProgramAsJudge):
             out_mask=out_mask,
             in_mask_pattern=in_mask_pattern,
             out_mask_pattern=out_mask_pattern,
-        )
-
-    @classmethod
-    def from_config(cls, config):
-        config = dict(config)
-        program = serialization_lib.deserialize_synalinks_object(config.pop("program"))
-        return cls(
-            language_model=program.language_model,
-            prompt_template=program.prompt_template,
-            examples=program.examples,
-            instructions=program.instructions,
-            score_type=program.score_type,
-            **config,
         )

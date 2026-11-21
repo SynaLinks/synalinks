@@ -93,9 +93,7 @@ def default_rlm_judge_instructions(
         (str): The instructions string.
     """
     if recursive:
-        base = get_recursive_instructions().replace(
-            "{max_llm_calls}", str(max_llm_calls)
-        )
+        base = get_recursive_instructions().replace("{max_llm_calls}", str(max_llm_calls))
     else:
         base = get_default_instructions()
     verify = (
@@ -305,6 +303,11 @@ class RLMAsJudgeProgram(Program):
 
     @classmethod
     def from_config(cls, config):
+        return cls(**cls.resolve_config(config))
+
+    @staticmethod
+    def resolve_config(config):
+        """The constructor's arguments from a config, deserialized; nothing built."""
         config = dict(config)
         for key in ("language_model", "sub_language_model", "sandbox"):
             value = config.pop(key, None)
@@ -323,7 +326,7 @@ class RLMAsJudgeProgram(Program):
         config["sandbox_type"] = (
             get_registered_object(sandbox_type_name) if sandbox_type_name else None
         )
-        return cls(**config)
+        return config
 
 
 @synalinks_export(
@@ -484,6 +487,8 @@ class RLMAsJudge(ProgramAsJudge):
             are dropped (combined with ``out_mask`` via OR).
     """
 
+    program_class = RLMAsJudgeProgram
+
     def __init__(
         self,
         language_model=None,
@@ -541,31 +546,4 @@ class RLMAsJudge(ProgramAsJudge):
             out_mask=out_mask,
             in_mask_pattern=in_mask_pattern,
             out_mask_pattern=out_mask_pattern,
-        )
-
-    @classmethod
-    def from_config(cls, config):
-        config = dict(config)
-        program = serialization_lib.deserialize_synalinks_object(config.pop("program"))
-        return cls(
-            language_model=program.language_model,
-            sub_language_model=program.sub_language_model,
-            tools=program.tools,
-            native_tools=program.native_tools,
-            prompt_template=program.prompt_template,
-            examples=program.examples,
-            instructions=program.instructions,
-            final_instructions=program.final_instructions,
-            score_type=program.score_type,
-            max_iterations=program.max_iterations,
-            use_chain_of_thought=program.use_chain_of_thought,
-            timeout=program.timeout,
-            recursive=program.recursive,
-            max_llm_calls=program.max_llm_calls,
-            max_output_chars=program.max_output_chars,
-            workdir=program.workdir,
-            skills=program.skills,
-            sandbox=program.sandbox,
-            sandbox_type=program.sandbox_type,
-            **config,
         )
