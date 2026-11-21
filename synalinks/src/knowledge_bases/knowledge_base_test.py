@@ -1628,6 +1628,27 @@ class KnowledgeBaseTest(testing.TestCase):
             knowledge_base.get_config(),
         )
 
+    async def test_config_round_trip_keeps_files_options_and_data(self):
+        with patch(
+            "synalinks.src.knowledge_bases.adapters_utils.synalinks_home",
+            return_value=self.temp_dir,
+        ):
+            kb = KnowledgeBase(
+                data_models=[Document], stemmer="french", wipe_on_start=True
+            )
+            await kb.update(Document(id="d1", text="hello").to_json_data_model())
+            config = kb.get_config()
+            kb.close()
+            self.assertNotIn("wipe_on_start", config)
+            clone = KnowledgeBase.from_config(config)
+            try:
+                self.assertEqual(clone.sql_adapter.uri, kb.sql_adapter.uri)
+                self.assertEqual(clone.graph_adapter.uri, kb.graph_adapter.uri)
+                self.assertEqual(clone.sql_adapter.stemmer, "french")
+                self.assertEqual(len(await clone.getall(table_name="Document")), 1)
+            finally:
+                clone.close()
+
 
 class KnowledgeBaseArgumentsTest(testing.TestCase):
     def test_unknown_keyword_arguments_raise(self):

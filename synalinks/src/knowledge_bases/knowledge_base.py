@@ -148,7 +148,8 @@ class KnowledgeBase(SynalinksSaveable):
         metric (str): The distance metric for vector search.
             Options: "cosine", "l2sq", "ip" (default: "cosine").
         wipe_on_start (bool): Whether to clear the database on initialization
-            (default: False).
+            (default: False). Not saved by `get_config()`, so reloading a
+            knowledge base never wipes it.
         name (str): Optional name for the knowledge base (used for serialization
             and as the filename stem for the default ``.synalinks`` paths).
         encryption_key (str): Optional at-rest encryption key for the SQL
@@ -245,10 +246,10 @@ class KnowledgeBase(SynalinksSaveable):
         self.embedding_model = _get_em(embedding_model)
         self.metric = metric
         self.wipe_on_start = wipe_on_start
-        if not name:
-            self.name = auto_name("knowledge_base")
-        else:
-            self.name = name
+        # The given name (not the auto one) picks the adapters' default file stem.
+        self._name_arg = name
+        self.name = name or auto_name("knowledge_base")
+        self._adapter_kwargs = kwargs
         # `encryption_key` is deliberately NOT stored on `self`: it
         # lives only inside the adapter, and only as long as the
         # adapter does. This keeps the secret out of `get_config()`,
@@ -2137,9 +2138,9 @@ class KnowledgeBase(SynalinksSaveable):
         config = {
             "uri": self.uri,
             "graph_uri": self.graph_uri,
-            "name": self.name,
+            "name": self._name_arg,
             "metric": self.metric,
-            "wipe_on_start": self.wipe_on_start,
+            **self._adapter_kwargs,
         }
         data_models_config = {
             "data_models": self._serialize_models(self.data_models, "data_model"),
