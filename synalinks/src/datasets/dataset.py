@@ -3,6 +3,7 @@
 import itertools
 
 import jinja2
+import jinja2.meta
 import jinja2.sandbox
 import numpy as np
 import orjson
@@ -162,6 +163,16 @@ class Dataset:
         self._tools_tmpl = (
             env.from_string(tools_template) if tools_template is not None else None
         )
+        self._template_vars = (
+            set().union(
+                *(
+                    jinja2.meta.find_undeclared_variables(env.parse(t))
+                    for t in (input_template, output_template, tools_template)
+                    if t is not None
+                )
+            )
+            - env.globals.keys()
+        )
         # With a tools template the input is the request's shape: the row's
         # own fields and the `tools` beside them. `row_schema` is the row
         # alone, for whoever reads it back out of the request.
@@ -236,12 +247,21 @@ class Dataset:
             if self.limit is not None and seen >= self.limit:
                 break
             seen += 1
-            x = self._make_input(self._input_tmpl.render(**row), row)
-            y = (
-                None
-                if inputs_only
-                else self._make_target(self._output_tmpl.render(**row))
-            )
+            try:
+                x = self._make_input(self._input_tmpl.render(**row), row)
+                y = (
+                    None
+                    if inputs_only
+                    else self._make_target(self._output_tmpl.render(**row))
+                )
+            except (jinja2.UndefinedError, TypeError) as e:
+                missing = sorted(self._template_vars - row.keys())
+                if not missing:
+                    raise
+                raise ValueError(
+                    f"Row {seen - 1}: the templates use {missing}, missing from "
+                    f"the row's columns {sorted(row)}."
+                ) from e
             for _ in range(self.repeat):
                 x_buf.append(x)
                 if not inputs_only:

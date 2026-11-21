@@ -81,7 +81,8 @@ class TextDataset(Dataset):
 
     Args:
         root (str): Directory to walk. Must exist.
-        encoding (str): Source encoding. Defaults to ``"utf-8"``.
+        encoding (str): Source encoding. Defaults to ``"utf-8-sig"``
+            (UTF-8, with or without a byte order mark).
         recursive (bool): When True (default), descend into
             subdirectories. When False, only direct children of
             ``root`` are read.
@@ -102,7 +103,7 @@ class TextDataset(Dataset):
         self,
         root: str,
         *,
-        encoding: str = "utf-8",
+        encoding: str = "utf-8-sig",
         recursive: bool = True,
         glob_pattern: str = ".txt",
         input_data_model=None,

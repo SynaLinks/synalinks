@@ -264,7 +264,8 @@ class MarkdownDataset(Dataset):
 
     Args:
         root (str): Directory to walk. Must exist.
-        encoding (str): Source encoding. Defaults to ``"utf-8"``.
+        encoding (str): Source encoding. Defaults to ``"utf-8-sig"``
+            (UTF-8, with or without a byte order mark).
         recursive (bool): When True (default), descend into
             subdirectories.
         glob_pattern (str): Filename suffix to match
@@ -283,7 +284,7 @@ class MarkdownDataset(Dataset):
         self,
         root: str,
         *,
-        encoding: str = "utf-8",
+        encoding: str = "utf-8-sig",
         recursive: bool = True,
         glob_pattern: str = ".md",
         input_data_model=None,
