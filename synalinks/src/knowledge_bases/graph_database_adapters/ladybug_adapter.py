@@ -77,6 +77,7 @@ from synalinks.src.knowledge_bases.adapters_utils import align_keywords
 from synalinks.src.knowledge_bases.adapters_utils import format_search_results
 from synalinks.src.knowledge_bases.adapters_utils import normalize_query_vectors
 from synalinks.src.knowledge_bases.adapters_utils import resolve_db_path
+from synalinks.src.knowledge_bases.adapters_utils import resolve_ref
 from synalinks.src.knowledge_bases.adapters_utils import to_pascal_identifier
 from synalinks.src.knowledge_bases.adapters_utils import to_snake_identifier
 from synalinks.src.knowledge_bases.graph_database_adapters.graph_database_adapter import (
@@ -228,23 +229,6 @@ def _assert_read_only_cypher(query: str) -> None:
         )
 
 
-def _resolve_ref(prop_spec: Dict[str, Any], defs: Dict[str, Any]) -> Dict[str, Any]:
-    """Inline a ``$ref`` into the property spec.
-
-    Pydantic v2 emits ``{"$ref": "#/$defs/Foo"}`` for nested models /
-    enums; the schema-to-column converter needs the resolved object,
-    not the indirection. Overrides on the referring spec (e.g.
-    ``default``) take precedence over the resolved definition.
-    """
-    ref = prop_spec.get("$ref")
-    if not ref:
-        return prop_spec
-    target = ref.rsplit("/", 1)[-1]
-    resolved = dict(defs.get(target, {}))
-    resolved.update({k: v for k, v in prop_spec.items() if k != "$ref"})
-    return resolved
-
-
 def _pick_anyof_variant(
     prop_spec: Dict[str, Any], defs: Dict[str, Any]
 ) -> Dict[str, Any]:
@@ -256,7 +240,7 @@ def _pick_anyof_variant(
     synthetic ``"type": "string"``.
     """
     for variant in prop_spec.get("anyOf", []):
-        variant = _resolve_ref(variant, defs)
+        variant = resolve_ref(variant, defs)
         vtype = variant.get("type")
         if vtype and vtype != "null":
             return variant
@@ -882,7 +866,7 @@ class LadybugAdapter(GraphDatabaseAdapter):
             if normalized is None:
                 continue
 
-            prop_spec = _resolve_ref(prop_spec, defs)
+            prop_spec = resolve_ref(prop_spec, defs)
             prop_type = prop_spec.get("type")
             if not prop_type and "anyOf" in prop_spec:
                 prop_spec = _pick_anyof_variant(prop_spec, defs)

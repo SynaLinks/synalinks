@@ -37,9 +37,11 @@ from synalinks.src.backend import EmbeddingRequest
 from synalinks.src.backend import JsonDataModel
 from synalinks.src.backend import SymbolicDataModel
 from synalinks.src.knowledge_bases.adapters_utils import format_search_results
+from synalinks.src.knowledge_bases.adapters_utils import json_columns
 from synalinks.src.knowledge_bases.adapters_utils import minmax_normalize_scores
 from synalinks.src.knowledge_bases.adapters_utils import normalize_query_vectors
 from synalinks.src.knowledge_bases.adapters_utils import resolve_db_path
+from synalinks.src.knowledge_bases.adapters_utils import resolve_ref
 from synalinks.src.knowledge_bases.adapters_utils import to_pascal_identifier
 from synalinks.src.knowledge_bases.adapters_utils import to_snake_identifier
 from synalinks.src.knowledge_bases.database_adapters.database_adapter import (
@@ -212,19 +214,6 @@ class LanceDBAdapter(DatabaseAdapter):
 
     # -- schema mapping --------------------------------------------------------
 
-    @staticmethod
-    def _resolve_ref(spec: dict, defs: dict) -> dict:
-        if isinstance(spec, dict) and "$ref" in spec:
-            key = spec["$ref"].rsplit("/", 1)[-1]
-            return dict(defs.get(key, {}))
-        return spec
-
-    def _get_id_key(self, schema: dict) -> str:
-        props = schema.get("properties") if isinstance(schema, dict) else None
-        if not props:
-            raise ValueError("Cannot determine primary key: schema has no `properties`.")
-        return _column_identifier(next(iter(props.keys())))
-
     def _json_schema_to_arrow(self, json_schema: dict):
         """Build a PyArrow schema + the set of JSON-encoded column names."""
         props = json_schema.get("properties", {})
@@ -233,7 +222,7 @@ class LanceDBAdapter(DatabaseAdapter):
         json_cols = set()
         for raw_name, raw_spec in props.items():
             name = _column_identifier(raw_name)
-            spec = self._resolve_ref(raw_spec, defs)
+            spec = resolve_ref(raw_spec, defs)
             t = spec.get("type")
             if name == self.vss_key:
                 if self.vector_dim:
@@ -249,7 +238,7 @@ class LanceDBAdapter(DatabaseAdapter):
             elif t == "boolean":
                 fields.append(pa.field(name, pa.bool_()))
             elif t == "array":
-                items = self._resolve_ref(spec.get("items", {}), defs)
+                items = resolve_ref(spec.get("items", {}), defs)
                 it = items.get("type")
                 if it == "number":
                     fields.append(pa.field(name, pa.list_(pa.float64())))
@@ -327,21 +316,6 @@ class LanceDBAdapter(DatabaseAdapter):
             "properties": props,
         }
 
-    def _json_columns(self, json_schema: dict) -> set:
-        props = json_schema.get("properties", {})
-        defs = json_schema.get("$defs", {})
-        cols = set()
-        for raw_name, raw_spec in props.items():
-            spec = self._resolve_ref(raw_spec, defs)
-            t = spec.get("type")
-            if t == "object":
-                cols.add(_column_identifier(raw_name))
-            elif t == "array":
-                items = self._resolve_ref(spec.get("items", {}), defs)
-                if items.get("type") == "object":
-                    cols.add(_column_identifier(raw_name))
-        return cols
-
     def _string_columns(self, json_schema: dict, *, exclude_pk=False) -> List[str]:
         id_key = self._get_id_key(json_schema)
         out = []
@@ -350,7 +324,7 @@ class LanceDBAdapter(DatabaseAdapter):
             name = _column_identifier(raw_name)
             if exclude_pk and name == id_key:
                 continue
-            spec = self._resolve_ref(raw_spec, defs)
+            spec = resolve_ref(raw_spec, defs)
             if (
                 spec.get("type") == "string"
                 and spec.get("format") not in _DATE_LIKE_FORMATS
@@ -588,7 +562,7 @@ class LanceDBAdapter(DatabaseAdapter):
         schema = self._table_json_schema(table, remove_embedding=remove_embedding)
         full_schema = self._table_json_schema(table, remove_embedding=False)
         id_key = self._get_id_key(full_schema)
-        json_cols = self._json_columns(full_schema)
+        json_cols = json_columns(full_schema)
 
         tbl = self._db.open_table(table)
         predicate = f"{id_key} IN ({', '.join(_sql_literal(i) for i in ids)})"
@@ -639,7 +613,7 @@ class LanceDBAdapter(DatabaseAdapter):
         schema = self._table_json_schema(table, remove_embedding=remove_embedding)
         full_schema = self._table_json_schema(table, remove_embedding=False)
         id_key = self._get_id_key(full_schema)
-        json_cols = self._json_columns(full_schema)
+        json_cols = json_columns(full_schema)
 
         tbl = self._db.open_table(table)
         try:
@@ -951,7 +925,7 @@ class LanceDBAdapter(DatabaseAdapter):
         table = table_identifier(table_name)
         full_schema = self._table_json_schema(table, remove_embedding=False)
         id_key = self._get_id_key(full_schema)
-        json_cols = self._json_columns(full_schema)
+        json_cols = json_columns(full_schema)
 
         offset = _SCORE_OFFSET[self.metric]
         tbl = self._db.open_table(table)
@@ -1007,7 +981,7 @@ class LanceDBAdapter(DatabaseAdapter):
         table = table_identifier(table_name)
         full_schema = self._table_json_schema(table, remove_embedding=False)
         id_key = self._get_id_key(full_schema)
-        json_cols = self._json_columns(full_schema)
+        json_cols = json_columns(full_schema)
         if not self._string_columns(full_schema, exclude_pk=True):
             warnings.warn(f"Skipping FTS search for {table}: no text columns to index.")
             return format_search_results([], output_format)
@@ -1063,7 +1037,7 @@ class LanceDBAdapter(DatabaseAdapter):
             return format_search_results([], output_format)
         table = table_identifier(table_name)
         full_schema = self._table_json_schema(table, remove_embedding=False)
-        json_cols = self._json_columns(full_schema)
+        json_cols = json_columns(full_schema)
         string_cols = self._string_columns(full_schema, exclude_pk=False)
         if fields is not None:
             requested = {_column_identifier(f) for f in fields}

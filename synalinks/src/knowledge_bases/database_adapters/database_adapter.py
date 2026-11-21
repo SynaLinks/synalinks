@@ -5,6 +5,7 @@ from typing import List
 from typing import Optional
 from typing import Union
 
+from synalinks.src.knowledge_bases.adapters_utils import to_snake_identifier
 from synalinks.src.modules.embedding_models import get as _get_em
 
 
@@ -49,6 +50,13 @@ class DatabaseAdapter:
 
         if wipe_on_start:
             self.wipe_database()
+
+    def _get_id_key(self, schema: dict) -> str:
+        """Return the primary key: the schema's first property, snake-cased."""
+        props = schema.get("properties") if isinstance(schema, dict) else None
+        if not props:
+            raise ValueError("Cannot determine primary key: schema has no `properties`.")
+        return to_snake_identifier(next(iter(props.keys())))
 
     def wipe_database(self):
         """Clear all data from the database.

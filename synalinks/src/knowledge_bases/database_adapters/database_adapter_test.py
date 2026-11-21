@@ -16,10 +16,10 @@ from synalinks.src.backend import JsonDataModel
 from synalinks.src.backend import SymbolicDataModel
 from synalinks.src.knowledge_bases.database_adapters.duckdb_adapter import DuckDBAdapter
 from synalinks.src.knowledge_bases.database_adapters.duckdb_adapter import (
-    sanitize_identifier,
+    sanitize_column_names,
 )
 from synalinks.src.knowledge_bases.database_adapters.duckdb_adapter import (
-    sanitize_properties,
+    sanitize_identifier,
 )
 from synalinks.src.modules.embedding_models import EmbeddingModel
 
@@ -51,26 +51,26 @@ class SanitizationTest(testing.TestCase):
         with self.assertRaises(ValueError):
             sanitize_identifier("invalid;name")
 
-    def test_sanitize_properties(self):
+    def test_sanitize_column_names(self):
         # Keys are now funnelled through ``column_identifier`` which
         # snake-cases first then sanitizes, so a mixedCase / PascalCase
         # key gets canonicalized to snake_case, not preserved verbatim.
         props = {"valid_key": "value", "AnotherKey": 123}
-        result = sanitize_properties(props)
+        result = sanitize_column_names(props)
         self.assertEqual(result, {"valid_key": "value", "another_key": 123})
 
-    def test_sanitize_properties_neutralizes_injection_shaped_key(self):
+    def test_sanitize_column_names_neutralizes_injection_shaped_key(self):
         # Previously: ``"invalid-key"`` (and worse) was rejected at
         # ``sanitize_identifier``. With the snake_case normalization in
         # front of the sanitizer, separator-style strings now get
         # collapsed to a valid identifier: the malicious tokens are
         # *stripped*, not just refused. Either outcome is safe.
-        result = sanitize_properties({"invalid-key": "value"})
+        result = sanitize_column_names({"invalid-key": "value"})
         self.assertEqual(result, {"invalid_key": "value"})
 
         # Even an outright SQL-injection-shaped key is neutralized:
         # only the alphanumeric residue survives.
-        result = sanitize_properties({"a; DROP TABLE t; --b": 1})
+        result = sanitize_column_names({"a; DROP TABLE t; --b": 1})
         self.assertEqual(result, {"a_drop_table_t_b": 1})
 
 

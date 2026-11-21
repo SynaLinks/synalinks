@@ -86,6 +86,35 @@ def to_snake_identifier(name: str, *, strict: bool = True) -> Optional[str]:
     return normalized
 
 
+def resolve_ref(spec: dict, defs: dict) -> dict:
+    """Inline a Pydantic v2 ``$ref`` (``#/$defs/Foo``) into a property spec.
+
+    Keys set on the referring spec (e.g. ``default``) override the
+    resolved definition. A spec without ``$ref`` is returned as is.
+    """
+    ref = spec.get("$ref")
+    if not ref:
+        return spec
+    resolved = dict(defs.get(ref.rsplit("/", 1)[-1], {}))
+    resolved.update({k: v for k, v in spec.items() if k != "$ref"})
+    return resolved
+
+
+def json_columns(schema: dict) -> set:
+    """Return the snake-cased columns stored as JSON strings: objects and
+    arrays of objects (``$ref`` resolved)."""
+    defs = schema.get("$defs", {})
+    cols = set()
+    for raw_name, raw_spec in schema.get("properties", {}).items():
+        spec = resolve_ref(raw_spec, defs)
+        if spec.get("type") == "object" or (
+            spec.get("type") == "array"
+            and resolve_ref(spec.get("items", {}), defs).get("type") == "object"
+        ):
+            cols.add(to_snake_identifier(raw_name))
+    return cols
+
+
 def resolve_db_path(
     uri: Optional[str],
     *,
