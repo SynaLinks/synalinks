@@ -198,7 +198,9 @@ class EmbeddingModel(Module):
         hooks (list): Optional. Hooks to attach to this module's calls.
         **default_kwargs: Optional. Default parameters (e.g. `dimensions`,
             `encoding_format`) forwarded to every call. Per-call kwargs
-            override these.
+            override these. Credentials (`api_key`, `*_token`, `*_secret_*`,
+            `extra_headers`...) are never serialized by `get_config`: set them
+            again on load, or use environment variables.
     """
 
     def __init__(
@@ -554,7 +556,11 @@ class EmbeddingModel(Module):
             "cache_dir": self.cache_dir,
             "name": self.name,
             "description": self.description,
-            **self.default_kwargs,
+            **{
+                k: v
+                for k, v in self.default_kwargs.items()
+                if not model_catalog.is_secret_kwarg(k)
+            },
         }
         if self.fallback:
             fallback_config = {

@@ -37,6 +37,25 @@ def env_var(name, required=True, secret=True):
     return {"name": name, "required": required, "secret": secret}
 
 
+def is_secret_kwarg(name):
+    """Whether a model kwarg holds a credential, so it must never be serialized.
+
+    Matches `api_key`, `aws_secret_access_key`, `aws_session_token`,
+    `azure_ad_token`, `vertex_credentials`, `extra_headers` (which often carry
+    an `Authorization` header) and the like.
+
+    Args:
+        name (str): The kwarg name.
+
+    Returns:
+        (bool): True if the kwarg must be left out of `get_config`.
+    """
+    name = name.lower()
+    return name.endswith(("key", "key_id", "token", "headers")) or any(
+        word in name for word in ("secret", "password", "credential")
+    )
+
+
 # The providers of language and embedding models: the environment variables
 # they read, their default endpoint, and the server API to list models from
 # (`None` for the providers listed from litellm's model table).
