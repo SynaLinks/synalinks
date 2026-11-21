@@ -24,15 +24,6 @@ FORMATS = ("openai", "tinker", "customizer")
 _SESSION_ID = uuid.uuid4().hex
 
 
-def _text_content(content):
-    """Return a message's content as text, or `None` if it holds non-text parts."""
-    if not isinstance(content, list):
-        return content or ""
-    if any(not isinstance(p, dict) or p.get("type") != "text" for p in content):
-        return None
-    return "".join(p.get("text", "") for p in content)
-
-
 @synalinks_export("synalinks.hooks.format_conversation")
 def format_conversation(messages, tools=None, format="openai"):
     """Format a chat-completion conversation as one fine-tuning example.
@@ -78,9 +69,12 @@ def format_conversation(messages, tools=None, format="openai"):
         return row, None
     formatted = []
     for message in messages:
-        content = _text_content(message.get("content"))
-        if content is None:
-            return None, f"the {format} format only takes text content"
+        content = message.get("content")
+        if isinstance(content, list):
+            if any(not isinstance(p, dict) or p.get("type") != "text" for p in content):
+                return None, f"the {format} format only takes text content"
+            content = "".join(p.get("text", "") for p in content)
+        content = content or ""
         reasoning = message.get("reasoning_content")
         if format == "tinker":
             if message.get("tool_calls") or message["role"] == "tool":
