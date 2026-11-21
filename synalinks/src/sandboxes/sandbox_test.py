@@ -4,7 +4,9 @@ from synalinks.src import testing
 from synalinks.src.sandboxes.sandbox import Execution
 from synalinks.src.sandboxes.sandbox import ExecutionError
 from synalinks.src.sandboxes.sandbox import ExecutionResult
+from synalinks.src.sandboxes.sandbox import InvalidArgumentException
 from synalinks.src.sandboxes.sandbox import Logs
+from synalinks.src.sandboxes.sandbox import Paginator
 from synalinks.src.sandboxes.sandbox import Result
 from synalinks.src.sandboxes.sandbox import Sandbox
 
@@ -26,6 +28,12 @@ class _EchoSandbox(Sandbox):
 
 
 class SandboxBaseTest(testing.TestCase):
+    def test_paginator_rejects_non_positive_limit(self):
+        # Regression #254: limit=0 kept has_next True with empty pages forever.
+        for limit in (0, -1):
+            with self.assertRaises(InvalidArgumentException):
+                Paginator(lambda: ["a"], limit=limit)
+
     async def test_aclose_kills_the_sandbox_once(self):
         sandbox = await _EchoSandbox.create()
         await sandbox.aclose()
