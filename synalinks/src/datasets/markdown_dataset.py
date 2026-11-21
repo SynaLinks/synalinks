@@ -187,7 +187,7 @@ def parse_markdown_sections(text: str) -> List[Dict[str, Any]]:
         if whole.strip():
             sections.append({"section_name": "", "level": 0, "path": "", "text": whole})
 
-    stack: List[str] = []  # names of currently-open ancestor headings
+    stack: List[tuple] = []  # (level, name) of currently-open ancestor headings
     for idx, h in enumerate(headings):
         body_start = h["end"]
         body_end = headings[idx + 1]["start"] if idx + 1 < len(headings) else len(lines)
@@ -195,10 +195,10 @@ def parse_markdown_sections(text: str) -> List[Dict[str, Any]]:
 
         # Pop ancestors at the same or deeper level: a new h2 closes
         # any open h2 / h3 / h4 / ... sibling, but leaves the parent h1.
-        while len(stack) >= h["level"]:
+        while stack and stack[-1][0] >= h["level"]:
             stack.pop()
-        stack.append(h["name"])
-        path = " / ".join(stack)
+        stack.append((h["level"], h["name"]))
+        path = " / ".join(name for _, name in stack)
 
         sections.append(
             {

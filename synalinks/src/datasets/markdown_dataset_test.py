@@ -51,6 +51,14 @@ class ParseMarkdownSectionsTest(testing.TestCase):
             ["A", "A / B1", "A / B2"],
         )
 
+    def test_skipped_heading_levels_keep_siblings_apart(self):
+        text = "## Install\n\na\n\n## Usage\n\nb\n\n# Guide\n\n### One\n\nc\n\n### Two\n"
+        sections = parse_markdown_sections(text)
+        self.assertEqual(
+            [s["path"] for s in sections],
+            ["Install", "Usage", "Guide", "Guide / One", "Guide / Two"],
+        )
+
     def test_preamble_before_first_heading(self):
         text = "preamble content\n\n# Heading\n\nbody\n"
         sections = parse_markdown_sections(text)
