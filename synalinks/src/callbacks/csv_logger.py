@@ -29,7 +29,7 @@ class CSVLogger(Callback):
 
     ```python
     csv_logger = CSVLogger(filepath='training.log')
-    program.fit(x_train, y_train, callbacks=[csv_logger])
+    await program.fit(x=x_train, y=y_train, callbacks=[csv_logger])
     ```
     """
 

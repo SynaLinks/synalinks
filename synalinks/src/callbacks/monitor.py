@@ -367,7 +367,7 @@ class Monitor(Callback):
     )
 
     # Use in training
-    program.fit(
+    await program.fit(
         x=train_data,
         y=train_labels,
         epochs=10,
@@ -381,7 +381,7 @@ class Monitor(Callback):
         run_name="nightly_eval",
         resume=True,
     )
-    program.evaluate(x=test_data, y=test_labels, callbacks=[monitor])
+    await program.evaluate(x=test_data, y=test_labels, callbacks=[monitor])
     ```
 
     Note:
