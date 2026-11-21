@@ -500,6 +500,20 @@ class KnowledgeBaseTest(testing.TestCase):
         finally:
             kb.sql_adapter.close()
 
+    async def test_from_csv_keeps_in_memory_data(self):
+        csv_path = os.path.join(self.temp_dir, "docs.csv")
+        with open(csv_path, "w", encoding="utf-8") as f:
+            f.write("id,text\nd2,from csv\n")
+
+        kb = KnowledgeBase(uri="duckdb://:memory:", data_models=[Document])
+        try:
+            await kb.update(Document(id="d1", text="in memory").to_json_data_model())
+            await kb.from_csv(csv_path, table_name="Document")
+            rows = await kb.sql("SELECT id FROM Document ORDER BY id")
+            self.assertEqual([r["id"] for r in rows], ["d1", "d2"])
+        finally:
+            kb.sql_adapter.close()
+
     async def test_from_csv_fts_index_rebuilt_so_search_works(self):
         # After from_csv returns, fulltext_search must find rows in
         # the loaded data. Pre-fix sloppiness would have left the FTS
@@ -528,13 +542,7 @@ class KnowledgeBaseTest(testing.TestCase):
             kb.sql_adapter.close()
 
     async def test_from_csv_restores_sandbox_after_load(self):
-        # The fast path tears the sandboxed connection down to let a
-        # loose connection run read_csv (which needs external access),
-        # then reopens the sandboxed one. Verify the sandbox is back
-        # afterwards by trying to do exactly what the sandbox blocks:
-        # a SELECT from read_csv via query() should fail because the
-        # post-load persistent connection has enable_external_access
-        # disabled again.
+        # read_csv runs on a throwaway connection; the main one must stay sandboxed.
         import csv
 
         csv_path = os.path.join(self.temp_dir, "docs.csv")
@@ -547,10 +555,6 @@ class KnowledgeBaseTest(testing.TestCase):
         try:
             await kb.from_csv(csv_path, table_name="Document")
 
-            # The post-load persistent connection must still refuse
-            # read_csv via query(read_only=False); the sandbox is
-            # connection-level, so re-attaching means the new
-            # connection was re-sandboxed in __init__'s path.
             import duckdb
 
             with self.assertRaises(duckdb.Error):

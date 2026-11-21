@@ -374,27 +374,6 @@ class DuckDBAdapter(DatabaseAdapter):
             return con
         return duckdb.connect(self.uri, read_only=False)
 
-    def _open_loose_connection(self):
-        """Open a fresh, NON-sandboxed connection for native bulk loads.
-
-        ``read_csv`` / ``read_parquet`` need ``enable_external_access=true``,
-        which the sandboxed persistent connection has permanently disabled.
-        """
-        if self._encryption_key is not None:
-            con = duckdb.connect(":memory:")
-            self._attach_db(con)
-            con.execute(f"USE {_ATTACH_ALIAS}")
-        else:
-            con = duckdb.connect(self.uri, read_only=False)
-        try:
-            con.execute("LOAD fts;")
-            if self.embedding_model:
-                con.execute("LOAD vss;")
-                con.execute("SET hnsw_enable_experimental_persistence=true;")
-        except duckdb.Error:
-            pass
-        return con
-
     @contextmanager
     def _connect(self, read_only=False):
         """Yield the adapter's cached connection.
@@ -1214,8 +1193,10 @@ class DuckDBAdapter(DatabaseAdapter):
         """Native DuckDB bulk load shared by the ``from_csv`` / ``from_parquet``
         / ``from_json`` / ``from_jsonl`` helpers.
 
-        Cycles the sandboxed connection out for a loose one because
-        ``read_*`` table functions need ``enable_external_access=true``.
+        The file is read on a throwaway in-memory connection (``read_*``
+        table functions need ``enable_external_access=true``, which the
+        sandboxed connection has off for good) and streamed as Arrow into
+        the main connection, so in-memory databases keep their data.
         """
         if not os.path.exists(path):
             raise FileNotFoundError(f"File not found: {path}")
@@ -1239,62 +1220,54 @@ class DuckDBAdapter(DatabaseAdapter):
             reader_extras = ""
         reader_sql = f"{reader_fn}(?{reader_extras})"
 
-        self._con.close()
-        self._con = None
+        loose = duckdb.connect(":memory:")
         try:
-            loose = self._open_loose_connection()
-            try:
-                desc_rows = loose.execute(
-                    f"DESCRIBE SELECT * FROM {reader_sql}",
-                    [path],
-                ).fetchall()
-                if not desc_rows:
-                    raise ValueError(f"{path}: no columns detected in source file.")
+            source = loose.sql(f"SELECT * FROM {reader_sql}", params=[path])
+            if not source.columns:
+                raise ValueError(f"{path}: no columns detected in source file.")
 
-                # orig_col_names quote-survive header values; db_col_names
-                # are snake_cased. INSERT maps positionally between them.
-                col_defs = []
-                orig_col_names = []
-                db_col_names = []
-                for i, row in enumerate(desc_rows):
-                    orig_name = row[0]
-                    db_name = column_identifier(orig_name)
-                    orig_col_names.append(orig_name)
-                    db_col_names.append(db_name)
-                    col_type = row[1]
-                    if i == 0:
-                        col_defs.append(f"{db_name} {col_type} PRIMARY KEY")
-                    else:
-                        col_defs.append(f"{db_name} {col_type}")
-                pk_col = db_col_names[0]
-
-                loose.execute(
-                    f"CREATE TABLE IF NOT EXISTS {table_name} ({', '.join(col_defs)})"
-                )
-
-                update_cols = [c for c in db_col_names if c != pk_col]
-                if update_cols:
-                    update_sql = ", ".join(f"{c} = EXCLUDED.{c}" for c in update_cols)
-                    conflict_clause = f"ON CONFLICT ({pk_col}) DO UPDATE SET {update_sql}"
+            # orig_col_names quote-survive header values; db_col_names
+            # are snake_cased. INSERT maps positionally between them.
+            col_defs = []
+            orig_col_names = []
+            db_col_names = []
+            for i, (orig_name, col_type) in enumerate(zip(source.columns, source.types)):
+                db_name = column_identifier(orig_name)
+                orig_col_names.append(orig_name)
+                db_col_names.append(db_name)
+                if i == 0:
+                    col_defs.append(f"{db_name} {col_type} PRIMARY KEY")
                 else:
-                    conflict_clause = f"ON CONFLICT ({pk_col}) DO NOTHING"
+                    col_defs.append(f"{db_name} {col_type}")
+            pk_col = db_col_names[0]
 
-                def _quote_src(c):
-                    return '"' + c.replace('"', '""') + '"'
+            self._con.execute(
+                f"CREATE TABLE IF NOT EXISTS {table_name} ({', '.join(col_defs)})"
+            )
 
-                select_list = ", ".join(_quote_src(c) for c in orig_col_names)
-                insert_col_list = ", ".join(db_col_names)
-                loose.execute(
+            update_cols = [c for c in db_col_names if c != pk_col]
+            if update_cols:
+                update_sql = ", ".join(f"{c} = EXCLUDED.{c}" for c in update_cols)
+                conflict_clause = f"ON CONFLICT ({pk_col}) DO UPDATE SET {update_sql}"
+            else:
+                conflict_clause = f"ON CONFLICT ({pk_col}) DO NOTHING"
+
+            def _quote_src(c):
+                return '"' + c.replace('"', '""') + '"'
+
+            select_list = ", ".join(_quote_src(c) for c in orig_col_names)
+            insert_col_list = ", ".join(db_col_names)
+            self._con.register("_bulk_load_source", source.to_arrow_reader())
+            try:
+                self._con.execute(
                     f"INSERT INTO {table_name} ({insert_col_list}) "
-                    f"SELECT {select_list} FROM {reader_sql} "
-                    f"{conflict_clause}",
-                    [path],
+                    f"SELECT {select_list} FROM _bulk_load_source "
+                    f"{conflict_clause}"
                 )
             finally:
-                loose.close()
+                self._con.unregister("_bulk_load_source")
         finally:
-            self._con = self._open_main_connection()
-            self._sandbox(self._con)
+            loose.close()
 
         schema = self._duckdb_table_to_json_schema(table_name)
         schema["title"] = table_name
