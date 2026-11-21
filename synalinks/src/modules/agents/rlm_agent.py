@@ -768,7 +768,7 @@ class RecursiveLanguageModelAgent(FunctionCallingAgent):
         final_instructions (str): Optional. Instructions for the final
             answer generator. Defaults to ``instructions``.
         temperature (float): Optional. Sampling temperature
-            (Default 0.0).
+            (Default None, the model's own default).
         max_tokens (int): Optional. Maximum number of tokens to generate.
             Default None (the model's own default; caps generation length).
         top_p (float): Optional. Nucleus sampling probability. Default None
@@ -861,9 +861,9 @@ class RecursiveLanguageModelAgent(FunctionCallingAgent):
             advertised as ``def`` stubs in the prompt.
         skills (list): Optional. Folder paths (Agent Skill roots) whose skills
             are rendered for the agent as an ``<available_skills>`` prompt block
-            (see `FunctionCallingAgent`). The skill files must also be reachable
-            from the agent's sandbox (e.g. under ``workdir``) for their bodies to
-            be read on demand. Defaults to ``None``.
+            (see `FunctionCallingAgent`). The built-in ``read_skill`` tool reads
+            a skill's ``SKILL.md`` from these host folders on demand, so they
+            need not be reachable from the sandbox. Defaults to ``None``.
         sandbox (Sandbox): Optional. A pre-built ``Sandbox`` instance to
             reuse across calls. When supplied, the agent will not build
             its own sandbox at ``call()`` time and ``sandbox_type`` is

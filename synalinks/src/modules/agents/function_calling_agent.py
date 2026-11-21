@@ -214,35 +214,44 @@ class FunctionCallingAgent(Module):
 
     ```json
     {
-        "query": "How much is 152648 + 485?",
         "messages": [
             {
-            "role": "assistant",
-            "content": "Performing simple addition",
-            "tool_calls": [
-                {
-                    "id": "92a3657c-1a45-46e6-8173-df4255b8423b",
-                    "type": "function",
-                    "function": {
-                        "name": "calculate",
-                        "arguments": "{\"expression\": \"152648 + 485\"}"
+                "role": "assistant",
+                "content": "Performing simple addition",
+                "tool_calls": [
+                    {
+                        "id": "call_0",
+                        "type": "function",
+                        "function": {
+                            "name": "calculate",
+                            "arguments": "{\"expression\": \"152648 + 485\"}"
                         }
                     }
                 ]
             },
             {
                 "role": "tool",
-                "content": {
-                    "result": 153133.0,
-                    "log": "Successfully executed"
-                },
-                "tool_call_id": "92a3657c-1a45-46e6-8173-df4255b8423b",
+                "content": "{\"result\": 153133.0, \"log\": \"Successfully executed\"}",
+                "tool_call_id": "call_0"
             },
             {
                 "role": "assistant",
-                "content": "The user has asked for a simple addition "
-                "calculation. The assistant used the 'calculate' tool to "
-                "perform this task, and the result was returned successfully.",
+                "content": "",
+                "tool_calls": [
+                    {
+                        "id": "call_1",
+                        "type": "function",
+                        "function": {
+                            "name": "final_answer",
+                            "arguments": "{\"final_answer\": 153133.0}"
+                        }
+                    }
+                ]
+            },
+            {
+                "role": "tool",
+                "content": "Answer accepted.",
+                "tool_call_id": "call_1"
             }
         ],
         "final_answer": 153133.0
@@ -680,8 +689,8 @@ class FunctionCallingAgent(Module):
         its own file tools, which a tool-calling agent equipped with domain
         tools does not have — its skills would be advertised but unreadable.
         So whenever `skills` roots are set, a built-in ``read_skill`` tool is
-        added to complete progressive disclosure (the ``SKILL.md`` body and
-        bundled files, confined to the skill directories).
+        added to complete progressive disclosure (the ``SKILL.md`` body, read
+        by skill name; bundled files stay out of reach).
 
         Skipped when a tool named ``read_skill`` already exists — a
         subclass's or the caller's own reader wins over the built-in one.
