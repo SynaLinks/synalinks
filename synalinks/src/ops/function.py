@@ -153,29 +153,18 @@ class Function(Operation):
             return outputs
 
         for depth in depth_keys:
-            nodes = nodes_by_depth[depth]
-            tasks = []
-
-            for node in nodes:
-                if not node.operation or node.is_input:
-                    continue  # Input data_models already exist.
-
-                if any(id(x) not in data_model_dict for x in node.input_data_models):
-                    continue  # Node is not computable, try skipping.
-
-                tasks.append(compute_node(node, operation_fn, call_fn))
-
-            results = await asyncio.gather(*tasks)
-
-            for i, node in enumerate(nodes):
-                if not node.operation or node.is_input:
-                    continue  # Input data_models already exist.
-
-                if any(id(x) not in data_model_dict for x in node.input_data_models):
-                    continue  # Node is not computable, try skipping.
-
-                # Update data_model_dict.
-                for x, y in zip(node.outputs, tree.flatten(results[i])):
+            computable = [
+                node
+                for node in nodes_by_depth[depth]
+                if node.operation
+                and not node.is_input
+                and all(id(x) in data_model_dict for x in node.input_data_models)
+            ]
+            results = await asyncio.gather(
+                *(compute_node(node, operation_fn, call_fn) for node in computable)
+            )
+            for node, result in zip(computable, results):
+                for x, y in zip(node.outputs, tree.flatten(result)):
                     data_model_dict[id(x)] = y
 
         output_data_models = []
