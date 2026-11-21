@@ -182,6 +182,14 @@ class Text2SQLCallTest(testing.TestCase):
         self.assertEqual(len(result.get_json()["result"]), 2)
 
     @patch("litellm.acompletion")
+    async def test_trailing_comment_survives_limit_wrap(self, mock_completion):
+        mock_completion.return_value = _sql_response("SELECT id FROM Customer -- ids")
+        kb = await self._make_kb()
+        module = self._module(kb, k=2)
+        result = await module(Query(query="all ids"))
+        self.assertEqual(len(result.get_json()["result"]), 2)
+
+    @patch("litellm.acompletion")
     async def test_k_none_runs_query_as_is(self, mock_completion):
         mock_completion.return_value = _sql_response("SELECT id FROM Customer")
         kb = await self._make_kb()

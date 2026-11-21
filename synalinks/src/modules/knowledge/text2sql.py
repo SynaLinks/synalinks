@@ -321,7 +321,7 @@ class Text2SQL(Module):
             if self.k is None:
                 executed_sql = stripped
             else:
-                executed_sql = f"SELECT * FROM ({stripped}) LIMIT {self.k}"
+                executed_sql = f"SELECT * FROM ({stripped}\n) LIMIT {self.k}"
             try:
                 result_rows = await self.knowledge_base.sql(
                     executed_sql,
