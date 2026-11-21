@@ -181,7 +181,8 @@ class EmbeddingModel(Module):
     Args:
         model (str): The model to use.
         api_base (str): Optional. The endpoint to use.
-        retry (int): Optional. The number of retry.
+        retry (int): Optional. The maximum number of attempts, the first
+            one included.
         retry_max_wait (int): Optional. Max seconds to wait between retries when a
             rate-limit `Retry-After` header is honored (default to 60).
         fallback (EmbeddingModel): Optional. The embedding model to fallback
