@@ -301,7 +301,7 @@ async def main():
         "mistral": await build_member(
             "mistral", synalinks.LanguageModel(model="ollama/mistral:latest")),
         "qwen": await build_member(
-            "qwen", synalinks.LanguageModel(model="ollama/qwen3:8b", reasoning_effort="disable")),
+            "qwen", synalinks.LanguageModel(model="ollama/qwen3:8b", reasoning_effort="none")),
     }
     chair = await build_chair(synalinks.LanguageModel(model="ollama/mistral:latest"))
 
@@ -511,7 +511,7 @@ async def main():
         ),
         "qwen": await build_member(
             "qwen",
-            synalinks.LanguageModel(model="ollama/qwen3:8b", reasoning_effort="disable"),
+            synalinks.LanguageModel(model="ollama/qwen3:8b", reasoning_effort="none"),
         ),
     }
     chair = await build_chair(synalinks.LanguageModel(model="ollama/mistral:latest"))

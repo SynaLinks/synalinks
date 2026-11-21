@@ -473,7 +473,7 @@ class FunctionCallingAgent(Module):
             the prompt (Default to False).
         reasoning_effort (string): Optional. The reasoning effort for the LM call
             between ['minimal', 'low', 'medium', 'high', 'disable', 'none', None].
-            Default to None (no reasoning).
+            Default to None (the provider default).
         use_chain_of_thought (bool): Optional. Use chain of thought for tool
             calls generator, usefull when using non-reasoning models. Default False.
         tools (list): The list of `Tool` or MCP tools available to the agent.

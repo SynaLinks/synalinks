@@ -289,7 +289,7 @@ async def main():
     proposer_models = [
         ("proposer_gemma", synalinks.LanguageModel(model="ollama/gemma:latest")),
         ("proposer_mistral", synalinks.LanguageModel(model="ollama/mistral:latest")),
-        ("proposer_qwen", synalinks.LanguageModel(model="ollama/qwen3:8b", reasoning_effort="disable")),
+        ("proposer_qwen", synalinks.LanguageModel(model="ollama/qwen3:8b", reasoning_effort="none")),
     ]
     aggregator_lm = synalinks.LanguageModel(model="ollama/mistral:latest")
 
@@ -446,7 +446,7 @@ async def main():
         ("proposer_mistral", synalinks.LanguageModel(model="ollama/mistral:latest")),
         (
             "proposer_qwen",
-            synalinks.LanguageModel(model="ollama/qwen3:8b", reasoning_effort="disable"),
+            synalinks.LanguageModel(model="ollama/qwen3:8b", reasoning_effort="none"),
         ),
     ]
     aggregator_lm = synalinks.LanguageModel(model="ollama/mistral:latest")

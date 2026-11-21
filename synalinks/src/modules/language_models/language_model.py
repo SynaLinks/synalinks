@@ -63,7 +63,10 @@ OPENROUTER_IGNORED_PROVIDERS = (
     "nebius",
 )
 
-# Providers sent their own off switch for `reasoning_effort="disable"`.
+# The portable reasoning levels, lowest first ("none" turns reasoning off).
+REASONING_LEVELS = ("minimal", "low", "medium", "high", "xhigh", "max")
+
+# Providers sent their own off switch for `reasoning_effort="none"`.
 DISABLES_REASONING = (
     "anthropic",
     "azure",
@@ -683,10 +686,9 @@ class LanguageModel(Module):
     parameter, passed either as a default in the constructor or per call. It
     accepts:
 
-    - `"none"` (the default): send nothing, leaving the model at its provider
+    - `None` (the default): send nothing, leaving the model at its provider
       default reasoning behavior.
-    - `"disable"`: actively turn native reasoning *off*, for a model that
-      reasons by default. Each provider gets its own switch:
+    - `"none"`: turn native reasoning *off*. Each provider gets its own switch:
 
       - Ollama: `think=False` (ignored by non-thinking models).
       - vLLM/SGLang (`vllm/`, `sglang/`, `mirai/`): the chat template's
@@ -702,15 +704,23 @@ class LanguageModel(Module):
 
       Sent only when the model reasons natively (see `supports_reasoning()`;
       Cohere's by their name). A model that cannot stop reasoning gets its
-      lowest effort instead (`"none"` would be refused): xAI's Grok and the
-      always-thinking Claude models (`"low"`), the OpenAI models without
-      `"none"` (`"minimal"`, else `"low"`), Mistral Large 4 and GLM 5 (`"low"`),
-      Groq's models other than Qwen (`"low"`), Gemini 2.5 Pro (its smallest
-      thinking budget, 128 tokens), and the ChatGPT backend (`codex/`).
-    - any other value (e.g. `"low"`, `"medium"`, `"high"`): forwarded to the
-      provider as the reasoning effort, but only when the model reasons
-      natively (otherwise it is dropped; see `supports_reasoning()`). The
-      native trace then fills a `thinking` field instead of the model.
+      lowest effort instead: xAI's Grok and the always-thinking Claude models
+      (`"low"`), the OpenAI models without `"none"` (`"minimal"`, else
+      `"low"`), Mistral Large 4 and GLM 5 (`"low"`), Groq's models other than
+      Qwen (`"low"`), Gemini 2.5 Pro (its smallest thinking budget, 128
+      tokens), and the ChatGPT backend (`codex/`). `"disable"` is a
+      deprecated alias of `"none"`.
+    - a level, from lowest to highest `"minimal"`, `"low"`, `"medium"`,
+      `"high"`, `"xhigh"`, `"max"`: forwarded to the provider as the
+      reasoning effort, but only when the model reasons natively (otherwise
+      it is dropped; see `supports_reasoning()`). A level the model does not
+      list (in litellm's model table) is rounded down to the nearest level it
+      does (up when there is none below), with a warning; a model missing
+      from the table gets the level unchanged. The native trace then fills a
+      `thinking` field instead of the model.
+
+    A provider-specific setting passed explicitly (e.g. `thinking={...}` or
+    `extra_body`) is sent as is and wins over `reasoning_effort`.
 
     ```python
     import synalinks
@@ -1038,13 +1048,26 @@ class LanguageModel(Module):
             kwargs["tools"] = wire_tools
 
         # The `reasoning_effort` values are documented in the class docstring.
-        reasoning_effort = kwargs.pop("reasoning_effort", "none")
+        reasoning_effort = kwargs.pop("reasoning_effort", None)
+        if reasoning_effort == "disable":
+            warnings.warn(
+                '`reasoning_effort="disable"` is deprecated, use "none".',
+                DeprecationWarning,
+                stacklevel=2,
+            )
+            reasoning_effort = "none"
         schema_had_thinking = bool(schema) and "thinking" in (
             schema.get("properties") or {}
         )
         enable_thinking = None
         prefix = self.model.split("/", 1)[0]
-        if reasoning_effort == "disable":
+        row = (
+            litellm.model_cost.get(self.model)
+            or litellm.model_cost.get(self.model.split("/", 1)[-1])
+            or {}
+        )
+        levels = row.get("reasoning_effort_levels") or []
+        if reasoning_effort == "none":
             if prefix in ("ollama", "ollama_chat"):
                 kwargs["think"] = False
             elif prefix == "codex":
@@ -1059,12 +1082,6 @@ class LanguageModel(Module):
                 and not (prefix == "openai" and self.api_base)
                 and await self.supports_reasoning()
             ):
-                row = (
-                    litellm.model_cost.get(self.model)
-                    or litellm.model_cost.get(self.model.split("/", 1)[1])
-                    or {}
-                )
-                levels = row.get("reasoning_effort_levels") or []
                 claude = prefix == "anthropic" or (
                     prefix == "bedrock" and "claude" in self.model
                 )
@@ -1100,8 +1117,22 @@ class LanguageModel(Module):
                 else:
                     kwargs["reasoning_effort"] = levels[0] if levels else "low"
             enable_thinking = False
-        elif reasoning_effort != "none":
+        elif reasoning_effort is not None:
             if await self.supports_reasoning():
+                listed = [lv for lv in REASONING_LEVELS if lv in levels]
+                if (
+                    listed
+                    and reasoning_effort in REASONING_LEVELS
+                    and reasoning_effort not in listed
+                ):
+                    rank = REASONING_LEVELS.index(reasoning_effort)
+                    below = [lv for lv in listed if REASONING_LEVELS.index(lv) < rank]
+                    sent = below[-1] if below else listed[0]
+                    warnings.warn(
+                        f"{self.model} does not take reasoning_effort="
+                        f"{reasoning_effort!r}; sending {sent!r} instead."
+                    )
+                    reasoning_effort = sent
                 kwargs["reasoning_effort"] = reasoning_effort
                 enable_thinking = True
                 if schema_had_thinking and self._reasoning_trace:

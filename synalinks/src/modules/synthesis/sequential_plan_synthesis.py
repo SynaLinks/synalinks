@@ -114,7 +114,7 @@ class SequentialPlanSynthesis(Module):
             the outputs (Default to False).
         reasoning_effort (string): Optional. The reasoning effort for the LM call
             between ['minimal', 'low', 'medium', 'high', 'disable', 'none', None].
-            Default to None (no reasoning).
+            Default to None (the provider default).
         name (str): Optional. The name of the module.
         description (str): Optional. The description of the module.
         trainable (bool): Whether the module's variables should be trainable.

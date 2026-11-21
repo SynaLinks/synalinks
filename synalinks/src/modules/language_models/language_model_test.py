@@ -9,6 +9,7 @@ from http.server import BaseHTTPRequestHandler
 from http.server import HTTPServer
 from unittest.mock import patch
 
+import litellm
 from litellm.types.utils import Choices
 from litellm.types.utils import CompletionTokensDetailsWrapper
 from litellm.types.utils import Message
@@ -524,8 +525,8 @@ class LanguageModelTest(testing.TestCase):
     async def test_reasoning_effort_disable_sends_think_false_for_ollama(
         self, mock_completion
     ):
-        """`reasoning_effort="disable"` turns native thinking off on ollama
-        (which reasons by default) by sending `think=False`; `"none"` leaves the
+        """`reasoning_effort="none"` turns native thinking off on ollama
+        (which reasons by default) by sending `think=False`; `None` leaves the
         model at its default and sends nothing.
         """
         mock_completion.return_value = {"choices": [{"message": {"content": "ok"}}]}
@@ -534,15 +535,57 @@ class LanguageModelTest(testing.TestCase):
         )
 
         ollama_lm = LanguageModel(model="ollama_chat/qwen3:8b")
-        await ollama_lm(messages, reasoning_effort="disable")
+        await ollama_lm(messages, reasoning_effort="none")
         self.assertIs(mock_completion.call_args.kwargs.get("think"), False)
 
-        await ollama_lm(messages, reasoning_effort="none")
+        await ollama_lm(messages, reasoning_effort=None)
         self.assertNotIn("think", mock_completion.call_args.kwargs)
 
     @patch("litellm.acompletion")
-    async def test_reasoning_effort_disable_noop_for_non_ollama(self, mock_completion):
-        """Opt-in providers reason only when enabled, so "disable" sends no
+    async def test_reasoning_effort_none_values_differ(self, mock_completion):
+        mock_completion.return_value = {"choices": [{"message": {"content": "ok"}}]}
+        messages = ChatMessages(
+            messages=[ChatMessage(role=ChatRole.USER, content="Hello")]
+        )
+        lm = LanguageModel(
+            model="vllm/Qwen/Qwen3-8B", api_base="http://h/v1", supports_reasoning=True
+        )
+        await lm(messages, reasoning_effort=None)
+        self.assertNotIn("reasoning_effort", mock_completion.call_args.kwargs)
+        self.assertNotIn("extra_body", mock_completion.call_args.kwargs)
+
+        await lm(messages, reasoning_effort="none")
+        kwargs = mock_completion.call_args.kwargs
+        self.assertNotIn("reasoning_effort", kwargs)
+        self.assertIs(
+            kwargs["extra_body"]["chat_template_kwargs"]["enable_thinking"], False
+        )
+
+        with self.assertWarns(DeprecationWarning):
+            await lm(messages, reasoning_effort="disable")
+        self.assertEqual(mock_completion.call_args.kwargs, kwargs)
+
+    @patch("litellm.acompletion")
+    async def test_unsupported_reasoning_level_rounds_down(self, mock_completion):
+        mock_completion.return_value = {"choices": [{"message": {"content": "ok"}}]}
+        messages = ChatMessages(
+            messages=[ChatMessage(role=ChatRole.USER, content="Hello")]
+        )
+        lm = LanguageModel(model="openai/o-test", supports_reasoning=True)
+        table = {"openai/o-test": {"reasoning_effort_levels": ["low", "high"]}}
+        with patch.dict(litellm.model_cost, table):
+            for asked, sent in [("xhigh", "high"), ("medium", "low"), ("minimal", "low")]:
+                with self.assertWarns(UserWarning):
+                    await lm(messages, reasoning_effort=asked)
+                self.assertEqual(
+                    mock_completion.call_args.kwargs["reasoning_effort"], sent
+                )
+            await lm(messages, reasoning_effort="high")
+            self.assertEqual(mock_completion.call_args.kwargs["reasoning_effort"], "high")
+
+    @patch("litellm.acompletion")
+    async def test_reasoning_effort_none_noop_for_non_ollama(self, mock_completion):
+        """Opt-in providers reason only when enabled, so "none" sends no
         `think` flag (it is ollama-specific and would be rejected elsewhere).
         """
         mock_completion.return_value = {"choices": [{"message": {"content": "ok"}}]}
@@ -551,7 +594,7 @@ class LanguageModelTest(testing.TestCase):
         )
 
         lm = LanguageModel(model="openai/gpt-4o-mini")
-        await lm(messages, reasoning_effort="disable")
+        await lm(messages, reasoning_effort="none")
         self.assertNotIn("think", mock_completion.call_args.kwargs)
 
     @patch("litellm.acompletion")
@@ -594,7 +637,7 @@ class LanguageModelTest(testing.TestCase):
             with self.subTest(model=model):
                 # Every model expecting an off switch reasons natively.
                 lm = LanguageModel(model=model, supports_reasoning=bool(sent))
-                await lm(messages, reasoning_effort="disable")
+                await lm(messages, reasoning_effort="none")
                 kwargs = mock_completion.call_args.kwargs
                 keys = ("thinking", "reasoning_effort", "extra_body")
                 got = {k: kwargs[k] for k in keys if k in kwargs}
@@ -1899,7 +1942,7 @@ class CapabilityFlagsTest(testing.TestCase):
         server, base = self._serve(reasoning=True)
         lm = LanguageModel(model="vllm/Qwen/Qwen3-8B", api_base=f"{base}/v1")
 
-        await self._ask(lm, effort="disable")
+        await self._ask(lm, effort="none")
 
         self.assertEqual(server.probes, [])
         self.assertEqual(
@@ -1946,8 +1989,8 @@ class CapabilityFlagsTest(testing.TestCase):
             supports_reasoning=False,
         )
 
-        await self._ask(thinking, effort="disable")
-        await self._ask(plain, effort="disable")
+        await self._ask(thinking, effort="none")
+        await self._ask(plain, effort="none")
 
         self.assertEqual(server.requests[0]["reasoning"], {"enabled": False})
         self.assertNotIn("reasoning_effort", server.requests[0])

@@ -135,7 +135,7 @@ class MultiDecision(Module):
         reasoning_effort (string): Optional. The reasoning effort for the
             LM call between
             ['minimal', 'low', 'medium', 'high', 'disable', 'none', None].
-            Default to None (no reasoning).
+            Default to None (the provider default).
         use_inputs_schema (bool): Optional. Whether or not use the inputs
             schema in the prompt (Default to False) (see ``Generator``).
         use_outputs_schema (bool): Optional. Whether or not use the outputs
