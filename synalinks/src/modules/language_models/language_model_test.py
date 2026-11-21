@@ -26,6 +26,7 @@ from synalinks.src.backend import ChatRole
 from synalinks.src.backend import DataModel
 from synalinks.src.backend import Image
 from synalinks.src.backend.common.op_scope import _OP_SCOPE
+from synalinks.src.backend.pydantic.media import allow_media_root
 from synalinks.src.modules.core.tool import Tool
 from synalinks.src.modules.language_models import LanguageModel
 from synalinks.src.modules.language_models.language_model import _tool_to_wire
@@ -39,6 +40,7 @@ _SAMPLE_IMAGE = os.path.join(
     "guides",
     "traced_qa.png",
 )
+allow_media_root(os.path.dirname(_SAMPLE_IMAGE))
 
 
 class LanguageModelTest(testing.TestCase):

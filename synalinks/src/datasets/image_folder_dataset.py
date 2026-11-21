@@ -4,6 +4,7 @@ import os
 from typing import Optional
 
 from synalinks.src.api_export import synalinks_export
+from synalinks.src.backend.pydantic.media import allow_media_root
 from synalinks.src.datasets.dataset import Dataset
 from synalinks.src.utils.datasets_utils import iter_files
 
@@ -43,8 +44,9 @@ class ImageFolderDataset(Dataset):
     never as bytes: iterating the dataset (even materializing it) does
     not load a single pixel into memory. The file is read and inlined as a
     base64 ``data:`` URI only when its batch is actually sent to the model,
-    one batch at a time. A folder of a million photos therefore costs a list
-    of paths to iterate, not a million decoded images.
+    one batch at a time (`root` is allowed with `allow_media_root`). A folder
+    of a million photos therefore costs a list of paths to iterate, not a
+    million decoded images.
 
     ```python
     import synalinks
@@ -141,6 +143,7 @@ class ImageFolderDataset(Dataset):
         if not os.path.isdir(root):
             raise FileNotFoundError(f"Image folder not found: {root}")
         self.root = root
+        allow_media_root(root)
         self.prompt = prompt
         self.recursive = recursive
         self.extensions = tuple(ext.lower() for ext in extensions)

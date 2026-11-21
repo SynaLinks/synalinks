@@ -242,7 +242,9 @@ program.fit(x=ds(), epochs=3, ...)
 For images that live behind URLs, or any custom row shape, use one of the
 file/HTTP-backed datasets (`JSONDataset`, `CSVDataset`, `HuggingFaceDataset`,
 ...) with an `input_template` that renders an `image_url` part pointing at the
-row's `url`; the resolver treats `http(s)` and `file://` refs identically:
+row's `url`. The resolver fetches `http(s)` refs, and reads `file://` refs only
+under a directory allowed with `synalinks.allow_media_root(...)` (so an
+untrusted row cannot upload `~/.ssh/id_rsa` to the provider):
 
 ```python
 ds = synalinks.JSONDataset(

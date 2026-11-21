@@ -11,11 +11,13 @@ from synalinks.src.backend.pydantic.media import _SOURCE_KEY
 from synalinks.src.backend.pydantic.media import Audio
 from synalinks.src.backend.pydantic.media import Image
 from synalinks.src.backend.pydantic.media import _read_source_async
+from synalinks.src.backend.pydantic.media import allow_media_root
 from synalinks.src.backend.pydantic.media import normalize_content
 from synalinks.src.backend.pydantic.media import resolve_content_media
 
 _THIS_DIR = os.path.dirname(os.path.abspath(__file__))
 _SAMPLE_IMAGE = os.path.join(_THIS_DIR, "..", "..", "..", "..", "guides", "traced_qa.png")
+allow_media_root(os.path.dirname(_SAMPLE_IMAGE))
 
 
 def _patched_httpx(content, content_type="image/png"):
@@ -227,6 +229,19 @@ class ResolveContentMediaTest(testing.TestCase):
         with open(_SAMPLE_IMAGE, "rb") as f:
             expected = base64.b64encode(f.read()).decode("ascii")
         self.assertEqual(url.split(",", 1)[1], expected)
+
+    async def test_file_ref_outside_allowed_roots_is_refused(self):
+        secret = os.path.join(self.get_temp_dir(), "id_rsa")
+        with open(secret, "w") as f:
+            f.write("top secret")
+        for url in (f"file://{secret}", f"file://{os.path.dirname(_SAMPLE_IMAGE)}/../x"):
+            part = {"type": "image_url", "image_url": {"url": url}}
+            with mock.patch(
+                "synalinks.src.backend.pydantic.media._MEDIA_ROOTS",
+                {os.path.realpath(os.path.dirname(_SAMPLE_IMAGE))},
+            ):
+                with self.assertRaises(PermissionError):
+                    await resolve_content_media([{"role": "user", "content": [part]}])
 
     async def test_audio_url_ref_is_inlined_and_stripped(self):
         part = {
