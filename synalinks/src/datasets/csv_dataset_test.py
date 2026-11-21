@@ -216,6 +216,18 @@ class CSVDatasetTest(testing.TestCase):
         with pytest.raises(NotImplementedError, match="unknown length"):
             len(ds)
 
+    def test_len_with_limit_larger_than_source(self):
+        path = os.path.join(self.tmp, "small.csv")
+        _write_csv(path, [{"q": "a"}] * 3)
+        ds = CSVDataset(
+            path=path,
+            input_data_model=Question,
+            input_template='{"question": {{ q | tojson }}}',
+            limit=100,
+        )
+        self.assertEqual(len(ds), 3)
+        self.assertEqual(len(list(ds)), 3)
+
     def test_len_with_limit(self):
         path = os.path.join(self.tmp, "len.csv")
         _write_csv(path, [{"q": "a"}] * 50)

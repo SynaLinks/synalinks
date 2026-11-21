@@ -143,14 +143,6 @@ class JSONDataset(Dataset):
                     row = _filter_columns(row, columns)
                 yield row
 
-    def __len__(self):
-        if self.limit is None:
-            raise NotImplementedError(
-                "JSON datasets have unknown length without a limit. "
-                "Pass `limit=...` if you need __len__."
-            )
-        return self._total_batches(self.limit)
-
 
 @synalinks_export(
     [
@@ -254,11 +246,3 @@ class JSONLDataset(Dataset):
                     if columns is not None:
                         row = _filter_columns(row, columns)
                     yield row
-
-    def __len__(self):
-        if self.limit is None:
-            raise NotImplementedError(
-                "Streaming JSONL datasets have unknown length. "
-                "Pass `limit=...` if you need __len__."
-            )
-        return self._total_batches(self.limit)

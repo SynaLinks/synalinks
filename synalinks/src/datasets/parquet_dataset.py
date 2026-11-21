@@ -133,9 +133,8 @@ class ParquetDataset(Dataset):
                     yield row
 
     def __len__(self):
+        # Pull row counts from footer metadata; no row data is read.
+        num_rows = sum(pf.metadata.num_rows for pf in self._files)
         if self.limit is not None:
-            num_rows = self.limit
-        else:
-            # Pull row counts from footer metadata; no row data is read.
-            num_rows = sum(pf.metadata.num_rows for pf in self._files)
+            num_rows = min(num_rows, self.limit)
         return self._total_batches(num_rows)
