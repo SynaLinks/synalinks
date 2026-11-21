@@ -61,7 +61,9 @@ class KnowledgeBase(SynalinksSaveable):
     result = await knowledge_base.get("1", table_name="Document")
 
     # Full-text search
-    results = await knowledge_base.fulltext_search("Hello", k=10)
+    results = await knowledge_base.fulltext_search(
+        "Hello", table_name="Document", k=10
+    )
     ```
 
     ### Primary Key Convention
@@ -103,7 +105,9 @@ class KnowledgeBase(SynalinksSaveable):
     )
 
     # Hybrid search (combines BM25 fulltext + vector similarity, fused by RRF)
-    results = await knowledge_base.hybrid_fts_search("semantic query", k=10)
+    results = await knowledge_base.hybrid_fts_search(
+        "semantic query", table_name="Document", k=10
+    )
     ```
 
     ### Retrieving Table Definitions
@@ -118,7 +122,9 @@ class KnowledgeBase(SynalinksSaveable):
     ```
 
     Args:
-        uri (str): SQL store connection URI (``"duckdb://path/to/db.db"``).
+        uri (str): SQL store connection URI: DuckDB
+            (``"duckdb://path/to/db.db"`` or ``"duckdb://:memory:"``) or
+            LanceDB (``"lancedb://path/to/folder.lance"``, no in-memory mode).
             When both ``uri`` and ``graph_uri`` are omitted, defaults to
             ``{synalinks_home()}/{name or 'database'}.db``. Pass ``uri``
             alone to opt out of the graph-side default.
