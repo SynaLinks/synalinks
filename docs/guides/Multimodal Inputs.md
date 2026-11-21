@@ -7,7 +7,7 @@
 ## Source
 
 ````python
---8<-- "guides/31_multimodal.py:298"
+--8<-- "guides/31_multimodal.py:300"
 ````
 
 ## Run log { data-search-exclude }

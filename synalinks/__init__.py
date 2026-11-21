@@ -203,6 +203,7 @@ from synalinks.api import VectorRAGAgent
 from synalinks.api import WriteInfo
 from synalinks.api import Xor
 from synalinks.api import __version__
+from synalinks.api import allow_media_root
 from synalinks.api import api_base
 from synalinks.api import backend
 from synalinks.api import callbacks

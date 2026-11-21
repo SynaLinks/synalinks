@@ -69,6 +69,38 @@ from synalinks.src.backend.pydantic.core import DataModel
 # resolver consumes and removes it before the part reaches the provider.
 _SOURCE_KEY = "_synalinks_source"
 
+# Directories deferred `file://`/`path` media references may be read from.
+_MEDIA_ROOTS = set()
+
+
+@synalinks_export(
+    [
+        "synalinks.backend.allow_media_root",
+        "synalinks.allow_media_root",
+    ]
+)
+def allow_media_root(root):
+    """Allow deferred local media references under `root` to be read.
+
+    Message content built from raw data (dataset rows, user input to a
+    deployed program, tool output) may point an `image_url`/`input_audio` part
+    at a local file (a ``file://`` URL or a `path`). The language model reads
+    and uploads it to the provider just before the call, so such a reference
+    is only honoured when it resolves (symlinks followed) inside an allowed
+    root; anything else raises `PermissionError`. `ImageFolderDataset` allows
+    its own `root`. Media built in Python (`Image(path=...)`) is not affected.
+
+    Example:
+
+    ```python
+    synalinks.allow_media_root("./photos")
+    ```
+
+    Args:
+        root (str): The directory to allow.
+    """
+    _MEDIA_ROOTS.add(os.path.realpath(root))
+
 
 def _fetch_url(url):
     """Fetch an ``http(s)`` source synchronously, returning ``(bytes, mime)``."""
@@ -249,7 +281,13 @@ def normalize_content(content):
 async def _read_source_async(source):
     """Fetch a not-yet-inlined source, returning ``(raw_bytes, mime_type)``."""
     if source.startswith("file://"):
-        return _read_file(source[len("file://") :])
+        path = os.path.realpath(source[len("file://") :])
+        if not any(os.path.commonpath([path, root]) == root for root in _MEDIA_ROOTS):
+            raise PermissionError(
+                f"Media file {path!r} is outside the allowed media roots; "
+                "call `synalinks.allow_media_root(directory)` to allow it."
+            )
+        return _read_file(path)
     if source.startswith(("http://", "https://")):
         async with httpx.AsyncClient(follow_redirects=True) as client:
             response = await client.get(source)
