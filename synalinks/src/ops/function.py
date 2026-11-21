@@ -27,6 +27,8 @@ class Function(Operation):
     Example:
 
     ```python
+    import asyncio
+
     import synalinks
 
     class Query(synalinks.DataModel):
@@ -35,16 +37,21 @@ class Function(Operation):
     class Answer(synalinks.DataModel):
         answer: str
 
-    input_1 = synalinks.SymbolicDataModel(data_model=Query)
-    input_2 = synalinks.SymbolicDataModel(data_model=Answer)
-    output = synalinks.ops.concatenate([input_1, input_2])
-    fn = synalinks.Function(inputs=[input_1, input_2], outputs=output)
+    async def main():
+        input_1 = synalinks.Input(data_model=Query)
+        input_2 = synalinks.Input(data_model=Answer)
+        output = await synalinks.ops.concat(input_1, input_2)
+        fn = synalinks.Function(inputs=[input_1, input_2], outputs=output)
 
-    input_1_val = synalinks.JsonDataModel(
-        data_model=Query(query="What is the capital of France?")
-    )
-    input_2_val = synalinks.JsonDataModel(data_model=Answer(answer="Paris"))
-    output_val = fn([input_1_val, input_2_val])
+        output_val = await fn(
+            [
+                Query(query="What is the capital of France?"),
+                Answer(answer="Paris"),
+            ]
+        )
+        print(output_val.get_json())
+
+    asyncio.run(main())
     ```
 
     Args:
