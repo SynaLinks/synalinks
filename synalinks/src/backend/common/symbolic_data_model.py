@@ -269,7 +269,7 @@ class SymbolicDataModel(SynalinksSaveable):
         """Perform a `logical_xor` (reverse) with another data model.
 
         If one of them is None, output the other one. If both are provided,
-        then concatenates the other data model with this one.
+        then the output is `None`.
 
         Args:
             other (SymbolicDataModel | DataModel): The other data model to concatenate
