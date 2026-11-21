@@ -15,6 +15,7 @@ from synalinks.src.modules import Input
 from synalinks.src.modules import default_instructions
 from synalinks.src.modules.language_models import LanguageModel
 from synalinks.src.programs import Program
+from synalinks.src.programs.program import program_from_json
 from synalinks.src.utils.nlp_utils import remove_numerical_suffix
 from synalinks.src.version import __version__
 
@@ -414,6 +415,13 @@ class ProgramTest(testing.TestCase):
                     var2.path
                 ):
                     self.assertEqual(var1.get_json(), var2.get_json())
+
+    async def test_program_from_json_of_to_json(self):
+        program = await build_two_step_program("from_json")
+
+        loaded = program_from_json(program.to_json())
+
+        self.assertEqual(loaded.name, program.name)
 
 
 class ProgramMLflowLineageTest(testing.TestCase):
