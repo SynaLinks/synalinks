@@ -163,3 +163,29 @@ class TrainErrorTest(testing.TestCase):
         self.assertIsNone(mlflow.active_run())
         runs = mlflow.search_runs(experiment_names=["ev"], output_format="list")
         self.assertEqual([r.info.status for r in runs], ["FAILED"])
+
+    async def test_failed_predict_calls_on_predict_error(self):
+        import numpy as np
+
+        from synalinks.src.modules import Input
+        from synalinks.src.testing.test_utils import Query
+
+        seen = []
+
+        class Boom(Callback):
+            def on_predict_end(self, logs=None):
+                seen.append("end")
+
+            def on_predict_error(self, error):
+                seen.append(error)
+
+            def on_predict_batch_end(self, batch, logs=None):
+                raise RuntimeError("boom")
+
+        x0 = Input(data_model=Query)
+        program = Program(inputs=x0, outputs=x0, name="identity")
+        x = np.array([Query(query="q")] * 2, dtype="object")
+        with self.assertRaisesRegex(RuntimeError, "boom"):
+            await program.predict(x=x, batch_size=2, callbacks=[Boom()])
+        self.assertEqual(len(seen), 1)
+        self.assertIsInstance(seen[0], RuntimeError)

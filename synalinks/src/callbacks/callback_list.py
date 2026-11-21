@@ -267,3 +267,9 @@ class CallbackList(Callback):
         logs = python_utils.pythonify_logs(logs)
         for callback in self.callbacks:
             callback.on_predict_end(logs)
+
+    def on_predict_error(self, error):
+        if self._async_predict:
+            self._clear_futures()
+        for callback in self.callbacks:
+            callback.on_predict_error(error)

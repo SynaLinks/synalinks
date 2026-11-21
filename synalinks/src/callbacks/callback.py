@@ -285,3 +285,15 @@ class Callback:
             logs (dict): Currently no data is passed to this argument for this
                 method but that may change in the future.
         """
+
+    @utils.default
+    def on_predict_error(self, error):
+        """Called instead of `on_predict_end()` when prediction raises.
+
+        `predict()` re-raises the error once every callback has run this hook.
+
+        Subclasses should override for any actions to run.
+
+        Args:
+            error (BaseException): The exception that stopped prediction.
+        """

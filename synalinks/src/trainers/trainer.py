@@ -1068,16 +1068,20 @@ class Trainer:
 
         self.stop_predicting = False
         callbacks.on_predict_begin()
-        outputs = []
-        for step, iterator in epoch_iterator:
-            callbacks.on_predict_batch_begin(step)
-            data = iterator[0]
-            x_batch, _ = data_adapter_utils.unpack_x_y(data)
-            batch_outputs = await self.predict_on_batch(x_batch)
-            outputs.extend(batch_outputs)
-            callbacks.on_predict_batch_end(step, {"outputs": batch_outputs})
-            if self.stop_predicting:
-                break
+        try:
+            outputs = []
+            for step, iterator in epoch_iterator:
+                callbacks.on_predict_batch_begin(step)
+                data = iterator[0]
+                x_batch, _ = data_adapter_utils.unpack_x_y(data)
+                batch_outputs = await self.predict_on_batch(x_batch)
+                outputs.extend(batch_outputs)
+                callbacks.on_predict_batch_end(step, {"outputs": batch_outputs})
+                if self.stop_predicting:
+                    break
+        except BaseException as e:
+            callbacks.on_predict_error(e)
+            raise
         callbacks.on_predict_end()
         return np.array(outputs, dtype="object")
 
