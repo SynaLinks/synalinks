@@ -223,6 +223,7 @@ class Functional(Function, Program):
 
         config = {
             "name": self.name,
+            "description": self.description,
             "trainable": self.trainable,
         }
         # Build a map from a module unique name (make_node_key)
