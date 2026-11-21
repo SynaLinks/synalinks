@@ -6,6 +6,7 @@ from typing import Optional
 from synalinks.src.api_export import synalinks_export
 from synalinks.src.knowledge_bases import get as _get_kb
 from synalinks.src.modules.agents.function_calling_agent import FunctionCallingAgent
+from synalinks.src.modules.agents.sql_agent import _row_count
 from synalinks.src.modules.core.tool import Tool
 from synalinks.src.saving import serialization_lib
 
@@ -66,16 +67,6 @@ Constraints:
 - If a search returns nothing useful, retry with a different phrasing
   before giving up.
 """.strip()
-
-
-def _row_count(results, output_format: str) -> int:
-    """Count rows in a result set regardless of ``output_format``."""
-    if output_format == "csv":
-        if not results:
-            return 0
-        lines = results.splitlines()
-        return max(len(lines) - 1, 0)
-    return len(results)
 
 
 def _build_tools(

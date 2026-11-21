@@ -6,6 +6,7 @@ from typing import Optional
 from synalinks.src.api_export import synalinks_export
 from synalinks.src.knowledge_bases import get as _get_kb
 from synalinks.src.modules.agents.function_calling_agent import FunctionCallingAgent
+from synalinks.src.modules.agents.sql_agent import _row_count
 from synalinks.src.modules.core.tool import Tool
 from synalinks.src.saving import serialization_lib
 
@@ -48,41 +49,6 @@ Constraints:
   shows ``may_have_more=true``, refine the query (add filters or
   ``ORDER BY ... LIMIT n``) rather than asking for more rows.
 """.strip()
-
-
-def _row_count(results, output_format: str) -> int:
-    """Count rows in a result set regardless of ``output_format``.
-
-    For ``"csv"`` the result is a string with a header row; for
-    ``"json"`` it's a list of dicts. Returns 0 for empty inputs.
-    """
-    if output_format == "csv":
-        if not results:
-            return 0
-        lines = results.splitlines()
-        return max(len(lines) - 1, 0)
-    return len(results)
-
-
-def _cap_rows(results, output_format: str, k: int):
-    """Truncate a result set to at most ``k`` rows.
-
-    Cypher has no general-purpose subquery-wrapping syntax equivalent
-    to SQL's ``SELECT * FROM ({sql}) LIMIT k``, so the cap is enforced
-    in Python after the engine returns. For ``"json"`` we slice the
-    list; for ``"csv"`` we keep the header line plus the first ``k``
-    data lines.
-    """
-    if output_format == "csv":
-        if not results:
-            return results
-        lines = results.splitlines()
-        if len(lines) <= 1:
-            return results
-        header, data = lines[0], lines[1:]
-        capped = data[:k]
-        return "\n".join([header, *capped])
-    return results[:k]
 
 
 def _build_tools(knowledge_base, output_format: str = "csv", k: int = 50):
@@ -231,7 +197,11 @@ def _build_tools(knowledge_base, output_format: str = "csv", k: int = 50):
             )
         except Exception as e:
             return {"success": False, "error": str(e), "query": cypher_query}
-        capped = _cap_rows(results, output_format, k)
+        # Cypher has no subquery LIMIT wrap like SQL, so cap rows here.
+        if output_format == "csv":
+            capped = "\n".join(results.splitlines()[: k + 1]) if results else results
+        else:
+            capped = results[:k]
         rc = _row_count(capped, output_format)
         full_rc = _row_count(results, output_format)
         return {

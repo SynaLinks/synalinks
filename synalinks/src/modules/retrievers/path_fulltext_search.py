@@ -125,11 +125,11 @@ class PathFullTextSearch(Module):
         self.language_model = _get_lm(language_model)
 
         self.subj_schema, self.subj_label = resolve_endpoint(
-            subj_schema, subj_entity_model, subj_label, "subj"
+            subj_schema, subj_entity_model, subj_label
         )
         self.subj_entity_model = subj_entity_model
         self.obj_schema, self.obj_label = resolve_endpoint(
-            obj_schema, obj_entity_model, obj_label, "obj"
+            obj_schema, obj_entity_model, obj_label
         )
         self.obj_entity_model = obj_entity_model
         self.rel_label = rel_label

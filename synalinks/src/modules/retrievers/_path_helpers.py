@@ -13,15 +13,14 @@ from synalinks.src.backend import is_symbolic_data_model
 from synalinks.src.saving import serialization_lib
 
 
-def resolve_endpoint(schema, entity_model, label, side):
+def resolve_endpoint(schema, entity_model, label):
     """Resolve ``(schema, label)`` for one path endpoint.
 
     Mirrors the single-endpoint entity-search contract: derive schema from
     ``entity_model`` if needed and the label from the schema's ``title`` if
     needed. The label is **optional**: when neither a label nor a schema to
     derive it from is given it stays ``None``, and the caller lets the language
-    model infer the endpoint label per call. ``side`` (``"subj"`` / ``"obj"``)
-    is kept for symmetry with callers.
+    model infer the endpoint label per call.
     """
     if schema is None and entity_model is not None:
         schema = entity_model.get_schema()

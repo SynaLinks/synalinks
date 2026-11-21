@@ -7,6 +7,7 @@ from synalinks.src.api_export import synalinks_export
 from synalinks.src.knowledge_bases import get as _get_kb
 from synalinks.src.modules.agents.function_calling_agent import FunctionCallingAgent
 from synalinks.src.modules.core.tool import Tool
+from synalinks.src.modules.knowledge.text2sql import _format_schema
 from synalinks.src.saving import serialization_lib
 
 
@@ -87,21 +88,9 @@ def _build_tools(knowledge_base, output_format: str = "csv", k: int = 50):
         descriptions. Use this first to discover what data is available
         before writing queries.
         """
-        symbolic_models = knowledge_base.get_symbolic_data_models()
-        schema_info = []
-        for model in symbolic_models:
-            schema = model.get_schema()
-            table_name = schema.get("title", "Unknown")
-            properties = schema.get("properties", {})
-            columns = []
-            for col_name, col_info in properties.items():
-                col_type = col_info.get("type", "unknown")
-                col_desc = col_info.get("description", "")
-                columns.append(f"  - {col_name} ({col_type}): {col_desc}")
-            schema_info.append(f"Table: {table_name}\n" + "\n".join(columns))
         return {
-            "schema": "\n\n".join(schema_info),
-            "table_count": len(symbolic_models),
+            "schema": _format_schema(knowledge_base),
+            "table_count": len(knowledge_base.get_symbolic_data_models()),
         }
 
     async def get_table_sample(table_name: str, limit: int, offset: int):
