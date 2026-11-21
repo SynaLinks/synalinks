@@ -50,25 +50,6 @@ def _templates_root(stack: ExitStack) -> Path:
     return stack.enter_context(importlib.resources.as_file(resource))
 
 
-def _available_templates() -> list[str]:
-    with ExitStack() as stack:
-        root = _templates_root(stack)
-        names = sorted(p.name for p in root.iterdir() if p.is_dir())
-    # Surface the default template first so it heads the selection menu.
-    if _DEFAULT_TEMPLATE in names:
-        names.remove(_DEFAULT_TEMPLATE)
-        names.insert(0, _DEFAULT_TEMPLATE)
-    return names
-
-
-def _synalinks_version() -> str:
-    """Read the installed version without importing the (heavy) package."""
-    try:
-        return importlib.metadata.version("synalinks")
-    except importlib.metadata.PackageNotFoundError:
-        return "unknown"
-
-
 def _print_banner() -> None:
     """Print an amber icon + wordmark + version banner."""
     console = Console()
@@ -76,7 +57,12 @@ def _print_banner() -> None:
     logo.append(f"{_BRAND_ICON} ", style=f"bold {_BRAND_COLOR}")
     logo.append("synalinks", style=f"bold {_BRAND_COLOR}")
     console.print(logo)
-    console.print(Text(f"  v{_synalinks_version()}", style="dim"))
+    # Read the installed version without importing the (heavy) package.
+    try:
+        version = importlib.metadata.version("synalinks")
+    except importlib.metadata.PackageNotFoundError:
+        version = "unknown"
+    console.print(Text(f"  v{version}", style="dim"))
 
 
 def _version_callback(ctx: click.Context, param: click.Parameter, value: bool) -> None:
@@ -156,7 +142,13 @@ def init(project_name, name, description, template, list_templates, force):
     """
     _print_banner()
     click.echo()
-    templates = _available_templates()
+    with ExitStack() as stack:
+        root = _templates_root(stack)
+        templates = sorted(p.name for p in root.iterdir() if p.is_dir())
+    # The default template heads the selection menu.
+    if _DEFAULT_TEMPLATE in templates:
+        templates.remove(_DEFAULT_TEMPLATE)
+        templates.insert(0, _DEFAULT_TEMPLATE)
     if not templates:
         _fail(
             Text(
@@ -229,18 +221,68 @@ def init(project_name, name, description, template, list_templates, force):
             source, target, dirs_exist_ok=True, ignore=_COPY_IGNORE, symlinks=True
         )
 
-    _rewrite_pyproject(target, project_name, description)
-    _link_claude_md(target)
+    # Best-effort rewrite of name/description; the `app` template keeps its
+    # pyproject.toml in `backend/`. `json.dumps` yields a valid TOML basic string.
+    pyproject = target / "pyproject.toml"
+    if not pyproject.is_file():
+        pyproject = target / "backend" / "pyproject.toml"
+    if pyproject.is_file():
+        lines = pyproject.read_text(encoding="utf-8").splitlines(keepends=True)
+        name_done = False
+        desc_done = description is None
+        for i, line in enumerate(lines):
+            stripped = line.lstrip()
+            indent = line[: len(line) - len(stripped)]
+            if not name_done and stripped.startswith("name ") and "=" in line:
+                lines[i] = f"{indent}name = {json.dumps(project_name)}\n"
+                name_done = True
+            elif not desc_done and stripped.startswith("description ") and "=" in line:
+                lines[i] = f"{indent}description = {json.dumps(description)}\n"
+                desc_done = True
+            if name_done and desc_done:
+                break
+        pyproject.write_text("".join(lines), encoding="utf-8")
+
+    # Packaged templates are extracted or stored as plain files, which
+    # dereferences the CLAUDE.md -> AGENTS.md symlink: recreate it.
+    claude = target / "CLAUDE.md"
+    if (target / "AGENTS.md").is_file():
+        try:
+            if claude.is_symlink() or claude.exists():
+                claude.unlink()
+            claude.symlink_to("AGENTS.md")
+        except OSError:
+            # No symlinks (e.g. Windows without privileges): keep the copied file.
+            pass
 
     console = Console()
     console.print(f"\n✨ Created '{project_name}' from the '{template}' template.")
-    _print_next_steps(
-        console,
-        [
-            f"cd {project_name}",
-            "uv sync",
-            "npx skills add -y SynaLinks/synalinks-skills --skill synalinks",
-        ],
+    commands = [
+        f"cd {project_name}",
+        "uv sync",
+        "npx skills add -y SynaLinks/synalinks-skills --skill synalinks",
+    ]
+    # The next steps, as typed in a terminal window (macOS "traffic light" dots).
+    body = Text()
+    for i, command in enumerate(commands):
+        if i:
+            body.append("\n")
+        body.append("$ ", style=f"bold {_BRAND_COLOR}")
+        body.append(command, style="bold white")
+    title = Text()
+    title.append("● ", style="#FF5F56")
+    title.append("● ", style="#FFBD2E")
+    title.append("●", style="#27C93F")
+    title.append("  Next steps", style="dim")
+    console.print(
+        Panel(
+            body,
+            title=title,
+            title_align="left",
+            border_style=_BRAND_COLOR,
+            padding=(1, 2),
+            expand=False,
+        )
     )
     hint = Text("\n")
     hint.append("Then start your coding agent ", style="default")
@@ -263,82 +305,6 @@ def _fail(message: Text) -> None:
         )
     )
     raise SystemExit(1)
-
-
-def _print_next_steps(console: Console, commands: list[str]) -> None:
-    """Render the next-step commands inside a faux terminal window."""
-    body = Text()
-    for i, command in enumerate(commands):
-        if i:
-            body.append("\n")
-        # A dim prompt sign followed by the command, mimicking a shell.
-        body.append("$ ", style=f"bold {_BRAND_COLOR}")
-        body.append(command, style="bold white")
-    # macOS-style "traffic light" dots make the panel read as a terminal.
-    title = Text()
-    title.append("● ", style="#FF5F56")
-    title.append("● ", style="#FFBD2E")
-    title.append("●", style="#27C93F")
-    title.append("  Next steps", style="dim")
-    console.print(
-        Panel(
-            body,
-            title=title,
-            title_align="left",
-            border_style=_BRAND_COLOR,
-            padding=(1, 2),
-            expand=False,
-        )
-    )
-
-
-def _link_claude_md(target: Path) -> None:
-    """Make CLAUDE.md a symlink to AGENTS.md in the generated project.
-
-    The template ships CLAUDE.md as a symlink, but ``importlib.resources``
-    extracts packaged templates to a temp dir (and wheels store plain files),
-    which dereferences the link, so we recreate it on the generated project.
-    """
-    agents = target / "AGENTS.md"
-    claude = target / "CLAUDE.md"
-    if not agents.is_file():
-        return
-    try:
-        if claude.is_symlink() or claude.exists():
-            claude.unlink()
-        claude.symlink_to("AGENTS.md")
-    except OSError:
-        # Symlinks may be unavailable (e.g. Windows without privileges);
-        # leave whatever was copied so CLAUDE.md still exists.
-        pass
-
-
-def _rewrite_pyproject(target: Path, project_name: str, description: str | None) -> None:
-    """Best-effort rewrite of name/description in a generated pyproject.toml.
-
-    The `app` template keeps its pyproject.toml in `backend/`. Values are
-    written with `json.dumps`, which yields a valid TOML basic string.
-    """
-    pyproject = target / "pyproject.toml"
-    if not pyproject.is_file():
-        pyproject = target / "backend" / "pyproject.toml"
-    if not pyproject.is_file():
-        return
-    lines = pyproject.read_text(encoding="utf-8").splitlines(keepends=True)
-    name_done = False
-    desc_done = description is None
-    for i, line in enumerate(lines):
-        stripped = line.lstrip()
-        indent = line[: len(line) - len(stripped)]
-        if not name_done and stripped.startswith("name ") and "=" in line:
-            lines[i] = f"{indent}name = {json.dumps(project_name)}\n"
-            name_done = True
-        elif not desc_done and stripped.startswith("description ") and "=" in line:
-            lines[i] = f"{indent}description = {json.dumps(description)}\n"
-            desc_done = True
-        if name_done and desc_done:
-            break
-    pyproject.write_text("".join(lines), encoding="utf-8")
 
 
 if __name__ == "__main__":

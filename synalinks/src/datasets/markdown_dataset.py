@@ -4,7 +4,6 @@ import os
 import re
 from typing import Any
 from typing import Dict
-from typing import Iterator
 from typing import List
 from typing import Optional
 
@@ -14,6 +13,7 @@ from synalinks.src.api_export import synalinks_export
 from synalinks.src.backend import DataModel
 from synalinks.src.backend import Field
 from synalinks.src.datasets.dataset import Dataset
+from synalinks.src.utils.datasets_utils import iter_files
 
 
 @synalinks_export(
@@ -212,15 +212,6 @@ def parse_markdown_sections(text: str) -> List[Dict[str, Any]]:
     return sections
 
 
-def _derive_title(filepath: str, sections: List[Dict[str, Any]]) -> str:
-    """First h1's text, else the file basename without extension."""
-    for s in sections:
-        if s["level"] == 1:
-            return s["section_name"]
-    stem, _ = os.path.splitext(os.path.basename(filepath))
-    return stem
-
-
 _DEFAULT_INPUT_TEMPLATE = (
     '{"filepath": {{ filepath | tojson }},'
     ' "title": {{ title | tojson }},'
@@ -314,22 +305,8 @@ class MarkdownDataset(Dataset):
         self.recursive = recursive
         self.glob_pattern = glob_pattern.lower()
 
-    def _iter_files(self) -> Iterator[str]:
-        if self.recursive:
-            # os.walk's order is filesystem-dependent: sort dirs and files.
-            for dirpath, dirnames, filenames in os.walk(self.root):
-                dirnames.sort()
-                for name in sorted(filenames):
-                    if name.lower().endswith(self.glob_pattern):
-                        yield os.path.join(dirpath, name)
-        else:
-            for name in sorted(os.listdir(self.root)):
-                full = os.path.join(self.root, name)
-                if os.path.isfile(full) and name.lower().endswith(self.glob_pattern):
-                    yield full
-
     def _iter_rows(self):
-        for path in self._iter_files():
+        for path in iter_files(self.root, self.glob_pattern, self.recursive):
             with open(path, "r", encoding=self.encoding) as f:
                 text = f.read()
             relpath = os.path.relpath(path, self.root)
@@ -347,6 +324,10 @@ class MarkdownDataset(Dataset):
             ]
             yield {
                 "filepath": relpath,
-                "title": _derive_title(relpath, raw_sections),
+                # The first h1, else the file name without its extension.
+                "title": next(
+                    (s["section_name"] for s in raw_sections if s["level"] == 1),
+                    os.path.splitext(os.path.basename(relpath))[0],
+                ),
                 "sections": sections,
             }

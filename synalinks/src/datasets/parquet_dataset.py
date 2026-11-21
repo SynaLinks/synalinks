@@ -1,6 +1,5 @@
 # License Apache 2.0: (c) 2025-2026 Yoan Sallami (Synalinks Team)
 
-import os
 from typing import List
 from typing import Optional
 from typing import Union
@@ -9,6 +8,7 @@ import pyarrow.parquet as pa_parquet
 
 from synalinks.src.api_export import synalinks_export
 from synalinks.src.datasets.dataset import Dataset
+from synalinks.src.utils.datasets_utils import resolve_paths
 
 
 @synalinks_export(
@@ -104,16 +104,7 @@ class ParquetDataset(Dataset):
             repeat=repeat,
         )
 
-        if isinstance(path, (str, os.PathLike)):
-            paths = [os.fspath(path)]
-        else:
-            paths = [os.fspath(p) for p in path]
-        if not paths:
-            raise ValueError("`path` must name at least one Parquet file.")
-        for p in paths:
-            if not os.path.exists(p):
-                raise FileNotFoundError(f"Parquet file not found: {p}")
-        self.paths = paths
+        self.paths = resolve_paths(path, "Parquet")
 
         self.columns = list(columns) if columns is not None else None
         self.batch_size_rows = batch_size_rows

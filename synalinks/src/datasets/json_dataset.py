@@ -1,6 +1,5 @@
 # License Apache 2.0: (c) 2025-2026 Yoan Sallami (Synalinks Team)
 
-import os
 from typing import List
 from typing import Optional
 from typing import Union
@@ -9,21 +8,8 @@ import orjson
 
 from synalinks.src.api_export import synalinks_export
 from synalinks.src.datasets.dataset import Dataset
-
-
-def _coerce_path(path):
-    if isinstance(path, (str, os.PathLike)):
-        return [os.fspath(path)]
-    return [os.fspath(p) for p in path]
-
-
-def _filter_columns(row, columns):
-    """Project a row dict to `columns`, silently dropping absent keys.
-
-    Matches the column-pushdown semantics used by the Parquet loader:
-    a missing column on one row doesn't fail the load, the template
-    decides what's required."""
-    return {k: row[k] for k in columns if k in row}
+from synalinks.src.utils.datasets_utils import resolve_paths
+from synalinks.src.utils.datasets_utils import select_columns
 
 
 @synalinks_export(
@@ -112,19 +98,12 @@ class JSONDataset(Dataset):
             repeat=repeat,
         )
 
-        paths = _coerce_path(path)
-        if not paths:
-            raise ValueError("`path` must name at least one JSON file.")
-        for p in paths:
-            if not os.path.exists(p):
-                raise FileNotFoundError(f"JSON file not found: {p}")
-        self.paths = paths
+        self.paths = resolve_paths(path, "JSON")
 
         self.encoding = encoding
         self.columns = list(columns) if columns is not None else None
 
     def _iter_rows(self):
-        columns = self.columns
         for path in self.paths:
             with open(path, "r", encoding=self.encoding) as f:
                 data = orjson.loads(f.read())
@@ -140,9 +119,7 @@ class JSONDataset(Dataset):
                         f"{path}: every element of the array must be an "
                         f"object, got {type(row).__name__}."
                     )
-                if columns is not None:
-                    row = _filter_columns(row, columns)
-                yield row
+                yield select_columns(row, self.columns)
 
 
 @synalinks_export(
@@ -217,19 +194,12 @@ class JSONLDataset(Dataset):
             repeat=repeat,
         )
 
-        paths = _coerce_path(path)
-        if not paths:
-            raise ValueError("`path` must name at least one JSONL file.")
-        for p in paths:
-            if not os.path.exists(p):
-                raise FileNotFoundError(f"JSONL file not found: {p}")
-        self.paths = paths
+        self.paths = resolve_paths(path, "JSONL")
 
         self.encoding = encoding
         self.columns = list(columns) if columns is not None else None
 
     def _iter_rows(self):
-        columns = self.columns
         for path in self.paths:
             with open(path, "r", encoding=self.encoding) as f:
                 for raw in f:
@@ -245,6 +215,4 @@ class JSONLDataset(Dataset):
                             f"{path}: every line must decode to a JSON "
                             f"object, got {type(row).__name__}."
                         )
-                    if columns is not None:
-                        row = _filter_columns(row, columns)
-                    yield row
+                    yield select_columns(row, self.columns)

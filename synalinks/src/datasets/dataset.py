@@ -183,7 +183,25 @@ class Dataset:
                 if self.input_schema is not None
                 else self.input_data_model.get_schema()
             )
-            self.input_schema = _with_tools(self.row_schema)
+            # The tool schema's `$defs` move to the root, where its `$ref` resolve.
+            tool = ChatCompletionTool.get_schema()
+            row = self.row_schema
+            self.input_schema = {
+                **row,
+                "$defs": {**(row.get("$defs") or {}), **tool.pop("$defs", {})},
+                "properties": {
+                    **(row.get("properties") or {}),
+                    TOOLS_FIELD: {
+                        "type": "array",
+                        "description": (
+                            "The tools the model may call on this row, as a Chat "
+                            "Completions request declares them."
+                        ),
+                        "items": tool,
+                    },
+                },
+                "required": [*(row.get("required") or []), TOOLS_FIELD],
+            }
 
     def _make_input(self, rendered, row=None):
         if self._tools_tmpl is not None:
@@ -390,29 +408,6 @@ def tool_declaration_problem(tool):
     if not isinstance(name, str) or not name:
         return "a tool declaration's `function` names the function (`name`)"
     return None
-
-
-def _with_tools(schema):
-    """The row's ``schema`` with a request's ``tools`` beside its own fields.
-
-    The tool schema's ``$defs`` move to the root, where its ``$ref`` resolve.
-    """
-    tool = ChatCompletionTool.get_schema()
-    out = dict(schema)
-    out["$defs"] = {**(schema.get("$defs") or {}), **tool.pop("$defs", {})}
-    out["properties"] = {
-        **(schema.get("properties") or {}),
-        TOOLS_FIELD: {
-            "type": "array",
-            "description": (
-                "The tools the model may call on this row, as a Chat Completions "
-                "request declares them."
-            ),
-            "items": tool,
-        },
-    }
-    out["required"] = [*(schema.get("required") or []), TOOLS_FIELD]
-    return out
 
 
 def _coerce_schema(schema):

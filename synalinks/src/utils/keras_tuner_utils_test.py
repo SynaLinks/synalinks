@@ -19,8 +19,6 @@ from synalinks.src.utils.keras_tuner_utils import GridSearch
 from synalinks.src.utils.keras_tuner_utils import Hyperband
 from synalinks.src.utils.keras_tuner_utils import Objective
 from synalinks.src.utils.keras_tuner_utils import RandomSearch
-from synalinks.src.utils.keras_tuner_utils import _history_to_metrics_dict
-from synalinks.src.utils.keras_tuner_utils import _objective_directions
 
 
 def _is_managed_module(name: str) -> bool:
@@ -101,60 +99,58 @@ class StubExportTest(testing.TestCase):
 
 
 class HistoryReductionTest(testing.TestCase):
-    """`_history_to_metrics_dict` is the bit we own; keras-tuner doesn't
-    know how to unwrap a synalinks History on its own."""
+    """A fitted trial reports its synalinks `History` as the dict keras-tuner
+    expects; keras-tuner doesn't know how to unwrap it on its own."""
 
-    def _make_history(self, history_dict):
-        h = SynalinksHistory()
-        h.history = history_dict
-        return h
+    def _reduce(self, history_dict, objective):
+        history = SynalinksHistory()
+        history.history = history_dict
+
+        class Program:
+            optimizer = object()
+            save_variables = lambda *args: None
+
+            async def fit(self, *args, **kwargs):
+                return history
+
+        tuner = types.SimpleNamespace(
+            hypermodel=types.SimpleNamespace(build=lambda hp: Program()),
+            _get_checkpoint_fname=lambda trial_id: None,
+            oracle=types.SimpleNamespace(objective=objective),
+        )
+        trial = types.SimpleNamespace(
+            hyperparameters=types.SimpleNamespace(values={}), trial_id="0"
+        )
+        return asyncio.run(keras_tuner_utils._run_trial_async(tuner, trial, x=[1]))
 
     def test_single_objective_max_picks_max_across_epochs(self):
-        history = self._make_history(
-            {
-                "reward": [0.1, 0.7, 0.4],
-                "val_reward": [0.2, 0.5, 0.9],
-            }
-        )
         obj = types.SimpleNamespace(name="val_reward", direction="max")
-        result = _history_to_metrics_dict(history, obj)
+        result = self._reduce(
+            {"reward": [0.1, 0.7, 0.4], "val_reward": [0.2, 0.5, 0.9]}, obj
+        )
         self.assertEqual(result["val_reward"], 0.9)
         # Non-objective metrics use the *last* value, not the best.
         self.assertEqual(result["reward"], 0.4)
 
     def test_single_objective_min_picks_min_across_epochs(self):
-        history = self._make_history({"loss": [1.0, 0.3, 0.6]})
         obj = types.SimpleNamespace(name="loss", direction="min")
-        result = _history_to_metrics_dict(history, obj)
+        result = self._reduce({"loss": [1.0, 0.3, 0.6]}, obj)
         self.assertEqual(result["loss"], 0.3)
 
     def test_multi_objective_reduces_each_metric_in_its_own_direction(self):
-        history = self._make_history(
-            {
-                "loss": [1.0, 0.4, 0.5],
-                "reward": [0.2, 0.9, 0.7],
-            }
-        )
         # MultiObjective exposes `name_to_direction` directly.
         multi = types.SimpleNamespace(
             name_to_direction={"loss": "min", "reward": "max"},
         )
-        result = _history_to_metrics_dict(history, multi)
+        result = self._reduce({"loss": [1.0, 0.4, 0.5], "reward": [0.2, 0.9, 0.7]}, multi)
         self.assertEqual(result["loss"], 0.4)
         self.assertEqual(result["reward"], 0.9)
 
     def test_empty_metric_lists_are_skipped(self):
-        history = self._make_history({"reward": [], "val_reward": [0.5]})
         obj = types.SimpleNamespace(name="val_reward", direction="max")
-        result = _history_to_metrics_dict(history, obj)
+        result = self._reduce({"reward": [], "val_reward": [0.5]}, obj)
         self.assertNotIn("reward", result)
         self.assertEqual(result["val_reward"], 0.5)
-
-    def test_objective_directions_handles_default_objective(self):
-        # kt's `DefaultObjective` has name="default_objective", direction="min".
-        default = types.SimpleNamespace(name="default_objective", direction="min")
-        directions = _objective_directions(default)
-        self.assertEqual(directions, {"default_objective": "min"})
 
 
 class EvaluateOnlyTest(testing.TestCase):
@@ -585,7 +581,7 @@ class TunerEndToEndTest(testing.TestCase):
     def test_multi_objective_drives_search_end_to_end(self):
         """Multi-objective: pass a list of `Objective`s to the tuner. kt
         wraps them in a `MultiObjective`, and we reduce each metric in
-        its own direction inside `_history_to_metrics_dict`."""
+        its own direction when the trial reports its History."""
         disable_keras_backend()
         seen = []
 

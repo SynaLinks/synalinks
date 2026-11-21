@@ -1,13 +1,13 @@
 # License Apache 2.0: (c) 2025-2026 Yoan Sallami (Synalinks Team)
 
 import os
-from typing import Iterator
 from typing import Optional
 
 from synalinks.src.api_export import synalinks_export
 from synalinks.src.backend import DataModel
 from synalinks.src.backend import Field
 from synalinks.src.datasets.dataset import Dataset
+from synalinks.src.utils.datasets_utils import iter_files
 
 
 @synalinks_export(
@@ -133,22 +133,8 @@ class TextDataset(Dataset):
         self.recursive = recursive
         self.glob_pattern = glob_pattern.lower()
 
-    def _iter_files(self) -> Iterator[str]:
-        if self.recursive:
-            # os.walk's order is filesystem-dependent: sort dirs and files.
-            for dirpath, dirnames, filenames in os.walk(self.root):
-                dirnames.sort()
-                for name in sorted(filenames):
-                    if name.lower().endswith(self.glob_pattern):
-                        yield os.path.join(dirpath, name)
-        else:
-            for name in sorted(os.listdir(self.root)):
-                full = os.path.join(self.root, name)
-                if os.path.isfile(full) and name.lower().endswith(self.glob_pattern):
-                    yield full
-
     def _iter_rows(self):
-        for path in self._iter_files():
+        for path in iter_files(self.root, self.glob_pattern, self.recursive):
             with open(path, "r", encoding=self.encoding) as f:
                 text = f.read()
             yield {
