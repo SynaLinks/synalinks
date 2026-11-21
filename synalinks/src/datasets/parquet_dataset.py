@@ -118,23 +118,20 @@ class ParquetDataset(Dataset):
         self.columns = list(columns) if columns is not None else None
         self.batch_size_rows = batch_size_rows
 
-        # Open each file once at construction time. ``ParquetFile`` only
-        # reads the footer metadata at this point (no row data), so
-        # this is cheap even for many large files.
-        self._files = [pa_parquet.ParquetFile(p) for p in self.paths]
+        # Footer metadata only (no row data, file closed): validates each file.
+        self._num_rows = sum(pa_parquet.read_metadata(p).num_rows for p in self.paths)
 
     def _iter_rows(self):
-        for pf in self._files:
-            for batch in pf.iter_batches(
-                batch_size=self.batch_size_rows,
-                columns=self.columns,
-            ):
-                for row in batch.to_pylist():
-                    yield row
+        for path in self.paths:
+            with pa_parquet.ParquetFile(path) as pf:
+                for batch in pf.iter_batches(
+                    batch_size=self.batch_size_rows,
+                    columns=self.columns,
+                ):
+                    yield from batch.to_pylist()
 
     def __len__(self):
-        # Pull row counts from footer metadata; no row data is read.
-        num_rows = sum(pf.metadata.num_rows for pf in self._files)
+        num_rows = self._num_rows
         if self.limit is not None:
             num_rows = min(num_rows, self.limit)
         return self._total_batches(num_rows)
