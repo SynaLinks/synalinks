@@ -462,6 +462,7 @@ nav:
       - Synalinks API/Datasets/HuggingFaceDataset.md
       - Synalinks API/Datasets/MLflowDataset.md
       - Synalinks API/Datasets/ImageFolderDataset.md
+      - Synalinks API/Datasets/TraceDataset.md
     - Built-in Datasets:
       - Synalinks API/Built-in Datasets/index.md
       - Synalinks API/Built-in Datasets/GSM8K.md

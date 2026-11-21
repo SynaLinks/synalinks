@@ -199,6 +199,7 @@ from synalinks.src.datasets.mlflow_dataset import MLflowDataset as MLflowDataset
 from synalinks.src.datasets.parquet_dataset import ParquetDataset as ParquetDataset
 from synalinks.src.datasets.text_dataset import TextDataset as TextDataset
 from synalinks.src.datasets.text_dataset import TextDocument as TextDocument
+from synalinks.src.datasets.trace_dataset import TraceDataset as TraceDataset
 from synalinks.src.hooks.monitor import trace_context as trace_context
 from synalinks.src.initializers.initializer import Initializer as Initializer
 from synalinks.src.knowledge_bases.knowledge_base import KnowledgeBase as KnowledgeBase

@@ -192,6 +192,17 @@ format (Tinker cannot load tool calls from a file, and only the
 `"openai"` format takes images) go to `failed.jsonl` instead, with the
 conversation and the reason, so they never break a training file.
 
+To use the recordings inside Synalinks (evaluating a program on
+recorded traffic, distilling a large model into a smaller one),
+`synalinks.datasets.TraceDataset` reads them back as a dataset,
+whatever the format, with filters by program, module, model
+configuration or time, and deduplication:
+
+```python
+dataset = synalinks.datasets.TraceDataset(module="answer_generator", deduplicate=True)
+await program.evaluate(x=dataset())
+```
+
 One caveat: like `enable_observability()`, the flag is read when a
 module is *constructed*: call `record_traces()` before creating your
 modules.
@@ -382,6 +393,7 @@ if __name__ == "__main__":
 - [enable_logging](https://synalinks.github.io/synalinks/Synalinks%20API/Observability%20API/)
 - [record_traces](https://synalinks.github.io/synalinks/Synalinks%20API/Observability%20API/)
 - [Recorder hook](https://synalinks.github.io/synalinks/Synalinks%20API/Hooks%20API/Recorder/)
+- [TraceDataset](https://synalinks.github.io/synalinks/Synalinks%20API/Datasets/TraceDataset/)
 - [plot_program](https://synalinks.github.io/synalinks/Synalinks%20API/Utils%20API/)
 - [Program.summary](https://synalinks.github.io/synalinks/Synalinks%20API/Programs%20API/The%20Program%20class/)
 """

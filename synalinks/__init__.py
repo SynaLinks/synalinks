@@ -194,6 +194,7 @@ from synalinks.api import ToolPermission
 from synalinks.api import ToolUse
 from synalinks.api import TopicAdherence
 from synalinks.api import Toxicity
+from synalinks.api import TraceDataset
 from synalinks.api import Trainable
 from synalinks.api import TurnFaithfulness
 from synalinks.api import TurnRelevancy
