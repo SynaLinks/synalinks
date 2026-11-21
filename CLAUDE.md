@@ -38,7 +38,7 @@ At the start of every session, read `task_tracker.json` at the repo root if it e
 
 1. Gather all the information you need first: browse the relevant issues, files and external documentation quickly.
 
-2. Add a goal entry to `task_tracker.json` at the repo root listing every task, in this format (must be valid JSON):
+2. Add a goal entry to `task_tracker.json` at the repo root listing every task, in exactly this format (valid JSON, same keys and nesting; do not rename, add or drop fields):
 
 ```json
 [
