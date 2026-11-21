@@ -6,6 +6,8 @@ from typing import get_args
 from synalinks.src import testing
 from synalinks.src.backend.pydantic.chat_completions import ChatCompletionFunctionCall
 from synalinks.src.backend.pydantic.chat_completions import ChatCompletionMessage
+from synalinks.src.backend.pydantic.chat_completions import ChatCompletionRequest
+from synalinks.src.backend.pydantic.chat_completions import ChatCompletionResponse
 from synalinks.src.backend.pydantic.chat_completions import ChatCompletionToolCall
 from synalinks.src.backend.pydantic.chat_completions import from_chat_completion_message
 from synalinks.src.backend.pydantic.chat_completions import to_chat_completion_message
@@ -217,3 +219,32 @@ class ChatCompletionsTest(testing.TestCase):
         self.assertEqual(
             restored.tool_calls[0].function.arguments, '{"expression": "1 + 1"}'
         )
+
+    def test_envelope_models_accept_real_provider_payloads(self):
+        message = {"role": "assistant", "content": "Paris.", "annotations": []}
+        response = ChatCompletionResponse.model_validate(
+            {
+                "id": "chatcmpl-abc",
+                "created": 1741570283,
+                "model": "gpt-4o",
+                "choices": [
+                    {
+                        "index": 0,
+                        "message": {**message, "provider_specific_fields": {}},
+                        "finish_reason": "stop",
+                    }
+                ],
+                "usage": {
+                    "prompt_tokens": 9,
+                    "completion_tokens": 2,
+                    "total_tokens": 11,
+                    "prompt_tokens_details": {"cached_tokens": 0, "audio_tokens": 0},
+                },
+                "service_tier": "default",
+            }
+        )
+        self.assertEqual(response.choices[0].message.content, "Paris.")
+        request = ChatCompletionRequest.model_validate(
+            {"model": "gpt-4o", "messages": [message], "verbosity": "low"}
+        )
+        self.assertEqual(request.messages[0].content, "Paris.")
