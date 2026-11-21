@@ -198,7 +198,7 @@ class BackupAndRestore(Callback):
 
     def _should_save_on_batch(self, batch):
         """Handles batch-level saving logic, supports steps_per_execution."""
-        if self.save_freq == "epoch":
+        if self.save_freq == "epoch" or self.save_freq is False:
             return False
         if batch <= self._last_batch_seen:  # New epoch.
             add_batches = batch + 1  # batches are zero-indexed.

@@ -731,6 +731,7 @@ class Trainer:
         training_logs = None
         logs = {}
         initial_epoch = self._initial_epoch or initial_epoch
+        self._initial_epoch = None  # consumed: a restored epoch applies to this fit only
 
         if self.trainable_variables and isinstance(
             self.optimizer, optimizers_module.Optimizer
