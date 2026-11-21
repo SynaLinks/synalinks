@@ -121,15 +121,6 @@ class Function(Operation):
             inputs, operation_fn=lambda op: op.compute_output_spec
         )
 
-    def compute_output_schema(self, input_schema):
-        # Wrap `input_schema` into the structure of SymbolicDataModel to utilize
-        # `compute_output_spec`.
-        input_shape_struct = tree.map_shape_structure(
-            lambda x: SymbolicDataModel(schema=x), input_schema
-        )
-        output_spec = self.compute_output_spec(input_shape_struct)
-        return tree.map_structure(lambda x: x.get_schema(), output_spec)
-
     async def call(self, inputs):
         """Computes output data_models for new inputs."""
         self._assert_input_compatibility(inputs)

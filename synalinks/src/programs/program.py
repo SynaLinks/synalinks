@@ -575,6 +575,7 @@ class Program(Trainer, Module):
     @classmethod
     def from_config(cls, config, custom_objects=None):
         from synalinks.src.programs.functional import Functional
+        from synalinks.src.programs.functional import functional_like_constructor
 
         functional_config_keys = [
             "name",
@@ -584,10 +585,9 @@ class Program(Trainer, Module):
         ]
         is_functional_config = all(key in config for key in functional_config_keys)
         argspec = inspect.getfullargspec(cls.__init__)
-        functional_init_args = inspect.getfullargspec(Functional.__init__).args[1:]
         revivable_as_functional = (
             cls in {Functional, Program}
-            or argspec.args[1:] == functional_init_args
+            or functional_like_constructor(cls)
             or (argspec.varargs == "args" and argspec.varkw == "kwargs")
         )
         if is_functional_config and revivable_as_functional:
