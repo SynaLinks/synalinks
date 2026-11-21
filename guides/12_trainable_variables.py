@@ -79,10 +79,10 @@ vs. an LM-driven proposer).
 
 ## 2. The `Variable` Container
 
-The framework's container for state is the class `synalinks.Variable`
-(source in `synalinks/src/backend/common/variables.py`). Think of it
-as a smart dictionary that the framework can find, save, and let
-optimizers touch.
+The framework's container for state is the class `Variable` (source in
+`synalinks/src/backend/common/variables.py`; not a public symbol: you get
+one from `Module.add_variable`). Think of it as a smart dictionary that
+the framework can find, save, and let optimizers touch.
 
 A `Variable` holds three pieces of information:
 
