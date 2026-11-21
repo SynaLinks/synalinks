@@ -180,6 +180,8 @@ class ProgramCallsPerSecond(ProgramOperationalMetric):
     ```
     """
 
+    direction = "up"
+
     def __init__(self, name="program_calls_per_second"):
         super().__init__(name=name)
 

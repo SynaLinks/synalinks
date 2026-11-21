@@ -90,6 +90,7 @@ class EmbeddingModelOperationalMetric(Metric):
     """
 
     _phase = "inference"
+    direction = "down"
 
     def __init__(self, name=None):
         super().__init__(name=name)
@@ -226,6 +227,8 @@ class EmbeddingThroughput(EmbeddingModelOperationalMetric):
     ```
     """
 
+    direction = "up"
+
     def __init__(self, name="embedding_throughput"):
         super().__init__(name=name)
 
@@ -282,6 +285,8 @@ class EmbeddingTokensPerSecond(EmbeddingModelOperationalMetric):
     ```
     """
 
+    direction = "up"
+
     def __init__(self, name="embedding_tokens_per_second"):
         super().__init__(name=name)
 
@@ -306,6 +311,8 @@ class EmbeddingVectorsPerSecond(EmbeddingModelOperationalMetric):
     )
     ```
     """
+
+    direction = "up"
 
     def __init__(self, name="embedding_vectors_per_second"):
         super().__init__(name=name)
@@ -407,6 +414,8 @@ class AvgEmbeddingCachedTokensPerCall(EmbeddingModelOperationalMetric):
     ```
     """
 
+    direction = "up"
+
     def __init__(self, name="avg_embedding_cached_tokens_per_call"):
         super().__init__(name=name)
 
@@ -432,6 +441,8 @@ class EmbeddingCachedTokens(EmbeddingModelOperationalMetric):
     ```
     """
 
+    direction = "up"
+
     def __init__(self, name="embedding_cached_tokens"):
         super().__init__(name=name)
 
@@ -453,6 +464,8 @@ class EmbeddingCacheHitRate(EmbeddingModelOperationalMetric):
     )
     ```
     """
+
+    direction = "up"
 
     def __init__(self, name="embedding_cache_hit_rate"):
         super().__init__(name=name)
@@ -643,6 +656,8 @@ class RewardEmbeddingThroughput(EmbeddingModelRewardsOperationalMetric):
     ```
     """
 
+    direction = "up"
+
     def __init__(self, name="reward_embedding_throughput"):
         super().__init__(name=name)
 
@@ -693,6 +708,8 @@ class RewardEmbeddingTokensPerSecond(EmbeddingModelRewardsOperationalMetric):
     ```
     """
 
+    direction = "up"
+
     def __init__(self, name="reward_embedding_tokens_per_second"):
         super().__init__(name=name)
 
@@ -717,6 +734,8 @@ class RewardEmbeddingVectorsPerSecond(EmbeddingModelRewardsOperationalMetric):
     )
     ```
     """
+
+    direction = "up"
 
     def __init__(self, name="reward_embedding_vectors_per_second"):
         super().__init__(name=name)
@@ -818,6 +837,8 @@ class AvgRewardEmbeddingCachedTokensPerCall(EmbeddingModelRewardsOperationalMetr
     ```
     """
 
+    direction = "up"
+
     def __init__(self, name="avg_reward_embedding_cached_tokens_per_call"):
         super().__init__(name=name)
 
@@ -843,6 +864,8 @@ class RewardEmbeddingCachedTokens(EmbeddingModelRewardsOperationalMetric):
     ```
     """
 
+    direction = "up"
+
     def __init__(self, name="reward_embedding_cached_tokens"):
         super().__init__(name=name)
 
@@ -864,6 +887,8 @@ class RewardEmbeddingCacheHitRate(EmbeddingModelRewardsOperationalMetric):
     )
     ```
     """
+
+    direction = "up"
 
     def __init__(self, name="reward_embedding_cache_hit_rate"):
         super().__init__(name=name)
@@ -1054,6 +1079,8 @@ class OptimizerEmbeddingThroughput(EmbeddingModelOptimizersOperationalMetric):
     ```
     """
 
+    direction = "up"
+
     def __init__(self, name="optimizer_embedding_throughput"):
         super().__init__(name=name)
 
@@ -1104,6 +1131,8 @@ class OptimizerEmbeddingTokensPerSecond(EmbeddingModelOptimizersOperationalMetri
     ```
     """
 
+    direction = "up"
+
     def __init__(self, name="optimizer_embedding_tokens_per_second"):
         super().__init__(name=name)
 
@@ -1128,6 +1157,8 @@ class OptimizerEmbeddingVectorsPerSecond(EmbeddingModelOptimizersOperationalMetr
     )
     ```
     """
+
+    direction = "up"
 
     def __init__(self, name="optimizer_embedding_vectors_per_second"):
         super().__init__(name=name)
@@ -1229,6 +1260,8 @@ class AvgOptimizerEmbeddingCachedTokensPerCall(EmbeddingModelOptimizersOperation
     ```
     """
 
+    direction = "up"
+
     def __init__(self, name="avg_optimizer_embedding_cached_tokens_per_call"):
         super().__init__(name=name)
 
@@ -1254,6 +1287,8 @@ class OptimizerEmbeddingCachedTokens(EmbeddingModelOptimizersOperationalMetric):
     ```
     """
 
+    direction = "up"
+
     def __init__(self, name="optimizer_embedding_cached_tokens"):
         super().__init__(name=name)
 
@@ -1275,6 +1310,8 @@ class OptimizerEmbeddingCacheHitRate(EmbeddingModelOptimizersOperationalMetric):
     )
     ```
     """
+
+    direction = "up"
 
     def __init__(self, name="optimizer_embedding_cache_hit_rate"):
         super().__init__(name=name)

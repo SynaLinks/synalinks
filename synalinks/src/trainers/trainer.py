@@ -288,9 +288,6 @@ class Trainer:
                 else "mean"
             ),
         )
-        # Rewards are maximized: lets callbacks resolve `mode="auto"` for
-        # `reward` / `val_reward` without an explicit `mode`.
-        self._reward_tracker.direction = "up"
         self.steps_per_execution = steps_per_execution
 
         self._compile_config = serialization_lib.SerializableDict(

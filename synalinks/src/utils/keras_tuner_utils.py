@@ -119,8 +119,8 @@ def _synalinks_name_direction_map():
     """Build a ``{default_metric_name: "max"|"min"}`` map from the metrics
     registry.
 
-    Each shipped metric class declares its ``direction`` (``"up"``/``"down"``)
-    at class scope (see ``synalinks.Metric``). The default ``name=`` kwarg in
+    Every registered metric class carries a ``direction`` (``"up"``/``"down"``,
+    see ``synalinks.Metric``). The default ``name=`` kwarg in
     each ``__init__`` signature is what shows up in ``history.history`` and
     is what kt's ``infer_metric_direction`` is asked about.
 
@@ -563,11 +563,13 @@ def Objective(name, direction=None):
     """Re-export of `keras_tuner.Objective` for ergonomic access.
 
     When ``direction`` is omitted, it's inferred from the synalinks metrics
-    registry: shipped metrics declare ``direction`` at class scope (e.g.
-    ``Accuracy.direction == "up"``, ``ProgramCost.direction == "down"``), and
-    ``"reward"`` is special-cased as ``"max"``. Unknown names fall through
-    to keras-tuner's own inference (which handles ``"loss"`` etc.). Pass
-    ``direction=`` explicitly if neither table covers your metric.
+    registry: every built-in metric's default name maps to its class
+    ``direction`` (e.g. ``Accuracy.direction == "up"`` gives ``"max"``,
+    ``Cost.direction == "down"`` gives ``"min"``), and ``"reward"`` is
+    special-cased as ``"max"``. Unknown names (custom metrics, renamed
+    instances) fall through to keras-tuner's own inference (which handles
+    ``"loss"`` etc.). Pass ``direction=`` explicitly if neither covers your
+    metric.
 
     Loads ``keras_tuner`` lazily on first call so importing
     ``synalinks.tuners`` never pulls kt into the process by itself.

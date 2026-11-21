@@ -127,7 +127,8 @@ class ProgramCheckpoint(Callback):
         mode (str): one of {`"auto"`, `"min"`, `"max"`}. If `save_best_only=True`, the
             decision to overwrite the current save file is made based on either
             the maximization or the minimization of the monitored quantity.
-            In `"auto"` mode, the mode is set to `"max"`.
+            In `"auto"` mode, the mode is inferred from the monitored metric's
+            `direction`.
         save_variables_only (bool): if `True`, then only the program's variables will be
             saved (`program.save_variables(filepath)`), else the full program is
             saved (`program.save(filepath)`).
@@ -214,10 +215,9 @@ class ProgramCheckpoint(Callback):
     def _set_monitor_op(self):
         """Resolve auto-mode by introspecting metric ``direction``.
 
-        Falls back to ``np.greater`` (max) so existing behavior is preserved
-        when the monitored metric carries no direction: synalinks's bias is
-        toward maximizing (rewards, accuracy, F-scores) and `monitor`
-        defaults to ``"val_reward"``.
+        Raises when ``save_best_only=True`` and the monitored metric is not
+        found or has no direction, instead of guessing a mode that could keep
+        the worst program. Without ``save_best_only`` the mode is unused.
         """
         if self.monitor_op is not None:
             return
@@ -237,6 +237,13 @@ class ProgramCheckpoint(Callback):
                     self.monitor_op = np.greater if m.direction == "up" else np.less
                     break
         if self.monitor_op is None:
+            if self.save_best_only:
+                raise ValueError(
+                    f"ProgramCheckpoint received monitor={self.monitor} but "
+                    "Synalinks isn't able to automatically determine whether "
+                    "that metric should be maximized or minimized. Pass "
+                    "`mode='max'` or `mode='min'`."
+                )
             self.monitor_op = np.greater
         if self.best is None:
             self.best = -np.inf if self.monitor_op is np.greater else np.inf

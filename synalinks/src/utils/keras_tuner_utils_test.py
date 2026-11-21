@@ -2,6 +2,7 @@
 
 import asyncio
 import importlib.util
+import inspect
 import shutil
 import sys
 import tempfile
@@ -876,6 +877,31 @@ class ObjectiveDirectionInferenceTest(testing.TestCase):
         """`ProgramOperationalMetric.direction == "down"` → kt `"min"`."""
         obj = Objective("val_program_cost")
         self.assertEqual(obj.direction, "min")
+
+    def test_every_metric_default_name_infers_its_direction(self):
+        """Each registered metric's default `name` resolves to its class
+        `direction` (`"up"` → `"max"`, `"down"` → `"min"`)."""
+        from synalinks.src import metrics
+
+        expected = {"up": "max", "down": "min"}
+        for cls in metrics.ALL_OBJECTS:
+            name = inspect.signature(cls.__init__).parameters.get("name")
+            if name is None or not isinstance(name.default, str):
+                continue
+            obj = Objective(f"val_{name.default}")
+            self.assertEqual(obj.direction, expected[cls.direction], cls.__name__)
+
+    def test_operational_metrics_infer_their_direction(self):
+        for name, direction in (
+            ("val_cost", "min"),
+            ("val_avg_latency", "min"),
+            ("val_avg_time_to_first_token", "min"),
+            ("val_throughput", "max"),
+            ("val_cache_hit_rate", "max"),
+            ("val_program_calls_per_second", "max"),
+            ("val_cosine_similarity", "max"),
+        ):
+            self.assertEqual(Objective(name).direction, direction, name)
 
     def test_loss_falls_through_to_kt_inference(self):
         """kt's original `infer_metric_direction` handles `"loss"` as a

@@ -91,7 +91,10 @@ from synalinks.src.metrics.lm_metrics import AvgRewardLatency
 from synalinks.src.metrics.lm_metrics import AvgRewardOutputTokensPerCall
 from synalinks.src.metrics.lm_metrics import AvgRewardReasoningTokensPerCall
 from synalinks.src.metrics.lm_metrics import AvgRewardTotalTokensPerCall
+from synalinks.src.metrics.lm_metrics import AvgTimeToFirstToken
+from synalinks.src.metrics.lm_metrics import AvgTimeToLastToken
 from synalinks.src.metrics.lm_metrics import AvgTotalTokensPerCall
+from synalinks.src.metrics.lm_metrics import AvgTrajectoryTimeToFirstToken
 from synalinks.src.metrics.lm_metrics import CacheCreationTokens
 from synalinks.src.metrics.lm_metrics import CachedTokens
 from synalinks.src.metrics.lm_metrics import CacheHitRate
@@ -153,6 +156,7 @@ from synalinks.src.metrics.program_metrics import ProgramOperationalMetric
 from synalinks.src.metrics.reduction_metrics import Mean
 from synalinks.src.metrics.reduction_metrics import MeanMetricWrapper
 from synalinks.src.metrics.reduction_metrics import Sum
+from synalinks.src.metrics.regression_metrics import CosineSimilarity
 from synalinks.src.saving import serialization_lib
 from synalinks.src.utils.naming import to_snake_case
 
@@ -162,6 +166,8 @@ ALL_OBJECTS = {
     Mean,
     MeanMetricWrapper,
     Sum,
+    # Regression
+    CosineSimilarity,
     # Accuracy
     Accuracy,
     BinaryAccuracy,
@@ -191,6 +197,9 @@ ALL_OBJECTS = {
     TokensPerSecond,
     Throughput,
     AvgLatency,
+    AvgTimeToFirstToken,
+    AvgTimeToLastToken,
+    AvgTrajectoryTimeToFirstToken,
     Cost,
     AvgCostPerCall,
     CachedTokens,

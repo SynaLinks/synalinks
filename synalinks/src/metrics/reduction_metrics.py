@@ -6,7 +6,6 @@ import inspect
 from typing import Optional
 
 from synalinks.src import ops
-from synalinks.src import rewards
 from synalinks.src import tree
 from synalinks.src.api_export import synalinks_export
 from synalinks.src.backend import DataModel
@@ -293,15 +292,6 @@ class MeanMetricWrapper(Mean):
         )
         self._fn = fn
         self._fn_kwargs = kwargs
-
-        # If we are wrapping a Synalinks reward, register the metric's
-        # direction as "up" (needs to be maximized during training).
-        if (
-            self._fn in rewards.ALL_OBJECTS
-            or hasattr(self._fn, "__class__")
-            and self._fn.__class__ in rewards.ALL_OBJECTS
-        ):
-            self.direction = "up"
 
     async def update_state(self, y_true, y_pred):
         y_pred = tree.map_structure(lambda x: ops.convert_to_json_data_model(x), y_pred)
