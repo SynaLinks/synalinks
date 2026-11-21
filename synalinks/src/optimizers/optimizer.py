@@ -411,6 +411,8 @@ class Optimizer(SynalinksSaveable):
             candidates = variable.get("candidates")
             best_candidates = variable.get("best_candidates")
             all_candidates = candidates + best_candidates
+            if not all_candidates:
+                continue
             sorted_candidates = sorted(
                 all_candidates,
                 key=lambda x: x.get("reward"),

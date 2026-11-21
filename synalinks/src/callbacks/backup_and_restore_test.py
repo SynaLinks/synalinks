@@ -264,6 +264,31 @@ class BackupAndRestoreCallbackTest(testing.TestCase):
         )
         self.assertFalse(file_utils.exists(backup_dir))
 
+    @patch("litellm.acompletion")
+    async def test_restored_epoch_applies_to_one_fit_only(self, mock_completion):
+        mock_completion.return_value = {
+            "choices": [{"message": {"content": mock_completion_data()[0]}}]
+        }
+        program = self.make_model()
+        cbk = BackupAndRestore(file_utils.join(self.get_temp_dir(), "subdir"))
+        (x_train, y_train), _ = load_test_data()
+        with self.assertRaisesRegex(RuntimeError, "EpochInterruption"):
+            await program.fit(
+                x_train,
+                y_train,
+                callbacks=[cbk, InterruptingCallback(steps_int=None, epoch_int=2)],
+                epochs=5,
+                verbose=0,
+            )
+        hist = await program.fit(x_train, y_train, callbacks=[cbk], epochs=5, verbose=0)
+        self.assertEqual(hist.epoch, [2, 3, 4])
+        hist = await program.fit(x_train, y_train, epochs=2, verbose=0)
+        self.assertEqual(hist.epoch, [0, 1])
+
+    def test_save_freq_false_never_saves_on_batch(self):
+        cbk = BackupAndRestore(backup_dir="backup_dir", save_freq=False)
+        self.assertFalse(any(cbk._should_save_on_batch(b) for b in range(4)))
+
     def test_backup_dir_empty_error(self):
         with self.assertRaisesRegex(
             ValueError, expected_regex="Empty `backup_dir` argument passed"
