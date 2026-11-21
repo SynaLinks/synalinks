@@ -9,6 +9,7 @@ from synalinks.src.modules import Input
 from synalinks.src.modules.core.branch import Branch
 from synalinks.src.modules.core.generator import Generator
 from synalinks.src.modules.core.identity import Identity
+from synalinks.src.modules.core.multi_decision import MultiDecision
 from synalinks.src.modules.decision_models import DecisionModel
 from synalinks.src.modules.language_models import LanguageModel
 from synalinks.src.programs import Program
@@ -154,3 +155,28 @@ class BranchWithDecisionModelTest(testing.TestCase):
         restored = Branch.from_config(branch.get_config())
         self.assertEqual(restored.min_confidence, 0.5)
         self.assertEqual(restored.decision.min_confidence, 0.5)
+
+    async def test_multi_decision_config_round_trip(self):
+        branch = Branch(
+            question="Which topics?",
+            labels=["math", "code"],
+            branches=[Identity(), Identity()],
+            decision_model=DecisionModel(model="typesafe/jev-latest"),
+            decision_type=MultiDecision,
+            threshold=0.7,
+        )
+
+        restored = Branch.from_config(branch.get_config())
+
+        self.assertIsInstance(restored.decision, MultiDecision)
+        self.assertEqual(restored.decision.threshold, 0.7)
+
+    async def test_unknown_kwarg_raises(self):
+        with self.assertRaises(TypeError):
+            Branch(
+                question="q?",
+                labels=["a", "b"],
+                branches=[Identity(), Identity()],
+                decision_model=DecisionModel(model="typesafe/jev-latest"),
+                min_confidance=0.9,
+            )
