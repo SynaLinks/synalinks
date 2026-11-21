@@ -68,9 +68,6 @@ class BatchReward(Reward):
     async def call(self, y_true, y_pred):
         raise NotImplementedError
 
-    def _obj_type(self):
-        return "BatchReward"
-
 
 @synalinks_export("synalinks.rewards.BatchRewardFunctionWrapper")
 class BatchRewardFunctionWrapper(BatchReward):

@@ -541,9 +541,6 @@ class EmbeddingModel(Module):
         """
         return model_catalog.model_info(model)
 
-    def _obj_type(self):
-        return "EmbeddingModel"
-
     def get_config(self):
         config = {
             "model": self.model,

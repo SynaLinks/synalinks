@@ -1775,9 +1775,6 @@ class LanguageModel(Module):
         """
         return self.model.startswith("hosted_vllm")
 
-    def _obj_type(self):
-        return "LanguageModel"
-
     def get_config(self):
         config = {
             "model": self.model,

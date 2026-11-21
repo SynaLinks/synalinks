@@ -93,9 +93,6 @@ class Functional(Function, Program):
         # functional DAG.
         pass
 
-    def _obj_type(self):
-        return "Functional"
-
     @property
     def modules(self):
         modules = []

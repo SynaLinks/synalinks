@@ -140,9 +140,6 @@ class Metric(SynalinksSaveable):
             res = self.result()
         return res
 
-    def _obj_type(self):
-        return "Metric"
-
     def add_variable(self, initializer=None, data_model=None, name=None):
         if initializer is None:
             initializer = initializers.Empty(data_model=data_model)

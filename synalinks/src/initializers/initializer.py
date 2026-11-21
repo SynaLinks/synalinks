@@ -70,9 +70,6 @@ class Initializer(SynalinksSaveable):
         """
         return {}
 
-    def _obj_type(self):
-        return "Initializer"
-
     @classmethod
     def from_config(cls, config):
         """Instantiates an initializer from a configuration dictionary.

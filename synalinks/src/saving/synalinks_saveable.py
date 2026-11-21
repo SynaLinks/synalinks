@@ -4,7 +4,4 @@
 
 
 class SynalinksSaveable:
-    def _obj_type(self):
-        raise NotImplementedError(
-            "SynalinksSaveable subclases must provide an implementation for `obj_type()`"
-        )
+    pass

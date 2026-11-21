@@ -101,9 +101,6 @@ class Reward(SynalinksSaveable):
     def from_config(cls, config):
         return cls(**config)
 
-    def _obj_type(self):
-        return "Reward"
-
 
 def check_async_reward_fn(fn, cls_name):
     """Raise a clear error when a reward function is not defined with ``async def``.

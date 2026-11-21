@@ -356,9 +356,6 @@ class Module(BackendModule, Operation, SynalinksSaveable):
                 run_maybe_nested(self.build(**symbolic_inputs))
             self.built = True
 
-    def _obj_type(self):
-        return "Module"
-
     @property
     def metrics(self):
         """List of all metrics."""

@@ -1604,8 +1604,5 @@ class OAuthLanguageModel(LanguageModel):
     # A `function_call_output` takes images, whatever the model.
     _tool_result_images = True
 
-    def _obj_type(self):
-        return "OAuthLanguageModel"
-
     def __repr__(self):
         return f"<OAuthLanguageModel model={self.model}>"

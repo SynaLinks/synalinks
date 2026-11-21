@@ -1274,9 +1274,6 @@ class DecisionModel(Module):
         """
         return model_catalog.model_info(model)
 
-    def _obj_type(self):
-        return "DecisionModel"
-
     def get_config(self):
         config = {
             "model": self.model,

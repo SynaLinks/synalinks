@@ -45,6 +45,3 @@ class BatchMetric(Metric):
 
     def result(self):
         raise NotImplementedError
-
-    def _obj_type(self):
-        return "BatchMetric"

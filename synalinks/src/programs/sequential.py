@@ -173,9 +173,6 @@ class Sequential(Program):
         # Unlike other modules, Sequential is mutable after build.
         pass
 
-    def _obj_type(self):
-        return "Sequential"
-
     async def build(self, inputs):
         try:
             input_schema = standardize_schema(inputs.get_schema())

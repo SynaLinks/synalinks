@@ -2704,6 +2704,3 @@ class Sandbox(SynalinksSaveable):
             sandbox has no filesystem.
         """
         return {"error": "this sandbox has no filesystem"}
-
-    def _obj_type(self):
-        return "Sandbox"
