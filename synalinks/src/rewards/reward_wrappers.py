@@ -54,6 +54,9 @@ class RewardFunctionWrapper(Reward):
     Args:
         fn (callable): Async reward function to wrap, with signature
             ``fn(y_true, y_pred, **kwargs)``.
+        reduction (str): Optional. How the per-sample rewards of a batch are
+            reduced, one of `"mean"`, `"sum"`, `"min"`, `"max"`, `"none"` or
+            `None` (see `Reward`). Defaults to `"mean"`.
         name (str): Optional. string name of the reward instance.
         in_mask (list): Optional. list of keys to keep to compute the reward.
         out_mask (list): Optional. list of keys to remove to compute the reward.
@@ -128,21 +131,24 @@ class ProgramAsJudge(Reward):
     Example:
 
     ```python
-    # ... your program declaration
+    # ... your judge program declaration (inputs: y_true, y_pred)
 
-    program = synalinks.Program(
-        inputs=x0,
+    judge_program = synalinks.Program(
+        inputs=[x0, x1],
         outputs=xn,
     )
 
     program.compile(
-        reward=synalinks.rewards.ProgramAsJudge(program=program)
+        reward=synalinks.rewards.ProgramAsJudge(program=judge_program),
         optimizer=synalinks.optimizers.RandomFewShot(),
     )
     ```
 
     Args:
         program (Program): The reward program to wrap.
+        reduction (str): Optional. How the per-sample rewards of a batch are
+            reduced, one of `"mean"`, `"sum"`, `"min"`, `"max"`, `"none"` or
+            `None` (see `Reward`). Defaults to `"mean"`.
         name (str): Optional. string name of the reward instance.
         in_mask (list): Optional. list of keys to keep to compute the reward.
         out_mask (list): Optional. list of keys to remove to compute the reward.
@@ -151,6 +157,9 @@ class ProgramAsJudge(Reward):
         out_mask_pattern (str): Optional. Regex pattern; fields whose names match
             are dropped (combined with ``out_mask`` via OR).
     """
+
+    # Set by a judge that builds its own program from its arguments.
+    program_class = None
 
     def __init__(
         self,
@@ -197,9 +206,18 @@ class ProgramAsJudge(Reward):
 
     @classmethod
     def from_config(cls, config):
-        if "program" in config:
-            config = serialization_lib.deserialize_synalinks_object(config)
-        return cls(**config)
+        if cls.program_class is None:
+            if "program" in config:
+                config = serialization_lib.deserialize_synalinks_object(config)
+            return cls(**config)
+        # A judge that builds its own program takes the program's arguments, not
+        # the program: building it would also build what it opens (a sandbox).
+        config = dict(config)
+        program = config.pop("program")
+        arguments = cls.program_class.resolve_config(program["config"])
+        for key in ("name", "description", "trainable"):
+            arguments.pop(key, None)
+        return cls(**arguments, **config)
 
     def __repr__(self):
         return f"<ProgramAsJudge({self.program})>"

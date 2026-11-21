@@ -4,8 +4,51 @@ from synalinks.src.api_export import synalinks_export
 from synalinks.src.rewards.rubrics_as_judge import RubricsAsJudge
 
 
+class _RubricPreset(RubricsAsJudge):
+    """A `RubricsAsJudge` that grades against the built-in rubric preset `preset`.
+
+    Its default `name` is the preset's key, and `rubrics` default to the
+    preset's (a reloaded config keeps the rubrics it saved). See
+    `RubricsAsJudge` for the arguments.
+    """
+
+    preset = None
+
+    def __init__(
+        self,
+        language_model=None,
+        prompt_template=None,
+        examples=None,
+        instructions=None,
+        score_type=None,
+        reduction="mean",
+        name=None,
+        in_mask=None,
+        out_mask=None,
+        in_mask_pattern=None,
+        out_mask_pattern=None,
+        decision_model=None,
+        rubrics=None,
+    ):
+        super().__init__(
+            language_model=language_model,
+            rubrics=rubrics or self.preset,
+            prompt_template=prompt_template,
+            examples=examples,
+            instructions=instructions,
+            score_type=score_type,
+            reduction=reduction,
+            name=name or self.preset,
+            in_mask=in_mask,
+            out_mask=out_mask,
+            in_mask_pattern=in_mask_pattern,
+            out_mask_pattern=out_mask_pattern,
+            decision_model=decision_model,
+        )
+
+
 @synalinks_export(["synalinks.AnswerRelevancy", "synalinks.rewards.AnswerRelevancy"])
-class AnswerRelevancy(RubricsAsJudge):
+class AnswerRelevancy(_RubricPreset):
     """Judge whether an answer is relevant to the user query.
 
     Example:
@@ -20,40 +63,11 @@ class AnswerRelevancy(RubricsAsJudge):
     ```
     """
 
-    def __init__(
-        self,
-        language_model=None,
-        prompt_template=None,
-        examples=None,
-        instructions=None,
-        score_type=None,
-        reduction="mean",
-        name="answer_relevancy",
-        in_mask=None,
-        out_mask=None,
-        in_mask_pattern=None,
-        out_mask_pattern=None,
-        decision_model=None,
-    ):
-        super().__init__(
-            language_model=language_model,
-            rubrics="answer_relevancy",
-            prompt_template=prompt_template,
-            examples=examples,
-            instructions=instructions,
-            score_type=score_type,
-            reduction=reduction,
-            name=name,
-            in_mask=in_mask,
-            out_mask=out_mask,
-            in_mask_pattern=in_mask_pattern,
-            out_mask_pattern=out_mask_pattern,
-            decision_model=decision_model,
-        )
+    preset = "answer_relevancy"
 
 
 @synalinks_export(["synalinks.Faithfulness", "synalinks.rewards.Faithfulness"])
-class Faithfulness(RubricsAsJudge):
+class Faithfulness(_RubricPreset):
     """Judge whether an answer is grounded in the provided context.
 
     Example:
@@ -68,40 +82,11 @@ class Faithfulness(RubricsAsJudge):
     ```
     """
 
-    def __init__(
-        self,
-        language_model=None,
-        prompt_template=None,
-        examples=None,
-        instructions=None,
-        score_type=None,
-        reduction="mean",
-        name="faithfulness",
-        in_mask=None,
-        out_mask=None,
-        in_mask_pattern=None,
-        out_mask_pattern=None,
-        decision_model=None,
-    ):
-        super().__init__(
-            language_model=language_model,
-            rubrics="faithfulness",
-            prompt_template=prompt_template,
-            examples=examples,
-            instructions=instructions,
-            score_type=score_type,
-            reduction=reduction,
-            name=name,
-            in_mask=in_mask,
-            out_mask=out_mask,
-            in_mask_pattern=in_mask_pattern,
-            out_mask_pattern=out_mask_pattern,
-            decision_model=decision_model,
-        )
+    preset = "faithfulness"
 
 
 @synalinks_export(["synalinks.Hallucination", "synalinks.rewards.Hallucination"])
-class Hallucination(RubricsAsJudge):
+class Hallucination(_RubricPreset):
     """Judge whether an answer avoids unsupported claims.
 
     Example:
@@ -116,40 +101,11 @@ class Hallucination(RubricsAsJudge):
     ```
     """
 
-    def __init__(
-        self,
-        language_model=None,
-        prompt_template=None,
-        examples=None,
-        instructions=None,
-        score_type=None,
-        reduction="mean",
-        name="hallucination",
-        in_mask=None,
-        out_mask=None,
-        in_mask_pattern=None,
-        out_mask_pattern=None,
-        decision_model=None,
-    ):
-        super().__init__(
-            language_model=language_model,
-            rubrics="hallucination",
-            prompt_template=prompt_template,
-            examples=examples,
-            instructions=instructions,
-            score_type=score_type,
-            reduction=reduction,
-            name=name,
-            in_mask=in_mask,
-            out_mask=out_mask,
-            in_mask_pattern=in_mask_pattern,
-            out_mask_pattern=out_mask_pattern,
-            decision_model=decision_model,
-        )
+    preset = "hallucination"
 
 
 @synalinks_export(["synalinks.Summarization", "synalinks.rewards.Summarization"])
-class Summarization(RubricsAsJudge):
+class Summarization(_RubricPreset):
     """Judge summary coverage, faithfulness and concision.
 
     Example:
@@ -164,36 +120,7 @@ class Summarization(RubricsAsJudge):
     ```
     """
 
-    def __init__(
-        self,
-        language_model=None,
-        prompt_template=None,
-        examples=None,
-        instructions=None,
-        score_type=None,
-        reduction="mean",
-        name="summarization",
-        in_mask=None,
-        out_mask=None,
-        in_mask_pattern=None,
-        out_mask_pattern=None,
-        decision_model=None,
-    ):
-        super().__init__(
-            language_model=language_model,
-            rubrics="summarization",
-            prompt_template=prompt_template,
-            examples=examples,
-            instructions=instructions,
-            score_type=score_type,
-            reduction=reduction,
-            name=name,
-            in_mask=in_mask,
-            out_mask=out_mask,
-            in_mask_pattern=in_mask_pattern,
-            out_mask_pattern=out_mask_pattern,
-            decision_model=decision_model,
-        )
+    preset = "summarization"
 
 
 @synalinks_export(
@@ -202,7 +129,7 @@ class Summarization(RubricsAsJudge):
         "synalinks.rewards.ArgumentCorrectness",
     ]
 )
-class ArgumentCorrectness(RubricsAsJudge):
+class ArgumentCorrectness(_RubricPreset):
     """Judge whether an argument is logically correct and supported.
 
     Example:
@@ -217,36 +144,7 @@ class ArgumentCorrectness(RubricsAsJudge):
     ```
     """
 
-    def __init__(
-        self,
-        language_model=None,
-        prompt_template=None,
-        examples=None,
-        instructions=None,
-        score_type=None,
-        reduction="mean",
-        name="argument_correctness",
-        in_mask=None,
-        out_mask=None,
-        in_mask_pattern=None,
-        out_mask_pattern=None,
-        decision_model=None,
-    ):
-        super().__init__(
-            language_model=language_model,
-            rubrics="argument_correctness",
-            prompt_template=prompt_template,
-            examples=examples,
-            instructions=instructions,
-            score_type=score_type,
-            reduction=reduction,
-            name=name,
-            in_mask=in_mask,
-            out_mask=out_mask,
-            in_mask_pattern=in_mask_pattern,
-            out_mask_pattern=out_mask_pattern,
-            decision_model=decision_model,
-        )
+    preset = "argument_correctness"
 
 
 @synalinks_export(
@@ -255,7 +153,7 @@ class ArgumentCorrectness(RubricsAsJudge):
         "synalinks.rewards.ContextualRelevancy",
     ]
 )
-class ContextualRelevancy(RubricsAsJudge):
+class ContextualRelevancy(_RubricPreset):
     """Judge whether retrieved context is relevant to a query.
 
     Example:
@@ -270,36 +168,7 @@ class ContextualRelevancy(RubricsAsJudge):
     ```
     """
 
-    def __init__(
-        self,
-        language_model=None,
-        prompt_template=None,
-        examples=None,
-        instructions=None,
-        score_type=None,
-        reduction="mean",
-        name="contextual_relevancy",
-        in_mask=None,
-        out_mask=None,
-        in_mask_pattern=None,
-        out_mask_pattern=None,
-        decision_model=None,
-    ):
-        super().__init__(
-            language_model=language_model,
-            rubrics="contextual_relevancy",
-            prompt_template=prompt_template,
-            examples=examples,
-            instructions=instructions,
-            score_type=score_type,
-            reduction=reduction,
-            name=name,
-            in_mask=in_mask,
-            out_mask=out_mask,
-            in_mask_pattern=in_mask_pattern,
-            out_mask_pattern=out_mask_pattern,
-            decision_model=decision_model,
-        )
+    preset = "contextual_relevancy"
 
 
 @synalinks_export(
@@ -308,7 +177,7 @@ class ContextualRelevancy(RubricsAsJudge):
         "synalinks.rewards.ContextualPrecision",
     ]
 )
-class ContextualPrecision(RubricsAsJudge):
+class ContextualPrecision(_RubricPreset):
     """Judge whether relevant retrieved items are ranked early.
 
     Example:
@@ -323,40 +192,11 @@ class ContextualPrecision(RubricsAsJudge):
     ```
     """
 
-    def __init__(
-        self,
-        language_model=None,
-        prompt_template=None,
-        examples=None,
-        instructions=None,
-        score_type=None,
-        reduction="mean",
-        name="contextual_precision",
-        in_mask=None,
-        out_mask=None,
-        in_mask_pattern=None,
-        out_mask_pattern=None,
-        decision_model=None,
-    ):
-        super().__init__(
-            language_model=language_model,
-            rubrics="contextual_precision",
-            prompt_template=prompt_template,
-            examples=examples,
-            instructions=instructions,
-            score_type=score_type,
-            reduction=reduction,
-            name=name,
-            in_mask=in_mask,
-            out_mask=out_mask,
-            in_mask_pattern=in_mask_pattern,
-            out_mask_pattern=out_mask_pattern,
-            decision_model=decision_model,
-        )
+    preset = "contextual_precision"
 
 
 @synalinks_export(["synalinks.ContextualRecall", "synalinks.rewards.ContextualRecall"])
-class ContextualRecall(RubricsAsJudge):
+class ContextualRecall(_RubricPreset):
     """Judge whether context contains the facts needed for the answer.
 
     Example:
@@ -371,36 +211,7 @@ class ContextualRecall(RubricsAsJudge):
     ```
     """
 
-    def __init__(
-        self,
-        language_model=None,
-        prompt_template=None,
-        examples=None,
-        instructions=None,
-        score_type=None,
-        reduction="mean",
-        name="contextual_recall",
-        in_mask=None,
-        out_mask=None,
-        in_mask_pattern=None,
-        out_mask_pattern=None,
-        decision_model=None,
-    ):
-        super().__init__(
-            language_model=language_model,
-            rubrics="contextual_recall",
-            prompt_template=prompt_template,
-            examples=examples,
-            instructions=instructions,
-            score_type=score_type,
-            reduction=reduction,
-            name=name,
-            in_mask=in_mask,
-            out_mask=out_mask,
-            in_mask_pattern=in_mask_pattern,
-            out_mask_pattern=out_mask_pattern,
-            decision_model=decision_model,
-        )
+    preset = "contextual_recall"
 
 
 @synalinks_export(
@@ -409,7 +220,7 @@ class ContextualRecall(RubricsAsJudge):
         "synalinks.rewards.CitationFaithfulness",
     ]
 )
-class CitationFaithfulness(RubricsAsJudge):
+class CitationFaithfulness(_RubricPreset):
     """Judge whether citations support the claims they cite.
 
     Example:
@@ -424,40 +235,11 @@ class CitationFaithfulness(RubricsAsJudge):
     ```
     """
 
-    def __init__(
-        self,
-        language_model=None,
-        prompt_template=None,
-        examples=None,
-        instructions=None,
-        score_type=None,
-        reduction="mean",
-        name="citation_faithfulness",
-        in_mask=None,
-        out_mask=None,
-        in_mask_pattern=None,
-        out_mask_pattern=None,
-        decision_model=None,
-    ):
-        super().__init__(
-            language_model=language_model,
-            rubrics="citation_faithfulness",
-            prompt_template=prompt_template,
-            examples=examples,
-            instructions=instructions,
-            score_type=score_type,
-            reduction=reduction,
-            name=name,
-            in_mask=in_mask,
-            out_mask=out_mask,
-            in_mask_pattern=in_mask_pattern,
-            out_mask_pattern=out_mask_pattern,
-            decision_model=decision_model,
-        )
+    preset = "citation_faithfulness"
 
 
 @synalinks_export(["synalinks.Bias", "synalinks.rewards.Bias"])
-class Bias(RubricsAsJudge):
+class Bias(_RubricPreset):
     """Judge whether an answer avoids bias.
 
     Example:
@@ -472,40 +254,11 @@ class Bias(RubricsAsJudge):
     ```
     """
 
-    def __init__(
-        self,
-        language_model=None,
-        prompt_template=None,
-        examples=None,
-        instructions=None,
-        score_type=None,
-        reduction="mean",
-        name="bias",
-        in_mask=None,
-        out_mask=None,
-        in_mask_pattern=None,
-        out_mask_pattern=None,
-        decision_model=None,
-    ):
-        super().__init__(
-            language_model=language_model,
-            rubrics="bias",
-            prompt_template=prompt_template,
-            examples=examples,
-            instructions=instructions,
-            score_type=score_type,
-            reduction=reduction,
-            name=name,
-            in_mask=in_mask,
-            out_mask=out_mask,
-            in_mask_pattern=in_mask_pattern,
-            out_mask_pattern=out_mask_pattern,
-            decision_model=decision_model,
-        )
+    preset = "bias"
 
 
 @synalinks_export(["synalinks.Toxicity", "synalinks.rewards.Toxicity"])
-class Toxicity(RubricsAsJudge):
+class Toxicity(_RubricPreset):
     """Judge whether an answer avoids toxic language.
 
     Example:
@@ -520,40 +273,11 @@ class Toxicity(RubricsAsJudge):
     ```
     """
 
-    def __init__(
-        self,
-        language_model=None,
-        prompt_template=None,
-        examples=None,
-        instructions=None,
-        score_type=None,
-        reduction="mean",
-        name="toxicity",
-        in_mask=None,
-        out_mask=None,
-        in_mask_pattern=None,
-        out_mask_pattern=None,
-        decision_model=None,
-    ):
-        super().__init__(
-            language_model=language_model,
-            rubrics="toxicity",
-            prompt_template=prompt_template,
-            examples=examples,
-            instructions=instructions,
-            score_type=score_type,
-            reduction=reduction,
-            name=name,
-            in_mask=in_mask,
-            out_mask=out_mask,
-            in_mask_pattern=in_mask_pattern,
-            out_mask_pattern=out_mask_pattern,
-            decision_model=decision_model,
-        )
+    preset = "toxicity"
 
 
 @synalinks_export(["synalinks.PIILeakage", "synalinks.rewards.PIILeakage"])
-class PIILeakage(RubricsAsJudge):
+class PIILeakage(_RubricPreset):
     """Judge whether an answer leaks private personal information.
 
     Example:
@@ -568,40 +292,11 @@ class PIILeakage(RubricsAsJudge):
     ```
     """
 
-    def __init__(
-        self,
-        language_model=None,
-        prompt_template=None,
-        examples=None,
-        instructions=None,
-        score_type=None,
-        reduction="mean",
-        name="pii_leakage",
-        in_mask=None,
-        out_mask=None,
-        in_mask_pattern=None,
-        out_mask_pattern=None,
-        decision_model=None,
-    ):
-        super().__init__(
-            language_model=language_model,
-            rubrics="pii_leakage",
-            prompt_template=prompt_template,
-            examples=examples,
-            instructions=instructions,
-            score_type=score_type,
-            reduction=reduction,
-            name=name,
-            in_mask=in_mask,
-            out_mask=out_mask,
-            in_mask_pattern=in_mask_pattern,
-            out_mask_pattern=out_mask_pattern,
-            decision_model=decision_model,
-        )
+    preset = "pii_leakage"
 
 
 @synalinks_export(["synalinks.Misuse", "synalinks.rewards.Misuse"])
-class Misuse(RubricsAsJudge):
+class Misuse(_RubricPreset):
     """Judge whether an answer safely handles misuse requests.
 
     Example:
@@ -616,40 +311,11 @@ class Misuse(RubricsAsJudge):
     ```
     """
 
-    def __init__(
-        self,
-        language_model=None,
-        prompt_template=None,
-        examples=None,
-        instructions=None,
-        score_type=None,
-        reduction="mean",
-        name="misuse",
-        in_mask=None,
-        out_mask=None,
-        in_mask_pattern=None,
-        out_mask_pattern=None,
-        decision_model=None,
-    ):
-        super().__init__(
-            language_model=language_model,
-            rubrics="misuse",
-            prompt_template=prompt_template,
-            examples=examples,
-            instructions=instructions,
-            score_type=score_type,
-            reduction=reduction,
-            name=name,
-            in_mask=in_mask,
-            out_mask=out_mask,
-            in_mask_pattern=in_mask_pattern,
-            out_mask_pattern=out_mask_pattern,
-            decision_model=decision_model,
-        )
+    preset = "misuse"
 
 
 @synalinks_export(["synalinks.NonAdvice", "synalinks.rewards.NonAdvice"])
-class NonAdvice(RubricsAsJudge):
+class NonAdvice(_RubricPreset):
     """Judge whether an answer avoids authoritative professional advice.
 
     Example:
@@ -664,40 +330,11 @@ class NonAdvice(RubricsAsJudge):
     ```
     """
 
-    def __init__(
-        self,
-        language_model=None,
-        prompt_template=None,
-        examples=None,
-        instructions=None,
-        score_type=None,
-        reduction="mean",
-        name="non_advice",
-        in_mask=None,
-        out_mask=None,
-        in_mask_pattern=None,
-        out_mask_pattern=None,
-        decision_model=None,
-    ):
-        super().__init__(
-            language_model=language_model,
-            rubrics="non_advice",
-            prompt_template=prompt_template,
-            examples=examples,
-            instructions=instructions,
-            score_type=score_type,
-            reduction=reduction,
-            name=name,
-            in_mask=in_mask,
-            out_mask=out_mask,
-            in_mask_pattern=in_mask_pattern,
-            out_mask_pattern=out_mask_pattern,
-            decision_model=decision_model,
-        )
+    preset = "non_advice"
 
 
 @synalinks_export(["synalinks.PromptAlignment", "synalinks.rewards.PromptAlignment"])
-class PromptAlignment(RubricsAsJudge):
+class PromptAlignment(_RubricPreset):
     """Judge whether an answer follows instructions and constraints.
 
     Example:
@@ -712,40 +349,11 @@ class PromptAlignment(RubricsAsJudge):
     ```
     """
 
-    def __init__(
-        self,
-        language_model=None,
-        prompt_template=None,
-        examples=None,
-        instructions=None,
-        score_type=None,
-        reduction="mean",
-        name="prompt_alignment",
-        in_mask=None,
-        out_mask=None,
-        in_mask_pattern=None,
-        out_mask_pattern=None,
-        decision_model=None,
-    ):
-        super().__init__(
-            language_model=language_model,
-            rubrics="prompt_alignment",
-            prompt_template=prompt_template,
-            examples=examples,
-            instructions=instructions,
-            score_type=score_type,
-            reduction=reduction,
-            name=name,
-            in_mask=in_mask,
-            out_mask=out_mask,
-            in_mask_pattern=in_mask_pattern,
-            out_mask_pattern=out_mask_pattern,
-            decision_model=decision_model,
-        )
+    preset = "prompt_alignment"
 
 
 @synalinks_export(["synalinks.TaskCompletion", "synalinks.rewards.TaskCompletion"])
-class TaskCompletion(RubricsAsJudge):
+class TaskCompletion(_RubricPreset):
     """Judge whether an agent completed the requested task.
 
     Example:
@@ -760,40 +368,11 @@ class TaskCompletion(RubricsAsJudge):
     ```
     """
 
-    def __init__(
-        self,
-        language_model=None,
-        prompt_template=None,
-        examples=None,
-        instructions=None,
-        score_type=None,
-        reduction="mean",
-        name="task_completion",
-        in_mask=None,
-        out_mask=None,
-        in_mask_pattern=None,
-        out_mask_pattern=None,
-        decision_model=None,
-    ):
-        super().__init__(
-            language_model=language_model,
-            rubrics="task_completion",
-            prompt_template=prompt_template,
-            examples=examples,
-            instructions=instructions,
-            score_type=score_type,
-            reduction=reduction,
-            name=name,
-            in_mask=in_mask,
-            out_mask=out_mask,
-            in_mask_pattern=in_mask_pattern,
-            out_mask_pattern=out_mask_pattern,
-            decision_model=decision_model,
-        )
+    preset = "task_completion"
 
 
 @synalinks_export(["synalinks.ToolCorrectness", "synalinks.rewards.ToolCorrectness"])
-class ToolCorrectness(RubricsAsJudge):
+class ToolCorrectness(_RubricPreset):
     """Judge whether tool calls use the right tools and arguments.
 
     Example:
@@ -808,40 +387,11 @@ class ToolCorrectness(RubricsAsJudge):
     ```
     """
 
-    def __init__(
-        self,
-        language_model=None,
-        prompt_template=None,
-        examples=None,
-        instructions=None,
-        score_type=None,
-        reduction="mean",
-        name="tool_correctness",
-        in_mask=None,
-        out_mask=None,
-        in_mask_pattern=None,
-        out_mask_pattern=None,
-        decision_model=None,
-    ):
-        super().__init__(
-            language_model=language_model,
-            rubrics="tool_correctness",
-            prompt_template=prompt_template,
-            examples=examples,
-            instructions=instructions,
-            score_type=score_type,
-            reduction=reduction,
-            name=name,
-            in_mask=in_mask,
-            out_mask=out_mask,
-            in_mask_pattern=in_mask_pattern,
-            out_mask_pattern=out_mask_pattern,
-            decision_model=decision_model,
-        )
+    preset = "tool_correctness"
 
 
 @synalinks_export(["synalinks.ToolUse", "synalinks.rewards.ToolUse"])
-class ToolUse(RubricsAsJudge):
+class ToolUse(_RubricPreset):
     """Judge whether tool usage is necessary and appropriate.
 
     Example:
@@ -856,40 +406,11 @@ class ToolUse(RubricsAsJudge):
     ```
     """
 
-    def __init__(
-        self,
-        language_model=None,
-        prompt_template=None,
-        examples=None,
-        instructions=None,
-        score_type=None,
-        reduction="mean",
-        name="tool_use",
-        in_mask=None,
-        out_mask=None,
-        in_mask_pattern=None,
-        out_mask_pattern=None,
-        decision_model=None,
-    ):
-        super().__init__(
-            language_model=language_model,
-            rubrics="tool_use",
-            prompt_template=prompt_template,
-            examples=examples,
-            instructions=instructions,
-            score_type=score_type,
-            reduction=reduction,
-            name=name,
-            in_mask=in_mask,
-            out_mask=out_mask,
-            in_mask_pattern=in_mask_pattern,
-            out_mask_pattern=out_mask_pattern,
-            decision_model=decision_model,
-        )
+    preset = "tool_use"
 
 
 @synalinks_export(["synalinks.ToolPermission", "synalinks.rewards.ToolPermission"])
-class ToolPermission(RubricsAsJudge):
+class ToolPermission(_RubricPreset):
     """Judge whether tool usage respects permissions.
 
     Example:
@@ -904,40 +425,11 @@ class ToolPermission(RubricsAsJudge):
     ```
     """
 
-    def __init__(
-        self,
-        language_model=None,
-        prompt_template=None,
-        examples=None,
-        instructions=None,
-        score_type=None,
-        reduction="mean",
-        name="tool_permission",
-        in_mask=None,
-        out_mask=None,
-        in_mask_pattern=None,
-        out_mask_pattern=None,
-        decision_model=None,
-    ):
-        super().__init__(
-            language_model=language_model,
-            rubrics="tool_permission",
-            prompt_template=prompt_template,
-            examples=examples,
-            instructions=instructions,
-            score_type=score_type,
-            reduction=reduction,
-            name=name,
-            in_mask=in_mask,
-            out_mask=out_mask,
-            in_mask_pattern=in_mask_pattern,
-            out_mask_pattern=out_mask_pattern,
-            decision_model=decision_model,
-        )
+    preset = "tool_permission"
 
 
 @synalinks_export(["synalinks.GoalAccuracy", "synalinks.rewards.GoalAccuracy"])
-class GoalAccuracy(RubricsAsJudge):
+class GoalAccuracy(_RubricPreset):
     """Judge whether the result satisfies the stated goal.
 
     Example:
@@ -952,40 +444,11 @@ class GoalAccuracy(RubricsAsJudge):
     ```
     """
 
-    def __init__(
-        self,
-        language_model=None,
-        prompt_template=None,
-        examples=None,
-        instructions=None,
-        score_type=None,
-        reduction="mean",
-        name="goal_accuracy",
-        in_mask=None,
-        out_mask=None,
-        in_mask_pattern=None,
-        out_mask_pattern=None,
-        decision_model=None,
-    ):
-        super().__init__(
-            language_model=language_model,
-            rubrics="goal_accuracy",
-            prompt_template=prompt_template,
-            examples=examples,
-            instructions=instructions,
-            score_type=score_type,
-            reduction=reduction,
-            name=name,
-            in_mask=in_mask,
-            out_mask=out_mask,
-            in_mask_pattern=in_mask_pattern,
-            out_mask_pattern=out_mask_pattern,
-            decision_model=decision_model,
-        )
+    preset = "goal_accuracy"
 
 
 @synalinks_export(["synalinks.RoleAdherence", "synalinks.rewards.RoleAdherence"])
-class RoleAdherence(RubricsAsJudge):
+class RoleAdherence(_RubricPreset):
     """Judge whether the assistant stays in its assigned role.
 
     Example:
@@ -1000,40 +463,11 @@ class RoleAdherence(RubricsAsJudge):
     ```
     """
 
-    def __init__(
-        self,
-        language_model=None,
-        prompt_template=None,
-        examples=None,
-        instructions=None,
-        score_type=None,
-        reduction="mean",
-        name="role_adherence",
-        in_mask=None,
-        out_mask=None,
-        in_mask_pattern=None,
-        out_mask_pattern=None,
-        decision_model=None,
-    ):
-        super().__init__(
-            language_model=language_model,
-            rubrics="role_adherence",
-            prompt_template=prompt_template,
-            examples=examples,
-            instructions=instructions,
-            score_type=score_type,
-            reduction=reduction,
-            name=name,
-            in_mask=in_mask,
-            out_mask=out_mask,
-            in_mask_pattern=in_mask_pattern,
-            out_mask_pattern=out_mask_pattern,
-            decision_model=decision_model,
-        )
+    preset = "role_adherence"
 
 
 @synalinks_export(["synalinks.RoleViolation", "synalinks.rewards.RoleViolation"])
-class RoleViolation(RubricsAsJudge):
+class RoleViolation(_RubricPreset):
     """Judge whether the assistant avoids role violations.
 
     Example:
@@ -1048,40 +482,11 @@ class RoleViolation(RubricsAsJudge):
     ```
     """
 
-    def __init__(
-        self,
-        language_model=None,
-        prompt_template=None,
-        examples=None,
-        instructions=None,
-        score_type=None,
-        reduction="mean",
-        name="role_violation",
-        in_mask=None,
-        out_mask=None,
-        in_mask_pattern=None,
-        out_mask_pattern=None,
-        decision_model=None,
-    ):
-        super().__init__(
-            language_model=language_model,
-            rubrics="role_violation",
-            prompt_template=prompt_template,
-            examples=examples,
-            instructions=instructions,
-            score_type=score_type,
-            reduction=reduction,
-            name=name,
-            in_mask=in_mask,
-            out_mask=out_mask,
-            in_mask_pattern=in_mask_pattern,
-            out_mask_pattern=out_mask_pattern,
-            decision_model=decision_model,
-        )
+    preset = "role_violation"
 
 
 @synalinks_export(["synalinks.PlanQuality", "synalinks.rewards.PlanQuality"])
-class PlanQuality(RubricsAsJudge):
+class PlanQuality(_RubricPreset):
     """Judge whether an agent plan is sound and complete.
 
     Example:
@@ -1096,40 +501,11 @@ class PlanQuality(RubricsAsJudge):
     ```
     """
 
-    def __init__(
-        self,
-        language_model=None,
-        prompt_template=None,
-        examples=None,
-        instructions=None,
-        score_type=None,
-        reduction="mean",
-        name="plan_quality",
-        in_mask=None,
-        out_mask=None,
-        in_mask_pattern=None,
-        out_mask_pattern=None,
-        decision_model=None,
-    ):
-        super().__init__(
-            language_model=language_model,
-            rubrics="plan_quality",
-            prompt_template=prompt_template,
-            examples=examples,
-            instructions=instructions,
-            score_type=score_type,
-            reduction=reduction,
-            name=name,
-            in_mask=in_mask,
-            out_mask=out_mask,
-            in_mask_pattern=in_mask_pattern,
-            out_mask_pattern=out_mask_pattern,
-            decision_model=decision_model,
-        )
+    preset = "plan_quality"
 
 
 @synalinks_export(["synalinks.PlanAdherence", "synalinks.rewards.PlanAdherence"])
-class PlanAdherence(RubricsAsJudge):
+class PlanAdherence(_RubricPreset):
     """Judge whether agent actions adhere to the plan.
 
     Example:
@@ -1144,40 +520,11 @@ class PlanAdherence(RubricsAsJudge):
     ```
     """
 
-    def __init__(
-        self,
-        language_model=None,
-        prompt_template=None,
-        examples=None,
-        instructions=None,
-        score_type=None,
-        reduction="mean",
-        name="plan_adherence",
-        in_mask=None,
-        out_mask=None,
-        in_mask_pattern=None,
-        out_mask_pattern=None,
-        decision_model=None,
-    ):
-        super().__init__(
-            language_model=language_model,
-            rubrics="plan_adherence",
-            prompt_template=prompt_template,
-            examples=examples,
-            instructions=instructions,
-            score_type=score_type,
-            reduction=reduction,
-            name=name,
-            in_mask=in_mask,
-            out_mask=out_mask,
-            in_mask_pattern=in_mask_pattern,
-            out_mask_pattern=out_mask_pattern,
-            decision_model=decision_model,
-        )
+    preset = "plan_adherence"
 
 
 @synalinks_export(["synalinks.StepEfficiency", "synalinks.rewards.StepEfficiency"])
-class StepEfficiency(RubricsAsJudge):
+class StepEfficiency(_RubricPreset):
     """Judge whether an agent reaches the goal efficiently.
 
     Example:
@@ -1192,36 +539,7 @@ class StepEfficiency(RubricsAsJudge):
     ```
     """
 
-    def __init__(
-        self,
-        language_model=None,
-        prompt_template=None,
-        examples=None,
-        instructions=None,
-        score_type=None,
-        reduction="mean",
-        name="step_efficiency",
-        in_mask=None,
-        out_mask=None,
-        in_mask_pattern=None,
-        out_mask_pattern=None,
-        decision_model=None,
-    ):
-        super().__init__(
-            language_model=language_model,
-            rubrics="step_efficiency",
-            prompt_template=prompt_template,
-            examples=examples,
-            instructions=instructions,
-            score_type=score_type,
-            reduction=reduction,
-            name=name,
-            in_mask=in_mask,
-            out_mask=out_mask,
-            in_mask_pattern=in_mask_pattern,
-            out_mask_pattern=out_mask_pattern,
-            decision_model=decision_model,
-        )
+    preset = "step_efficiency"
 
 
 @synalinks_export(
@@ -1230,7 +548,7 @@ class StepEfficiency(RubricsAsJudge):
         "synalinks.rewards.AgentLoopDetection",
     ]
 )
-class AgentLoopDetection(RubricsAsJudge):
+class AgentLoopDetection(_RubricPreset):
     """Judge whether an agent avoids repeated unsuccessful loops.
 
     Example:
@@ -1245,36 +563,7 @@ class AgentLoopDetection(RubricsAsJudge):
     ```
     """
 
-    def __init__(
-        self,
-        language_model=None,
-        prompt_template=None,
-        examples=None,
-        instructions=None,
-        score_type=None,
-        reduction="mean",
-        name="agent_loop_detection",
-        in_mask=None,
-        out_mask=None,
-        in_mask_pattern=None,
-        out_mask_pattern=None,
-        decision_model=None,
-    ):
-        super().__init__(
-            language_model=language_model,
-            rubrics="agent_loop_detection",
-            prompt_template=prompt_template,
-            examples=examples,
-            instructions=instructions,
-            score_type=score_type,
-            reduction=reduction,
-            name=name,
-            in_mask=in_mask,
-            out_mask=out_mask,
-            in_mask_pattern=in_mask_pattern,
-            out_mask_pattern=out_mask_pattern,
-            decision_model=decision_model,
-        )
+    preset = "agent_loop_detection"
 
 
 @synalinks_export(
@@ -1283,7 +572,7 @@ class AgentLoopDetection(RubricsAsJudge):
         "synalinks.rewards.ConversationCompleteness",
     ]
 )
-class ConversationCompleteness(RubricsAsJudge):
+class ConversationCompleteness(_RubricPreset):
     """Judge whether a conversation addresses the user's needs.
 
     Example:
@@ -1298,36 +587,7 @@ class ConversationCompleteness(RubricsAsJudge):
     ```
     """
 
-    def __init__(
-        self,
-        language_model=None,
-        prompt_template=None,
-        examples=None,
-        instructions=None,
-        score_type=None,
-        reduction="mean",
-        name="conversation_completeness",
-        in_mask=None,
-        out_mask=None,
-        in_mask_pattern=None,
-        out_mask_pattern=None,
-        decision_model=None,
-    ):
-        super().__init__(
-            language_model=language_model,
-            rubrics="conversation_completeness",
-            prompt_template=prompt_template,
-            examples=examples,
-            instructions=instructions,
-            score_type=score_type,
-            reduction=reduction,
-            name=name,
-            in_mask=in_mask,
-            out_mask=out_mask,
-            in_mask_pattern=in_mask_pattern,
-            out_mask_pattern=out_mask_pattern,
-            decision_model=decision_model,
-        )
+    preset = "conversation_completeness"
 
 
 @synalinks_export(
@@ -1336,7 +596,7 @@ class ConversationCompleteness(RubricsAsJudge):
         "synalinks.rewards.KnowledgeRetention",
     ]
 )
-class KnowledgeRetention(RubricsAsJudge):
+class KnowledgeRetention(_RubricPreset):
     """Judge whether prior conversation context is retained.
 
     Example:
@@ -1351,40 +611,11 @@ class KnowledgeRetention(RubricsAsJudge):
     ```
     """
 
-    def __init__(
-        self,
-        language_model=None,
-        prompt_template=None,
-        examples=None,
-        instructions=None,
-        score_type=None,
-        reduction="mean",
-        name="knowledge_retention",
-        in_mask=None,
-        out_mask=None,
-        in_mask_pattern=None,
-        out_mask_pattern=None,
-        decision_model=None,
-    ):
-        super().__init__(
-            language_model=language_model,
-            rubrics="knowledge_retention",
-            prompt_template=prompt_template,
-            examples=examples,
-            instructions=instructions,
-            score_type=score_type,
-            reduction=reduction,
-            name=name,
-            in_mask=in_mask,
-            out_mask=out_mask,
-            in_mask_pattern=in_mask_pattern,
-            out_mask_pattern=out_mask_pattern,
-            decision_model=decision_model,
-        )
+    preset = "knowledge_retention"
 
 
 @synalinks_export(["synalinks.TopicAdherence", "synalinks.rewards.TopicAdherence"])
-class TopicAdherence(RubricsAsJudge):
+class TopicAdherence(_RubricPreset):
     """Judge whether the answer stays on topic.
 
     Example:
@@ -1399,40 +630,11 @@ class TopicAdherence(RubricsAsJudge):
     ```
     """
 
-    def __init__(
-        self,
-        language_model=None,
-        prompt_template=None,
-        examples=None,
-        instructions=None,
-        score_type=None,
-        reduction="mean",
-        name="topic_adherence",
-        in_mask=None,
-        out_mask=None,
-        in_mask_pattern=None,
-        out_mask_pattern=None,
-        decision_model=None,
-    ):
-        super().__init__(
-            language_model=language_model,
-            rubrics="topic_adherence",
-            prompt_template=prompt_template,
-            examples=examples,
-            instructions=instructions,
-            score_type=score_type,
-            reduction=reduction,
-            name=name,
-            in_mask=in_mask,
-            out_mask=out_mask,
-            in_mask_pattern=in_mask_pattern,
-            out_mask_pattern=out_mask_pattern,
-            decision_model=decision_model,
-        )
+    preset = "topic_adherence"
 
 
 @synalinks_export(["synalinks.TurnRelevancy", "synalinks.rewards.TurnRelevancy"])
-class TurnRelevancy(RubricsAsJudge):
+class TurnRelevancy(_RubricPreset):
     """Judge whether a conversation turn is locally relevant.
 
     Example:
@@ -1447,40 +649,11 @@ class TurnRelevancy(RubricsAsJudge):
     ```
     """
 
-    def __init__(
-        self,
-        language_model=None,
-        prompt_template=None,
-        examples=None,
-        instructions=None,
-        score_type=None,
-        reduction="mean",
-        name="turn_relevancy",
-        in_mask=None,
-        out_mask=None,
-        in_mask_pattern=None,
-        out_mask_pattern=None,
-        decision_model=None,
-    ):
-        super().__init__(
-            language_model=language_model,
-            rubrics="turn_relevancy",
-            prompt_template=prompt_template,
-            examples=examples,
-            instructions=instructions,
-            score_type=score_type,
-            reduction=reduction,
-            name=name,
-            in_mask=in_mask,
-            out_mask=out_mask,
-            in_mask_pattern=in_mask_pattern,
-            out_mask_pattern=out_mask_pattern,
-            decision_model=decision_model,
-        )
+    preset = "turn_relevancy"
 
 
 @synalinks_export(["synalinks.TurnFaithfulness", "synalinks.rewards.TurnFaithfulness"])
-class TurnFaithfulness(RubricsAsJudge):
+class TurnFaithfulness(_RubricPreset):
     """Judge whether a turn is faithful to conversation facts.
 
     Example:
@@ -1495,33 +668,4 @@ class TurnFaithfulness(RubricsAsJudge):
     ```
     """
 
-    def __init__(
-        self,
-        language_model=None,
-        prompt_template=None,
-        examples=None,
-        instructions=None,
-        score_type=None,
-        reduction="mean",
-        name="turn_faithfulness",
-        in_mask=None,
-        out_mask=None,
-        in_mask_pattern=None,
-        out_mask_pattern=None,
-        decision_model=None,
-    ):
-        super().__init__(
-            language_model=language_model,
-            rubrics="turn_faithfulness",
-            prompt_template=prompt_template,
-            examples=examples,
-            instructions=instructions,
-            score_type=score_type,
-            reduction=reduction,
-            name=name,
-            in_mask=in_mask,
-            out_mask=out_mask,
-            in_mask_pattern=in_mask_pattern,
-            out_mask_pattern=out_mask_pattern,
-            decision_model=decision_model,
-        )
+    preset = "turn_faithfulness"

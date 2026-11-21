@@ -391,6 +391,8 @@ class DeepAgentAsJudge(ProgramAsJudge):
             are dropped (combined with ``out_mask`` via OR).
     """
 
+    program_class = DeepAgentAsJudgeProgram
+
     def __init__(
         self,
         language_model=None,
@@ -443,14 +445,3 @@ class DeepAgentAsJudge(ProgramAsJudge):
             in_mask_pattern=in_mask_pattern,
             out_mask_pattern=out_mask_pattern,
         )
-
-    @classmethod
-    def from_config(cls, config):
-        config = dict(config)
-        # The program's arguments, not the program: building it would build its
-        # agent's sandbox, only for this judge to build another and drop it.
-        program = config.pop("program")
-        arguments = DeepAgentAsJudgeProgram.resolve_config(program["config"])
-        for key in ("name", "description", "trainable"):
-            arguments.pop(key, None)
-        return cls(**arguments, **config)
