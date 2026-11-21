@@ -4,7 +4,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Synalinks is a neuro-symbolic Language Model (LM) framework inspired by Keras. It provides a declarative API for building, training, and deploying LM-based applications including RAGs, autonomous agents, and self-evolving reasoning systems.
+Synalinks is a neuro-symbolic Language Model (LM) framework inspired by Keras. It provides a declarative API for building, training, and deploying LM-based applications including RAGs, autonomous agents, and self-evolving reasoning systems
+by composing modules like layers in deep learning.
 
 ## Development Commands
 
@@ -89,7 +90,7 @@ The framework follows a Keras-like pattern with these core abstractions:
   - Subclassing: Override `call()` method
   - Sequential: Stack of single-input/single-output modules
 
-- **DataModel**: Pydantic-based structured data with JSON schema support. All module I/O uses DataModels.
+- **DataModel**: Pydantic-based structured data with JSON schema support. All module I/O uses DataModels or its pydantic independent JsonDataModels.
 
 ### Key Components
 
@@ -101,8 +102,8 @@ The framework follows a Keras-like pattern with these core abstractions:
 
 - **Trainer** (`synalinks/src/trainers/trainer.py`): Provides `compile()` and `fit()` methods
 - **Optimizers** (`synalinks/src/optimizers/`): In-context RL optimizers for prompt/example optimization
-- **Rewards** (`synalinks/src/rewards/`): Reward functions like `ExactMatch`, `CosineSimilarity`
-- **Metrics** (`synalinks/src/metrics/`): Training metrics tracking
+- **Rewards** (`synalinks/src/rewards/`): Reward functions like `ExactMatch`, `CosineSimilarity`, `LMAsJudge`
+- **Metrics** (`synalinks/src/metrics/`): Training metrics tracking like `F1Score`
 
 ### Backend
 
@@ -120,7 +121,8 @@ All objects are JSON-serializable via `synalinks.saving`. Custom objects need `@
 - Use `uvx ruff` for linting with config in `pyproject.toml`
 - Use `black` for formatting with 90 char line length
 - Tests are colocated with source files using `*_test.py` suffix
-- All module `call()` methods are async
+- All module `call()` and `build()` methods are async
+- OOP for modules, utility functions in the `utils` folder
 
 ## API Structure
 
