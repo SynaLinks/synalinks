@@ -5,6 +5,8 @@
 Synalinks is a neuro-symbolic Language Model (LM) framework inspired by Keras. It provides a declarative API for building, training, and deploying LM-based applications including RAGs, autonomous agents, and self-evolving reasoning systems
 by composing modules like layers in deep learning.
 
+Its phylosophy: Keras but with JSON data models instead of tensors, JSON schemas instead of tensor shapes. Only focused on gradient free methods with in-context learning via LM update or out-context using knowledge bases as extendible memory systems at runtime via tool calls. A lot of the focus is with evals using reward systems and metrics to evaluate the success of a program the equivalent of a deep learning model.
+
 ## Development Commands
 
 ```bash
