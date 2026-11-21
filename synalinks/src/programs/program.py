@@ -445,7 +445,7 @@ class Program(Trainer, Module):
             rationale: str
             answer: str
 
-        language_model = LanguageModel("ollama/mistral")
+        language_model = synalinks.LanguageModel("ollama/mistral")
 
         program = synalinks.Sequential(
             [
@@ -455,10 +455,12 @@ class Program(Trainer, Module):
                     language_model=language_model,
                 ),
             ],
+            name="answer_with_rationale",
+            description="Answer a query with a rationale.",
         )
 
         program.save("program.json")
-        loaded_program = synalinks.programs.program_from_json("program.json")
+        loaded_program = synalinks.Program.load("program.json")
         ```
 
         The saved `.json` file contains:
@@ -834,8 +836,7 @@ class Program(Trainer, Module):
 
         Args:
             filepath (str | pathlib.Path): `str` or `pathlib.Path` object.
-                Path to load the program's variables from.
-                Must end in `.variables.json`.
+                Path to load the program from. Must end in `.json`.
             custom_objects (dict): Optional dictionary mapping names
                 (strings) to custom classes or functions to be
                 considered during deserialization.
@@ -869,7 +870,7 @@ def program_from_json(json_string, custom_objects=None):
         rationale: str
         answer: str
 
-    language_model = LanguageModel("ollama/mistral")
+    language_model = synalinks.LanguageModel("ollama/mistral")
 
     program = synalinks.Sequential(
         [
@@ -879,6 +880,8 @@ def program_from_json(json_string, custom_objects=None):
                 language_model=language_model,
             ),
         ],
+        name="answer_with_rationale",
+        description="Answer a query with a rationale.",
     )
 
     config = program.to_json()
@@ -902,7 +905,9 @@ def program_from_json(json_string, custom_objects=None):
     program = serialization_lib.deserialize_synalinks_object(
         program_config, custom_objects=custom_objects
     )
-    program.set_state_tree(variables_config)
+    # `to_json()` output carries no variables, only `save()` adds them
+    if variables_config:
+        program.set_state_tree(variables_config)
     if mlflow_config.get("model_id"):
         program._mlflow_model_id = mlflow_config["model_id"]
         program._mlflow_run_id = mlflow_config.get("run_id")
