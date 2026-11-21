@@ -162,13 +162,16 @@ class ImageFolderDataset(Dataset):
     def _iter_rows(self):
         for path in self._iter_files():
             abspath = os.path.abspath(path)
-            parent = os.path.basename(os.path.dirname(abspath))
-            root_name = os.path.basename(os.path.abspath(self.root))
+            parent = os.path.dirname(abspath)
             yield {
                 "file_uri": f"file://{abspath}",
                 "image_path": os.path.relpath(path, self.root),
                 "name": os.path.splitext(os.path.basename(path))[0],
-                "label": "" if parent == root_name else parent,
+                "label": (
+                    ""
+                    if parent == os.path.abspath(self.root)
+                    else os.path.basename(parent)
+                ),
                 "prompt": self.prompt,
             }
 
