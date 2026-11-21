@@ -11,14 +11,17 @@ from synalinks.src.version import __version__
 
 
 class _FakeRunInfo:
-    def __init__(self, run_id="run-123", artifact_uri=""):
+    def __init__(self, run_id="run-123", artifact_uri="", run_name=None):
         self.run_id = run_id
         self.artifact_uri = artifact_uri
+        self.run_name = run_name
 
 
 class _FakeRun:
-    def __init__(self, run_id="run-123", artifact_uri=""):
-        self.info = _FakeRunInfo(run_id=run_id, artifact_uri=artifact_uri)
+    def __init__(self, run_id="run-123", artifact_uri="", run_name=None):
+        self.info = _FakeRunInfo(
+            run_id=run_id, artifact_uri=artifact_uri, run_name=run_name
+        )
 
 
 class _FakeProgram:
@@ -333,7 +336,10 @@ class MonitorResumeTest(testing.TestCase):
             lookup.return_value.experiment_id = "exp-1"
             cb._setup_mlflow()
             client = mlf.MlflowClient.return_value
-            client.search_runs.return_value = [_FakeRun(run_id="found-1")]
+            client.search_runs.return_value = [
+                _FakeRun(run_id="other", run_name="nightlyXtest"),
+                _FakeRun(run_id="found-1", run_name="nightly_test"),
+            ]
             client.get_run.return_value.data.metrics = {}
             mlf.start_run.return_value = _FakeRun(run_id="found-1")
             cb._start_run(run_name_suffix="test")
@@ -342,6 +348,25 @@ class MonitorResumeTest(testing.TestCase):
         self.assertIn("'nightly_test'", search_kwargs["filter_string"])
         mlf.start_run.assert_called_once_with(run_id="found-1")
         self.assertEqual(cb.run_id, "found-1")
+
+    def test_resume_run_name_with_quotes(self):
+        name = 'nightly\'s "eval"'
+        cb = Monitor(run_name=name, resume=True)
+        cb.set_program(_FakeProgram())
+        with patch.object(monitor_module, "mlflow") as mlf:
+            cb._setup_mlflow()
+            client = mlf.MlflowClient.return_value
+            client.search_runs.return_value = [
+                _FakeRun(run_id="found-1", run_name=name + "_test")
+            ]
+            client.get_run.return_value.data.metrics = {}
+            mlf.start_run.return_value = _FakeRun(run_id="found-1")
+            cb._start_run(run_name_suffix="test")
+        filter_string = client.search_runs.call_args.kwargs["filter_string"]
+        self.assertEqual(
+            filter_string, "tags.mlflow.runName LIKE 'nightly_s _eval__test'"
+        )
+        mlf.start_run.assert_called_once_with(run_id="found-1")
 
     def test_resume_creates_run_when_none_found(self):
         cb = Monitor(run_name="nightly", resume=True)
@@ -369,7 +394,9 @@ class MonitorResumeTest(testing.TestCase):
             cb.on_test_begin()
             cb.on_test_end(logs={"reward": 0.3})
             # second evaluate() in the same process resumes the run found by name
-            client.search_runs.return_value = [_FakeRun(run_id="r1")]
+            client.search_runs.return_value = [
+                _FakeRun(run_id="r1", run_name="nightly_test")
+            ]
             client.get_metric_history.return_value = [_FakeMetric(0)]
             client.get_run.return_value.data.metrics = {"reward": 0.3}
             cb.on_test_begin()
