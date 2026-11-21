@@ -58,7 +58,11 @@ class EarlyStopping(Callback):
         min_delta (float): Minimum change in the monitored quantity to qualify
             as an improvement, i.e. an absolute change of less than min_delta,
             will count as no improvement. Defaults to `0`.
-        stop_at (float): The value at which we should stop training.
+        stop_at (float): Stop training as soon as the monitored quantity
+            reaches this value (`>=` when maximizing, `<=` when minimizing),
+            once past `start_from_epoch`. Defaults to `None`, which means
+            `1.0` (the best possible reward) when maximizing and no target
+            when minimizing.
         patience (int): Number of epochs with no improvement after which
             training will be stopped. Defaults to `0`.
         verbose (int): Verbosity mode, 0 or 1. Mode 0 is silent, and mode 1
@@ -89,7 +93,7 @@ class EarlyStopping(Callback):
         self,
         monitor="val_reward",
         min_delta=0,
-        stop_at=1.0,
+        stop_at=None,
         patience=0,
         verbose=0,
         mode="auto",
@@ -157,6 +161,8 @@ class EarlyStopping(Callback):
             )
         if self.monitor_op == np.less:
             self.min_delta *= -1
+        elif self.stop_at is None:
+            self.stop_at = 1.0
 
     def on_train_begin(self, logs=None):
         # Allow instances to be re-used
@@ -172,11 +178,13 @@ class EarlyStopping(Callback):
             self._set_monitor_op()
 
         current = self.get_monitor_value(logs)
-        if current is not None and current >= self.stop_at:
-            self.program.stop_training = True
-            return
         if current is None or epoch < self.start_from_epoch:
             # If no monitor value exists or still in initial warm-up stage.
+            return
+        if self.stop_at is not None and (
+            current == self.stop_at or self.monitor_op(current, self.stop_at)
+        ):
+            self.program.stop_training = True
             return
         if self.restore_best_variables and self.best_variables is None:
             # If best variables were never set,
