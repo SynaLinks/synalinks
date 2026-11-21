@@ -534,7 +534,7 @@ class Trainer:
                 `x`.
             batch_size (int): Integer or `None`.
                 Number of samples per batch of computation.
-                If unspecified, `batch_size` will default to 32.
+                Defaults to `1`.
                 Do not specify the `batch_size` if your input data `x` is a
                 Python generator function since they generate batches.
             minibatch_size (int): Integer or `None`.
@@ -613,7 +613,7 @@ class Trainer:
                 samples are used every time.
             validation_batch_size (int): Integer or `None`.
                 Number of samples per validation batch.
-                If unspecified, will default to `batch_size`.
+                Defaults to `32`; if `None`, falls back to `batch_size`.
                 Do not specify the `validation_batch_size` if your data is a
                 `synalinks.utils.PyDataset`, `tf.data.Dataset`,
                 `torch.utils.data.DataLoader` or Python generator function
@@ -1013,7 +1013,7 @@ class Trainer:
                 - A Python generator function yielding `(inputs, targets)`.
             batch_size (int): Integer or `None`.
                 Number of samples per batch of computation.
-                If unspecified, `batch_size` will default to 32.
+                If unspecified, each sample is its own batch (`1`).
                 Do not specify the `batch_size` if your input data `x` is a
                 `synalinks.utils.PyDataset`, `tf.data.Dataset`,
                 `torch.utils.data.DataLoader` or Python generator function
