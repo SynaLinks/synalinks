@@ -23,12 +23,13 @@ class ComposableReward(Reward):
 
     Args:
         rewards (list): List of `Reward` instances or async reward functions.
-        weights (list): Optional positive weights, one per reward. Defaults to
-            equal weights.
+        weights (list): Optional positive weights, one per reward, used by the
+            `"mean"` and `"sum"` reductions. Defaults to equal weights.
         name (str): Optional name for the reward instance.
         reduction (str): Optional. How child rewards are combined. One of
-            `"mean"`, `"sum"`, `"min"`, `"max"`, `"none"` or `None`. Defaults
-            to `"mean"`.
+            `"mean"` (weighted mean), `"sum"` (weighted sum), `"min"`, `"max"`,
+            `"none"` or `None` (both combine like `"mean"`, so each sample
+            keeps a single reward). Defaults to `"mean"`.
         in_mask (list): Optional outer fields to keep before computing rewards.
         out_mask (list): Optional outer fields to remove before computing rewards.
         in_mask_pattern (str): Optional regex of outer fields to keep.
@@ -85,26 +86,18 @@ class ComposableReward(Reward):
         return await self.call(y_true, y_pred)
 
     async def call(self, y_true, y_pred):
-        weighted_values = []
-        for reward, weight in zip(self.rewards, self.weights):
-            values = await self.call_reward(reward, y_true, y_pred)
-            weighted_values.append(
-                tree.map_structure(lambda value: float(value) * weight, values)
-            )
-        if self.reduction in (None, "none"):
-            return weighted_values
+        values = [await self.call_reward(r, y_true, y_pred) for r in self.rewards]
         if self.reduction == "min":
-            return tree.map_structure(lambda *values: min(values), *weighted_values)
+            return tree.map_structure(lambda *v: min(map(float, v)), *values)
         if self.reduction == "max":
-            return tree.map_structure(lambda *values: max(values), *weighted_values)
-
-        total = weighted_values[0]
-        for values in weighted_values[1:]:
-            total = tree.map_structure(lambda a, b: a + b, total, values)
-        if self.reduction == "mean":
-            weight_sum = sum(self.weights)
-            return tree.map_structure(lambda value: value / weight_sum, total)
-        return total
+            return tree.map_structure(lambda *v: max(map(float, v)), *values)
+        total = tree.map_structure(
+            lambda *v: sum(float(x) * w for x, w in zip(v, self.weights)), *values
+        )
+        if self.reduction == "sum":
+            return total
+        weight_sum = sum(self.weights)
+        return tree.map_structure(lambda value: value / weight_sum, total)
 
     async def call_reward(self, reward, y_true, y_pred):
         y_true, y_pred = apply_masks(
