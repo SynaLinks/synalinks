@@ -230,6 +230,12 @@ class CallbackList(Callback):
         for callback in self.callbacks:
             callback.on_train_end(logs)
 
+    def on_train_error(self, error):
+        if self._async_train:
+            self._clear_futures()
+        for callback in self.callbacks:
+            callback.on_train_error(error)
+
     def on_test_begin(self, logs=None):
         logs = python_utils.pythonify_logs(logs)
         for callback in self.callbacks:

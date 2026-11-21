@@ -521,8 +521,8 @@ class Monitor(Callback):
                 last_step = max(last_step, *(m.step + 1 for m in history))
             self._steps = {phase: last_step for phase in self._steps}
 
-    def _end_run(self):
-        """End the current MLflow run."""
+    def _end_run(self, status="FINISHED"):
+        """End the current MLflow run with `status`."""
         if self._active_model is not None:
             try:
                 self._active_model.__exit__(None, None, None)
@@ -530,7 +530,7 @@ class Monitor(Callback):
                 self.logger.debug(f"Failed to restore the active model: {e}")
             self._active_model = None
         if self._run is not None:
-            mlflow.end_run()
+            mlflow.end_run(status=status)
             self._run = None
 
     def _activate_model(self, model_id):
@@ -1010,6 +1010,11 @@ class Monitor(Callback):
         self._end_run()
         self._in_training = False
         self.logger.debug("MLflow run ended for training")
+
+    def on_train_error(self, error):
+        """Called when `fit()` raises: end the run as FAILED."""
+        self._end_run(status="FAILED")
+        self._in_training = False
 
     def on_epoch_begin(self, epoch, logs=None):
         """Called at the start of an epoch."""

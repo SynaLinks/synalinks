@@ -213,6 +213,21 @@ class Callback:
         """
 
     @utils.default
+    def on_train_error(self, error):
+        """Called instead of `on_train_end()` when `fit()` raises.
+
+        `fit()` re-raises the error once every callback has run this hook. Use
+        it to release what `on_train_begin()` acquired (close a file, end a
+        run as failed, reset state) without the success-only work of
+        `on_train_end()`.
+
+        Subclasses should override for any actions to run.
+
+        Args:
+            error (BaseException): The exception that stopped training.
+        """
+
+    @utils.default
     def on_test_begin(self, logs=None):
         """Called at the beginning of evaluation or validation.
 

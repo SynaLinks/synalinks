@@ -201,6 +201,9 @@ class BudgetStopping(Callback):
         self._report()
         self._in_training = False
 
+    def on_train_error(self, error):
+        self._in_training = False
+
     def on_test_end(self, logs=None):
         if not self._in_training:
             self._report()
