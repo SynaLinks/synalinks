@@ -168,8 +168,7 @@ RUBRICS = {
         {
             "name": "prompt_alignment",
             "description": (
-                "The answer follows every instruction and constraint given in the "
-                "prompt."
+                "The answer follows every instruction and constraint given in the prompt."
             ),
             "weight": 1.0,
         },
@@ -187,8 +186,7 @@ RUBRICS = {
         {
             "name": "tool_correctness",
             "description": (
-                "The agent called the right tools for the task, with correct "
-                "arguments."
+                "The agent called the right tools for the task, with correct arguments."
             ),
             "weight": 1.0,
         },

@@ -111,7 +111,7 @@ class RelationHybridFTSSearch(Retriever):
             [
                 (
                     "relation_label",
-                    "The relation label to search, chosen to best " "answer the inputs.",
+                    "The relation label to search, chosen to best answer the inputs.",
                     kb_relation_labels(self.knowledge_base),
                 )
             ]

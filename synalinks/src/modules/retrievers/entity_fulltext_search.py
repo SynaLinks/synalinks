@@ -88,7 +88,7 @@ class EntityFullTextSearch(Retriever):
             [
                 (
                     "entity_label",
-                    "The entity label to search, chosen to best answer " "the inputs.",
+                    "The entity label to search, chosen to best answer the inputs.",
                     kb_entity_labels(self.knowledge_base),
                 )
             ]
