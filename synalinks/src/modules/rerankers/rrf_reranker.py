@@ -46,11 +46,25 @@ class RRFReranker(Module):
     import synalinks
     import asyncio
 
+    class Document(synalinks.DataModel):
+        id: str = synalinks.Field(description="Document id")
+        text: str = synalinks.Field(description="Document text")
+
     class Query(synalinks.DataModel):
         query: str = synalinks.Field(description="The user question")
 
     async def main():
-        kb = synalinks.KnowledgeBase(uri="duckdb://docs.db", data_models=[Document])
+        embedding_model = synalinks.EmbeddingModel(model="ollama/mxbai-embed-large")
+        kb = synalinks.KnowledgeBase(
+            uri="duckdb://docs.db",
+            data_models=[Document],
+            embedding_model=embedding_model,
+        )
+        record = await synalinks.EmbedKnowledge(
+            embedding_model=embedding_model,
+            in_mask=["text"],
+        )(Document(id="d1", text="The brown fox runs").to_json_data_model())
+        await kb.update(record)
         lm = synalinks.LanguageModel(model="ollama/mistral")
 
         inputs = synalinks.Input(data_model=Query)
@@ -64,6 +78,9 @@ class RRFReranker(Module):
             [vector_hits, keyword_hits]
         )
         program = synalinks.Program(inputs=inputs, outputs=fused)
+
+        result = await program(Query(query="fox"))
+        print(result.get("result"))
 
     asyncio.run(main())
     ```

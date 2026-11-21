@@ -67,6 +67,9 @@ class FullTextSearch(Module):
             uri="duckdb://docs.db",
             data_models=[Document],
         )
+        await kb.update(
+            Document(id="d1", text="On SIGTERM, drain connections").to_json_data_model()
+        )
         lm = synalinks.LanguageModel(model="ollama/mistral")
         inputs = synalinks.Input(data_model=Query)
         outputs = await synalinks.FullTextSearch(
@@ -117,8 +120,8 @@ class FullTextSearch(Module):
         examples (list): Example inputs/outputs for few-shot learning.
         instructions (str): Custom instructions for the query generator.
         seed_instructions (str): Seed instructions for variability.
-        temperature (float): Temperature for the language model.
-            Defaults to 0.0.
+        temperature (float): Optional temperature for the language model.
+            Defaults to None (the model's default).
         max_tokens (int): Optional cap on generation length. Defaults
             to None (model default).
         top_p (float): Optional nucleus-sampling threshold. Defaults to
