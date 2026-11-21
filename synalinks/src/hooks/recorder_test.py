@@ -170,6 +170,7 @@ class RecorderTest(testing.TestCase):
             self.assertEqual(next(iter(metadata)), "synalinks_version")
             self.assertEqual(metadata["synalinks_version"], version.__version__)
             self.assertTrue(metadata["session_id"])
+            self.assertEqual(metadata["format"], "openai")
             self.assertEqual(metadata["program"], "my_program")
             self.assertEqual(metadata["module"], origin)
             self.assertTrue(metadata["parent_call_id"])

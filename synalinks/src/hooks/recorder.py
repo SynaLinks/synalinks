@@ -165,6 +165,7 @@ class Recorder(Hook):
 
     - `synalinks_version`: The version of Synalinks that wrote the record.
     - `session_id`: The id of the recording process, shared by its calls.
+    - `format`: The format of the `train.jsonl` line.
     - `call_id`: The unique id of the LM call.
     - `parent_call_id`: The id of the parent module's call (`None` if the
         LM is the entry module).
@@ -431,6 +432,7 @@ class Recorder(Hook):
         metadata = {
             "synalinks_version": __version__,
             "session_id": _SESSION_ID,
+            "format": self.format,
             "call_id": call_id,
             "parent_call_id": pending["parent_call_id"],
             "program": pending["program_name"],
