@@ -283,3 +283,12 @@ class JsonDataModelTest(testing.TestCase):
         obj = rel_json.get_nested_entity("obj")
         self.assertEqual(subj.get_json(), {"label": "Person", "name": "Ada"})
         self.assertEqual(obj.get_json(), {"label": "Field", "name": "Computing"})
+
+    def test_prefix_and_suffix(self):
+        class Query(DataModel):
+            query: str
+
+        x = Query(query="q").to_json_data_model()
+        self.assertEqual(x.prefix("p").get_json(), {"p_query": "q"})
+        self.assertEqual(x.suffix("s").get_json(), {"query_s": "q"})
+        self.assertEqual(list(Query.prefix("p").get_schema()["properties"]), ["p_query"])
