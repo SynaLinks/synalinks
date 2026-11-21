@@ -79,8 +79,9 @@ class ToolMessageContentTest(testing.TestCase):
         )
         self.assertEqual(content[1:], [image, clip])
 
-    def test_results_without_images_are_unchanged(self):
-        self.assertEqual(tool_message_content({"ok": True}), {"ok": True})
+    def test_results_without_images_are_json_strings(self):
+        self.assertEqual(tool_message_content({"ok": True}), '{"ok": true}')
+        self.assertEqual(tool_message_content([1, "é"]), '[1, "é"]')
         self.assertEqual(tool_message_content("error: boom"), "error: boom")
 
 
