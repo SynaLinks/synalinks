@@ -69,6 +69,7 @@ raised pointing the user at the fix.
 import asyncio
 import functools
 import inspect
+import os
 
 from synalinks.src.api_export import synalinks_export
 from synalinks.src.utils.async_utils import _close_loop
@@ -344,6 +345,14 @@ def _resolve_kt_tuner(name):
             with _LoopCoroRunner(loop) as runner:
                 return runner.run(coro)
 
+        def _get_checkpoint_fname(self, trial_id):
+            return os.path.join(self.get_trial_dir(trial_id), "program.variables.json")
+
+        def load_model(self, trial):
+            program = self.hypermodel.build(trial.hyperparameters)
+            program.load_variables(self._get_checkpoint_fname(trial.trial_id))
+            return program
+
     _SynalinksAwareTuner.__name__ = name
     _SynalinksAwareTuner.__qualname__ = name
     _SynalinksAwareTuner.__doc__ = (
@@ -370,20 +379,34 @@ async def _run_trial_async(tuner, trial, *fit_args, **fit_kwargs):
         (`val_reward`) so objectives written for either fit-mode or
         evaluate-mode resolve.
 
+    Hyperband's per-trial budget (`tuner/epochs`, `tuner/initial_epoch`) is
+    applied to `fit`, and a trial continuing an earlier one (`tuner/trial_id`)
+    starts from that trial's variables. Each trial's variables are saved in its
+    trial directory, which is what `tuner.get_best_models()` loads.
+
     The trial's program is closed when the trial ends, however it ends
     (`Program.close`): the sandboxes and knowledge bases it opened, its
     judges' included, do not outlive it. A hypermodel hands each trial a
     program of its own; one it reuses across trials is closed after the first.
     """
-    program = tuner.hypermodel.build(trial.hyperparameters)
+    hp = trial.hyperparameters
+    if "tuner/epochs" in hp.values:
+        fit_kwargs["epochs"] = hp.values["tuner/epochs"]
+        fit_kwargs["initial_epoch"] = hp.values["tuner/initial_epoch"]
+    program = tuner.hypermodel.build(hp)
     if inspect.isawaitable(program):
         program = await program
     try:
+        if "tuner/trial_id" in hp.values:
+            program.load_variables(
+                tuner._get_checkpoint_fname(hp.values["tuner/trial_id"])
+            )
         if program.optimizer is None:
             result = await _evaluate_only(program, *fit_args, **fit_kwargs)
         else:
             history = await program.fit(*fit_args, **fit_kwargs)
             result = _history_to_metrics_dict(history, tuner.oracle.objective)
+        program.save_variables(tuner._get_checkpoint_fname(trial.trial_id))
     finally:
         # Never raises: a close that fails warns, and the trial keeps its outcome.
         from synalinks.src.modules.module import release_resource

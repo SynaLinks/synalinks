@@ -191,6 +191,7 @@ class TrialProgramClosedTest(testing.TestCase):
 
     class _Program:
         optimizer = None
+        save_variables = lambda *args: None
 
         def __init__(self, fails=False):
             self.fails = fails
@@ -207,13 +208,16 @@ class TrialProgramClosedTest(testing.TestCase):
     def _tuner(self, program):
         return types.SimpleNamespace(
             hypermodel=types.SimpleNamespace(build=lambda hp: program),
+            _get_checkpoint_fname=lambda trial_id: None,
             oracle=types.SimpleNamespace(
                 objective=types.SimpleNamespace(name="reward", direction="max")
             ),
         )
 
     def _trial(self):
-        return types.SimpleNamespace(hyperparameters=None)
+        return types.SimpleNamespace(
+            hyperparameters=types.SimpleNamespace(values={}), trial_id="0"
+        )
 
     def test_a_trial_closes_its_program(self):
         program = self._Program()
@@ -237,6 +241,7 @@ class TrialProgramClosedTest(testing.TestCase):
             """Any object a hypermodel returns, with no `close`."""
 
             optimizer = None
+            save_variables = lambda *args: None
 
             async def evaluate(self, x=None, y=None, **kwargs):
                 return {"reward": 1.0}
@@ -346,6 +351,7 @@ class TunerEndToEndTest(testing.TestCase):
 
             class _FakeProgram:
                 optimizer = object()  # truthy → dispatch to fit() branch
+                save_variables = lambda *args: None
 
                 async def fit(self_inner, *args, **kwargs):
                     # Reward peaks at x=0.3; RandomSearch with enough trials
@@ -435,6 +441,7 @@ class TunerEndToEndTest(testing.TestCase):
 
             class _FailingProgram:
                 optimizer = object()  # truthy → dispatch to fit() branch
+                save_variables = lambda *args: None
 
                 async def fit(self_inner, *args, **kwargs):
                     raise ValueError("trial-boom")
@@ -516,6 +523,7 @@ class TunerEndToEndTest(testing.TestCase):
 
             class _FakeProgram:
                 optimizer = object()
+                save_variables = lambda *args: None
 
                 async def fit(self_inner, *args, **kwargs):
                     h = SynalinksHistory()
@@ -551,6 +559,7 @@ class TunerEndToEndTest(testing.TestCase):
 
             class _FakeProgram:
                 optimizer = object()  # truthy → dispatch to fit() branch
+                save_variables = lambda *args: None
 
                 async def fit(self_inner, *args, **kwargs):
                     h = SynalinksHistory()
@@ -586,6 +595,7 @@ class TunerEndToEndTest(testing.TestCase):
 
             class _FakeProgram:
                 optimizer = object()  # truthy → dispatch to fit() branch
+                save_variables = lambda *args: None
 
                 async def fit(self_inner, *args, **kwargs):
                     h = SynalinksHistory()
@@ -635,6 +645,7 @@ class TunerEndToEndTest(testing.TestCase):
 
             class _FakeProgram:
                 optimizer = object()  # truthy → dispatch to fit() branch
+                save_variables = lambda *args: None
 
                 async def fit(self_inner, *args, **kwargs):
                     h = SynalinksHistory()
@@ -655,6 +666,57 @@ class TunerEndToEndTest(testing.TestCase):
         tuner.search()
         best = tuner.get_best_hyperparameters(num_trials=1)[0]
         self.assertLess(abs(best.get("x") - 0.8), 0.3)
+
+    def test_hyperband_applies_budget_and_get_best_models_loads_variables(self):
+        disable_keras_backend()
+        fits = []
+
+        async def build(hp):
+            hp.Float("x", 0.0, 1.0)
+
+            class _FakeProgram:
+                optimizer = object()
+                loaded = None
+
+                async def fit(self_inner, *args, epochs=1, initial_epoch=0, **kwargs):
+                    fits.append((epochs, initial_epoch))
+                    h = SynalinksHistory()
+                    h.history = {"val_reward": [hp.get("x")]}
+                    return h
+
+                def save_variables(self_inner, path):
+                    with open(path, "w") as f:
+                        f.write("{}")
+
+                def load_variables(self_inner, path):
+                    self_inner.loaded = path
+
+            return _FakeProgram()
+
+        tuner = Hyperband(
+            build,
+            objective=Objective("val_reward", direction="max"),
+            max_epochs=4,
+            factor=2,
+            hyperband_iterations=1,
+            directory=self._tmpdir,
+            project_name="hyperband_budget",
+            overwrite=True,
+            seed=3,
+        )
+        tuner.search(epochs=1)
+        budgets = [
+            (
+                t.hyperparameters.get("tuner/epochs"),
+                t.hyperparameters.get("tuner/initial_epoch"),
+            )
+            for t in sorted(tuner.oracle.trials.values(), key=lambda t: int(t.trial_id))
+        ]
+        self.assertEqual(fits, budgets)
+        self.assertGreater(max(epochs for epochs, _ in fits), 1)
+        best_trial = tuner.oracle.get_best_trials(1)[0]
+        (best,) = tuner.get_best_models(num_models=1)
+        self.assertEqual(best.loaded, tuner._get_checkpoint_fname(best_trial.trial_id))
 
     def test_sweep_records_each_models_own_metrics(self):
         """End-to-end guard for BOTH tuner-sweep metric-sharing bugs.
