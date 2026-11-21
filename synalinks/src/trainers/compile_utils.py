@@ -611,9 +611,13 @@ class CompileReward(rewards_module.Reward):
 
         # Add `Mean` metric to the tracker for each reward.
         if len(self._flat_rewards) > 1:
-            for _reward in self._flat_rewards:
-                name = _reward.name + "_reward"
-                self._tracker.add_to_store("metrics", metrics_module.Mean(name=name))
+            names = [_reward.name for _reward in self._flat_rewards]
+            for i, name in enumerate(names):
+                if names.count(name) > 1:
+                    name = f"{name}_{i}"
+                self._tracker.add_to_store(
+                    "metrics", metrics_module.Mean(name=name + "_reward")
+                )
 
         self._y_pred_build_structure = tree.map_structure(lambda x: None, y_pred)
         self._y_true_build_structure = tree.map_structure(lambda x: None, y_true)
@@ -668,7 +672,7 @@ class CompileReward(rewards_module.Reward):
                 obj = obj[_path]
             return obj
 
-        for (path, reward_fn, _reward_weight, _name), metric in zip(
+        for (path, reward_fn, reward_weight, _name), metric in zip(
             self._flat_rewards, metrics
         ):
             y_t_batch = [resolve_path(path, y_t) for y_t in y_true_batch]
@@ -683,9 +687,10 @@ class CompileReward(rewards_module.Reward):
                 per_sample = [float(v) if v is not None else 0.0 for v in results]
 
             if metric is not None:
-                metric.update_state(numpy.convert_to_tensor(per_sample))
+                await metric.update_state(numpy.convert_to_tensor(per_sample))
+            weight = 1.0 if reward_weight is None else float(reward_weight)
             for i, v in enumerate(per_sample):
-                totals[i] += float(v)
+                totals[i] += weight * float(v)
 
         return totals
 
@@ -698,10 +703,10 @@ class CompileReward(rewards_module.Reward):
             # Fast path: single output case / no reward-tracking metric.
             if not self.built:
                 self.build(y_true, y_pred)
-            _, reward_fn, _, _ = self._flat_rewards[0]
+            _, reward_fn, reward_weight, _ = self._flat_rewards[0]
             reward_value = numpy.convert_to_tensor(await reward_fn(y_true, y_pred))
-            # if reward_weight is not None:
-            #     reward_value = numpy.multiply(reward_value, reward_weight)
+            if reward_weight is not None:
+                reward_value = numpy.multiply(reward_value, reward_weight)
             return reward_value
 
         try:
@@ -786,7 +791,9 @@ class CompileReward(rewards_module.Reward):
             value = numpy.convert_to_tensor(await reward_fn(y_t, y_p))
             # Record *unweighted* individual rewards.
             if metric:
-                metric.update_state(value)
+                await metric.update_state(value)
+            if reward_weight is not None:
+                value = numpy.multiply(value, reward_weight)
             reward_values.append(value)
 
         if reward_values:
