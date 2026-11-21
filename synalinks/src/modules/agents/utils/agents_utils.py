@@ -212,10 +212,13 @@ def tool_message_content(result):
     or in top-level lists) is taken out of the JSON, which marks its place
     with ``<image N>`` / ``<audio N>``, and attached after it as content
     parts, so the language model gets it and the trajectory keeps it for the
-    user. A result without media is returned unchanged.
+    user. A result without media is returned as its JSON string, since
+    chat-completion content is a string or a list of content parts.
     """
-    if not isinstance(result, dict):
+    if isinstance(result, str):
         return result
+    if not isinstance(result, dict):
+        return json.dumps(result, ensure_ascii=False, default=str)
     media = []
     kinds = {"image_url": "image", "input_audio": "audio"}
     counts = {"image": 0, "audio": 0}
@@ -233,7 +236,7 @@ def tool_message_content(result):
         for key, value in result.items()
     }
     if not media:
-        return result
+        return json.dumps(result, ensure_ascii=False, default=str)
     return [json.dumps(marked, ensure_ascii=False, default=str), *media]
 
 

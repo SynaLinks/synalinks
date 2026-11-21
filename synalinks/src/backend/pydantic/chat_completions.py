@@ -528,10 +528,8 @@ def to_chat_completion_message(message):
     """Convert a synalinks `ChatMessage` to a `ChatCompletionMessage`.
 
     Performs the structural changes needed to match the OpenAI wire
-    format: `Dict` content (the synalinks tool-result payload extension)
-    is JSON-encoded to a string since OpenAI's `tool` role requires string
-    content; tool-call `arguments`, a JSON-encoded string on both sides,
-    pass through. The synalinks `reasoning_content` /
+    format: content and tool-call `arguments` (a JSON-encoded string on
+    both sides) pass through. The synalinks `reasoning_content` /
     `thinking_blocks` fields map onto the wire `reasoning_content` /
     `thinking_blocks` (litellm provider extensions) so reasoning survives a
     round-trip, and `name`/`refusal`/`audio` are carried through verbatim.
@@ -550,8 +548,6 @@ def to_chat_completion_message(message):
     if isinstance(role, ChatRole):
         role = role.value
     content = message.content
-    if isinstance(content, dict):
-        content = json.dumps(content)
 
     tool_calls = None
     if message.tool_calls:

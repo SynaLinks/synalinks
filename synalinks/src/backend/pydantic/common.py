@@ -135,10 +135,8 @@ class ChatMessage(DataModel):
 
     Its keys are in exact parity with the litellm-extended Chat Completions
     message (`backend.pydantic.chat_completions.ChatCompletionMessage`):
-    same names on both sides, enforced by test. Only value types may differ
-    where synalinks is deliberately richer (e.g. dict tool-result
-    content). When adding a field, add its wire
-    twin in `chat_completions.py` too.
+    same names and value types on both sides, enforced by test. When adding
+    a field, add its wire twin in `chat_completions.py` too.
     """
 
     role: ChatRole = Field(
@@ -164,8 +162,12 @@ class ChatMessage(DataModel):
         ),
         default=None,
     )
-    content: Optional[Union[str, List[Dict[str, Any]], Dict[str, Any]]] = Field(
-        description="The content of the message",
+    content: Optional[Union[str, List[Dict[str, Any]]]] = Field(
+        description=(
+            "The content of the message: a string, or a list of content parts "
+            "for multimodal messages. A dict given here (e.g. a tool's JSON "
+            "result) is JSON-encoded."
+        ),
         default=None,
     )
     tool_call_id: Optional[str] = Field(
@@ -225,14 +227,17 @@ class ChatMessage(DataModel):
     @model_validator(mode="before")
     @classmethod
     def _normalize_content(cls, data):
-        """Normalize a multimodal `content` list to its chat-completion shape.
+        """Normalize `content` to its chat-completion shape.
 
-        A `content` list may mix plain strings (text) and special media types
-        (`Image`/`Audio`); each is mapped to its content part so the stored
-        `content` is a strict list of chat-completion parts. Plain string or
-        already-shaped dict content is left untouched.
+        A dict (e.g. a tool's JSON result) is JSON-encoded to a string, as the
+        chat-completion spec has no object content. A `content` list may mix
+        plain strings (text) and special media types (`Image`/`Audio`); each is
+        mapped to its content part so the stored `content` is a strict list of
+        chat-completion parts. String content is left untouched.
         """
-        if isinstance(data, dict) and isinstance(data.get("content"), list):
+        if isinstance(data, dict) and isinstance(data.get("content"), dict):
+            data["content"] = json.dumps(data["content"], ensure_ascii=False)
+        elif isinstance(data, dict) and isinstance(data.get("content"), list):
             from synalinks.src.backend.pydantic.media import normalize_content
 
             data["content"] = normalize_content(data["content"])

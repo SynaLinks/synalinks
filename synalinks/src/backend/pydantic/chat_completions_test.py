@@ -34,9 +34,7 @@ def _assistant_with_tool_call():
 class ChatCompletionsTest(testing.TestCase):
     def test_message_api_has_exact_key_parity_with_chat_completion(self):
         # The synalinks message API and the chat-completion wire message
-        # expose exactly the same keys: parity is on names only; value
-        # types may deliberately differ (e.g. parsed-dict tool arguments
-        # vs the JSON-encoded wire string).
+        # expose exactly the same keys and value types.
         self.assertEqual(
             set(ChatMessage.model_fields),
             set(ChatCompletionMessage.model_fields),
@@ -52,6 +50,26 @@ class ChatCompletionsTest(testing.TestCase):
         # Roles too: the ChatRole enum matches the wire role literal.
         wire_roles = get_args(ChatCompletionMessage.model_fields["role"].annotation)
         self.assertEqual({role.value for role in ChatRole}, set(wire_roles))
+        # Value types: identical, except `role` (enum vs literal, checked
+        # above) and `tool_calls` (twin classes, checked key by key above).
+        for name, field in ChatMessage.model_fields.items():
+            if name in ("role", "tool_calls"):
+                continue
+            self.assertEqual(
+                field.annotation,
+                ChatCompletionMessage.model_fields[name].annotation,
+                name,
+            )
+
+    def test_dict_content_is_json_encoded(self):
+        message = ChatMessage(
+            role="tool", tool_call_id="call_0", content={"result": 30.0}
+        )
+        self.assertEqual(message.content, '{"result": 30.0}')
+        self.assertEqual(
+            message.get_json(),
+            {"role": "tool", "content": '{"result": 30.0}', "tool_call_id": "call_0"},
+        )
 
     def test_tool_call_is_nested_on_the_wire(self):
         wire = to_chat_completion_message(_assistant_with_tool_call())
