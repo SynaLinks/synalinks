@@ -154,6 +154,32 @@ class DatabaseAdapterParityTest(testing.TestCase):
                 self.assertTrue(await a.drop_table("Customer"))
                 self.assertFalse(await a.drop_table("Customer"))
 
+    async def test_rename(self):
+        for name, cls, scheme, ext in ADAPTERS:
+            with self.subTest(adapter=name):
+                a = self._make(cls, scheme, ext, data_models=[Customer])
+                await a.update(
+                    Customer(id="C1", name="Alice", country="USA").to_json_data_model()
+                )
+                model = await a.rename(
+                    "Customer", table_name="Client", table_description="Clients"
+                )
+                self.assertEqual(model.get_schema()["title"], "Client")
+                self.assertEqual(model.get_schema()["description"], "Clients")
+                self.assertEqual(
+                    [m.get_schema()["title"] for m in a.get_symbolic_data_models()],
+                    ["Client"],
+                )
+                self.assertIn("Client", a.data_models)
+                self.assertNotIn("Customer", a.data_models)
+                self.assertEqual(
+                    (await a.get("C1", table_name="Client")).get("name"), "Alice"
+                )
+                hits = await a.fulltext_search("Alice", table_name="Client")
+                self.assertEqual([h["id"] for h in hits], ["C1"])
+                with self.assertRaises(ValueError):
+                    await a.rename("DoesNotExist", table_name="X")
+
     async def test_get_symbolic_data_models(self):
         for name, cls, scheme, ext in ADAPTERS:
             with self.subTest(adapter=name):
