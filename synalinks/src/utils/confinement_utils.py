@@ -7,6 +7,8 @@ import ctypes.util
 import os
 import platform
 import struct
+import subprocess
+import sys
 import warnings
 from typing import Optional
 from typing import Tuple
@@ -557,7 +559,10 @@ def _confine_macos(cfg):
 # are emitted and the platform picked at run time, by the process being
 # confined rather than trusted from the host's config: it runs on the very host
 # it confines, so its own platform is the authority.
-CONFINE_PROLOGUE_SRC = CONFINE_SRC + MACOS_CONFINE_SRC + r"""
+CONFINE_PROLOGUE_SRC = (
+    CONFINE_SRC
+    + MACOS_CONFINE_SRC
+    + r"""
 def _confine_platform(cfg):
     import sys
 
@@ -566,6 +571,7 @@ def _confine_platform(cfg):
     else:
         _confine(cfg)
 """
+)
 
 
 # One-time native-Windows hint. The sandbox's confinement needs Linux or macOS, so on
@@ -687,44 +693,49 @@ def confinement_available() -> tuple[bool, str]:
     # performs (notably GitHub Actions and many containers deny writing
     # ``/proc/self/setgroups``), where every confined run would die with
     # ``confine-error``. Settle it by attempting the first steps of
-    # ``_confine`` in a throwaway child (the fork keeps ``unshare`` off this
-    # process). Cached: the answer is constant for the process lifetime.
+    # ``_confine`` in a fresh interpreter, as the real confinement runs: not a
+    # fork of this process, whose at-fork hooks (LanceDB restarts its runtime
+    # threads in the child) make the child multithreaded, and `unshare` then
+    # refuses a new user namespace. Cached: constant for the process lifetime.
     global confine_smoke_cache
     if confine_smoke_cache is None:
+        flags = (
+            CLONE_NEWUSER
+            | CLONE_NEWNS
+            | CLONE_NEWNET
+            | CLONE_NEWIPC
+            | CLONE_NEWUTS
+            | CLONE_NEWPID
+        )
+        probe = (
+            "import os\n"
+            "uid, gid = os.getuid(), os.getgid()\n"
+            f"os.unshare({flags})\n"
+            "open('/proc/self/setgroups', 'w').write('deny')\n"
+            "open('/proc/self/uid_map', 'w').write('0 %d 1' % uid)\n"
+            "open('/proc/self/gid_map', 'w').write('0 %d 1' % gid)\n"
+        )
         try:
-            pid = os.fork()
-        except OSError as exc:
-            return False, f"cannot fork to probe confinement: {exc}"
-        if pid == 0:  # child: bare-minimum work, never returns to the caller
-            try:
-                uid, gid = os.getuid(), os.getgid()
-                os.unshare(
-                    CLONE_NEWUSER
-                    | CLONE_NEWNS
-                    | CLONE_NEWNET
-                    | CLONE_NEWIPC
-                    | CLONE_NEWUTS
-                    | CLONE_NEWPID
-                )
-                with open("/proc/self/setgroups", "w") as fh:
-                    fh.write("deny")
-                with open("/proc/self/uid_map", "w") as fh:
-                    fh.write("0 %d 1" % uid)
-                with open("/proc/self/gid_map", "w") as fh:
-                    fh.write("0 %d 1" % gid)
-            except BaseException:
-                os._exit(99)
-            os._exit(0)
-        _, status = os.waitpid(pid, 0)
-        if os.WIFEXITED(status) and os.WEXITSTATUS(status) == 0:
-            confine_smoke_cache = (True, "")
-        else:
-            confine_smoke_cache = (
+            ok = (
+                subprocess.run(
+                    [sys.executable, "-I", "-S", "-c", probe],
+                    capture_output=True,
+                    timeout=30,
+                ).returncode
+                == 0
+            )
+        except (OSError, subprocess.SubprocessError) as exc:
+            return False, f"cannot start a process to probe confinement: {exc}"
+        confine_smoke_cache = (
+            (True, "")
+            if ok
+            else (
                 False,
                 "the kernel/environment forbids unprivileged user-namespace setup "
                 "(e.g. writing /proc/self/setgroups is denied, as on GitHub "
                 "Actions and inside many containers)",
             )
+        )
     return confine_smoke_cache
 
 
