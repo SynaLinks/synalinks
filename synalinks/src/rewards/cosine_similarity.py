@@ -87,7 +87,7 @@ class CosineSimilarity(RewardFunctionWrapper):
     program.compile(
         reward=synalinks.rewards.CosineSimilarity(
             embedding_model=embedding_model
-        )
+        ),
         optimizer=synalinks.optimizers.RandomFewShot(),
     )
     ```

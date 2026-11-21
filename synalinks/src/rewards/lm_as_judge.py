@@ -136,7 +136,7 @@ class LMAsJudge(ProgramAsJudge):
         program.compile(
             reward=synalinks.rewards.LMAsJudge(
                 language_model=language_model,
-            )
+            ),
             optimizer=synalinks.optimizers.RandomFewShot(),
         )
 
