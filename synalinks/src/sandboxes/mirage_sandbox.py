@@ -1058,8 +1058,9 @@ class MirageSandbox(Sandbox):
             tools), the host filesystem is hidden, and the network is cut.
             Rootless, in-process: no container runtime. Requires ``/dev/fuse``
             and unprivileged user namespaces (on macOS: macFUSE and
-            libsandbox); on an unsupported host it is disabled with a
-            ``RuntimeWarning`` (graceful fallback). **Defaults to ``True``**
+            libsandbox); on an unsupported host it raises, unless
+            ``require_confinement=False``, which warns (``RuntimeWarning``)
+            and runs unconfined. **Defaults to ``True``**
             (secure by default): a plain ``MirageSandbox()`` is confined +
             syscall-filtered + network-cut, and refuses to run where it cannot
             confine. Pass ``confine=False`` to opt out (e.g. when the code must
@@ -1234,8 +1235,7 @@ class MirageSandbox(Sandbox):
 
         # Confinement: when enabled, ``run_code`` executes the snippet in a fresh
         # user/mount/net namespace pivoted into the FUSE-mounted virtual
-        # filesystem (no host fs, no network). Gated on platform support; on an
-        # unsupported host it is disabled with a warning (graceful fallback).
+        # filesystem (no host fs, no network). Gated on platform support.
         self.confine = bool(confine)
         # Whether ``run_bash``'s ``python3`` carries the confinement prologue.
         # False until the patch actually installs, so the runtime guard below
