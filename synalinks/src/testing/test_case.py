@@ -46,6 +46,7 @@ class TestCase(
         the garbage collector, the suite can run out of it between two
         collections.
         """
+        import functools
         from unittest import mock
 
         from synalinks.src.knowledge_bases.graph_database_adapters import ladybug_adapter
@@ -53,6 +54,7 @@ class TestCase(
         adapters = []
         original_init = ladybug_adapter.LadybugAdapter.__init__
 
+        @functools.wraps(original_init)
         def tracking_init(adapter, *args, **kwargs):
             adapters.append(adapter)
             original_init(adapter, *args, **kwargs)

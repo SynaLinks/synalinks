@@ -119,12 +119,11 @@ class LanceDBAdapter(DatabaseAdapter):
         "capital of France", table_name="Document", k=5
     )
 
-    # SQL runs on DuckDB, which reads the Lance tables in place
+    # SELECT-only SQL, run by DuckDB over the Lance tables
     rows = await knowledge_base.sql("SELECT title FROM Document")
     ```
 
-    LanceDB has no in-memory mode: the URI is always a folder, so use a
-    temporary directory for tests.
+    For tests, `lancedb://:memory:` keeps the tables in memory.
     """
 
     def __init__(
@@ -143,7 +142,8 @@ class LanceDBAdapter(DatabaseAdapter):
 
         Args:
             uri (str): `lancedb://<path>`, a folder holding one Lance dataset
-                per table. When omitted, resolves to
+                per table, or `lancedb://:memory:` (in-memory). When omitted,
+                resolves to
                 `{synalinks_home()}/{name or 'database'}.lance`.
             embedding_model (EmbeddingModel): Optional. Enables vector
                 similarity search (and the vector half of hybrid search),
@@ -188,7 +188,8 @@ class LanceDBAdapter(DatabaseAdapter):
         self.vss_key = vss_key
         self.name = name
 
-        self._db = lancedb.connect(self.uri)
+        # LanceDB's own in-memory store, private to this connection.
+        self._db = lancedb.connect("memory://" if self.uri == ":memory:" else self.uri)
 
         if wipe_on_start:
             self.wipe_database()

@@ -167,6 +167,22 @@ class LanceDBAdapterTest(testing.TestCase):
         self.assertIsInstance(out, str)
         self.assertIn("C1", out)
 
+    async def test_in_memory_uri(self):
+        cwd = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, cwd, True)
+        previous = os.getcwd()
+        os.chdir(cwd)
+        self.addCleanup(os.chdir, previous)
+        a = LanceDBAdapter(uri="lancedb://:memory:", data_models=[Customer])
+        await a.update(
+            Customer(id="C1", name="Alice", country="USA").to_json_data_model()
+        )
+        self.assertEqual(await a.sql("SELECT id FROM Customer"), [{"id": "C1"}])
+        # Nothing on disk, and each in-memory adapter has its own tables.
+        self.assertEqual(os.listdir(cwd), [])
+        b = LanceDBAdapter(uri="lancedb://:memory:", data_models=[Customer])
+        self.assertEqual(await b.sql("SELECT count(*) AS n FROM Customer"), [{"n": 0}])
+
     # -- fulltext / regex (no embedding) ---------------------------------------
 
     async def test_fulltext_search(self):

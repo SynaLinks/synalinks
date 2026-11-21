@@ -61,7 +61,7 @@ A `KnowledgeBase` has a SQL side (`uri=`) and a graph side (`graph_uri=`); each 
 | Side | URI | Adapter | Choose it when |
 |---|---|---|---|
 | SQL | `duckdb://...` (default) | [DuckDB](Database Adapters/DuckDB Adapter.md) | General purpose: full-text, vector, regex and hybrid search, raw SQL, encryption at rest, in-memory mode for tests. |
-| SQL | `lancedb://...` | [LanceDB](Database Adapters/LanceDB Adapter.md) | Vector-heavy workloads: native vector search over columnar Lance datasets. SQL still works (DuckDB reads the Lance tables); no in-memory mode. |
+| SQL | `lancedb://...` | [LanceDB](Database Adapters/LanceDB Adapter.md) | Vector-heavy workloads: native vector search over columnar Lance datasets. `SELECT` queries still work (DuckDB reads the Lance tables). |
 | Graph | `ladybug://...` (default) | [LadybugDB](Graph Database Adapters/Ladybug Adapter.md) | General purpose property graph: typed node and edge tables, Cypher, vector and full-text search, graph algorithms (PageRank, communities) for GraphRAG. |
 | Graph | `relate://...` | [Relate by Neo4j](Graph Database Adapters/Relate Adapter.md) | You want Neo4j's Cypher dialect and Lucene full-text, embedded with no server. Schema-free labels; graph algorithms run through `networkx`. Needs `pip install 'synalinks[relate]'`. |
 
