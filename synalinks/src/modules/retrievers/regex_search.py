@@ -118,8 +118,8 @@ class RegexSearch(Module):
         examples (list): Example inputs/outputs for few-shot learning.
         instructions (str): Custom instructions for the query generator.
         seed_instructions (str): Seed instructions for variability.
-        temperature (float): Temperature for the language model.
-            Defaults to 0.0.
+        temperature (float): Optional temperature for the language model.
+            Defaults to None (the model's default).
         max_tokens (int): Optional cap on the generation length. Defaults
             to None (the model's default).
         top_p (float): Optional nucleus-sampling probability. Defaults to

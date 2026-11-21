@@ -75,13 +75,22 @@ class HybridFTSSearch(Module):
         )
 
     async def main():
+        embedding_model = synalinks.EmbeddingModel(model="ollama/mxbai-embed-large")
         kb = synalinks.KnowledgeBase(
             uri="duckdb://docs.db",
             data_models=[Document],
+            embedding_model=embedding_model,
         )
+        record = await synalinks.EmbedKnowledge(
+            embedding_model=embedding_model,
+            in_mask=["text"],
+        )(Document(id="d1", text="On SIGTERM, drain connections").to_json_data_model())
+        await kb.update(record)
+        lm = synalinks.LanguageModel(model="ollama/mistral")
         inputs = synalinks.Input(data_model=Query)
         outputs = await synalinks.HybridFTSSearch(
             knowledge_base=kb,
+            language_model=lm,
             data_model=Document,
             k=5,
         )(inputs)

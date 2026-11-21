@@ -62,10 +62,17 @@ class SimilaritySearch(Module):
         query: str = synalinks.Field(description="The user question")
 
     async def main():
+        embedding_model = synalinks.EmbeddingModel(model="ollama/mxbai-embed-large")
         kb = synalinks.KnowledgeBase(
             uri="duckdb://docs.db",
             data_models=[Document],
+            embedding_model=embedding_model,
         )
+        record = await synalinks.EmbedKnowledge(
+            embedding_model=embedding_model,
+            in_mask=["text"],
+        )(Document(id="d1", text="Deploy with docker compose up").to_json_data_model())
+        await kb.update(record)
         lm = synalinks.LanguageModel(model="ollama/mistral")
         inputs = synalinks.Input(data_model=Query)
         outputs = await synalinks.SimilaritySearch(
@@ -114,8 +121,8 @@ class SimilaritySearch(Module):
         examples (list): Example inputs/outputs for few-shot learning.
         instructions (str): Custom instructions for the query generator.
         seed_instructions (str): Seed instructions for variability.
-        temperature (float): Temperature for the language model.
-            Defaults to 0.0.
+        temperature (float): Optional temperature for the language model.
+            Defaults to None (the model's default).
         max_tokens (int): Optional cap on the generation length. Defaults
             to None (the model's default).
         top_p (float): Optional nucleus-sampling probability. Defaults to

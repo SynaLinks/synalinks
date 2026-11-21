@@ -83,13 +83,22 @@ class HybridRegexSearch(Module):
         )
 
     async def main():
+        embedding_model = synalinks.EmbeddingModel(model="ollama/mxbai-embed-large")
         kb = synalinks.KnowledgeBase(
             uri="duckdb://logs.db",
             data_models=[LogLine],
+            embedding_model=embedding_model,
         )
+        record = await synalinks.EmbedKnowledge(
+            embedding_model=embedding_model,
+            in_mask=["text"],
+        )(LogLine(id="l1", text="panic: error 42").to_json_data_model())
+        await kb.update(record)
+        lm = synalinks.LanguageModel(model="ollama/mistral")
         inputs = synalinks.Input(data_model=Query)
         outputs = await synalinks.HybridRegexSearch(
             knowledge_base=kb,
+            language_model=lm,
             data_model=LogLine,
             k=5,
         )(inputs)
