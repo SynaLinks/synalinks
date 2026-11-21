@@ -520,3 +520,26 @@ class RaggedStructureFScoreTest(testing.TestCase):
             Extraction(relations=["alpha beta"]),
         )
         self.assertAlmostEqual(metric.result(), 2.0 / 3.0, delta=3 * backend.epsilon())
+
+
+class FailedPredictionFScoreTest(testing.TestCase):
+    async def test_none_prediction_counts_as_false_negatives(self):
+        class Answer(DataModel):
+            answer: str
+
+        class Flag(DataModel):
+            flag: bool
+
+        class Labels(DataModel):
+            labels: list[str]
+
+        cases = [
+            (FBetaScore(average="micro"), Answer(answer="Paris")),
+            (BinaryFBetaScore(average="micro"), Flag(flag=True)),
+            (CategoricalFBetaScore(average="micro"), Labels(labels=["a"])),
+        ]
+        for metric, gold in cases:
+            await metric.update_state(gold, gold)
+            await metric.update_state(gold, None)
+            # precision 1.0, recall 0.5
+            self.assertAlmostEqual(metric.result(), 2 / 3, delta=1e-3)
