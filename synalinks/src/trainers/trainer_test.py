@@ -387,6 +387,32 @@ class TestTrainer(testing.TestCase):
         with self.assertRaisesRegex(ValueError, "one-shot generator"):
             await program.fit(x=batches, epochs=2, validation_data=(x_test, y_test))
 
+    @patch("litellm.acompletion")
+    async def test_fit_shuffle_is_forwarded(self, mock_completion):
+        mock_answer = AnswerWithRationale(rationale="r", answer="Paris")
+        mock_completion.return_value = {
+            "choices": [{"message": {"content": json.dumps(mock_answer.get_json())}}]
+        }
+        (x, y), _ = load_test_data()
+        for shuffle in (False, True):
+            program = await program_test()
+            program.compile(
+                optimizer=optimizers.random_few_shot.RandomFewShot(),
+                reward=rewards.ExactMatch(in_mask=["answer"]),
+            )
+            seen = []
+            train_on_batch = program.train_on_batch
+
+            async def record(step, x, y=None, **kwargs):
+                seen.append([q.query for q in x])
+                return await train_on_batch(step, x, y, **kwargs)
+
+            program.train_on_batch = record
+            np.random.seed(0)
+            await program.fit(x=x, y=y, batch_size=4, epochs=2, shuffle=shuffle)
+            epochs = seen[: len(seen) // 2], seen[len(seen) // 2 :]
+            self.assertEqual(epochs[0] == epochs[1], not shuffle)
+
     async def test_fit_without_validation_data_says_why(self):
         program = await program_test()
         program.compile(

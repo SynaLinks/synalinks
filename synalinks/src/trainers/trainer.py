@@ -687,7 +687,7 @@ class Trainer:
             y=y,
             batch_size=batch_size,
             steps_per_epoch=steps_per_epoch,
-            shuffle=False,
+            shuffle=shuffle,
             steps_per_execution=self.steps_per_execution,
         )
 
