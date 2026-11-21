@@ -4,8 +4,7 @@ import warnings
 
 from synalinks.src.api_export import synalinks_export
 from synalinks.src.callbacks.callback import Callback
-from synalinks.src.metrics.em_metrics import _collect_embedding_models
-from synalinks.src.metrics.lm_metrics import _collect_language_models
+from synalinks.src.metrics.metrics_utils import program_models
 from synalinks.src.utils import io_utils
 
 
@@ -94,16 +93,15 @@ class BudgetStopping(Callback):
         self.stopped_batch = None
         self.stop_reason = None
 
-    def _models(self):
-        return _collect_language_models(self.program) + _collect_embedding_models(
-            self.program
+    def _read_cost(self):
+        return sum(
+            getattr(m, "cumulated_cost", 0.0) for m in program_models(self.program)
         )
 
-    def _read_cost(self):
-        return sum(getattr(m, "cumulated_cost", 0.0) for m in self._models())
-
     def _read_tokens(self):
-        return sum(getattr(m, "cumulated_tokens", 0) for m in self._models())
+        return sum(
+            getattr(m, "cumulated_tokens", 0) for m in program_models(self.program)
+        )
 
     @property
     def spent_cost(self):

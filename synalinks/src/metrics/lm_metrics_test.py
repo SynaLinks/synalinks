@@ -83,7 +83,7 @@ from synalinks.src.metrics.lm_metrics import RewardTotalTokens
 from synalinks.src.metrics.lm_metrics import Throughput
 from synalinks.src.metrics.lm_metrics import TokensPerSecond
 from synalinks.src.metrics.lm_metrics import TotalTokens
-from synalinks.src.metrics.lm_metrics import _collect_language_models
+from synalinks.src.metrics.metrics_utils import language_models
 from synalinks.src.metrics.program_metrics import ProgramCost
 from synalinks.src.modules import Input
 from synalinks.src.modules.core.generator import Generator
@@ -338,7 +338,7 @@ class OperationalMetricsAutoBindTest(testing.TestCase):
                 _FakeModule(lm=None, submodules=[_FakeModule(lm=other_lm)]),
             ]
         )
-        lms = _collect_language_models(program)
+        lms = language_models(program)
         ids = [id(lm) for lm in lms]
         self.assertIn(id(primary_lm), ids)
         self.assertIn(id(leaf_lm), ids)
@@ -350,7 +350,7 @@ class OperationalMetricsAutoBindTest(testing.TestCase):
         program = _FakeProgram(
             modules=[_FakeModule(lm=shared_lm), _FakeModule(lm=shared_lm)]
         )
-        lms = _collect_language_models(program)
+        lms = language_models(program)
         self.assertEqual(len(lms), 1)
         self.assertIs(lms[0], shared_lm)
 
@@ -359,14 +359,14 @@ class OperationalMetricsAutoBindTest(testing.TestCase):
         # to its own `LanguageModel` instance (distinct from `language_model`
         # even when built from the same model identifier), to drive
         # `llm_query`/`llm_query_batched`/subagent calls. A module exposing
-        # only `.language_model` to `_collect_language_models` left every
+        # only `.language_model` to `language_models` left every
         # token/latency operational metric blind to that instance's calls,
         # even though its `cumulated_cost` (updated unconditionally,
         # independent of this collector) was still counted correctly.
         primary_lm = _stub_lm()
         sub_lm = _stub_lm()
         program = _FakeProgram(modules=[_FakeModule(lm=primary_lm, sub_lm=sub_lm)])
-        lms = _collect_language_models(program)
+        lms = language_models(program)
         ids = [id(lm) for lm in lms]
         self.assertIn(id(primary_lm), ids)
         self.assertIn(id(sub_lm), ids)
@@ -398,7 +398,7 @@ class OperationalMetricsAutoBindTest(testing.TestCase):
                 ]
             )
         )
-        lms = _collect_language_models(program)
+        lms = language_models(program)
         self.assertEqual(
             [id(lm) for lm in lms],
             [id(program_lm), id(direct_judge_lm), id(program_judge_lm)],
@@ -415,7 +415,7 @@ class OperationalMetricsAutoBindTest(testing.TestCase):
 
         program = _FakeProgram(modules=[_FakeModule(lm=program_lm)])
         program._optimizer = _Optimizer()
-        lms = _collect_language_models(program)
+        lms = language_models(program)
         self.assertEqual(
             [id(lm) for lm in lms],
             [id(program_lm), id(optimizer_lm), id(mutation_lm)],
@@ -824,7 +824,7 @@ class LMOperationalMetricsWithDecisionModelTest(testing.TestCase):
         fallback = DecisionModel(model="typesafe/jev-1.13.0")
         decision_model = DecisionModel(model="typesafe/jev-latest", fallback=fallback)
         program = await self.build_program(decision_model)
-        self.assertEqual(_collect_language_models(program), [decision_model, fallback])
+        self.assertEqual(language_models(program), [decision_model, fallback])
 
     async def test_inference_metrics(self):
         decision_model = DecisionModel(model="typesafe/jev-latest")
@@ -897,7 +897,7 @@ class LMOperationalMetricsWithDecisionModelTest(testing.TestCase):
         # `compile()` binds clones of its metrics: bind these ones to read them.
         for metric in metrics:
             metric.bind_program(program)
-        self.assertIn(judge, _collect_language_models(program))
+        self.assertIn(judge, language_models(program))
 
         token = _OP_SCOPE.set("reward")
         try:
