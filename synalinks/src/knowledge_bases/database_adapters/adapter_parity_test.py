@@ -240,6 +240,9 @@ class DatabaseAdapterParityTest(testing.TestCase):
         for name, cls, scheme, ext in ADAPTERS:
             with self.subTest(adapter=name):
                 a = self._make(cls, scheme, ext, data_models=[Customer])
+                self.assertEqual(
+                    await a.fulltext_search("Quick", table_name="Customer"), []
+                )
                 await a.update(
                     [
                         Customer(
