@@ -54,16 +54,17 @@ class KnowledgeBase(SynalinksSaveable):
     )
 
     # Store a document
-    doc = Document(id="1", title="Hello", content="Hello World!")
+    doc = Document(id="1", title="Greeting", content="Hello World!")
     await knowledge_base.update(doc.to_json_data_model())
 
     # Retrieve by ID (the first field, here 'id', is the primary key; see
     # the "Primary Key Convention" section below).
     result = await knowledge_base.get("1", table_name="Document")
 
-    # Full-text search
+    # Full-text search ("hello" itself is an English stopword on DuckDB,
+    # see the `stopwords=` adapter option)
     results = await knowledge_base.fulltext_search(
-        "Hello", table_name="Document", k=10
+        "World", table_name="Document", k=10
     )
     ```
 
@@ -618,7 +619,7 @@ class KnowledgeBase(SynalinksSaveable):
         self,
         sql: str,
         *,
-        params: Optional[Dict[str, Any]] = None,
+        params: Optional[Union[List[Any], Dict[str, Any]]] = None,
         output_format: str = "json",
         **kwargs,
     ) -> Union[List[Dict[str, Any]], str]:
@@ -630,7 +631,8 @@ class KnowledgeBase(SynalinksSaveable):
 
         Args:
             sql (str): The SQL string to execute.
-            params (dict): Optional list of parameters for parameterized queries.
+            params (list | dict): Optional query parameters: a list for ``?``
+                placeholders, or a dict for ``$name`` placeholders.
             output_format: ``"json"`` (default, list of dicts,
                 JSON-shaped Python data) or ``"csv"`` (CSV string,
                 useful when handing the result to an LM).
@@ -656,6 +658,9 @@ class KnowledgeBase(SynalinksSaveable):
                    Without this layer,
                    ``SELECT * FROM read_csv('/etc/passwd', ...)`` would pass
                    defence (1) because it is a syntactically valid ``SELECT``.
+
+                ``read_only`` only applies to ``duckdb://``: ``lancedb://``
+                stores are always ``SELECT``-only, whatever its value.
 
                 Pass ``read_only=False`` only from trusted call sites that
                 genuinely need to mutate state. Those paths still run on
