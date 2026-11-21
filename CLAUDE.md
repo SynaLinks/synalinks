@@ -4,10 +4,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Synalinks is a neuro-symbolic Language Model (LM) framework inspired by Keras. It provides a declarative API for building, training, and deploying LM-based applications including RAGs, autonomous agents, and self-evolving reasoning systems
-by composing modules like layers in deep learning.
+Synalinks is a neuro-symbolic Language Model (LM) framework inspired by Keras. It provides a declarative API for building, training, and deploying LM-based applications including RAGs, autonomous agents, and self-evolving reasoning systems by composing modules like layers in deep learning.
 
-Its phylosophy: Keras but with JSON data models instead of tensors, JSON schemas instead of tensor shapes. Only focused on gradient free methods with in-context learning via LM update or out-context using knowledge bases as extendible memory systems at runtime via tool calls. A lot of the focus is with evals using reward systems and metrics to evaluate the success of a program the equivalent of a deep learning model.
+Its philosophy: Keras, but with JSON data models instead of tensors and JSON schemas instead of tensor shapes. It focuses only on gradient-free learning: in-context learning (updating what the LM sees, such as prompts and examples) and out-of-context learning (knowledge bases used as extensible memory at runtime through tool calls). Evaluation is central: rewards and metrics measure the success of a program, the equivalent of a deep learning model.
 
 ## Development Commands
 
@@ -36,7 +35,7 @@ uv run pytest synalinks/src/path/to/test_file.py::test_function_name -v
 
 ## Methodology for long running tasks (batch issue fixing, multi-file reviews, etc.)
 
-At the start of every session, read `task_tracker.json` at the repo root if it exists: it records where a previous session stopped (crash, context reset, interruption). Resume from the first task with `"is_finished": false` in the first goal entry.
+At the start of every session, read `task_tracker.json` at the repo root if it exists: it records where a previous session stopped (crash, context reset, interruption). Resume from the first task with `"is_finished": false` in the first goal entry. If the next goal entry has an empty task list, it has not been planned yet: plan it (steps 1 and 2 below) and update the tracker before starting.
 
 1. Gather all the information you need first: browse the relevant issues, files and external documentation quickly.
 
@@ -68,6 +67,8 @@ At the start of every session, read `task_tracker.json` at the repo root if it e
 4. Be as autonomous as possible. If something is undecided or needs human approval, open a GitHub issue tagged as such and move on to the next task.
 
 5. Think about the scope of the framework and the bigger picture when making architectural decisions: the software takes inspiration from ML frameworks like Keras and JAX, repurposed for neuro-symbolic AI. Be serious in your work, no laziness accepted.
+
+6. NEVER stop until the goal is reached. If the user gives you new goals along the way, append them to `task_tracker.json` with an empty task list: an empty list means the goal is waiting to be planned.
 
 `task_tracker.json` is gitignored and must never be committed.
 
