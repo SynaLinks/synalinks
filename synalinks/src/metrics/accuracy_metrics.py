@@ -5,13 +5,14 @@ from typing import List
 from typing import Optional
 
 from synalinks.src import backend
-from synalinks.src import ops
 from synalinks.src import tree
 from synalinks.src.api_export import synalinks_export
 from synalinks.src.backend import DataModel
 from synalinks.src.backend.common import numpy as np
 from synalinks.src.metrics.metric import Metric
+from synalinks.src.metrics.metric import apply_masks
 from synalinks.src.metrics.metric import ragged_add
+from synalinks.src.metrics.metrics_utils import aggregate_scores
 from synalinks.src.utils import nlp_utils
 
 
@@ -107,43 +108,14 @@ class Accuracy(Metric):
             self.axis = 0
 
     async def update_state(self, y_true, y_pred):
-        y_pred = tree.map_structure(lambda x: ops.convert_to_json_data_model(x), y_pred)
-        y_true = tree.map_structure(lambda x: ops.convert_to_json_data_model(x), y_true)
-
-        if self.in_mask or self.in_mask_pattern:
-            y_pred = tree.map_structure(
-                lambda x: (
-                    x.in_mask(mask=self.in_mask, pattern=self.in_mask_pattern)
-                    if x is not None
-                    else x
-                ),
-                y_pred,
-            )
-            y_true = tree.map_structure(
-                lambda x: (
-                    x.in_mask(mask=self.in_mask, pattern=self.in_mask_pattern)
-                    if x is not None
-                    else x
-                ),
-                y_true,
-            )
-        if self.out_mask or self.out_mask_pattern:
-            y_pred = tree.map_structure(
-                lambda x: (
-                    x.out_mask(mask=self.out_mask, pattern=self.out_mask_pattern)
-                    if x is not None
-                    else x
-                ),
-                y_pred,
-            )
-            y_true = tree.map_structure(
-                lambda x: (
-                    x.out_mask(mask=self.out_mask, pattern=self.out_mask_pattern)
-                    if x is not None
-                    else x
-                ),
-                y_true,
-            )
+        y_true, y_pred = apply_masks(
+            y_true,
+            y_pred,
+            in_mask=self.in_mask,
+            in_mask_pattern=self.in_mask_pattern,
+            out_mask=self.out_mask,
+            out_mask_pattern=self.out_mask_pattern,
+        )
 
         if y_true is None:
             return
@@ -211,26 +183,9 @@ class Accuracy(Metric):
             total = np.sum(total)
 
         score = np.divide(correct, np.add(total, backend.epsilon()))
-        return self._aggregate(score)
-
-    def _aggregate(self, score):
-        """Apply `average` reduction over per-field scores."""
-        score = np.convert_to_tensor(score)
-        if self.average == "weighted":
-            intermediate_weights = self.state.get("intermediate_weights")
-            weights = np.divide(
-                intermediate_weights,
-                np.sum(intermediate_weights) + backend.epsilon(),
-            )
-            score = np.sum(score * weights)
-        elif self.average is not None:  # [micro, macro]
-            score = np.mean(score, self.axis)
-        # numpy 1.25+ deprecates float() on a >0-D array even when size == 1,
-        # so go through .item() / .tolist() to always hand back Python scalars.
-        score_arr = np.convert_to_numpy(score)
-        if score_arr.size == 1:
-            return float(score_arr.item())
-        return [float(v) for v in score_arr.tolist()]
+        return aggregate_scores(
+            score, self.average, self.axis, self.state.get("intermediate_weights")
+        )
 
     def get_config(self):
         """Return the serializable config of the metric.
@@ -362,43 +317,14 @@ class BinaryAccuracy(Accuracy):
         self.threshold = threshold
 
     async def update_state(self, y_true, y_pred):
-        y_pred = tree.map_structure(lambda x: ops.convert_to_json_data_model(x), y_pred)
-        y_true = tree.map_structure(lambda x: ops.convert_to_json_data_model(x), y_true)
-
-        if self.in_mask or self.in_mask_pattern:
-            y_pred = tree.map_structure(
-                lambda x: (
-                    x.in_mask(mask=self.in_mask, pattern=self.in_mask_pattern)
-                    if x is not None
-                    else x
-                ),
-                y_pred,
-            )
-            y_true = tree.map_structure(
-                lambda x: (
-                    x.in_mask(mask=self.in_mask, pattern=self.in_mask_pattern)
-                    if x is not None
-                    else x
-                ),
-                y_true,
-            )
-        if self.out_mask or self.out_mask_pattern:
-            y_pred = tree.map_structure(
-                lambda x: (
-                    x.out_mask(mask=self.out_mask, pattern=self.out_mask_pattern)
-                    if x is not None
-                    else x
-                ),
-                y_pred,
-            )
-            y_true = tree.map_structure(
-                lambda x: (
-                    x.out_mask(mask=self.out_mask, pattern=self.out_mask_pattern)
-                    if x is not None
-                    else x
-                ),
-                y_true,
-            )
+        y_true, y_pred = apply_masks(
+            y_true,
+            y_pred,
+            in_mask=self.in_mask,
+            in_mask_pattern=self.in_mask_pattern,
+            out_mask=self.out_mask,
+            out_mask_pattern=self.out_mask_pattern,
+        )
 
         def convert_to_binary(x):
             if isinstance(x, bool):
@@ -590,43 +516,14 @@ class CategoricalAccuracy(Accuracy):
         self.labels = labels
 
     async def update_state(self, y_true, y_pred):
-        y_pred = tree.map_structure(lambda x: ops.convert_to_json_data_model(x), y_pred)
-        y_true = tree.map_structure(lambda x: ops.convert_to_json_data_model(x), y_true)
-
-        if self.in_mask or self.in_mask_pattern:
-            y_pred = tree.map_structure(
-                lambda x: (
-                    x.in_mask(mask=self.in_mask, pattern=self.in_mask_pattern)
-                    if x is not None
-                    else x
-                ),
-                y_pred,
-            )
-            y_true = tree.map_structure(
-                lambda x: (
-                    x.in_mask(mask=self.in_mask, pattern=self.in_mask_pattern)
-                    if x is not None
-                    else x
-                ),
-                y_true,
-            )
-        if self.out_mask or self.out_mask_pattern:
-            y_pred = tree.map_structure(
-                lambda x: (
-                    x.out_mask(mask=self.out_mask, pattern=self.out_mask_pattern)
-                    if x is not None
-                    else x
-                ),
-                y_pred,
-            )
-            y_true = tree.map_structure(
-                lambda x: (
-                    x.out_mask(mask=self.out_mask, pattern=self.out_mask_pattern)
-                    if x is not None
-                    else x
-                ),
-                y_true,
-            )
+        y_true, y_pred = apply_masks(
+            y_true,
+            y_pred,
+            in_mask=self.in_mask,
+            in_mask_pattern=self.in_mask_pattern,
+            out_mask=self.out_mask,
+            out_mask_pattern=self.out_mask_pattern,
+        )
 
         if y_true is None:
             return
