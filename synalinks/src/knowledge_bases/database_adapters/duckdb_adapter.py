@@ -33,9 +33,11 @@ from synalinks.src.backend import EmbeddingRequest
 from synalinks.src.backend import JsonDataModel
 from synalinks.src.backend import SymbolicDataModel
 from synalinks.src.knowledge_bases.adapters_utils import format_search_results
+from synalinks.src.knowledge_bases.adapters_utils import json_columns
 from synalinks.src.knowledge_bases.adapters_utils import minmax_normalize_scores
 from synalinks.src.knowledge_bases.adapters_utils import normalize_query_vectors
 from synalinks.src.knowledge_bases.adapters_utils import resolve_db_path
+from synalinks.src.knowledge_bases.adapters_utils import resolve_ref
 from synalinks.src.knowledge_bases.adapters_utils import sanitize_identifier
 from synalinks.src.knowledge_bases.adapters_utils import to_pascal_identifier
 from synalinks.src.knowledge_bases.adapters_utils import to_snake_identifier
@@ -99,21 +101,6 @@ _VSS_DISTANCE_FN = {
 MAIN_TABLE = "main"
 
 
-def _get_json_columns_from_schema(schema: dict) -> set:
-    """Get column names that are JSON type from a JSON schema."""
-    json_columns = set()
-    properties = schema.get("properties", {})
-    for prop_name, prop_spec in properties.items():
-        prop_type = prop_spec.get("type")
-        if prop_type == "object":
-            json_columns.add(prop_name)
-        elif prop_type == "array":
-            item_spec = prop_spec.get("items", {})
-            if item_spec.get("type") == "object":
-                json_columns.add(prop_name)
-    return json_columns
-
-
 def _parse_json_columns(row: dict, json_columns: set) -> dict:
     """Parse JSON string columns to Python dicts based on known JSON columns."""
     result = dict(row)
@@ -133,7 +120,7 @@ table_identifier = to_pascal_identifier
 column_identifier = to_snake_identifier
 
 
-def sanitize_properties(properties: dict):
+def sanitize_column_names(properties: dict):
     """Sanitize and snake_case-normalize dict keys before SQL interpolation."""
     return {column_identifier(k): v for k, v in properties.items()}
 
@@ -508,13 +495,6 @@ class DuckDBAdapter(DatabaseAdapter):
                 except Exception as e:
                     raise RuntimeError(f"Failed to drop table {table_name}: {e}")
 
-    def _get_id_key(self, schema: dict) -> str:
-        """Return the first schema property (snake-cased, sanitized) as primary key."""
-        props = schema.get("properties") if isinstance(schema, dict) else None
-        if not props:
-            raise ValueError("Cannot determine primary key: schema has no `properties`.")
-        return column_identifier(next(iter(props.keys())))
-
     def _has_indexable_text_columns(self, schema: dict) -> bool:
         """Return ``True`` if the schema has at least one VARCHAR column
         besides the primary key. Used to gate FTS index creation and
@@ -623,13 +603,7 @@ class DuckDBAdapter(DatabaseAdapter):
         for prop_name, prop_spec in properties.items():
             prop_name = column_identifier(prop_name)
 
-            # Resolve Pydantic v2 $ref for enums / nested models.
-            if "$ref" in prop_spec:
-                ref_name = prop_spec["$ref"].rsplit("/", 1)[-1]
-                if ref_name in defs:
-                    resolved = dict(defs[ref_name])
-                    resolved.update({k: v for k, v in prop_spec.items() if k != "$ref"})
-                    prop_spec = resolved
+            prop_spec = resolve_ref(prop_spec, defs)
 
             prop_type = prop_spec.get("type")
 
@@ -638,10 +612,7 @@ class DuckDBAdapter(DatabaseAdapter):
 
             if not prop_type and "anyOf" in prop_spec:
                 for variant in prop_spec["anyOf"]:
-                    if "$ref" in variant:
-                        ref_name = variant["$ref"].rsplit("/", 1)[-1]
-                        if ref_name in defs:
-                            variant = defs[ref_name]
+                    variant = resolve_ref(variant, defs)
                     vtype = variant.get("type")
                     if vtype and vtype != "null":
                         prop_type = vtype
@@ -980,7 +951,7 @@ class DuckDBAdapter(DatabaseAdapter):
 
             schema = data_model.get_schema()
             table = table_identifier(schema["title"])
-            json_data = sanitize_properties(data_model.get_json())
+            json_data = sanitize_column_names(data_model.get_json())
             id_key = self._get_id_key(schema)
 
             id_val = json_data.get(id_key)
@@ -1474,14 +1445,14 @@ class DuckDBAdapter(DatabaseAdapter):
             if not rows:
                 return None if return_single else results
 
-            json_columns = _get_json_columns_from_schema(json_schema)
+            json_cols = json_columns(json_schema)
             rows_by_id = {row[id_key]: row for row in rows}
 
             for idx, id_val in enumerate(ids):
                 row = rows_by_id.get(id_val)
                 if row is None:
                     continue
-                json_data = _parse_json_columns(row, json_columns)
+                json_data = _parse_json_columns(row, json_cols)
                 if remove_embedding and self.vss_key in json_data:
                     json_data.pop(self.vss_key)
                 results[idx] = JsonDataModel(
@@ -1533,11 +1504,11 @@ class DuckDBAdapter(DatabaseAdapter):
             if not rows:
                 return []
 
-            json_columns = _get_json_columns_from_schema(json_schema)
+            json_cols = json_columns(json_schema)
 
             results = []
             for row in rows:
-                json_data = _parse_json_columns(row, json_columns)
+                json_data = _parse_json_columns(row, json_cols)
                 if remove_embedding and self.vss_key in json_data:
                     json_data.pop(self.vss_key)
                 results.append(
