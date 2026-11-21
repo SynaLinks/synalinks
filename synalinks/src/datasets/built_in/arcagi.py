@@ -136,7 +136,7 @@ def load_data(
     Example:
 
     ```python
-    (x_train, y_train), (x_test, y_test) = synalinks.datasets.arcagi1.load_data(
+    (x_train, y_train), (x_test, y_test) = synalinks.datasets.arcagi.load_data(
         task_name="62c24649",
         arc_version=1,
     )
@@ -223,7 +223,7 @@ def load_data(
                     outputs = ARCAGIOutput(
                         output_grid=output_grid,
                     )
-                    for i in range(repeat):
+                    for _ in range(repeat):
                         x_train.append(inputs)
                         y_train.append(outputs)
             else:
@@ -245,23 +245,22 @@ def load_data(
                 outputs = ARCAGIOutput(
                     output_grid=output_grid,
                 )
-                for i in range(repeat):
+                for _ in range(repeat):
                     x_train.append(inputs)
                     y_train.append(outputs)
         else:
-            for i in range(len(trainset)):
-                input_grid = trainset[i].get("input")
-                output_grid = trainset[i].get("output")
-                inputs = ARCAGIInput(
-                    examples=[],
-                    input_grid=input_grid,
-                )
-                outputs = ARCAGIOutput(
-                    output_grid=output_grid,
-                )
-                for i in range(repeat):
-                    x_train.append(inputs)
-                    y_train.append(outputs)
+            input_grid = trainset[i].get("input")
+            output_grid = trainset[i].get("output")
+            inputs = ARCAGIInput(
+                examples=[],
+                input_grid=input_grid,
+            )
+            outputs = ARCAGIOutput(
+                output_grid=output_grid,
+            )
+            for _ in range(repeat):
+                x_train.append(inputs)
+                y_train.append(outputs)
 
     for i in range(len(testset)):
         if one_leave_out:
