@@ -57,7 +57,7 @@ class ProgramCheckpoint(Callback):
     )
 
     # Program is saved at the end of every epoch, if it's the best seen so far.
-    program.fit(
+    await program.fit(
         x=x_train,
         y=y_train,
         validation_data=(x_test, y_test),
@@ -80,7 +80,7 @@ class ProgramCheckpoint(Callback):
 
     # Program variables are saved at the end of every epoch, if it's the best seen
     # so far.
-    program.fit(
+    await program.fit(
         x=x_train,
         y=y_train,
         validation_data=(x_test, y_test),

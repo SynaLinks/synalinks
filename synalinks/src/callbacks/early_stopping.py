@@ -26,18 +26,32 @@ class EarlyStopping(Callback):
 
     Example:
 
-    >>> callback = synalinks.callbacks.EarlyStopping(monitor='reward', patience=3)
-    >>> # This callback will stop the training when there is no improvement in
-    >>> # the loss for three consecutive epochs.
-    >>> program = synalinks.programs.Sequential(
-    ...     [synalinks.modules.Generator(data_model=Answer)])
-    >>> program.compile(
-    ...     synalinks.optimizers.RandomFewShot(),
-    ...     reward=synalinks.rewards.ExactMatch())
-    >>> history = program.fit(
-    ...     ..., epochs=10, batch_size=1, callbacks=[callback], verbose=0)
-    >>> len(history.history['reward'])  # Only 4 epochs are run.
-    4
+    ```python
+    class Query(synalinks.DataModel):
+        query: str
+
+    class Answer(synalinks.DataModel):
+        answer: str
+
+    callback = synalinks.callbacks.EarlyStopping(monitor="reward", patience=3)
+    # This callback will stop the training when there is no improvement in
+    # the reward for three consecutive epochs.
+    inputs = synalinks.Input(data_model=Query)
+    outputs = await synalinks.Generator(
+        data_model=Answer,
+        language_model=synalinks.LanguageModel(model="ollama/mistral"),
+    )(inputs)
+    program = synalinks.Program(inputs=inputs, outputs=outputs)
+    program.compile(
+        synalinks.optimizers.RandomFewShot(),
+        reward=synalinks.rewards.ExactMatch(),
+    )
+    history = await program.fit(
+        x=x_train, y=y_train, epochs=10, batch_size=1, callbacks=[callback], verbose=0
+    )
+    # A reward that plateaus from the first epoch stops after 4 epochs.
+    len(history.history["reward"])
+    ```
 
     Args:
         monitor (str): Quantity to be monitored. Defaults to `val_reward`.
