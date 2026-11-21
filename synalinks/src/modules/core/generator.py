@@ -314,7 +314,8 @@ class Generator(Module):
         top_k (int): Optional. Top-k sampling. Default None (not sent → model
             default).
         reasoning_effort (string): Optional. The reasoning effort for the LM call
-            between ['minimal', 'low', 'medium', 'high', 'disable', 'none', None].
+            between [None, 'none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max']
+            (see `LanguageModel`; 'disable' is a deprecated alias of 'none').
             Default to None (the provider default).
         streaming (str): Optional. If true stream the LM response, enabled only if
             `schema` is `None`. Honored in every phase (inference, reward,
@@ -411,7 +412,17 @@ class Generator(Module):
         self.max_tokens = max_tokens
         self.top_p = top_p
         self.top_k = top_k
-        efforts = ["minimal", "low", "medium", "high", "xhigh", "disable", "none", None]
+        efforts = [
+            "minimal",
+            "low",
+            "medium",
+            "high",
+            "xhigh",
+            "max",
+            "disable",
+            "none",
+            None,
+        ]
         if reasoning_effort not in efforts:
             raise ValueError(
                 f"The reasoning effort parameter should be one of: {efforts}"

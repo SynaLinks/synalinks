@@ -1041,11 +1041,11 @@ class OAuthLanguageModel(LanguageModel):
         workflows; check the terms of your subscription before unattended
         use.
 
-    `reasoning_effort` behaves as with `LanguageModel`: a value (`"none"`,
-    `"low"`, `"medium"`, `"high"`...) is sent to the backend, `None` keeps
-    the default of the model. `"disable"` and `"minimal"` send `"low"`,
-    the lowest effort every model accepts (most of them cannot turn
-    reasoning off). A `thinking` field of the output schema is written by
+    `reasoning_effort` behaves as with `LanguageModel`: a level (`"low"`,
+    `"medium"`, `"high"`...) is sent to the backend, `None` keeps the
+    default of the model. `"none"` (off) and `"minimal"` send `"low"`, the
+    lowest effort every model accepts (most of them cannot turn reasoning
+    off). A `thinking` field of the output schema is written by
     the model.
 
     Args:

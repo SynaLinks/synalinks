@@ -523,9 +523,9 @@ class OAuthLanguageModelTest(testing.TestCase):
         recorder = Recorder(stdout=_events("ok"))
         lm = OAuthLanguageModel(model="codex/gpt-6.1-sol", reasoning_effort="high")
         with patch(_RUN, recorder):
-            await lm(_messages(), reasoning_effort="disable")
+            await lm(_messages(), reasoning_effort="none")
             await lm(_messages(), reasoning_effort=None)
-        # "disable" sends the lowest effort, None keeps the model default.
+        # "none" sends the lowest effort, None keeps the model default.
         self.assertIn('model_reasoning_effort="low"', recorder.calls[0]["command"])
         self.assertFalse(
             any(
@@ -560,14 +560,15 @@ class OAuthLanguageModelTest(testing.TestCase):
         lm = OAuthLanguageModel(model="codex/gpt-6.1-sol")
         with patch(_RUN, recorder):
             await lm(_messages(), reasoning_effort="minimal")
-            await lm(_messages(), reasoning_effort="disable")
+            await lm(_messages(), reasoning_effort="none")
         for call in recorder.calls:
             self.assertIn('model_reasoning_effort="low"', call["command"])
 
     async def test_reasoning_effort_follows_the_base_class(self):
         # Same contract as `LanguageModel`: the effort of the call wins over
         # the one of the constructor, `None` keeps the default of the model
-        # and "none" is sent as is.
+        # and "none" (off) sends the lowest effort, as the backend cannot turn
+        # reasoning off.
         recorder = Recorder(stdout=_events("ok"))
         lm = OAuthLanguageModel(model="codex/gpt-6.1-sol", reasoning_effort="high")
         with patch(_RUN, recorder):
@@ -585,7 +586,7 @@ class OAuthLanguageModelTest(testing.TestCase):
                 ['model_reasoning_effort="high"'],
                 ['model_reasoning_effort="low"'],
                 [],
-                ['model_reasoning_effort="none"'],
+                ['model_reasoning_effort="low"'],
             ],
         )
 
@@ -701,7 +702,7 @@ class OAuthLanguageModelTest(testing.TestCase):
                 "low": ['model_reasoning_effort="low"'],
                 "medium": ['model_reasoning_effort="medium"'],
                 "high": ['model_reasoning_effort="high"'],
-                "none": ['model_reasoning_effort="none"'],
+                "none": ['model_reasoning_effort="low"'],
             },
         )
 
@@ -1359,9 +1360,7 @@ class AppServerToolCallingTest(testing.TestCase):
         lm = self._lm(fake)
         await lm(_user("hi"), tools=_TOOLS, tool_choice="none")
         self.assertEqual(fake.params("turn/start")[0]["effort"], "low")
-        await lm(
-            _user("hi"), tools=_TOOLS, tool_choice="none", reasoning_effort="disable"
-        )
+        await lm(_user("hi"), tools=_TOOLS, tool_choice="none", reasoning_effort="none")
         self.assertEqual(fake.params("turn/start")[1]["effort"], "low")
 
     async def test_tool_choice_none_declares_no_tool(self):
