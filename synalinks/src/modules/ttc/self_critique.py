@@ -363,15 +363,8 @@ class SelfCritique(Module):
         outputs = await self.generator(inputs, training=training)
         if outputs is None or not self.return_reward:
             return outputs
-        return self._normalize_reward(outputs)
-
-    def _normalize_reward(self, outputs):
-        """Rewrite `reward` from the native `score_type` scale to a 0..1 float.
-
-        The underlying generator keeps working in the native scale (so its
-        schema, prompt and recorded training predictions stay consistent);
-        only the module's output is normalized.
-        """
+        # `reward` moves from the native `score_type` scale to a 0..1 float; the
+        # generator keeps the native scale (schema, prompt, recorded predictions).
         schema = _normalized_reward_schema(outputs.get_schema())
         if is_symbolic_data_model(outputs):
             return SymbolicDataModel(schema=schema, name=outputs.name)

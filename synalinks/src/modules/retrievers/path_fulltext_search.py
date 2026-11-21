@@ -3,23 +3,12 @@
 from typing import List
 from typing import Optional
 
-from synalinks.src import ops
 from synalinks.src.api_export import synalinks_export
 from synalinks.src.backend import DataModel
 from synalinks.src.backend import Field
-from synalinks.src.backend import GenericResult
-from synalinks.src.backend import JsonDataModel
-from synalinks.src.backend import SymbolicDataModel
-from synalinks.src.knowledge_bases import get as _get_kb
-from synalinks.src.modules.core.generator import Generator
-from synalinks.src.modules.language_models import get as _get_lm
-from synalinks.src.modules.module import Module
-from synalinks.src.modules.retrievers._path_helpers import deserialize_entity_model
-from synalinks.src.modules.retrievers._path_helpers import resolve_endpoint
-from synalinks.src.modules.retrievers._path_helpers import serialize_entity_model
-from synalinks.src.modules.retrievers.infer_helpers import concat_infer_fields
 from synalinks.src.modules.retrievers.infer_helpers import kb_entity_labels
-from synalinks.src.saving import serialization_lib
+from synalinks.src.modules.retrievers.retriever import Retriever
+from synalinks.src.modules.retrievers.retriever import resolve_target
 
 
 class PathFullTextSearchInput(DataModel):
@@ -39,7 +28,7 @@ class PathFullTextSearchInput(DataModel):
         "synalinks.PathFullTextSearch",
     ]
 )
-class PathFullTextSearch(Module):
+class PathFullTextSearch(Retriever):
     """BM25 variable-length path search where BOTH endpoints match.
 
     LM-driven wrapper around
@@ -81,11 +70,15 @@ class PathFullTextSearch(Module):
             trainable.
     """
 
+    query_model = PathFullTextSearchInput
+    data_model_args = (
+        "subj_entity_model",
+        "obj_entity_model",
+    )
+
     def __init__(
         self,
         *,
-        knowledge_base=None,
-        language_model=None,
         subj_schema=None,
         subj_entity_model=None,
         subj_label: Optional[str] = None,
@@ -95,41 +88,19 @@ class PathFullTextSearch(Module):
         rel_label: Optional[str] = None,
         min_hops: int = 1,
         max_hops: int = 3,
-        k: int = 10,
         threshold: Optional[float] = None,
         conjunctive: bool = False,
         bm25_b: Optional[float] = None,
-        output_format: str = "json",
-        prompt_template: Optional[str] = None,
-        examples: Optional[list] = None,
-        instructions: Optional[str] = None,
-        seed_instructions: Optional[str] = None,
-        temperature: float | None = None,
-        max_tokens: int | None = None,
-        top_p: float | None = None,
-        top_k: int | None = None,
-        use_inputs_schema: bool = False,
-        use_outputs_schema: bool = False,
-        return_inputs: bool = True,
-        return_query: bool = True,
-        name: Optional[str] = None,
-        description: Optional[str] = None,
-        trainable: bool = True,
+        **kwargs,
     ):
-        super().__init__(
-            name=name,
-            description=description,
-            trainable=trainable,
-        )
-        self.knowledge_base = self._own(_get_kb(knowledge_base), given=knowledge_base)
-        self.language_model = _get_lm(language_model)
+        super().__init__(**kwargs)
 
-        self.subj_schema, self.subj_label = resolve_endpoint(
-            subj_schema, subj_entity_model, subj_label, "subj"
+        self.subj_schema, self.subj_label = resolve_target(
+            subj_schema, subj_entity_model, subj_label
         )
         self.subj_entity_model = subj_entity_model
-        self.obj_schema, self.obj_label = resolve_endpoint(
-            obj_schema, obj_entity_model, obj_label, "obj"
+        self.obj_schema, self.obj_label = resolve_target(
+            obj_schema, obj_entity_model, obj_label
         )
         self.obj_entity_model = obj_entity_model
         self.rel_label = rel_label
@@ -141,32 +112,9 @@ class PathFullTextSearch(Module):
             )
         self.min_hops = min_hops
         self.max_hops = max_hops
-
-        if output_format not in ("json", "csv"):
-            raise ValueError(
-                f"`output_format` must be 'json' or 'csv', got {output_format!r}"
-            )
-        self.output_format = output_format
-
-        if not isinstance(k, int) or k < 1:
-            raise ValueError(f"`k` must be a positive integer, got {k!r}")
-        self.k = k
         self.threshold = threshold
         self.conjunctive = conjunctive
         self.bm25_b = bm25_b
-
-        self.prompt_template = prompt_template
-        self.examples = examples
-        self.instructions = instructions
-        self.seed_instructions = seed_instructions
-        self.temperature = temperature
-        self.max_tokens = max_tokens
-        self.top_p = top_p
-        self.top_k = top_k
-        self.use_inputs_schema = use_inputs_schema
-        self.use_outputs_schema = use_outputs_schema
-        self.return_inputs = return_inputs
-        self.return_query = return_query
 
         # Either endpoint label may be unset; when so the LM infers it per call,
         # constrained to the KB's entity labels (concatenated onto the query).
@@ -189,39 +137,10 @@ class PathFullTextSearch(Module):
                     kb_entity_labels(self.knowledge_base),
                 )
             )
-        if infer_specs:
-            gen_target = {
-                "schema": concat_infer_fields(
-                    PathFullTextSearchInput.get_schema(), infer_specs
-                )
-            }
-        else:
-            gen_target = {"data_model": PathFullTextSearchInput}
 
-        self.query_generator = Generator(
-            **gen_target,
-            language_model=self.language_model,
-            prompt_template=self.prompt_template,
-            examples=self.examples,
-            instructions=self.instructions,
-            seed_instructions=self.seed_instructions,
-            temperature=self.temperature,
-            max_tokens=self.max_tokens,
-            top_p=self.top_p,
-            top_k=self.top_k,
-            use_inputs_schema=self.use_inputs_schema,
-            use_outputs_schema=self.use_outputs_schema,
-            return_inputs=False,
-            name="path_fulltext_search_query_generator_" + self.name,
-        )
+        self.build_query_generator(infer_specs)
 
-    async def call(self, inputs, training=False):
-        if not inputs:
-            return None
-
-        query = await self.query_generator(inputs, training=training)
-        if not query:
-            return None
+    async def search(self, query):
         payload = query.get_json()
         subj_queries = payload.get("subj_fulltext_search", [])
         obj_queries = payload.get("obj_fulltext_search", [])
@@ -245,47 +164,10 @@ class PathFullTextSearch(Module):
             bm25_b=self.bm25_b,
             output_format=self.output_format,
         )
-        results = JsonDataModel(
-            json={"result": rows},
-            schema=GenericResult.get_schema(),
-            name=self.name,
-        )
-        if self.return_query:
-            results = await ops.logical_and(
-                query,
-                results,
-                name="results_with_query_" + self.name,
-            )
-        if self.return_inputs:
-            results = await ops.logical_and(
-                inputs,
-                results,
-                name="results_with_inputs_" + self.name,
-            )
-        return results
-
-    async def compute_output_spec(self, inputs, training=False):
-        query = await self.query_generator(inputs, training=training)
-        results = SymbolicDataModel(
-            schema=GenericResult.get_schema(),
-            name=self.name,
-        )
-        if self.return_query:
-            results = await ops.logical_and(
-                query,
-                results,
-                name="results_with_query_" + self.name,
-            )
-        if self.return_inputs:
-            results = await ops.logical_and(
-                inputs,
-                results,
-                name="results_with_inputs_" + self.name,
-            )
-        return results
+        return {"result": rows}
 
     def get_config(self):
-        config = {
+        return {
             "subj_schema": self.subj_schema,
             "subj_label": self.subj_label,
             "obj_schema": self.obj_schema,
@@ -298,63 +180,5 @@ class PathFullTextSearch(Module):
             "conjunctive": self.conjunctive,
             "bm25_b": self.bm25_b,
             "output_format": self.output_format,
-            "prompt_template": self.prompt_template,
-            "examples": self.examples,
-            "instructions": self.instructions,
-            "seed_instructions": self.seed_instructions,
-            "temperature": self.temperature,
-            "max_tokens": self.max_tokens,
-            "top_p": self.top_p,
-            "top_k": self.top_k,
-            "use_inputs_schema": self.use_inputs_schema,
-            "use_outputs_schema": self.use_outputs_schema,
-            "return_inputs": self.return_inputs,
-            "return_query": self.return_query,
-            "name": self.name,
-            "description": self.description,
-            "trainable": self.trainable,
+            **super().get_config(),
         }
-        knowledge_base_config = {
-            "knowledge_base": serialization_lib.serialize_synalinks_object(
-                self.knowledge_base,
-            )
-        }
-        language_model_config = {
-            "language_model": serialization_lib.serialize_synalinks_object(
-                self.language_model,
-            )
-        }
-        endpoint_models_config = {
-            "subj_entity_model": serialize_entity_model(
-                self.subj_entity_model, "subj_entity_model_" + self.name
-            ),
-            "obj_entity_model": serialize_entity_model(
-                self.obj_entity_model, "obj_entity_model_" + self.name
-            ),
-        }
-        return {
-            **config,
-            **knowledge_base_config,
-            **language_model_config,
-            **endpoint_models_config,
-        }
-
-    @classmethod
-    def from_config(cls, config):
-        knowledge_base = serialization_lib.deserialize_synalinks_object(
-            config.pop("knowledge_base")
-        )
-        language_model = serialization_lib.deserialize_synalinks_object(
-            config.pop("language_model")
-        )
-        subj_entity_model = deserialize_entity_model(
-            config.pop("subj_entity_model", None)
-        )
-        obj_entity_model = deserialize_entity_model(config.pop("obj_entity_model", None))
-        return cls(
-            knowledge_base=knowledge_base,
-            language_model=language_model,
-            subj_entity_model=subj_entity_model,
-            obj_entity_model=obj_entity_model,
-            **config,
-        )

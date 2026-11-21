@@ -5,8 +5,10 @@ from typing import Optional
 
 from synalinks.src.api_export import synalinks_export
 from synalinks.src.knowledge_bases import get as _get_kb
+from synalinks.src.knowledge_bases.adapters_utils import unknown_title_error
 from synalinks.src.modules.agents.function_calling_agent import FunctionCallingAgent
 from synalinks.src.modules.core.tool import Tool
+from synalinks.src.modules.knowledge.text2sql import _format_schema
 from synalinks.src.saving import serialization_lib
 
 
@@ -87,21 +89,9 @@ def _build_tools(knowledge_base, output_format: str = "csv", k: int = 50):
         descriptions. Use this first to discover what data is available
         before writing queries.
         """
-        symbolic_models = knowledge_base.get_symbolic_data_models()
-        schema_info = []
-        for model in symbolic_models:
-            schema = model.get_schema()
-            table_name = schema.get("title", "Unknown")
-            properties = schema.get("properties", {})
-            columns = []
-            for col_name, col_info in properties.items():
-                col_type = col_info.get("type", "unknown")
-                col_desc = col_info.get("description", "")
-                columns.append(f"  - {col_name} ({col_type}): {col_desc}")
-            schema_info.append(f"Table: {table_name}\n" + "\n".join(columns))
         return {
-            "schema": "\n\n".join(schema_info),
-            "table_count": len(symbolic_models),
+            "schema": _format_schema(knowledge_base),
+            "table_count": len(knowledge_base.get_symbolic_data_models()),
         }
 
     async def get_table_sample(table_name: str, limit: int, offset: int):
@@ -113,16 +103,11 @@ def _build_tools(knowledge_base, output_format: str = "csv", k: int = 50):
                 Capped server-side at the agent's ``k`` setting.
             offset (int): Number of rows to skip (use 0 to start at the top).
         """
-        symbolic_models = knowledge_base.get_symbolic_data_models()
-        available_tables = [
-            m.get_schema().get("title", "Unknown") for m in symbolic_models
-        ]
-        if table_name not in available_tables:
-            return {
-                "error": (
-                    f"Table {table_name!r} not found. Available: {available_tables}"
-                )
-            }
+        error = unknown_title_error(
+            knowledge_base.get_symbolic_data_models(), table_name, "Table"
+        )
+        if error:
+            return error
         effective_limit = max(1, min(limit, k))
         # Table name validated against the known-tables list, so direct
         # interpolation is safe; LIMIT / OFFSET are bound parameters.
@@ -170,7 +155,7 @@ def _build_tools(knowledge_base, output_format: str = "csv", k: int = 50):
                 "error": "Empty SQL query.",
                 "query": sql_query,
             }
-        wrapped_sql = f"SELECT * FROM ({stripped}) LIMIT {k}"
+        wrapped_sql = f"SELECT * FROM ({stripped}\n) LIMIT {k}"
         try:
             results = await knowledge_base.sql(
                 wrapped_sql, read_only=True, output_format=output_format

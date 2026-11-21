@@ -11,6 +11,7 @@ from synalinks.src.backend import Field
 from synalinks.src.backend import JsonDataModel
 from synalinks.src.backend import SymbolicDataModel
 from synalinks.src.knowledge_bases import get as _get_kb
+from synalinks.src.knowledge_bases.adapters_utils import format_schema_columns
 from synalinks.src.modules.core.generator import Generator
 from synalinks.src.modules.language_models import get as _get_lm
 from synalinks.src.modules.module import Module
@@ -56,12 +57,7 @@ def _format_schema(knowledge_base) -> str:
     for model in symbolic_models:
         schema = model.get_schema()
         table_name = schema.get("title", "Unknown")
-        properties = schema.get("properties", {})
-        columns = []
-        for col_name, col_info in properties.items():
-            col_type = col_info.get("type", "unknown")
-            col_desc = col_info.get("description", "")
-            columns.append(f"  - {col_name} ({col_type}): {col_desc}")
+        columns = format_schema_columns(schema.get("properties", {}))
         sections.append(f"Table: {table_name}\n" + "\n".join(columns))
     return "\n\n".join(sections)
 
@@ -172,8 +168,9 @@ class Text2SQL(Module):
             `Generator`.
         examples (list): Few-shot examples for the generator.
         instructions (str): Override the default system instructions.
-            When omitted, the default is built from the knowledge
-            base's table titles.
+            When omitted, the schema-agnostic
+            `default_text2sql_instructions()` is used (the table
+            schemas are sent alongside the inputs).
         seed_instructions (list): Optional seed instructions for
             prompt optimization.
         temperature (float): LM sampling temperature, set low for deterministic
@@ -321,7 +318,7 @@ class Text2SQL(Module):
             if self.k is None:
                 executed_sql = stripped
             else:
-                executed_sql = f"SELECT * FROM ({stripped}) LIMIT {self.k}"
+                executed_sql = f"SELECT * FROM ({stripped}\n) LIMIT {self.k}"
             try:
                 result_rows = await self.knowledge_base.sql(
                     executed_sql,

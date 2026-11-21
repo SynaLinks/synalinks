@@ -3,7 +3,9 @@
 
 Keeping these in one place stops the DuckDB and Ladybug adapters from
 drifting on shared concerns (output formatting and per-query keyword
-alignment) that have nothing to do with the underlying engine.
+alignment) that have nothing to do with the underlying engine, and gives the
+modules that describe a knowledge base to a language model (the SQL, Cypher
+and VectorRAG agents, Text2SQL, Text2Cypher) one rendering of its schemas.
 """
 
 import io
@@ -298,3 +300,29 @@ def align_keywords(
             f"got {len(keyword_list)} keyword(s) vs {len(texts)} text(s)."
         )
     return texts, keyword_list
+
+
+def format_schema_columns(properties, skip=()):
+    """Render a schema's `properties` as `  - name (type): description` lines.
+
+    Properties named in `skip` are left out (a label already in the heading,
+    a relation's endpoints).
+    """
+    return [
+        f"  - {name} ({info.get('type', info.get('const', 'unknown'))}): "
+        f"{info.get('description', '')}"
+        for name, info in properties.items()
+        if name not in skip
+    ]
+
+
+def unknown_title_error(models, title, kind):
+    """The tool error for a `title` (a table name or a label) none of `models` has.
+
+    Returns `None` when one of them has it; `kind` names it in the error
+    (`"Table"`, `"Node label"`).
+    """
+    available = [m.get_schema().get("title", "Unknown") for m in models]
+    if title in available:
+        return None
+    return {"error": f"{kind} {title!r} not found. Available: {available}"}

@@ -139,6 +139,17 @@ class CypherAgentToolsTest(testing.TestCase):
         self.assertTrue(result["success"])
         self.assertEqual(result["row_count"], 1)
 
+    async def test_run_cypher_query_caps_rows_to_k(self):
+        kb = self._make_kb()
+        await kb.update_relations(
+            [LivesIn(subj=Person(name=f"P{i}"), obj=City(name="Paris")) for i in range(3)]
+        )
+        for output_format in ("json", "csv"):
+            _, _, run_cypher = self._tools(kb, output_format=output_format, k=2)
+            result = await run_cypher("MATCH (p:Person) RETURN p.name AS person")
+            self.assertEqual(result["row_count"], 2)
+            self.assertTrue(result["may_have_more"])
+
     async def test_run_cypher_query_rejects_writes(self):
         kb = self._make_kb()
         _, _, run_cypher = self._tools(kb)

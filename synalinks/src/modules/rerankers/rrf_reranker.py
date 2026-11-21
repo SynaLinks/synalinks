@@ -35,7 +35,8 @@ class RRFReranker(Module):
     normalize their incompatible score scales.
 
     Rows are matched across lists by ``id_key`` when given, otherwise by
-    a canonical signature of the whole row. The fused ``rrf_score`` is
+    a canonical signature of the whole row minus its score fields
+    (``score`` and ``*_score``, which differ per retriever). The fused ``rrf_score`` is
     written onto each returned row; the output is a `GenericResult`
     sorted by descending score and truncated to ``k``. ``None`` inputs
     are ignored, so it composes with optional retrieval branches.
@@ -46,11 +47,25 @@ class RRFReranker(Module):
     import synalinks
     import asyncio
 
+    class Document(synalinks.DataModel):
+        id: str = synalinks.Field(description="Document id")
+        text: str = synalinks.Field(description="Document text")
+
     class Query(synalinks.DataModel):
         query: str = synalinks.Field(description="The user question")
 
     async def main():
-        kb = synalinks.KnowledgeBase(uri="duckdb://docs.db", data_models=[Document])
+        embedding_model = synalinks.EmbeddingModel(model="ollama/mxbai-embed-large")
+        kb = synalinks.KnowledgeBase(
+            uri="duckdb://docs.db",
+            data_models=[Document],
+            embedding_model=embedding_model,
+        )
+        record = await synalinks.EmbedKnowledge(
+            embedding_model=embedding_model,
+            in_mask=["text"],
+        )(Document(id="d1", text="The brown fox runs").to_json_data_model())
+        await kb.update(record)
         lm = synalinks.LanguageModel(model="ollama/mistral")
 
         inputs = synalinks.Input(data_model=Query)
@@ -65,6 +80,9 @@ class RRFReranker(Module):
         )
         program = synalinks.Program(inputs=inputs, outputs=fused)
 
+        result = await program(Query(query="fox"))
+        print(result.get("result"))
+
     asyncio.run(main())
     ```
 
@@ -74,8 +92,8 @@ class RRFReranker(Module):
         k (int): Maximum number of fused rows to return. ``None`` returns
             all fused rows. Defaults to None.
         id_key (str): Row field used to identify the same row across
-            lists. When ``None`` (default), the whole row is used as its
-            identity (a canonical JSON signature).
+            lists. When ``None`` (default), the whole row minus its score
+            fields is used as its identity (a canonical JSON signature).
         name (str): Optional. The name of the module.
         description (str): Optional. The description of the module.
         trainable (bool): Whether the module's variables should be
@@ -105,12 +123,6 @@ class RRFReranker(Module):
         self.k = k
         self.id_key = id_key
 
-    def _row_id(self, row):
-        """Identity of a row for cross-list matching."""
-        if self.id_key is not None and isinstance(row, dict) and self.id_key in row:
-            return row[self.id_key]
-        return orjson.dumps(row, option=orjson.OPT_SORT_KEYS, default=str)
-
     async def call(self, inputs, training=False):
         if not inputs:
             return None
@@ -131,7 +143,23 @@ class RRFReranker(Module):
         merged: Dict[Any, Any] = {}
         for rows in result_lists:
             for rank, row in enumerate(rows, start=1):
-                uid = self._row_id(row)
+                # A row's identity across lists: its `id_key`, else its content
+                # without the scores (each retriever adds its own).
+                if (
+                    self.id_key is not None
+                    and isinstance(row, dict)
+                    and self.id_key in row
+                ):
+                    uid = row[self.id_key]
+                else:
+                    content = row
+                    if isinstance(row, dict):
+                        content = {
+                            k: v
+                            for k, v in row.items()
+                            if k != "score" and not k.endswith("_score")
+                        }
+                    uid = orjson.dumps(content, option=orjson.OPT_SORT_KEYS, default=str)
                 scores[uid] = scores.get(uid, 0.0) + 1.0 / (self.k_rank + rank)
                 if uid not in merged:
                     merged[uid] = dict(row) if isinstance(row, dict) else row

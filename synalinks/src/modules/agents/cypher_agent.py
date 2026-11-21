@@ -5,7 +5,10 @@ from typing import Optional
 
 from synalinks.src.api_export import synalinks_export
 from synalinks.src.knowledge_bases import get as _get_kb
+from synalinks.src.knowledge_bases.adapters_utils import format_schema_columns
+from synalinks.src.knowledge_bases.adapters_utils import unknown_title_error
 from synalinks.src.modules.agents.function_calling_agent import FunctionCallingAgent
+from synalinks.src.modules.agents.sql_agent import _row_count
 from synalinks.src.modules.core.tool import Tool
 from synalinks.src.saving import serialization_lib
 
@@ -50,41 +53,6 @@ Constraints:
 """.strip()
 
 
-def _row_count(results, output_format: str) -> int:
-    """Count rows in a result set regardless of ``output_format``.
-
-    For ``"csv"`` the result is a string with a header row; for
-    ``"json"`` it's a list of dicts. Returns 0 for empty inputs.
-    """
-    if output_format == "csv":
-        if not results:
-            return 0
-        lines = results.splitlines()
-        return max(len(lines) - 1, 0)
-    return len(results)
-
-
-def _cap_rows(results, output_format: str, k: int):
-    """Truncate a result set to at most ``k`` rows.
-
-    Cypher has no general-purpose subquery-wrapping syntax equivalent
-    to SQL's ``SELECT * FROM ({sql}) LIMIT k``, so the cap is enforced
-    in Python after the engine returns. For ``"json"`` we slice the
-    list; for ``"csv"`` we keep the header line plus the first ``k``
-    data lines.
-    """
-    if output_format == "csv":
-        if not results:
-            return results
-        lines = results.splitlines()
-        if len(lines) <= 1:
-            return results
-        header, data = lines[0], lines[1:]
-        capped = data[:k]
-        return "\n".join([header, *capped])
-    return results[:k]
-
-
 def _build_tools(knowledge_base, output_format: str = "csv", k: int = 50):
     """Build the three Cypher tools bound to a knowledge base.
 
@@ -121,13 +89,7 @@ def _build_tools(knowledge_base, output_format: str = "csv", k: int = 50):
             schema = model.get_schema()
             label = schema.get("title", "Unknown")
             properties = schema.get("properties", {})
-            columns = []
-            for col_name, col_info in properties.items():
-                if col_name == "label":
-                    continue
-                col_type = col_info.get("type", "unknown")
-                col_desc = col_info.get("description", "")
-                columns.append(f"  - {col_name} ({col_type}): {col_desc}")
+            columns = format_schema_columns(properties, skip=("label",))
             nodes_info.append(f"Node: {label}\n" + "\n".join(columns))
 
         rels_info = []
@@ -145,13 +107,7 @@ def _build_tools(knowledge_base, output_format: str = "csv", k: int = 50):
             subj_label = _ref_label(properties.get("subj", {}))
             obj_label = _ref_label(properties.get("obj", {}))
 
-            attrs = []
-            for col_name, col_info in properties.items():
-                if col_name in ("label", "subj", "obj"):
-                    continue
-                col_type = col_info.get("type", "unknown")
-                col_desc = col_info.get("description", "")
-                attrs.append(f"  - {col_name} ({col_type}): {col_desc}")
+            attrs = format_schema_columns(properties, skip=("label", "subj", "obj"))
             header = f"Relation: ({subj_label})-[:{label}]->({obj_label})"
             rels_info.append(header + ("\n" + "\n".join(attrs) if attrs else ""))
 
@@ -170,14 +126,11 @@ def _build_tools(knowledge_base, output_format: str = "csv", k: int = 50):
                 Capped server-side at the agent's ``k`` setting.
             offset (int): Number of nodes to skip (use 0 to start at the top).
         """
-        node_models = knowledge_base.get_symbolic_entities()
-        available_labels = [m.get_schema().get("title", "Unknown") for m in node_models]
-        if label not in available_labels:
-            return {
-                "error": (
-                    f"Node label {label!r} not found. Available: {available_labels}"
-                )
-            }
+        error = unknown_title_error(
+            knowledge_base.get_symbolic_entities(), label, "Node label"
+        )
+        if error:
+            return error
         effective_limit = max(1, min(limit, k))
         # Label validated against the known-labels list, so direct
         # interpolation is safe; SKIP / LIMIT are bound parameters.
@@ -231,7 +184,11 @@ def _build_tools(knowledge_base, output_format: str = "csv", k: int = 50):
             )
         except Exception as e:
             return {"success": False, "error": str(e), "query": cypher_query}
-        capped = _cap_rows(results, output_format, k)
+        # Cypher has no subquery LIMIT wrap like SQL, so cap rows here.
+        if output_format == "csv":
+            capped = "\n".join(results.splitlines()[: k + 1]) if results else results
+        else:
+            capped = results[:k]
         rc = _row_count(capped, output_format)
         full_rc = _row_count(results, output_format)
         return {
@@ -286,14 +243,18 @@ class CypherAgent(FunctionCallingAgent):
     ```python
     import synalinks
     import asyncio
+    from typing import Literal
 
     class Person(synalinks.Entity):
+        label: Literal["Person"]
         name: str = synalinks.Field(description="Person name")
 
     class City(synalinks.Entity):
+        label: Literal["City"]
         name: str = synalinks.Field(description="City name")
 
     class LivesIn(synalinks.Relation):
+        label: Literal["LivesIn"]
         subj: Person
         obj: City
 
@@ -312,7 +273,11 @@ class CypherAgent(FunctionCallingAgent):
             embedding_model=synalinks.EmbeddingModel(model="ollama/mxbai-embed-large"),
         )
         await kb.update_relations(
-            LivesIn(subj=Person(name="Alice"), obj=City(name="Paris"))
+            LivesIn(
+                label="LivesIn",
+                subj=Person(label="Person", name="Alice"),
+                obj=City(label="City", name="Paris"),
+            )
         )
 
         lm = synalinks.LanguageModel(model="ollama/mistral")

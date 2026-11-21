@@ -48,6 +48,12 @@ class RRFRerankerTest(testing.TestCase):
         self.assertEqual(len(rows), 2)
         self.assertEqual(rows[0]["title"], "x")  # matched in both lists
 
+    async def test_signature_identity_ignores_scores(self):
+        list_a = _result([{"id": "a", "score": 0.1}, {"id": "b", "score": 0.2}])
+        list_b = _result([{"id": "a", "score": 3.5, "fulltext_score": 3.5}])
+        out = await RRFReranker()([list_a, list_b])
+        self.assertEqual([r["id"] for r in out.get("result")], ["a", "b"])
+
     async def test_symbolic_trace(self):
         r0 = _result([{"id": "a"}]).to_symbolic_data_model()
         out = await RRFReranker(id_key="id").symbolic_call([r0, r0])
