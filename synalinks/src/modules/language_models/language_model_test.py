@@ -1343,6 +1343,35 @@ class ToolWireFormatTest(testing.TestCase):
         self.assertEqual(set(parameters["properties"]), {"query", "limit"})
         self.assertEqual(sorted(parameters["required"]), ["limit", "query"])
 
+    async def test_fallback_receives_the_tools(self):
+        calls = []
+
+        async def fake_acompletion(**kwargs):
+            calls.append(kwargs)
+            if kwargs["model"] == "openai/primary":
+                raise RuntimeError("primary down")
+            return {
+                "choices": [
+                    {
+                        "message": {"role": "assistant", "content": "hi"},
+                        "finish_reason": "stop",
+                    }
+                ]
+            }
+
+        fallback = LanguageModel(model="openai/backup", retry=1)
+        lm = LanguageModel(model="openai/primary", retry=1, fallback=fallback)
+        messages = ChatMessages(messages=[ChatMessage(role="user", content="hi")])
+        extra = {"type": "function", "function": {"name": "raw", "parameters": {}}}
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            with patch("litellm.acompletion", side_effect=fake_acompletion):
+                await lm(messages, tools=[self._tool()], tool_schemas=[extra])
+        self.assertEqual(
+            [[t["function"]["name"] for t in c["tools"]] for c in calls],
+            [["search", "raw"], ["search", "raw"]],
+        )
+
 
 class _FinishReasonAnswer(DataModel):
     answer: str
