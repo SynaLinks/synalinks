@@ -376,6 +376,17 @@ class TestTrainer(testing.TestCase):
 
         self.assertAlmostEqual(program._reward_tracker.result(), 2 / 3)
 
+    async def test_fit_one_shot_generator_with_many_epochs_raises(self):
+        program = await program_test()
+        program.compile(
+            optimizer=optimizers.random_few_shot.RandomFewShot(),
+            reward=rewards.ExactMatch(in_mask=["answer"]),
+        )
+        (x, y), (x_test, y_test) = load_test_data()
+        batches = ((x[i : i + 1], y[i : i + 1]) for i in range(len(x)))
+        with self.assertRaisesRegex(ValueError, "one-shot generator"):
+            await program.fit(x=batches, epochs=2, validation_data=(x_test, y_test))
+
     async def test_fit_without_validation_data_says_why(self):
         program = await program_test()
         program.compile(

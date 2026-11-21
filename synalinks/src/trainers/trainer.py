@@ -670,6 +670,17 @@ class Trainer:
                 "every candidate on it. Pass `validation_split` (a fraction of "
                 "`x` held out) or `validation_data`."
             )
+        if (
+            hasattr(x, "__next__")
+            and steps_per_epoch is None
+            and epochs - initial_epoch > 1
+        ):
+            raise ValueError(
+                "`fit()` got a one-shot generator for `x` with more than one epoch: "
+                "it is exhausted after the first epoch. Pass the re-iterable source "
+                "instead (e.g. the `Dataset` object `ds`, not `ds()`), or set "
+                "`steps_per_epoch`."
+            )
         # Create an iterator that yields batches of input/target data.
         epoch_iterator = EpochIterator(
             x=x,
