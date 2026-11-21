@@ -125,7 +125,7 @@ The additions are workspace-specific:
 
 | Param | Required | Default | Notes |
 |-------|----------|---------|-------|
-| `workdir` | yes | (none) | Must exist and be a directory. Mounted read-through in the sandbox; the agent's writes/edits stay in the overlay and never touch it. (Omit it for an empty in-memory workspace.) |
+| `workdir` | no | `None` | Must exist and be a directory. Mounted read-through in the sandbox; the agent's writes/edits stay in the overlay and never touch it. (Omit it for an empty in-memory workspace.) |
 | `timeout` | no | `30.0` | Per-execution budget in seconds for `run_bash`. |
 | `tools` | no | `None` | Extra `Tool` instances or async functions to append to the built-ins. Same name-collision and no-leading-underscore rules as `FunctionCallingAgent`. |
 

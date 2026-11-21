@@ -141,7 +141,8 @@ class DeepAgent(FunctionCallingAgent):
 
     The constructor mirrors `FunctionCallingAgent`: every
     parameter on that class is accepted here with identical semantics.
-    The additions are ``workdir`` (required) and the sandbox ``timeout``.
+    The additions are the optional ``workdir``, ``sandbox``,
+    ``sub_language_model``, ``max_subagent_depth`` and the sandbox ``timeout``.
     User-supplied ``tools`` are appended to the built-in ones.
 
     Example:
@@ -228,9 +229,9 @@ class DeepAgent(FunctionCallingAgent):
             only for the default instructions text.
         skills (list): Optional. Folder paths (Agent Skill roots) whose skills
             are listed for the agent as an ``<available_skills>`` context message
-            (see `FunctionCallingAgent`). The skill files must also be reachable
-            from the agent's sandbox (e.g. under ``workdir``) for their bodies to
-            be read on demand. Defaults to ``None``.
+            (see `FunctionCallingAgent`). The built-in ``read_skill`` tool reads
+            a skill's ``SKILL.md`` from these host folders on demand, so they
+            need not be reachable from the sandbox. Defaults to ``None``.
         max_subagent_depth (int): When ``> 0``, the agent gains
             ``spawn_subagents`` / ``merge_subagent`` / ``discard_subagent``
             tools, letting the LM run subagents in parallel, each on an
