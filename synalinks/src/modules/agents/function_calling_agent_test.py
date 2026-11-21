@@ -934,12 +934,12 @@ class FunctionCallingAgentTest(testing.TestCase):
         """The root AGENTS.md is read at construction into the
         `custom_instructions` prompt variable, rendered by the agent prompt
         template under a Codex-style header (never the trainable
-        instructions); nested AGENTS.md files are ignored."""
+        instructions); nested AGENTS.md files are never read, even undecodable."""
         workdir = self._make_workdir_with_agents_md()
         nested = os.path.join(workdir, "pkg")
         os.makedirs(nested)
-        with open(os.path.join(nested, "AGENTS.md"), "w", encoding="utf-8") as f:
-            f.write("Nested rule that must NOT be injected.")
+        with open(os.path.join(nested, "AGENTS.md"), "wb") as f:
+            f.write(b"Nested rule that must NOT be injected: caf\xe9.")
         agent = FunctionCallingAgent(
             language_model=LanguageModel(model="ollama/mistral"),
             tools=[Tool(calculate)],

@@ -1,7 +1,7 @@
 # License Apache 2.0: (c) 2025-2026 Yoan Sallami (Synalinks Team)
 
 """Tests for the AGENTS.md helpers in ``agents_utils`` (agents.md standard):
-root + nested (monorepo nearest-wins) discovery and the prompt rendering."""
+the root file lookup."""
 
 import json
 import os
@@ -9,7 +9,6 @@ import tempfile
 
 from synalinks.src import testing
 from synalinks.src.modules.agents.utils.agents_utils import call_tool
-from synalinks.src.modules.agents.utils.agents_utils import discover_agents_md
 from synalinks.src.modules.agents.utils.agents_utils import find_agents_md
 from synalinks.src.modules.agents.utils.agents_utils import tool_arguments
 from synalinks.src.modules.agents.utils.agents_utils import tool_message_content
@@ -36,26 +35,6 @@ class AgentsMdTest(testing.TestCase):
         self.assertIsNone(find_agents_md(self.root))
         self._write("AGENTS.md", "# root")
         self.assertIsNotNone(find_agents_md(self.root))
-
-    def test_discover_root_and_nested_ordered(self):
-        self._write("AGENTS.md", "# root conventions")
-        self._write("pkg/AGENTS.md", "# pkg conventions")
-        self._write("pkg/sub/AGENTS.md", "# sub conventions")
-        items = discover_agents_md(self.root)
-        # root first, then by depth/path
-        self.assertEqual([a.directory for a in items], ["", "pkg", "pkg/sub"])
-        self.assertEqual(items[0].content, "# root conventions")
-
-    def test_skips_vendored_and_empty(self):
-        self._write("AGENTS.md", "# root")
-        self._write("node_modules/lib/AGENTS.md", "# vendored, ignore")
-        self._write("empty/AGENTS.md", "   \n")  # empty after strip -> skipped
-        dirs = [a.directory for a in discover_agents_md(self.root)]
-        self.assertEqual(dirs, [""])
-
-    def test_missing_workdir(self):
-        self.assertEqual(discover_agents_md(None), [])
-        self.assertEqual(discover_agents_md(os.path.join(self.root, "nope")), [])
 
 
 class ToolMessageContentTest(testing.TestCase):

@@ -2,8 +2,8 @@
 
 """Shared helpers for the code agents (FunctionCalling, RLM, Deep Agent).
 
-Covers workdir resolution, AGENTS.md (the agents.md standard) discovery +
-injection, tool merging, and the metadata-only input summary the agents show the
+Covers workdir resolution, the root AGENTS.md (the agents.md standard) lookup,
+tool merging, and the metadata-only input summary the agents show the
 LM: field previews and sizes, never the full values. The full payload is made
 reachable to the agent's code another way: bound as the ``inputs`` REPL variable
 (RLM), or written as a JSON file in the sandbox's copy-on-write overlay (Deep
@@ -13,8 +13,6 @@ is used. Agent Skills helpers live in ``skills_utils``.
 
 import asyncio
 import json
-import os
-from dataclasses import dataclass
 from pathlib import Path
 from typing import List
 from typing import Optional
@@ -60,87 +58,12 @@ def resolve_workdir(workdir: Optional[str]) -> Optional[str]:
 # added.
 
 _AGENTS_MD_NAME = "AGENTS.md"
-# Vendored / build directories not descended into when discovering AGENTS.md.
-_AGENTS_MD_SKIP_DIRS = frozenset(
-    {
-        ".git",
-        "node_modules",
-        "__pycache__",
-        ".venv",
-        "venv",
-        ".tox",
-        ".mypy_cache",
-        ".pytest_cache",
-        "dist",
-        "build",
-        ".idea",
-        ".vscode",
-    }
-)
-
-
-@dataclass
-class AgentsMd:
-    """One discovered ``AGENTS.md`` and the subtree it governs.
-
-    ``directory`` is the file's directory relative to the workdir (``""`` for the
-    root file); ``content`` is the stripped Markdown body; ``path`` the file.
-    """
-
-    path: str
-    content: str
-    directory: str = ""
 
 
 def find_agents_md(directory) -> Optional[Path]:
     """Return the ``AGENTS.md`` directly in ``directory``, or ``None``."""
     candidate = Path(directory) / _AGENTS_MD_NAME
     return candidate if candidate.is_file() else None
-
-
-def discover_agents_md(workdir) -> List[AgentsMd]:
-    """Discover every ``AGENTS.md`` under ``workdir`` (root first, then nested).
-
-    Follows the agents.md monorepo model: subprojects may carry their own
-    ``AGENTS.md`` alongside the root, and the **nearest** file to a path takes
-    precedence. Returns the root file first (the primary conventions) followed by
-    nested files ordered by depth then path, so a caller can present the root
-    inline and surface nested ones as read-on-demand pointers. Vendored / build
-    directories are skipped. Returns ``[]`` when ``workdir`` is missing/empty.
-    """
-    if not workdir:
-        return []
-    base = Path(workdir)
-    if not base.is_dir():
-        return []
-    found: List[AgentsMd] = []
-    for dirpath, dirnames, filenames in os.walk(base):
-        # Prune vendored/hidden dirs in place so os.walk doesn't descend them.
-        dirnames[:] = sorted(
-            d for d in dirnames if not d.startswith(".") and d not in _AGENTS_MD_SKIP_DIRS
-        )
-        if _AGENTS_MD_NAME not in filenames:
-            continue
-        file_path = Path(dirpath) / _AGENTS_MD_NAME
-        try:
-            content = file_path.read_text(encoding="utf-8").strip()
-        except OSError:
-            continue
-        if not content:
-            continue
-        rel = os.path.relpath(dirpath, base)
-        found.append(
-            AgentsMd(
-                path=str(file_path.resolve()),
-                content=content,
-                directory="" if rel == "." else rel,
-            )
-        )
-    # Root (directory == "") first, then nested by depth then path.
-    found.sort(
-        key=lambda a: (a.directory.count(os.sep) if a.directory else -1, a.directory)
-    )
-    return found
 
 
 def check_public_tool_name(tool):
