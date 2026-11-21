@@ -58,7 +58,8 @@ class CSVDataset(Dataset):
             must share the same column layout.
         delimiter (str): Field delimiter. Defaults to ``","``.
         quotechar (str): Field-quote character. Defaults to ``'"'``.
-        encoding (str): Source encoding. Defaults to ``"utf-8"``.
+        encoding (str): Source encoding. Defaults to ``"utf-8-sig"``
+            (UTF-8, with or without a byte order mark).
         column_names (list): Optional explicit column names. When
             given, the first row of each file is treated as data
             (not a header), useful for headerless CSVs and to alias
@@ -88,7 +89,7 @@ class CSVDataset(Dataset):
         *,
         delimiter: str = ",",
         quotechar: str = '"',
-        encoding: str = "utf-8",
+        encoding: str = "utf-8-sig",
         column_names: Optional[List[str]] = None,
         columns: Optional[List[str]] = None,
         input_data_model=None,

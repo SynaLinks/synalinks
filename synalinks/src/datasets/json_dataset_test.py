@@ -63,6 +63,18 @@ class JSONDatasetTest(testing.TestCase):
         self.assertEqual([item.question for item in x], ["1+1?", "2+2?"])
         self.assertEqual([item.answer for item in y], ["2", "4"])
 
+    def test_reads_a_utf8_bom(self):
+        path = os.path.join(self.tmp, "bom.json")
+        with open(path, "w", encoding="utf-8-sig") as f:
+            f.write('[{"question": "1+1?"}]')
+        ds = JSONDataset(
+            path=path,
+            input_data_model=Question,
+            input_template='{"question": {{ question | tojson }}}',
+        )
+        (x,) = ds.materialize()
+        self.assertEqual(x[0].question, "1+1?")
+
     def test_reads_multiple_files_in_order(self):
         a = os.path.join(self.tmp, "a.json")
         b = os.path.join(self.tmp, "b.json")

@@ -62,7 +62,8 @@ class JSONDataset(Dataset):
         path (str | list): Path to a JSON file, or a list of paths.
             Multiple files are concatenated in order; each must be a
             top-level JSON array of objects.
-        encoding (str): File encoding. Defaults to ``"utf-8"``.
+        encoding (str): File encoding. Defaults to ``"utf-8-sig"``
+            (UTF-8, with or without a byte order mark).
         columns (list): Optional subset of keys to forward to the
             template. Keys absent from a given row are silently
             dropped (matches the parquet/CSV column-pushdown
@@ -85,7 +86,7 @@ class JSONDataset(Dataset):
         self,
         path: Union[str, List[str]],
         *,
-        encoding: str = "utf-8",
+        encoding: str = "utf-8-sig",
         columns: Optional[List[str]] = None,
         input_data_model=None,
         input_schema=None,
@@ -175,7 +176,8 @@ class JSONLDataset(Dataset):
     Args:
         path (str | list): Path to a JSONL file, or a list of paths.
             Multiple files are concatenated in order.
-        encoding (str): File encoding. Defaults to ``"utf-8"``.
+        encoding (str): File encoding. Defaults to ``"utf-8-sig"``
+            (UTF-8, with or without a byte order mark).
         columns (list): Optional subset of keys to forward to the
             template. Keys absent from a given row are silently
             dropped.
@@ -197,7 +199,7 @@ class JSONLDataset(Dataset):
         self,
         path: Union[str, List[str]],
         *,
-        encoding: str = "utf-8",
+        encoding: str = "utf-8-sig",
         columns: Optional[List[str]] = None,
         input_data_model=None,
         input_schema=None,

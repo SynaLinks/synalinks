@@ -53,6 +53,17 @@ class DatasetCoreTest(testing.TestCase):
         with pytest.raises(jinja2.exceptions.SecurityError):
             list(ds)
 
+    def test_a_missing_column_is_named(self):
+        for template in (
+            '{"question": {{ question | tojson }}}',
+            '{"question": "{{ question }}"}',
+        ):
+            ds = _RowDataset(
+                [{"query": "x"}], input_data_model=Question, input_template=template
+            )
+            with pytest.raises(ValueError, match=r"Row 0.*\['question'\].*\['query'\]"):
+                list(ds)
+
     def test_inputs_only_yields_single_element_tuple(self):
         rows = [{"q": "what is 1+1?"}, {"q": "capital of France?"}]
         ds = _RowDataset(

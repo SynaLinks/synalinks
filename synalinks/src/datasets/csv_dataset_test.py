@@ -39,6 +39,18 @@ class CSVDatasetTest(testing.TestCase):
         super().setUp()
         self.tmp = tempfile.mkdtemp()
 
+    def test_reads_a_utf8_bom(self):
+        path = os.path.join(self.tmp, "bom.csv")
+        with open(path, "w", encoding="utf-8-sig") as f:
+            f.write("q\n1+1?\n")
+        ds = CSVDataset(
+            path=path,
+            input_data_model=Question,
+            input_template='{"question": {{ q | tojson }}}',
+        )
+        (x,) = ds.materialize()
+        self.assertEqual(x[0].question, "1+1?")
+
     def tearDown(self):
         import shutil
 
