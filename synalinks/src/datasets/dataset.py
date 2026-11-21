@@ -1,5 +1,7 @@
 # License Apache 2.0: (c) 2025-2026 Yoan Sallami (Synalinks Team)
 
+import itertools
+
 import jinja2
 import jinja2.sandbox
 import numpy as np
@@ -265,8 +267,21 @@ class Dataset:
         return iter(self)
 
     def __len__(self):
-        """Number of batches, if known. Override when the size is finite."""
-        raise NotImplementedError
+        """Number of batches, if known.
+
+        Without a ``limit`` the size of a streaming source is unknown and
+        this raises; override it when the size is known up front. With a
+        ``limit``, the rows are counted up to the limit, so a source
+        smaller than the limit reports its real size.
+        """
+        if self.limit is None:
+            raise NotImplementedError(
+                f"{type(self).__name__} has unknown length without a limit. "
+                "Pass `limit=...` if you need __len__."
+            )
+        return self._total_batches(
+            sum(1 for _ in itertools.islice(self._iter_rows(), self.limit))
+        )
 
     def materialize(self):
         """Iterate the dataset to exhaustion and concatenate every batch.

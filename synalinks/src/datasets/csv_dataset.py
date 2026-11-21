@@ -162,11 +162,3 @@ class CSVDataset(Dataset):
                         # parquet reader.
                         row = {k: row[k] for k in columns if k in row}
                     yield row
-
-    def __len__(self):
-        if self.limit is None:
-            raise NotImplementedError(
-                "Streaming CSV datasets have unknown length. "
-                "Pass `limit=...` if you need __len__."
-            )
-        return self._total_batches(self.limit)

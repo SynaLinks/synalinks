@@ -186,6 +186,17 @@ class ParquetDatasetTest(testing.TestCase):
         # Limit caps the source: 10 rows / 4 = ceil → 3.
         self.assertEqual(len(ds), 3)
 
+    def test_len_with_limit_larger_than_source(self):
+        path = os.path.join(self.tmp, "small.parquet")
+        _write_parquet(path, {"q": ["a"] * 3})
+        ds = ParquetDataset(
+            path=path,
+            input_data_model=Question,
+            input_template='{"question": {{ q | tojson }}}',
+            limit=100,
+        )
+        self.assertEqual(len(ds), 3)
+
     def test_len_sums_multiple_files(self):
         a = os.path.join(self.tmp, "a.parquet")
         b = os.path.join(self.tmp, "b.parquet")

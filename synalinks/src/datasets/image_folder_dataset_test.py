@@ -50,7 +50,7 @@ class ImageFolderDatasetTest(testing.TestCase):
             output_template='{"role":"assistant","content":{{ image_path | tojson }}}',
             batch_size=4,
         )
-        (x, y) = next(iter(ds))
+        x, y = next(iter(ds))
         self.assertEqual(x[0].get_json()["messages"][0]["content"], "photo")
         self.assertEqual(y[0].get_json()["content"], os.path.join("sub", "photo.png"))
 
@@ -91,7 +91,8 @@ class ImageFolderDatasetTest(testing.TestCase):
         _write_bytes(os.path.join(self.tmp, "a.png"))
         with self.assertRaises(NotImplementedError):
             len(ImageFolderDataset(root=self.tmp, batch_size=4))
-        self.assertEqual(len(ImageFolderDataset(root=self.tmp, limit=5, batch_size=2)), 3)
+        # The limit is a cap: one image, so one batch.
+        self.assertEqual(len(ImageFolderDataset(root=self.tmp, limit=5, batch_size=2)), 1)
 
     async def test_per_batch_resolution_reads_the_real_file(self):
         payload = b"\x89PNG\r\n\x1a\nREALBYTES"

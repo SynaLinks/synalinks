@@ -154,12 +154,3 @@ class TextDataset(Dataset):
                 "filepath": os.path.relpath(path, self.root),
                 "text": text,
             }
-
-    def __len__(self):
-        if self.limit is None:
-            raise NotImplementedError(
-                "TextDataset has unknown length without `limit=...`. "
-                "Pass a limit if you need __len__ (e.g. for the progress "
-                "bar shown by KnowledgeBase.update)."
-            )
-        return self._total_batches(self.limit)

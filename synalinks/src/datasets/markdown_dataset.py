@@ -349,11 +349,3 @@ class MarkdownDataset(Dataset):
                 "title": _derive_title(relpath, raw_sections),
                 "sections": sections,
             }
-
-    def __len__(self):
-        if self.limit is None:
-            raise NotImplementedError(
-                "MarkdownDataset has unknown length without "
-                "`limit=...`. Pass a limit if you need __len__."
-            )
-        return self._total_batches(self.limit)

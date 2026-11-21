@@ -171,11 +171,3 @@ class ImageFolderDataset(Dataset):
                 "label": "" if parent == root_name else parent,
                 "prompt": self.prompt,
             }
-
-    def __len__(self):
-        if self.limit is None:
-            raise NotImplementedError(
-                "ImageFolderDataset has unknown length without `limit=...`. "
-                "Pass a limit if you need __len__ (e.g. for a progress bar)."
-            )
-        return self._total_batches(self.limit)

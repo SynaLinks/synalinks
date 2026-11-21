@@ -131,12 +131,14 @@ class HuggingFaceDataset(Dataset):
     def __len__(self):
         if self.streaming and self.limit is None:
             raise NotImplementedError("Streaming HF datasets have unknown length.")
-        if self.limit is not None:
+        if self.streaming:
             num_rows = self.limit
         elif hasattr(self._dataset, "keys") and not self.split:
             num_rows = sum(len(self._dataset[s]) for s in self._dataset.keys())
         else:
             num_rows = len(self._dataset)
+        if self.limit is not None:
+            num_rows = min(num_rows, self.limit)
         return self._total_batches(num_rows)
 
 
