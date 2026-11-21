@@ -26,7 +26,13 @@ from synalinks.src.optimizers.omega import mutation_instructions
 from synalinks.src.optimizers.omega import similarity_distance
 from synalinks.src.programs import Program
 from synalinks.src.rewards.exact_match import ExactMatch
+from synalinks.src.saving.object_registration import register_synalinks_serializable
 from synalinks.src.testing.test_utils import mock_decision_model
+
+
+@register_synalinks_serializable()
+async def _custom_distance(a, b, embedding_model=None, axis=-1):
+    return 0.0
 
 
 class OMEGATest(testing.TestCase):
@@ -132,6 +138,11 @@ class OMEGATest(testing.TestCase):
         optimizer = OMEGA(sampling_temperature=0.9)
         restored = OMEGA.from_config(optimizer.get_config())
         self.assertEqual(restored.sampling_temperature, 0.9)
+
+    def test_distance_function_round_trip(self):
+        optimizer = OMEGA(distance_function=_custom_distance)
+        config = json.loads(json.dumps(optimizer.get_config()))
+        self.assertIs(OMEGA.from_config(config).distance_function, _custom_distance)
 
     async def test_competition_single_candidate(self):
         """Test competition with single candidate returns it unchanged."""
