@@ -597,11 +597,6 @@ def clone_symbolic_data_models(data_models, sd_id_mapping):
     return tree.map_structure(swap, data_models)
 
 
-def find_nodes_by_inputs_and_outputs(inputs, outputs):
-    nodes, _ = _build_map(inputs, outputs)
-    return nodes
-
-
 def clone_graph_nodes(inputs, outputs):
     """Clone the `Node` between the inputs and output data_models.
 
@@ -621,7 +616,7 @@ def clone_graph_nodes(inputs, outputs):
         A pair of inputs and outputs, with cloned `SymbolicDataModel` instances.
         They can be used to create a new functional program.
     """
-    nodes_to_clone = find_nodes_by_inputs_and_outputs(inputs, outputs)
+    nodes_to_clone, _ = _build_map(inputs, outputs)
     cloned_inputs = []
     cloned_outputs = []
     # We not only need to create copies of Nodes (mimic the calls), also need to

@@ -29,6 +29,9 @@ from synalinks.src.backend.pydantic.common import ToolCall
 from synalinks.src.backend.pydantic.common import ToolCallFunction
 from synalinks.src.backend.pydantic.core import DataModel
 
+# Envelope models ignore provider extensions (`annotations`, `verbosity`...).
+WIRE_CONFIG = ConfigDict(extra="ignore")
+
 
 @synalinks_export(
     [
@@ -38,6 +41,8 @@ from synalinks.src.backend.pydantic.core import DataModel
 )
 class ChatCompletionFunctionCall(DataModel):
     """The `function` payload inside a Chat Completions tool call."""
+
+    model_config = WIRE_CONFIG
 
     name: str = Field(
         description="The name of the function to call",
@@ -64,6 +69,8 @@ class ChatCompletionFunctionCall(DataModel):
 class ChatCompletionToolCall(DataModel):
     """A tool call emitted by the assistant in Chat Completions."""
 
+    model_config = WIRE_CONFIG
+
     id: str = Field(
         description="The id of the tool call",
     )
@@ -84,6 +91,8 @@ class ChatCompletionToolCall(DataModel):
 )
 class ChatCompletionMessage(DataModel):
     """A single message in a Chat Completions request or response."""
+
+    model_config = WIRE_CONFIG
 
     role: Literal[
         "developer",
@@ -245,6 +254,8 @@ class ChatCompletionResponseFormat(DataModel):
 class ChatCompletionRequest(DataModel):
     """A Chat Completions request body."""
 
+    model_config = WIRE_CONFIG
+
     model: str = Field(
         description="The model id to use",
     )
@@ -380,6 +391,8 @@ class ChatCompletionRequest(DataModel):
 class ChatCompletionPromptTokensDetails(DataModel):
     """Breakdown of tokens that made up the prompt."""
 
+    model_config = WIRE_CONFIG
+
     cached_tokens: Optional[int] = Field(
         description="Tokens served from the prompt cache",
         default=None,
@@ -398,6 +411,8 @@ class ChatCompletionPromptTokensDetails(DataModel):
 )
 class ChatCompletionCompletionTokensDetails(DataModel):
     """Breakdown of tokens generated in the completion."""
+
+    model_config = WIRE_CONFIG
 
     reasoning_tokens: Optional[int] = Field(
         description="Hidden reasoning tokens consumed by the model",
@@ -426,6 +441,8 @@ class ChatCompletionCompletionTokensDetails(DataModel):
 class ChatCompletionUsage(DataModel):
     """Token usage reported in a Chat Completions response."""
 
+    model_config = WIRE_CONFIG
+
     prompt_tokens: int = Field(
         description="Tokens in the prompt",
     )
@@ -453,6 +470,8 @@ class ChatCompletionUsage(DataModel):
 )
 class ChatCompletionChoice(DataModel):
     """One completion choice in a Chat Completions response."""
+
+    model_config = WIRE_CONFIG
 
     index: int = Field(
         description="The choice index",
@@ -487,6 +506,8 @@ class ChatCompletionChoice(DataModel):
 )
 class ChatCompletionResponse(DataModel):
     """A Chat Completions response body."""
+
+    model_config = WIRE_CONFIG
 
     id: str = Field(
         description="The completion id",
@@ -683,21 +704,6 @@ def from_chat_completion_messages(messages):
     return ChatMessages(messages=[from_chat_completion_message(m) for m in messages])
 
 
-def _tool_to_chat_completion_tool(tool):
-    return ChatCompletionTool(
-        type="function",
-        function=ChatCompletionToolFunction(
-            name=tool.name,
-            description=tool.description or None,
-            parameters={
-                "type": "object",
-                "properties": dict(tool._params_schema),
-                "required": list(tool._required_params),
-            },
-        ),
-    )
-
-
 @synalinks_export(
     [
         "synalinks.backend.to_chat_completion_request",
@@ -717,21 +723,23 @@ def to_chat_completion_request(messages, model, *, tools=None, **kwargs):
         messages (ChatMessages): The synalinks conversation.
         model (str): The target model id (e.g. `"gpt-4o-mini"`).
         tools (Iterable | Mapping | None): Optional synalinks tool
-            callables. A `{name: Tool}` mapping is also accepted (its
-            values are used). Each tool must expose `name`,
-            `description`, `_params_schema`, and `_required_params`
-            (synalinks `Tool` instances do).
+            instances. A `{name: Tool}` mapping is also accepted (its
+            values are used). Each is declared as a `LanguageModel` sends
+            it: the tool's `get_tool_schema()` as `parameters`.
         **kwargs: Forwarded to `ChatCompletionRequest`.
 
     Returns:
         (ChatCompletionRequest): The OpenAI-shaped request body.
     """
+    # The declarations a `LanguageModel` sends, so the request matches the wire.
+    from synalinks.src.modules.language_models.language_model import _tool_to_wire
+
     oa_messages = to_chat_completion_messages(messages)
     oa_tools = None
     if tools:
         if isinstance(tools, dict):
             tools = tools.values()
-        oa_tools = [_tool_to_chat_completion_tool(t) for t in tools]
+        oa_tools = [ChatCompletionTool(**_tool_to_wire(t)) for t in tools]
     return ChatCompletionRequest(
         model=model,
         messages=oa_messages,

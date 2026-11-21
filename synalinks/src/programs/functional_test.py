@@ -2,6 +2,7 @@
 # Original authors: François Chollet et al. (Keras Team)
 # License Apache 2.0: (c) 2025-2026 Yoan Sallami (Synalinks Team)
 
+from synalinks.src import ops
 from synalinks.src import testing
 from synalinks.src.backend import DataModel
 from synalinks.src.backend import JsonDataModel
@@ -205,3 +206,18 @@ class FunctionalTest(testing.TestCase):
             "<Functional name=concat_basic, "
             "description='Concatenate two data_models', built=True>",
         )
+
+    async def test_input_feeding_a_late_node(self):
+        class Query(DataModel):
+            query: str
+
+        class Context(DataModel):
+            context: str
+
+        query = Input(data_model=Query)
+        context = Input(data_model=Context)
+        outputs = await ops.concat(context, await ops.in_mask(query, mask=["query"]))
+        program = Functional([query, context], outputs)
+
+        result = await program([Query(query="q"), Context(context="c")])
+        self.assertEqual(result.get_json(), {"context": "c", "query": "q"})

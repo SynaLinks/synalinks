@@ -27,6 +27,8 @@ class Function(Operation):
     Example:
 
     ```python
+    import asyncio
+
     import synalinks
 
     class Query(synalinks.DataModel):
@@ -35,16 +37,21 @@ class Function(Operation):
     class Answer(synalinks.DataModel):
         answer: str
 
-    input_1 = synalinks.SymbolicDataModel(data_model=Query)
-    input_2 = synalinks.SymbolicDataModel(data_model=Answer)
-    output = synalinks.ops.concatenate([input_1, input_2])
-    fn = synalinks.Function(inputs=[input_1, input_2], outputs=output)
+    async def main():
+        input_1 = synalinks.Input(data_model=Query)
+        input_2 = synalinks.Input(data_model=Answer)
+        output = await synalinks.ops.concat(input_1, input_2)
+        fn = synalinks.Function(inputs=[input_1, input_2], outputs=output)
 
-    input_1_val = synalinks.JsonDataModel(
-        data_model=Query(query="What is the capital of France?")
-    )
-    input_2_val = synalinks.JsonDataModel(data_model=Answer(answer="Paris"))
-    output_val = fn([input_1_val, input_2_val])
+        output_val = await fn(
+            [
+                Query(query="What is the capital of France?"),
+                Answer(answer="Paris"),
+            ]
+        )
+        print(output_val.get_json())
+
+    asyncio.run(main())
     ```
 
     Args:
@@ -121,21 +128,12 @@ class Function(Operation):
             inputs, operation_fn=lambda op: op.compute_output_spec
         )
 
-    def compute_output_schema(self, input_schema):
-        # Wrap `input_schema` into the structure of SymbolicDataModel to utilize
-        # `compute_output_spec`.
-        input_shape_struct = tree.map_shape_structure(
-            lambda x: SymbolicDataModel(schema=x), input_schema
-        )
-        output_spec = self.compute_output_spec(input_shape_struct)
-        return tree.map_structure(lambda x: x.get_schema(), output_spec)
-
     async def call(self, inputs):
         """Computes output data_models for new inputs."""
         self._assert_input_compatibility(inputs)
         return await self._run_through_graph(inputs, operation_fn=lambda op: op)
 
-    async def _run_through_graph(self, inputs, operation_fn, call_fn=None):
+    async def _run_through_graph(self, inputs, operation_fn):
         """Execute the graph.
 
         At each node we compute outputs via
@@ -152,39 +150,21 @@ class Function(Operation):
         depth_keys = list(nodes_by_depth.keys())
         depth_keys.sort(reverse=True)
 
-        async def compute_node(node, operation_fn, call_fn):
+        async def compute_node(node):
             args, kwargs = node.arguments.fill_in(data_model_dict)
-            op = operation_fn(node.operation)
-            if call_fn is not None:
-                outputs = await call_fn(op, *args, **kwargs)
-            else:
-                outputs = await op(*args, **kwargs)
-            return outputs
+            return await operation_fn(node.operation)(*args, **kwargs)
 
         for depth in depth_keys:
-            nodes = nodes_by_depth[depth]
-            tasks = []
-
-            for node in nodes:
-                if not node.operation or node.is_input:
-                    continue  # Input data_models already exist.
-
-                if any(id(x) not in data_model_dict for x in node.input_data_models):
-                    continue  # Node is not computable, try skipping.
-
-                tasks.append(compute_node(node, operation_fn, call_fn))
-
-            results = await asyncio.gather(*tasks)
-
-            for i, node in enumerate(nodes):
-                if not node.operation or node.is_input:
-                    continue  # Input data_models already exist.
-
-                if any(id(x) not in data_model_dict for x in node.input_data_models):
-                    continue  # Node is not computable, try skipping.
-
-                # Update data_model_dict.
-                for x, y in zip(node.outputs, tree.flatten(results[i])):
+            computable = [
+                node
+                for node in nodes_by_depth[depth]
+                if node.operation
+                and not node.is_input
+                and all(id(x) in data_model_dict for x in node.input_data_models)
+            ]
+            results = await asyncio.gather(*(compute_node(node) for node in computable))
+            for node, result in zip(computable, results):
+                for x, y in zip(node.outputs, tree.flatten(result)):
                     data_model_dict[id(x)] = y
 
         output_data_models = []

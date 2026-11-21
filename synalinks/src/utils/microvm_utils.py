@@ -451,17 +451,6 @@ def libkrun_dir() -> Optional[str]:
     return None
 
 
-def hypervisor_supported() -> bool:
-    """Whether this Mac exposes Hypervisor.framework (``kern.hv_support``)."""
-    libc = ctypes.CDLL(ctypes.util.find_library("c"))
-    value = ctypes.c_int(0)
-    size = ctypes.c_size_t(ctypes.sizeof(value))
-    rc = libc.sysctlbyname(
-        b"kern.hv_support", ctypes.byref(value), ctypes.byref(size), None, 0
-    )
-    return rc == 0 and value.value == 1
-
-
 def microvm_available() -> Tuple[bool, str]:
     """Whether the microVM backend can run on this host; ``(ok, reason)``.
 
@@ -472,7 +461,13 @@ def microvm_available() -> Tuple[bool, str]:
         return False, "the microVM backend is macOS-only"
     if platform.machine() != "arm64":
         return False, "the microVM backend needs Apple silicon"
-    if not hypervisor_supported():
+    libc = ctypes.CDLL(ctypes.util.find_library("c"))
+    hv_support = ctypes.c_int(0)
+    size = ctypes.c_size_t(ctypes.sizeof(hv_support))
+    rc = libc.sysctlbyname(
+        b"kern.hv_support", ctypes.byref(hv_support), ctypes.byref(size), None, 0
+    )
+    if rc != 0 or hv_support.value != 1:
         return False, (
             "Hypervisor.framework is unavailable (a Mac that is itself a VM "
             "usually cannot nest one)"
@@ -505,41 +500,6 @@ class CacheLock:
         self._fh.close()
 
 
-def build_helper(libdir: str) -> str:
-    """Compile and ad-hoc sign the helper if the current source is not built."""
-    target = helper_path()
-    if os.path.exists(target):
-        return target
-    prefix = os.path.dirname(libdir)
-    with tempfile.TemporaryDirectory(dir=cache_dir()) as tmp:
-        binary = os.path.join(tmp, "synalinks-krun")
-        entitlements = os.path.join(tmp, "hv.entitlements")
-        with open(entitlements, "w") as fh:
-            fh.write(ENTITLEMENTS)
-        subprocess.run(
-            [
-                "clang",
-                "-O2",
-                "-Wno-comment",
-                "-I" + os.path.join(prefix, "include"),
-                "-L" + libdir,
-                "-lkrun",
-                HELPER_SRC,
-                "-o",
-                binary,
-            ],
-            check=True,
-            capture_output=True,
-        )
-        subprocess.run(
-            ["codesign", "-s", "-", "--entitlements", entitlements, "--force", binary],
-            check=True,
-            capture_output=True,
-        )
-        os.replace(binary, target)
-    return target
-
-
 def fetch(url: str, token: Optional[str] = None, accept: Optional[str] = None) -> bytes:
     request = urllib.request.Request(url)
     if token:
@@ -565,23 +525,6 @@ def verified_sha256(data: bytes, expected: str) -> bytes:
     return data
 
 
-def extract_deb(data: bytes, root: str) -> None:
-    """Extract a Debian package's files into ``root`` (no maintainer scripts)."""
-    if not data.startswith(b"!<arch>\n"):
-        raise ValueError("not a Debian package")
-    offset = 8
-    while offset < len(data):
-        header = data[offset : offset + 60]
-        name = header[:16].decode("ascii").strip().rstrip("/")
-        size = int(header[48:58].decode("ascii").strip())
-        body = data[offset + 60 : offset + 60 + size]
-        if name.startswith("data.tar"):
-            extract_layer(body, root)
-            return
-        offset += 60 + size + (size % 2)  # ar members are 2-byte aligned
-    raise ValueError("Debian package has no data archive")
-
-
 def remove(path: str) -> None:
     if os.path.isdir(path) and not os.path.islink(path):
         shutil.rmtree(path)
@@ -590,110 +533,32 @@ def remove(path: str) -> None:
 
 
 def extract_layer(data: bytes, root: str) -> None:
-    """Apply one image layer to ``root``: OCI whiteouts, no device nodes."""
+    """Apply one image layer to ``root``: OCI whiteouts, no device nodes.
+
+    Whiteouts bypass tarfile's ``filter="tar"``, so their directory is resolved
+    (following symlinks from lower layers) and must stay inside ``root``, as
+    tarfile itself enforces for regular members.
+    """
+    real_root = os.path.realpath(root)
     with tarfile.open(fileobj=io.BytesIO(data)) as tar:
         members = []
         for member in tar.getmembers():
             parent, base = os.path.split(member.name)
+            if base.startswith(".wh."):
+                directory = os.path.realpath(os.path.join(real_root, parent))
+                name = base[len(".wh.") :]
+                inside = os.path.commonpath([real_root, directory]) == real_root
+                if not inside or name in ("", ".", ".."):
+                    raise tarfile.OutsideDestinationError(member, directory)
             if base == ".wh..wh..opq":  # opaque dir: drop what lower layers put there
-                directory = os.path.join(root, parent)
                 if os.path.isdir(directory):
                     for entry in os.listdir(directory):
                         remove(os.path.join(directory, entry))
             elif base.startswith(".wh."):  # whiteout: delete one lower-layer entry
-                remove(os.path.join(root, parent, base[len(".wh.") :]))
+                remove(os.path.join(directory, name))
             elif not (member.ischr() or member.isblk() or member.isfifo()):
                 members.append(member)
         tar.extractall(root, members=members, filter="tar")
-
-
-def rootfs_key() -> str:
-    """Cache key: the image plus everything this module adds to it."""
-    import dill
-
-    extras = (
-        ENTRY_SRC
-        + FS_SRC
-        + dill.__version__
-        + IMAGE_DIGEST
-        + LIBFUSE_DEB_SHA256
-        + "".join(sha for _, sha in GUEST_WHEELS)
-    )
-    return hashlib.sha256(extras.encode("utf-8")).hexdigest()[:16]
-
-
-def provision_rootfs(helper: str, libdir: str) -> str:
-    """Download, verify and extract the guest image once; return its root."""
-    target = os.path.join(cache_dir(), f"rootfs-{rootfs_key()}")
-    if os.path.isdir(target):
-        return target
-    token = json.loads(fetch(AUTH.format(IMAGE_REPO)))["token"]
-    manifest = json.loads(
-        verified(
-            fetch(
-                f"{REGISTRY}/{IMAGE_REPO}/manifests/{IMAGE_DIGEST}",
-                token,
-                MANIFEST_TYPES,
-            ),
-            IMAGE_DIGEST,
-        )
-    )
-    staging = tempfile.mkdtemp(dir=cache_dir(), prefix="rootfs-staging-")
-    try:
-        for layer in manifest["layers"]:
-            blob = fetch(f"{REGISTRY}/{IMAGE_REPO}/blobs/{layer['digest']}", token)
-            extract_layer(verified(blob, layer["digest"]), staging)
-        for path, source in ((GUEST_ENTRY, ENTRY_SRC), (GUEST_FS, FS_SRC)):
-            target_file = os.path.join(staging, path.lstrip("/"))
-            os.makedirs(os.path.dirname(target_file), exist_ok=True)
-            with open(target_file, "w") as fh:
-                fh.write(source)
-        os.makedirs(os.path.join(staging, GUEST_MOUNT.lstrip("/")))
-        extract_deb(verified_sha256(fetch(LIBFUSE_DEB), LIBFUSE_DEB_SHA256), staging)
-        # ``dill`` (the bootstrap) and ``mfusepy`` (the FUSE daemon) are not in
-        # the image. Both are pure Python, so the host's copies run unchanged.
-        import dill
-        import mfusepy
-
-        shutil.copytree(
-            os.path.dirname(dill.__file__),
-            os.path.join(staging, GUEST_SITE, "dill"),
-            ignore=shutil.ignore_patterns("__pycache__"),
-        )
-        shutil.copy(mfusepy.__file__, os.path.join(staging, GUEST_SITE))
-        for url, sha256 in GUEST_WHEELS:
-            wheel = verified_sha256(fetch(url), sha256)
-            with zipfile.ZipFile(io.BytesIO(wheel)) as archive:
-                archive.extractall(os.path.join(staging, GUEST_SITE))
-        # Precompile the bytecode, in the guest so it matches the guest's
-        # Python whatever the host runs: the root is read-only at run time, so
-        # without this every run recompiles each module it imports.
-        subprocess.run(
-            [
-                helper,
-                "--root",
-                staging,
-                "--root-writable",
-                "--",
-                GUEST_PYTHON,
-                "-m",
-                "compileall",
-                "-q",
-                "-j",
-                "0",
-                "/usr/local/lib/python3.12",
-                os.path.dirname(GUEST_ENTRY),
-            ],
-            check=True,
-            capture_output=True,
-            env={"DYLD_FALLBACK_LIBRARY_PATH": libdir},
-            timeout=600,
-        )
-        os.replace(staging, target)
-    except BaseException:
-        shutil.rmtree(staging, ignore_errors=True)
-        raise
-    return target
 
 
 def prepare_microvm() -> Dict[str, Any]:
@@ -706,26 +571,153 @@ def prepare_microvm() -> Dict[str, Any]:
     if libdir is None:
         raise RuntimeError("libkrun is not installed")
     with CacheLock():
-        helper = build_helper(libdir)
-        rootfs = provision_rootfs(helper, libdir)
-        prune_cache(keep={helper, rootfs})
+        # The helper, compiled and ad-hoc signed once per source version.
+        helper = helper_path()
+        if not os.path.exists(helper):
+            prefix = os.path.dirname(libdir)
+            with tempfile.TemporaryDirectory(dir=cache_dir()) as tmp:
+                binary = os.path.join(tmp, "synalinks-krun")
+                entitlements = os.path.join(tmp, "hv.entitlements")
+                with open(entitlements, "w") as fh:
+                    fh.write(ENTITLEMENTS)
+                subprocess.run(
+                    [
+                        "clang",
+                        "-O2",
+                        "-Wno-comment",
+                        "-I" + os.path.join(prefix, "include"),
+                        "-L" + libdir,
+                        "-lkrun",
+                        HELPER_SRC,
+                        "-o",
+                        binary,
+                    ],
+                    check=True,
+                    capture_output=True,
+                )
+                subprocess.run(
+                    [
+                        "codesign",
+                        "-s",
+                        "-",
+                        "--entitlements",
+                        entitlements,
+                        "--force",
+                        binary,
+                    ],
+                    check=True,
+                    capture_output=True,
+                )
+                os.replace(binary, helper)
+
+        # The guest image, downloaded, verified and extracted once per key: the
+        # image plus everything this module adds to it.
+        import dill
+
+        extras = (
+            ENTRY_SRC
+            + FS_SRC
+            + dill.__version__
+            + IMAGE_DIGEST
+            + LIBFUSE_DEB_SHA256
+            + "".join(sha for _, sha in GUEST_WHEELS)
+        )
+        key = hashlib.sha256(extras.encode("utf-8")).hexdigest()[:16]
+        rootfs = os.path.join(cache_dir(), f"rootfs-{key}")
+        if not os.path.isdir(rootfs):
+            token = json.loads(fetch(AUTH.format(IMAGE_REPO)))["token"]
+            manifest = json.loads(
+                verified(
+                    fetch(
+                        f"{REGISTRY}/{IMAGE_REPO}/manifests/{IMAGE_DIGEST}",
+                        token,
+                        MANIFEST_TYPES,
+                    ),
+                    IMAGE_DIGEST,
+                )
+            )
+            staging = tempfile.mkdtemp(dir=cache_dir(), prefix="rootfs-staging-")
+            try:
+                for layer in manifest["layers"]:
+                    blob = fetch(
+                        f"{REGISTRY}/{IMAGE_REPO}/blobs/{layer['digest']}", token
+                    )
+                    extract_layer(verified(blob, layer["digest"]), staging)
+                for path, source in ((GUEST_ENTRY, ENTRY_SRC), (GUEST_FS, FS_SRC)):
+                    target_file = os.path.join(staging, path.lstrip("/"))
+                    os.makedirs(os.path.dirname(target_file), exist_ok=True)
+                    with open(target_file, "w") as fh:
+                        fh.write(source)
+                os.makedirs(os.path.join(staging, GUEST_MOUNT.lstrip("/")))
+                # The libfuse package: only its data archive, no maintainer scripts.
+                deb = verified_sha256(fetch(LIBFUSE_DEB), LIBFUSE_DEB_SHA256)
+                if not deb.startswith(b"!<arch>\n"):
+                    raise ValueError("not a Debian package")
+                offset = 8
+                while offset < len(deb):
+                    header = deb[offset : offset + 60]
+                    name = header[:16].decode("ascii").strip().rstrip("/")
+                    size = int(header[48:58].decode("ascii").strip())
+                    if name.startswith("data.tar"):
+                        extract_layer(deb[offset + 60 : offset + 60 + size], staging)
+                        break
+                    offset += 60 + size + (size % 2)  # ar members are 2-byte aligned
+                else:
+                    raise ValueError("Debian package has no data archive")
+                # ``dill`` (the bootstrap) and ``mfusepy`` (the FUSE daemon) are not in
+                # the image. Both are pure Python, so the host's copies run unchanged.
+                import mfusepy
+
+                shutil.copytree(
+                    os.path.dirname(dill.__file__),
+                    os.path.join(staging, GUEST_SITE, "dill"),
+                    ignore=shutil.ignore_patterns("__pycache__"),
+                )
+                shutil.copy(mfusepy.__file__, os.path.join(staging, GUEST_SITE))
+                for url, sha256 in GUEST_WHEELS:
+                    wheel = verified_sha256(fetch(url), sha256)
+                    with zipfile.ZipFile(io.BytesIO(wheel)) as archive:
+                        archive.extractall(os.path.join(staging, GUEST_SITE))
+                # Precompile the bytecode, in the guest so it matches the guest's
+                # Python whatever the host runs: the root is read-only at run time, so
+                # without this every run recompiles each module it imports.
+                subprocess.run(
+                    [
+                        helper,
+                        "--root",
+                        staging,
+                        "--root-writable",
+                        "--",
+                        GUEST_PYTHON,
+                        "-m",
+                        "compileall",
+                        "-q",
+                        "-j",
+                        "0",
+                        "/usr/local/lib/python3.12",
+                        os.path.dirname(GUEST_ENTRY),
+                    ],
+                    check=True,
+                    capture_output=True,
+                    env={"DYLD_FALLBACK_LIBRARY_PATH": libdir},
+                    timeout=600,
+                )
+                os.replace(staging, rootfs)
+            except BaseException:
+                shutil.rmtree(staging, ignore_errors=True)
+                raise
+
+        # Drop the helpers and images of older versions (~150 MB each), only a
+        # day old or more: an older synalinks may still be booting VMs from them.
+        import time
+
+        cutoff = time.time() - 86400
+        for pattern in ("synalinks-krun-*", "rootfs-*"):
+            for path in glob.glob(os.path.join(cache_dir(), pattern)):
+                if path in (helper, rootfs) or os.path.getmtime(path) > cutoff:
+                    continue
+                remove(path)
     return {"helper": helper, "rootfs": rootfs, "libdir": libdir}
-
-
-def prune_cache(keep: set, min_age_seconds: float = 86400) -> None:
-    """Drop helpers and images from older versions (~150 MB each).
-
-    Only entries a day old or more: another process running an older synalinks
-    may still be booting VMs from them.
-    """
-    import time
-
-    cutoff = time.time() - min_age_seconds
-    for pattern in ("synalinks-krun-*", "rootfs-*"):
-        for path in glob.glob(os.path.join(cache_dir(), pattern)):
-            if path in keep or os.path.getmtime(path) > cutoff:
-                continue
-            remove(path)
 
 
 def sbpl(path: str) -> str:

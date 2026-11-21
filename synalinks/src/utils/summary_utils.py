@@ -192,34 +192,12 @@ def bold_text(x, color=None):
 
 
 def format_module_schema(module):
-    if not module._inbound_nodes and not module._build_schemas_dict:
+    if not module._inbound_nodes:
         return "?"
-
-    def format_schema(schema):
-        return beautify_schema(schema)
-
-    # There are 2 approaches to get output schemas:
-    # 1. Using `module._inbound_nodes`, which is possible if the program is a
-    # Sequential or Functional.
-    # 2. Using `module._build_schemas_dict`, which is possible if users manually
-    # build the module.
-    if len(module._inbound_nodes) > 0:
-        for i in range(len(module._inbound_nodes)):
-            outputs = module._inbound_nodes[i].output_data_models
-            output_schemas = tree.map_structure(
-                lambda x: format_schema(x.get_schema()), outputs
-            )
-    else:
-        try:
-            if hasattr(module, "output_schema"):
-                output_schemas = format_schema(module.output_schema)
-            else:
-                outputs = module.compute_output_schema(**module._build_schemas_dict)
-                output_schemas = tree.map_schema_structure(
-                    lambda x: format_schema(x), outputs
-                )
-        except NotImplementedError:
-            return "?"
+    outputs = module._inbound_nodes[-1].output_data_models
+    output_schemas = tree.map_structure(
+        lambda x: beautify_schema(x.get_schema()), outputs
+    )
     if len(output_schemas) == 1:
         return output_schemas[0]
     out = "\n---\n".join(output_schemas)
