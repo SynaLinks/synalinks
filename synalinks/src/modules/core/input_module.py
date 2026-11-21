@@ -133,7 +133,11 @@ def Input(
     """
     module = InputModule(
         schema=schema,
-        input_data_model=data_model.to_symbolic_data_model() if data_model else None,
+        input_data_model=(
+            backend.SymbolicDataModel(schema=data_model.get_schema(), name=name)
+            if data_model
+            else None
+        ),
         optional=optional,
         name=name,
     )
