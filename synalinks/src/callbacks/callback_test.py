@@ -121,3 +121,45 @@ class TrainErrorTest(testing.TestCase):
         self.assertFalse(monitor._in_training)
         runs = mlflow.search_runs(experiment_names=["e"], output_format="list")
         self.assertEqual([r.info.status for r in runs], ["FAILED"])
+
+    async def test_failed_evaluate_calls_on_test_error_and_ends_mlflow_run(self):
+        import os
+        import tempfile
+
+        import mlflow
+        import numpy as np
+
+        from synalinks.src.callbacks.monitor import Monitor
+        from synalinks.src.modules import Input
+        from synalinks.src.testing.test_utils import Query
+
+        seen = []
+
+        class Boom(Callback):
+            def on_test_end(self, logs=None):
+                seen.append("end")
+
+            def on_test_error(self, error):
+                seen.append(error)
+
+            def on_test_batch_end(self, batch, logs=None):
+                raise RuntimeError("boom")
+
+        uri = "sqlite:///" + os.path.join(tempfile.mkdtemp(), "mlflow.db")
+        monitor = Monitor(
+            tracking_uri=uri,
+            experiment_name="ev",
+            log_program_plot=False,
+            log_program_model=False,
+        )
+        x0 = Input(data_model=Query)
+        program = Program(inputs=x0, outputs=x0, name="identity")
+        program.compile(reward=ExactMatch())
+        x = np.array([Query(query="q")] * 2, dtype="object")
+        with self.assertRaisesRegex(RuntimeError, "boom"):
+            await program.evaluate(x=x, y=x, batch_size=2, callbacks=[monitor, Boom()])
+        self.assertEqual(len(seen), 1)
+        self.assertIsInstance(seen[0], RuntimeError)
+        self.assertIsNone(mlflow.active_run())
+        runs = mlflow.search_runs(experiment_names=["ev"], output_format="list")
+        self.assertEqual([r.info.status for r in runs], ["FAILED"])

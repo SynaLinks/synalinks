@@ -251,6 +251,20 @@ class Callback:
         """
 
     @utils.default
+    def on_test_error(self, error):
+        """Called instead of `on_test_end()` when evaluation raises.
+
+        `evaluate()` (also run for validation inside `fit()`) re-raises the
+        error once every callback has run this hook; inside `fit()`,
+        `on_train_error()` follows.
+
+        Subclasses should override for any actions to run.
+
+        Args:
+            error (BaseException): The exception that stopped evaluation.
+        """
+
+    @utils.default
     def on_predict_begin(self, logs=None):
         """Called at the beginning of prediction.
 

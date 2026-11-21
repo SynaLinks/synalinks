@@ -969,25 +969,29 @@ class Trainer:
         self.stop_evaluating = False
         self._eval_inputs = {"x": x, "y": y}
         callbacks.on_test_begin()
-        logs = {}
-        self.reset_metrics()
-        for step, iterator in epoch_iterator:
-            callbacks.on_test_batch_begin(step)
-            data = iterator[0]
-            x_batch, y_batch = data_adapter_utils.unpack_x_targets(data)
-            # Only the first step can consume the auto-build's predictions, and
-            # only once: taking it clears it, so every later batch predicts.
-            y_pred, prebuilt_y_pred = prebuilt_y_pred, None
-            logs = await self.test_on_batch(
-                x=x_batch,
-                y=y_batch,
-                return_dict=True,
-                y_pred=y_pred,
-            )
-            callbacks.on_test_batch_end(step, logs)
-            if self.stop_evaluating:
-                break
-        logs = self.get_metrics_result()
+        try:
+            logs = {}
+            self.reset_metrics()
+            for step, iterator in epoch_iterator:
+                callbacks.on_test_batch_begin(step)
+                data = iterator[0]
+                x_batch, y_batch = data_adapter_utils.unpack_x_targets(data)
+                # Only the first step can consume the auto-build's predictions, and
+                # only once: taking it clears it, so every later batch predicts.
+                y_pred, prebuilt_y_pred = prebuilt_y_pred, None
+                logs = await self.test_on_batch(
+                    x=x_batch,
+                    y=y_batch,
+                    return_dict=True,
+                    y_pred=y_pred,
+                )
+                callbacks.on_test_batch_end(step, logs)
+                if self.stop_evaluating:
+                    break
+            logs = self.get_metrics_result()
+        except BaseException as e:
+            callbacks.on_test_error(e)
+            raise
         callbacks.on_test_end(logs)
         self._eval_inputs = None
 

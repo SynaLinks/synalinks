@@ -1088,6 +1088,14 @@ class Monitor(Callback):
                 self._log_dataset(inputs.get("x"), inputs.get("y"), "evaluation")
             )
 
+    def on_test_error(self, error):
+        """Called when evaluation raises: end a standalone run as FAILED.
+
+        Inside `fit()` the training run is left to `on_train_error()`.
+        """
+        if not self._in_training:
+            self._end_run(status="FAILED")
+
     def on_test_end(self, logs=None):
         """Called at the end of evaluation or validation.
 
