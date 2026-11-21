@@ -268,7 +268,7 @@ Synalinks provides Python operators for combining and manipulating data models, 
 | `&` | Logical And | Safe concatenation that returns `None` if either input is `None`. | Combining with potentially null branch outputs |
 | `\|` | Logical Or | Returns the non-`None` data model. If both are non-`None`, merges them. | Gathering outputs from conditional branches |
 | `^` | Logical Xor | Returns data if exactly one input is non-`None`, otherwise `None`. | Exclusive branch selection |
-| `~` | Logical Not | Returns `None` if input is non-`None`, or a empty data model if `None`. | Inverting branch conditions |
+| `~` | Logical Not | Always returns `None` (cancels a path); symbolically keeps the input schema. | Inverting branch conditions |
 | `in` | Contains | Checks if a string key exists in the schema properties, or if another data model's schema is contained. Returns `True` or `False`. | Conditional field checking, schema validation |
 
 </div>
