@@ -151,6 +151,18 @@ class ProgramTest(testing.TestCase):
         with self.assertRaisesRegex(ValueError, "do not match program 'one_step'"):
             one_step.set_state_tree(two_steps.get_state_tree())
 
+    async def test_save_and_load_keeps_description(self):
+        x0 = Input(data_model=Query)
+        x1 = await Generator(
+            data_model=Answer, language_model=LanguageModel(model="ollama/mistral")
+        )(x0)
+        program = Program(inputs=x0, outputs=x1, name="p", description="Answers")
+
+        filepath = os.path.join(tempfile.mkdtemp(), "program.json")
+        program.save(filepath)
+
+        self.assertEqual(Program.load(filepath).description, "Answers")
+
     async def test_get_state_after_compile(self):
         class Query(DataModel):
             query: str
