@@ -35,6 +35,14 @@ class RubricRewardsTest(testing.TestCase):
             ["faithfulness"],
         )
 
+    def test_presets_are_gradable_criteria(self):
+        # Not copied extraction-step prompts: a criterion the answer meets or not.
+        for preset in list_rubrics():
+            for rubric in get_rubric(preset):
+                with self.subTest(rubric=rubric["name"]):
+                    for phrase in ("Extract", "generate a", "JSON", "You are"):
+                        self.assertNotIn(phrase, rubric["description"])
+
     def test_every_preset_reward(self):
         language_model = LanguageModel(model="ollama/mistral")
         presets = [
