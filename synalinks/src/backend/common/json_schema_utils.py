@@ -287,10 +287,13 @@ def _py_factorize_schema(schema):
                 if plural_key not in result_schema["required"]:
                     result_schema["required"].append(plural_key)
         else:
-            if not is_plural(prop_key):
-                result_schema["properties"][base_key] = prop_value
-                if base_key not in result_schema["required"]:
-                    result_schema["required"].append(base_key)
+            # A plural with siblings is covered by the array grouped from them.
+            if is_plural(prop_key) and similar_prop_keys:
+                continue
+            key = prop_key if is_plural(prop_key) else base_key
+            result_schema["properties"][key] = prop_value
+            if key not in result_schema["required"]:
+                result_schema["required"].append(key)
 
     if len(result_schema.get("$defs")) == 0:
         del result_schema["$defs"]

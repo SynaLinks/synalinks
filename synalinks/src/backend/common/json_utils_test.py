@@ -808,6 +808,10 @@ class PyJsonHelpersTest(testing.TestCase):
         result = _py_factorize_json({"foos": ["a"], "foo": "b"})
         self.assertEqual(result, {"foos": ["a", "b"]})
 
+    def test_py_factorize_singular_then_plural_keeps_both(self):
+        result = _py_factorize_json({"foo": "a", "foos": ["b"]})
+        self.assertEqual(result, {"foos": ["a", "b"]})
+
     def test_py_factorize_keeps_unrelated_keys(self):
         result = _py_factorize_json({"foo": "x", "foo_1": "y", "bar": "z"})
         self.assertEqual(result, {"foos": ["x", "y"], "bar": "z"})

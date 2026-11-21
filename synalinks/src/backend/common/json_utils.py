@@ -149,8 +149,10 @@ def _py_factorize_json(json):
         else:
             if not is_plural(prop_key):
                 result_json[base_key] = prop_value
+            elif isinstance(result_json.get(prop_key), list):
+                # Extend a list already grouped from its singular siblings.
+                result_json[prop_key].extend(prop_value)
             else:
-                # If the property is a plural (a list) ensure it is added to the result
                 result_json[prop_key] = prop_value
 
     return result_json

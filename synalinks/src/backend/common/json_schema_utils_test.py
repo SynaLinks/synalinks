@@ -796,6 +796,19 @@ class PyFactorizeSchemaTest(testing.TestCase):
         result = _py_factorize_schema(schema)
         self.assertEqual(result["properties"], {"only": {"type": "string"}})
 
+    def test_py_factorize_keeps_plural_properties(self):
+        schema = {
+            "properties": {
+                "query": {"type": "string"},
+                "answers": {"type": "array", "items": {"type": "string"}},
+            },
+            "required": ["query", "answers"],
+            "type": "object",
+        }
+        result = _py_factorize_schema(schema)
+        self.assertEqual(result["properties"], schema["properties"])
+        self.assertEqual(result["required"], ["query", "answers"])
+
     def test_py_factorize_drops_defs_when_empty(self):
         schema = {
             "properties": {"a": {"type": "string"}},
