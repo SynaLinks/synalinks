@@ -255,7 +255,10 @@ class MeanMetricWrapper(Mean):
     ```python
     program.compile(
         metrics=[
-            synalinks.metrics.MeanMetricWrapper(),
+            synalinks.metrics.MeanMetricWrapper(
+                synalinks.rewards.exact_match,
+                in_mask=["answer"],
+            ),
         ],
     )
     ```
