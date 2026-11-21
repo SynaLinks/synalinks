@@ -109,12 +109,12 @@ class LMOperationalMetric(Metric):
     reachable from the program (and their `.fallback` chains) when
     `program.compile()` is called, and counters are summed across all.
 
-    Example:
+    Example (with a concrete subclass):
 
     ```python
     program.compile(
         metrics=[
-            synalinks.metrics.LMOperationalMetric(),
+            synalinks.metrics.InputTokens(),
         ],
     )
     ```

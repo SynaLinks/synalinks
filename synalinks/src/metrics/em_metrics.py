@@ -78,12 +78,12 @@ class EmbeddingModelOperationalMetric(Metric):
     Binds itself automatically to every `EmbeddingModel` reachable from
     the program (and their `.fallback` chains) on `program.compile()`.
 
-    Example:
+    Example (with a concrete subclass):
 
     ```python
     program.compile(
         metrics=[
-            synalinks.metrics.EmbeddingModelOperationalMetric(),
+            synalinks.metrics.EmbeddingTokens(),
         ],
     )
     ```
