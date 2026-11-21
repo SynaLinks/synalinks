@@ -303,3 +303,41 @@ class RetrieveKnowledgeTest(testing.TestCase):
         result = await module(query)
         rows = result.get_json().get("result", [])
         self.assertEqual({r["id"] for r in rows}, {"d1"})
+
+    def test_retrieve_knowledge_uses_default_knowledge_base(self):
+        from synalinks.src.backend import config
+
+        knowledge_base = KnowledgeBase(
+            uri="duckdb://" + self.db_path,
+            data_models=[Document],
+        )
+        config.set_default_knowledge_base(knowledge_base)
+        try:
+            retrieve_module = RetrieveKnowledge(
+                language_model=LanguageModel(model="ollama/mistral"),
+            )
+        finally:
+            config.set_default_knowledge_base(None)
+        self.assertIs(retrieve_module.knowledge_base, knowledge_base)
+
+    @patch("litellm.acompletion")
+    async def test_retrieve_knowledge_search_errors_propagate(self, mock_completion):
+        mock_completion.return_value = {
+            "choices": [
+                {"message": {"content": '{"tables": ["Document"], "search": ["fox"]}'}}
+            ]
+        }
+        knowledge_base = KnowledgeBase(
+            uri="duckdb://" + self.db_path,
+            data_models=[Document],
+        )
+        await knowledge_base.update(
+            JsonDataModel(data_model=Document(id="doc1", text="the quick brown fox"))
+        )
+        retrieve_module = RetrieveKnowledge(
+            knowledge_base=knowledge_base,
+            language_model=LanguageModel(model="ollama/mistral"),
+            search_type="similarity",
+        )
+        with self.assertRaisesRegex(ValueError, "embedding model"):
+            await retrieve_module(JsonDataModel(data_model=Query(question="fox?")))

@@ -15,6 +15,7 @@ from synalinks.src.backend import GenericResult
 from synalinks.src.backend import JsonDataModel
 from synalinks.src.backend import SymbolicDataModel
 from synalinks.src.backend import is_symbolic_data_model
+from synalinks.src.knowledge_bases import get as _get_kb
 from synalinks.src.modules.core.generator import Generator
 from synalinks.src.modules.language_models import get as _get_lm
 from synalinks.src.modules.module import Module
@@ -223,7 +224,7 @@ class RetrieveKnowledge(Module):
             description=description,
             trainable=trainable,
         )
-        self.knowledge_base = knowledge_base
+        self.knowledge_base = self._own(_get_kb(knowledge_base), given=knowledge_base)
         self.language_model = _get_lm(language_model)
 
         # Translate legacy aliases (e.g. "hybrid" -> "hybrid_fts") before
@@ -247,7 +248,7 @@ class RetrieveKnowledge(Module):
         self.examples = examples
 
         if not data_models:
-            data_models = knowledge_base.get_symbolic_data_models()
+            data_models = self.knowledge_base.get_symbolic_data_models()
 
         self.data_models = data_models
 
@@ -373,11 +374,7 @@ class RetrieveKnowledge(Module):
 
         for dm in target_data_models:
             table_name = dm.get_schema().get("title")
-            try:
-                rows = await _search_one(table_name)
-            except Exception:
-                rows = []
-            for row in rows:
+            for row in await _search_one(table_name):
                 sig = orjson.dumps(row, option=orjson.OPT_SORT_KEYS, default=str)
                 if sig in seen:
                     continue
