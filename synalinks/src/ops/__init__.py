@@ -7,6 +7,8 @@ from synalinks.src.ops.json import InMask
 from synalinks.src.ops.json import Not
 from synalinks.src.ops.json import Or
 from synalinks.src.ops.json import OutMask
+from synalinks.src.ops.json import Prefix
+from synalinks.src.ops.json import Suffix
 from synalinks.src.ops.json import Xor
 from synalinks.src.ops.json import concat
 from synalinks.src.ops.json import factorize
