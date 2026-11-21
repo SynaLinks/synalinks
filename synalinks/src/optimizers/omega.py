@@ -388,7 +388,7 @@ class OMEGA(EvolutionaryOptimizer):
         reasoning_effort (string): Optional. The reasoning effort for the LM call
             between ['minimal', 'low', 'medium', 'high', 'xhigh', 'disable',
             'none', None].
-            Default to None (no reasoning).
+            Default to None (the provider default).
         use_chain_of_thought (bool): Whether the mutation/crossover programs use
             a `ChainOfThought` (which first writes a prompt-driven `thinking`
             field, then the variable) or a plain `Generator` that emits the

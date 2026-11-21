@@ -523,7 +523,7 @@ class LanguageModelTest(testing.TestCase):
         self, mock_completion
     ):
         """`reasoning_effort="disable"` turns native thinking off on ollama
-        (which reasons by default) by sending `think=False`; `"none"` leaves the
+        (which reasons by default) by sending `think=False`; `None` leaves the
         model at its default and sends nothing.
         """
         mock_completion.return_value = {"choices": [{"message": {"content": "ok"}}]}
@@ -535,11 +535,11 @@ class LanguageModelTest(testing.TestCase):
         await ollama_lm(messages, reasoning_effort="disable")
         self.assertIs(mock_completion.call_args.kwargs.get("think"), False)
 
-        await ollama_lm(messages, reasoning_effort="none")
+        await ollama_lm(messages, reasoning_effort=None)
         self.assertNotIn("think", mock_completion.call_args.kwargs)
 
     @patch("litellm.acompletion")
-    async def test_reasoning_effort_python_none_sends_nothing(self, mock_completion):
+    async def test_reasoning_effort_none_values_differ(self, mock_completion):
         mock_completion.return_value = {"choices": [{"message": {"content": "ok"}}]}
         messages = ChatMessages(
             messages=[ChatMessage(role=ChatRole.USER, content="Hello")]
@@ -550,6 +550,20 @@ class LanguageModelTest(testing.TestCase):
         await lm(messages, reasoning_effort=None)
         self.assertNotIn("reasoning_effort", mock_completion.call_args.kwargs)
         self.assertNotIn("extra_body", mock_completion.call_args.kwargs)
+
+        await lm(messages, reasoning_effort="none")
+        kwargs = mock_completion.call_args.kwargs
+        self.assertEqual(kwargs["reasoning_effort"], "none")
+        self.assertIs(
+            kwargs["extra_body"]["chat_template_kwargs"]["enable_thinking"], False
+        )
+
+        await lm(messages, reasoning_effort="disable")
+        kwargs = mock_completion.call_args.kwargs
+        self.assertNotIn("reasoning_effort", kwargs)
+        self.assertIs(
+            kwargs["extra_body"]["chat_template_kwargs"]["enable_thinking"], False
+        )
 
     @patch("litellm.acompletion")
     async def test_reasoning_effort_disable_noop_for_non_ollama(self, mock_completion):

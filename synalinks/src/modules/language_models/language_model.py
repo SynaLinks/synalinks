@@ -683,9 +683,12 @@ class LanguageModel(Module):
     parameter, passed either as a default in the constructor or per call. It
     accepts:
 
-    - `"none"` (the default): send nothing, leaving the model at its provider
-      default reasoning behavior. `None` (what a module passes when it
-      sets no effort) means the same.
+    - `None` (the default): send nothing, leaving the model at its provider
+      default reasoning behavior.
+    - `"none"`: forwarded to the provider as the `"none"` effort level (no
+      reasoning on the models that accept it), like any other value below,
+      but the schema keeps its `thinking` field and vLLM/SGLang templates get
+      `enable_thinking=False`.
     - `"disable"`: actively turn native reasoning *off*, for a model that
       reasons by default. Each provider gets its own switch:
 
@@ -1037,8 +1040,7 @@ class LanguageModel(Module):
             kwargs["tools"] = wire_tools
 
         # The `reasoning_effort` values are documented in the class docstring.
-        # `None` (what a module passes when it sets no effort) means "none".
-        reasoning_effort = kwargs.pop("reasoning_effort", None) or "none"
+        reasoning_effort = kwargs.pop("reasoning_effort", None)
         schema_had_thinking = bool(schema) and "thinking" in (
             schema.get("properties") or {}
         )
@@ -1100,11 +1102,11 @@ class LanguageModel(Module):
                 else:
                     kwargs["reasoning_effort"] = levels[0] if levels else "low"
             enable_thinking = False
-        elif reasoning_effort != "none":
+        elif reasoning_effort is not None:
             if await self.supports_reasoning():
                 kwargs["reasoning_effort"] = reasoning_effort
-                enable_thinking = True
-                if schema_had_thinking and self._reasoning_trace:
+                enable_thinking = reasoning_effort != "none"
+                if enable_thinking and schema_had_thinking and self._reasoning_trace:
                     # The LM produces a native reasoning trace via
                     # `reasoning_content`; strip `thinking` from the LM
                     # schema to save tokens; we re-inject it after the call.

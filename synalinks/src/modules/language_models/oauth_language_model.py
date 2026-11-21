@@ -1041,9 +1041,9 @@ class OAuthLanguageModel(LanguageModel):
         workflows; check the terms of your subscription before unattended
         use.
 
-    `reasoning_effort` behaves as with `LanguageModel`: a value (`"low"`,
-    `"medium"`, `"high"`...) is sent to the backend, `"none"` and `None`
-    keep the default of the model. `"disable"` and `"minimal"` send `"low"`,
+    `reasoning_effort` behaves as with `LanguageModel`: a value (`"none"`,
+    `"low"`, `"medium"`, `"high"`...) is sent to the backend, `None` keeps
+    the default of the model. `"disable"` and `"minimal"` send `"low"`,
     the lowest effort every model accepts (most of them cannot turn
     reasoning off). A `thinking` field of the output schema is written by
     the model.
@@ -1149,9 +1149,7 @@ class OAuthLanguageModel(LanguageModel):
         )
 
     async def _acompletion(self, formatted_messages, **kwargs):
-        # As for any provider, `None` (what a module passes when it sets no
-        # effort) and "none" (not forwarded by the base class) leave the model
-        # at its default: no effort is sent.
+        # As for any provider, `None` leaves the model at its default: no effort is sent.
         reasoning_effort = kwargs.pop("reasoning_effort", None)
         reasoning_effort = _EFFORT_ALIASES.get(reasoning_effort, reasoning_effort)
         response_format = kwargs.pop("response_format", None)
