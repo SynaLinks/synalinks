@@ -19,17 +19,19 @@ def _reward_holders(reward, holders, seen):
 
 
 def model_holders(program):
-    """Return the modules (and rewards) whose models a program runs.
+    """Return the modules (and rewards, optimizer) whose models a program runs.
 
     That is every module of the program, plus the modules of its compiled
     reward: a judge's model (e.g. the one of `RubricsAsJudge`) runs during the
-    reward phase, so its counters belong to the program's run too.
+    reward phase, so its counters belong to the program's run too. The same
+    holds for the compiled optimizer (e.g. `OMEGA`'s language and embedding
+    models, and its mutation/crossover programs) during the optimizer phase.
 
     Args:
         program (Program): The program to walk.
 
     Returns:
-        (list): The modules and rewards, in order, each at most once.
+        (list): The modules, rewards and optimizer, in order, each at most once.
     """
     holders = []
     if hasattr(program, "_flatten_modules"):
@@ -39,4 +41,12 @@ def model_holders(program):
         seen = set()
         for reward in tree.flatten(getattr(compile_reward, "_user_reward", None)):
             _reward_holders(reward, holders, seen)
+    optimizer = getattr(program, "_optimizer", None)
+    if optimizer is not None:
+        holders.append(optimizer)
+        for name in ("mutation_programs", "crossover_programs"):
+            for sub_program in (getattr(optimizer, name, None) or {}).values():
+                holders.extend(
+                    sub_program._flatten_modules(include_self=True, recursive=True)
+                )
     return holders
