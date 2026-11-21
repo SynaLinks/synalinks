@@ -156,9 +156,17 @@ You can also install the library in a new project with:
 uv add synalinks
 ```
 
-To transform your coding agent into an AI engineer, do this at the root of your project:
+To transform your coding agent into an AI engineer, install the Synalinks skill:
 
 ```shell
+# Claude Code (in a session)
+/plugin install synalinks --marketplace SynaLinks/synalinks-skills
+# Codex
+codex plugin marketplace add SynaLinks/synalinks-skills
+codex plugin add synalinks@synalinks-skills
+# OpenCode
+opencode plugin github:SynaLinks/synalinks-skills
+# Any other agent (Cursor, Gemini CLI, Copilot, ...), at the root of your project
 npx skills add SynaLinks/synalinks-skills --skill synalinks
 ```
 
