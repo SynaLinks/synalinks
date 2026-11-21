@@ -266,3 +266,96 @@ class RecorderTest(testing.TestCase):
         await module(Query(query="a"))
 
         self.assertFalse(os.path.exists(base_dir))
+
+    def _usage_response(self, content, prompt_tokens, completion_tokens):
+        return {
+            "choices": [{"message": {"content": content}}],
+            "usage": {
+                "prompt_tokens": prompt_tokens,
+                "completion_tokens": completion_tokens,
+                "total_tokens": prompt_tokens + completion_tokens,
+            },
+        }
+
+    async def _call_twice(self, language_model):
+        messages = ChatMessages(
+            messages=[ChatMessage(role=ChatRole.USER, content="Hello")]
+        )
+        await language_model(messages)
+        await language_model(messages)
+
+    @patch("litellm.acompletion")
+    async def test_fallback_call_does_not_report_stale_usage(self, mock_completion):
+        mock_completion.side_effect = [
+            self._usage_response("first", 42, 17),
+            Exception("boom"),
+            Exception("boom"),
+            self._usage_response("from fallback", 5, 3),
+        ]
+        base_dir = os.path.join(self.get_temp_dir(), ".synalinks")
+        language_model = LanguageModel(
+            model="ollama/mistral",
+            name="primary",
+            retry=1,
+            retry_max_wait=0,
+            hooks=[Recorder(base_dir=base_dir)],
+            fallback=LanguageModel(model="ollama/qwen3", name="backup"),
+        )
+        await self._call_twice(language_model)
+
+        (filepath,) = glob.glob(os.path.join(base_dir, "primary", "*.jsonl"))
+        first, second = self._read_records(filepath)
+        self.assertEqual(first["usage"]["total_tokens"], 59)
+        self.assertNotIn("fallback", first)
+        # Served by the fallback: the primary reports no usage of its own.
+        self.assertIsNone(second["usage"])
+        self.assertIsNone(second["cost"])
+        self.assertTrue(second["fallback"])
+        self.assertNotIn("exception", second)
+        self.assertEqual(second["outputs"]["content"], "from fallback")
+
+    @patch("litellm.acompletion")
+    async def test_cache_hit_reports_zero_usage(self, mock_completion):
+        mock_completion.return_value = self._usage_response("cached", 42, 17)
+        base_dir = os.path.join(self.get_temp_dir(), ".synalinks")
+        language_model = LanguageModel(
+            model="ollama/mistral",
+            name="cached_lm",
+            cache_dir=os.path.join(self.get_temp_dir(), "cache"),
+            hooks=[Recorder(base_dir=base_dir)],
+        )
+        await self._call_twice(language_model)
+
+        self.assertEqual(mock_completion.call_count, 1)
+        (filepath,) = glob.glob(os.path.join(base_dir, "cached_lm", "*.jsonl"))
+        first, second = self._read_records(filepath)
+        self.assertEqual(first["usage"]["total_tokens"], 59)
+        self.assertNotIn("cache_hit", first)
+        self.assertTrue(second["cache_hit"])
+        self.assertEqual(set(second["usage"].values()), {0})
+        self.assertEqual(second["cost"], 0.0)
+
+    @patch("litellm.acompletion")
+    async def test_failed_call_without_fallback_records_exception(self, mock_completion):
+        mock_completion.side_effect = [
+            self._usage_response("first", 42, 17),
+            Exception("provider down"),
+            Exception("provider down"),
+        ]
+        base_dir = os.path.join(self.get_temp_dir(), ".synalinks")
+        language_model = LanguageModel(
+            model="ollama/mistral",
+            name="lonely_lm",
+            retry=1,
+            retry_max_wait=0,
+            hooks=[Recorder(base_dir=base_dir)],
+        )
+        await self._call_twice(language_model)
+
+        (filepath,) = glob.glob(os.path.join(base_dir, "lonely_lm", "*.jsonl"))
+        first, second = self._read_records(filepath)
+        self.assertNotIn("exception", first)
+        self.assertIsNone(second["usage"])
+        self.assertIsNone(second["cost"])
+        self.assertIn("provider down", second["exception"])
+        self.assertIsNone(second["outputs"])

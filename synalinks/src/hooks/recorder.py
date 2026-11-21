@@ -66,10 +66,15 @@ class Recorder(Hook):
     - `duration`: The call duration in seconds.
     - `usage`: The token usage of the call (`prompt_tokens`,
         `completion_tokens`, `total_tokens`, `cached_tokens`,
-        `cache_creation_tokens`, `reasoning_tokens`; `None` if the call
-        failed).
+        `cache_creation_tokens`, `reasoning_tokens`). All zeros on a cache
+        hit; `None` if the call failed, was streamed, or was answered by
+        the fallback (whose own record carries the usage).
     - `cost`: The cost of the call in USD as reported by the provider
-        (`0.0` for local models, `None` if the call failed).
+        (`0.0` for local models and cache hits, `None` when `usage` is).
+    - `cache_hit`: `True` when the response came from the LM's file cache
+        (only present then).
+    - `fallback`: `True` when every attempt failed and the LM's fallback
+        answered (only present then).
     - `messages`: The conversation in OpenAI chat format: the chat
         messages sent to the LM, with the completion appended as the final
         assistant message (a structured completion is appended as its JSON
@@ -90,7 +95,8 @@ class Recorder(Hook):
         `synalinks.saving.serialize_synalinks_object`).
     - `config_hash`: The SHA-256 hex digest of the `config` JSON (with
         sorted keys), to group records by module configuration.
-    - `exception`: The exception message (only present if the call failed).
+    - `exception`: The exception message (only present if the call failed,
+        including when every attempt failed and no fallback answered).
 
     You can enable recording for every module by using
     `synalinks.record_traces()` at the beginning of your scripts.
@@ -163,6 +169,16 @@ class Recorder(Hook):
     # signed, non-standard) but their text is folded into
     # `reasoning_content` when the provider emitted no reasoning text;
     # the full-fidelity message stays in `outputs`.
+    # `current_call_usage()` key -> record `usage` key.
+    _USAGE_KEYS = {
+        "input_tokens": "prompt_tokens",
+        "output_tokens": "completion_tokens",
+        "total_tokens": "total_tokens",
+        "cache_read_input_tokens": "cached_tokens",
+        "cache_creation_input_tokens": "cache_creation_tokens",
+        "reasoning_tokens": "reasoning_tokens",
+    }
+
     _MESSAGE_KEYS = (
         "role",
         "content",
@@ -290,23 +306,27 @@ class Recorder(Hook):
         pending = self._pending.pop(call_id, None)
         if pending is None:
             return
-        # The `last_call_*` counters are set by the litellm call that just
-        # returned. With concurrent LM calls awaited on the same event loop
-        # they could in principle be overwritten by an interleaved call,
-        # but nothing yields between the counter update and this hook in
-        # the common case.
+        from synalinks.src.modules.language_models.language_model import (
+            current_call_usage,
+        )
+
+        # The per-call usage of this task, not the LM's `last_call_*` counters,
+        # which keep the previous call's values on cache hits and fallbacks.
+        call_usage = current_call_usage() or {}
         usage = None
         cost = None
-        if not exception:
+        if call_usage.get("cache_hit"):
+            usage = dict.fromkeys(self._USAGE_KEYS.values(), 0)
+            cost = 0.0
+        elif not exception and "error" not in call_usage and call_usage:
             usage = {
-                "prompt_tokens": self.module.last_call_prompt_tokens,
-                "completion_tokens": self.module.last_call_completion_tokens,
-                "total_tokens": self.module.last_call_tokens,
-                "cached_tokens": self.module.last_call_cached_tokens,
-                "cache_creation_tokens": self.module.last_call_cache_creation_tokens,
-                "reasoning_tokens": self.module.last_call_reasoning_tokens,
+                record_key: call_usage.get(usage_key) or 0
+                for usage_key, record_key in self._USAGE_KEYS.items()
             }
-            cost = self.module.last_call_cost
+            cost = call_usage.get("cost") or 0.0
+        if not exception and "error" in call_usage and not call_usage.get("fallback"):
+            # Every attempt failed and the call returned `None` without raising.
+            exception = call_usage["error"]
         serialized_outputs = self._serialize_data(outputs)
         assistant_message = self._to_assistant_message(serialized_outputs)
         messages = list(pending["input_messages"])
@@ -328,6 +348,10 @@ class Recorder(Hook):
             "config": self._get_serialized_module(),
             "config_hash": self._hash_data(self._get_serialized_module()),
         }
+        if call_usage.get("cache_hit"):
+            record["cache_hit"] = True
+        if call_usage.get("fallback"):
+            record["fallback"] = True
         if exception:
             record["exception"] = exception
         filepath = self._get_filepath(pending["program_name"], pending["origin_name"])
