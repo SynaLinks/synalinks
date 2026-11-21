@@ -68,13 +68,12 @@ class EvolutionaryOptimizer(Optimizer):
             reward_uncertainty=reward_uncertainty,
             name=name,
             description=description,
+            **kwargs,
         )
         self.merging_rate = merging_rate
         self.language_model = language_model
         self.mutation_temperature = mutation_temperature
         self.crossover_temperature = crossover_temperature
-
-        self.kwargs = kwargs
 
         selections = ["best", "random", "softmax"]
         if selection not in selections:
