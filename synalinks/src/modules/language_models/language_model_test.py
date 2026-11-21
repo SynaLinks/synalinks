@@ -1218,6 +1218,12 @@ class SupportedProvidersTest(testing.TestCase):
             called["response_format"]["json_schema"]["schema"], Answer.get_schema()
         )
 
+    @patch.dict(os.environ, {}, clear=False)
+    def test_vllm_defaults_to_the_v1_endpoint(self):
+        os.environ.pop("HOSTED_VLLM_API_BASE", None)
+        lm = LanguageModel(model="vllm/Qwen/Qwen3-8B")
+        self.assertEqual(lm.api_base, "http://localhost:8000/v1")
+
     def test_mirai_keeps_an_explicit_api_base(self):
         lm = LanguageModel(
             model="mirai/Qwen3.8-27B-M", api_base="http://10.0.0.2:8080/v1"
