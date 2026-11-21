@@ -180,15 +180,19 @@ class Text2Cypher(Module):
     ```python
     import synalinks
     import asyncio
+    from typing import Literal
 
     class Person(synalinks.Entity):
+        label: Literal["Person"]
         name: str = synalinks.Field(description="Person name")
 
     class City(synalinks.Entity):
+        label: Literal["City"]
         name: str = synalinks.Field(description="City name")
         country: str = synalinks.Field(description="Country")
 
     class LivesIn(synalinks.Relation):
+        label: Literal["LivesIn"]
         subj: Person
         obj: City
 
@@ -197,7 +201,7 @@ class Text2Cypher(Module):
 
     async def main():
         kb = synalinks.KnowledgeBase(
-            uri="ladybug://my_graph.db",
+            graph_uri="ladybug://my_graph.lb",
             entity_models=[Person, City],
             relation_models=[LivesIn],
         )

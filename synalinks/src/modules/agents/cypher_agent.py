@@ -256,14 +256,18 @@ class CypherAgent(FunctionCallingAgent):
     ```python
     import synalinks
     import asyncio
+    from typing import Literal
 
     class Person(synalinks.Entity):
+        label: Literal["Person"]
         name: str = synalinks.Field(description="Person name")
 
     class City(synalinks.Entity):
+        label: Literal["City"]
         name: str = synalinks.Field(description="City name")
 
     class LivesIn(synalinks.Relation):
+        label: Literal["LivesIn"]
         subj: Person
         obj: City
 
@@ -282,7 +286,11 @@ class CypherAgent(FunctionCallingAgent):
             embedding_model=synalinks.EmbeddingModel(model="ollama/mxbai-embed-large"),
         )
         await kb.update_relations(
-            LivesIn(subj=Person(name="Alice"), obj=City(name="Paris"))
+            LivesIn(
+                label="LivesIn",
+                subj=Person(label="Person", name="Alice"),
+                obj=City(label="City", name="Paris"),
+            )
         )
 
         lm = synalinks.LanguageModel(model="ollama/mistral")

@@ -63,6 +63,7 @@ class EmbedKnowledge(Module):
         )
 
     async def main():
+        embedding_model = synalinks.EmbeddingModel(model="ollama/mxbai-embed-large")
         inputs = synalinks.Input(data_model=Document)
         outputs = await synalinks.EmbedKnowledge(
             embedding_model=embedding_model,
@@ -106,6 +107,7 @@ class EmbedKnowledge(Module):
         )
 
     async def main():
+        embedding_model = synalinks.EmbeddingModel(model="ollama/mxbai-embed-large")
         inputs = synalinks.Input(data_model=Document)
         outputs = await synalinks.EmbedKnowledge(
             embedding_model=embedding_model,
