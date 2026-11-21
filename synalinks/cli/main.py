@@ -7,6 +7,7 @@ the bundled templates, which ship inside the wheel so it works fully offline.
 
 import importlib.metadata
 import importlib.resources
+import json
 import shutil
 import sys
 from contextlib import ExitStack
@@ -313,8 +314,14 @@ def _link_claude_md(target: Path) -> None:
 
 
 def _rewrite_pyproject(target: Path, project_name: str, description: str | None) -> None:
-    """Best-effort rewrite of name/description in a generated pyproject.toml."""
+    """Best-effort rewrite of name/description in a generated pyproject.toml.
+
+    The `app` template keeps its pyproject.toml in `backend/`. Values are
+    written with `json.dumps`, which yields a valid TOML basic string.
+    """
     pyproject = target / "pyproject.toml"
+    if not pyproject.is_file():
+        pyproject = target / "backend" / "pyproject.toml"
     if not pyproject.is_file():
         return
     lines = pyproject.read_text(encoding="utf-8").splitlines(keepends=True)
@@ -324,10 +331,10 @@ def _rewrite_pyproject(target: Path, project_name: str, description: str | None)
         stripped = line.lstrip()
         indent = line[: len(line) - len(stripped)]
         if not name_done and stripped.startswith("name ") and "=" in line:
-            lines[i] = f'{indent}name = "{project_name}"\n'
+            lines[i] = f"{indent}name = {json.dumps(project_name)}\n"
             name_done = True
         elif not desc_done and stripped.startswith("description ") and "=" in line:
-            lines[i] = f'{indent}description = "{description}"\n'
+            lines[i] = f"{indent}description = {json.dumps(description)}\n"
             desc_done = True
         if name_done and desc_done:
             break
