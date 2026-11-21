@@ -18,6 +18,7 @@ from synalinks.src.backend.common.op_scope import current_op_scope
 from synalinks.src.backend.common.op_scope import current_trajectory_start
 from synalinks.src.backend.common.op_scope import trajectory_scope
 from synalinks.src.modules.agents.utils.agents_utils import call_tool
+from synalinks.src.modules.agents.utils.agents_utils import check_public_tool_name
 from synalinks.src.modules.agents.utils.agents_utils import discover_agents_md
 from synalinks.src.modules.agents.utils.agents_utils import merge_tools
 from synalinks.src.modules.agents.utils.agents_utils import resolve_workdir
@@ -602,13 +603,7 @@ class FunctionCallingAgent(Module):
         if not merged_tools and self._requires_tools():
             raise ValueError("You must set the `tools` argument")
         for tool in merged_tools:
-            if tool.name.startswith("_"):
-                raise ValueError(
-                    f"Tool name {tool.name!r} starts with an underscore. "
-                    f"Tools exposed to the LM must have public names; "
-                    f"rename the function or pass an explicit `name=` to "
-                    f"Tool(...)."
-                )
+            check_public_tool_name(tool)
             self.tools[tool.name] = tool
         # With a schema, the answer is a call to this tool (see `_step`).
         self._output_tool_name = None
@@ -813,39 +808,37 @@ class FunctionCallingAgent(Module):
         The base agent runs every call concurrently. Returns True if the loop
         should terminate early (e.g. a submit signal); the base never does.
         """
-        tasks = []
-        tool_calls_ids = []
-        for tool_call in native_tool_calls:
-            function = tool_call.get("function") or {}
-            tool_calls_ids.append(tool_call.get("id"))
-            tasks.append(call_tool(self.tools[function.get("name")], function))
+        for tool_message in await self._run_tool_calls(native_tool_calls):
+            agent_messages.append(tool_message.get_json())
+        return False
 
-        tool_results = await asyncio.gather(*tasks, return_exceptions=True)
-        for j, tool_result in enumerate(tool_results):
-            tool_call_id = tool_calls_ids[j]
+    async def _run_tool_calls(self, tool_calls):
+        """Run ``tool_calls`` concurrently; return one tool `ChatMessage` per
+        call, a failing (or unknown) tool reported as ``error: ...``."""
+        functions = [tool_call.get("function") or {} for tool_call in tool_calls]
+        tool_results = await asyncio.gather(
+            *(call_tool(self.tools.get(f.get("name")), f) for f in functions),
+            return_exceptions=True,
+        )
+        tool_messages = []
+        for tool_call, tool_result in zip(tool_calls, tool_results):
             if isinstance(tool_result, Exception):
-                agent_messages.append(
-                    ChatMessage(
-                        role=ChatRole.TOOL,
-                        tool_call_id=tool_call_id,
-                        content="error: %s" % str(tool_result),
-                    ).get_json()
-                )
+                content = "error: %s" % str(tool_result)
             else:
                 # Handle both JsonDataModel and raw dict results
-                content = (
+                content = tool_message_content(
                     tool_result.get_json()
                     if hasattr(tool_result, "get_json")
                     else tool_result
                 )
-                agent_messages.append(
-                    ChatMessage(
-                        role=ChatRole.TOOL,
-                        tool_call_id=tool_call_id,
-                        content=tool_message_content(content),
-                    ).get_json()
+            tool_messages.append(
+                ChatMessage(
+                    role=ChatRole.TOOL,
+                    tool_call_id=tool_call.get("id"),
+                    content=content,
                 )
-        return False
+            )
+        return tool_messages
 
     def _output_tool_schemas(self):
         """The structured answer as a tool, in OpenAI wire shape (hook):
@@ -1062,36 +1055,8 @@ class FunctionCallingAgent(Module):
 
         if len(agent_messages) > 0:
             if agent_messages[-1].get("role") == ChatRole.ASSISTANT:
-                tasks = []
-                tool_calls_ids = []
-
                 tool_calls = agent_messages[-1].get("tool_calls") or []
-                for tool_call in tool_calls:
-                    function = tool_call.get("function") or {}
-                    tool_calls_ids.append(tool_call.get("id"))
-                    tasks.append(call_tool(self.tools[function.get("name")], function))
-
-                tool_results = await asyncio.gather(*tasks, return_exceptions=True)
-                for j, tool_result in enumerate(tool_results):
-                    tool_call_id = tool_calls_ids[j]
-                    if isinstance(tool_result, Exception):
-                        tool_message = ChatMessage(
-                            role=ChatRole.TOOL,
-                            tool_call_id=tool_call_id,
-                            content="error: %s" % str(tool_result),
-                        )
-                    else:
-                        # Handle both JsonDataModel and raw dict results
-                        content = (
-                            tool_result.get_json()
-                            if hasattr(tool_result, "get_json")
-                            else tool_result
-                        )
-                        tool_message = ChatMessage(
-                            role=ChatRole.TOOL,
-                            tool_call_id=tool_call_id,
-                            content=tool_message_content(content),
-                        )
+                for tool_message in await self._run_tool_calls(tool_calls):
                     agent_messages.append(tool_message.get_json())
                     new_messages.append(tool_message)
 

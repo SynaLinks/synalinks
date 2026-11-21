@@ -142,6 +142,39 @@ def discover_agents_md(workdir) -> List[AgentsMd]:
     return found
 
 
+def check_public_tool_name(tool):
+    """Raise unless ``tool`` has a public name (no leading underscore)."""
+    if tool.name.startswith("_"):
+        raise ValueError(
+            f"Tool name {tool.name!r} starts with an underscore. "
+            f"Tools exposed to the LM must have public names; "
+            f"rename the function or pass an explicit `name=` to "
+            f"Tool(...)."
+        )
+
+
+def subagent_answer(output) -> str:
+    """Extract a subagent's final answer text from its (schemaless) output.
+
+    A no-schema agent returns a ``ChatMessages`` data model; its last
+    message's ``content`` is the final answer. Falls back to a JSON dump
+    for any other shape so the parent always gets a string.
+    """
+    if output is None:
+        return ""
+    data = output.get_json() if hasattr(output, "get_json") else output
+    if isinstance(data, dict):
+        messages = data.get("messages")
+        if messages:
+            last = messages[-1]
+            content = last.get("content") if isinstance(last, dict) else None
+            if isinstance(content, str):
+                return content
+            return "" if content is None else json.dumps(content, ensure_ascii=False)
+        return json.dumps(data, ensure_ascii=False)
+    return str(data)
+
+
 def merge_tools(builtin_tools: List, extra_tools: Optional[List], *, kind: str) -> List:
     """Merge built-in tools with user-supplied tools, rejecting name collisions.
 

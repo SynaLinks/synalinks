@@ -15,6 +15,7 @@ from synalinks.src.backend import is_strictly_chat_messages
 from synalinks.src.modules.agents.function_calling_agent import FunctionCallingAgent
 from synalinks.src.modules.agents.utils.agents_utils import InputsSummary
 from synalinks.src.modules.agents.utils.agents_utils import resolve_workdir
+from synalinks.src.modules.agents.utils.agents_utils import subagent_answer
 from synalinks.src.modules.agents.utils.agents_utils import summarize_inputs
 from synalinks.src.modules.agents.utils.agents_utils import unique_inputs_path
 from synalinks.src.modules.core.tool import Tool
@@ -112,29 +113,6 @@ Notes:
 - The filesystem is copy-on-write: edits land in an in-memory overlay.
 - Paths are rooted at the workspace; `..` cannot escape it.
 """.strip()
-
-
-def _final_answer_text(output) -> str:
-    """Extract a subagent's final answer text from its (no-schema) output.
-
-    A no-schema agent returns a ``ChatMessages`` data model; its last
-    message's ``content`` is the final answer. Falls back to a JSON dump
-    for any other shape so the parent always gets a string.
-    """
-    if output is None:
-        return ""
-    data = output.get_json() if hasattr(output, "get_json") else output
-    if isinstance(data, dict):
-        messages = data.get("messages")
-        if messages:
-            content = (
-                messages[-1].get("content") if isinstance(messages[-1], dict) else None
-            )
-            if isinstance(content, str):
-                return content
-            return "" if content is None else json.dumps(content, ensure_ascii=False)
-        return json.dumps(data, ensure_ascii=False)
-    return str(data)
 
 
 @synalinks_export(
@@ -560,7 +538,7 @@ class DeepAgent(FunctionCallingAgent):
             )
             output = await program(messages)
             snapshot = await fork.snapshot() if hasattr(fork, "snapshot") else fork
-            return snapshot, _final_answer_text(output)
+            return snapshot, subagent_answer(output)
 
         results = await asyncio.gather(
             *(run_one(i, p) for i, p in enumerate(prompts)),

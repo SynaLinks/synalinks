@@ -23,6 +23,8 @@ from synalinks.src.backend import is_chat_messages
 from synalinks.src.modules.agents.function_calling_agent import FunctionCallingAgent
 from synalinks.src.modules.agents.utils.agents_utils import InputsSummary
 from synalinks.src.modules.agents.utils.agents_utils import call_tool
+from synalinks.src.modules.agents.utils.agents_utils import check_public_tool_name
+from synalinks.src.modules.agents.utils.agents_utils import subagent_answer
 from synalinks.src.modules.agents.utils.agents_utils import summarize_inputs
 from synalinks.src.modules.agents.utils.agents_utils import tool_message_content
 from synalinks.src.modules.core.tool import Tool
@@ -630,23 +632,6 @@ requires and report concisely what you computed and changed.
 """.strip()
 
 
-def _subagent_answer(output) -> str:
-    """Extract a subagent's final answer text from its (schemaless) output."""
-    if output is None:
-        return ""
-    data = output.get_json() if hasattr(output, "get_json") else output
-    if isinstance(data, dict):
-        messages = data.get("messages")
-        if messages:
-            last = messages[-1]
-            content = last.get("content") if isinstance(last, dict) else None
-            if isinstance(content, str):
-                return content
-            return "" if content is None else json.dumps(content, ensure_ascii=False)
-        return json.dumps(data, ensure_ascii=False)
-    return str(data)
-
-
 @synalinks_export(
     [
         "synalinks.modules.RecursiveLanguageModelAgent",
@@ -1071,13 +1056,7 @@ class RecursiveLanguageModelAgent(FunctionCallingAgent):
         # routinely try anyway and get `Unknown tool` back.
         self.native_tools = {}
         for tool in native_tools or []:
-            if tool.name.startswith("_"):
-                raise ValueError(
-                    f"Tool name {tool.name!r} starts with an underscore. "
-                    f"Tools exposed to the LM must have public names; "
-                    f"rename the function or pass an explicit `name=` to "
-                    f"Tool(...)."
-                )
+            check_public_tool_name(tool)
             if tool.name in reserved:
                 raise ValueError(
                     f"Tool name '{tool.name}' is reserved by {type(self).__name__}."
@@ -1296,7 +1275,7 @@ class RecursiveLanguageModelAgent(FunctionCallingAgent):
                 )
                 result = await program(messages)
                 snapshot = await fork.snapshot() if hasattr(fork, "snapshot") else fork
-                return snapshot, _subagent_answer(result)
+                return snapshot, subagent_answer(result)
 
             results = await asyncio.gather(
                 *(run_one(i, p) for i, p in enumerate(prompts)),
