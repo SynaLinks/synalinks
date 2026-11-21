@@ -84,7 +84,7 @@ graph LR
 
 ### OR as a fallback selector
 
-The `|` operator returns the first non-`None` operand. We use it to
+The `|` operator returns the non-`None` operand. We use it to
 pick what to show the user: the guard's warning, or the LM's answer.
 
 | `warning` | `answer` | `warning \\| answer`   |
@@ -274,7 +274,7 @@ Safe: {'answer': 'Paris'}
   not flip it; the operator algebra above relies on this
   convention.
 - **`^` suppresses an edge** when both operands are non-`None`;
-  **`|` selects the first non-`None`**. Together they implement a
+  **`|` selects the non-`None` one**. Together they implement a
   static "if/else" with no explicit branching statements.
 - **The generator never runs on a rejected input.** This is a
   graph-level guarantee: you can prove it from the structure of

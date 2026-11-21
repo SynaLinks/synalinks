@@ -145,7 +145,7 @@ outputs = easy | hard
 
 That last line is the canonical routing idiom: **`Branch` produces a
 tuple, and `|` collapses it back to the single output that actually
-ran.** `|` (Or) returns its first non-`None` operand, so it always hands
+ran.** `|` (Or) returns its non-`None` operand (both merged if both ran), so it hands
 you whichever branch fired.
 
 ## The Operators as Control Flow
@@ -401,7 +401,7 @@ async def main():
 
     # + (Concat): union of fields when both are present.
     print(f"\n(a + b) fields: {list((a + b).get_json().keys())}")
-    # | (Or): first non-None operand -> fallback / branch collapse.
+    # | (Or): the non-None operand -> fallback / branch collapse.
     print(f"(a | None) -> {(a | None).get_json()}")
     print(f"(None | b) -> {(None | b).get_json()}")
     # & (And): safe join, None if either side is missing.
