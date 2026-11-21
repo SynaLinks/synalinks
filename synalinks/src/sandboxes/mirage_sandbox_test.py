@@ -782,6 +782,47 @@ class MirageSandboxTest(_SandboxTestCase):
             server.shutdown()
             server.server_close()
 
+    async def test_egress_pin_is_case_insensitive_and_host_header_dropped(self):
+        # Regression #192: an upper-case hostname missed the pin and re-resolved at
+        # connect time; a caller-supplied Host header reached an off-list vhost.
+        import http.server
+        import threading
+        from unittest import mock
+
+        from synalinks.src.utils import egress_utils
+
+        seen = []
+
+        class _Handler(http.server.BaseHTTPRequestHandler):
+            def do_GET(self):
+                seen.append(self.headers.get("Host"))
+                self.send_response(200)
+                self.end_headers()
+                self.wfile.write(b"pinned-ok")
+
+            def log_message(self, *args):
+                pass
+
+        server = http.server.HTTPServer(("127.0.0.1", 0), _Handler)
+        port = server.server_address[1]
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        try:
+            fetch = egress_utils.make_egress_tool(
+                ["pinned.invalid"], timeout=_TIMEOUT, block_private=True
+            )
+            with mock.patch.object(
+                egress_utils, "reject_private", return_value="127.0.0.1"
+            ):
+                resp = await fetch(
+                    f"http://PINNED.invalid:{port}/", headers={"Host": "evil.internal"}
+                )
+            self.assertEqual(resp["body"], "pinned-ok")
+            self.assertEqual(seen[-1].lower(), f"pinned.invalid:{port}")
+        finally:
+            server.shutdown()
+            server.server_close()
+
     async def test_egress_tool_blocks_private_target_by_default(self):
         # An allowlisted host that resolves to a private IP is still refused.
         sandbox = MirageSandbox(
