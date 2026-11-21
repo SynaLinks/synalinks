@@ -108,10 +108,10 @@ The framework follows a Keras-like pattern with these core abstractions:
 
 ### Backend
 
-Uses Pydantic as the data backend (`synalinks/src/backend/pydantic/`). The backend provides:
-- `Variable`: Trainable state containers
-- `SymbolicDataModel`/`JsonDataModel`: Data model representations
-- Name scoping and state management
+Uses Pydantic as the data backend: `synalinks/src/backend/pydantic/` holds the `DataModel` base (`core.py`) and the built-in data models. The backend-agnostic primitives live in `synalinks/src/backend/common/`:
+- `Variable`: Trainable state containers (`variables.py`)
+- `SymbolicDataModel`/`JsonDataModel`: Data model representations (`symbolic_data_model.py`, `json_data_model.py`)
+- Name scoping and state management (`name_scope.py`, `global_state.py`)
 
 ### Serialization
 
