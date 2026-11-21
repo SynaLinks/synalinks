@@ -810,7 +810,28 @@ class HardExampleMemoryTest(testing.TestCase):
         optimizer.observe_training_batch(*self._batch(["h"], [0.0]))
         optimizer.observe_training_batch(*self._batch(["h"], [0.0]))
         self.assertEqual(optimizer.hard_examples(), [])
-        self.assertEqual(optimizer._difficulty, {})
+        self.assertEqual(optimizer._hard_example_memory.get("entries"), [])
+
+    async def test_memory_survives_state_tree_round_trip(self):
+        async def make():
+            x0 = Input(data_model=_Ticket)
+            x1 = await Generator(
+                data_model=_Team, language_model=LanguageModel(model="ollama/mistral")
+            )(x0)
+            program = Program(inputs=x0, outputs=x1)
+            program.compile(reward=ExactMatch(), optimizer=OMEGA(name="omega"))
+            return program
+
+        program = await make()
+        for _ in range(2):
+            program.optimizer.observe_training_batch(*self._batch(["h"], [0.0]))
+        state = json.loads(json.dumps(program.get_state_tree()))
+        restored = await make()
+        restored.set_state_tree(state)
+        self.assertEqual(
+            restored.optimizer.hard_examples(), program.optimizer.hard_examples()
+        )
+        self.assertEqual(len(restored.optimizer.hard_examples()), 1)
 
     def test_hard_example_params_in_config_and_validated(self):
         optimizer = OMEGA(nb_hard_examples=2, hard_example_min_observations=4)

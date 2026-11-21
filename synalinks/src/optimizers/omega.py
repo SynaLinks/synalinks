@@ -15,6 +15,7 @@ if TYPE_CHECKING:
 
 import numpy as _np
 
+from synalinks.src import backend
 from synalinks.src import tree
 from synalinks.src.api_export import synalinks_export
 from synalinks.src.backend import DataModel
@@ -23,6 +24,7 @@ from synalinks.src.backend import Field
 from synalinks.src.backend import Trainable
 from synalinks.src.backend import out_mask_json
 from synalinks.src.backend.common import numpy as np
+from synalinks.src.initializers import Empty
 from synalinks.src.modules.core.generator import Generator
 from synalinks.src.modules.core.input_module import Input
 from synalinks.src.modules.embedding_models import get as _get_em
@@ -55,6 +57,10 @@ class ScoredPrediction(DataModel):
         ),
         default=None,
     )
+
+
+class HardExampleMemory(DataModel):
+    entries: List[Dict[str, Any]] = []
 
 
 class MutationInputs(DataModel):
@@ -472,9 +478,14 @@ class OMEGA(EvolutionaryOptimizer):
             )
         self.nb_hard_examples = int(nb_hard_examples)
         self.hard_example_min_observations = int(hard_example_min_observations)
-        # Per-input difficulty memory, fed by `observe_training_batch`:
-        # key -> {"inputs", "ground_truth", "last_output", "rewards"}.
-        self._difficulty = {}
+        # Per-input difficulty memory, a variable so checkpoints carry it.
+        with backend.name_scope(self.name, caller=self):
+            self._hard_example_memory = backend.Variable(
+                initializer=Empty(data_model=HardExampleMemory),
+                data_model=HardExampleMemory,
+                trainable=False,
+                name="hard_example_memory_" + self.name,
+            )
 
         # DNS-specific parameters
         self.embedding_model = _get_em(embedding_model)
@@ -595,6 +606,8 @@ class OMEGA(EvolutionaryOptimizer):
         y = list(y) if y is not None else [None] * len(x)
         y_pred = list(y_pred) if y_pred is not None else [None] * len(x)
         rewards = list(rewards)
+        entries = self._hard_example_memory.get("entries")
+        by_key = {e["key"]: e for e in entries}
         for i, inp in enumerate(x):
             if i >= len(rewards) or rewards[i] is None:
                 continue
@@ -605,15 +618,12 @@ class OMEGA(EvolutionaryOptimizer):
             )
             target = y[i] if i < len(y) else None
             target = target.get_json() if hasattr(target, "get_json") else target
-            entry = self._difficulty.setdefault(
-                self._input_key(inputs),
-                {
-                    "inputs": inputs,
-                    "ground_truth": target,
-                    "last_output": None,
-                    "rewards": [],
-                },
-            )
+            key = self._input_key(inputs)
+            entry = by_key.get(key)
+            if entry is None:
+                entry = {"key": key, "inputs": inputs, "rewards": []}
+                entries.append(entry)
+                by_key[key] = entry
             entry["last_output"] = _without_echoed_inputs(predicted, inputs)
             entry["ground_truth"] = target
             entry["rewards"].append(float(rewards[i]))
@@ -632,9 +642,9 @@ class OMEGA(EvolutionaryOptimizer):
             return []
         exclude = set(exclude_keys)
         eligible = [
-            (sum(e["rewards"]) / len(e["rewards"]), -len(e["rewards"]), key, e)
-            for key, e in self._difficulty.items()
-            if key not in exclude
+            (sum(e["rewards"]) / len(e["rewards"]), -len(e["rewards"]), e["key"], e)
+            for e in self._hard_example_memory.get("entries")
+            if e["key"] not in exclude
             and len(e["rewards"]) >= self.hard_example_min_observations
         ]
         eligible.sort(key=lambda t: (t[0], t[1]))
