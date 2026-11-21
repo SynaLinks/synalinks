@@ -77,7 +77,7 @@ batch = np.array(
         UserQuery(query="what is the capital of France?"),
         UserQuery(query="what is the capital of Germany?"),
         UserQuery(query="what is the capital of Italy?"),
-    ]
+    ],
     dtype="object",
 )
 
@@ -105,11 +105,11 @@ async def main():
     # ... your program definition
 
     program.compile(
-        reward=synalinks.rewards.ExactMath()
+        reward=synalinks.rewards.ExactMatch(),
         optimizer=synalinks.optimizers.OMEGA(
             language_model=language_model,
             embedding_model=embedding_model,
-        )
+        ),
         metrics=[
             synalinks.metrics.F1Score()
         ]
@@ -133,7 +133,7 @@ async def main():
 
     program.compile(...)
 
-    metrics = program.evaluate(x=x_train, y=y_train)
+    metrics = await program.evaluate(x=x_train, y=y_train)
 ```
 
 ## How to train my program?
@@ -327,7 +327,7 @@ print(qa_pair.prettify_schema())
 
 qa_pair = Query(query="Why is neuro-symbolic AI powering the next wave?") & None
 
-assert isinstance(qa_pair, None)
+assert qa_pair is None
 ```
 
 Here is the table summarizing the behavior:
@@ -484,9 +484,9 @@ async def main():
     # Your program definition
 
     program.compile(
-        reward=synalinks.rewards.MeanRewardWrapper(
+        reward=synalinks.rewards.RewardFunctionWrapper(
             fn=my_custom_reward,
-        )
+        ),
         optimizer=...
     )
 
@@ -513,10 +513,13 @@ async def main():
     # Your program definition
 
     program.compile(
-        reward=synalinks.rewards.MeanMetricWrapper(
-            fn=my_custom_reward,
-        )
-        optimizer=...
+        reward=...,
+        optimizer=...,
+        metrics=[
+            synalinks.metrics.MeanMetricWrapper(
+                fn=my_custom_metric,
+            ),
+        ],
     )
 
     history = await program.fit(...)
@@ -536,8 +539,8 @@ class UserQuery(synalinks.DataModel):
 
 
 class Answer(synalinks.DataModel):
-    answer: str = syalinks.Field(
-        descriptino="The final answer",
+    answer: str = synalinks.Field(
+        description="The final answer",
     )
 
 
@@ -547,12 +550,12 @@ async def main():
         data_model=UserQuery,
     )
 
-    outputs = synalinks.ChainOfThought(
+    outputs = await synalinks.ChainOfThought(
         data_model=Answer,
         language_model=language_model,
     )(inputs)
 
-    program = Program(
+    program = synalinks.Program(
         inputs=inputs,
         outputs=outputs,
         name="chain_of_thought_answer",
@@ -576,8 +579,8 @@ class UserQuery(synalinks.DataModel):
 
 
 class Answer(synalinks.DataModel):
-    answer: str = syalinks.Field(
-        descriptino="The final answer",
+    answer: str = synalinks.Field(
+        description="The final answer",
     )
 
 
@@ -585,36 +588,36 @@ async def main():
 
     inputs = synalinks.Input(data_model=UserQuery)
 
-    x0 = synalinks.Generator(
+    x0 = await synalinks.Generator(
         data_model=Answer,
         language_model=language_model,
         return_inputs=False,
     )(inputs)
-    x1 = synalinks.Generator(
+    x1 = await synalinks.Generator(
         data_model=Answer,
         language_model=language_model,
         return_inputs=False,
     )(inputs)
 
     x2 = (
-        inputs & x1 & x2
+        inputs & x0 & x1
     )  # concatenate the inputs with each answer (robust to provider failure)
 
     # This stage (optional) critique the two previous answers
-    x3 = synalinks.SelfCritique(
+    x3 = await synalinks.SelfCritique(
         return_reward=False,
         language_model=language_model,
         return_inputs=True,
     )(x2)
 
     # Compute the final answer based on the previous answers and critique
-    outputs = synalinks.Generator(
+    outputs = await synalinks.Generator(
         data_model=Answer,
         language_model=language_model,
         return_inputs=True,
     )(x3)
 
-    program = Program(
+    program = synalinks.Program(
         inputs=inputs,
         outputs=outputs,
         name="self_consistency",
