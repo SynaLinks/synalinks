@@ -66,7 +66,8 @@ class ComposableRewardTest(testing.TestCase):
             y_true=Answer(answer="Paris"),
             y_pred=Answer(answer="Paris"),
         )
-        self.assertEqual(score, 2.0)
+        # Weights only apply to mean/sum: max stays in the child reward range.
+        self.assertEqual(score, 1.0)
 
     async def test_composable_reward_min_reduction(self):
         reward = ComposableReward(
@@ -78,7 +79,7 @@ class ComposableRewardTest(testing.TestCase):
             y_true=Answer(answer="Paris"),
             y_pred=Answer(answer="Paris"),
         )
-        self.assertEqual(score, 1.5)
+        self.assertEqual(score, 0.5)
 
     async def test_composable_reward_none_reduction(self):
         reward = ComposableReward(
@@ -86,12 +87,12 @@ class ComposableRewardTest(testing.TestCase):
             weights=[2, 3],
             reduction="none",
         )
-        scores = await reward(
+        score = await reward(
             y_true=Answer(answer="Paris"),
             y_pred=Answer(answer="Paris"),
         )
-        # One weighted value per child reward, in order.
-        self.assertEqual(scores, [2.0, 1.5])
+        # Combines like "mean" so a sample keeps a single scalar reward.
+        self.assertEqual(score, 0.7)
 
     async def test_composable_reward_wraps_bare_functions(self):
         reward = ComposableReward(rewards=[exact_match, ConstantReward(0.0)])
