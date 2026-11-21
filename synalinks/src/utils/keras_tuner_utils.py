@@ -348,7 +348,7 @@ def _resolve_kt_tuner(name):
     _SynalinksAwareTuner.__qualname__ = name
     _SynalinksAwareTuner.__doc__ = (
         f"Synalinks-aware `keras_tuner.{name}`. "
-        f"See `synalinks.utils.keras_tuner_utils` for usage."
+        "See the `synalinks.src.utils.keras_tuner_utils` module docstring for usage."
     )
     _REAL_SUBCLASSES[name] = _SynalinksAwareTuner
     return _SynalinksAwareTuner

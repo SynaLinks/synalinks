@@ -10,6 +10,10 @@ import tempfile
 import threading
 import time
 
+import mlflow
+import mlflow.genai
+import mlflow.models
+import mlflow.pyfunc
 import numpy as np
 
 from synalinks.src.api_export import synalinks_export
@@ -24,16 +28,6 @@ from synalinks.src.metrics.em_metrics import _collect_embedding_models
 from synalinks.src.metrics.lm_metrics import _collect_language_models
 from synalinks.src.utils.async_utils import run_maybe_nested
 from synalinks.src.version import __version__
-
-try:
-    import mlflow
-    import mlflow.genai
-    import mlflow.models
-    import mlflow.pyfunc
-
-    MLFLOW_AVAILABLE = True
-except ImportError:
-    MLFLOW_AVAILABLE = False
 
 _COUNTER_SUFFIXES = (
     "cost",
@@ -117,7 +111,7 @@ class _BackgroundLoop:
 
 
 @synalinks_export("synalinks.callbacks.SynalinksProgramModel")
-class SynalinksProgramModel(mlflow.pyfunc.PythonModel if MLFLOW_AVAILABLE else object):
+class SynalinksProgramModel(mlflow.pyfunc.PythonModel):
     """MLflow pyfunc wrapper around a saved Synalinks program.
 
     Logged by `synalinks.callbacks.Monitor` at the end of training, loadable
@@ -412,11 +406,6 @@ class Monitor(Callback):
         log_assessments=True,
     ):
         super().__init__()
-        if not MLFLOW_AVAILABLE:
-            raise ImportError(
-                "mlflow is required for the Monitor callback. "
-                "Install it with: pip install mlflow"
-            )
 
         self.experiment_name = experiment_name
         self.run_name = run_name

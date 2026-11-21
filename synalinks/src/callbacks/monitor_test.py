@@ -38,11 +38,6 @@ def _run_coro(coro):
 
 
 class MonitorInitTest(testing.TestCase):
-    def test_missing_mlflow_raises(self):
-        with patch.object(monitor_module, "MLFLOW_AVAILABLE", False):
-            with self.assertRaisesRegex(ImportError, "mlflow is required"):
-                Monitor()
-
     def test_default_attributes(self):
         cb = Monitor()
         self.assertIsNone(cb.experiment_name)

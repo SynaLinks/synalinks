@@ -205,13 +205,6 @@ class MLflowDatasetTest(testing.TestCase):
         with pytest.raises(ValueError, match="same length"):
             MLflowDataset.create("qa", [Question(question="q")], [])
 
-    def test_requires_mlflow(self):
-        with patch.object(mlflow_module, "MLFLOW_AVAILABLE", False):
-            with pytest.raises(ImportError, match="pip install mlflow"):
-                MLflowDataset(
-                    name="qa", input_data_model=Question, input_template=INPUT_TEMPLATE
-                )
-
     def test_round_trip_through_a_sqlite_store(self):
         # End to end against a real MLflow store: evaluation datasets need a
         # SQL-backed tracking URI, so use a throwaway sqlite file.
