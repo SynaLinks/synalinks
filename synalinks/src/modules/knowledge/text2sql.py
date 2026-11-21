@@ -172,8 +172,9 @@ class Text2SQL(Module):
             `Generator`.
         examples (list): Few-shot examples for the generator.
         instructions (str): Override the default system instructions.
-            When omitted, the default is built from the knowledge
-            base's table titles.
+            When omitted, the schema-agnostic
+            `default_text2sql_instructions()` is used (the table
+            schemas are sent alongside the inputs).
         seed_instructions (list): Optional seed instructions for
             prompt optimization.
         temperature (float): LM sampling temperature, set low for deterministic
