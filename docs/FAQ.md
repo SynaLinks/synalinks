@@ -108,7 +108,7 @@ $HOME/.synalinks/
 
 Note that Windows users should replace `$HOME` with `%USERPROFILE%`.
 
-In case Synalinks cannot create the above directory (e.g. due to permission issues), `/tmp/.synalinks/` is used as a backup.
+Set the `SYNALINKS_HOME` environment variable to use another directory. If your home directory is not writable, `.synalinks/` is created in the system temp directory (`tempfile.gettempdir()`) instead.
 
 The Synalinks configuration file is a JSON file stored at $HOME/.synalinks/synalinks.json. The default configuration file looks like this:
 
@@ -116,7 +116,9 @@ The Synalinks configuration file is a JSON file stored at $HOME/.synalinks/synal
 {
     "backend": "pydantic",
     "floatx": "float32",
-    "epsilon": 1e-07
+    "epsilon": 1e-07,
+    "seed": 123,
+    "api_base": "http://localhost:8000/api"
 }
 ```
 
@@ -185,7 +187,8 @@ async def main():
                 data_model=ThinkingWithAnswer,
                 language_model=language_model,
             ),
-        ]
+        ],
+        description="Two-stage answer",
     )
 
     program.modules[0].trainable = False  # Freeze the first generator

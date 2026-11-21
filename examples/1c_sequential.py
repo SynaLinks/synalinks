@@ -32,11 +32,16 @@ Building with Sequential is as simple as making a list:
 ```python
 program = synalinks.Sequential(
     [
-        synalinks.Input(data_model=InputType),     # First: where data enters
-        synalinks.SomeModule(...),                  # Middle: transformations
-        synalinks.Generator(data_model=OutputType), # Last: final output
+        synalinks.Input(data_model=InputType),  # First: where data enters
+        synalinks.ChainOfThought(               # Middle: transformations
+            data_model=IntermediateType, language_model=language_model
+        ),
+        synalinks.Generator(                    # Last: final output
+            data_model=OutputType, language_model=language_model
+        ),
     ],
     name="my_program",
+    description="What the program does",  # required for Sequential
 )
 ```
 
@@ -74,6 +79,7 @@ async def main():
             ),
         ],
         name="chain_of_thought",
+        description="Answer the query step by step",
     )
 
     result = await program(Query(query="What is the capital of France?"))
