@@ -124,6 +124,15 @@ class OMEGATest(testing.TestCase):
         self.assertEqual(config["merging_rate"], 0.05)
         self.assertEqual(config["population_size"], 15)
 
+    def test_unknown_kwargs_rejected(self):
+        with self.assertRaises(ValueError):
+            OMEGA(populaton_size=5)
+
+    def test_sampling_temperature_round_trip(self):
+        optimizer = OMEGA(sampling_temperature=0.9)
+        restored = OMEGA.from_config(optimizer.get_config())
+        self.assertEqual(restored.sampling_temperature, 0.9)
+
     async def test_competition_single_candidate(self):
         """Test competition with single candidate returns it unchanged."""
         optimizer = OMEGA()

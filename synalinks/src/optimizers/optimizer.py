@@ -873,6 +873,7 @@ class Optimizer(SynalinksSaveable):
     def get_config(self):
         return {
             "population_size": self.population_size,
+            "sampling_temperature": self.sampling_temperature,
             "reward_uncertainty": self.reward_uncertainty,
             "name": self.name,
             "description": self.description,
