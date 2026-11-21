@@ -45,6 +45,28 @@ class CosineSimilarityTest(testing.TestCase):
         self.assertEqual(reward, 1.0)
 
     @patch("litellm.aembedding")
+    async def test_list_fields_of_different_lengths(self, mock_embedding):
+        async def embed(model=None, input=None, **kwargs):
+            vectors = {"Paris": [1.0, 0.0], "['a', 'b']": [0.0, 1.0], "['a']": [0.0, 1.0]}
+            return {"data": [{"embedding": vectors[text]} for text in input]}
+
+        mock_embedding.side_effect = embed
+
+        class Answer(DataModel):
+            answer: str
+            sources: list[str]
+
+        cosine_similarity = CosineSimilarity(
+            embedding_model=EmbeddingModel(model="ollama/all-minilm")
+        )
+        reward = await cosine_similarity(
+            Answer(answer="Paris", sources=["a", "b"]),
+            Answer(answer="Paris", sources=["a"]),
+        )
+        self.assertIsInstance(reward, float)
+        self.assertAlmostEqual(reward, 1.0)
+
+    @patch("litellm.aembedding")
     async def test_empty_prediction(self, mock_embedding):
         embedding_model = EmbeddingModel(model="ollama/all-minilm")
 

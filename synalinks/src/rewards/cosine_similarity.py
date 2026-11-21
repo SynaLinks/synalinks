@@ -2,12 +2,10 @@
 # Original authors: François Chollet et al. (Keras Team)
 # License Apache 2.0: (c) 2025-2026 Yoan Sallami (Synalinks Team)
 
-from synalinks.src import tree
 from synalinks.src.api_export import synalinks_export
 from synalinks.src.backend import EmbeddingRequest
 from synalinks.src.backend.common import numpy as np
 from synalinks.src.modules.embedding_models import get as _get_em
-from synalinks.src.rewards.reward import squeeze_or_expand_to_same_rank
 from synalinks.src.rewards.reward_wrappers import RewardFunctionWrapper
 from synalinks.src.saving import serialization_lib
 
@@ -27,6 +25,10 @@ async def cosine_similarity(y_true, y_pred, embedding_model=None, axis=-1):
     but scaled to [0.0, 1.0] and adjusted to have a reward that tend
     towards 1.0 if the two objects are similar (and 0.0 otherwise).
 
+    Each top-level field of `y_true` is embedded as one text (a list or nested
+    field included) and compared with the same field of `y_pred`; the reward
+    is the mean over the fields.
+
     Args:
         y_true (JsonDataModel): The ground truth JSON data_model.
         y_pred (JsonDataModel): The predicted JSON data_model.
@@ -42,22 +44,20 @@ async def cosine_similarity(y_true, y_pred, embedding_model=None, axis=-1):
     reward = 0.0
     if y_pred is not None and y_true is not None:
         em = _get_em(embedding_model)
-        # Flatten each data model's fields to strings, embed, and pull
-        # the vectors out, same logic the old `ops.embedding` did.
-        y_true_texts = tree.flatten(
-            tree.map_structure(lambda f: str(f), y_true.get_json())
-        )
-        y_pred_texts = tree.flatten(
-            tree.map_structure(lambda f: str(f), y_pred.get_json())
-        )
+        # One text per top-level field, paired by key (a list field is one text).
+        y_true_json = y_true.get_json()
+        y_pred_json = y_pred.get_json()
+        y_true_texts = [str(value) for value in y_true_json.values()]
+        y_pred_texts = [str(y_pred_json.get(key, "")) for key in y_true_json]
         y_true_result = await em(EmbeddingRequest(texts=y_true_texts))
         y_pred_result = await em(EmbeddingRequest(texts=y_pred_texts))
-        y_true = np.convert_to_tensor(y_true_result.get("embeddings"))
-        y_pred = np.convert_to_tensor(y_pred_result.get("embeddings"))
-        y_true, y_pred = squeeze_or_expand_to_same_rank(y_true, y_pred)
-        y_pred = np.normalize(y_pred, axis=axis)
-        y_true = np.normalize(y_true, axis=axis)
-        reward = (np.sum(y_true * y_pred, axis=axis) + 1) / 2
+        y_true = np.normalize(
+            np.convert_to_tensor(y_true_result.get("embeddings")), axis=axis
+        )
+        y_pred = np.normalize(
+            np.convert_to_tensor(y_pred_result.get("embeddings")), axis=axis
+        )
+        reward = float(np.mean((np.sum(y_true * y_pred, axis=axis) + 1) / 2))
     return reward
 
 
