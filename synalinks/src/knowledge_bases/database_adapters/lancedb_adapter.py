@@ -740,13 +740,26 @@ class LanceDBAdapter(DatabaseAdapter):
     # -- bulk file loaders -----------------------------------------------------
 
     async def _from_arrow(self, arrow_table, table_name, table_description):
+        """Create ``table_name`` from ``arrow_table``, or upsert its rows by
+        primary key when the table already exists (like `DuckDBAdapter`)."""
         table = table_identifier(table_name)
+        if table in self._db.table_names():
+            json_schema = self._table_json_schema(table, remove_embedding=False)
+            (
+                self._db.open_table(table)
+                .merge_insert(self._get_id_key(json_schema))
+                .when_matched_update_all()
+                .when_not_matched_insert_all()
+                .execute(arrow_table)
+            )
+            if table_description is not None:
+                json_schema["description"] = table_description
+            return SymbolicDataModel(schema=json_schema)
         json_schema = self._arrow_to_json_schema(table, arrow_table.schema, False)
         if table_description is not None:
             json_schema["description"] = table_description
         metadata = {_SCHEMA_META_KEY: orjson.dumps(json_schema)}
         arrow_table = arrow_table.replace_schema_metadata(metadata)
-        self._db.drop_table(table, ignore_missing=True)
         self._db.create_table(table, data=arrow_table)
         return SymbolicDataModel(schema=json_schema)
 
