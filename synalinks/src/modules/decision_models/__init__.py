@@ -137,8 +137,7 @@ def get(identifier):
     Resolution order: a concrete instance (or string / config dict) is
     always preferred; ``None`` falls back to the configured default
     (``synalinks.config.default_decision_model()``). If no default is
-    configured, a ``ValueError`` is raised; this function never
-    returns ``None``.
+    configured, ``None`` is returned.
 
     Args:
         identifier (str | dict | DecisionModel | None): DecisionModel
@@ -151,7 +150,8 @@ def get(identifier):
               ``synalinks.set_default_decision_model(...)``.
 
     Returns:
-        (DecisionModel): A concrete Synalinks DecisionModel instance.
+        (DecisionModel | None): A Synalinks DecisionModel instance, or `None`
+            when `identifier` is `None` and no default is configured.
     """
     if identifier is None:
         # Lazy import to avoid a backend → modules cycle. ``None`` falls

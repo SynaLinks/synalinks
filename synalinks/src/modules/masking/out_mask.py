@@ -38,26 +38,30 @@ class OutMask(Module):
         )
 
     async def main():
-        inputs = Input(data_model=Document)
-        summary = synalinks.ChainOfThought(
+        inputs = synalinks.Input(data_model=Document)
+        summary = await synalinks.ChainOfThought(
             data_model=Summary,
             language_model=language_model,
         )(inputs)
-        masked_summary = synalinks.OutMask(
-            # remove the thinking field from the chain of thought
+        masked_summary = await synalinks.OutMask(
+            # remove the thinking field
             mask=["thinking"],
         )(summary)
 
-        program = Program(
+        program = synalinks.Program(
             inputs=inputs,
             outputs=masked_summary,
             name="summary_generator",
             description="Generate a summary from a document",
         )
+
+    asyncio.run(main())
     ```
 
     Args:
         mask (list): The list of keys to remove.
+        pattern (str): Optional. A regex; the fields whose key matches it are
+            removed. At least one of `mask` or `pattern` is required.
         name (str): Optional. The name of the module.
         description (str): Optional. The description of the module.
         trainable (bool): Whether the module's variables should be trainable.
