@@ -10,6 +10,8 @@ from synalinks.src.modules.decision_models import resolve_decision_model
 from synalinks.src.modules.language_models import get as _get_lm
 from synalinks.src.modules.module import Module
 from synalinks.src.saving import serialization_lib
+from synalinks.src.saving.object_registration import get_registered_name
+from synalinks.src.saving.object_registration import get_registered_object
 
 
 @synalinks_export(["synalinks.modules.Branch", "synalinks.Branch"])
@@ -176,7 +178,9 @@ class Branch(Module):
         decision_type (type): Optional. The decision module class. Defaults to
             `Decision` (single-label, exactly one branch active). Pass
             `MultiDecision` to enable multi-label routing where several
-            branches may be active simultaneously.
+            branches may be active simultaneously. A custom class must be
+            registered with `@synalinks.saving.register_synalinks_serializable()`
+            to survive `get_config` / `from_config`.
         name (str): Optional. The name of the module.
         description (str): Optional. The description of the module.
         trainable (bool): Whether the module's variables should be trainable.
@@ -218,7 +222,6 @@ class Branch(Module):
         decision_model=None,
         min_confidence=None,
         threshold=None,
-        **kwargs,
     ):
         super().__init__(
             name=name,
@@ -406,6 +409,7 @@ class Branch(Module):
             "use_outputs_schema": self.use_outputs_schema,
             "min_confidence": self.min_confidence,
             "threshold": self.threshold,
+            "decision_type": get_registered_name(type(self.decision)),
             "name": self.name,
             "description": self.description,
             "trainable": self.trainable,
@@ -442,4 +446,8 @@ class Branch(Module):
             )
             for branch_config in config.pop("branches")
         ]
+        if "decision_type" in config:
+            config["decision_type"] = get_registered_object(
+                config.pop("decision_type"), custom_objects=custom_objects
+            )
         return cls(language_model=language_model, branches=branches, **config)

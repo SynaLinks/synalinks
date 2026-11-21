@@ -13,6 +13,7 @@ from synalinks.src.modules.decision_models.decision_model import choice_schema
 from synalinks.src.modules.language_models import get as _get_lm
 from synalinks.src.modules.module import Module
 from synalinks.src.saving import serialization_lib
+from synalinks.src.saving.object_registration import register_synalinks_serializable
 
 
 class Question(DataModel):
@@ -58,6 +59,7 @@ one the following labels: {labels}
 
 
 @synalinks_export(["synalinks.modules.Decision", "synalinks.Decision"])
+@register_synalinks_serializable(package="synalinks")
 class Decision(Module):
     """Perform a decision on the given input based on a question and a list of labels.
 
