@@ -1,7 +1,8 @@
 # License Apache 2.0: (c) 2025-2026 Yoan Sallami (Synalinks Team)
 
+import contextvars
+import itertools
 import json
-from typing import Dict
 from typing import List
 from typing import Optional
 
@@ -19,6 +20,9 @@ from synalinks.src.modules.core.tool import Tool
 from synalinks.src.modules.language_models import get as _get_lm
 from synalinks.src.sandboxes.mirage_sandbox import MirageSandbox
 from synalinks.src.saving import serialization_lib
+
+# Each running call's state, keyed by agent: concurrent calls get their own.
+_CALL_STATE = contextvars.ContextVar("deep_agent_call_state", default={})
 
 
 def get_default_instructions(workdir: Optional[str]) -> str:
@@ -331,13 +335,12 @@ class DeepAgent(FunctionCallingAgent):
             if sandbox is not None
             else self._own(MirageSandbox(workdir=self.workdir, timeout=self.timeout))
         )
-        # Subagent branches (forks) awaiting the parent's review, keyed by
-        # handle; reset per `call()`, populated by `spawn_subagents`.
-        self._subagents: Dict[str, object] = {}
-        self._subagent_counter = 0
-        # Overlay path the full (data) inputs are written to, resolved once on
-        # first use so it can't shadow a workdir file (see `_materialize_inputs`).
-        self._inputs_path: Optional[str] = None
+        # State used outside a call (see `_call_state`).
+        self._idle_state = {"subagents": {}, "count": 0, "slot": 0}
+        # Overlay path the full (data) inputs are written to, per call slot,
+        # resolved on first use so it can't shadow a workdir file.
+        self._inputs_paths = {}
+        self._busy_slots = set()
 
         # Whether `read_image` / `read_audio` were weighed (see `call`).
         self._media_tools_checked = False
@@ -410,15 +413,25 @@ class DeepAgent(FunctionCallingAgent):
         if not inputs or is_strictly_chat_messages(inputs):
             return inputs
         inputs_json = inputs.get_json()
-        if self._inputs_path is None:
-            # Resolved while the overlay is still empty, so it reflects only the
-            # workdir and never shadows a file the caller mounted.
-            self._inputs_path = await unique_inputs_path(self.sandbox)
+        slot = self._call_state["slot"]
+        if slot not in self._inputs_paths:
+            # Distinct bases per slot, so concurrent calls never share a file.
+            self._inputs_paths[slot] = await unique_inputs_path(
+                self.sandbox, base=f"inputs.{slot}" if slot else "inputs"
+            )
+        inputs_path = self._inputs_paths[slot]
         await self.sandbox.write_file(
-            self._inputs_path,
+            inputs_path,
             json.dumps(inputs_json, indent=2, ensure_ascii=False),
         )
-        return summarize_inputs(inputs_json, inputs_file=self._inputs_path)
+        return summarize_inputs(inputs_json, inputs_file=inputs_path)
+
+    @property
+    def _call_state(self):
+        """The running call's subagent branches (by handle), handle count and
+        inputs-file slot. Concurrent calls (batched predict / evaluate) each
+        get their own; outside a call, the agent's idle state."""
+        return _CALL_STATE.get().get(id(self), self._idle_state)
 
     async def call(self, inputs, training=False):
         if not self._media_tools_checked and self.language_model is not None:
@@ -431,12 +444,17 @@ class DeepAgent(FunctionCallingAgent):
                 if tool.name not in self.tools and await supported():
                     self.tools[tool.name] = tool
             self._media_tools_checked = True
-        # Subagent branches are scoped to a single turn: a handle from a
-        # previous call must not survive into the next one.
-        self._subagents = {}
-        self._subagent_counter = 0
-        inputs = await self._materialize_inputs(inputs)
-        return await super().call(inputs, training=training)
+        # Subagent handles and the inputs file are scoped to this call.
+        slot = next(i for i in itertools.count() if i not in self._busy_slots)
+        self._busy_slots.add(slot)
+        state = {"subagents": {}, "count": 0, "slot": slot}
+        token = _CALL_STATE.set({**_CALL_STATE.get(), id(self): state})
+        try:
+            inputs = await self._materialize_inputs(inputs)
+            return await super().call(inputs, training=training)
+        finally:
+            _CALL_STATE.reset(token)
+            self._busy_slots.discard(slot)
 
     @staticmethod
     def _coerce_task(task) -> str:
@@ -477,8 +495,9 @@ class DeepAgent(FunctionCallingAgent):
         """
         prompts = [self._coerce_task(t) for t in (tasks or [])]
         # Handles are reserved up front so concurrent spawns never share one.
-        start = self._subagent_counter
-        self._subagent_counter += len(prompts)
+        state = self._call_state
+        start = state["count"]
+        state["count"] += len(prompts)
         return await spawn_subagents_on_forks(
             self.sandbox,
             prompts,
@@ -501,7 +520,7 @@ class DeepAgent(FunctionCallingAgent):
                 name=f"{self.name}_sub{index}",
             ),
             name=self.name,
-            registry=self._subagents,
+            registry=state["subagents"],
             start=start,
         )
 
@@ -528,7 +547,7 @@ class DeepAgent(FunctionCallingAgent):
             dict: ``{written, deleted, conflicts, skipped}`` virtual paths, or
             ``error`` for an unknown handle.
         """
-        branch = self._subagents.get(handle)
+        branch = self._call_state["subagents"].get(handle)
         if branch is None:
             return {"error": f"unknown subagent handle: {handle!r}"}
         return self.sandbox.merge(branch, paths=paths, force=force)
@@ -542,7 +561,7 @@ class DeepAgent(FunctionCallingAgent):
         Returns:
             dict: ``{discarded: handle}``, or ``error`` for an unknown handle.
         """
-        return discard_subagent_branch(self._subagents, handle)
+        return discard_subagent_branch(self._call_state["subagents"], handle)
 
     async def compute_output_spec(self, inputs, training=False):
         # Mirror the runtime shape: data inputs become an InputsSummary; only a
