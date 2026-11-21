@@ -35,7 +35,8 @@ class RRFReranker(Module):
     normalize their incompatible score scales.
 
     Rows are matched across lists by ``id_key`` when given, otherwise by
-    a canonical signature of the whole row. The fused ``rrf_score`` is
+    a canonical signature of the whole row minus its score fields
+    (``score`` and ``*_score``, which differ per retriever). The fused ``rrf_score`` is
     written onto each returned row; the output is a `GenericResult`
     sorted by descending score and truncated to ``k``. ``None`` inputs
     are ignored, so it composes with optional retrieval branches.
@@ -74,8 +75,8 @@ class RRFReranker(Module):
         k (int): Maximum number of fused rows to return. ``None`` returns
             all fused rows. Defaults to None.
         id_key (str): Row field used to identify the same row across
-            lists. When ``None`` (default), the whole row is used as its
-            identity (a canonical JSON signature).
+            lists. When ``None`` (default), the whole row minus its score
+            fields is used as its identity (a canonical JSON signature).
         name (str): Optional. The name of the module.
         description (str): Optional. The description of the module.
         trainable (bool): Whether the module's variables should be
@@ -109,6 +110,11 @@ class RRFReranker(Module):
         """Identity of a row for cross-list matching."""
         if self.id_key is not None and isinstance(row, dict) and self.id_key in row:
             return row[self.id_key]
+        if isinstance(row, dict):
+            # Each retriever adds its own score; it must not split the same row.
+            row = {
+                k: v for k, v in row.items() if k != "score" and not k.endswith("_score")
+            }
         return orjson.dumps(row, option=orjson.OPT_SORT_KEYS, default=str)
 
     async def call(self, inputs, training=False):
