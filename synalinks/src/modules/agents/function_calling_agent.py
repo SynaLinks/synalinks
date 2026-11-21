@@ -18,7 +18,7 @@ from synalinks.src.backend.common.op_scope import current_op_scope
 from synalinks.src.backend.common.op_scope import current_trajectory_start
 from synalinks.src.backend.common.op_scope import trajectory_scope
 from synalinks.src.modules.agents.utils.agents_utils import call_tool
-from synalinks.src.modules.agents.utils.agents_utils import discover_agents_md
+from synalinks.src.modules.agents.utils.agents_utils import find_agents_md
 from synalinks.src.modules.agents.utils.agents_utils import merge_tools
 from synalinks.src.modules.agents.utils.agents_utils import resolve_workdir
 from synalinks.src.modules.agents.utils.agents_utils import tool_message_content
@@ -548,15 +548,20 @@ class FunctionCallingAgent(Module):
         self.workdir = resolve_workdir(workdir)
         self.skills = resolve_skills_paths(skills)
 
-        agents_md_items = discover_agents_md(self.workdir) if self.workdir else []
         # root AGENTS.md only: nested files create conflicting instructions
-        agents_md_items = [item for item in agents_md_items if not item.directory]
+        agents_md = find_agents_md(self.workdir) if self.workdir else None
+        try:
+            agents_md = (
+                agents_md
+                and agents_md.read_text(encoding="utf-8", errors="replace").strip()
+            )
+        except OSError:
+            agents_md = None
         # internal, derived at construction; subclasses seed it pre-super
         self.prompt_variables = dict(getattr(self, "_prompt_variables", {}))
-        if agents_md_items:
+        if agents_md:
             self.prompt_variables["custom_instructions"] = [
-                {"directory": item.directory or ".", "content": item.content}
-                for item in agents_md_items
+                {"directory": ".", "content": agents_md}
             ]
 
         if not schema and data_model:
