@@ -11,6 +11,7 @@ Agent); the summary's ``inputs_file`` field names that file when the file route
 is used. Agent Skills helpers live in ``skills_utils``.
 """
 
+import asyncio
 import json
 import os
 from dataclasses import dataclass
@@ -140,6 +141,118 @@ def discover_agents_md(workdir) -> List[AgentsMd]:
         key=lambda a: (a.directory.count(os.sep) if a.directory else -1, a.directory)
     )
     return found
+
+
+def check_public_tool_name(tool):
+    """Raise unless ``tool`` has a public name (no leading underscore)."""
+    if tool.name.startswith("_"):
+        raise ValueError(
+            f"Tool name {tool.name!r} starts with an underscore. "
+            f"Tools exposed to the LM must have public names; "
+            f"rename the function or pass an explicit `name=` to "
+            f"Tool(...)."
+        )
+
+
+def subagent_answer(output) -> str:
+    """Extract a subagent's final answer text from its (schemaless) output.
+
+    A no-schema agent returns a ``ChatMessages`` data model; its last
+    message's ``content`` is the final answer. Falls back to a JSON dump
+    for any other shape so the parent always gets a string.
+    """
+    if output is None:
+        return ""
+    data = output.get_json() if hasattr(output, "get_json") else output
+    if isinstance(data, dict):
+        messages = data.get("messages")
+        if messages:
+            last = messages[-1]
+            content = last.get("content") if isinstance(last, dict) else None
+            if isinstance(content, str):
+                return content
+            return "" if content is None else json.dumps(content, ensure_ascii=False)
+        return json.dumps(data, ensure_ascii=False)
+    return str(data)
+
+
+async def spawn_subagents_on_forks(
+    sandbox, prompts, make_subagent, *, name, registry, start
+):
+    """Run one subagent per prompt concurrently, each on its own fork of
+    ``sandbox``, and report them (the ``spawn_subagents`` tool's result).
+
+    ``make_subagent(index, fork)`` builds the subagent (its class and
+    settings are the parent agent's business). Each subagent runs through a
+    `Program` on a single user message; its fork is closed once it is done
+    and kept as a snapshot in ``registry`` under ``subagent_<n>``, numbered
+    from ``start``, for the parent's merge / discard tools.
+    """
+    # Local imports: `Program` at module scope would cycle at package init.
+    from synalinks.src.backend import ChatMessage
+    from synalinks.src.backend import ChatMessages
+    from synalinks.src.backend import ChatRole
+    from synalinks.src.modules.core.input_module import Input
+    from synalinks.src.modules.module import release_resource
+    from synalinks.src.programs.program import Program
+
+    if not prompts:
+        return {"error": "no tasks provided"}
+
+    async def run_one(index, prompt):
+        # Subagents inherit the parent's confinement (``confine=None``): a
+        # confined parent's subagent is confined to its OWN fork.
+        (fork,) = await sandbox.fork(name=f"{name}_sub{index}", confine=None)
+        if isinstance(fork, Exception):  # E2B's fork returns failures
+            raise fork
+        try:
+            inputs = Input(data_model=ChatMessages)
+            outputs = await make_subagent(index, fork)(inputs)
+            program = Program(
+                inputs=inputs, outputs=outputs, name=f"{name}_sub{index}_program"
+            )
+            output = await program(
+                ChatMessages(messages=[ChatMessage(role=ChatRole.USER, content=prompt)])
+            )
+            snapshot = await fork.snapshot() if hasattr(fork, "snapshot") else fork
+            return snapshot, subagent_answer(output)
+        finally:
+            await release_resource(fork)
+
+    results = await asyncio.gather(
+        *(run_one(i, p) for i, p in enumerate(prompts)), return_exceptions=True
+    )
+    report = []
+    for index, (prompt, result) in enumerate(zip(prompts, results)):
+        handle = f"subagent_{start + index}"
+        if isinstance(result, Exception):
+            report.append(
+                {
+                    "handle": handle,
+                    "task": prompt,
+                    "error": f"{type(result).__name__}: {result}",
+                }
+            )
+            continue
+        branch, answer = result
+        registry[handle] = branch
+        report.append(
+            {
+                "handle": handle,
+                "task": prompt,
+                "result": answer,
+                "diff": branch.diff(),
+                "patch": branch.patch(),
+            }
+        )
+    return {"subagents": report}
+
+
+def discard_subagent_branch(registry, handle):
+    """Drop a subagent's branch from ``registry`` (the ``discard_subagent`` tool)."""
+    if registry.pop(handle, None) is None:
+        return {"error": f"unknown subagent handle: {handle!r}"}
+    return {"discarded": handle}
 
 
 def merge_tools(builtin_tools: List, extra_tools: Optional[List], *, kind: str) -> List:
