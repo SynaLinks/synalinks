@@ -313,7 +313,8 @@ class F1Score(FBetaScore):
 
     If `y_true` and `y_pred` contains multiple fields
     The JSON object's fields are flattened and the score
-    computed for each one independently before being averaged.
+    computed for each one independently, then reduced
+    according to `average` (a list of per-field scores by default).
 
 
     Example:
@@ -321,7 +322,7 @@ class F1Score(FBetaScore):
     ```python
     program.compile(
         metrics=[
-            synalinks.metrics.F1Score(),
+            synalinks.metrics.F1Score(average="macro"),
         ],
     )
     ```

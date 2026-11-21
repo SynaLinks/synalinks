@@ -173,6 +173,12 @@ class EarlyStoppingBehaviorTest(testing.TestCase):
             self.assertIsNone(value)
             self.assertTrue(any("not available" in str(x.message) for x in w))
 
+    def test_non_scalar_monitor_raises(self):
+        cb = EarlyStopping(monitor="val_f1_score", mode="max")
+        cb.set_program(_FakeProgram())
+        with self.assertRaisesRegex(ValueError, "scalar metric"):
+            cb.get_monitor_value({"val_f1_score": [1.0, 0.5]})
+
 
 class EarlyStoppingRestoreVariablesTest(testing.TestCase):
     def test_restores_best_variables(self):

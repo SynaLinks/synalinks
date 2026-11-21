@@ -225,6 +225,12 @@ class EarlyStopping(Callback):
                 ),
                 stacklevel=2,
             )
+        elif isinstance(monitor_value, dict) or np.ndim(monitor_value) > 0:
+            raise ValueError(
+                f"Early stopping needs a scalar metric, but `{self.monitor}` is "
+                f'{monitor_value!r}. Set `average` (e.g. `average="macro"`) '
+                "on the monitored metric."
+            )
         return monitor_value
 
     def _is_improvement(self, monitor_value, reference_value):
