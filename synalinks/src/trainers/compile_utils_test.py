@@ -50,7 +50,7 @@ class IsFunctionLikeTest(testing.TestCase):
 
 class CompileMetricsValidationTest(testing.TestCase):
     """Cover the error paths in `CompileMetrics.__init__` /
-    `_build_metrics_set` that fire before any update_state call."""
+    `build` that fire before any update_state call."""
 
     def test_rejects_non_collection_metrics(self):
         with self.assertRaisesRegex(ValueError, "list, tuple, or dict"):
@@ -99,7 +99,7 @@ class CompileMetricsValidationTest(testing.TestCase):
 
 
 class CompileMetricsBuildErrorPathsTest(testing.TestCase):
-    """`_build_metrics_set` rejects malformed metric configs at build time."""
+    """`CompileMetrics.build` rejects malformed metric configs at build time."""
 
     def _build(self, **kw):
         # Build is sync; the y_true/y_pred shape is what triggers the

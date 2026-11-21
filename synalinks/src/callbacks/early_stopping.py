@@ -219,7 +219,10 @@ class EarlyStopping(Callback):
                     "the end of the best epoch: "
                     f"{self.best_epoch + 1}."
                 )
-            self._restore_variables(self.best_variables)
+            for variable, value in zip(
+                self.program.trainable_variables, self.best_variables
+            ):
+                variable.assign(value)
 
     def _snapshot_variables(self):
         """Deep-copy the program's trainable variable values.
@@ -229,11 +232,6 @@ class EarlyStopping(Callback):
         dicts, deep-copied so later in-place updates don't mutate the snapshot.
         """
         return [copy.deepcopy(v.get_json()) for v in self.program.trainable_variables]
-
-    def _restore_variables(self, snapshot):
-        """Assign a previously captured snapshot back onto the program."""
-        for variable, value in zip(self.program.trainable_variables, snapshot):
-            variable.assign(value)
 
     def get_monitor_value(self, logs):
         logs = logs or {}

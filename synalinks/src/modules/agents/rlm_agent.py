@@ -1039,7 +1039,20 @@ class RecursiveLanguageModelAgent(FunctionCallingAgent):
         # (advertised as `def` stubs in the instructions) rather than as
         # native tool calls. Reject reserved helper names here, after the
         # base's public-name check.
-        reserved = self._reserved_tool_names()
+        # Reserved even when `recursive=False` or subagents are off, so tool
+        # naming stays stable across settings: a user tool cannot quietly shadow
+        # a helper that would reappear when a setting is flipped back on.
+        reserved = frozenset(
+            {
+                "submit",
+                "llm_query",
+                "llm_query_batched",
+                "run_python_code",
+                "spawn_subagents",
+                "merge_subagent",
+                "discard_subagent",
+            }
+        )
         for tool_name in self.tools:
             if tool_name in reserved:
                 raise ValueError(
@@ -1081,54 +1094,6 @@ class RecursiveLanguageModelAgent(FunctionCallingAgent):
         # `run_python_code` (built per call) is always available, so a user may
         # construct an RLM agent with no tools at all.
         return False
-
-    def _reserved_tool_names(self) -> frozenset:
-        """Names a user tool cannot collide with at construction time.
-
-        ``submit``, ``llm_query``, and ``llm_query_batched`` are always
-        reserved, even when ``recursive=False``, so that tool naming
-        stays stable across the two modes and a user tool can't quietly
-        shadow a helper name that would reappear if ``recursive`` is
-        flipped back on. The subagent helpers are reserved too, for the
-        same stability across ``max_subagent_depth`` settings.
-        """
-        return frozenset(
-            {
-                "submit",
-                "llm_query",
-                "llm_query_batched",
-                "run_python_code",
-                "spawn_subagents",
-                "merge_subagent",
-                "discard_subagent",
-            }
-        )
-
-    def _build_extra_call_tools(self) -> dict:
-        """Build the per-call recursive helpers when ``recursive=True``.
-
-        A fresh counter+lock is built on every invocation so concurrent
-        calls into the same agent instance get independent budgets.
-        Returns ``{}`` when ``recursive=False``.
-        """
-        if not self.recursive:
-            return {}
-        counter = {"value": 0}
-        lock = asyncio.Lock()
-        return {
-            "llm_query": _build_llm_query_tool(
-                self.sub_language_model,
-                self.max_llm_calls,
-                counter,
-                lock,
-            ),
-            "llm_query_batched": _build_llm_query_batched_tool(
-                self.sub_language_model,
-                self.max_llm_calls,
-                counter,
-                lock,
-            ),
-        }
 
     def _build_run_python_code_tool(self, sandbox):
         """Build the lone tool the LM can call.
@@ -1325,7 +1290,17 @@ class RecursiveLanguageModelAgent(FunctionCallingAgent):
         call_tools = dict(self.tools)
         submit_holder = {"value": None}
         call_tools["submit"] = _build_submit_tool(self.schema, submit_holder)
-        call_tools.update(self._build_extra_call_tools())
+        if self.recursive:
+            # A fresh counter and lock per call: concurrent calls into the same
+            # agent get independent `max_llm_calls` budgets.
+            counter = {"value": 0}
+            lock = asyncio.Lock()
+            call_tools["llm_query"] = _build_llm_query_tool(
+                self.sub_language_model, self.max_llm_calls, counter, lock
+            )
+            call_tools["llm_query_batched"] = _build_llm_query_batched_tool(
+                self.sub_language_model, self.max_llm_calls, counter, lock
+            )
 
         if is_chat_messages(inputs):
             trajectory = inputs

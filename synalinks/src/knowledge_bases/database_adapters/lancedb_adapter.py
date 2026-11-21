@@ -364,16 +364,6 @@ class LanceDBAdapter(DatabaseAdapter):
         arrow_schema, _ = self._json_schema_to_arrow(json_schema)
         self._db.create_table(table, schema=arrow_schema)
 
-    def _row_for_storage(self, json_data: dict, json_cols: set, arrow_schema) -> dict:
-        row = {}
-        for field in arrow_schema:
-            name = field.name
-            value = json_data.get(name)
-            if name in json_cols and value is not None and not isinstance(value, str):
-                value = orjson.dumps(value).decode()
-            row[name] = value
-        return row
-
     def _decode_row(self, row: dict, json_cols: set, remove_embedding: bool) -> dict:
         out = {}
         for k, v in row.items():
@@ -503,11 +493,18 @@ class LanceDBAdapter(DatabaseAdapter):
                     "arrow_schema": arrow_schema,
                 }
             bucket = buckets[table]
-            bucket["rows"].append(
-                self._row_for_storage(
-                    json_data, bucket["json_cols"], bucket["arrow_schema"]
-                )
-            )
+            row = {}
+            for field in bucket["arrow_schema"]:
+                name = field.name
+                value = json_data.get(name)
+                if (
+                    name in bucket["json_cols"]
+                    and value is not None
+                    and not isinstance(value, str)
+                ):
+                    value = orjson.dumps(value).decode()
+                row[name] = value
+            bucket["rows"].append(row)
             ids.append(id_val)
 
         for table, bucket in buckets.items():

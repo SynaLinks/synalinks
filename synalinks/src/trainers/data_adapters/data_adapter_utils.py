@@ -19,14 +19,13 @@ def get_numpy_iterator(iterable):
     matching the format produced by `ArrayDataAdapter.get_numpy_iterator`.
     Items that are already `np.ndarray` are passed through unchanged.
     """
-
-    def _to_numpy(leaf):
-        if isinstance(leaf, np.ndarray):
-            return leaf
-        return np.asarray(leaf, dtype="object")
-
     for batch in iterable:
-        yield tree.map_structure(_to_numpy, batch)
+        yield tree.map_structure(
+            lambda leaf: (
+                leaf if isinstance(leaf, np.ndarray) else np.asarray(leaf, dtype="object")
+            ),
+            batch,
+        )
 
 
 @synalinks_export("synalinks.utils.unpack_x_y")

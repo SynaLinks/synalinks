@@ -289,23 +289,6 @@ class Recorder(Hook):
                 sanitized["reasoning_content"] = "\n".join(thinking_texts)
         return sanitized
 
-    @classmethod
-    def _to_assistant_message(cls, serialized_outputs):
-        """Convert the LM outputs into an OpenAI-format assistant message.
-
-        A plain LM call already returns a chat-completion message; a
-        schema-constrained call returns the parsed structured output,
-        which is re-serialized as the assistant content.
-        """
-        if serialized_outputs is None:
-            return None
-        if isinstance(serialized_outputs, dict) and "role" in serialized_outputs:
-            return cls._sanitize_message(serialized_outputs)
-        return {
-            "role": "assistant",
-            "content": orjson.dumps(serialized_outputs, default=str).decode(),
-        }
-
     @staticmethod
     def _hash_data(data):
         if data is None:
@@ -409,7 +392,16 @@ class Recorder(Hook):
             # Every attempt failed and the call returned `None` without raising.
             exception = call_usage["error"]
         serialized_outputs = self._serialize_data(outputs)
-        assistant_message = self._to_assistant_message(serialized_outputs)
+        # A plain LM call returns a message; a structured one, its parsed output.
+        if serialized_outputs is None:
+            assistant_message = None
+        elif isinstance(serialized_outputs, dict) and "role" in serialized_outputs:
+            assistant_message = self._sanitize_message(serialized_outputs)
+        else:
+            assistant_message = {
+                "role": "assistant",
+                "content": orjson.dumps(serialized_outputs, default=str).decode(),
+            }
         if not exception and assistant_message is None:
             exception = "No completion to record (streamed response)."
         messages = list(pending["input_messages"])

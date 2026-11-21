@@ -177,22 +177,6 @@ class EmbedKnowledge(Module):
             or is_relation(data_model)
         )
 
-    def _text_for(self, entity_json):
-        """Mask an entity dict and flatten the kept fields into one string.
-
-        Masking is field-name selection on the top-level keys, the same
-        effect as `ops.in_mask` / `ops.out_mask` with ``recursive=False``,
-        done directly on the dict so it works on any nested entity without
-        depending on a resolvable per-entity schema.
-        """
-        fields = dict(entity_json)
-        if self.out_mask:
-            fields = {k: v for k, v in fields.items() if k not in self.out_mask}
-        elif self.in_mask:
-            fields = {k: v for k, v in fields.items() if k in self.in_mask}
-        texts = tree.flatten(tree.map_structure(lambda f: str(f), fields))
-        return " ".join(t for t in texts if t)
-
     def _gather_relation(self, rel_json):
         """Collect the subj/obj entity dicts carried by a relation."""
         units = []
@@ -208,36 +192,6 @@ class EmbedKnowledge(Module):
         for rel_json in kg_json.get("relations", []) or []:
             units += self._gather_relation(rel_json)
         return units
-
-    def _gather(self, json, data_model):
-        """Return the mutable entity dicts to embed, in batch order.
-
-        Each returned dict is a sub-dict of ``json``: writing
-        ``["embedding"]`` onto it lands in the output. Dispatch order
-        mirrors `UpdateKnowledge._update` (graphs before lists, relation
-        before entity). `KnowledgeGraph(s)` are walked structurally: a
-        graph carries no ``label`` discriminator for
-        `get_nested_entity_list`, so only the label-bearing leaf entities
-        (and relation endpoints) are embedded.
-        """
-        if is_knowledge_graphs(data_model):
-            units = []
-            for kg_json in json.get("knowledge_graphs", []) or []:
-                units += self._gather_kg(kg_json)
-            return units
-        if is_knowledge_graph(data_model):
-            return self._gather_kg(json)
-        if is_relations(data_model):
-            units = []
-            for rel_json in json.get("relations", []) or []:
-                units += self._gather_relation(rel_json)
-            return units
-        if is_entities(data_model):
-            return list(json.get("entities", []) or [])
-        if is_relation(data_model):
-            return self._gather_relation(json)
-        # Bare entity or plain data model: embed the whole object.
-        return [json]
 
     def _augment_schema(self, data_model):
         """Add the `embedding` field to the schema's entity definitions."""
@@ -263,11 +217,37 @@ class EmbedKnowledge(Module):
             return data_model.clone(name="embedded_" + data_model.name)
 
         json = copy.deepcopy(data_model.get_json())
-        units = self._gather(json, data_model)
+        # Mutable sub-dicts of `json`, in `UpdateKnowledge._update` dispatch order.
+        if is_knowledge_graphs(data_model):
+            units = []
+            for kg_json in json.get("knowledge_graphs", []) or []:
+                units += self._gather_kg(kg_json)
+        elif is_knowledge_graph(data_model):
+            units = self._gather_kg(json)
+        elif is_relations(data_model):
+            units = []
+            for rel_json in json.get("relations", []) or []:
+                units += self._gather_relation(rel_json)
+        elif is_entities(data_model):
+            units = list(json.get("entities", []) or [])
+        elif is_relation(data_model):
+            units = self._gather_relation(json)
+        else:
+            # Bare entity or plain data model: embed the whole object.
+            units = [json]
         if not units:
             return data_model.clone(name="embedded_" + data_model.name)
 
-        texts = [self._text_for(unit) for unit in units]
+        texts = []
+        for unit in units:
+            # Top-level masking, as `ops.in_mask` / `ops.out_mask` with recursive=False.
+            fields = dict(unit)
+            if self.out_mask:
+                fields = {k: v for k, v in fields.items() if k not in self.out_mask}
+            elif self.in_mask:
+                fields = {k: v for k, v in fields.items() if k in self.in_mask}
+            flat = tree.flatten(tree.map_structure(lambda f: str(f), fields))
+            texts.append(" ".join(t for t in flat if t))
         embeddings = await self.embedding_model(EmbeddingRequest(texts=texts))
         vectors = embeddings.get("embeddings") if embeddings else None
         if not vectors:

@@ -267,5 +267,6 @@ class EarlyStoppingRealProgramTest(testing.TestCase):
         var.assign(mutated)
         self.assertIn("__probe__", var.get_json())
 
-        cb._restore_variables(snapshot)
+        cb.best_variables = snapshot
+        cb.on_train_end()
         self.assertEqual(var.get_json(), before)

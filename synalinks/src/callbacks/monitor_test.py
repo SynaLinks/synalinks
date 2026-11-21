@@ -608,7 +608,7 @@ class _FakeCompileMetrics:
 
 
 class MonitorParamsAndDatasetTest(testing.TestCase):
-    def test_collect_params_covers_compile_program_and_models(self):
+    async def test_collect_params_covers_compile_program_and_models(self):
         program = _FakeMonitoredProgram([_lm("judge")], name="qa")
         program.reward = _FakeReward()
         program.optimizer = _FakeOptimizer()
@@ -616,7 +616,10 @@ class MonitorParamsAndDatasetTest(testing.TestCase):
         cb = Monitor()
         cb.set_program(program)
         cb.set_params({"epochs": 3, "batch_size": 2, "steps": None})
-        params = cb._collect_params()
+        cb._run = _FakeRun()
+        with patch.object(monitor_module, "mlflow") as mlf:
+            await cb._log_params()
+        params = mlf.log_params.call_args[0][0]
         self.assertEqual(params["epochs"], 3)
         self.assertNotIn("steps", params)
         self.assertEqual(params["program_name"], "qa")
@@ -629,13 +632,16 @@ class MonitorParamsAndDatasetTest(testing.TestCase):
         self.assertEqual(params["lm.judge.temperature"], 0.2)
         self.assertIn("lm.judge.api_base", params)
 
-    def test_collect_params_truncates_long_values(self):
+    async def test_collect_params_truncates_long_values(self):
         program = _FakeProgram()
         program.reward = _FakeReward()
         program.reward.get_config = lambda: {"blob": "x" * 10000}
         cb = Monitor()
         cb.set_program(program)
-        params = cb._collect_params()
+        cb._run = _FakeRun()
+        with patch.object(monitor_module, "mlflow") as mlf:
+            await cb._log_params()
+        params = mlf.log_params.call_args[0][0]
         self.assertEqual(len(params["reward_config"]), 6000)
 
     def test_train_begin_logs_train_and_validation_datasets(self):
@@ -899,15 +905,22 @@ class PyfuncModelTest(testing.TestCase):
         self.assertEqual(signature.inputs.inputs[0].name, "question")
         self.assertIsNone(monitor_module.build_signature(None, None))
 
-    def test_to_records_accepts_dict_list_and_dataframe(self):
+    async def test_predict_accepts_dict_list_and_dataframe(self):
         import pandas as pd
 
-        self.assertEqual(monitor_module._to_records({"a": 1}), [{"a": 1}])
-        self.assertEqual(
-            monitor_module._to_records([{"a": 1}, {"a": 2}]), [{"a": 1}, {"a": 2}]
-        )
+        class _Echo:
+            input_schema = {"type": "object", "properties": {"a": {"type": "integer"}}}
+
+            async def predict(self, x, verbose=0):
+                return list(x)
+
+        model = SynalinksProgramModel()
+        model.program = _Echo()
+        model._loop = monitor_module._BackgroundLoop()
+        self.assertEqual(model.predict(None, {"a": 1}), [{"a": 1}])
+        self.assertEqual(model.predict(None, [{"a": 1}, {"a": 2}]), [{"a": 1}, {"a": 2}])
         df = pd.DataFrame({"a": [1, 2]})
-        self.assertEqual(monitor_module._to_records(df), [{"a": 1}, {"a": 2}])
+        self.assertEqual(model.predict(None, df), [{"a": 1}, {"a": 2}])
 
     async def test_predict_runs_program_from_inside_a_running_loop(self):
         class _Prog:
@@ -1039,7 +1052,7 @@ class MonitorPromptRegistryTest(testing.TestCase):
             existing.name = "qa_prog.generator"
             existing.version = 7
             existing.uri = "prompts:/qa_prog.generator/7"
-            existing.template = monitor_module._render_prompt_messages(module)
+            existing.template = cb._snapshot_prompts()["qa_prog.generator"][1]
             mlf.MlflowClient.return_value.load_prompt.return_value = existing
             cb.on_train_begin()
             cb.on_epoch_end(0, logs={"reward": 0.4, "val_reward": 0.5})
@@ -1080,11 +1093,15 @@ class MonitorPromptRegistryTest(testing.TestCase):
 
     def test_inputs_schema_module_without_build_schema_is_skipped(self):
         module = _FakeGenerator("generator", "Answer.", use_inputs_schema=True)
-        self.assertIsNone(monitor_module._render_prompt_messages(module))
+        cb, _ = self._monitor(module)
+        self.assertEqual(cb._snapshot_prompts(), {})
         module._build_schemas_dict = {"inputs": {"type": "object", "properties": {}}}
-        messages = monitor_module._render_prompt_messages(module)
+        messages = cb._snapshot_prompts()["qa_prog.generator"][1]
         self.assertEqual(messages[0]["role"], "system")
 
     def test_prompt_name_sanitized(self):
-        self.assertEqual(monitor_module._prompt_name("my prog", "gen/1"), "my_prog.gen_1")
-        self.assertEqual(monitor_module._prompt_name(None, "gen"), "program.gen")
+        cb, program = self._monitor(_FakeGenerator("gen/1", "Answer."))
+        program.name = "my prog"
+        self.assertEqual(list(cb._snapshot_prompts()), ["my_prog.gen_1"])
+        program.name = None
+        self.assertEqual(list(cb._snapshot_prompts()), ["program.gen_1"])

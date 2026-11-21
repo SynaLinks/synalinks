@@ -37,39 +37,6 @@ def _size(x):
         return None
 
 
-def _clone_metric(metric):
-    """Return a fresh instance of `metric` with independent state.
-
-    Reconstructs the metric from its own config so a brand-new backend
-    ``Variable`` set (and, for operational metrics, an unbound model list) is
-    created -- true per-program isolation, not a shared-state view. Config
-    values that reference objects (e.g. a wrapped callable in
-    ``MeanMetricWrapper``) are carried over BY REFERENCE, never deep-copied, so
-    a metric wrapping a reward that holds a `LanguageModel` doesn't duplicate
-    that model.
-
-    Most metrics round-trip cleanly through ``from_config(get_config())``. The
-    one gap is a metric wrapping a *bare* callable the serialization registry
-    can't locate (e.g. a user's plain function passed to
-    ``MeanMetricWrapper``); that case is rebuilt directly, preserving the
-    callable by reference.
-    """
-    try:
-        return type(metric).from_config(metric.get_config())
-    except Exception:
-        if isinstance(metric, metrics_module.MeanMetricWrapper):
-            return type(metric)(
-                fn=metric._fn,
-                name=metric.name,
-                in_mask=metric.in_mask,
-                out_mask=metric.out_mask,
-                in_mask_pattern=metric.in_mask_pattern,
-                out_mask_pattern=metric.out_mask_pattern,
-                **metric._fn_kwargs,
-            )
-        raise
-
-
 def _own_metrics(metrics):
     """Return `metrics` with every metric instance replaced by a fresh clone.
 
@@ -96,20 +63,26 @@ def _own_metrics(metrics):
         return None
 
     def clone(m):
-        if isinstance(m, metrics_module.Metric):
-            return _clone_metric(m)
-        return m
+        if not isinstance(m, metrics_module.Metric):
+            return m
+        # Rebuild from config; config objects (a wrapped reward...) stay by reference.
+        try:
+            return type(m).from_config(m.get_config())
+        except Exception:
+            # A bare callable the registry cannot locate: rebuild it directly.
+            if isinstance(m, metrics_module.MeanMetricWrapper):
+                return type(m)(
+                    fn=m._fn,
+                    name=m.name,
+                    in_mask=m.in_mask,
+                    out_mask=m.out_mask,
+                    in_mask_pattern=m.in_mask_pattern,
+                    out_mask_pattern=m.out_mask_pattern,
+                    **m._fn_kwargs,
+                )
+            raise
 
     return tree.map_structure(clone, metrics)
-
-
-def _target_key(target):
-    """A hashable key identifying a target's value, for stratification."""
-    value = target.get_json() if hasattr(target, "get_json") else target
-    try:
-        return json.dumps(value, sort_keys=True, default=str)
-    except TypeError:
-        return repr(value)
 
 
 def stratified_minibatch_indices(y, size, rng=None):
@@ -137,7 +110,12 @@ def stratified_minibatch_indices(y, size, rng=None):
         return np.array([], dtype=int)
     groups = {}
     for index in range(n):
-        groups.setdefault(_target_key(y[index]), []).append(index)
+        value = y[index].get_json() if hasattr(y[index], "get_json") else y[index]
+        try:
+            key = json.dumps(value, sort_keys=True, default=str)
+        except TypeError:
+            key = repr(value)
+        groups.setdefault(key, []).append(index)
     if len(groups) <= 1 or len(groups) == n:
         return rng.choice(n, size=size, replace=False)
     buckets = [list(rng.permutation(members)) for members in groups.values()]
@@ -243,7 +221,25 @@ class Trainer:
                 will only be called every `N` batches (i.e. before/after
                 each compiled function execution).
         """
-        self._clear_previous_trainer_metrics()
+        # A submodule Trainer's metrics are not usable under a new Trainer: clear them.
+        for module in self._flatten_modules(include_self=False):
+            if not isinstance(module, Trainer):
+                continue
+            own_metrics = []
+            if self._reward_tracker is not None:
+                own_metrics.append(self._reward_tracker)
+            if self._compile_metrics is not None:
+                own_metrics.append(self._compile_metrics)
+            if self._compile_reward is not None:
+                own_metrics.extend(self._compile_reward.metrics)
+            own_metrics.extend(self._metrics)
+            for m in own_metrics:
+                module._tracker.untrack(m)
+            module._reward_tracker = None
+            module._compile_metrics = None
+            if module._compile_reward is not None:
+                module._compile_reward._metrics.clear()
+            module._metrics.clear()
         # Resolve string/dict identifiers (Keras-style) into instances.
         # Reward and metrics flow through `CompileReward`/`CompileMetrics`
         # which already call `rewards.get` / `metrics.get`.
@@ -331,32 +327,6 @@ class Trainer:
     def reset_metrics(self):
         for m in self.metrics:
             m.reset_state()
-
-    def _get_own_metrics(self):
-        metrics = []
-        if self._reward_tracker is not None:
-            metrics.append(self._reward_tracker)
-        if self._compile_metrics is not None:
-            metrics.append(self._compile_metrics)
-        if self._compile_reward is not None:
-            metrics.extend(self._compile_reward.metrics)
-        metrics.extend(self._metrics)
-        return metrics
-
-    def _clear_previous_trainer_metrics(self):
-        for module in self._flatten_modules(include_self=False):
-            if not isinstance(module, Trainer):
-                continue
-            # A submodule might be a Trainer. In that case, we need to clear
-            # the Trainer-related metrics, as they are not usable when a
-            # new Trainer is instantiated.
-            for m in self._get_own_metrics():
-                module._tracker.untrack(m)
-            module._reward_tracker = None
-            module._compile_metrics = None
-            if module._compile_reward is not None:
-                module._compile_reward._metrics.clear()
-            module._metrics.clear()
 
     @property
     def run_eagerly(self):

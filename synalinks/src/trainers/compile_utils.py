@@ -165,19 +165,6 @@ class CompileMetrics(metrics_module.Metric):
         y_true = self._flatten_y(y_true)
 
         metrics = self._user_metrics
-        self._flat_metrics = self._build_metrics_set(
-            metrics,
-            num_outputs,
-            output_names,
-            y_true,
-            y_pred,
-            argument_name="metrics",
-        )
-        self.built = True
-
-    def _build_metrics_set(
-        self, metrics, num_outputs, output_names, y_true, y_pred, argument_name
-    ):
         flat_metrics = []
         if isinstance(metrics, dict):
             # Without output names the dict-keyed form is meaningless: the
@@ -186,16 +173,16 @@ class CompileMetrics(metrics_module.Metric):
             # on ``None``.
             if output_names is None:
                 raise ValueError(
-                    f"Argument `{argument_name}` can only be provided as a "
+                    f"Argument `metrics` can only be provided as a "
                     "dict when the program also returns a dict of outputs. "
-                    f"Received {argument_name}={metrics}"
+                    f"Received metrics={metrics}"
                 )
             for name in metrics.keys():
                 if name not in output_names:
                     raise ValueError(
-                        f"In the dict argument `{argument_name}`, key "
+                        f"In the dict argument `metrics`, key "
                         f"'{name}' does not correspond to any program "
-                        f"output. Received:\n{argument_name}={metrics}"
+                        f"output. Received:\nmetrics={metrics}"
                     )
         if num_outputs == 1:
             if not metrics:
@@ -207,9 +194,9 @@ class CompileMetrics(metrics_module.Metric):
                     metrics = [metrics]
                 if not all(is_function_like(m) for m in metrics):
                     raise ValueError(
-                        f"Expected all entries in the `{argument_name}` list "
+                        f"Expected all entries in the `metrics` list "
                         f"to be metric objects. Received instead:\n"
-                        f"{argument_name}={metrics}"
+                        f"metrics={metrics}"
                     )
                 flat_metrics.append(
                     MetricsList(
@@ -225,9 +212,9 @@ class CompileMetrics(metrics_module.Metric):
                 if len(metrics) != len(y_pred):
                     raise ValueError(
                         "For a program with multiple outputs, "
-                        f"when providing the `{argument_name}` argument as a "
+                        f"when providing the `metrics` argument as a "
                         "list, it should have as many entries as the program has "
-                        f"outputs. Received:\n{argument_name}={metrics}\nof "
+                        f"outputs. Received:\nmetrics={metrics}\nof "
                         f"length {len(metrics)} whereas the program has "
                         f"{len(y_pred)} outputs."
                     )
@@ -238,7 +225,7 @@ class CompileMetrics(metrics_module.Metric):
                     if not all(is_function_like(e) for e in mls):
                         raise ValueError(
                             f"All entries in the sublists of the "
-                            f"`{argument_name}` list should be metric objects. "
+                            f"`metrics` list should be metric objects. "
                             f"Found the following sublist with unknown "
                             f"types: {mls}"
                         )
@@ -250,14 +237,14 @@ class CompileMetrics(metrics_module.Metric):
                     )
             elif isinstance(metrics, dict):
                 # ``output_names is None`` is already rejected at the top
-                # of this function for dict-shaped metrics.
+                # of this block for dict-shaped metrics.
                 for name in metrics.keys():
                     if not isinstance(metrics[name], list):
                         metrics[name] = [metrics[name]]
                     if not all(is_function_like(e) for e in metrics[name]):
                         raise ValueError(
                             f"All entries in the sublists of the "
-                            f"`{argument_name}` dict should be metric objects. "
+                            f"`metrics` dict should be metric objects. "
                             f"At key '{name}', found the following sublist "
                             f"with unknown types: {metrics[name]}"
                         )
@@ -275,7 +262,8 @@ class CompileMetrics(metrics_module.Metric):
                         )
                     else:
                         flat_metrics.append(None)
-        return flat_metrics
+        self._flat_metrics = flat_metrics
+        self.built = True
 
     def _flatten_y(self, y):
         if isinstance(y, dict) and self.output_names:
@@ -601,7 +589,18 @@ class CompileReward(rewards_module.Reward):
         try:
             output_names = tree.pack_sequence_as(y_pred, flat_output_names)
         except Exception:
-            inferred_flat_output_names = self._get_y_pred_output_names(y_pred)
+            flat_y_pred = tree.flatten(y_pred)
+            if all((isinstance(x, SymbolicDataModel) for x in flat_y_pred)):
+                inferred_flat_output_names = []
+                for data_model in flat_y_pred:
+                    if hasattr(data_model, "_synalinks_history"):
+                        inferred_flat_output_names.append(
+                            data_model._synalinks_history.operation.name
+                        )
+                    else:
+                        inferred_flat_output_names.append(data_model.name)
+            else:
+                inferred_flat_output_names = [None] * len(flat_y_pred)
             output_names = tree.pack_sequence_as(y_pred, inferred_flat_output_names)
 
         if not tree.is_nested(reward):
@@ -622,19 +621,6 @@ class CompileReward(rewards_module.Reward):
         self._y_pred_build_structure = tree.map_structure(lambda x: None, y_pred)
         self._y_true_build_structure = tree.map_structure(lambda x: None, y_true)
         self.built = True
-
-    def _get_y_pred_output_names(self, y_pred):
-        flat_y_pred = tree.flatten(y_pred)
-        if all((isinstance(x, SymbolicDataModel) for x in flat_y_pred)):
-            output_names = []
-            for data_model in flat_y_pred:
-                if hasattr(data_model, "_synalinks_history"):
-                    output_names.append(data_model._synalinks_history.operation.name)
-                else:
-                    output_names.append(data_model.name)
-        else:
-            output_names = [None] * len(flat_y_pred)
-        return output_names
 
     @property
     def has_batch_rewards(self):

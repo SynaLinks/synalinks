@@ -53,64 +53,12 @@ Constraints:
 """.strip()
 
 
-def _format_node_schema(schema: Dict[str, Any]) -> str:
-    """Render a single entity (node) schema as a text block."""
-    label = schema.get("title", "Unknown")
-    properties = schema.get("properties", {})
-    # The `label` const is already encoded in the heading.
-    lines = [f"({label})", *format_schema_columns(properties, skip=("label",))]
-    return "\n".join(lines)
-
-
 def _ref_target(prop: Dict[str, Any]) -> Optional[str]:
     """Return the trailing component of a ``$ref`` if present."""
     ref = prop.get("$ref")
     if not ref:
         return None
     return ref.rsplit("/", 1)[-1]
-
-
-def _format_relation_schema(schema: Dict[str, Any]) -> str:
-    """Render a single relation (edge) schema as a text block.
-
-    Uses Cypher ASCII-art ``(:Subj)-[:LABEL]->(:Obj)`` for the heading
-    so the LM sees the relation in exactly the shape it must produce in
-    the query.
-    """
-    label = schema.get("title", "Unknown")
-    properties = schema.get("properties", {})
-    subj_label = _ref_target(properties.get("subj", {})) or "?"
-    obj_label = _ref_target(properties.get("obj", {})) or "?"
-
-    lines = [
-        f"(:{subj_label})-[:{label}]->(:{obj_label})",
-        *format_schema_columns(properties, skip=("label", "subj", "obj")),
-    ]
-    return "\n".join(lines)
-
-
-def _format_graph_schema(knowledge_base) -> str:
-    """Render the graph schema (entities + relations) as one text block.
-
-    Mirrors the SQL-side ``_format_schema`` shape: a section per
-    construct, separated by blank lines. Returns a plain string so it
-    can be embedded as a single field on a ``GraphSchema`` data model.
-    """
-    sections: List[str] = []
-
-    entities = knowledge_base.get_symbolic_entities()
-    if entities:
-        sections.append("# Entities")
-        for entity in entities:
-            sections.append(_format_node_schema(entity.get_schema()))
-
-    relations = knowledge_base.get_symbolic_relations()
-    if relations:
-        sections.append("# Relations")
-        for relation in relations:
-            sections.append(_format_relation_schema(relation.get_schema()))
-
-    return "\n\n".join(sections)
 
 
 class GraphSchema(DataModel):
@@ -344,8 +292,40 @@ class Text2Cypher(Module):
         labels, renamed properties) are picked up immediately without
         having to rebuild the module.
         """
+        sections: List[str] = []
+
+        entities = self.knowledge_base.get_symbolic_entities()
+        if entities:
+            sections.append("# Entities")
+            for entity in entities:
+                schema = entity.get_schema()
+                label = schema.get("title", "Unknown")
+                properties = schema.get("properties", {})
+                # The `label` const is already encoded in the heading.
+                lines = [
+                    f"({label})",
+                    *format_schema_columns(properties, skip=("label",)),
+                ]
+                sections.append("\n".join(lines))
+
+        relations = self.knowledge_base.get_symbolic_relations()
+        if relations:
+            sections.append("# Relations")
+            for relation in relations:
+                schema = relation.get_schema()
+                label = schema.get("title", "Unknown")
+                properties = schema.get("properties", {})
+                subj_label = _ref_target(properties.get("subj", {})) or "?"
+                obj_label = _ref_target(properties.get("obj", {})) or "?"
+                # The heading is the `(:Subj)-[:LABEL]->(:Obj)` shape the query uses.
+                lines = [
+                    f"(:{subj_label})-[:{label}]->(:{obj_label})",
+                    *format_schema_columns(properties, skip=("label", "subj", "obj")),
+                ]
+                sections.append("\n".join(lines))
+
         return JsonDataModel(
-            json={"graph_schema": _format_graph_schema(self.knowledge_base)},
+            json={"graph_schema": "\n\n".join(sections)},
             schema=GraphSchema.get_schema(),
             name="graph_schema_" + self.name,
         )

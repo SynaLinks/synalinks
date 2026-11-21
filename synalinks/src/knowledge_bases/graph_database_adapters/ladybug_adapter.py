@@ -205,26 +205,6 @@ def _assert_read_only_cypher(query: str) -> None:
         )
 
 
-def _pick_anyof_variant(
-    prop_spec: Dict[str, Any], defs: Dict[str, Any]
-) -> Dict[str, Any]:
-    """Pick the first non-null variant from an ``anyOf`` union.
-
-    Optional fields in Pydantic v2 render as
-    ``anyOf: [{"type": "..."}, {"type": "null"}]``; the column
-    converter needs the non-null half. Enum-only variants get a
-    synthetic ``"type": "string"``.
-    """
-    for variant in prop_spec.get("anyOf", []):
-        variant = resolve_ref(variant, defs)
-        vtype = variant.get("type")
-        if vtype and vtype != "null":
-            return variant
-        if "enum" in variant:
-            return {**variant, "type": "string"}
-    return prop_spec
-
-
 def _map_prop_to_cypher(prop_type: str, prop_spec: Dict[str, Any]) -> str:
     """Map a resolved JSON-schema property to a Ladybug column type.
 
@@ -707,40 +687,30 @@ class LadybugAdapter(GraphDatabaseAdapter):
             cols.append(normalized)
         return cols
 
-    @staticmethod
-    def _render_ddl_option_value(value: Any) -> str:
-        """Render a Python value as a Cypher literal for DDL options.
-
-        ``CREATE_VECTOR_INDEX`` / ``CREATE_FTS_INDEX`` accept their
-        optional kwargs as inline literals, not bound parameters
-        (Ladybug DDL doesn't substitute ``$`` parameters at DDL
-        time). We render bool / numeric directly and quote-escape
-        strings. The keys themselves are gated by the
-        ``_*_SUPPORTED_PARAMS`` allowlists, so the only thing we
-        have to defend on the value side is single-quote escaping
-        inside strings.
-        """
-        if isinstance(value, bool):
-            return "true" if value else "false"
-        if isinstance(value, (int, float)):
-            return str(value)
-        if isinstance(value, str):
-            escaped = value.replace("'", "''")
-            return f"'{escaped}'"
-        raise ValueError(
-            f"Unsupported DDL option value of type {type(value).__name__}: {value!r}"
-        )
-
     def _render_ddl_options(self, options: Dict[str, Any]) -> str:
         """Render an options dict as the ``, k1 := <lit>, ...`` fragment
         appended to a Ladybug DDL ``CALL`` (empty string when the
         dict is empty so the caller can interpolate unconditionally).
+
+        Values are inline literals: Ladybug DDL substitutes no ``$``
+        parameters. The keys are gated by the ``_*_SUPPORTED_PARAMS``
+        allowlists, so a string value only needs its quotes escaped.
         """
-        if not options:
-            return ""
-        return ", " + ", ".join(
-            f"{k} := {self._render_ddl_option_value(v)}" for k, v in options.items()
-        )
+        fragment = ""
+        for key, value in options.items():
+            if isinstance(value, bool):
+                literal = "true" if value else "false"
+            elif isinstance(value, (int, float)):
+                literal = str(value)
+            elif isinstance(value, str):
+                literal = "'" + value.replace("'", "''") + "'"
+            else:
+                raise ValueError(
+                    f"Unsupported DDL option value of type {type(value).__name__}: "
+                    f"{value!r}"
+                )
+            fragment += f", {key} := {literal}"
+        return fragment
 
     def _create_fts_index(self, label: str, columns: List[str]) -> None:
         """Build the FTS index for a label over the given columns.
@@ -845,7 +815,17 @@ class LadybugAdapter(GraphDatabaseAdapter):
             prop_spec = resolve_ref(prop_spec, defs)
             prop_type = prop_spec.get("type")
             if not prop_type and "anyOf" in prop_spec:
-                prop_spec = _pick_anyof_variant(prop_spec, defs)
+                # An optional field is `anyOf: [{type}, {null}]`: take the first
+                # non-null variant (an enum-only one is a string).
+                for variant in prop_spec["anyOf"]:
+                    variant = resolve_ref(variant, defs)
+                    vtype = variant.get("type")
+                    if vtype and vtype != "null":
+                        prop_spec = variant
+                        break
+                    if "enum" in variant:
+                        prop_spec = {**variant, "type": "string"}
+                        break
                 prop_type = prop_spec.get("type")
             if not prop_type and "enum" in prop_spec:
                 prop_type = "string"
@@ -1981,72 +1961,21 @@ class LadybugAdapter(GraphDatabaseAdapter):
         },
     }
 
-    def _entity_model_for_label(self, label: str) -> Optional[Any]:
-        """Look up a registered entity model class by its label.
-
-        Used by `detect_communities` to reconstruct typed
-        Pydantic instances from raw node structs: the user passed
-        ``Person`` / ``City`` etc. at construction time and we want
-        the returned KnowledgeGraphs to round-trip through those
-        types instead of collapsing to the base `Entity`.
-        """
-        for model in self.entity_models:
-            try:
-                if sanitize_label(model.get_schema()["title"]) == label:
-                    return model
-            except Exception:  # noqa: BLE001
-                continue
-        return None
-
-    def _relation_model_for_label(self, label: str) -> Optional[Any]:
-        """Look up a registered relation model class by its label."""
-        for model in self.relation_models:
-            try:
-                if sanitize_label(model.get_schema()["title"]) == label:
-                    return model
-            except Exception:  # noqa: BLE001
-                continue
-        return None
-
     @staticmethod
-    def _json_type_to_python(spec: Dict[str, Any]):
-        """Map a JSON-schema property type to a Python type for model synth."""
-        mapping = {
-            "string": str,
-            "integer": int,
-            "number": float,
-            "boolean": bool,
-            "array": list,
-            "object": dict,
-        }
-        return mapping.get(spec.get("type"), Any)
+    def _model_for_label(models, label: str) -> Optional[Any]:
+        """The registered entity or relation model whose title is ``label``.
 
-    def _synth_entity_model(self, label: str):
-        """Synthesize a generic ``Entity`` subclass for an unregistered label.
-
-        Free-form graphs carry labels with no matching ``entity_models``
-        class, so reconstructing them as the bare `Entity` would
-        drop every property but ``label``. Instead, build a Pydantic
-        model from the table's introspected columns (cached per label)
-        so ``name`` and any other stored field survive read-back. Fields
-        are optional with a ``None`` default so partial rows still
-        validate. Returns ``None`` when the table can't be introspected.
+        Read-backs (e.g. `detect_communities`) round-trip through the user's
+        own classes (``Person``, ``City``) instead of collapsing to the base
+        `Entity` / `Relation`. ``None`` when no registered model matches.
         """
-        if label in self._synth_models:
-            return self._synth_models[label]
-        try:
-            schema = self._node_table_to_json_schema(label)
-        except Exception:  # noqa: BLE001
-            self._synth_models[label] = None
-            return None
-        fields: Dict[str, Any] = {}
-        for name, spec in (schema.get("properties") or {}).items():
-            if name == "label":
-                continue  # provided by the Entity base
-            fields[name] = (Optional[self._json_type_to_python(spec)], None)
-        model = create_model(label, __base__=Entity, **fields)
-        self._synth_models[label] = model
-        return model
+        for model in models:
+            try:
+                if sanitize_label(model.get_schema()["title"]) == label:
+                    return model
+            except Exception:  # noqa: BLE001
+                continue
+        return None
 
     def _build_entity_instance(self, label: str, node: Dict[str, Any]):
         """Construct an Entity-typed instance from a Ladybug node struct.
@@ -2059,7 +1988,34 @@ class LadybugAdapter(GraphDatabaseAdapter):
         resolves or validation fails.
         """
         clean = self._node_to_json(node, label)
-        model = self._entity_model_for_label(label) or self._synth_entity_model(label)
+        model = self._model_for_label(self.entity_models, label)
+        if model is None:
+            # A free-form label: a model built from the table's columns (cached
+            # per label), each optional, so stored fields survive read-back.
+            if label not in self._synth_models:
+                self._synth_models[label] = None
+                try:
+                    schema = self._node_table_to_json_schema(label)
+                except Exception:  # noqa: BLE001
+                    schema = None
+                if schema is not None:
+                    types = {
+                        "string": str,
+                        "integer": int,
+                        "number": float,
+                        "boolean": bool,
+                        "array": list,
+                        "object": dict,
+                    }
+                    fields = {
+                        name: (Optional[types.get(spec.get("type"), Any)], None)
+                        for name, spec in (schema.get("properties") or {}).items()
+                        if name != "label"  # provided by the Entity base
+                    }
+                    self._synth_models[label] = create_model(
+                        label, __base__=Entity, **fields
+                    )
+            model = self._synth_models[label]
         if model is not None:
             try:
                 return model(**clean)
@@ -2082,7 +2038,7 @@ class LadybugAdapter(GraphDatabaseAdapter):
         """Construct a Relation-typed instance from a Ladybug edge struct."""
         subj = self._build_entity_instance(subj_label, subj_node)
         obj = self._build_entity_instance(obj_label, obj_node)
-        rel_model = self._relation_model_for_label(rel_label)
+        rel_model = self._model_for_label(self.relation_models, rel_label)
         if rel_model is not None:
             props = {
                 key: value
@@ -2885,7 +2841,7 @@ class LadybugAdapter(GraphDatabaseAdapter):
         # the reserved names; stamping would clobber that field, and
         # the strip in _node_to_json would hide it, so fail loudly.
         for label in touched_labels:
-            model = self._entity_model_for_label(label)
+            model = self._model_for_label(self.entity_models, label)
             if model is not None:
                 try:
                     declared = set(model.get_schema().get("properties", {}))

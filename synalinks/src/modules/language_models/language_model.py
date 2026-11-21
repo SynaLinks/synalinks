@@ -147,47 +147,6 @@ _CACHE_CREATION_TTL_KEYS = (
 )
 
 
-def _extract_lm_extras(usage, response):
-    """Pull tier-1 counters + long-tail details from a LiteLLM ModelResponse.
-
-    Returns ``(cached_tokens, cache_creation_tokens, reasoning_tokens, extras)``
-    where ``extras`` is a dict of long-tail key -> incremental count.
-    """
-    prompt_details = _safe_get(usage, "prompt_tokens_details")
-    completion_details = _safe_get(usage, "completion_tokens_details")
-    server_tool = _safe_get(usage, "server_tool_use")
-    hidden = getattr(response, "_hidden_params", None) or {}
-
-    cached = _to_int(_safe_get(prompt_details, "cached_tokens"))
-    cache_creation = _to_int(_safe_get(prompt_details, "cache_creation_tokens"))
-    reasoning = _to_int(_safe_get(completion_details, "reasoning_tokens"))
-
-    extras = {}
-    for key in _PROMPT_DETAIL_KEYS:
-        v = _safe_get(prompt_details, key)
-        if v:
-            extras[f"prompt_{key}"] = v
-    cache_create_ttl = _safe_get(prompt_details, "cache_creation_token_details")
-    for key in _CACHE_CREATION_TTL_KEYS:
-        v = _safe_get(cache_create_ttl, key)
-        if v:
-            extras[f"cache_creation_{key}"] = v
-    for key in _COMPLETION_DETAIL_KEYS:
-        v = _safe_get(completion_details, key)
-        if v:
-            extras[f"completion_{key}"] = v
-    for key in _SERVER_TOOL_KEYS:
-        v = _safe_get(server_tool, key)
-        if v:
-            extras[f"server_{key}"] = v
-    overhead = (
-        hidden.get("litellm_overhead_time_ms") if isinstance(hidden, dict) else None
-    )
-    if overhead is not None:
-        extras["litellm_overhead_time_ms"] = overhead
-    return cached, cache_creation, reasoning, extras
-
-
 # Usage of the LM call running in the current task, read by hooks (the MLflow
 # `Monitor` hook writes it as span attributes). A ContextVar rather than an
 # instance attribute so concurrent calls on one LM never see each other's.
@@ -1442,9 +1401,42 @@ class LanguageModel(Module):
                     total_tokens = int(
                         usage.get("total_tokens") or (prompt_tokens + completion_tokens)
                     )
-                    cached, cache_creation, reasoning, extras = _extract_lm_extras(
-                        usage, response
+                    prompt_details = _safe_get(usage, "prompt_tokens_details")
+                    completion_details = _safe_get(usage, "completion_tokens_details")
+                    server_tool = _safe_get(usage, "server_tool_use")
+                    hidden = getattr(response, "_hidden_params", None) or {}
+                    cached = _to_int(_safe_get(prompt_details, "cached_tokens"))
+                    cache_creation = _to_int(
+                        _safe_get(prompt_details, "cache_creation_tokens")
                     )
+                    reasoning = _to_int(_safe_get(completion_details, "reasoning_tokens"))
+                    extras = {}
+                    for key in _PROMPT_DETAIL_KEYS:
+                        v = _safe_get(prompt_details, key)
+                        if v:
+                            extras[f"prompt_{key}"] = v
+                    cache_create_ttl = _safe_get(
+                        prompt_details, "cache_creation_token_details"
+                    )
+                    for key in _CACHE_CREATION_TTL_KEYS:
+                        v = _safe_get(cache_create_ttl, key)
+                        if v:
+                            extras[f"cache_creation_{key}"] = v
+                    for key in _COMPLETION_DETAIL_KEYS:
+                        v = _safe_get(completion_details, key)
+                        if v:
+                            extras[f"completion_{key}"] = v
+                    for key in _SERVER_TOOL_KEYS:
+                        v = _safe_get(server_tool, key)
+                        if v:
+                            extras[f"server_{key}"] = v
+                    overhead = (
+                        hidden.get("litellm_overhead_time_ms")
+                        if isinstance(hidden, dict)
+                        else None
+                    )
+                    if overhead is not None:
+                        extras["litellm_overhead_time_ms"] = overhead
                     self.last_call_prompt_tokens = prompt_tokens
                     self.last_call_completion_tokens = completion_tokens
                     self.last_call_tokens = total_tokens

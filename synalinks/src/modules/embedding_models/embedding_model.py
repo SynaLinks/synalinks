@@ -52,27 +52,6 @@ _EM_PROMPT_DETAIL_KEYS = (
 )
 
 
-def _extract_em_extras(usage, response):
-    """Pull tier-1 counters + long-tail details from a LiteLLM EmbeddingResponse.
-
-    Returns ``(cached_tokens, extras)``.
-    """
-    prompt_details = _safe_get(usage, "prompt_tokens_details")
-    hidden = getattr(response, "_hidden_params", None) or {}
-    cached = _to_int(_safe_get(prompt_details, "cached_tokens"))
-    extras = {}
-    for key in _EM_PROMPT_DETAIL_KEYS:
-        v = _safe_get(prompt_details, key)
-        if v:
-            extras[f"prompt_{key}"] = v
-    overhead = (
-        hidden.get("litellm_overhead_time_ms") if isinstance(hidden, dict) else None
-    )
-    if overhead is not None:
-        extras["litellm_overhead_time_ms"] = overhead
-    return cached, extras
-
-
 def _accumulate(obj, phase_prefix, increments, extras):
     for suffix, delta in increments.items():
         attr = f"{phase_prefix}cumulated_{suffix}"
@@ -401,7 +380,21 @@ class EmbeddingModel(Module):
                 usage = response.get("usage") or {}
                 prompt_tokens = int(usage.get("prompt_tokens") or 0)
                 total_tokens = int(usage.get("total_tokens") or prompt_tokens)
-                cached, extras = _extract_em_extras(usage, response)
+                prompt_details = _safe_get(usage, "prompt_tokens_details")
+                hidden = getattr(response, "_hidden_params", None) or {}
+                cached = _to_int(_safe_get(prompt_details, "cached_tokens"))
+                extras = {}
+                for key in _EM_PROMPT_DETAIL_KEYS:
+                    v = _safe_get(prompt_details, key)
+                    if v:
+                        extras[f"prompt_{key}"] = v
+                overhead = (
+                    hidden.get("litellm_overhead_time_ms")
+                    if isinstance(hidden, dict)
+                    else None
+                )
+                if overhead is not None:
+                    extras["litellm_overhead_time_ms"] = overhead
                 self.last_call_prompt_tokens = prompt_tokens
                 self.last_call_tokens = total_tokens
                 self.last_call_vectors = n_vectors

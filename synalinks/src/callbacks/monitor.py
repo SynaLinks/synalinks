@@ -43,50 +43,6 @@ _JSON_PRIMITIVES = {"string": "string", "integer": "long", "number": "double"}
 _PROMPT_USER_TURN = "{{ inputs }}"
 
 
-def _prompt_name(program_name, module_name):
-    """Registry name of a module's prompt: `<program>.<module>`, sanitized."""
-    return re.sub(r"[^a-zA-Z0-9_.-]", "_", f"{program_name or 'program'}.{module_name}")
-
-
-def _render_prompt_messages(module):
-    """Chat template of a Generator-like module's current trainable state.
-
-    The system turn is the module's rendered prompt (instructions and
-    few-shot examples from its `state` variable); the user turn carries the
-    `{{ inputs }}` template variable. `None` when the module renders its
-    inputs schema and no build schema is known.
-    """
-    inputs = None
-    if getattr(module, "use_inputs_schema", False):
-        schemas = getattr(module, "_build_schemas_dict", None) or {}
-        schema = next(iter(schemas.values()), None)
-        if schema is None:
-            return None
-        inputs = SymbolicDataModel(schema=schema)
-    system_message = module._render_system_message(inputs)
-    return [
-        {"role": "system", "content": system_message.content},
-        {"role": "user", "content": _PROMPT_USER_TURN},
-    ]
-
-
-def _prompt_model_config(module):
-    """`PromptModelConfig` fields of the module's language model settings."""
-    language_model = getattr(module, "language_model", None)
-    model = getattr(language_model, "model", None)
-    if not model:
-        return None
-    defaults = getattr(language_model, "default_kwargs", None) or {}
-    config = {"provider": model.split("/")[0], "model_name": model}
-    for key in ("temperature", "max_tokens", "top_p", "top_k"):
-        value = getattr(module, key, None)
-        if value is None:
-            value = defaults.get(key)
-        if value is not None:
-            config[key] = value
-    return config
-
-
 class _BackgroundLoop:
     """One daemon thread running its own event loop.
 
@@ -143,7 +99,12 @@ class SynalinksProgramModel(mlflow.pyfunc.PythonModel):
         self._loop = _BackgroundLoop()
 
     def predict(self, context, model_input, params=None):
-        records = _to_records(model_input)
+        if hasattr(model_input, "to_dict"):
+            records = model_input.to_dict(orient="records")
+        elif isinstance(model_input, dict):
+            records = [model_input]
+        else:
+            records = list(model_input)
         input_schema = getattr(self.program, "input_schema", None)
         x = np.array(
             [JsonDataModel(json=record, schema=input_schema) for record in records],
@@ -151,15 +112,6 @@ class SynalinksProgramModel(mlflow.pyfunc.PythonModel):
         )
         outputs = self._loop.run(self.program.predict(x, verbose=0))
         return [o.get_json() if o is not None else None for o in outputs]
-
-
-def _to_records(model_input):
-    """Normalize a pyfunc input into a list of JSON dicts."""
-    if hasattr(model_input, "to_dict"):
-        return model_input.to_dict(orient="records")
-    if isinstance(model_input, dict):
-        return [model_input]
-    return list(model_input)
 
 
 def _json_schema_to_mlflow_type(schema, defs):
@@ -438,9 +390,6 @@ class Monitor(Callback):
         self._prompt_history = {}
         self._prompt_snapshot = {}
 
-    def _batch_phase(self):
-        return "val" if self._in_training else "test"
-
     def _setup_mlflow(self):
         """Configure MLflow tracking."""
         if self.tracking_uri:
@@ -581,51 +530,6 @@ class Monitor(Callback):
                 metrics[f"{prefix}_cost_{phase}"] = delta
         return metrics
 
-    def _collect_params(self):
-        """Fit arguments, compile configuration, program and model settings."""
-        params = {}
-        for key, value in (self.params or {}).items():
-            if isinstance(value, (str, int, float, bool)):
-                params[key] = value
-        program = self.program
-        if program is None:
-            return params
-        params["program_name"] = program.name or ""
-        params["program_class"] = program.__class__.__name__
-        trainable_variables = getattr(program, "trainable_variables", None)
-        if trainable_variables is not None:
-            params["num_trainable_variables"] = len(trainable_variables)
-        if hasattr(program, "_flatten_modules"):
-            params["num_modules"] = len(
-                program._flatten_modules(include_self=False, recursive=True)
-            )
-        reward = getattr(program, "reward", None)
-        if reward is not None:
-            params["reward"] = getattr(reward, "name", reward.__class__.__name__)
-            if hasattr(reward, "get_config"):
-                params["reward_config"] = json.dumps(reward.get_config(), default=str)
-        optimizer = getattr(program, "optimizer", None)
-        if optimizer is not None and hasattr(optimizer, "get_config"):
-            params["optimizer_config"] = json.dumps(optimizer.get_config(), default=str)
-        compile_metrics = getattr(program, "_compile_metrics", None)
-        metrics = getattr(compile_metrics, "metrics", None)
-        if metrics:
-            params["metrics"] = ",".join(m.name for m in metrics)
-        for model in program_models(self.program):
-            kind = "em" if "Embedding" in model.__class__.__name__ else "lm"
-            key = f"{kind}.{model.name}"
-            params[f"{key}.model"] = getattr(model, "model", "")
-            api_base = getattr(model, "api_base", None)
-            if api_base:
-                params[f"{key}.api_base"] = api_base
-            for name, value in (getattr(model, "default_kwargs", None) or {}).items():
-                if isinstance(value, (str, int, float, bool)):
-                    params[f"{key}.{name}"] = value
-        for key, value in list(params.items()):
-            if isinstance(value, str) and len(value) > _MAX_PARAM_LENGTH:
-                params[key] = value[:_MAX_PARAM_LENGTH]
-        return params
-
     async def _log_params(self):
         """Log the run parameters to MLflow asynchronously.
 
@@ -636,7 +540,48 @@ class Monitor(Callback):
         if self._run is None:
             return
         run_id = self._run.info.run_id
-        params = self._collect_params()
+        params = {}
+        for key, value in (self.params or {}).items():
+            if isinstance(value, (str, int, float, bool)):
+                params[key] = value
+        program = self.program
+        if program is not None:
+            params["program_name"] = program.name or ""
+            params["program_class"] = program.__class__.__name__
+            trainable_variables = getattr(program, "trainable_variables", None)
+            if trainable_variables is not None:
+                params["num_trainable_variables"] = len(trainable_variables)
+            if hasattr(program, "_flatten_modules"):
+                params["num_modules"] = len(
+                    program._flatten_modules(include_self=False, recursive=True)
+                )
+            reward = getattr(program, "reward", None)
+            if reward is not None:
+                params["reward"] = getattr(reward, "name", reward.__class__.__name__)
+                if hasattr(reward, "get_config"):
+                    params["reward_config"] = json.dumps(reward.get_config(), default=str)
+            optimizer = getattr(program, "optimizer", None)
+            if optimizer is not None and hasattr(optimizer, "get_config"):
+                params["optimizer_config"] = json.dumps(
+                    optimizer.get_config(), default=str
+                )
+            compile_metrics = getattr(program, "_compile_metrics", None)
+            metrics = getattr(compile_metrics, "metrics", None)
+            if metrics:
+                params["metrics"] = ",".join(m.name for m in metrics)
+            for model in program_models(program):
+                kind = "em" if "Embedding" in model.__class__.__name__ else "lm"
+                key = f"{kind}.{model.name}"
+                params[f"{key}.model"] = getattr(model, "model", "")
+                api_base = getattr(model, "api_base", None)
+                if api_base:
+                    params[f"{key}.api_base"] = api_base
+                for name, value in (getattr(model, "default_kwargs", None) or {}).items():
+                    if isinstance(value, (str, int, float, bool)):
+                        params[f"{key}.{name}"] = value
+        for key, value in list(params.items()):
+            if isinstance(value, str) and len(value) > _MAX_PARAM_LENGTH:
+                params[key] = value[:_MAX_PARAM_LENGTH]
         if not params:
             return
         try:
@@ -685,14 +630,6 @@ class Monitor(Callback):
         except Exception as e:
             self.logger.warning(f"Failed to log {context} dataset: {e}")
 
-    async def _log_artifact(self, local_path, artifact_path):
-        await asyncio.to_thread(
-            mlflow.log_artifact,
-            local_path,
-            artifact_path=artifact_path,
-            run_id=self._run.info.run_id,
-        )
-
     async def _log_program_plot_artifact(self):
         """Log the program plot as an MLflow artifact asynchronously."""
         if self._run is None:
@@ -734,7 +671,12 @@ class Monitor(Callback):
                 )
 
                 if os.path.exists(plot_path):
-                    await self._log_artifact(plot_path, "program_plots")
+                    await asyncio.to_thread(
+                        mlflow.log_artifact,
+                        plot_path,
+                        artifact_path="program_plots",
+                        run_id=self._run.info.run_id,
+                    )
                     self.logger.info(f"Logged program plot: {plot_filename}")
                 else:
                     self.logger.warning(f"Plot file not created: {plot_path}")
@@ -756,16 +698,30 @@ class Monitor(Callback):
         snapshot = {}
         for module in self._prompt_modules():
             try:
-                messages = _render_prompt_messages(module)
+                inputs = None
+                if getattr(module, "use_inputs_schema", False):
+                    schemas = getattr(module, "_build_schemas_dict", None) or {}
+                    schema = next(iter(schemas.values()), None)
+                    # No build schema known yet: nothing to render the inputs with.
+                    if schema is None:
+                        continue
+                    inputs = SymbolicDataModel(schema=schema)
+                system_message = module._render_system_message(inputs)
+                messages = [
+                    {"role": "system", "content": system_message.content},
+                    {"role": "user", "content": _PROMPT_USER_TURN},
+                ]
             except Exception as e:
                 self.logger.warning(f"Failed to render the prompt of {module.name}: {e}")
-                continue
-            if messages is None:
                 continue
             digest = hashlib.sha256(
                 json.dumps(messages, sort_keys=True).encode()
             ).hexdigest()
-            name = _prompt_name(self.program.name, module.name)
+            name = re.sub(
+                r"[^a-zA-Z0-9_.-]",
+                "_",
+                f"{self.program.name or 'program'}.{module.name}",
+            )
             snapshot[name] = (digest, messages, module)
         return snapshot
 
@@ -803,6 +759,21 @@ class Monitor(Callback):
                     commit_message = f"epoch {epoch}"
                     if value is not None:
                         commit_message += f": val_reward={value:.4f}"
+                    language_model = getattr(module, "language_model", None)
+                    model = getattr(language_model, "model", None)
+                    model_config = None
+                    if model:
+                        defaults = getattr(language_model, "default_kwargs", None) or {}
+                        model_config = {
+                            "provider": model.split("/")[0],
+                            "model_name": model,
+                        }
+                        for key in ("temperature", "max_tokens", "top_p", "top_k"):
+                            setting = getattr(module, key, None)
+                            if setting is None:
+                                setting = defaults.get(key)
+                            if setting is not None:
+                                model_config[key] = setting
                     prompt_version = await asyncio.to_thread(
                         mlflow.genai.register_prompt,
                         name=name,
@@ -810,7 +781,7 @@ class Monitor(Callback):
                         commit_message=commit_message,
                         tags=tags,
                         response_format=getattr(module, "schema", None),
-                        model_config=_prompt_model_config(module),
+                        model_config=model_config,
                     )
                 await asyncio.to_thread(
                     client.link_prompt_version_to_run, run_id, prompt_version
@@ -831,18 +802,6 @@ class Monitor(Callback):
             except Exception as e:
                 self.logger.warning(f"Failed to register prompt {name}: {e}")
 
-    def _set_prompt_aliases(self):
-        """Point the `best` alias of each prompt at its best-scoring version."""
-        for name, history in self._prompt_history.items():
-            version = history[-1][0]
-            scored = [h for h in history if h[1] is not None]
-            if scored:
-                version = max(scored, key=lambda h: h[1])[0]
-            try:
-                mlflow.genai.set_prompt_alias(name, "best", version)
-            except Exception as e:
-                self.logger.debug(f"Failed to set the best alias of {name}: {e}")
-
     def _monitored_value(self, logs):
         """The epoch's `val_reward`, else `reward`, else `None`."""
         logs = logs or {}
@@ -850,23 +809,6 @@ class Monitor(Callback):
         if value is None:
             value = logs.get("reward")
         return value
-
-    def _maybe_log_model(self, epoch, logs):
-        """Log a new model version when the reward improved this epoch."""
-        if not self.log_program_model:
-            return
-        value = self._monitored_value(logs)
-        if value is None or value <= self._model_best:
-            return
-        self._model_best = value
-        self._log_model(step=epoch, value=value)
-
-    def _input_example(self):
-        inputs = getattr(self.program, "_fit_inputs", None) or {}
-        x = inputs.get("x")
-        if x is None or len(x) == 0:
-            return None
-        return x[0].get_json()
 
     def _log_model(self, step, value=None):
         """Log the program as a pyfunc model and a LoggedModel version.
@@ -902,7 +844,8 @@ class Monitor(Callback):
                 for pv in [getattr(module, "_mlflow_prompt_version", None)]
                 if pv is not None
             }
-            input_example = self._input_example()
+            x = (getattr(self.program, "_fit_inputs", None) or {}).get("x")
+            input_example = None if x is None or len(x) == 0 else x[0].get_json()
             signature = build_signature(
                 getattr(self.program, "input_schema", None),
                 getattr(self.program, "output_schema", None),
@@ -936,20 +879,6 @@ class Monitor(Callback):
         except Exception as e:
             self.logger.warning(f"Failed to log program model: {e}")
             return None
-
-    def _tag_best_model(self):
-        if not self._logged_models:
-            return
-        best = self._logged_models[-1]
-        scored = [m for m in self._logged_models if m[2] is not None]
-        if scored:
-            best = max(scored, key=lambda m: m[2])
-        try:
-            mlflow.MlflowClient().set_logged_model_tags(
-                best[1], {"synalinks.best": "true"}
-            )
-        except Exception as e:
-            self.logger.debug(f"Failed to tag the best model: {e}")
 
     def on_train_begin(self, logs=None):
         """Called at the beginning of training."""
@@ -989,8 +918,27 @@ class Monitor(Callback):
 
         if self.log_program_model and not self._logged_models:
             self._log_model(step=self._epoch, value=self._monitored_value(logs))
-        self._tag_best_model()
-        self._set_prompt_aliases()
+        if self._logged_models:
+            best = self._logged_models[-1]
+            scored = [m for m in self._logged_models if m[2] is not None]
+            if scored:
+                best = max(scored, key=lambda m: m[2])
+            try:
+                mlflow.MlflowClient().set_logged_model_tags(
+                    best[1], {"synalinks.best": "true"}
+                )
+            except Exception as e:
+                self.logger.debug(f"Failed to tag the best model: {e}")
+        # Point the `best` alias of each prompt at its best-scoring version.
+        for name, history in self._prompt_history.items():
+            version = history[-1][0]
+            scored = [h for h in history if h[1] is not None]
+            if scored:
+                version = max(scored, key=lambda h: h[1])[0]
+            try:
+                mlflow.genai.set_prompt_alias(name, "best", version)
+            except Exception as e:
+                self.logger.debug(f"Failed to set the best alias of {name}: {e}")
 
         self._end_run()
         self._in_training = False
@@ -1029,7 +977,11 @@ class Monitor(Callback):
             self._prompt_snapshot = self._snapshot_prompts()
         run_maybe_nested(self._register_prompts(epoch, logs))
         self._prompt_snapshot = {}
-        self._maybe_log_model(epoch, logs)
+        # Log a new model version when the reward improved this epoch.
+        value = self._monitored_value(logs)
+        if self.log_program_model and value is not None and value > self._model_best:
+            self._model_best = value
+            self._log_model(step=epoch, value=value)
 
     def on_train_batch_begin(self, batch, logs=None):
         """Called at the beginning of a training batch."""
@@ -1117,7 +1069,7 @@ class Monitor(Callback):
         if not self.log_batch_metrics:
             return
 
-        phase = self._batch_phase()
+        phase = "val" if self._in_training else "test"
         step = self._steps[phase]
         self._steps[phase] += 1
         run_maybe_nested(self._log_metrics(logs, step=step, prefix=f"{phase}_batch_"))
