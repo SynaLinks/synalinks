@@ -124,6 +124,9 @@ result = {"doubled": inputs.get("value") * 2}
         result = await self._run_simple(script)
         self.assertEqual(result.get("doubled"), 6)
         self.assertEqual(result.get("stderr"), "")
+        self.assertEqual(
+            list(result.get_schema()["properties"]), ["doubled", "stdout", "stderr"]
+        )
 
     async def test_syntax_error_falls_back_to_default(self):
         script = "def broken(: pass\nresult = {}\n"
@@ -173,6 +176,10 @@ result = {"doubled": inputs.get("value") * 2}
         result = await self._run_simple(script, return_python_script=True)
         self.assertEqual(result.get("doubled"), 6)
         self.assertEqual(result.get("python_script"), script)
+        self.assertEqual(
+            list(result.get_schema()["properties"]),
+            ["python_script", "doubled", "stdout", "stderr"],
+        )
 
     async def test_invalid_default_return_value_raises(self):
         with self.assertRaises(ValueError):
