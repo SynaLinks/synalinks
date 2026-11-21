@@ -1336,6 +1336,8 @@ class LanguageModel(Module):
                 response = await self.fallback(
                     messages,
                     schema=schema,
+                    tools=tools,
+                    tool_schemas=tool_schemas,
                     streaming=streaming,
                     **input_kwargs,
                 )
