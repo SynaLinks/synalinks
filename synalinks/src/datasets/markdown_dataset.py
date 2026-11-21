@@ -315,10 +315,9 @@ class MarkdownDataset(Dataset):
 
     def _iter_files(self) -> Iterator[str]:
         if self.recursive:
-            # os.walk's order is filesystem-dependent; sort filenames
-            # within each directory so the dataset is deterministic
-            # across reruns on the same corpus.
-            for dirpath, _, filenames in os.walk(self.root):
+            # os.walk's order is filesystem-dependent: sort dirs and files.
+            for dirpath, dirnames, filenames in os.walk(self.root):
+                dirnames.sort()
                 for name in sorted(filenames):
                     if name.lower().endswith(self.glob_pattern):
                         yield os.path.join(dirpath, name)

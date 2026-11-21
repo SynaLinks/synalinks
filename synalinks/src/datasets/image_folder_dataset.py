@@ -147,9 +147,9 @@ class ImageFolderDataset(Dataset):
 
     def _iter_files(self) -> Iterator[str]:
         if self.recursive:
-            # os.walk's order is filesystem-dependent; sort within each
-            # directory so the dataset is deterministic across reruns.
-            for dirpath, _, filenames in os.walk(self.root):
+            # os.walk's order is filesystem-dependent: sort dirs and files.
+            for dirpath, dirnames, filenames in os.walk(self.root):
+                dirnames.sort()
                 for name in sorted(filenames):
                     if name.lower().endswith(self.extensions):
                         yield os.path.join(dirpath, name)
