@@ -825,7 +825,8 @@ class Paginator:
 
     Args:
         items (callable): Returns the full, ordered listing.
-        limit (int): Optional. Page size; ``None`` returns everything at once.
+        limit (int): Optional. Page size, at least 1; ``None`` returns
+            everything at once.
         next_token (str): Optional. Where to resume, from a previous page.
     """
 
@@ -835,6 +836,8 @@ class Paginator:
         limit: Optional[int] = None,
         next_token: Optional[str] = None,
     ):
+        if limit is not None and limit < 1:
+            raise InvalidArgumentException(f"limit must be at least 1, got {limit}")
         self.items = items
         self.limit = limit
         self.token = next_token
