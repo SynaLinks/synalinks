@@ -202,7 +202,7 @@ class PythonSynthesis(Module):
             data_model=synalinks.datasets.arcagi.get_input_data_model(),
         )
         outputs = await synalinks.PythonSynthesis(
-            data_model=synalinks.datasets.arcagi.get_output_data_model()
+            data_model=synalinks.datasets.arcagi.get_output_data_model(),
             python_script=default_python_script,
             default_return_value={"output_grid": [[]]},
         )(inputs)
@@ -213,6 +213,8 @@ class PythonSynthesis(Module):
             name="python_script_synthesis",
             description="A program to solve ARCAGI with python code",
         )
+
+    asyncio.run(main())
     ```
     
     Args:

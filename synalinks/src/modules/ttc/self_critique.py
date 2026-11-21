@@ -186,7 +186,7 @@ class SelfCritique(Module):
     Example:
 
     ```python
-    import synalink
+    import synalinks
     import asyncio
 
     class Query(synalinks.DataModel):
