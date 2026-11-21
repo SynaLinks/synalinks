@@ -49,7 +49,7 @@ class TraceDataset(Dataset):
         deduplicate=True,
         batch_size=8,
     )
-    await program.evaluate(x=dataset())
+    await program.evaluate(x=dataset)
     ```
 
     Every example is also given to the templates with its recorded

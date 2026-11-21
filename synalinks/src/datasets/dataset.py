@@ -29,11 +29,11 @@ class Dataset:
     dicts (one per source example). The base class' ``__iter__`` then
     renders each row through the Jinja2 templates, validates the shape,
     and yields batched ``(x, y)`` numpy object arrays, including the
-    ``repeat`` expansion. Calling the dataset returns a fresh generator
-    suitable for synalinks:
+    ``repeat`` expansion. Pass the dataset itself to the trainer, which
+    iterates it afresh on every epoch:
 
     ```python
-    program.evaluate(x=my_dataset())
+    await program.evaluate(x=my_dataset)
     ```
 
     The shape of the per-row input/target objects is controlled by either

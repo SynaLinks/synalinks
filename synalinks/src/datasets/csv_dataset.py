@@ -49,7 +49,8 @@ class CSVDataset(Dataset):
         output_template='{"answer": {{ answer | tojson }}}',
         batch_size=8,
     )
-    program.fit(x=ds())
+    # val_ds: the same loader over held-out rows.
+    await program.fit(x=ds, validation_data=val_ds.materialize(), epochs=2)
     ```
 
     Args:
