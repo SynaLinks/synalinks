@@ -10,3 +10,4 @@ from synalinks.src.hooks.logger import Logger as Logger
 from synalinks.src.hooks.monitor import Monitor as Monitor
 from synalinks.src.hooks.monitor import trace_context as trace_context
 from synalinks.src.hooks.recorder import Recorder as Recorder
+from synalinks.src.hooks.recorder import format_conversation as format_conversation

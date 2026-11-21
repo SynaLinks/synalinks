@@ -36,6 +36,7 @@ from synalinks.src.backend.config import set_epsilon as set_epsilon
 from synalinks.src.backend.config import set_floatx as set_floatx
 from synalinks.src.backend.config import set_seed as set_seed
 from synalinks.src.backend.config import trace_recording_dir as trace_recording_dir
+from synalinks.src.backend.config import trace_recording_format as trace_recording_format
 from synalinks.src.backend.pydantic.base import Embedding as Embedding
 from synalinks.src.backend.pydantic.base import EmbeddingRequest as EmbeddingRequest
 from synalinks.src.backend.pydantic.base import Embeddings as Embeddings

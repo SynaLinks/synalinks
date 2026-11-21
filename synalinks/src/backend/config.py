@@ -41,8 +41,11 @@ _MLFLOW_EXPERIMENT_NAME = "synalinks_traces"
 _ENABLE_TRACE_RECORDING = False
 
 # Root folder where the trace records are written.
-# None means `synalinks_home()` (resolved at call time).
+# None means `./.synalinks` in the working directory (resolved at call time).
 _TRACE_RECORDING_DIR = None
+
+# Format of the trace recording training files (see `Recorder`).
+_TRACE_RECORDING_FORMAT = "openai"
 
 # Default language model (cached instance) and the identifier to persist.
 # The instance is materialized lazily because language_models depends on
@@ -415,38 +418,45 @@ def is_trace_recording_enabled():
         "synalinks.record_traces",
     ]
 )
-def record_traces(base_dir=None):
+def record_traces(base_dir=None, format=None):
     """Enables trace recording of `LanguageModel` calls.
 
     This function enables the `Recorder` hook for every module, recording
-    each LM call (chat messages, completion, token usage, cost ...) as one
-    JSON line under `base_dir`, organized as one folder per program and one
-    subfolder per originating module. Useful to collect training data.
+    each LM call as fine-tuning data under `base_dir`: one folder per
+    program and originating module, holding a `train.jsonl` ready for
+    fine-tuning frameworks, a `metadata.jsonl` (token usage, cost, model
+    configuration ...) and a `failed.jsonl`. See `synalinks.hooks.Recorder`.
 
     Call it at the beginning of your scripts, before creating your modules.
 
     Args:
         base_dir (str): Optional. The root folder where the records are
-            written. If not provided, uses `synalinks_home()`
-            (`$SYNALINKS_HOME` or `~/.synalinks`).
+            written. Defaults to `./.synalinks` in the working directory.
+        format (str): Optional. The format of the `train.jsonl` files:
+            `"openai"` (default, NVIDIA NeMo AutoModel / NeMo RL),
+            `"tinker"` (Tinker's `FromConversationFileBuilder`) or
+            `"customizer"` (NVIDIA NeMo Customizer).
 
     Example:
 
     ```python
     import synalinks
 
-    # Basic usage: records under ~/.synalinks
+    # Basic usage: records under ./.synalinks
     synalinks.record_traces()
 
-    # With a custom folder
-    synalinks.record_traces(base_dir="./traces")
+    # With a custom folder, for Tinker
+    synalinks.record_traces(base_dir="./traces", format="tinker")
     ```
     """
     global _ENABLE_TRACE_RECORDING
     global _TRACE_RECORDING_DIR
+    global _TRACE_RECORDING_FORMAT
 
     if base_dir:
         _TRACE_RECORDING_DIR = base_dir
+    if format:
+        _TRACE_RECORDING_FORMAT = format
     _ENABLE_TRACE_RECORDING = True
 
 
@@ -460,12 +470,27 @@ def trace_recording_dir():
     """Returns the root folder where the trace records are written.
 
     Returns:
-        (str): The folder set via `record_traces()`, or
-            `synalinks_home()` if none was set.
+        (str): The folder set via `record_traces()`, or `./.synalinks` in
+            the working directory (as an absolute path) if none was set.
     """
     if _TRACE_RECORDING_DIR:
         return _TRACE_RECORDING_DIR
-    return synalinks_home()
+    return os.path.abspath(".synalinks")
+
+
+@synalinks_export(
+    [
+        "synalinks.config.trace_recording_format",
+        "synalinks.backend.trace_recording_format",
+    ]
+)
+def trace_recording_format():
+    """Returns the format of the trace recording training files.
+
+    Returns:
+        (str): The format set via `record_traces()`, `"openai"` by default.
+    """
+    return _TRACE_RECORDING_FORMAT
 
 
 @synalinks_export(

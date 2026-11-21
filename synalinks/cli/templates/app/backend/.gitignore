@@ -15,3 +15,6 @@ synalinks/
 program.json
 trained_*.json
 *.png
+
+# Synalinks trace recordings (synalinks.record_traces())
+.synalinks/

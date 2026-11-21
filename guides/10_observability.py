@@ -90,10 +90,11 @@ them, or all three.
 
 3. **`synalinks.record_traces(base_dir=...)`** writes every
    `LanguageModel` call to JSONL files on disk: the chat messages
-   sent to the model, the completion it returned, token usage, and
-   cost. Where logging and MLflow are aimed at *debugging*, trace
-   recording is aimed at *harvesting*: the files are formatted as
-   fine-tuning datasets (see the dedicated section below).
+   sent to the model, the tools it was offered, the completion it
+   returned, token usage, and cost. Where logging and MLflow are
+   aimed at *debugging*, trace recording is aimed at *harvesting*:
+   the files are ready-to-use fine-tuning datasets (see the dedicated
+   section below).
 
 The mechanisms are independent. Logging needs no server; MLflow
 gives you a nicer interface but needs one running; trace recording
@@ -116,17 +117,18 @@ The third mechanism answers a different question. Logging and MLflow
 help you understand a program; `record_traces()` helps you *improve
 the model behind it*. Every real interaction your program handles is
 a potential fine-tuning example: the exact prompt the `LanguageModel`
-received, and the completion it produced. Trace recording captures
-those pairs as they happen, so that after a program has been running
-for a while you have a dataset, for distilling a large model into a
-smaller one, or for fine-tuning on your domain.
+received, the tools it was offered, and the completion it produced.
+Trace recording captures those as they happen, so that after a program
+has been running for a while you have a dataset, for distilling a
+large model into a smaller one, or for fine-tuning on your domain.
 
 ```python
 import synalinks
 
 # Call it once, at the top of your script, BEFORE creating modules.
-synalinks.record_traces()                      # ~/.synalinks (synalinks_home())
-# synalinks.record_traces(base_dir="./traces") # or a custom folder
+synalinks.record_traces()                        # ./.synalinks, "openai" format
+# synalinks.record_traces(base_dir="./traces")   # or a custom folder
+# synalinks.record_traces(format="tinker")       # or another target format
 ```
 
 Under the hood this installs a `synalinks.hooks.Recorder` hook on
@@ -136,67 +138,63 @@ only reacts to `LanguageModel` calls; symbolic calls made while
 building the graph are ignored.
 
 Because one `LanguageModel` instance is typically shared by several
-modules (a `Generator` here, a `ChainOfThought` there), each record
-is attributed to the **originating module**, the module whose
-`call()` invoked the LM, and the files are organized accordingly:
+modules (a `Generator` here, an agent there), each call is attributed
+to the **originating module**, the module whose `call()` invoked the
+LM, and the files are organized accordingly, in a hidden `.synalinks`
+folder of your project:
 
 ```
-~/.synalinks/
-└── program_name/                    # the entry Program
+./.synalinks/
+└── qa_with_critique/                # the entry Program
     ├── answer_generator/
-    │   └── answer_generator_20260703-205001.jsonl
+    │   ├── train.jsonl              # one fine-tuning example per line
+    │   ├── metadata.jsonl           # usage, cost, model config ... per example
+    │   └── failed.jsonl             # failed calls, kept apart
     └── critique_generator/
-        └── critique_generator_20260703-205012.jsonl
+        └── ...
 ```
 
-Each line is one LM call. The `messages` field holds the full
-conversation in **OpenAI chat format**, completion included as the
-final assistant message, which is the chat dataset schema expected
-by OpenAI-compatible fine-tuning stacks such as **NVIDIA NeMo**
-(NeMo Customizer chat datasets, NeMo AutoModel's `ChatDataset`).
-For reasoning models, the assistant's `reasoning_content` is kept in
-the messages: NeMo trains on reasoning traces by default and offers
-`mask_reasoning_content` to exclude them from the loss.
+Each line of `train.jsonl` is one LM call, written so the file can be
+handed **as is** to a fine-tuning framework: it holds only complete
+conversations (ending with the model's completion) and only the keys
+the framework reads. Pick the target with `format`:
+
+| `format` | For | Shape |
+|---|---|---|
+| `"openai"` (default) | NVIDIA NeMo AutoModel, NeMo RL | chat-completion `messages` (with `reasoning_content` and tool calls) and the `tools` offered |
+| `"tinker"` | Tinker (`FromConversationFileBuilder`) | `messages` with `role` / `content` only, reasoning as `<think>...</think>` |
+| `"customizer"` | NVIDIA NeMo Customizer | `messages` with `role` / `content` / `thinking` / `tool_calls`, and the `tools` |
 
 ```json
-{
-  "synalinks_version": "0.9.005",
-  "call_id": "…", "parent_call_id": "…",
-  "program": "qa_with_critique", "module": "answer_generator",
-  "timestamp": 1751567401.5, "duration": 8.3,
-  "usage": {"prompt_tokens": 178, "completion_tokens": 141,
-            "total_tokens": 319, "cached_tokens": 0,
-            "cache_creation_tokens": 0, "reasoning_tokens": 0},
-  "cost": 0.0,
-  "messages": [{"role": "system", "content": "…"},
-               {"role": "user", "content": "…"},
-               {"role": "assistant", "content": "…"}],
-  "inputs_hash": "…", "outputs": {"…": "…"},
-  "config": {"…": "…"}, "config_hash": "…"
-}
+{"messages": [{"role": "system", "content": "…"},
+              {"role": "user", "content": "…"},
+              {"role": "assistant", "content": "…"}]}
 ```
 
-The metadata around `messages` is there for dataset curation:
+Everything else goes to `metadata.jsonl`, one line per example, linked
+to it by `line_hash` (the SHA-256 of the `train.jsonl` line):
 
 - `inputs_hash` (SHA-256 of the input messages) deduplicates repeated
   prompts across runs.
 - `config` / `config_hash` (the serialized `LanguageModel`) group
-  records by the exact model configuration that produced them, so you
-  can filter out records from an older model version.
-- `program` / `module` let you build one dataset per module: the
-  answer generator and the critique generator learn different jobs.
+  examples by the exact model configuration that produced them, so you
+  can filter out examples from an older model version.
+- `program` / `module` and the folder layout give you one dataset per
+  module: the answer generator and the critique generator learn
+  different jobs.
 - `usage` / `cost` / `duration` let you weigh or filter examples
-  (e.g. drop truncated completions).
+  (e.g. drop truncated completions); `cache_hit` and `fallback` flag
+  calls served from the cache or by a fallback model.
+- `session_id` tells runs apart, since the files are appended to.
 
-Consumers that reject unknown top-level keys get a pristine file with
-one projection: `jq -c '{messages}' *.jsonl`.
+Calls that failed, were streamed, or cannot be expressed in the chosen
+format (Tinker cannot load tool calls from a file, and only the
+`"openai"` format takes images) go to `failed.jsonl` instead, with the
+conversation and the reason, so they never break a training file.
 
-Two caveats. First, like `enable_observability()`, the flag is read
-when a module is *constructed*: call `record_traces()` before
-creating your modules. Second, streamed responses (`streaming=True`)
-are recorded without `outputs`, an appended completion, or token
-usage: the record is written when the call returns the stream, before
-the tokens exist.
+One caveat: like `enable_observability()`, the flag is read when a
+module is *constructed*: call `record_traces()` before creating your
+modules.
 
 ## The Anatomy of One Trace
 
@@ -368,8 +366,8 @@ if __name__ == "__main__":
   `enable_logging` prints structured per-call text to stdout.
   `enable_observability` forwards spans to an MLflow server for an
   interactive UI. `record_traces` writes every `LanguageModel` call
-  to JSONL files formatted as fine-tuning datasets (OpenAI chat
-  format, NVIDIA NeMo compatible).
+  to JSONL files ready for fine-tuning frameworks (NVIDIA NeMo,
+  Tinker).
 - **Static** inspection (`program.summary`, `plot_program`)
   describes the shape of the program *before* running it.
   **Runtime** tracing records what *actually* happened during
