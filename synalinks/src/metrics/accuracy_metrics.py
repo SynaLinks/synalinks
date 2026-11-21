@@ -36,7 +36,8 @@ class Accuracy(Metric):
 
     If `y_true` and `y_pred` contain multiple fields the JSON object's
     fields are flattened and the score computed for each one
-    independently before being averaged.
+    independently, then reduced
+    according to `average` (a list of per-field scores by default).
 
 
     Example:
@@ -44,7 +45,7 @@ class Accuracy(Metric):
     ```python
     program.compile(
         metrics=[
-            synalinks.metrics.Accuracy(),
+            synalinks.metrics.Accuracy(average="macro"),
         ],
     )
     ```

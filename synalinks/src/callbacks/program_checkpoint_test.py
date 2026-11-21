@@ -229,7 +229,7 @@ class ProgramCheckpointSaveTest(testing.TestCase):
         cb.set_program(program)
         with warnings.catch_warnings(record=True) as w:
             warnings.simplefilter("always")
-            cb.on_epoch_end(0, logs={"val_reward": np.array([0.1, 0.2])})
+            cb.on_epoch_end(0, logs={"val_reward": [0.1, 0.2]})
             self.assertTrue(any("scalar value" in str(x.message) for x in w))
         # Falls back to unconditional save.
         self.assertEqual(program.saved, [filepath])

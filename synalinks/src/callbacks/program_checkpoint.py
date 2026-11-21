@@ -304,7 +304,7 @@ class ProgramCheckpoint(Callback):
                         "available, skipping.",
                         stacklevel=2,
                     )
-                elif isinstance(current, np.ndarray) and len(current.shape) > 0:
+                elif isinstance(current, dict) or np.ndim(current) > 0:
                     warnings.warn(
                         "Can save best model only when `monitor` is "
                         f"a scalar value. Received: {current}. "
