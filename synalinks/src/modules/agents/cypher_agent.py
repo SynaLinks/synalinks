@@ -5,6 +5,8 @@ from typing import Optional
 
 from synalinks.src.api_export import synalinks_export
 from synalinks.src.knowledge_bases import get as _get_kb
+from synalinks.src.knowledge_bases.adapters_utils import format_schema_columns
+from synalinks.src.knowledge_bases.adapters_utils import unknown_title_error
 from synalinks.src.modules.agents.function_calling_agent import FunctionCallingAgent
 from synalinks.src.modules.agents.sql_agent import _row_count
 from synalinks.src.modules.core.tool import Tool
@@ -87,13 +89,7 @@ def _build_tools(knowledge_base, output_format: str = "csv", k: int = 50):
             schema = model.get_schema()
             label = schema.get("title", "Unknown")
             properties = schema.get("properties", {})
-            columns = []
-            for col_name, col_info in properties.items():
-                if col_name == "label":
-                    continue
-                col_type = col_info.get("type", "unknown")
-                col_desc = col_info.get("description", "")
-                columns.append(f"  - {col_name} ({col_type}): {col_desc}")
+            columns = format_schema_columns(properties, skip=("label",))
             nodes_info.append(f"Node: {label}\n" + "\n".join(columns))
 
         rels_info = []
@@ -111,13 +107,7 @@ def _build_tools(knowledge_base, output_format: str = "csv", k: int = 50):
             subj_label = _ref_label(properties.get("subj", {}))
             obj_label = _ref_label(properties.get("obj", {}))
 
-            attrs = []
-            for col_name, col_info in properties.items():
-                if col_name in ("label", "subj", "obj"):
-                    continue
-                col_type = col_info.get("type", "unknown")
-                col_desc = col_info.get("description", "")
-                attrs.append(f"  - {col_name} ({col_type}): {col_desc}")
+            attrs = format_schema_columns(properties, skip=("label", "subj", "obj"))
             header = f"Relation: ({subj_label})-[:{label}]->({obj_label})"
             rels_info.append(header + ("\n" + "\n".join(attrs) if attrs else ""))
 
@@ -136,14 +126,11 @@ def _build_tools(knowledge_base, output_format: str = "csv", k: int = 50):
                 Capped server-side at the agent's ``k`` setting.
             offset (int): Number of nodes to skip (use 0 to start at the top).
         """
-        node_models = knowledge_base.get_symbolic_entities()
-        available_labels = [m.get_schema().get("title", "Unknown") for m in node_models]
-        if label not in available_labels:
-            return {
-                "error": (
-                    f"Node label {label!r} not found. Available: {available_labels}"
-                )
-            }
+        error = unknown_title_error(
+            knowledge_base.get_symbolic_entities(), label, "Node label"
+        )
+        if error:
+            return error
         effective_limit = max(1, min(limit, k))
         # Label validated against the known-labels list, so direct
         # interpolation is safe; SKIP / LIMIT are bound parameters.

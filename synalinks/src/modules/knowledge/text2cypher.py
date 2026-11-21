@@ -12,6 +12,7 @@ from synalinks.src.backend import Field
 from synalinks.src.backend import JsonDataModel
 from synalinks.src.backend import SymbolicDataModel
 from synalinks.src.knowledge_bases import get as _get_kb
+from synalinks.src.knowledge_bases.adapters_utils import format_schema_columns
 from synalinks.src.modules.core.generator import Generator
 from synalinks.src.modules.language_models import get as _get_lm
 from synalinks.src.modules.module import Module
@@ -56,14 +57,8 @@ def _format_node_schema(schema: Dict[str, Any]) -> str:
     """Render a single entity (node) schema as a text block."""
     label = schema.get("title", "Unknown")
     properties = schema.get("properties", {})
-    lines = [f"({label})"]
-    for col_name, col_info in properties.items():
-        if col_name == "label":
-            # The `label` const is already encoded in the heading.
-            continue
-        col_type = col_info.get("type", col_info.get("const", "unknown"))
-        col_desc = col_info.get("description", "")
-        lines.append(f"  - {col_name} ({col_type}): {col_desc}")
+    # The `label` const is already encoded in the heading.
+    lines = [f"({label})", *format_schema_columns(properties, skip=("label",))]
     return "\n".join(lines)
 
 
@@ -87,13 +82,10 @@ def _format_relation_schema(schema: Dict[str, Any]) -> str:
     subj_label = _ref_target(properties.get("subj", {})) or "?"
     obj_label = _ref_target(properties.get("obj", {})) or "?"
 
-    lines = [f"(:{subj_label})-[:{label}]->(:{obj_label})"]
-    for col_name, col_info in properties.items():
-        if col_name in ("label", "subj", "obj"):
-            continue
-        col_type = col_info.get("type", col_info.get("const", "unknown"))
-        col_desc = col_info.get("description", "")
-        lines.append(f"  - {col_name} ({col_type}): {col_desc}")
+    lines = [
+        f"(:{subj_label})-[:{label}]->(:{obj_label})",
+        *format_schema_columns(properties, skip=("label", "subj", "obj")),
+    ]
     return "\n".join(lines)
 
 

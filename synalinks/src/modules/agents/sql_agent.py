@@ -5,6 +5,7 @@ from typing import Optional
 
 from synalinks.src.api_export import synalinks_export
 from synalinks.src.knowledge_bases import get as _get_kb
+from synalinks.src.knowledge_bases.adapters_utils import unknown_title_error
 from synalinks.src.modules.agents.function_calling_agent import FunctionCallingAgent
 from synalinks.src.modules.core.tool import Tool
 from synalinks.src.modules.knowledge.text2sql import _format_schema
@@ -102,16 +103,11 @@ def _build_tools(knowledge_base, output_format: str = "csv", k: int = 50):
                 Capped server-side at the agent's ``k`` setting.
             offset (int): Number of rows to skip (use 0 to start at the top).
         """
-        symbolic_models = knowledge_base.get_symbolic_data_models()
-        available_tables = [
-            m.get_schema().get("title", "Unknown") for m in symbolic_models
-        ]
-        if table_name not in available_tables:
-            return {
-                "error": (
-                    f"Table {table_name!r} not found. Available: {available_tables}"
-                )
-            }
+        error = unknown_title_error(
+            knowledge_base.get_symbolic_data_models(), table_name, "Table"
+        )
+        if error:
+            return error
         effective_limit = max(1, min(limit, k))
         # Table name validated against the known-tables list, so direct
         # interpolation is safe; LIMIT / OFFSET are bound parameters.

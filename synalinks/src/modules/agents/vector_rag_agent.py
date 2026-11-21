@@ -5,6 +5,8 @@ from typing import Optional
 
 from synalinks.src.api_export import synalinks_export
 from synalinks.src.knowledge_bases import get as _get_kb
+from synalinks.src.knowledge_bases.adapters_utils import format_schema_columns
+from synalinks.src.knowledge_bases.adapters_utils import unknown_title_error
 from synalinks.src.modules.agents.function_calling_agent import FunctionCallingAgent
 from synalinks.src.modules.agents.sql_agent import _row_count
 from synalinks.src.modules.core.tool import Tool
@@ -111,11 +113,7 @@ def _build_tools(
             table_name = schema.get("title", "Unknown")
             table_desc = schema.get("description", "")
             properties = schema.get("properties", {})
-            columns = []
-            for col_name, col_info in properties.items():
-                col_type = col_info.get("type", "unknown")
-                col_desc = col_info.get("description", "")
-                columns.append(f"  - {col_name} ({col_type}): {col_desc}")
+            columns = format_schema_columns(properties)
             header = f"Table: {table_name}"
             if table_desc:
                 header += f"\n  {table_desc}"
@@ -139,16 +137,11 @@ def _build_tools(
                 modes, use natural language. For fulltext mode, use
                 keyword-rich phrasing.
         """
-        symbolic_models = knowledge_base.get_symbolic_data_models()
-        available_tables = [
-            m.get_schema().get("title", "Unknown") for m in symbolic_models
-        ]
-        if table_name not in available_tables:
-            return {
-                "error": (
-                    f"Table {table_name!r} not found. Available: {available_tables}"
-                )
-            }
+        error = unknown_title_error(
+            knowledge_base.get_symbolic_data_models(), table_name, "Table"
+        )
+        if error:
+            return error
         try:
             if search_type == "similarity":
                 results = await knowledge_base.similarity_search(
@@ -198,16 +191,11 @@ def _build_tools(
                 (PascalCase).
             record_id (str): The primary-key value of the record.
         """
-        symbolic_models = knowledge_base.get_symbolic_data_models()
-        available_tables = [
-            m.get_schema().get("title", "Unknown") for m in symbolic_models
-        ]
-        if table_name not in available_tables:
-            return {
-                "error": (
-                    f"Table {table_name!r} not found. Available: {available_tables}"
-                )
-            }
+        error = unknown_title_error(
+            knowledge_base.get_symbolic_data_models(), table_name, "Table"
+        )
+        if error:
+            return error
         try:
             record = await knowledge_base.get(record_id, table_name=table_name)
         except Exception as e:

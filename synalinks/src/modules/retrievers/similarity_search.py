@@ -3,20 +3,12 @@
 from typing import List
 from typing import Optional
 
-from synalinks.src import ops
 from synalinks.src.api_export import synalinks_export
 from synalinks.src.backend import DataModel
 from synalinks.src.backend import Field
-from synalinks.src.backend import GenericResult
-from synalinks.src.backend import JsonDataModel
-from synalinks.src.backend import SymbolicDataModel
-from synalinks.src.knowledge_bases import get as _get_kb
-from synalinks.src.modules.core.generator import Generator
-from synalinks.src.modules.language_models import get as _get_lm
-from synalinks.src.modules.module import Module
-from synalinks.src.modules.retrievers.infer_helpers import concat_infer_fields
 from synalinks.src.modules.retrievers.infer_helpers import kb_table_names
-from synalinks.src.saving import serialization_lib
+from synalinks.src.modules.retrievers.retriever import Retriever
+from synalinks.src.modules.retrievers.retriever import resolve_target
 
 
 class SimilaritySearchInput(DataModel):
@@ -33,7 +25,7 @@ class SimilaritySearchInput(DataModel):
         "synalinks.SimilaritySearch",
     ]
 )
-class SimilaritySearch(Module):
+class SimilaritySearch(Retriever):
     """Vector similarity search against a single KB table.
 
     LM-driven wrapper around `KnowledgeBase.similarity_search`.
@@ -143,122 +135,40 @@ class SimilaritySearch(Module):
             trainable.
     """
 
+    query_model = SimilaritySearchInput
+    data_model_args = ("data_model",)
+
     def __init__(
         self,
         *,
-        knowledge_base=None,
-        language_model=None,
         schema=None,
         data_model=None,
         table_name: Optional[str] = None,
-        k: int = 10,
         threshold: Optional[float] = None,
         ef_search: Optional[int] = None,
-        output_format: str = "json",
-        prompt_template: Optional[str] = None,
-        examples: Optional[list] = None,
-        instructions: Optional[str] = None,
-        seed_instructions: Optional[str] = None,
-        temperature: float | None = None,
-        max_tokens: int | None = None,
-        top_p: float | None = None,
-        top_k: int | None = None,
-        use_inputs_schema: bool = False,
-        use_outputs_schema: bool = False,
-        return_inputs: bool = True,
-        return_query: bool = True,
-        name: Optional[str] = None,
-        description: Optional[str] = None,
-        trainable: bool = True,
+        **kwargs,
     ):
-        super().__init__(
-            name=name,
-            description=description,
-            trainable=trainable,
-        )
-        self.knowledge_base = self._own(_get_kb(knowledge_base), given=knowledge_base)
-        self.language_model = _get_lm(language_model)
+        super().__init__(**kwargs)
 
-        if schema is None and data_model is not None:
-            schema = data_model.get_schema()
-        self.schema = schema
+        self.schema, self.table_name = resolve_target(schema, data_model, table_name)
         self.data_model = data_model
-
-        # `table_name` is optional: when it (and a schema to infer it from) is
-        # absent, the LM picks the target table per call (see query_generator).
-        if table_name is None and schema is not None:
-            table_name = schema.get("title") or None
-        self.table_name = table_name
-
-        if output_format not in ("json", "csv"):
-            raise ValueError(
-                f"`output_format` must be 'json' or 'csv', got {output_format!r}"
-            )
-        self.output_format = output_format
-
-        if not isinstance(k, int) or k < 1:
-            raise ValueError(f"`k` must be a positive integer, got {k!r}")
-        self.k = k
         self.threshold = threshold
         self.ef_search = ef_search
 
-        self.prompt_template = prompt_template
-        self.examples = examples
-        self.instructions = instructions
-        self.seed_instructions = seed_instructions
-        self.temperature = temperature
-        self.max_tokens = max_tokens
-        self.top_p = top_p
-        self.top_k = top_k
-        self.use_inputs_schema = use_inputs_schema
-        self.use_outputs_schema = use_outputs_schema
-        self.return_inputs = return_inputs
-        self.return_query = return_query
-
-        # When the target table is fixed, the generator only produces the search
-        # queries. When it is not, concatenate an enum field (the KB's actual
-        # tables) onto the query schema so the LM also infers `table_name`.
-        if self.table_name is None:
-            gen_target = {
-                "schema": concat_infer_fields(
-                    SimilaritySearchInput.get_schema(),
-                    [
-                        (
-                            "table_name",
-                            "The knowledge-base table to search, chosen to best "
-                            "answer the inputs.",
-                            kb_table_names(self.knowledge_base),
-                        )
-                    ],
+        self.build_query_generator(
+            [
+                (
+                    "table_name",
+                    "The knowledge-base table to search, chosen to best "
+                    "answer the inputs.",
+                    kb_table_names(self.knowledge_base),
                 )
-            }
-        else:
-            gen_target = {"data_model": SimilaritySearchInput}
-
-        self.query_generator = Generator(
-            **gen_target,
-            language_model=self.language_model,
-            prompt_template=self.prompt_template,
-            examples=self.examples,
-            instructions=self.instructions,
-            seed_instructions=self.seed_instructions,
-            temperature=self.temperature,
-            max_tokens=self.max_tokens,
-            top_p=self.top_p,
-            top_k=self.top_k,
-            use_inputs_schema=self.use_inputs_schema,
-            use_outputs_schema=self.use_outputs_schema,
-            return_inputs=False,
-            name="similarity_search_query_generator_" + self.name,
+            ]
+            if self.table_name is None
+            else []
         )
 
-    async def call(self, inputs, training=False):
-        if not inputs:
-            return None
-
-        query = await self.query_generator(inputs, training=training)
-        if not query:
-            return None
+    async def search(self, query):
         query_json = query.get_json()
         queries = query_json.get("similarity_search", [])
         # Fixed table, or the one the LM inferred this call.
@@ -274,95 +184,15 @@ class SimilaritySearch(Module):
             ef_search=self.ef_search,
             output_format=self.output_format,
         )
-        results = JsonDataModel(
-            json={"result": rows},
-            schema=GenericResult.get_schema(),
-            name=self.name,
-        )
-        if self.return_query:
-            results = await ops.logical_and(
-                query,
-                results,
-                name="results_with_query_" + self.name,
-            )
-        if self.return_inputs:
-            results = await ops.logical_and(
-                inputs,
-                results,
-                name="results_with_inputs_" + self.name,
-            )
-        return results
-
-    async def compute_output_spec(self, inputs, training=False):
-        query = await self.query_generator(inputs, training=training)
-        results = SymbolicDataModel(
-            schema=GenericResult.get_schema(),
-            name=self.name,
-        )
-        if self.return_query:
-            results = await ops.logical_and(
-                query,
-                results,
-                name="results_with_query_" + self.name,
-            )
-        if self.return_inputs:
-            results = await ops.logical_and(
-                inputs,
-                results,
-                name="results_with_inputs_" + self.name,
-            )
-        return results
+        return {"result": rows}
 
     def get_config(self):
-        config = {
+        return {
             "schema": self.schema,
             "table_name": self.table_name,
             "k": self.k,
             "threshold": self.threshold,
             "ef_search": self.ef_search,
             "output_format": self.output_format,
-            "prompt_template": self.prompt_template,
-            "examples": self.examples,
-            "instructions": self.instructions,
-            "seed_instructions": self.seed_instructions,
-            "temperature": self.temperature,
-            "max_tokens": self.max_tokens,
-            "top_p": self.top_p,
-            "top_k": self.top_k,
-            "use_inputs_schema": self.use_inputs_schema,
-            "use_outputs_schema": self.use_outputs_schema,
-            "return_inputs": self.return_inputs,
-            "return_query": self.return_query,
-            "name": self.name,
-            "description": self.description,
-            "trainable": self.trainable,
+            **super().get_config(),
         }
-        knowledge_base_config = {
-            "knowledge_base": serialization_lib.serialize_synalinks_object(
-                self.knowledge_base,
-            )
-        }
-        language_model_config = {
-            "language_model": serialization_lib.serialize_synalinks_object(
-                self.language_model,
-            )
-        }
-        return {
-            **config,
-            **knowledge_base_config,
-            **language_model_config,
-        }
-
-    @classmethod
-    def from_config(cls, config):
-        knowledge_base = serialization_lib.deserialize_synalinks_object(
-            config.pop("knowledge_base")
-        )
-        language_model = serialization_lib.deserialize_synalinks_object(
-            config.pop("language_model")
-        )
-        return cls(
-            knowledge_base=knowledge_base,
-            language_model=language_model,
-            **config,
-        )

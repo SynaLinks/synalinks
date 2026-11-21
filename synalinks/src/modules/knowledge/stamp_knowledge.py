@@ -43,28 +43,22 @@ class StampKnowledge(Module):
             trainable=trainable,
         )
 
-    async def _stamp(self, data_model):
-        if data_model is None:
-            return None
-        timestamp = JsonDataModel(
-            json={"created_at": datetime.now().isoformat()},
-            schema=Stamp.get_schema(),
-            name="timestamp_" + data_model.name,
-        )
-        return await ops.logical_and(
-            data_model,
-            timestamp,
-            name="stamped_" + data_model.name,
-        )
-
     async def call(self, inputs):
         if not inputs:
             return None
         # Await each stamp on the current event loop (instead of running it on a
         # transient `run_maybe_nested` thread-loop). flatten/pack mirrors
         # `map_structure` since data models are tree leaves.
-        leaves = tree.flatten(inputs)
-        stamped = [await self._stamp(leaf) for leaf in leaves]
+        stamped = []
+        for leaf in tree.flatten(inputs):
+            if leaf is not None:
+                timestamp = JsonDataModel(
+                    json={"created_at": datetime.now().isoformat()},
+                    schema=Stamp.get_schema(),
+                    name="timestamp_" + leaf.name,
+                )
+                leaf = await ops.logical_and(leaf, timestamp, name="stamped_" + leaf.name)
+            stamped.append(leaf)
         return tree.pack_sequence_as(inputs, stamped)
 
     async def compute_output_spec(self, inputs):

@@ -123,17 +123,6 @@ class RRFReranker(Module):
         self.k = k
         self.id_key = id_key
 
-    def _row_id(self, row):
-        """Identity of a row for cross-list matching."""
-        if self.id_key is not None and isinstance(row, dict) and self.id_key in row:
-            return row[self.id_key]
-        if isinstance(row, dict):
-            # Each retriever adds its own score; it must not split the same row.
-            row = {
-                k: v for k, v in row.items() if k != "score" and not k.endswith("_score")
-            }
-        return orjson.dumps(row, option=orjson.OPT_SORT_KEYS, default=str)
-
     async def call(self, inputs, training=False):
         if not inputs:
             return None
@@ -154,7 +143,23 @@ class RRFReranker(Module):
         merged: Dict[Any, Any] = {}
         for rows in result_lists:
             for rank, row in enumerate(rows, start=1):
-                uid = self._row_id(row)
+                # A row's identity across lists: its `id_key`, else its content
+                # without the scores (each retriever adds its own).
+                if (
+                    self.id_key is not None
+                    and isinstance(row, dict)
+                    and self.id_key in row
+                ):
+                    uid = row[self.id_key]
+                else:
+                    content = row
+                    if isinstance(row, dict):
+                        content = {
+                            k: v
+                            for k, v in row.items()
+                            if k != "score" and not k.endswith("_score")
+                        }
+                    uid = orjson.dumps(content, option=orjson.OPT_SORT_KEYS, default=str)
                 scores[uid] = scores.get(uid, 0.0) + 1.0 / (self.k_rank + rank)
                 if uid not in merged:
                     merged[uid] = dict(row) if isinstance(row, dict) else row
