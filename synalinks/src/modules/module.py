@@ -125,7 +125,7 @@ class Module(BackendModule, Operation, SynalinksSaveable):
     """
 
     def __new__(cls, *args, **kwargs):
-        obj = super().__new__(cls)  # , *args, **kwargs)
+        obj = super().__new__(cls, *args, **kwargs)
 
         # Wrap the user-provided `build` method in the `build_wrapper`
         # to add name scope support and serialization support.

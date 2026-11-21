@@ -54,3 +54,14 @@ class InMaskTest(testing.TestCase):
 
         self.assertTrue(len(results[0].keys()) == 1)
         self.assertTrue(len(results[1].keys()) == 1)
+
+    async def test_config_round_trip(self):
+        inputs = Input(data_model=Document)
+        outputs = await OutMask(mask=["text"], name="masking")(inputs)
+        program = Program(inputs=inputs, outputs=outputs, name="p", description="d")
+
+        reloaded = Program.from_config(program.get_config())
+
+        self.assertEqual(reloaded.get_module("masking").get_config()["name"], "masking")
+        result = await reloaded(Document(title="Test document", text="Hello world"))
+        self.assertEqual(result.get_json(), {"title": "Test document"})

@@ -74,11 +74,15 @@ class InMask(Module):
         description=None,
         trainable=False,
     ):
-        if not mask or not isinstance(mask, list):
-            raise ValueError("`mask` parameter should be a list of fields to keep")
+        if not (mask or pattern) or (mask and not isinstance(mask, list)):
+            raise ValueError(
+                "`mask` parameter should be a list of fields to keep, "
+                "or a `pattern` should be given"
+            )
         super().__init__(
             name=name,
             description=description,
+            trainable=trainable,
         )
         self.mask = mask
         self.pattern = pattern

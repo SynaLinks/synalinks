@@ -142,7 +142,7 @@ class Operation:
             # Remove args non explicitly supported
             argspec = inspect.getfullargspec(self.__init__)
             if argspec.varkw != "kwargs":
-                for key in xtra_args - xtra_args.intersection(argspec.args[1:]):
+                for key in xtra_args - set(argspec.args[1:] + argspec.kwonlyargs):
                     config.pop(key, None)
             return config
         else:
