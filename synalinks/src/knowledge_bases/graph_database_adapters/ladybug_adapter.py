@@ -21,7 +21,8 @@ Security model mirrors `DuckDBAdapter`:
     whose tokens include a Cypher write/admin keyword
     (``CREATE`` / ``MERGE`` / ``DELETE`` / ``DETACH`` / ``SET`` /
     ``REMOVE`` / ``DROP`` / ``ALTER`` / ``COPY`` / ``INSTALL`` /
-    ``LOAD``). This is the parser-layer analog of DuckDB's
+    ``LOAD`` / ``EXPORT`` / ``IMPORT`` / ``ATTACH``, ...). This
+    is the parser-layer analog of DuckDB's
     ``stmt.type == SELECT`` check: it blocks both write injection
     and ``COPY ... TO '/path'`` file exfiltration through an
     otherwise-legitimate read query.
@@ -111,27 +112,20 @@ _EXTENSION_INSTALL_ATTEMPTS = 3
 # cache instead of repeating the same network round-trip.
 _extension_install_ok: Dict[str, bool] = {}
 
-# Word-boundary match of any Cypher write / admin keyword. Conservative
-# on purpose: it also fires inside string literals, but read_only
-# queries never legitimately need these words anyway, and the false
-# positive is a clearer error message than a successful write.
+# Word-boundary match of any Cypher write / admin / host-file keyword.
 _CYPHER_WRITE_RE = re.compile(
-    r"\b(?:CREATE|MERGE|DELETE|DETACH|SET|REMOVE|DROP|ALTER|COPY|INSTALL|LOAD"
-    r"|CALL\s+CREATE_|CALL\s+DROP_)\b",
+    r"\b(?:(?:CREATE|MERGE|DELETE|DETACH|SET|REMOVE|DROP|ALTER|COPY|INSTALL"
+    r"|UNINSTALL|LOAD|EXPORT|IMPORT|ATTACH|CHECKPOINT)\b"
+    r"|CALL\s+(?:CREATE_|DROP_)|CALL\s+\w+\s*=)",
     re.IGNORECASE,
 )
 
-# Strip Cypher line and block comments before scanning for write
-# keywords; otherwise `// SET foo` would falsely look like a write.
-_CYPHER_COMMENT_RE = re.compile(r"//.*?$|/\*.*?\*/", re.MULTILINE | re.DOTALL)
-
-# Strip Cypher string literals before scanning for write keywords;
-# otherwise `WHERE n.text = 'SET clause'` would falsely look like a
-# write. Handles both single- and double-quoted strings with embedded
-# backslash-escaped quotes. Cypher doesn't support raw or triple-quoted
-# strings so this two-variant pattern is sufficient.
-_CYPHER_STRING_RE = re.compile(
-    r"'(?:\\.|[^'\\])*'" r"|" r'"(?:\\.|[^"\\])*"',
+# String literals, backtick identifiers and comments, matched in one left-to-right pass.
+_CYPHER_OPAQUE_RE = re.compile(
+    r"'(?:\\.|[^'\\])*'"
+    r'|"(?:\\.|[^"\\])*"'
+    r"|`(?:[^`]|``)*`"
+    r"|//[^\n]*|/\*.*?\*/",
     re.DOTALL,
 )
 
@@ -187,39 +181,21 @@ def sanitize_properties(props: Dict[str, Any]) -> Dict[str, Any]:
     return out
 
 
-def _strip_comments_and_strings(query: str) -> str:
-    """Remove comments and string literals from a Cypher query.
-
-    Order matters: we strip strings first, then comments. Doing the
-    reverse would let a quoted ``// CREATE`` inside a string sneak
-    through after the comment strip. We replace each match with a
-    single space so token boundaries don't accidentally fuse; e.g.
-    ``WHERE'CREATE'AND`` after a naive empty-string replacement
-    would look like ``WHERECREATAND`` rather than three separate
-    tokens. The whitespace keeps the keyword regex's ``\\b``
-    boundaries honest.
-    """
-    no_strings = _CYPHER_STRING_RE.sub(" ", query)
-    return _CYPHER_COMMENT_RE.sub(" ", no_strings)
-
-
 def _assert_read_only_cypher(query: str) -> None:
     """Reject a Cypher string that contains any write/admin keyword.
 
     The parser-layer analog of DuckDB's ``stmt.type != SELECT`` check.
     Cypher doesn't expose a typed AST through Ladybug's Python bindings,
-    so this is a token-level scan with two pre-strips:
-
-      * String literals (``'...'`` / ``"..."``): without this, a
-        legitimate ``WHERE n.label = 'CREATE'`` would falsely look
-        like a write.
-      * Line and block comments: without this, ``// SET foo`` would
-        falsely fire.
+    so this is a token-level scan after blanking every opaque span
+    (string literals, backtick identifiers, comments) in a single
+    left-to-right pass: whichever opens first wins, so a quote inside a
+    backtick identifier or a comment cannot hide the keywords after it.
+    Each span becomes a space so tokens around it stay separate.
 
     Raises:
         ValueError: when a write keyword is present.
     """
-    body = _strip_comments_and_strings(query)
+    body = _CYPHER_OPAQUE_RE.sub(" ", query)
     match = _CYPHER_WRITE_RE.search(body)
     if match:
         raise ValueError(
