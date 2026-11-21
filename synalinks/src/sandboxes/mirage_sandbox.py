@@ -1900,6 +1900,7 @@ class MirageSandbox(Sandbox):
     ) -> Execution:
         import dill
 
+        self.ensure_running()
         if context is not None and language is not None:
             raise InvalidArgumentException(
                 "You can provide context or language, but not both at the same time."

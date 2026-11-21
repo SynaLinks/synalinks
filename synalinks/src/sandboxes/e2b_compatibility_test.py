@@ -597,6 +597,21 @@ class E2BBehaviourTest(testing.TestCase):
         await sandbox.set_timeout(1)
         await asyncio.sleep(1.5)
         self.assertFalse(await sandbox.is_running())
+        # Regression #252: a dead sandbox refused calls instead of losing writes.
+        with self.assertRaises(ours.SandboxNotRunningException):
+            await sandbox.files.write("/a.txt", "lost")
+        with self.assertRaises(ours.SandboxNotRunningException):
+            await sandbox.run_code("1 + 1")
+
+    async def test_paused_sandbox_refuses_calls_until_connect(self):
+        sandbox = await self.sandbox()
+        await sandbox.pause()
+        with self.assertRaises(ours.SandboxNotRunningException):
+            await sandbox.run_code("1 + 1")
+        with self.assertRaises(ours.SandboxNotRunningException):
+            await sandbox.commands.run("echo hi")
+        await sandbox.connect()
+        self.assertEqual((await sandbox.run_code("1 + 1")).text, "2")
 
     async def test_snapshot_starts_a_sandbox_with_the_state(self):
         sandbox = await self.sandbox()

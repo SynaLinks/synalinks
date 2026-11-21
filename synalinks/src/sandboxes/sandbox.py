@@ -1730,14 +1730,27 @@ class Sandbox(SynalinksSaveable):
         """``None``: a local sandbox makes no API connection."""
         return None
 
+    def ensure_running(self) -> None:
+        """Raise `SandboxNotRunningException` if the sandbox was killed (or its
+        lifetime ran out) or is paused, as E2B rejects calls on such a sandbox.
+        `run_code`, `files` and `commands` go through it."""
+        if getattr(self, "killed", False):
+            raise SandboxNotRunningException(f"Sandbox {self.identifier} was killed")
+        if self.state == SandboxState.PAUSED:
+            raise SandboxNotRunningException(
+                f"Sandbox {self.identifier} is paused; `connect` resumes it"
+            )
+
     @property
     def files(self) -> Filesystem:
         """The filesystem namespace (E2B's ``Filesystem``)."""
+        self.ensure_running()
         return self.filesystem_class(self)
 
     @property
     def commands(self) -> Commands:
         """The shell namespace (E2B's ``Commands``)."""
+        self.ensure_running()
         return self.commands_class(self)
 
     @property
@@ -2221,10 +2234,11 @@ class Sandbox(SynalinksSaveable):
     ) -> Execution:
         """Execute ``code`` and return an `Execution` (E2B's ``run_code``).
 
-        Implementations should route their result through `record_run` so the
-        snippet lands in `history`, deliver the callbacks through `notify`,
-        and expose `functions` (merged with any per-call
-        ``external_functions``) as callables inside the sandbox.
+        Implementations should call `ensure_running` first, route their
+        result through `record_run` so the snippet lands in `history`,
+        deliver the callbacks through `notify`, and expose `functions`
+        (merged with any per-call ``external_functions``) as callables inside
+        the sandbox.
 
         Args:
             code (str): The source to run.
@@ -2255,6 +2269,7 @@ class Sandbox(SynalinksSaveable):
         """
         if type(self).run is Sandbox.run:
             raise NotImplementedError("Sandbox subclasses must implement `run_code`.")
+        self.ensure_running()
         # A backend written before `run_code` existed implements `run` and
         # returns the old `ExecutionResult`.
         old = await self.run(code, inputs=inputs, external_functions=external_functions)
