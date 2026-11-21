@@ -161,14 +161,6 @@ class Recorder(Hook):
         jsons = [d.get_json() for d in leaves]
         return jsons[0] if len(jsons) == 1 else jsons
 
-    # Chat-completion message keys kept in `messages` for fine-tuning
-    # consumers: the base OpenAI keys plus `reasoning_content`, which the
-    # NeMo stack supports natively for reasoning models (trained on by
-    # default; `mask_reasoning_content` excludes it from the loss).
-    # Provider-native `thinking_blocks` are not carried as-is (opaque,
-    # signed, non-standard) but their text is folded into
-    # `reasoning_content` when the provider emitted no reasoning text;
-    # the full-fidelity message stays in `outputs`.
     # `current_call_usage()` key -> record `usage` key.
     _USAGE_KEYS = {
         "input_tokens": "prompt_tokens",
@@ -179,6 +171,14 @@ class Recorder(Hook):
         "reasoning_tokens": "reasoning_tokens",
     }
 
+    # Chat-completion message keys kept in `messages` for fine-tuning
+    # consumers: the base OpenAI keys plus `reasoning_content`, which the
+    # NeMo stack supports natively for reasoning models (trained on by
+    # default; `mask_reasoning_content` excludes it from the loss).
+    # Provider-native `thinking_blocks` are not carried as-is (opaque,
+    # signed, non-standard) but their text is folded into
+    # `reasoning_content` when the provider emitted no reasoning text;
+    # the full-fidelity message stays in `outputs`.
     _MESSAGE_KEYS = (
         "role",
         "content",
