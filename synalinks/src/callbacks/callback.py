@@ -213,6 +213,21 @@ class Callback:
         """
 
     @utils.default
+    def on_train_error(self, error):
+        """Called instead of `on_train_end()` when `fit()` raises.
+
+        `fit()` re-raises the error once every callback has run this hook. Use
+        it to release what `on_train_begin()` acquired (close a file, end a
+        run as failed, reset state) without the success-only work of
+        `on_train_end()`.
+
+        Subclasses should override for any actions to run.
+
+        Args:
+            error (BaseException): The exception that stopped training.
+        """
+
+    @utils.default
     def on_test_begin(self, logs=None):
         """Called at the beginning of evaluation or validation.
 
@@ -236,6 +251,20 @@ class Callback:
         """
 
     @utils.default
+    def on_test_error(self, error):
+        """Called instead of `on_test_end()` when evaluation raises.
+
+        `evaluate()` (also run for validation inside `fit()`) re-raises the
+        error once every callback has run this hook; inside `fit()`,
+        `on_train_error()` follows.
+
+        Subclasses should override for any actions to run.
+
+        Args:
+            error (BaseException): The exception that stopped evaluation.
+        """
+
+    @utils.default
     def on_predict_begin(self, logs=None):
         """Called at the beginning of prediction.
 
@@ -255,4 +284,16 @@ class Callback:
         Args:
             logs (dict): Currently no data is passed to this argument for this
                 method but that may change in the future.
+        """
+
+    @utils.default
+    def on_predict_error(self, error):
+        """Called instead of `on_predict_end()` when prediction raises.
+
+        `predict()` re-raises the error once every callback has run this hook.
+
+        Subclasses should override for any actions to run.
+
+        Args:
+            error (BaseException): The exception that stopped prediction.
         """

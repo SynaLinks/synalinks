@@ -97,3 +97,6 @@ class CSVLogger(Callback):
     def on_train_end(self, logs=None):
         self.csv_file.close()
         self.writer = None
+
+    def on_train_error(self, error):
+        self.on_train_end()

@@ -728,128 +728,134 @@ class Trainer:
             "val_y": val_y if validation_data is not None else None,
         }
         callbacks.on_train_begin()
-        training_logs = None
-        logs = {}
-        initial_epoch = self._initial_epoch or initial_epoch
-
-        if self.trainable_variables and isinstance(
-            self.optimizer, optimizers_module.Optimizer
-        ):
-            await self.optimizer.on_train_begin(
-                self.trainable_variables,
-            )
-
-        for epoch in range(initial_epoch, epochs):
-            self.reset_metrics()
+        try:
+            training_logs = None
+            logs = {}
+            initial_epoch = self._initial_epoch or initial_epoch
 
             if self.trainable_variables and isinstance(
                 self.optimizer, optimizers_module.Optimizer
             ):
-                await self.optimizer.on_epoch_begin(
-                    epoch,
+                await self.optimizer.on_train_begin(
                     self.trainable_variables,
                 )
 
-            callbacks.on_epoch_begin(epoch)
-            with epoch_iterator.catch_stop_iteration():
-                for step, iterator in epoch_iterator:
-                    data = iterator[0]
-                    x_batch, y_batch = data_adapter_utils.unpack_x_targets(data)
+            for epoch in range(initial_epoch, epochs):
+                self.reset_metrics()
 
-                    if self.trainable_variables and isinstance(
-                        self.optimizer, optimizers_module.Optimizer
-                    ):
-                        await self.optimizer.on_batch_begin(
-                            step,
-                            epoch,
-                            self.trainable_variables,
-                        )
-
-                    callbacks.on_train_batch_begin(step)
-
-                    mini_val_x = None
-                    mini_val_y = None
-                    if minibatch_size:
-                        if len(val_x) > minibatch_size:
-                            indices = stratified_minibatch_indices(
-                                val_y,
-                                minibatch_size,
-                            )
-                            mini_val_x = val_x[indices]
-                            mini_val_y = val_y[indices]
-
-                    logs = await self.train_on_batch(
-                        step=step,
-                        x=x_batch,
-                        y=y_batch,
-                        val_x=mini_val_x if mini_val_x is not None else val_x,
-                        val_y=mini_val_y if mini_val_y is not None else val_y,
-                        return_dict=True,
+                if self.trainable_variables and isinstance(
+                    self.optimizer, optimizers_module.Optimizer
+                ):
+                    await self.optimizer.on_epoch_begin(
+                        epoch,
+                        self.trainable_variables,
                     )
 
-                    if self.trainable_variables and isinstance(
-                        self.optimizer, optimizers_module.Optimizer
-                    ):
-                        await self.optimizer.on_batch_end(
-                            step,
-                            epoch,
-                            self.trainable_variables,
+                callbacks.on_epoch_begin(epoch)
+                with epoch_iterator.catch_stop_iteration():
+                    for step, iterator in epoch_iterator:
+                        data = iterator[0]
+                        x_batch, y_batch = data_adapter_utils.unpack_x_targets(data)
+
+                        if self.trainable_variables and isinstance(
+                            self.optimizer, optimizers_module.Optimizer
+                        ):
+                            await self.optimizer.on_batch_begin(
+                                step,
+                                epoch,
+                                self.trainable_variables,
+                            )
+
+                        callbacks.on_train_batch_begin(step)
+
+                        mini_val_x = None
+                        mini_val_y = None
+                        if minibatch_size:
+                            if len(val_x) > minibatch_size:
+                                indices = stratified_minibatch_indices(
+                                    val_y,
+                                    minibatch_size,
+                                )
+                                mini_val_x = val_x[indices]
+                                mini_val_y = val_y[indices]
+
+                        logs = await self.train_on_batch(
+                            step=step,
+                            x=x_batch,
+                            y=y_batch,
+                            val_x=mini_val_x if mini_val_x is not None else val_x,
+                            val_y=mini_val_y if mini_val_y is not None else val_y,
+                            return_dict=True,
                         )
 
-                    callbacks.on_train_batch_end(step, logs)
-                    if self.stop_training:
-                        break
+                        if self.trainable_variables and isinstance(
+                            self.optimizer, optimizers_module.Optimizer
+                        ):
+                            await self.optimizer.on_batch_end(
+                                step,
+                                epoch,
+                                self.trainable_variables,
+                            )
 
-            # Override with model metrics instead of last step logs if needed.
-            epoch_logs = dict(self._get_metrics_result_or_logs(logs))
+                        callbacks.on_train_batch_end(step, logs)
+                        if self.stop_training:
+                            break
 
-            # Run validation.
-            if validation_data is not None and self._should_eval(epoch, validation_freq):
-                # Create EpochIterator for evaluation and cache it.
-                if getattr(self, "_eval_epoch_iterator", None) is None:
-                    self._eval_epoch_iterator = EpochIterator(
+                # Override with model metrics instead of last step logs if needed.
+                epoch_logs = dict(self._get_metrics_result_or_logs(logs))
+
+                # Run validation.
+                if validation_data is not None and self._should_eval(
+                    epoch, validation_freq
+                ):
+                    # Create EpochIterator for evaluation and cache it.
+                    if getattr(self, "_eval_epoch_iterator", None) is None:
+                        self._eval_epoch_iterator = EpochIterator(
+                            x=val_x,
+                            y=val_y,
+                            batch_size=validation_batch_size or batch_size,
+                            steps_per_execution=self.steps_per_execution,
+                            steps_per_epoch=validation_steps,
+                            shuffle=False,
+                        )
+
+                    val_logs = await self.evaluate(
                         x=val_x,
                         y=val_y,
                         batch_size=validation_batch_size or batch_size,
-                        steps_per_execution=self.steps_per_execution,
-                        steps_per_epoch=validation_steps,
-                        shuffle=False,
+                        steps=validation_steps,
+                        callbacks=callbacks,
+                        _use_cached_eval_dataset=True,
+                    )
+                    val_logs = {"val_" + name: val for name, val in val_logs.items()}
+                    epoch_logs.update(val_logs)
+
+                if self.trainable_variables and isinstance(
+                    self.optimizer, optimizers_module.Optimizer
+                ):
+                    await self.optimizer.on_epoch_end(
+                        epoch,
+                        self.trainable_variables,
+                        logs=epoch_logs,
+                        val_size=len(val_x) if val_x is not None else None,
                     )
 
-                val_logs = await self.evaluate(
-                    x=val_x,
-                    y=val_y,
-                    batch_size=validation_batch_size or batch_size,
-                    steps=validation_steps,
-                    callbacks=callbacks,
-                    _use_cached_eval_dataset=True,
-                )
-                val_logs = {"val_" + name: val for name, val in val_logs.items()}
-                epoch_logs.update(val_logs)
+                callbacks.on_epoch_end(epoch, epoch_logs)
+                training_logs = epoch_logs
+                if self.stop_training:
+                    break
+
+            # If _eval_epoch_iterator exists, delete it after all epochs are done.
+            if getattr(self, "_eval_epoch_iterator", None) is not None:
+                del self._eval_epoch_iterator
 
             if self.trainable_variables and isinstance(
                 self.optimizer, optimizers_module.Optimizer
             ):
-                await self.optimizer.on_epoch_end(
-                    epoch,
-                    self.trainable_variables,
-                    logs=epoch_logs,
-                    val_size=len(val_x) if val_x is not None else None,
-                )
-
-            callbacks.on_epoch_end(epoch, epoch_logs)
-            training_logs = epoch_logs
-            if self.stop_training:
-                break
-
-        # If _eval_epoch_iterator exists, delete it after all epochs are done.
-        if getattr(self, "_eval_epoch_iterator", None) is not None:
-            del self._eval_epoch_iterator
-
-        if self.trainable_variables and isinstance(
-            self.optimizer, optimizers_module.Optimizer
-        ):
-            await self.optimizer.on_train_end(self.trainable_variables)
+                await self.optimizer.on_train_end(self.trainable_variables)
+        except BaseException as e:
+            callbacks.on_train_error(e)
+            raise
 
         callbacks.on_train_end(logs=training_logs)
         self._fit_inputs = None
@@ -963,25 +969,29 @@ class Trainer:
         self.stop_evaluating = False
         self._eval_inputs = {"x": x, "y": y}
         callbacks.on_test_begin()
-        logs = {}
-        self.reset_metrics()
-        for step, iterator in epoch_iterator:
-            callbacks.on_test_batch_begin(step)
-            data = iterator[0]
-            x_batch, y_batch = data_adapter_utils.unpack_x_targets(data)
-            # Only the first step can consume the auto-build's predictions, and
-            # only once: taking it clears it, so every later batch predicts.
-            y_pred, prebuilt_y_pred = prebuilt_y_pred, None
-            logs = await self.test_on_batch(
-                x=x_batch,
-                y=y_batch,
-                return_dict=True,
-                y_pred=y_pred,
-            )
-            callbacks.on_test_batch_end(step, logs)
-            if self.stop_evaluating:
-                break
-        logs = self.get_metrics_result()
+        try:
+            logs = {}
+            self.reset_metrics()
+            for step, iterator in epoch_iterator:
+                callbacks.on_test_batch_begin(step)
+                data = iterator[0]
+                x_batch, y_batch = data_adapter_utils.unpack_x_targets(data)
+                # Only the first step can consume the auto-build's predictions, and
+                # only once: taking it clears it, so every later batch predicts.
+                y_pred, prebuilt_y_pred = prebuilt_y_pred, None
+                logs = await self.test_on_batch(
+                    x=x_batch,
+                    y=y_batch,
+                    return_dict=True,
+                    y_pred=y_pred,
+                )
+                callbacks.on_test_batch_end(step, logs)
+                if self.stop_evaluating:
+                    break
+            logs = self.get_metrics_result()
+        except BaseException as e:
+            callbacks.on_test_error(e)
+            raise
         callbacks.on_test_end(logs)
         self._eval_inputs = None
 
@@ -1058,16 +1068,20 @@ class Trainer:
 
         self.stop_predicting = False
         callbacks.on_predict_begin()
-        outputs = []
-        for step, iterator in epoch_iterator:
-            callbacks.on_predict_batch_begin(step)
-            data = iterator[0]
-            x_batch, _ = data_adapter_utils.unpack_x_y(data)
-            batch_outputs = await self.predict_on_batch(x_batch)
-            outputs.extend(batch_outputs)
-            callbacks.on_predict_batch_end(step, {"outputs": batch_outputs})
-            if self.stop_predicting:
-                break
+        try:
+            outputs = []
+            for step, iterator in epoch_iterator:
+                callbacks.on_predict_batch_begin(step)
+                data = iterator[0]
+                x_batch, _ = data_adapter_utils.unpack_x_y(data)
+                batch_outputs = await self.predict_on_batch(x_batch)
+                outputs.extend(batch_outputs)
+                callbacks.on_predict_batch_end(step, {"outputs": batch_outputs})
+                if self.stop_predicting:
+                    break
+        except BaseException as e:
+            callbacks.on_predict_error(e)
+            raise
         callbacks.on_predict_end()
         return np.array(outputs, dtype="object")
 
