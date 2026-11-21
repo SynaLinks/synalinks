@@ -170,6 +170,7 @@ from synalinks.api import SandboxException
 from synalinks.api import Score
 from synalinks.api import SelfCritique
 from synalinks.api import Sequential
+from synalinks.api import SequentialPlanSynthesis
 from synalinks.api import SimilaritySearch
 from synalinks.api import SQLAgent
 from synalinks.api import Stamp

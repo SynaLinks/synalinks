@@ -1,9 +1,12 @@
 # License Apache 2.0: (c) 2025-2026 Yoan Sallami (Synalinks Team)
 
+from unittest.mock import patch
+
 from synalinks.src import testing
 from synalinks.src.backend import DataModel
 from synalinks.src.backend import Field
 from synalinks.src.modules.agents.function_calling_agent import FunctionCallingAgent
+from synalinks.src.modules.core.generator import Generator
 from synalinks.src.modules.core.input_module import Input
 from synalinks.src.modules.language_models.language_model import LanguageModel
 from synalinks.src.modules.synthesis.sequential_plan_synthesis import (
@@ -102,3 +105,29 @@ class SequentialPlanSynthesisTest(testing.TestCase):
 
         # Verify program was built successfully
         self.assertIsNotNone(_program)
+
+    @patch("litellm.acompletion")
+    async def test_each_step_reaches_the_runner(self, mock_completion):
+        language_model = LanguageModel(model="ollama/mistral")
+        mock_completion.side_effect = [
+            {"choices": [{"message": {"content": '{"summary": "facts"}'}}]},
+            {"choices": [{"message": {"content": '{"summary": "outline"}'}}]},
+            {"choices": [{"message": {"content": '{"thinking": "t", "report": "r"}'}}]},
+        ]
+
+        inputs = Input(data_model=Query)
+        outputs = await SequentialPlanSynthesis(
+            data_model=FinalReport,
+            language_model=language_model,
+            runner=Generator(data_model=TaskSummary, language_model=language_model),
+            steps=["STEP-ONE", "STEP-TWO"],
+        )(inputs)
+        program = Program(inputs=inputs, outputs=outputs)
+
+        result = await program(Query(query="q"))
+
+        prompts = [str(c.kwargs["messages"]) for c in mock_completion.call_args_list]
+        self.assertIn("STEP-ONE", prompts[0])
+        self.assertIn("STEP-TWO", prompts[1])
+        self.assertEqual(result.get_schema(), outputs.get_schema())
+        self.assertEqual(result.get("report"), "r")
