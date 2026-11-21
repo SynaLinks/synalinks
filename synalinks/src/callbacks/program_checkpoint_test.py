@@ -55,6 +55,11 @@ class ProgramCheckpointInitTest(testing.TestCase):
         self.assertIs(cb.monitor_op, np.greater)
         self.assertEqual(cb.best, -np.inf)
 
+    def test_unresolved_direction_raises_with_save_best_only(self):
+        cb = ProgramCheckpoint(filepath="/tmp/x.json", save_best_only=True)
+        with self.assertRaisesRegex(ValueError, "maximized or minimized"):
+            cb.on_train_begin()
+
     def test_min_mode_initializes_best(self):
         cb = ProgramCheckpoint(filepath="/tmp/x.json", mode="min")
         self.assertIs(cb.monitor_op, np.less)

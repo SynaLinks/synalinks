@@ -121,6 +121,7 @@ class LMOperationalMetric(Metric):
     """
 
     _phase = "inference"
+    direction = "down"
 
     def __init__(self, name=None):
         super().__init__(name=name)
@@ -332,6 +333,8 @@ class AvgCachedTokensPerCall(LMOperationalMetric):
     ```
     """
 
+    direction = "up"
+
     def __init__(self, name="avg_cached_tokens_per_call"):
         super().__init__(name=name)
 
@@ -407,6 +410,8 @@ class TokensPerSecond(LMOperationalMetric):
     ```
     """
 
+    direction = "up"
+
     def __init__(self, name="tokens_per_second"):
         super().__init__(name=name)
 
@@ -434,6 +439,8 @@ class Throughput(LMOperationalMetric):
     )
     ```
     """
+
+    direction = "up"
 
     def __init__(self, name="throughput"):
         super().__init__(name=name)
@@ -542,6 +549,8 @@ class CachedTokens(LMOperationalMetric):
     ```
     """
 
+    direction = "up"
+
     def __init__(self, name="cached_tokens"):
         super().__init__(name=name)
 
@@ -589,6 +598,8 @@ class CacheHitRate(LMOperationalMetric):
     )
     ```
     """
+
+    direction = "up"
 
     def __init__(self, name="cache_hit_rate"):
         super().__init__(name=name)
@@ -1011,6 +1022,8 @@ class AvgRewardCachedTokensPerCall(LMRewardsOperationalMetric):
     ```
     """
 
+    direction = "up"
+
     def __init__(self, name="avg_reward_cached_tokens_per_call"):
         super().__init__(name=name)
 
@@ -1086,6 +1099,8 @@ class RewardTokensPerSecond(LMRewardsOperationalMetric):
     ```
     """
 
+    direction = "up"
+
     def __init__(self, name="reward_tokens_per_second"):
         super().__init__(name=name)
 
@@ -1109,6 +1124,8 @@ class RewardThroughput(LMRewardsOperationalMetric):
     )
     ```
     """
+
+    direction = "up"
 
     def __init__(self, name="reward_throughput"):
         super().__init__(name=name)
@@ -1207,6 +1224,8 @@ class RewardCachedTokens(LMRewardsOperationalMetric):
     ```
     """
 
+    direction = "up"
+
     def __init__(self, name="reward_cached_tokens"):
         super().__init__(name=name)
 
@@ -1250,6 +1269,8 @@ class RewardCacheHitRate(LMRewardsOperationalMetric):
     )
     ```
     """
+
+    direction = "up"
 
     def __init__(self, name="reward_cache_hit_rate"):
         super().__init__(name=name)
@@ -1567,6 +1588,8 @@ class AvgOptimizerCachedTokensPerCall(LMOptimizersOperationalMetric):
     ```
     """
 
+    direction = "up"
+
     def __init__(self, name="avg_optimizer_cached_tokens_per_call"):
         super().__init__(name=name)
 
@@ -1642,6 +1665,8 @@ class OptimizerTokensPerSecond(LMOptimizersOperationalMetric):
     ```
     """
 
+    direction = "up"
+
     def __init__(self, name="optimizer_tokens_per_second"):
         super().__init__(name=name)
 
@@ -1665,6 +1690,8 @@ class OptimizerThroughput(LMOptimizersOperationalMetric):
     )
     ```
     """
+
+    direction = "up"
 
     def __init__(self, name="optimizer_throughput"):
         super().__init__(name=name)
@@ -1763,6 +1790,8 @@ class OptimizerCachedTokens(LMOptimizersOperationalMetric):
     ```
     """
 
+    direction = "up"
+
     def __init__(self, name="optimizer_cached_tokens"):
         super().__init__(name=name)
 
@@ -1806,6 +1835,8 @@ class OptimizerCacheHitRate(LMOptimizersOperationalMetric):
     )
     ```
     """
+
+    direction = "up"
 
     def __init__(self, name="optimizer_cache_hit_rate"):
         super().__init__(name=name)

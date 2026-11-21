@@ -37,14 +37,14 @@ class Metric(SynalinksSaveable):
     Attributes:
         direction (str | None): Class-level optimization direction. ``"up"`` if
             higher values are better (accuracy, F1, reward), ``"down"`` if
-            lower is better (cost, latency, loss-like metrics). ``None``
-            means unknown; consumers (EarlyStopping, Keras-Tuner inference)
-            then require an explicit `mode=` / `direction=`. Concrete metric
-            classes set this at class scope; ``Mean``/``MeanMetricWrapper``
-            can also set it at instance scope when wrapping a reward.
+            lower is better (cost, latency, token usage, errors). Defaults to
+            ``"up"``; operational (LM, embedding model, program) metrics
+            default to ``"down"``. Consumers (EarlyStopping, ProgramCheckpoint,
+            Keras-Tuner inference) use it to resolve ``mode="auto"``. Setting
+            it to ``None`` forces an explicit `mode=` / `direction=`.
     """
 
-    direction = None
+    direction = "up"
 
     def __init__(
         self,
