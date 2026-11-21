@@ -201,7 +201,10 @@ def tool_arguments(function):
 async def call_tool(tool, function):
     """Call ``tool`` with the arguments of a tool call's ``function``: one
     coroutine, so arguments that do not parse fail the call like the tool
-    itself raising (``asyncio.gather(..., return_exceptions=True)``)."""
+    itself raising (``asyncio.gather(..., return_exceptions=True)``). A
+    ``None`` tool (a name the model made up) fails the same way."""
+    if tool is None:
+        raise ValueError(f"Unknown tool {function.get('name')!r}")
     return await tool(**tool_arguments(function))
 
 

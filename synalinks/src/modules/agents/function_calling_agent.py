@@ -818,7 +818,7 @@ class FunctionCallingAgent(Module):
         for tool_call in native_tool_calls:
             function = tool_call.get("function") or {}
             tool_calls_ids.append(tool_call.get("id"))
-            tasks.append(call_tool(self.tools[function.get("name")], function))
+            tasks.append(call_tool(self.tools.get(function.get("name")), function))
 
         tool_results = await asyncio.gather(*tasks, return_exceptions=True)
         for j, tool_result in enumerate(tool_results):
@@ -1069,7 +1069,9 @@ class FunctionCallingAgent(Module):
                 for tool_call in tool_calls:
                     function = tool_call.get("function") or {}
                     tool_calls_ids.append(tool_call.get("id"))
-                    tasks.append(call_tool(self.tools[function.get("name")], function))
+                    tasks.append(
+                        call_tool(self.tools.get(function.get("name")), function)
+                    )
 
                 tool_results = await asyncio.gather(*tasks, return_exceptions=True)
                 for j, tool_result in enumerate(tool_results):

@@ -290,6 +290,48 @@ class FunctionCallingAgentTest(testing.TestCase):
         self.assertIn("not valid JSON", tool_message["content"])
 
     @patch("litellm.acompletion")
+    async def test_unknown_tool_is_a_tool_error(self, mock_completion):
+        """A made-up tool name comes back as a tool error, in both modes."""
+        language_model = LanguageModel(model="ollama/mistral")
+        user = ChatMessage(role="user", content="1 + 1?")
+        unknown_call = {"name": "calculator", "arguments": {"expression": "1 + 1"}}
+        for autonomous in (True, False):
+            agent = FunctionCallingAgent(
+                language_model=language_model,
+                tools=[Tool(calculate)],
+                autonomous=autonomous,
+                max_iterations=3,
+            )
+            mock_completion.side_effect = [
+                _lm_response(tool_calls=[unknown_call]),
+                _lm_response(content="2"),
+                _lm_response(content="2"),
+            ]
+            messages = [user]
+            if not autonomous:
+                messages.append(
+                    ChatMessage(
+                        role="assistant",
+                        content="",
+                        tool_calls=[
+                            {
+                                "id": "call_0",
+                                "type": "function",
+                                "function": {
+                                    "name": "calculator",
+                                    "arguments": '{"expression": "1 + 1"}',
+                                },
+                            }
+                        ],
+                    )
+                )
+            result = await agent(ChatMessages(messages=messages))
+            tool_messages = [
+                m for m in result.get("messages", []) if m.get("role") == "tool"
+            ]
+            self.assertIn("Unknown tool 'calculator'", tool_messages[0]["content"])
+
+    @patch("litellm.acompletion")
     async def test_autonomous_mode_complex_calculation(self, mock_completion):
         """Autonomous mode runs a multi-step expression through `calculate`."""
         language_model = LanguageModel(model="ollama/mistral")
