@@ -43,21 +43,30 @@ class BackupAndRestore(Callback):
 
     callback = synalinks.callbacks.BackupAndRestore(backup_dir="/tmp/backup")
     program = synalinks.programs.Sequential(
-        [synalinks.Generator(data_model=Answer)]
+        [
+            synalinks.Generator(
+                data_model=Answer,
+                language_model=synalinks.LanguageModel(model="ollama/mistral"),
+            )
+        ],
+        description="Answer the query",
     )
     program.compile(
         synalinks.optimizers.RandomFewShot(),
-        reward=synalinks.reward.ExactMatch(),
+        reward=synalinks.rewards.ExactMatch(),
     )
-    program.build(Query)
+    await program.build(Query)
 
     try:
-        program.fit(..., callbacks=[callback, InterruptingCallback()], verbose=0)
+        await program.fit(
+            x=x, y=y, epochs=10, batch_size=1,
+            callbacks=[callback, InterruptingCallback()], verbose=0,
+        )
     except Exception:
         pass
 
-    history = program.fit(
-        ..., epochs=10, batch_size=1, callbacks=[callback], verbose=0
+    history = await program.fit(
+        x=x, y=y, epochs=10, batch_size=1, callbacks=[callback], verbose=0
     )
     # Only 6 more epochs are run, since first training got interrupted at
     # zero-indexed epoch 4, second training will continue from 4 to 9.
@@ -74,8 +83,7 @@ class BackupAndRestore(Callback):
         save_freq (str | int): `"epoch"`, integer, or `False`. When set to
             `"epoch"` the callback saves the checkpoint at the end of each epoch.
             When set to an integer, the callback saves the checkpoint every
-            `save_freq` batches. Set `save_freq=False` only if using
-            preemption checkpointing (i.e. with `save_before_preemption=True`).
+            `save_freq` batches. `save_freq=False` disables periodic saving.
         double_checkpoint (bool): If enabled, `BackupAndRestore` callback
             will save 2 last training states (current and previous). After
             interruption if current state can't be loaded due to IO error
