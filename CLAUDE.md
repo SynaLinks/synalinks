@@ -46,7 +46,8 @@ At the start of every session, read `task_tracker.json` at the repo root if it e
     "tasks": [
       {
         "key": "task-name-1",
-        "short_description": "one line summary",
+        "title": "one line summary (also the issue/PR title)",
+        "labels": ["bug"],
         "description": "full description: what to do, how to verify it",
         "is_finished": false,
         "files": ["synalinks/src/path/to/file.py"],
