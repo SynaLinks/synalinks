@@ -20,6 +20,12 @@ class Or(Module):
 
     If any input is None, it is ignored.
 
+    At build time the output has the schema of the first input, whatever
+    happens at runtime: a schema with every field required (as structured
+    output needs) cannot describe a result whose fields depend on which
+    inputs are present. To collapse a `Branch` exactly, give its branches
+    the same output schema.
+
     Table:
 
     | `x1`   | `x2`   | Logical Or (`|`) |

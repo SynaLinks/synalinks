@@ -217,6 +217,12 @@ async def logical_or(x1, x2, name=None, description=None):
     If any of the data models used is a metaclass or symbolic data model
     the output is a symbolic data model.
 
+    At build time the symbolic output always has `x1`'s schema, whatever
+    happens at runtime: a schema with every field required (as structured
+    output needs) cannot describe a result whose fields depend on which
+    inputs are present. To collapse a `Branch` exactly, give its branches
+    the same output schema.
+
     This operation is implemented in the Python `|` operator.
 
     Table:
@@ -289,6 +295,12 @@ async def logical_xor(x1, x2, name=None, description=None):
 
     If any of the data models used is a metaclass or symbolic data model
     the output is a symbolic data model.
+
+    At build time the symbolic output always has `x1`'s schema, whatever
+    happens at runtime: a schema with every field required (as structured
+    output needs) cannot describe a result whose fields depend on which
+    inputs are present. To collapse a `Branch` exactly, give its branches
+    the same output schema.
 
     This operation is implemented in the Python `^` operator.
 
