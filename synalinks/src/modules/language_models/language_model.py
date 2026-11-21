@@ -228,9 +228,9 @@ def _message_to_wire(message):
 
     Delegates to `to_chat_completion_message`, the single source of truth
     for the synalinks<->OpenAI mapping (tool-call envelopes with their
-    JSON-encoded `arguments`, dict content JSON-encoded on tool results,
-    and `thinking`/`thinking_blocks` mapped onto `reasoning_content`/
-    `thinking_blocks` for DeepSeek- and Anthropic-style providers). Unset
+    JSON-encoded `arguments`, and `thinking`/`thinking_blocks` mapped onto
+    `reasoning_content`/`thinking_blocks` for DeepSeek- and Anthropic-style
+    providers). Unset
     fields are dropped, but `content` is always emitted (as null when
     empty) since some providers expect the key to be present.
     """

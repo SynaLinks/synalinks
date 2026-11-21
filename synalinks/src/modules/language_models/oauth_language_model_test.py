@@ -1514,8 +1514,8 @@ class AppServerToolCallingTest(testing.TestCase):
                 ("tool", "call_2"),
             ],
         )
-        self.assertEqual(messages[1]["content"], {"result": 42})
-        self.assertEqual(messages[3]["content"], {"result": 126})
+        self.assertEqual(messages[1]["content"], '{"result": 42}')
+        self.assertEqual(messages[3]["content"], '{"result": 126}')
         # Each step sends the trajectory so far as native items.
         injected = fake.params("thread/inject_items")
         self.assertEqual([len(p["items"]) for p in injected], [3, 5])
