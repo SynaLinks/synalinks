@@ -456,18 +456,6 @@ class DeepAgent(FunctionCallingAgent):
             _CALL_STATE.reset(token)
             self._busy_slots.discard(slot)
 
-    @staticmethod
-    def _coerce_task(task) -> str:
-        """Normalize one ``spawn_subagents`` task entry to an instruction string."""
-        if isinstance(task, dict):
-            return (
-                task.get("task")
-                or task.get("instructions")
-                or task.get("prompt")
-                or json.dumps(task, ensure_ascii=False)
-            )
-        return str(task)
-
     async def spawn_subagents(self, tasks: List[str]) -> dict:
         """Run subagents in parallel, each on an isolated branch of the filesystem.
 
@@ -493,7 +481,18 @@ class DeepAgent(FunctionCallingAgent):
             ``{handle, task, error}`` for a subagent that failed; plus a
             top-level ``error`` when ``tasks`` is empty.
         """
-        prompts = [self._coerce_task(t) for t in (tasks or [])]
+        # A task may come as a dict: its task / instructions / prompt, else its JSON.
+        prompts = [
+            (
+                t.get("task")
+                or t.get("instructions")
+                or t.get("prompt")
+                or json.dumps(t, ensure_ascii=False)
+            )
+            if isinstance(t, dict)
+            else str(t)
+            for t in (tasks or [])
+        ]
         # Handles are reserved up front so concurrent spawns never share one.
         state = self._call_state
         start = state["count"]

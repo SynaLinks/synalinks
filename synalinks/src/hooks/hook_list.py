@@ -40,20 +40,6 @@ class HookList(Hook):
         **params,
     ):
         self.hooks = tree.flatten(hooks) if hooks else []
-        self._add_default_hooks(add_logger)
-        self.set_module(module)
-        self.set_params(params)
-
-    def add_hook(self, hook):
-        self.hooks.append(hook)
-
-    def set_params(self, params):
-        self.params = params
-        if params:
-            for hook in self.hooks:
-                hook.set_params(params)
-
-    def _add_default_hooks(self, add_logger):
         self._logger = None
         self._monitor = None
         self._recorder = None
@@ -77,6 +63,18 @@ class HookList(Hook):
         if self._recorder is None and is_trace_recording_enabled():
             self._recorder = Recorder()
             self.hooks.append(self._recorder)
+
+        self.set_module(module)
+        self.set_params(params)
+
+    def add_hook(self, hook):
+        self.hooks.append(hook)
+
+    def set_params(self, params):
+        self.params = params
+        if params:
+            for hook in self.hooks:
+                hook.set_params(params)
 
     def set_module(self, module):
         if not module:

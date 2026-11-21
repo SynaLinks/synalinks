@@ -14,7 +14,6 @@ from synalinks.src.knowledge_bases.knowledge_base import KnowledgeBase
 from synalinks.src.modules.knowledge.text2cypher import CypherQueryResult
 from synalinks.src.modules.knowledge.text2cypher import GraphSchema
 from synalinks.src.modules.knowledge.text2cypher import Text2Cypher
-from synalinks.src.modules.knowledge.text2cypher import _format_graph_schema
 from synalinks.src.modules.knowledge.text2cypher import default_text2cypher_instructions
 from synalinks.src.modules.language_models import LanguageModel
 
@@ -68,8 +67,11 @@ class Text2CypherHelpersTest(testing.TestCase):
         self.assertIn("RETURN", text)
 
     def test_format_graph_schema_lists_entities_and_relations(self):
-        kb = _make_kb("schema_kb")
-        rendered = _format_graph_schema(kb)
+        module = Text2Cypher(
+            knowledge_base=_make_kb("schema_kb"),
+            language_model=LanguageModel(model="ollama/mistral"),
+        )
+        rendered = module._schema_data_model().get("graph_schema")
         self.assertIn("# Entities", rendered)
         self.assertIn("# Relations", rendered)
         self.assertIn("Person", rendered)

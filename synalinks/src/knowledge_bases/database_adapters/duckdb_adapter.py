@@ -798,29 +798,6 @@ class DuckDBAdapter(DatabaseAdapter):
             return str(value)
         return "'" + str(value).replace("'", "''") + "'"
 
-    def _fts_index_options(self, overwrite: bool) -> str:
-        """Render the optional kwargs for ``PRAGMA create_fts_index``.
-
-        Only adapter init values that were explicitly supplied (i.e.
-        not ``None``) get serialized; DuckDB picks its own defaults
-        otherwise, so this avoids hard-coding upstream defaults
-        (``stopwords='english'``, ``strip_accents=1`` etc.) into the
-        adapter. ``overwrite`` is always emitted because callers pass
-        an explicit ``True`` / ``False`` per rebuild.
-        """
-        opts: List[str] = [f"stemmer='{self.stemmer}'"]
-        for key, value in (
-            ("stopwords", self.stopwords),
-            ("ignore", self.ignore),
-            ("strip_accents", self.strip_accents),
-            ("lower", self.lower),
-        ):
-            if value is None:
-                continue
-            opts.append(f"{key}={self._render_sql_literal(value)}")
-        opts.append(f"overwrite={1 if overwrite else 0}")
-        return ", ".join(opts)
-
     def _maybe_create_fulltext_index(
         self,
         data_model: Union[JsonDataModel, SymbolicDataModel],
@@ -833,15 +810,25 @@ class DuckDBAdapter(DatabaseAdapter):
 
             if not self._has_indexable_text_columns(json_schema):
                 return
-            # '*' tells DuckDB to index every VARCHAR column (the id
-            # column is excluded by the pragma itself), so callers
-            # don't need a whitelist of "searchable" field names.
+            # Only the options set on the adapter are rendered: DuckDB defaults
+            # the rest (stopwords, accents...). '*' indexes every VARCHAR
+            # column (the pragma itself excludes the id column).
+            options = [f"stemmer='{self.stemmer}'"]
+            for key, value in (
+                ("stopwords", self.stopwords),
+                ("ignore", self.ignore),
+                ("strip_accents", self.strip_accents),
+                ("lower", self.lower),
+            ):
+                if value is not None:
+                    options.append(f"{key}={self._render_sql_literal(value)}")
+            options.append(f"overwrite={1 if overwrite else 0}")
             con.execute(f"""
                 PRAGMA create_fts_index(
                     'main.{table_name}',
                     '{id_key}',
                     '*',
-                    {self._fts_index_options(overwrite)}
+                    {", ".join(options)}
                 );
             """)
 
@@ -1221,10 +1208,9 @@ class DuckDBAdapter(DatabaseAdapter):
             else:
                 conflict_clause = f"ON CONFLICT ({pk_col}) DO NOTHING"
 
-            def _quote_src(c):
-                return '"' + c.replace('"', '""') + '"'
-
-            select_list = ", ".join(_quote_src(c) for c in orig_col_names)
+            select_list = ", ".join(
+                '"' + c.replace('"', '""') + '"' for c in orig_col_names
+            )
             insert_col_list = ", ".join(db_col_names)
             self._con.register("_bulk_load_source", source.to_arrow_reader())
             try:
@@ -1771,35 +1757,6 @@ class DuckDBAdapter(DatabaseAdapter):
         ranked = sorted(results.values(), key=lambda r: r["score"])[:k]
         return format_search_results(ranked, output_format)
 
-    def _bm25_call(
-        self,
-        id_key: str,
-        *,
-        bm25_b: Optional[float] = None,
-        bm25_k: Optional[float] = None,
-        conjunctive: Optional[bool] = None,
-    ) -> str:
-        """Render a ``match_bm25(id, ?[, named-args])`` call fragment.
-
-        The ``?`` placeholder is reserved for the query string (bound
-        as a parameter by the caller). BM25 tuning knobs (``b``,
-        ``k``, ``conjunctive``) are inlined via DuckDB's ``key := value``
-        named-argument syntax so we don't have to specify the
-        positional args we want to leave at the engine default. Only
-        non-``None`` overrides are emitted.
-        """
-        extras: List[str] = []
-        for key, value in (
-            ("k", bm25_k),
-            ("b", bm25_b),
-            ("conjunctive", conjunctive),
-        ):
-            if value is None:
-                continue
-            extras.append(f"{key} := {self._render_sql_literal(value)}")
-        suffix = (", " + ", ".join(extras)) if extras else ""
-        return f"match_bm25({id_key}, ?{suffix})"
-
     async def fulltext_search(
         self,
         text_or_texts: Union[str, List[str]],
@@ -1849,16 +1806,19 @@ class DuckDBAdapter(DatabaseAdapter):
             warnings.warn(f"Skipping FTS search for {label}: no text columns to index.")
             return format_search_results([], output_format)
         fts_table = sanitize_identifier(f"fts_main_{label}")
-        # Build the BM25 call once; the named-arg fragments (b/k/
-        # conjunctive) are inlined as literals, leaving the ``?`` for
-        # the query string bound per iteration. ``conjunctive=False``
-        # is DuckDB's default, so only ``True`` triggers an override.
-        bm25_call = self._bm25_call(
-            id_key,
-            bm25_b=bm25_b,
-            bm25_k=bm25_k,
-            conjunctive=conjunctive or None,
+        # `match_bm25(id, ?[, key := value])`: the `?` is the query, bound per
+        # iteration; only the overrides given are rendered (DuckDB defaults
+        # the rest), and `conjunctive=False` is DuckDB's default already.
+        overrides = "".join(
+            f", {key} := {self._render_sql_literal(value)}"
+            for key, value in (
+                ("k", bm25_k),
+                ("b", bm25_b),
+                ("conjunctive", conjunctive or None),
+            )
+            if value is not None
         )
+        bm25_call = f"match_bm25({id_key}, ?{overrides})"
 
         sql = f"""
             SELECT t.*, fts.score

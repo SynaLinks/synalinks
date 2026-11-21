@@ -607,7 +607,17 @@ class FunctionCallingAgent(Module):
         # merged on top, with name-collision and underscore checks.
         self.extra_tools = list(tools) if tools else []
         builtin_tools = list(self._get_builtin_tools())
-        builtin_tools += self._skills_tools(builtin_tools)
+        # `read_skill` makes advertised skills readable; a tool of that name wins.
+        if self.skills:
+            taken = {tool.name for tool in builtin_tools}
+            for extra in self.extra_tools:
+                taken.add(
+                    extra.name
+                    if hasattr(extra, "name")
+                    else getattr(extra, "__name__", "")
+                )
+            if READ_SKILL_TOOL_NAME not in taken:
+                builtin_tools.append(build_read_skill_tool(self.skills))
         merged_tools = merge_tools(
             builtin_tools,
             self.extra_tools,
@@ -681,33 +691,6 @@ class FunctionCallingAgent(Module):
         """
         return []
 
-    def _skills_tools(self, builtin_tools):
-        """The skill-reading built-in, when Agent Skills are configured.
-
-        The ``<available_skills>`` context block lists only names and
-        descriptions; the spec expects the agent to read the bodies through
-        its own file tools, which a tool-calling agent equipped with domain
-        tools does not have — its skills would be advertised but unreadable.
-        So whenever `skills` roots are set, a built-in ``read_skill`` tool is
-        added to complete progressive disclosure (the ``SKILL.md`` body, read
-        by skill name; bundled files stay out of reach).
-
-        Skipped when a tool named ``read_skill`` already exists — a
-        subclass's or the caller's own reader wins over the built-in one.
-        Not serialized: like every built-in it is rebuilt from the `skills`
-        config on reload.
-        """
-        if not self.skills:
-            return []
-        taken = {tool.name for tool in builtin_tools}
-        for extra in self.extra_tools:
-            taken.add(
-                extra.name if hasattr(extra, "name") else getattr(extra, "__name__", "")
-            )
-        if READ_SKILL_TOOL_NAME in taken:
-            return []
-        return [build_read_skill_tool(self.skills)]
-
     def _builtin_tool_kind(self):
         """Short noun naming the built-in tool family, used in collision errors."""
         return "agent"
@@ -760,8 +743,12 @@ class FunctionCallingAgent(Module):
                 agent_messages = trajectory.get("messages")
 
                 if self.autonomous:
-                    return await self._run_autonomous(
-                        trajectory, agent_messages, ctx, training
+                    return await self._run_loop(
+                        trajectory,
+                        agent_messages,
+                        ctx,
+                        training,
+                        max_steps=self.max_iterations,
                     )
                 return await self._run_interactive(
                     trajectory, agent_messages, ctx, training
@@ -969,8 +956,9 @@ class FunctionCallingAgent(Module):
             return ctx["answer"]
         return await self.final_generator(trajectory)
 
-    async def _wrap_final(self, final_result, agent_messages, training):
-        """Wrap the final answer into the agent's return value (shared)."""
+    async def _finish(self, trajectory, agent_messages, ctx, training):
+        """Compute and wrap the final answer after the loop (hook seam)."""
+        final_result = await self._final_result(trajectory, ctx, training)
         if self.schema:
             # With schema: return the structured data model
             if self.return_inputs_with_trajectory:
@@ -1005,16 +993,6 @@ class FunctionCallingAgent(Module):
             json=validated_messages.get_json(),
             schema=ChatMessages.get_schema(),
             name=self.name,
-        )
-
-    async def _finish(self, trajectory, agent_messages, ctx, training):
-        """Compute and wrap the final answer after the loop (hook seam)."""
-        final_result = await self._final_result(trajectory, ctx, training)
-        return await self._wrap_final(final_result, agent_messages, training)
-
-    async def _run_autonomous(self, trajectory, agent_messages, ctx, training):
-        return await self._run_loop(
-            trajectory, agent_messages, ctx, training, max_steps=self.max_iterations
         )
 
     async def _run_loop(self, trajectory, agent_messages, ctx, training, *, max_steps):

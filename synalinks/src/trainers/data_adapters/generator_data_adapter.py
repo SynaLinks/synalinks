@@ -23,7 +23,8 @@ class GeneratorDataAdapter(DataAdapter):
             num_batches (int): Optional. The number of batches per epoch when
                 known.
         """
-        if _is_reiterable(generator):
+        # A re-iterable starts a new pass on each `iter()`; an iterator has `__next__`.
+        if hasattr(generator, "__iter__") and not hasattr(generator, "__next__"):
             first_batches = list(
                 itertools.islice(iter(generator), data_adapter_utils.NUM_BATCHES_FOR_SPEC)
             )
@@ -76,16 +77,6 @@ class GeneratorDataAdapter(DataAdapter):
             without consuming it.
         """
         return None
-
-
-def _is_reiterable(obj):
-    """True for objects that start a new pass on each `iter()` call.
-
-    Generators and other iterators return themselves from `iter()` and are
-    exhausted after one pass; they expose `__next__`. Containers and
-    `Dataset`-like objects expose `__iter__` only.
-    """
-    return hasattr(obj, "__iter__") and not hasattr(obj, "__next__")
 
 
 def peek_and_restore(generator):

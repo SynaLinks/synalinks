@@ -73,20 +73,6 @@ class Logger(Hook):
         if not hasattr(self, "logger"):
             self.logger = logging.getLogger(f"synalinks.{self.module.name}")
 
-    def _serialize_kwargs(self, kwargs):
-        """Serialize kwargs to JSON-compatible format."""
-        if not kwargs:
-            return {}
-        serialized = {}
-        for key, value in kwargs.items():
-            if key == "training":
-                serialized[key] = value
-            elif hasattr(value, "get_json"):
-                serialized[key] = value.get_json()
-            elif isinstance(value, (str, int, float, bool, list, dict, type(None))):
-                serialized[key] = value
-        return serialized
-
     def on_call_begin(
         self,
         call_id,
@@ -134,11 +120,17 @@ class Logger(Hook):
                 )
             # Log kwargs if no data models but kwargs present (e.g., Tool modules)
             elif kwargs:
-                serialized_kwargs = self._serialize_kwargs(kwargs)
-                # Filter out 'training' from display
-                display_kwargs = {
-                    k: v for k, v in serialized_kwargs.items() if k != "training"
-                }
+                # Keep JSON-compatible kwargs, without 'training'.
+                display_kwargs = {}
+                for key, value in kwargs.items():
+                    if key == "training":
+                        continue
+                    if hasattr(value, "get_json"):
+                        display_kwargs[key] = value.get_json()
+                    elif isinstance(
+                        value, (str, int, float, bool, list, dict, type(None))
+                    ):
+                        display_kwargs[key] = value
                 if display_kwargs:
                     self.logger.info(
                         _KWARGS_LOG_TEMPLATE.format(

@@ -82,15 +82,6 @@ _RELATE_TYPES = {
 }
 
 
-def _relate_type(relate_type: str) -> str:
-    """``"LIST<FLOAT NOT NULL> NOT NULL"`` -> ``"DOUBLE[]"``, as Ladybug
-    names column types; ``STRING`` for anything else."""
-    bare = relate_type.replace(" NOT NULL", "")
-    if bare.startswith("LIST<") and bare.endswith(">"):
-        return _RELATE_TYPES.get(bare[5:-1], "STRING") + "[]"
-    return _RELATE_TYPES.get(bare, "STRING")
-
-
 class RelateAdapter(LadybugAdapter):
     """Relate-backed implementation of `GraphDatabaseAdapter`.
 
@@ -237,19 +228,7 @@ class RelateAdapter(LadybugAdapter):
 
         if wipe_on_start:
             self.wipe_database()
-        pk_keys, fts_columns = self._stored_schema()
-        self._defer_table_creation = bool(self.embedding_model and not self.vector_dim)
-        self._setup_schema()
-        for label, key in pk_keys.items():
-            self._pk_keys.setdefault(label, key)
-            self._node_labels.add(label)
-        for label, columns in fts_columns.items():
-            self._fts_columns.setdefault(label, columns)
-
-    def _stored_schema(self) -> tuple:
-        """What a reopened store already holds: ``(pk_keys, fts_columns)`` from
-        its ``<label>_pk`` constraints and ``<label>_fts`` indexes, and the
-        vector dimension from a ``<label>_vec`` index when not given."""
+        # What a reopened store already holds: pk constraints, FTS columns, vector dim.
         pk_keys: Dict[str, str] = {}
         for name, labels, props in self._con.execute(
             "SHOW CONSTRAINTS YIELD name, labelsOrTypes, properties"
@@ -267,7 +246,13 @@ class RelateAdapter(LadybugAdapter):
             if kind == "VECTOR" and name.endswith("_vec") and not self.vector_dim:
                 config = (options or {}).get("indexConfig") or {}
                 self.vector_dim = int(config.get("vector.dimensions") or 0)
-        return pk_keys, fts_columns
+        self._defer_table_creation = bool(self.embedding_model and not self.vector_dim)
+        self._setup_schema()
+        for label, key in pk_keys.items():
+            self._pk_keys.setdefault(label, key)
+            self._node_labels.add(label)
+        for label, columns in fts_columns.items():
+            self._fts_columns.setdefault(label, columns)
 
     # ------------------------------------------------------------------
     # Schema
@@ -450,7 +435,13 @@ class RelateAdapter(LadybugAdapter):
         for row in self._con.execute(f"CALL {procedure}()").get_records():
             if row[key] == value and row["propertyName"]:
                 types = row["propertyTypes"] or ["STRING"]
-                columns.append(f"{row['propertyName']} {_relate_type(types[0])}")
+                # "LIST<FLOAT NOT NULL> NOT NULL" -> "DOUBLE[]", STRING for unknowns.
+                bare = types[0].replace(" NOT NULL", "")
+                if bare.startswith("LIST<") and bare.endswith(">"):
+                    column_type = _RELATE_TYPES.get(bare[5:-1], "STRING") + "[]"
+                else:
+                    column_type = _RELATE_TYPES.get(bare, "STRING")
+                columns.append(f"{row['propertyName']} {column_type}")
         return columns
 
     def _node_table_to_json_schema(
@@ -774,7 +765,17 @@ class _RelateConnection:
     ):
         bound = dict(params or {})
         if encode:
-            bound = {key: _encoded(value) for key, value in bound.items()}
+            # Relate stores no maps, nor lists holding maps or lists: send JSON text.
+            bound = {
+                key: json.dumps(value)
+                if isinstance(value, dict)
+                or (
+                    isinstance(value, list)
+                    and any(isinstance(item, (dict, list)) for item in value)
+                )
+                else value
+                for key, value in bound.items()
+            }
         cursor = self._adapter._db.execute(query, bound)
         columns = [d[0] for d in cursor.description] if cursor.description else []
         records = cursor.fetchall() if columns else []
@@ -844,13 +845,3 @@ class _RelateResult:
 
     def close(self) -> None:
         pass
-
-
-def _encoded(value: Any) -> Any:
-    """A parameter value Relate can store: a map, or a list holding maps or
-    lists, as its JSON text (Relate stores neither)."""
-    if isinstance(value, dict) or (
-        isinstance(value, list) and any(isinstance(item, (dict, list)) for item in value)
-    ):
-        return json.dumps(value)
-    return value

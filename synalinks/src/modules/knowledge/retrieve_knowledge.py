@@ -317,42 +317,35 @@ class RetrieveKnowledge(Module):
         aggregated: List[Dict[str, Any]] = []
         seen: set = set()
 
-        async def _search_one(table_name):
+        for dm in target_data_models:
+            table_name = dm.get_schema().get("title")
             if self.search_type == "similarity":
-                return await self.knowledge_base.similarity_search(
+                rows = await self.knowledge_base.similarity_search(
                     search_terms,
                     table_name=table_name,
                     k=self.k,
                     threshold=self.similarity_threshold,
                 )
-            if self.search_type == "fulltext":
-                return await self.knowledge_base.fulltext_search(
+            elif self.search_type == "fulltext":
+                rows = await self.knowledge_base.fulltext_search(
                     search_terms,
                     table_name=table_name,
                     k=self.k,
                     threshold=self.fulltext_threshold,
                 )
-            if self.search_type == "regex":
-                # regex_search is single-pattern; iterate the LM's
-                # patterns and merge their rows per table.
-                rows_per_table: List[Dict[str, Any]] = []
-                seen_local: set = set()
+            elif self.search_type == "regex":
+                # regex_search takes one pattern: run each (duplicates merge below).
+                rows = []
                 for pattern in search_terms:
-                    rows = await self.knowledge_base.regex_search(
+                    rows += await self.knowledge_base.regex_search(
                         pattern,
                         table_name=table_name,
                         fields=self.fields,
                         case_sensitive=self.case_sensitive,
                         k=self.k,
                     )
-                    for row in rows:
-                        sig = orjson.dumps(row, option=orjson.OPT_SORT_KEYS, default=str)
-                        if sig not in seen_local:
-                            seen_local.add(sig)
-                            rows_per_table.append(row)
-                return rows_per_table
-            if self.search_type == "hybrid_regex":
-                return await self.knowledge_base.hybrid_regex_search(
+            elif self.search_type == "hybrid_regex":
+                rows = await self.knowledge_base.hybrid_regex_search(
                     search_terms,
                     pattern_or_patterns=patterns or None,
                     table_name=table_name,
@@ -362,19 +355,16 @@ class RetrieveKnowledge(Module):
                     fields=self.fields,
                     case_sensitive=self.case_sensitive,
                 )
-            # hybrid_fts (default)
-            return await self.knowledge_base.hybrid_fts_search(
-                search_terms,
-                table_name=table_name,
-                k=self.k,
-                k_rank=self.k_rank,
-                similarity_threshold=self.similarity_threshold,
-                fulltext_threshold=self.fulltext_threshold,
-            )
-
-        for dm in target_data_models:
-            table_name = dm.get_schema().get("title")
-            for row in await _search_one(table_name):
+            else:  # hybrid_fts (default)
+                rows = await self.knowledge_base.hybrid_fts_search(
+                    search_terms,
+                    table_name=table_name,
+                    k=self.k,
+                    k_rank=self.k_rank,
+                    similarity_threshold=self.similarity_threshold,
+                    fulltext_threshold=self.fulltext_threshold,
+                )
+            for row in rows:
                 sig = orjson.dumps(row, option=orjson.OPT_SORT_KEYS, default=str)
                 if sig in seen:
                     continue

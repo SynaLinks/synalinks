@@ -507,16 +507,6 @@ def _to_model_response(content, usage, *, tool_calls=None):
 # completion, like `codex exec`.
 
 
-def _tool_function(tool):
-    """Returns the `function` of a wire tool declaration."""
-    if not isinstance(tool, dict):
-        raise ValueError(f"A tool declaration must be a dict. Received: {tool!r}")
-    function = tool.get("function") if "function" in tool else tool
-    if not isinstance(function, dict) or not function.get("name"):
-        raise ValueError(f"A tool declaration has no `name`. Received: {tool!r}")
-    return function
-
-
 def _tool_choice_mode(tool_choice):
     """Normalizes `tool_choice` into `(mode, tool name)`.
 
@@ -544,26 +534,6 @@ def _tool_choice_mode(tool_choice):
     )
 
 
-def _offered_tools(tools, tool_choice=None):
-    """The `function`s of the wire tools the model may call under `tool_choice`.
-
-    Raises:
-        ValueError: If a tool is malformed, or `tool_choice` names a tool
-            that is not declared.
-    """
-    functions = [_tool_function(tool) for tool in tools or []]
-    mode, name = _tool_choice_mode(tool_choice)
-    if mode == "none":
-        return []
-    if mode == "named":
-        functions = [f for f in functions if f["name"] == name]
-        if not functions:
-            raise ValueError(
-                f"`tool_choice` names `{name}`, which is not a declared tool."
-            )
-    return functions
-
-
 def _dynamic_tools(functions):
     """The `dynamicTools` of a thread, from wire `function` declarations."""
     return [
@@ -576,32 +546,6 @@ def _dynamic_tools(functions):
         }
         for function in functions
     ]
-
-
-def _tool_choice_instructions(tool_choice, parallel_tool_calls=None):
-    """The lines added to the instructions for what the protocol cannot say.
-
-    The app-server declares tools but takes no `tool_choice`: `"required"`
-    and a named tool are asked for in the instructions and checked on the
-    answer (`_app_server_completion` raises, and the base class retries).
-    """
-    mode, name = _tool_choice_mode(tool_choice)
-    lines = []
-    if mode == "required":
-        lines.append("Call at least one of the tools before answering.")
-    elif mode == "named":
-        lines.append(f"Call the tool `{name}` now.")
-    if parallel_tool_calls is False:
-        lines.append("Call at most one tool at a time.")
-    return "\n".join(lines)
-
-
-def _has_tool_history(formatted_messages):
-    """Whether the messages hold a tool call or a tool result."""
-    return any(
-        message.get("role") in ("tool", "function") or message.get("tool_calls")
-        for message in formatted_messages
-    )
 
 
 def _input_items(content):
@@ -725,23 +669,6 @@ def _default_effort(catalog, cli_model):
         if model.get("slug") == cli_model:
             return model.get("default_reasoning_level") or None
     return None
-
-
-def _turn_usage(token_usage):
-    """The usage of the thread, in the `codex exec` keys.
-
-    The thread is started for the completion, so its total is the
-    completion's: with one request per turn it is the last response's
-    (measured live: equal on 23 tool turns out of 23), and a request the
-    harness makes on its own would show in it.
-    """
-    total = (token_usage or {}).get("total") or {}
-    return {
-        "input_tokens": total.get("inputTokens"),
-        "cached_input_tokens": total.get("cachedInputTokens"),
-        "output_tokens": total.get("outputTokens"),
-        "reasoning_output_tokens": total.get("reasoningOutputTokens"),
-    }
 
 
 class _AppServer:
@@ -1180,7 +1107,11 @@ class OAuthLanguageModel(LanguageModel):
             if isinstance(message.get("content"), list)
             for part in message["content"]
         )
-        if tools or media or _has_tool_history(formatted_messages):
+        tool_history = any(
+            message.get("role") in ("tool", "function") or message.get("tool_calls")
+            for message in formatted_messages
+        )
+        if tools or media or tool_history:
             # Declared tools, earlier calls and results, or images and audio
             # to send as the items they are, in place: the app-server.
             return await self._app_server_completion(
@@ -1262,7 +1193,27 @@ class OAuthLanguageModel(LanguageModel):
         native tool calls; else the answer.
         """
         try:
-            functions = _offered_tools(tools, tool_choice)
+            functions = []
+            for tool in tools or []:
+                if not isinstance(tool, dict):
+                    raise ValueError(
+                        f"A tool declaration must be a dict. Received: {tool!r}"
+                    )
+                function = tool.get("function") if "function" in tool else tool
+                if not isinstance(function, dict) or not function.get("name"):
+                    raise ValueError(
+                        f"A tool declaration has no `name`. Received: {tool!r}"
+                    )
+                functions.append(function)
+            mode, name = _tool_choice_mode(tool_choice)
+            if mode == "none":
+                functions = []
+            elif mode == "named":
+                functions = [f for f in functions if f["name"] == name]
+                if not functions:
+                    raise ValueError(
+                        f"`tool_choice` names `{name}`, which is not a declared tool."
+                    )
         except ValueError as e:
             raise DeterministicStopError(str(e), "invalid_request") from e
         if functions and schema:
@@ -1272,16 +1223,18 @@ class OAuthLanguageModel(LanguageModel):
                 "invalid_request",
             )
         instructions, items = _history_items(formatted_messages)
+        # The app-server takes no `tool_choice`: it is asked for in the instructions.
+        choice_lines = []
+        if functions:
+            if mode == "required":
+                choice_lines.append("Call at least one of the tools before answering.")
+            elif mode == "named":
+                choice_lines.append(f"Call the tool `{name}` now.")
+            if parallel_tool_calls is False:
+                choice_lines.append("Call at most one tool at a time.")
         instructions = "\n\n".join(
             text
-            for text in (
-                instructions or _DEFAULT_INSTRUCTIONS,
-                (
-                    _tool_choice_instructions(tool_choice, parallel_tool_calls)
-                    if functions
-                    else ""
-                ),
-            )
+            for text in (instructions or _DEFAULT_INSTRUCTIONS, "\n".join(choice_lines))
             if text
         )
         # The last user message is the input of the turn; whatever precedes
@@ -1451,7 +1404,14 @@ class OAuthLanguageModel(LanguageModel):
                 elif item_type == "agentMessage" and method == "item/completed":
                     content = item.get("text")
             elif method == "thread/tokenUsage/updated":
-                usage = _turn_usage(params.get("tokenUsage"))
+                # The thread is started for the completion: its total is the completion's.
+                total = (params.get("tokenUsage") or {}).get("total") or {}
+                usage = {
+                    "input_tokens": total.get("inputTokens"),
+                    "cached_input_tokens": total.get("cachedInputTokens"),
+                    "output_tokens": total.get("outputTokens"),
+                    "reasoning_output_tokens": total.get("reasoningOutputTokens"),
+                }
             elif method == "error":
                 errors.append(str(params.get("message")))
             elif method == "turn/completed":

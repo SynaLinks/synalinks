@@ -14,6 +14,7 @@ from synalinks.src.backend import ChatRole
 from synalinks.src.backend import DataModel
 from synalinks.src.backend import EmbeddingRequest
 from synalinks.src.backend import Field
+from synalinks.src.hooks.monitor import _GLOBAL_SPANS_REGISTRY
 from synalinks.src.hooks.monitor import MLFLOW_TRACE_SESSION_KEY
 from synalinks.src.hooks.monitor import MLFLOW_TRACE_USER_KEY
 from synalinks.src.hooks.monitor import Monitor
@@ -36,18 +37,29 @@ def _new_monitor(module):
     return monitor
 
 
+def _span_type(module):
+    """Span type `on_call_begin` opens for a call of `module`."""
+    monitor = _new_monitor(module)
+    monitor.call_start_times = {}
+    monitor._setup_done = True
+    with patch("synalinks.src.hooks.monitor.mlflow") as mock_mlflow:
+        monitor.on_call_begin("span-type-call", parent_call_id="span-type-parent")
+    _GLOBAL_SPANS_REGISTRY.pop("span-type-call", None)
+    return mock_mlflow.start_span_no_context.call_args.kwargs["span_type"]
+
+
 class MonitorSpanTypeTest(testing.TestCase):
     def test_language_model_maps_to_chat_model(self):
-        monitor = _new_monitor(LanguageModel(model="ollama/mistral"))
-        self.assertEqual(monitor._get_span_type(), SpanType.CHAT_MODEL)
+        module = LanguageModel(model="ollama/mistral")
+        self.assertEqual(_span_type(module), SpanType.CHAT_MODEL)
 
     def test_decision_model_maps_to_chat_model(self):
-        monitor = _new_monitor(DecisionModel(model="typesafe/jev-latest"))
-        self.assertEqual(monitor._get_span_type(), SpanType.CHAT_MODEL)
+        module = DecisionModel(model="typesafe/jev-latest")
+        self.assertEqual(_span_type(module), SpanType.CHAT_MODEL)
 
     def test_embedding_model_maps_to_embedding(self):
-        monitor = _new_monitor(EmbeddingModel(model="ollama/all-minilm"))
-        self.assertEqual(monitor._get_span_type(), SpanType.EMBEDDING)
+        module = EmbeddingModel(model="ollama/all-minilm")
+        self.assertEqual(_span_type(module), SpanType.EMBEDDING)
 
     def test_orchestrator_modules_map_to_chain(self):
         """`Generator` / `ChainOfThought` / `SelfCritique` are
@@ -56,9 +68,7 @@ class MonitorSpanTypeTest(testing.TestCase):
         belong to `SpanType.CHAIN` (MLflow convention)."""
         for class_name in ("Generator", "ChainOfThought", "SelfCritique"):
             fake_module = type(class_name, (), {"name": "x", "description": ""})()
-            monitor = Monitor.__new__(Monitor)
-            monitor.set_module(fake_module)
-            self.assertEqual(monitor._get_span_type(), SpanType.CHAIN)
+            self.assertEqual(_span_type(fake_module), SpanType.CHAIN)
 
 
 class MonitorEndToEndTest(testing.TestCase):

@@ -267,56 +267,6 @@ def _resolve_ref(schema, node):
     return node
 
 
-def _field_instructions(key, description):
-    if not description:
-        raise UnsupportedSchemaError(
-            f"Field {key!r} needs a `description`: it is the question asked "
-            "to the decision model."
-        )
-    # A description holding a JSON object is sent as structured instructions.
-    if description.lstrip().startswith("{"):
-        try:
-            return json.loads(description)
-        except json.JSONDecodeError:
-            pass
-    return description
-
-
-def _is_scale(options):
-    """Whether an enum is a numeric scale (e.g. `synalinks.Rating`)."""
-    return all(
-        isinstance(option, (int, float)) and not isinstance(option, bool)
-        for option in options
-    )
-
-
-def _scale_levels(key, options):
-    """Return a numeric scale's values and the levels a score question asks.
-
-    A scale of up to `MAX_SCORE_LEVELS` values is asked as is. A finer one
-    (e.g. `synalinks.FineScore`) is asked over `MAX_SCORE_LEVELS` levels evenly
-    spread over its range, and the answer is mapped back to the nearest value.
-    """
-    values = sorted(options)
-    if len(values) < MIN_SCORE_LEVELS:
-        raise UnsupportedSchemaError(
-            f"Field {key!r} is a scale of {len(values)} value(s); a score needs "
-            f"at least {MIN_SCORE_LEVELS}."
-        )
-    if len(values) <= MAX_SCORE_LEVELS:
-        return values, values
-    low, high = values[0], values[-1]
-    step = (high - low) / (MAX_SCORE_LEVELS - 1)
-    return values, [low + i * step for i in range(MAX_SCORE_LEVELS)]
-
-
-def _scale_value(answer, values, levels):
-    """Map a score answer back to the nearest value of its scale."""
-    position = answer["score"] / (len(levels) - 1)
-    target = levels[0] + position * (levels[-1] - levels[0])
-    return min(values, key=lambda value: abs(value - target))
-
-
 def questions_from_schema(schema):
     """Infer the decision model questions from an output schema.
 
@@ -357,13 +307,37 @@ def questions_from_schema(schema):
     plain = {}
     for key, prop in properties.items():
         node = _resolve_ref(schema, prop)
-        instructions = _field_instructions(key, node.get("description"))
+        instructions = node.get("description")
+        if not instructions:
+            raise UnsupportedSchemaError(
+                f"Field {key!r} needs a `description`: it is the question asked "
+                "to the decision model."
+            )
+        # A description holding a JSON object is sent as structured instructions.
+        if instructions.lstrip().startswith("{"):
+            try:
+                instructions = json.loads(instructions)
+            except json.JSONDecodeError:
+                pass
         fields = node.get("properties") or {}
         if node.get("type") == "boolean":
             questions[key] = {"type": "noul", "instructions": instructions}
             plain[key] = None
-        elif "enum" in node and _is_scale(node["enum"]):
-            values, levels = _scale_levels(key, node["enum"])
+        elif "enum" in node and all(
+            isinstance(option, (int, float)) and not isinstance(option, bool)
+            for option in node["enum"]
+        ):
+            # A scale finer than `MAX_SCORE_LEVELS` is asked over evenly spread levels.
+            values = levels = sorted(node["enum"])
+            if len(values) < MIN_SCORE_LEVELS:
+                raise UnsupportedSchemaError(
+                    f"Field {key!r} is a scale of {len(values)} value(s); a score needs "
+                    f"at least {MIN_SCORE_LEVELS}."
+                )
+            if len(values) > MAX_SCORE_LEVELS:
+                low, high = values[0], values[-1]
+                step = (high - low) / (MAX_SCORE_LEVELS - 1)
+                levels = [low + i * step for i in range(MAX_SCORE_LEVELS)]
             questions[key] = {
                 "type": "score",
                 "instructions": instructions,
@@ -429,7 +403,11 @@ def outputs_from_answers(questions, plain, answers):
             if questions[key]["type"] == "noul":
                 outputs[key] = answer["noul"] >= 0.5
             elif questions[key]["type"] == "score":
-                outputs[key] = _scale_value(answer, *plain[key])
+                # Map the score back to the nearest value of its scale.
+                values, levels = plain[key]
+                position = answer["score"] / (len(levels) - 1)
+                target = levels[0] + position * (levels[-1] - levels[0])
+                outputs[key] = min(values, key=lambda value: abs(value - target))
             else:
                 outputs[key] = answer["choice"]
         else:
