@@ -3,6 +3,7 @@
 from typing import List
 
 from synalinks.src import ops
+from synalinks.src.api_export import synalinks_export
 from synalinks.src.backend import DataModel
 from synalinks.src.backend import Field
 from synalinks.src.backend import Trainable
@@ -28,6 +29,12 @@ class SequentialPlan(Trainable):
     )
 
 
+@synalinks_export(
+    [
+        "synalinks.modules.SequentialPlanSynthesis",
+        "synalinks.SequentialPlanSynthesis",
+    ]
+)
 class SequentialPlanSynthesis(Module):
     """A module that executes a sequential plan of steps.
 
@@ -76,19 +83,18 @@ class SequentialPlanSynthesis(Module):
             description="The summary of the executed task",
         )
 
-    async def main():
-        tools = # ... tools definition (see `FunctionCallingAgent`)
+    language_model = synalinks.LanguageModel(model="ollama/mistral")
 
+    async def main():
         inputs = synalinks.Input(data_model=Query)
         outputs = await synalinks.SequentialPlanSynthesis(
             data_model=FinalReport,
             language_model=language_model,
-            runner=synalinks.FunctionCallingAgent(
+            runner=synalinks.Generator(
                 data_model=TaskSummary,
                 language_model=language_model,
-                tools=tools,
-                return_inputs_with_trajectory=False,
             ),
+            steps=["List the key facts", "Draft the report outline"],
         )(inputs)
 
         program = synalinks.Program(
@@ -98,6 +104,7 @@ class SequentialPlanSynthesis(Module):
             description="An agent that learn a step by step plan to achieve a task",
         )
 
+    asyncio.run(main())
     ```
 
     Args:
@@ -111,7 +118,7 @@ class SequentialPlanSynthesis(Module):
             optimization. If not provided, use the default steps as seed.
         runner (Module | Program): Required. The runner that executes each step.
         return_inputs (bool): Optional. Whether or not to concatenate the inputs to
-            the outputs (Default to False).
+            the outputs (Default to True).
         reasoning_effort (string): Optional. The reasoning effort for the LM call
             between ['minimal', 'low', 'medium', 'high', 'disable', 'none', None].
             Default to None (the provider default).
@@ -182,40 +189,22 @@ class SequentialPlanSynthesis(Module):
     async def call(self, inputs, training=False):
         if not inputs:
             return None
-        steps = self.state.get("steps")
-        previous_steps = None
-        if steps:
-            for i, step in enumerate(steps):
-                step_result = await self.runner(inputs, training=training)
-                if not previous_steps:
-                    previous_steps = step_result
-                else:
-                    previous_steps = await ops.concat(
-                        previous_steps,
-                        step_result,
-                        name=+f"step_{i}_with_inputs" + self.name,
-                    )
-                inputs = await ops.concat(
+        steps = self.state.get("steps") or [None]
+        for i, step in enumerate(steps):
+            step_inputs = inputs
+            if step is not None:
+                step_inputs = await ops.concat(
                     inputs,
-                    await ops.concat(
-                        previous_steps,
-                        Step(step=step),
-                        name=f"step_{i}_" + self.name,
-                    ),
-                    name=f"step_{i}_with_inputs_" + self.name,
+                    Step(step=step),
+                    name=f"step_{i}_" + self.name,
                 )
-        else:
-            result = await self.runner(inputs, training=training)
+            result = await self.runner(step_inputs, training=training)
             inputs = await ops.concat(
                 inputs,
                 result,
-                name="with_inputs_" + self.name,
+                name=f"step_{i}_with_inputs_" + self.name,
             )
         return await self.final_generator(inputs, training=training)
-
-    async def compute_output_spec(self, inputs, training=False):
-        _ = await self.runner(inputs)
-        return await self.final_generator(inputs)
 
     def get_config(self):
         config = {

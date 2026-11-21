@@ -123,5 +123,8 @@ from synalinks.src.modules.retrievers.similarity_search import (
 from synalinks.src.modules.synthesis.python_synthesis import (
     PythonSynthesis as PythonSynthesis,
 )
+from synalinks.src.modules.synthesis.sequential_plan_synthesis import (
+    SequentialPlanSynthesis as SequentialPlanSynthesis,
+)
 from synalinks.src.modules.ttc.chain_of_thought import ChainOfThought as ChainOfThought
 from synalinks.src.modules.ttc.self_critique import SelfCritique as SelfCritique
