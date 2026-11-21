@@ -445,7 +445,7 @@ class TestCompiledMetricIsolation(testing.TestCase):
 
     async def test_shared_operational_metric_binds_per_program(self):
         from synalinks.src.metrics.lm_metrics import Cost
-        from synalinks.src.metrics.lm_metrics import _collect_language_models
+        from synalinks.src.metrics.metrics_utils import language_models
 
         model_names = ["ollama/model-a", "ollama/model-b", "ollama/model-c"]
         costs = [0.01, 0.02, 0.03]
@@ -460,7 +460,7 @@ class TestCompiledMetricIsolation(testing.TestCase):
 
         # Each model runs and accumulates its OWN provider cost.
         for program, cost in zip(progs, costs):
-            _collect_language_models(program)[0].inference_cumulated_cost += cost
+            language_models(program)[0].inference_cumulated_cost += cost
 
         bound = [self._bound_op_metric(p) for p in progs]
 
@@ -469,7 +469,7 @@ class TestCompiledMetricIsolation(testing.TestCase):
         # ...reading only its own model's counters.
         for program, metric, cost in zip(progs, bound, costs):
             self.assertEqual(
-                _collect_language_models(program),
+                language_models(program),
                 metric.language_models,
             )
             self.assertAlmostEqual(metric.result(), cost)

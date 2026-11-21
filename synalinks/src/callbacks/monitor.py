@@ -20,8 +20,7 @@ from synalinks.src.backend.config import mlflow_experiment_name
 from synalinks.src.backend.config import mlflow_tracking_uri
 from synalinks.src.callbacks.callback import Callback
 from synalinks.src.hooks import monitor as monitor_hook
-from synalinks.src.metrics.em_metrics import _collect_embedding_models
-from synalinks.src.metrics.lm_metrics import _collect_language_models
+from synalinks.src.metrics.metrics_utils import program_models
 from synalinks.src.utils.async_utils import run_maybe_nested
 from synalinks.src.version import __version__
 
@@ -561,16 +560,9 @@ class Monitor(Callback):
             # Explicit run_id: MLflow's active run is thread-local, not seen by the worker
             await asyncio.to_thread(mlflow.log_metrics, metrics, **kwargs)
 
-    def _models(self):
-        if self.program is None:
-            return []
-        return _collect_language_models(self.program) + _collect_embedding_models(
-            self.program
-        )
-
     def _snapshot_counters(self):
         """Sum the all-time and per-phase spend counters of every LM and EM."""
-        models = self._models()
+        models = program_models(self.program)
         counters = {}
         for suffix in _COUNTER_SUFFIXES:
             counters[suffix] = sum(getattr(m, f"cumulated_{suffix}", 0) for m in models)
@@ -626,7 +618,7 @@ class Monitor(Callback):
         metrics = getattr(compile_metrics, "metrics", None)
         if metrics:
             params["metrics"] = ",".join(m.name for m in metrics)
-        for model in self._models():
+        for model in program_models(self.program):
             kind = "em" if "Embedding" in model.__class__.__name__ else "lm"
             key = f"{kind}.{model.name}"
             params[f"{key}.model"] = getattr(model, "model", "")

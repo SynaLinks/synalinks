@@ -49,7 +49,7 @@ from synalinks.src.metrics.em_metrics import RewardEmbeddingThroughput
 from synalinks.src.metrics.em_metrics import RewardEmbeddingTokens
 from synalinks.src.metrics.em_metrics import RewardEmbeddingTokensPerSecond
 from synalinks.src.metrics.em_metrics import RewardEmbeddingVectorsPerSecond
-from synalinks.src.metrics.em_metrics import _collect_embedding_models
+from synalinks.src.metrics.metrics_utils import embedding_models
 from synalinks.src.modules.embedding_models import EmbeddingModel
 
 _EM_SUFFIXES = (
@@ -176,7 +176,7 @@ class EMAutoBindTest(testing.TestCase):
                 _FakeModule(em=None, submodules=[_FakeModule(em=other_em)]),
             ]
         )
-        ems = _collect_embedding_models(program)
+        ems = embedding_models(program)
         ids = [id(em) for em in ems]
         self.assertIn(id(primary_em), ids)
         self.assertIn(id(leaf_em), ids)
@@ -188,7 +188,7 @@ class EMAutoBindTest(testing.TestCase):
         program = _FakeProgram(
             modules=[_FakeModule(em=shared_em), _FakeModule(em=shared_em)]
         )
-        ems = _collect_embedding_models(program)
+        ems = embedding_models(program)
         self.assertEqual(len(ems), 1)
         self.assertIs(ems[0], shared_em)
 

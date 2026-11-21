@@ -17,9 +17,9 @@ so subclasses can sum across them.
 """
 
 from synalinks.src.api_export import synalinks_export
-from synalinks.src.metrics.em_metrics import _collect_embedding_models
-from synalinks.src.metrics.lm_metrics import _collect_language_models
 from synalinks.src.metrics.metric import Metric
+from synalinks.src.metrics.metrics_utils import embedding_models
+from synalinks.src.metrics.metrics_utils import language_models
 
 _PROGRAM_SUFFIXES = ("invocations", "invocation_elapsed_s")
 
@@ -74,8 +74,8 @@ class ProgramOperationalMetric(Metric):
 
     def bind_program(self, program):
         self._program = program
-        self._language_models = _collect_language_models(program)
-        self._embedding_models = _collect_embedding_models(program)
+        self._language_models = language_models(program)
+        self._embedding_models = embedding_models(program)
         self._snapshot()
 
     def _attr(self, suffix):
