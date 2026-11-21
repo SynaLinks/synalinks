@@ -1936,7 +1936,9 @@ class DuckDBAdapter(DatabaseAdapter):
         # rescale to [0, 1] so scores are comparable with the LanceDB adapter.
         results: Dict[Any, Dict[str, Any]] = {}
         with self._connect(read_only=True) as con:
-            for text in texts:
+            # An empty table has no FTS index yet (built on first insert).
+            has_rows = con.execute(f"SELECT COUNT(*) FROM {label}").fetchall()[0][0]
+            for text in texts if has_rows else []:
                 try:
                     rows = con.sql(sql, params=[text, k]).to_arrow_table().to_pylist()
                 except Exception as e:

@@ -1014,7 +1014,8 @@ class LanceDBAdapter(DatabaseAdapter):
 
         tbl = self._db.open_table(table)
         merged: Dict[Any, Dict[str, Any]] = {}
-        for text in texts:
+        # An empty table has no FTS index yet (built on first insert).
+        for text in texts if tbl.count_rows() else []:
             try:
                 rows = tbl.search(text, query_type="fts").limit(k).to_arrow().to_pylist()
             except Exception as e:
