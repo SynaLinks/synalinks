@@ -175,6 +175,29 @@ class ReadOnlyCypherTest(testing.TestCase):
         _assert_read_only_cypher("MATCH (n) RETURN n  // CREATE later")
         _assert_read_only_cypher("/* CREATE (:X) */ MATCH (n) RETURN n")
 
+    def test_quote_in_backtick_or_comment_does_not_hide_keywords(self):
+        for query in [
+            "MATCH (n) WITH n AS `x'` SET `x'`.name = 'p' RETURN 1",
+            "MATCH (n) WITH n AS `x'` DETACH DELETE `x'` RETURN 1",
+            "WITH 1 AS `a'` LOAD FROM '/etc/passwd' RETURN * //'",
+            "MATCH (n) // it's\n SET n.x = 1 //'",
+        ]:
+            with self.assertRaisesRegex(ValueError, "read_only=True"):
+                _assert_read_only_cypher(query)
+        _assert_read_only_cypher("MATCH (n) RETURN n.`a``b`, n.`SET` // it's")
+
+    def test_host_file_and_admin_statements_rejected(self):
+        for query in [
+            "EXPORT DATABASE '/tmp/out'",
+            "IMPORT DATABASE '/tmp/out'",
+            "ATTACH '/tmp/o.lb' AS o (dbtype lbug)",
+            "CALL CREATE_FTS_INDEX('Doc', 'idx', ['text'])",
+            "CALL threads = 4",
+        ]:
+            with self.assertRaisesRegex(ValueError, "read_only=True"):
+                _assert_read_only_cypher(query)
+        _assert_read_only_cypher("CALL QUERY_FTS_INDEX('Doc', 'idx', 'q') RETURN *")
+
 
 # ----------------------------------------------------------------------
 # Adapter wired up against in-memory Ladybug
