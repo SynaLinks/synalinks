@@ -123,8 +123,12 @@ class ResourceLoadTest(testing.TestCase):
             kept.append(program)
             return program
 
+        checkpoints = self.get_temp_dir()
         tuner = types.SimpleNamespace(
             hypermodel=types.SimpleNamespace(build=build),
+            _get_checkpoint_fname=lambda trial_id: os.path.join(
+                checkpoints, f"{trial_id}.variables.json"
+            ),
             oracle=types.SimpleNamespace(
                 objective=types.SimpleNamespace(name="reward", direction="max")
             ),
@@ -133,7 +137,12 @@ class ResourceLoadTest(testing.TestCase):
 
         async def trial():
             await keras_tuner_utils._run_trial_async(
-                tuner, types.SimpleNamespace(hyperparameters=None), x=x, verbose=0
+                tuner,
+                types.SimpleNamespace(
+                    hyperparameters=types.SimpleNamespace(values={}), trial_id="0"
+                ),
+                x=x,
+                verbose=0,
             )
 
         await self._under_load(trial)
