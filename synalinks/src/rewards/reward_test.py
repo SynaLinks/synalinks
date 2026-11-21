@@ -4,7 +4,7 @@ from synalinks.src import testing
 from synalinks.src import tree
 from synalinks.src.backend import DataModel
 from synalinks.src.backend.common import numpy as np
-from synalinks.src.rewards.reward import apply_masks
+from synalinks.src.metrics.metric import apply_masks
 from synalinks.src.rewards.reward import reduce_rewards
 from synalinks.src.rewards.reward import reduce_values
 from synalinks.src.rewards.reward import squeeze_or_expand_to_same_rank

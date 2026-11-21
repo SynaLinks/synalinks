@@ -1,6 +1,8 @@
 # License Apache 2.0: (c) 2025-2026 Yoan Sallami (Synalinks Team)
 
+from synalinks.src import backend
 from synalinks.src import tree
+from synalinks.src.backend.common import numpy as np
 
 
 def _reward_holders(reward, holders, seen):
@@ -40,3 +42,32 @@ def model_holders(program):
         for reward in tree.flatten(getattr(compile_reward, "_user_reward", None)):
             _reward_holders(reward, holders, seen)
     return holders
+
+
+def aggregate_scores(score, average, axis, intermediate_weights=None):
+    """Apply the `average` reduction over per-field scores.
+
+    Args:
+        score (list | float): The per-field scores.
+        average (str): One of `None`, `"micro"`, `"macro"` or `"weighted"`.
+        axis (int): The axis to average over for `"micro"`/`"macro"`.
+        intermediate_weights (list): The per-field support, for `"weighted"`.
+
+    Returns:
+        (float | list): A Python scalar, or one score per field when
+            `average=None`.
+    """
+    score = np.convert_to_tensor(score)
+    if average == "weighted":
+        weights = np.divide(
+            intermediate_weights,
+            np.sum(intermediate_weights) + backend.epsilon(),
+        )
+        score = np.sum(score * weights)
+    elif average is not None:  # [micro, macro]
+        score = np.mean(score, axis)
+    # numpy 1.25+ deprecates float() on a >0-D array even when size == 1.
+    score_arr = np.convert_to_numpy(score)
+    if score_arr.size == 1:
+        return float(score_arr.item())
+    return [float(v) for v in score_arr.tolist()]

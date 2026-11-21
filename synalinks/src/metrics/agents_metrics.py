@@ -388,12 +388,4 @@ class GapK(SampledRewardMetric):
         super().__init__(k=k, reward=reward, pass_threshold=pass_threshold, name=name)
 
     def _estimate(self, n, c):
-        k = min(self.k, n)
-        if k <= 0:
-            return 0.0
-        if n - c < k:
-            pass_at_k = 1.0
-        else:
-            pass_at_k = 1.0 - (math.comb(n - c, k) / math.comb(n, k))
-        pass_hat_k = 0.0 if c < k else math.comb(c, k) / math.comb(n, k)
-        return pass_at_k - pass_hat_k
+        return PassAtK._estimate(self, n, c) - PassHatK._estimate(self, n, c)

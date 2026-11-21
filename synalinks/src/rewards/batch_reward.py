@@ -2,8 +2,8 @@
 
 from synalinks.src import ops
 from synalinks.src.api_export import synalinks_export
+from synalinks.src.metrics.metric import apply_masks
 from synalinks.src.rewards.reward import Reward
-from synalinks.src.rewards.reward import apply_masks
 from synalinks.src.rewards.reward import check_async_reward_fn
 from synalinks.src.rewards.reward import reduce_values
 from synalinks.src.saving import serialization_lib

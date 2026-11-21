@@ -5,9 +5,9 @@
 import inspect
 
 from synalinks.src import ops
-from synalinks.src import tree
 from synalinks.src.api_export import synalinks_export
 from synalinks.src.backend.common import numpy as np
+from synalinks.src.metrics.metric import apply_masks
 from synalinks.src.saving.synalinks_saveable import SynalinksSaveable
 from synalinks.src.utils.naming import auto_name
 
@@ -129,57 +129,6 @@ def check_async_reward_fn(fn, cls_name):
         "synchronous. Reward functions are awaited, so declare it with "
         f"`async def {name}(y_true, y_pred)`."
     )
-
-
-def apply_masks(
-    y_true,
-    y_pred,
-    in_mask=None,
-    in_mask_pattern=None,
-    out_mask=None,
-    out_mask_pattern=None,
-):
-    """Convert ``y_true``/``y_pred`` to ``JsonDataModel`` and apply field masks.
-
-    Works on both a single sample (a leaf ``JsonDataModel``) and a list/tree
-    of samples; ``tree.map_structure`` handles either uniformly.
-    """
-    y_pred = tree.map_structure(lambda x: ops.convert_to_json_data_model(x), y_pred)
-    y_true = tree.map_structure(lambda x: ops.convert_to_json_data_model(x), y_true)
-
-    if (in_mask or in_mask_pattern) and y_pred:
-        y_pred = tree.map_structure(
-            lambda x: (
-                x.in_mask(mask=in_mask, pattern=in_mask_pattern) if x is not None else x
-            ),
-            y_pred,
-        )
-    if (in_mask or in_mask_pattern) and y_true:
-        y_true = tree.map_structure(
-            lambda x: (
-                x.in_mask(mask=in_mask, pattern=in_mask_pattern) if x is not None else x
-            ),
-            y_true,
-        )
-    if (out_mask or out_mask_pattern) and y_pred:
-        y_pred = tree.map_structure(
-            lambda x: (
-                x.out_mask(mask=out_mask, pattern=out_mask_pattern)
-                if x is not None
-                else x
-            ),
-            y_pred,
-        )
-    if (out_mask or out_mask_pattern) and y_true:
-        y_true = tree.map_structure(
-            lambda x: (
-                x.out_mask(mask=out_mask, pattern=out_mask_pattern)
-                if x is not None
-                else x
-            ),
-            y_true,
-        )
-    return y_true, y_pred
 
 
 def standardize_reduction(reduction):
