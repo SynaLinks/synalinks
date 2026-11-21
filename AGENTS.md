@@ -30,6 +30,47 @@ uv run pytest synalinks/src/path/to/test_file.py::test_function_name -v
 ./shell/doc.sh
 ```
 
+## Methodology for long running tasks (batch issue fixing, multi-file reviews, etc.)
+
+At the start of every session, read `task_tracker.json` at the repo root if it exists: it records where a previous session stopped (crash, context reset, interruption). Resume from the first task with `"is_finished": false` in the first goal entry.
+
+1. Gather all the information you need first: browse the relevant issues, files and external documentation quickly.
+
+2. Add a goal entry to `task_tracker.json` at the repo root listing every task, in exactly this format (valid JSON, same keys and nesting; do not rename, add or drop fields):
+
+```json
+[
+  {
+    "goal": "one line describing the overall objective",
+    "tasks": [
+      {
+        "key": "task-name-1",
+        "title": "one line summary (also the issue/PR title)",
+        "labels": ["bug"],
+        "description": "full description: what to do, how to verify it",
+        "is_finished": false,
+        "files": ["synalinks/src/path/to/file.py"],
+        "url": "https://github.com/SynaLinks/synalinks/issues/123"
+      }
+    ]
+  }
+]
+```
+
+   Update the file as soon as a task is done (`"is_finished": true`, fill `url` with the issue/PR link), never in a batch at the end, so a crash loses at most one task. When every task of a goal is finished, remove that goal entry from the tracker.
+
+3. Work on one task at a time. Use tests to verify your assumptions and keep the code minimal (removing unnecessary code is better than adding). Use `/ponytail` all the time.
+
+4. Be as autonomous as possible. If something is undecided or needs human approval, open a GitHub issue tagged as such and move on to the next task.
+
+5. Think about the scope of the framework and the bigger picture when making architectural decisions: the software takes inspiration from ML frameworks like Keras and JAX, repurposed for neuro-symbolic AI. Be serious in your work, no laziness accepted.
+
+`task_tracker.json` is gitignored and must never be committed.
+
+## Code is the memory
+
+Never rely on your own internal memory (auto-memory files, recollections from past sessions): it is often stale. The code is law: it is the memory. Before acting on anything remembered (a function, flag, file, behavior or design decision), verify it against the current code, tests and git history, and trust the code when they disagree. The only persistent state for ongoing work is `task_tracker.json`.
+
 ## Architecture
 
 ### Core Abstractions

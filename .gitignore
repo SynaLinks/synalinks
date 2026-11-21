@@ -168,3 +168,6 @@ synalinks-gym/
 
 # Synalinks trace recordings (synalinks.record_traces())
 .synalinks/
+
+# Claude Code task tracker (see CLAUDE.md)
+task_tracker.json
