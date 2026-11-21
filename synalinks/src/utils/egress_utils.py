@@ -99,7 +99,7 @@ def make_egress_tool(patterns: List[str], timeout: float, block_private: bool):
             parts = urllib.parse.urlsplit(u)
             if parts.scheme not in ("http", "https"):
                 raise PermissionError(f"scheme not allowed: {parts.scheme!r}")
-            host = parts.hostname or ""
+            host = parts.hostname or ""  # urlsplit lower-cases it
             if not host_allowed(host, allow):
                 raise PermissionError(f"host not in allowlist: {host!r}")
             if block_private:
@@ -109,14 +109,14 @@ def make_egress_tool(patterns: List[str], timeout: float, block_private: bool):
 
         class _PinnedHTTPConnection(http.client.HTTPConnection):
             def connect(self):
-                target = pinned.get(self.host, self.host)
+                target = pinned.get(self.host.lower(), self.host)
                 self.sock = socket.create_connection(
                     (target, self.port), self.timeout, self.source_address
                 )
 
         class _PinnedHTTPSConnection(http.client.HTTPSConnection):
             def connect(self):
-                target = pinned.get(self.host, self.host)
+                target = pinned.get(self.host.lower(), self.host)
                 sock = socket.create_connection(
                     (target, self.port), self.timeout, self.source_address
                 )
@@ -138,8 +138,10 @@ def make_egress_tool(patterns: List[str], timeout: float, block_private: bool):
                 return super().redirect_request(req, fp, code, msg, hdrs, newurl)
 
         body = data.encode("utf-8") if isinstance(data, str) else data
+        # A caller-supplied Host would let the request reach an off-list virtual host.
+        headers = {k: v for k, v in (headers or {}).items() if k.lower() != "host"}
         req = urllib.request.Request(
-            url, data=body, method=(method or "GET").upper(), headers=headers or {}
+            url, data=body, method=(method or "GET").upper(), headers=headers
         )
         opener = urllib.request.build_opener(
             _Guard, _PinnedHTTPHandler, _PinnedHTTPSHandler
@@ -163,7 +165,8 @@ def make_egress_tool(patterns: List[str], timeout: float, block_private: bool):
             url (str): Absolute ``http(s)://`` URL; its host (and any redirect
                 target) must be on the sandbox's egress allowlist.
             method (str): HTTP method (default ``"GET"``).
-            headers (dict): Optional request headers.
+            headers (dict): Optional request headers (``Host`` is ignored: it
+                is always the URL's host).
             data (str): Optional request body.
 
         Returns:
