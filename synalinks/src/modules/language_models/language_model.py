@@ -345,9 +345,8 @@ class LanguageModel(Module):
     structures in language. Language models can perform various tasks such as text
     generation, translation, summarization, and answering questions.
 
-    We support providers that implement *constrained structured output*
-    like Azure, Ollama or Mistral. In addition we support providers that otherwise
-    allow to constrain the use of a specific tool like Groq or Anthropic.
+    Every supported provider uses its native *constrained structured output*
+    (`response_format`), e.g. OpenAI, Azure, Ollama, Mistral, Groq or Anthropic.
 
     For the complete list of models, please refer to the providers documentation.
     The provider prefixes accepted in `model` (the part before the `/`) are
@@ -718,6 +717,7 @@ class LanguageModel(Module):
     language_model = synalinks.LanguageModel(
         model="openai/o3-mini",
         reasoning_effort="medium",
+        supports_reasoning=True,
     )
     ```
 
@@ -725,7 +725,8 @@ class LanguageModel(Module):
         model (str): The model to use.
         api_base (str): Optional. The endpoint to use.
         timeout (int): Optional. The timeout value in seconds (Default to 600).
-        retry (int): Optional. The number of retry (default to 5).
+        retry (int): Optional. The maximum number of attempts, the first
+            one included (default to 5).
         retry_max_wait (int): Optional. Max seconds to wait between retries when a
             rate-limit `Retry-After` header is honored (default to 60).
         fallback (LanguageModel): Optional. The language model to fallback
