@@ -244,11 +244,6 @@ class Recorder(Hook):
         self._pending = {}
         self._serialized_module = None
 
-    def _is_language_model(self):
-        from synalinks.src.modules.language_models.language_model import LanguageModel
-
-        return isinstance(self.module, LanguageModel)
-
     def _serialize_data(self, data):
         leaves = [
             d for d in tree.flatten(data) if d is not None and hasattr(d, "get_json")
@@ -345,11 +340,13 @@ class Recorder(Hook):
         inputs=None,
         kwargs=None,
     ):
-        if not self._is_language_model():
+        from synalinks.src.modules.language_models.language_model import LanguageModel
+        from synalinks.src.modules.language_models.language_model import _tool_to_wire
+
+        if not isinstance(self.module, LanguageModel):
             return
         if any_symbolic_data_models(inputs):
             return
-        from synalinks.src.modules.language_models.language_model import _tool_to_wire
 
         call_context = self.module._get_call_context()
         entry_module = call_context.entry_module if call_context else self.module

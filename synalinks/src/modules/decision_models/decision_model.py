@@ -310,10 +310,6 @@ def _scale_levels(key, options):
     return values, [low + i * step for i in range(MAX_SCORE_LEVELS)]
 
 
-def _format_level(level):
-    return str(level) if isinstance(level, int) else f"{round(level, 3):g}"
-
-
 def _scale_value(answer, values, levels):
     """Map a score answer back to the nearest value of its scale."""
     position = answer["score"] / (len(levels) - 1)
@@ -371,7 +367,10 @@ def questions_from_schema(schema):
             questions[key] = {
                 "type": "score",
                 "instructions": instructions,
-                "criteria": [_format_level(level) for level in levels],
+                "criteria": [
+                    str(level) if isinstance(level, int) else f"{round(level, 3):g}"
+                    for level in levels
+                ],
             }
             plain[key] = (values, levels)
         elif "enum" in node:
@@ -545,11 +544,6 @@ def current_call_usage():
             call.
     """
     return _CURRENT_CALL_USAGE.get()
-
-
-def _is_retryable(exc):
-    # litellm maps connection failures to status 500 and timeouts to 408.
-    return getattr(exc, "status_code", None) in RETRYABLE_STATUSES
 
 
 def _accumulate(obj, phase_prefix, increments):
@@ -1085,7 +1079,10 @@ class DecisionModel(Module):
             # Honor a rate-limit `Retry-After` header; fall back to
             # exponential backoff for other retryable errors.
             wait=rate_limit_aware_wait(max_wait=self.retry_max_wait),
-            retry=retry_if_exception(_is_retryable),
+            # litellm maps connection failures to status 500 and timeouts to 408.
+            retry=retry_if_exception(
+                lambda exc: getattr(exc, "status_code", None) in RETRYABLE_STATUSES
+            ),
             before_sleep=before_sleep_log(logger, logging.WARNING),
             reraise=True,
         )
