@@ -46,8 +46,7 @@ Method names **and return types** follow the [E2B](https://e2b.dev/docs) `AsyncS
 
 Differences from E2B:
 
-- `timeout` is a per-call execution budget in seconds, not the sandbox's lifetime. `commands.run(..., timeout=0)` means no limit, as in E2B.
-- Rich outputs (`html`, `png`, charts, ...) are not produced: the main result carries `text` and `json` only.
+- The constructor's `timeout` is a per-snippet execution budget in seconds; `create(timeout=...)` is the sandbox's lifetime, as on E2B, except that `None` means no lifetime limit. `commands.run(..., timeout=0)` means no limit, as in E2B.
 - The virtual filesystem has no real owners or permission bits for most mounts; `EntryInfo` then reports E2B's defaults (`user`, `0o644` / `0o755`).
 - `sandbox.run(...)` still works as a deprecated alias returning the old flat `ExecutionResult`.
 
