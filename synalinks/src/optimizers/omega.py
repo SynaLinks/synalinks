@@ -953,6 +953,10 @@ class OMEGA(EvolutionaryOptimizer):
             config["embedding_model"] = serialization_lib.serialize_synalinks_object(
                 self.embedding_model
             )
+        if self.distance_function:
+            config["distance_function"] = serialization_lib.serialize_synalinks_object(
+                self.distance_function
+            )
         return config
 
     @classmethod
@@ -965,8 +969,12 @@ class OMEGA(EvolutionaryOptimizer):
         language_model = serialization_lib.deserialize_synalinks_object(
             config.pop("language_model")
         )
+        distance_function = serialization_lib.deserialize_synalinks_object(
+            config.pop("distance_function", None)
+        )
         return cls(
             language_model=language_model,
             embedding_model=embedding_model,
+            distance_function=distance_function,
             **config,
         )
