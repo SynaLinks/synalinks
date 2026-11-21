@@ -274,3 +274,11 @@ class EMFileCacheTest(testing.TestCase):
         restored = EmbeddingModel.from_config(config)
         self.assertEqual(restored.cache_dir, cache_dir)
         self.assertIsNotNone(restored._file_cache)
+
+    def test_credentials_are_not_serialized(self):
+        em = EmbeddingModel(
+            model="openai/text-embedding-3-small", api_key="sk-SECRET", dimensions=8
+        )
+        config = em.get_config()
+        self.assertNotIn("api_key", config)
+        self.assertEqual(config["dimensions"], 8)

@@ -1129,6 +1129,21 @@ class LMFileCacheTest(testing.TestCase):
         self.assertEqual(restored.cache_dir, cache_dir)
         self.assertIsNotNone(restored._file_cache)
 
+    def test_credentials_are_not_serialized(self):
+        lm = LanguageModel(
+            model="openai/gpt-4o",
+            api_key="sk-SECRET",
+            aws_session_token="tok",
+            extra_headers={"Authorization": "Bearer x"},
+            temperature=0.2,
+            max_tokens=16,
+        )
+        config = lm.get_config()
+        self.assertNotIn("sk-SECRET", str(config))
+        self.assertNotIn("aws_session_token", config)
+        self.assertNotIn("extra_headers", config)
+        self.assertEqual((config["temperature"], config["max_tokens"]), (0.2, 16))
+
 
 class SupportedProvidersTest(testing.TestCase):
     def test_lists_every_provider_prefix(self):
