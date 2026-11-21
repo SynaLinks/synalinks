@@ -4,7 +4,6 @@
 
 import math
 import random
-import warnings
 
 import docstring_parser
 import numpy as np
@@ -239,28 +238,6 @@ class Optimizer(SynalinksSaveable):
         for module in self._modules:
             variables.extend(module.trainable_variables)
         return variables
-
-    def save_own_variables(self, store):
-        """Get the state of this optimizer object."""
-        for i, variable in enumerate(self.variables):
-            store[str(i)] = variable.numpy()
-
-    def load_own_variables(self, store):
-        """Set the state of this optimizer object."""
-        if len(store.keys()) != len(self.variables):
-            msg = (
-                f"Skipping variable loading for optimizer '{self.name}', "
-                f"because it has {len(self.variables)} variables whereas "
-                f"the saved optimizer has {len(store.keys())} variables. "
-            )
-            if len(self.variables) == 0:
-                msg += (
-                    "This is likely because the optimizer has not been called/built yet."
-                )
-            warnings.warn(msg, stacklevel=2)
-            return
-        for i, variable in enumerate(self.variables):
-            variable.assign(store[str(i)])
 
     def _check_super_called(self):
         if not hasattr(self, "_lock"):
