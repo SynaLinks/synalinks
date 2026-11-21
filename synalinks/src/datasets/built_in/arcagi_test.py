@@ -115,12 +115,27 @@ class LoadDataTest(testing.TestCase):
                 one_leave_out=False,
                 repeat=2,
             )
-        # The ``one_leave_out=False`` branch has a nested loop over trainset
-        # for each outer i, so we get len(trainset) × len(trainset) × repeat
-        # = 2 × 2 × 2 = 8 entries. (Quirk of the source; flagged here so any
-        # future de-duplication is a deliberate change.)
-        self.assertEqual(len(x_train), 8)
-        self.assertEqual(len(y_train), 8)
+        # len(trainset) x repeat = 2 x 2 = 4 entries.
+        self.assertEqual(len(x_train), 4)
+        self.assertEqual(len(y_train), 4)
+
+    def test_permutation_does_not_leak_answer(self):
+        payload = {
+            "train": [{"input": [[k]], "output": [[k + 5]]} for k in (1, 2, 3)],
+            "test": [{"input": [[4]], "output": [[9]]}],
+        }
+        with tempfile.TemporaryDirectory() as tmp:
+            path = _write_task(tmp, payload)
+            (x_train, y_train), _ = load_data(
+                task_name="ignored",
+                filepath=path,
+                permutation=True,
+                curriculum_learning=False,
+            )
+        self.assertEqual(len(x_train), 6)
+        for x, y in zip(x_train, y_train):
+            shown = [(e.input_grid, e.output_grid) for e in x.examples]
+            self.assertNotIn((x.input_grid, y.output_grid), shown)
 
     def test_filepath_curriculum_learning_off(self):
         # Just exercise the early-exit branch.
