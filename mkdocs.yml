@@ -128,6 +128,7 @@ nav:
         - Synalinks API/Knowledge Base API/Database Adapters/LanceDB Adapter.md
       - Graph Database Adapters:
         - Synalinks API/Knowledge Base API/Graph Database Adapters/Ladybug Adapter.md
+        - Synalinks API/Knowledge Base API/Graph Database Adapters/Relate Adapter.md
     - Data Models API:
       - Synalinks API/Data Models API/index.md
       - Synalinks API/Data Models API/The DataModel class.md

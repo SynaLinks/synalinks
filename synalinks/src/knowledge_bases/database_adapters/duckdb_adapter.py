@@ -1,3 +1,20 @@
+"""DuckDB database adapter, the default SQL store of `KnowledgeBase`.
+
+DuckDB is an embedded analytical SQL database: a single file (or memory),
+no server. This adapter stores each `DataModel` as a table and adds:
+
+- full-text search: a BM25 index per table (DuckDB's `fts` extension),
+- vector similarity search: an HNSW index on an embedding column (DuckDB's
+  `vss` extension), when the knowledge base has an embedding model,
+- regex search, and hybrid searches fusing full-text or regex with vector
+  similarity (reciprocal rank fusion),
+- raw SQL through `sql()`, `SELECT`-only by default,
+- optional at-rest encryption (`encryption_key`).
+
+The connection is locked down against external I/O, so a query cannot read
+or write host files (`read_csv('/etc/passwd')`, `COPY ... TO`).
+"""
+
 import heapq
 import os
 import warnings
@@ -125,6 +142,47 @@ _ATTACH_ALIAS = "kb"
 
 
 class DuckDBAdapter(DatabaseAdapter):
+    """DuckDB-backed implementation of `DatabaseAdapter`.
+
+    You don't create it directly: a `KnowledgeBase` uses it for a
+    `duckdb://` URI (or no URI) and forwards its arguments.
+
+    Example:
+
+    ```python
+    import synalinks
+
+    class Document(synalinks.DataModel):
+        id: str = synalinks.Field(description="The document id")
+        title: str = synalinks.Field(description="The document title")
+        content: str = synalinks.Field(description="The document content")
+
+    knowledge_base = synalinks.KnowledgeBase(
+        uri="duckdb://./documents.db",  # "duckdb://:memory:" for tests
+        data_models=[Document],
+        embedding_model=synalinks.EmbeddingModel(model="ollama/mxbai-embed-large"),
+    )
+
+    await knowledge_base.update(
+        [
+            Document(id="1", title="Paris", content="Paris is the capital of France."),
+            Document(id="2", title="Rome", content="Rome is the capital of Italy."),
+        ]
+    )
+
+    # BM25 full-text and vector similarity, fused by reciprocal rank
+    results = await knowledge_base.hybrid_fts_search(
+        "capital of France", table_name="Document", k=5
+    )
+
+    # Or plain SQL (SELECT-only by default)
+    rows = await knowledge_base.sql("SELECT title FROM Document")
+    ```
+
+    Without an embedding model, similarity search needs explicit vectors
+    (`vector_or_vectors=`) and hybrid search uses full-text only.
+    """
+
     def __init__(
         self,
         uri=None,
@@ -148,6 +206,52 @@ class DuckDBAdapter(DatabaseAdapter):
         encryption_key=None,
         **kwargs,
     ):
+        """Initialize the DuckDB adapter.
+
+        Args:
+            uri (str): `duckdb://<path>` (file-backed) or `duckdb://:memory:`
+                (in-memory). When omitted, resolves to
+                `{synalinks_home()}/{name or 'database'}.db`.
+            embedding_model (EmbeddingModel): Optional. Enables vector
+                similarity search (and the vector half of hybrid search),
+                by adding an embedding column
+                and an HNSW index to each table.
+            data_models (list): The `DataModel` classes to create tables
+                for (one table per model, named after its schema `title`).
+                When omitted, the tables already in the database are used.
+            stemmer (str): Stemmer of the full-text index: a language
+                (`"english"`, `"french"`, ...), `"porter"` (default) or
+                `"none"`.
+            stopwords (str): Stopwords of the full-text index: `"english"`,
+                `"none"`, or the name of a table of stopwords. `None` keeps
+                DuckDB's default (`"english"`).
+            ignore (str): Regular expression of the characters the
+                full-text index ignores. `None` keeps DuckDB's default.
+            strip_accents (bool): Whether the full-text index strips
+                accents. `None` keeps DuckDB's default (`True`).
+            lower (bool): Whether the full-text index lowercases text.
+                `None` keeps DuckDB's default (`True`).
+            metric (str): Vector distance: `"cosine"` (default), `"l2sq"`
+                (squared Euclidean) or `"ip"` (inner product).
+            ef_construction (int): HNSW build-time candidate list size.
+                `None` keeps DuckDB's default.
+            ef_search (int): HNSW search-time candidate list size. `None`
+                keeps DuckDB's default.
+            M (int): HNSW maximum neighbors per node. `None` keeps DuckDB's
+                default.
+            M0 (int): HNSW maximum neighbors on the base layer. `None` keeps
+                DuckDB's default.
+            vss_key (str): Name of the embedding column. Defaults to
+                `"embedding"`.
+            main_table (str): Unused.
+            vector_dim (int): Embedding dimension. Inferred from the
+                embedding model on the first write when omitted.
+            wipe_on_start (bool): Whether to clear the database on init.
+                Defaults to `False`.
+            name (str): Optional adapter name, also the default file stem.
+            encryption_key (str): Optional key to encrypt the database file
+                at rest. Never serialized with the adapter's config.
+        """
         # Resolve URI → backing path. ``None`` defaults to
         # ``{synalinks_home()}/{name or 'database'}.db`` so a no-args
         # KnowledgeBase() persists across processes. The helper also

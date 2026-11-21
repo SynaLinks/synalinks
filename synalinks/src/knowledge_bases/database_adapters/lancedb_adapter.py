@@ -84,6 +84,49 @@ def _stem(path: str) -> str:
 
 
 class LanceDBAdapter(DatabaseAdapter):
+    """LanceDB-backed implementation of `DatabaseAdapter`.
+
+    You don't create it directly: a `KnowledgeBase` uses it for a
+    `lancedb://` URI and forwards its arguments. It is a drop-in alternative
+    to `DuckDBAdapter` (same methods, same results), suited to vector-heavy
+    workloads.
+
+    Example:
+
+    ```python
+    import synalinks
+
+    class Document(synalinks.DataModel):
+        id: str = synalinks.Field(description="The document id")
+        title: str = synalinks.Field(description="The document title")
+        content: str = synalinks.Field(description="The document content")
+
+    knowledge_base = synalinks.KnowledgeBase(
+        uri="lancedb://./documents.lance",
+        data_models=[Document],
+        embedding_model=synalinks.EmbeddingModel(model="ollama/mxbai-embed-large"),
+    )
+
+    await knowledge_base.update(
+        [
+            Document(id="1", title="Paris", content="Paris is the capital of France."),
+            Document(id="2", title="Rome", content="Rome is the capital of Italy."),
+        ]
+    )
+
+    # Native vector search, Tantivy full-text, fused by reciprocal rank
+    results = await knowledge_base.hybrid_fts_search(
+        "capital of France", table_name="Document", k=5
+    )
+
+    # SQL runs on DuckDB, which reads the Lance tables in place
+    rows = await knowledge_base.sql("SELECT title FROM Document")
+    ```
+
+    LanceDB has no in-memory mode: the URI is always a folder, so use a
+    temporary directory for tests.
+    """
+
     def __init__(
         self,
         uri=None,
@@ -96,6 +139,30 @@ class LanceDBAdapter(DatabaseAdapter):
         name=None,
         **kwargs,
     ):
+        """Initialize the LanceDB adapter.
+
+        Args:
+            uri (str): `lancedb://<path>`, a folder holding one Lance dataset
+                per table. When omitted, resolves to
+                `{synalinks_home()}/{name or 'database'}.lance`.
+            embedding_model (EmbeddingModel): Optional. Enables vector
+                similarity search (and the vector half of hybrid search),
+                by adding an embedding column
+                to each table.
+            data_models (list): The `DataModel` classes to create tables
+                for (one table per model, named after its schema `title`).
+                When omitted, the tables already in the folder are used.
+            metric (str): Vector distance: `"cosine"` (default), `"l2sq"`
+                (squared Euclidean) or `"ip"` (inner product). Scores match
+                `DuckDBAdapter`'s for the same metric.
+            vss_key (str): Name of the embedding column. Defaults to
+                `"embedding"`.
+            vector_dim (int): Embedding dimension. Inferred from the
+                embedding model on the first write when omitted.
+            wipe_on_start (bool): Whether to clear the database on init.
+                Defaults to `False`.
+            name (str): Optional adapter name, also the default folder stem.
+        """
         import lancedb
 
         # ``lancedb://<path>`` -> ``<path>``; ``None`` -> ~/.synalinks/<name>.lance

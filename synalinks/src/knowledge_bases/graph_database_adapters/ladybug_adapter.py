@@ -387,7 +387,61 @@ def _cypher_type_to_json_property(cypher_type: str, name: str) -> Dict[str, Any]
 
 
 class LadybugAdapter(GraphDatabaseAdapter):
-    """LadybugDB-backed implementation of ``GraphDatabaseAdapter``."""
+    """LadybugDB-backed implementation of `GraphDatabaseAdapter`.
+
+    You don't create it directly: a `KnowledgeBase` uses it for a
+    `ladybug://` graph URI (or no URI at all) and forwards its arguments.
+    Each `Entity` model is a node table and each `Relation` model an edge
+    table between the node tables of its `subj` and `obj`.
+
+    Example:
+
+    ```python
+    import synalinks
+
+    class Person(synalinks.Entity):
+        label: str = synalinks.Field(default="Person", description="The entity label")
+        name: str = synalinks.Field(description="Person name")
+
+    class City(synalinks.Entity):
+        label: str = synalinks.Field(default="City", description="The entity label")
+        name: str = synalinks.Field(description="City name")
+
+    class LivesIn(synalinks.Relation):
+        label: str = synalinks.Field(default="LivesIn", description="The relation label")
+        subj: Person
+        obj: City
+
+    knowledge_base = synalinks.KnowledgeBase(
+        graph_uri="ladybug://./graph.lb",  # "ladybug://:memory:" for tests
+        entity_models=[Person, City],
+        relation_models=[LivesIn],
+        embedding_model=synalinks.EmbeddingModel(model="ollama/mxbai-embed-large"),
+    )
+
+    # Writing a relation upserts its endpoints, deduplicated by embedding
+    await knowledge_base.update_relations(
+        [
+            LivesIn(subj=Person(name="Alice"), obj=City(name="Paris")),
+            LivesIn(subj=Person(name="Bob"), obj=City(name="London")),
+        ]
+    )
+
+    # Entity search: BM25 full-text and vector similarity, fused by reciprocal rank
+    people = await knowledge_base.entity_hybrid_fts_search(
+        "Alice", label="Person", k=5
+    )
+
+    # Or Cypher (read-only by default)
+    rows = await knowledge_base.cypher(
+        "MATCH (p:Person)-[:LivesIn]->(c:City {name: 'Paris'}) RETURN p.name AS name"
+    )
+    ```
+
+    Without an embedding model, entities are only merged on an identical
+    key (no semantic deduplication), similarity search needs explicit
+    vectors (`vector_or_vectors=`) and hybrid search uses full-text only.
+    """
 
     def __init__(
         self,

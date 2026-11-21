@@ -92,7 +92,70 @@ def _relate_type(relate_type: str) -> str:
 
 
 class RelateAdapter(LadybugAdapter):
-    """Relate-backed implementation of ``GraphDatabaseAdapter``."""
+    """Relate-backed implementation of `GraphDatabaseAdapter`.
+
+    You don't create it directly: a `KnowledgeBase` uses it for a
+    `relate://` graph URI and forwards its arguments. It needs the `relate`
+    extra:
+
+    ```shell
+    pip install 'synalinks[relate]'
+    ```
+
+    It is a drop-in alternative to `LadybugAdapter` (same methods, same
+    results) on Relate by Neo4j, which speaks Neo4j's Cypher. Each `Entity`
+    model is a node label and each `Relation` model an edge type between
+    the labels of its `subj` and `obj`. See the module documentation for the
+    differences with Ladybug.
+
+    Example:
+
+    ```python
+    import synalinks
+
+    class Person(synalinks.Entity):
+        label: str = synalinks.Field(default="Person", description="The entity label")
+        name: str = synalinks.Field(description="Person name")
+
+    class City(synalinks.Entity):
+        label: str = synalinks.Field(default="City", description="The entity label")
+        name: str = synalinks.Field(description="City name")
+
+    class LivesIn(synalinks.Relation):
+        label: str = synalinks.Field(default="LivesIn", description="The relation label")
+        subj: Person
+        obj: City
+
+    knowledge_base = synalinks.KnowledgeBase(
+        graph_uri="relate://./graph.relate",  # "relate://:memory:" for tests
+        entity_models=[Person, City],
+        relation_models=[LivesIn],
+        embedding_model=synalinks.EmbeddingModel(model="ollama/mxbai-embed-large"),
+    )
+
+    # Writing a relation upserts its endpoints, deduplicated by embedding
+    await knowledge_base.update_relations(
+        [
+            LivesIn(subj=Person(name="Alice"), obj=City(name="Paris")),
+            LivesIn(subj=Person(name="Bob"), obj=City(name="London")),
+        ]
+    )
+
+    # Entity search: BM25 full-text and vector similarity, fused by reciprocal rank
+    people = await knowledge_base.entity_hybrid_fts_search(
+        "Alice", label="Person", k=5
+    )
+
+    # Or Cypher (read-only by default)
+    rows = await knowledge_base.cypher(
+        "MATCH (p:Person)-[:LivesIn]->(c:City {name: 'Paris'}) RETURN p.name AS name"
+    )
+    ```
+
+    Without an embedding model, entities are only merged on an identical
+    key (no semantic deduplication), similarity search needs explicit
+    vectors (`vector_or_vectors=`) and hybrid search uses full-text only.
+    """
 
     def __init__(
         self,
