@@ -167,6 +167,45 @@ class LanceDBAdapterTest(testing.TestCase):
         self.assertIsInstance(out, str)
         self.assertIn("C1", out)
 
+    async def test_sql_is_select_only(self):
+        import duckdb
+
+        a = self._adapter(data_models=[Customer])
+        for query in (
+            "DROP TABLE Customer",
+            "SELECT 1; DROP TABLE Customer",
+            "COPY (SELECT 1) TO 'out.csv'",
+        ):
+            with self.assertRaisesRegex(duckdb.InvalidInputException, "SELECT"):
+                await a.sql(query)
+
+    async def test_sql_cannot_read_host_files(self):
+        import duckdb
+
+        secret = os.path.join(tempfile.mkdtemp(), "secret.txt")
+        self.addCleanup(shutil.rmtree, os.path.dirname(secret), True)
+        with open(secret, "w") as f:
+            f.write("secret")
+        a = self._adapter(data_models=[Customer])
+        with self.assertRaises(duckdb.PermissionException):
+            await a.sql(f"SELECT content FROM read_text('{secret}')")
+
+    async def test_in_memory_uri(self):
+        cwd = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, cwd, True)
+        previous = os.getcwd()
+        os.chdir(cwd)
+        self.addCleanup(os.chdir, previous)
+        a = LanceDBAdapter(uri="lancedb://:memory:", data_models=[Customer])
+        await a.update(
+            Customer(id="C1", name="Alice", country="USA").to_json_data_model()
+        )
+        self.assertEqual(await a.sql("SELECT id FROM Customer"), [{"id": "C1"}])
+        # Nothing on disk, and each in-memory adapter has its own tables.
+        self.assertEqual(os.listdir(cwd), [])
+        b = LanceDBAdapter(uri="lancedb://:memory:", data_models=[Customer])
+        self.assertEqual(await b.sql("SELECT count(*) AS n FROM Customer"), [{"n": 0}])
+
     # -- fulltext / regex (no embedding) ---------------------------------------
 
     async def test_fulltext_search(self):

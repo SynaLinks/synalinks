@@ -1625,6 +1625,20 @@ class KnowledgeBaseTest(testing.TestCase):
         )
 
 
+class KnowledgeBaseArgumentsTest(testing.TestCase):
+    def test_unknown_keyword_arguments_raise(self):
+        for kwargs in ({"data_model": Document}, {"stemer": "english"}):
+            with self.assertRaisesRegex(TypeError, "unexpected keyword argument"):
+                KnowledgeBase(uri="duckdb://:memory:", **kwargs)
+
+    def test_adapter_options_are_accepted(self):
+        KnowledgeBase(uri="duckdb://:memory:", stemmer="english", ef_search=40)
+        KnowledgeBase(graph_uri="ladybug://:memory:", mu=16)
+        # An option of the other side's adapter is not one of these adapters'.
+        with self.assertRaisesRegex(TypeError, "'mu'"):
+            KnowledgeBase(uri="duckdb://:memory:", mu=16)
+
+
 class _RecordingGraphAdapter(GraphDatabaseAdapter):
     """Stub graph adapter that records every call. Used to verify that
     KnowledgeBase's graph methods delegate with the right arguments

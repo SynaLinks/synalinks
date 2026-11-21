@@ -1,5 +1,6 @@
 # License Apache 2.0: (c) 2025-2026 Yoan Sallami (Synalinks Team)
 
+import inspect
 from typing import Any
 from typing import Dict
 from typing import List
@@ -124,7 +125,8 @@ class KnowledgeBase(SynalinksSaveable):
     Args:
         uri (str): SQL store connection URI: DuckDB
             (``"duckdb://path/to/db.db"`` or ``"duckdb://:memory:"``) or
-            LanceDB (``"lancedb://path/to/folder.lance"``, no in-memory mode).
+            LanceDB (``"lancedb://path/to/folder.lance"`` or
+            ``"lancedb://:memory:"``).
             When both ``uri`` and ``graph_uri`` are omitted, defaults to
             ``{synalinks_home()}/{name or 'database'}.db``. Pass ``uri``
             alone to opt out of the graph-side default.
@@ -189,6 +191,22 @@ class KnowledgeBase(SynalinksSaveable):
         auto_pair = uri is None and graph_uri is None
         want_sql = uri is not None or auto_pair
         want_graph = graph_uri is not None or auto_pair
+
+        # Extra keyword arguments are options of the selected adapters.
+        accepted = set()
+        if want_sql:
+            accepted |= set(inspect.signature(database_adapters.get(uri)).parameters)
+        if want_graph:
+            accepted |= set(
+                inspect.signature(graph_database_adapters.get(graph_uri)).parameters
+            )
+        unknown = sorted(set(kwargs) - accepted)
+        if unknown:
+            raise TypeError(
+                f"KnowledgeBase got unexpected keyword argument(s) {unknown}: "
+                "they are neither KnowledgeBase arguments nor options of its "
+                "adapters."
+            )
 
         if want_sql:
             self.sql_adapter = database_adapters.get(uri)(

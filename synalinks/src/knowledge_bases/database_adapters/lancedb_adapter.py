@@ -119,12 +119,11 @@ class LanceDBAdapter(DatabaseAdapter):
         "capital of France", table_name="Document", k=5
     )
 
-    # SQL runs on DuckDB, which reads the Lance tables in place
+    # SELECT-only SQL, run by DuckDB over the Lance tables
     rows = await knowledge_base.sql("SELECT title FROM Document")
     ```
 
-    LanceDB has no in-memory mode: the URI is always a folder, so use a
-    temporary directory for tests.
+    For tests, `lancedb://:memory:` keeps the tables in memory.
     """
 
     def __init__(
@@ -143,7 +142,8 @@ class LanceDBAdapter(DatabaseAdapter):
 
         Args:
             uri (str): `lancedb://<path>`, a folder holding one Lance dataset
-                per table. When omitted, resolves to
+                per table, or `lancedb://:memory:` (in-memory). When omitted,
+                resolves to
                 `{synalinks_home()}/{name or 'database'}.lance`.
             embedding_model (EmbeddingModel): Optional. Enables vector
                 similarity search (and the vector half of hybrid search),
@@ -188,7 +188,8 @@ class LanceDBAdapter(DatabaseAdapter):
         self.vss_key = vss_key
         self.name = name
 
-        self._db = lancedb.connect(self.uri)
+        # LanceDB's own in-memory store, private to this connection.
+        self._db = lancedb.connect("memory://" if self.uri == ":memory:" else self.uri)
 
         if wipe_on_start:
             self.wipe_database()
@@ -877,15 +878,30 @@ class LanceDBAdapter(DatabaseAdapter):
         """Run SQL over the LanceDB tables via DuckDB.
 
         LanceDB has no SQL engine; DuckDB scans each table (registered as an
-        Arrow view under its table name) so arbitrary read-only ``SELECT`` /
-        joins / aggregates work.
+        Arrow view under its table name) so ``SELECT`` / joins / aggregates
+        work. Only ``SELECT`` statements are accepted (the views are read-only
+        snapshots, so a write could not reach LanceDB), and the connection has
+        no access to the host's files.
         """
         import duckdb
 
+        try:
+            statements = duckdb.extract_statements(sql)
+        except duckdb.Error as e:
+            raise duckdb.InvalidInputException(f"Invalid SQL: {e}") from e
+        if not statements:
+            raise duckdb.InvalidInputException("Empty SQL query.")
+        for stmt in statements:
+            if stmt.type != duckdb.StatementType.SELECT:
+                raise duckdb.InvalidInputException(
+                    f"LanceDB SQL only permits SELECT statements; got {stmt.type.name}."
+                )
         con = duckdb.connect(":memory:")
         try:
             for table in self._db.table_names():
                 con.register(table, self._db.open_table(table).to_arrow())
+            # Blocks `read_csv('/etc/passwd')`, `COPY ... TO`; cannot be re-enabled.
+            con.execute("SET enable_external_access=false;")
             arrow_table = con.sql(sql, params=params or None).to_arrow_table()
         finally:
             con.close()
