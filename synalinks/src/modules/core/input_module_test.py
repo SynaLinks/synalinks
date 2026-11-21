@@ -1,5 +1,6 @@
 # License Apache 2.0: (c) 2025-2026 Yoan Sallami (Synalinks Team)
 
+from synalinks.src import ops
 from synalinks.src import testing
 from synalinks.src.backend import DataModel
 from synalinks.src.backend import SymbolicDataModel
@@ -8,6 +9,7 @@ from synalinks.src.modules import AudioInput
 from synalinks.src.modules import ImageInput
 from synalinks.src.modules import Input
 from synalinks.src.modules import InputModule
+from synalinks.src.programs import Program
 
 
 class InputLayerTest(testing.TestCase):
@@ -26,6 +28,21 @@ class InputLayerTest(testing.TestCase):
         inputs = Input(data_model=Query)
         self.assertIsInstance(inputs, SymbolicDataModel)
         self.assertEqual(inputs.get_schema(), standardize_schema(Query.get_schema()))
+
+    async def test_named_input_accepts_name_keyed_calls(self):
+        class Query(DataModel):
+            query: str
+
+        class Context(DataModel):
+            context: str
+
+        x = Input(data_model=Query, name="x")
+        y = Input(data_model=Context, name="y")
+        self.assertEqual(x.name, "x")
+        program = Program(inputs=[x, y], outputs=await ops.concat(x, y))
+
+        result = await program({"x": Query(query="q"), "y": Context(context="c")})
+        self.assertEqual(result.get_json(), {"query": "q", "context": "c"})
 
     def test_image_input_is_a_chat_input(self):
         from synalinks.src.backend import ChatMessages
