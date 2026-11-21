@@ -159,7 +159,7 @@ def _build_tools(knowledge_base, output_format: str = "csv", k: int = 50):
                 "error": "Empty SQL query.",
                 "query": sql_query,
             }
-        wrapped_sql = f"SELECT * FROM ({stripped}) LIMIT {k}"
+        wrapped_sql = f"SELECT * FROM ({stripped}\n) LIMIT {k}"
         try:
             results = await knowledge_base.sql(
                 wrapped_sql, read_only=True, output_format=output_format

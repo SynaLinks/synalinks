@@ -231,6 +231,14 @@ class SQLAgentToolsTest(testing.TestCase):
         self.assertEqual(result["row_count"], 2)
         self.assertFalse(result["may_have_more"])
 
+    async def test_run_sql_query_trailing_comment(self):
+        kb = self._make_kb()
+        await kb.update(Customer(id="C1", name="N1", country="USA").to_json_data_model())
+        _, _, run_sql = self._tools(kb, output_format="json", k=50)
+        result = await run_sql(sql_query="SELECT name FROM Customer -- the customers")
+        self.assertTrue(result["success"], result.get("error"))
+        self.assertEqual(result["row_count"], 1)
+
     async def test_run_sql_query_aggregate_under_cap(self):
         kb = self._make_kb()
         await kb.update(
