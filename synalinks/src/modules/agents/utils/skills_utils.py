@@ -299,7 +299,7 @@ def skills_prompt(
         if locations:
             lines += [
                 "<location>",
-                f"{root.rstrip('/')}/{skill_dir.name}/SKILL.md",
+                f"{root.rstrip('/')}/{skill_dir.name}/{find_skill_md(skill_dir).name}",
                 "</location>",
             ]
         lines.append("</skill>")
@@ -360,15 +360,17 @@ def build_read_skill_tool(roots, *, max_chars: int = 50_000):
             name (str): The skill name from <available_skills>,
                 e.g. 'pdf-processing'.
         """
-        skill_dirs = {d.name: d for d in discover_skills_in_roots(resolved)}
-        skill_dir = skill_dirs.get((name or "").strip())
+        # Keyed by frontmatter `name`, the name <available_skills> lists.
+        skill_dirs = {load_skill(d).name: d for d in discover_skills_in_roots(resolved)}
+        name = (name or "").strip()
+        skill_dir = skill_dirs.get(name)
         if skill_dir is None:
             return {
                 "error": f"Unknown skill {name!r}.",
                 "available_skills": sorted(skill_dirs),
             }
-        content = (skill_dir / "SKILL.md").read_text(encoding="utf-8", errors="replace")
-        report = {"skill": skill_dir.name}
+        content = find_skill_md(skill_dir).read_text(encoding="utf-8", errors="replace")
+        report = {"skill": name}
         if len(content) > max_chars:
             report["note"] = (
                 f"Truncated to the first {max_chars} of {len(content)} characters."

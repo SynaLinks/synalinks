@@ -345,3 +345,19 @@ class BuildReadSkillToolTest(testing.TestCase):
         tool = build_read_skill_tool([first, second])
         report = await _json(tool)(name="pdf-processing")
         self.assertIn("pdfplumber", report["content"])
+
+    async def test_reads_every_listed_skill(self):
+        # Listed by frontmatter name, read whatever the SKILL.md file is named.
+        root = tempfile.mkdtemp()
+        for dir_name, file_name, skill_name in (
+            ("lower", "skill.md", "lower"),
+            ("dir-name", "SKILL.md", "pretty-name"),
+        ):
+            os.makedirs(os.path.join(root, dir_name))
+            with open(os.path.join(root, dir_name, file_name), "w") as f:
+                f.write(_MINIMAL.replace("hello", skill_name))
+        tool = build_read_skill_tool([root])
+        for name in ("lower", "pretty-name"):
+            report = await _json(tool)(name=name)
+            self.assertEqual(report["skill"], name)
+            self.assertIn("Body here.", report["content"])
