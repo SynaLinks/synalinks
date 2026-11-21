@@ -145,12 +145,15 @@ class Accuracy(Metric):
                 y_true,
             )
 
-        if y_true is None or y_pred is None:
-            # A failed prediction yields `y_pred is None`; there is nothing to
-            # compare, so skip the sample instead of calling `.get_json()` on None.
+        if y_true is None:
             return
         y_true = tree.flatten(tree.map_structure(lambda x: str(x), y_true.get_json()))
-        y_pred = tree.flatten(tree.map_structure(lambda x: str(x), y_pred.get_json()))
+        # A failed prediction (`y_pred is None`) scores as an empty one.
+        y_pred = (
+            []
+            if y_pred is None
+            else tree.flatten(tree.map_structure(lambda x: str(x), y_pred.get_json()))
+        )
 
         correct = []
         total = []
@@ -408,15 +411,18 @@ class BinaryAccuracy(Accuracy):
                     "Use `in_mask` or `out_mask` to remove the other fields."
                 )
 
-        if y_true is None or y_pred is None:
-            # A failed prediction yields `y_pred is None`; there is nothing to
-            # compare, so skip the sample instead of calling `.get_json()` on None.
+        if y_true is None:
             return
         y_true = tree.flatten(
             tree.map_structure(lambda x: convert_to_binary(x), y_true.get_json())
         )
-        y_pred = tree.flatten(
-            tree.map_structure(lambda x: convert_to_binary(x), y_pred.get_json())
+        # A failed prediction (`y_pred is None`) scores as an empty one.
+        y_pred = (
+            []
+            if y_pred is None
+            else tree.flatten(
+                tree.map_structure(lambda x: convert_to_binary(x), y_pred.get_json())
+            )
         )
         y_true = np.convert_to_tensor(y_true)
         y_pred = np.convert_to_tensor(y_pred)
@@ -622,12 +628,15 @@ class CategoricalAccuracy(Accuracy):
                 y_true,
             )
 
-        if y_true is None or y_pred is None:
-            # A failed prediction yields `y_pred is None`; there is nothing to
-            # compare, so skip the sample instead of calling `.get_json()` on None.
+        if y_true is None:
             return
         y_true = tree.flatten(tree.map_structure(lambda x: x, y_true.get_json()))
-        y_pred = tree.flatten(tree.map_structure(lambda x: x, y_pred.get_json()))
+        # A failed prediction (`y_pred is None`) scores as an empty one.
+        y_pred = (
+            []
+            if y_pred is None
+            else tree.flatten(tree.map_structure(lambda x: x, y_pred.get_json()))
+        )
 
         correct = []
         total = []

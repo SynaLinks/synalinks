@@ -374,3 +374,25 @@ class RaggedStructureAccuracyTest(testing.TestCase):
             Extraction(relations=["alpha beta"]),
         )
         self.assertAlmostEqual(metric.result(), 0.5, delta=3 * backend.epsilon())
+
+
+class FailedPredictionAccuracyTest(testing.TestCase):
+    async def test_none_prediction_scores_zero(self):
+        class Answer(DataModel):
+            answer: str
+
+        class Flag(DataModel):
+            flag: bool
+
+        class Labels(DataModel):
+            labels: list[str]
+
+        cases = [
+            (Accuracy(average="micro"), Answer(answer="Paris")),
+            (BinaryAccuracy(average="micro"), Flag(flag=True)),
+            (CategoricalAccuracy(average="micro"), Labels(labels=["a"])),
+        ]
+        for metric, gold in cases:
+            await metric.update_state(gold, gold)
+            await metric.update_state(gold, None)
+            self.assertAlmostEqual(metric.result(), 0.5, delta=1e-3)
