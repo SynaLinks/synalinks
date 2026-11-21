@@ -57,8 +57,8 @@ existing pieces**; authoring new components is fully in scope:
   expresses the computation you want: a verifier/repair step, a router, a
   multi-branch self-consistency aggregator, a tool-calling sub-program, etc.
   Wire it into `build_program`.
-- **Custom optimizers**: subclass `synalinks.optimizers.Optimizer` (or a
-  concrete one like `RandomFewShot`) and implement `propose_new_candidates` when
+- **Custom optimizers**: subclass a concrete optimizer like
+  `synalinks.optimizers.RandomFewShot` and override `propose_new_candidates` when
   the built-in search strategy is the bottleneck: a different sampling scheme, a
   curriculum, a reflection/critique step that rewrites demonstrations.
 - **Custom rewards**: subclass `synalinks.rewards.Reward` (or pass a function
