@@ -39,7 +39,8 @@ class HuggingFaceDataset(Dataset):
         output_template='{"answer": {{ answer.split("####")[-1].strip() | tojson }}}',
         batch_size=8,
     )
-    program.fit(x=ds())
+    # val_ds: the same loader with split="test".
+    await program.fit(x=ds, validation_data=val_ds.materialize(), epochs=2)
     ```
 
     Args:

@@ -50,7 +50,7 @@ class MLflowDataset(Dataset):
         output_template='{"answer": {{ expectations.answer | tojson }}}',
         batch_size=8,
     )
-    program.evaluate(x=ds())
+    await program.evaluate(x=ds)
 
     # Push in-memory arrays to MLflow; each example becomes one record with
     # its input JSON under `inputs` and its target JSON under `expectations`.
