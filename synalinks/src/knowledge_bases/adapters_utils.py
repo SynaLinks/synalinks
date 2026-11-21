@@ -15,6 +15,7 @@ from typing import List
 from typing import Optional
 from typing import Union
 
+import orjson
 import pyarrow as pa
 import pyarrow.csv as pa_csv
 
@@ -190,6 +191,16 @@ def format_search_results(arrow_or_records, output_format: str):
         if not arrow_or_records:
             return ""
         arrow_table = pa.Table.from_pylist(arrow_or_records)
+    for i, field in enumerate(arrow_table.schema):
+        if pa.types.is_nested(field.type):
+            # CSV cannot hold lists/structs (embeddings, graph nodes): write them as JSON.
+            values = [
+                None if v is None else orjson.dumps(v, default=str).decode()
+                for v in arrow_table.column(i).to_pylist()
+            ]
+            arrow_table = arrow_table.set_column(
+                i, field.name, pa.array(values, pa.string())
+            )
     buf = io.BytesIO()
     pa_csv.write_csv(arrow_table, buf)
     return buf.getvalue().decode("utf-8")
