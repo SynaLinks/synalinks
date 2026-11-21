@@ -404,6 +404,23 @@ class OperationalMetricsAutoBindTest(testing.TestCase):
             [id(program_lm), id(direct_judge_lm), id(program_judge_lm)],
         )
 
+    def test_collect_walks_compiled_optimizer(self):
+        program_lm = _stub_lm()
+        optimizer_lm = _stub_lm()
+        mutation_lm = _stub_lm()
+
+        class _Optimizer:
+            language_model = optimizer_lm
+            mutation_programs = {"s": _FakeProgram([_FakeModule(lm=mutation_lm)])}
+
+        program = _FakeProgram(modules=[_FakeModule(lm=program_lm)])
+        program._optimizer = _Optimizer()
+        lms = _collect_language_models(program)
+        self.assertEqual(
+            [id(lm) for lm in lms],
+            [id(program_lm), id(optimizer_lm), id(mutation_lm)],
+        )
+
     def test_bind_program_aggregates_sub_language_model_tokens(self):
         # End-to-end version of the bug: a metric bound to a program whose
         # only LM module exposes `sub_language_model` must still see calls
