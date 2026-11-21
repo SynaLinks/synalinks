@@ -72,11 +72,15 @@ class OutMask(Module):
         description=None,
         trainable=False,
     ):
-        if not mask or not isinstance(mask, list):
-            raise ValueError("`mask` parameter should be a list of fields to remove")
+        if not (mask or pattern) or (mask and not isinstance(mask, list)):
+            raise ValueError(
+                "`mask` parameter should be a list of fields to remove, "
+                "or a `pattern` should be given"
+            )
         super().__init__(
             name=name,
             description=description,
+            trainable=trainable,
         )
         self.mask = mask
         self.pattern = pattern

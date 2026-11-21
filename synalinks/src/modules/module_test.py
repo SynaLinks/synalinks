@@ -415,3 +415,18 @@ class ModuleCloseTest(testing.TestCase):
         child.back = parent  # a cycle
         await parent.close()
         self.assertEqual((parent.made.closed, child.made.closed), (1, 1))
+
+    def test_auto_config_records_constructor_args(self):
+        class Prefixer(modules.Module):
+            def __init__(self, prefix="> ", name=None, description=None, trainable=True):
+                super().__init__(name=name, description=description, trainable=trainable)
+                self.prefix = prefix
+
+        class Holder(modules.Module):
+            def __init__(self, obj=None, name=None):
+                super().__init__(name=name)
+                self.obj = obj
+
+        self.assertEqual(Prefixer(prefix="# ", name="p").get_config()["prefix"], "# ")
+        with self.assertRaises(NotImplementedError):
+            Holder(obj=object()).get_config()

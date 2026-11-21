@@ -142,17 +142,15 @@ class Operation:
             # Remove args non explicitly supported
             argspec = inspect.getfullargspec(self.__init__)
             if argspec.varkw != "kwargs":
-                for key in xtra_args - xtra_args.intersection(argspec.args[1:]):
+                for key in xtra_args - set(argspec.args[1:] + argspec.kwonlyargs):
                     config.pop(key, None)
             return config
         else:
-            raise NotImplementedError(
-                textwrap.dedent(f"""
+            raise NotImplementedError(textwrap.dedent(f"""
         Object {self.__class__.__name__} was created by passing
         non-serializable argument values in `__init__()`,
         and therefore the object must override `get_config()` in
-        order to be serializable. Please implement `get_config()`.""")
-            )
+        order to be serializable. Please implement `get_config()`."""))
 
     @classmethod
     def from_config(cls, config):
