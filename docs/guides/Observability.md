@@ -8,7 +8,7 @@
 ## Source
 
 ````python
---8<-- "guides/10_observability.py:389"
+--8<-- "guides/10_observability.py:401"
 ````
 
 ## Run log { data-search-exclude }
