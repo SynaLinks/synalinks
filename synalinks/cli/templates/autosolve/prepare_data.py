@@ -38,7 +38,7 @@ target). There are three ways to produce them; pick one and uncomment it.
 # A `Dataset` streams raw rows, renders each through a Jinja2 *template* into
 # JSON, and validates it against a `DataModel`. The classes share one contract:
 # `CSVDataset`, `JSONDataset`, `JSONLDataset`, `ParquetDataset`,
-# `HuggingFaceDataset`, `DuckDBDataset`, `LanceDBDataset`, `MarkdownDataset`.
+# `HuggingFaceDataset`, `MarkdownDataset`.
 #
 #   import synalinks
 #
