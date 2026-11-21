@@ -1443,9 +1443,6 @@ class RecursiveLanguageModelAgent(FunctionCallingAgent):
         # is reachable from inside the sandbox instead, not as a native call.
         return ctx["native_tools"]
 
-    def _requires_tools(self):
-        return False
-
     # RLM answers through `submit()` inside a snippet, its own output tool: no
     # `final_answer` tool, and a step's text is never the answer.
     def _is_answer(self, step):

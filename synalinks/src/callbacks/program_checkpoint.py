@@ -375,10 +375,6 @@ class ProgramCheckpoint(Callback):
             )
         return file_path
 
-    def _checkpoint_exists(self, filepath):
-        """Returns whether the checkpoint `filepath` refers to exists."""
-        return file_utils.exists(filepath)
-
     def _get_most_recently_modified_file_matching_pattern(self, pattern):
         """Returns the most recently modified filepath matching pattern.
 

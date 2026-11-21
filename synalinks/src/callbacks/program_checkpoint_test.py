@@ -276,12 +276,3 @@ class ProgramCheckpointPatternMatchingTest(testing.TestCase):
         match = cb._get_most_recently_modified_file_matching_pattern(pattern)
         # When tied, the file path with the lexicographically largest name wins.
         self.assertEqual(match, b)
-
-    def test_checkpoint_exists(self):
-        tmp = self.get_temp_dir()
-        cb = ProgramCheckpoint(filepath=os.path.join(tmp, "ckpt.json"))
-        present = os.path.join(tmp, "ckpt.json")
-        with open(present, "w") as f:
-            f.write("x")
-        self.assertTrue(cb._checkpoint_exists(present))
-        self.assertFalse(cb._checkpoint_exists(os.path.join(tmp, "absent.json")))

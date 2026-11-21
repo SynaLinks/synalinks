@@ -186,7 +186,6 @@ class DuckDBAdapter(DatabaseAdapter):
         M=None,
         M0=None,
         vss_key=VSS_KEY,
-        main_table=MAIN_TABLE,
         vector_dim=None,
         wipe_on_start=False,
         name=None,
@@ -230,7 +229,6 @@ class DuckDBAdapter(DatabaseAdapter):
                 DuckDB's default.
             vss_key (str): Name of the embedding column. Defaults to
                 `"embedding"`.
-            main_table (str): Unused.
             vector_dim (int): Embedding dimension. Inferred from the
                 embedding model on the first write when omitted.
             wipe_on_start (bool): Whether to clear the database on init.

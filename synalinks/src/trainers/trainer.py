@@ -743,7 +743,7 @@ class Trainer:
             training_logs = None
             logs = {}
             initial_epoch = self._initial_epoch or initial_epoch
-            self._initial_epoch = None  # consumed: a restored epoch applies to this fit only
+            self._initial_epoch = None  # a restored epoch applies to this fit only
 
             if self.trainable_variables and isinstance(
                 self.optimizer, optimizers_module.Optimizer
@@ -1269,19 +1269,6 @@ class Trainer:
             if not self.optimizer.built:
                 run_maybe_nested(self.optimizer.build(self.trainable_variables))
 
-    def _should_reward(self, epoch, validation_freq):
-        epoch = epoch + 1  # one-index the user-facing epoch.
-        if isinstance(validation_freq, int):
-            return epoch % validation_freq == 0
-        elif isinstance(validation_freq, list):
-            return epoch in validation_freq
-        else:
-            raise ValueError(
-                "Expected `validation_freq` to be a list or int. "
-                f"Received: validation_freq={validation_freq} of the "
-                f"type {type(validation_freq)}."
-            )
-
     def _get_metrics_result_or_logs(self, logs):
         """Returns program metrics as a dict if the keys match with input logs.
 
@@ -1332,12 +1319,8 @@ class Trainer:
 
     def _assert_compile_called(self, method_name=None):
         if not self.compiled:
-            msg = "You must call `compile()` before "
-            if metrics_module:
-                msg += "using the program."
-            else:
-                msg += f"calling `{method_name}()`."
-            raise ValueError(msg)
+            action = f"calling `{method_name}()`" if method_name else "using the program"
+            raise ValueError(f"You must call `compile()` before {action}.")
 
     def _auto_build(self, iterator=None, data_batch=None):
         """Build the program, if it is not.
@@ -1386,15 +1369,6 @@ class Trainer:
                 )
         self._post_build()
         return y_pred
-
-    def _assert_compile_called(self, method_name=None):
-        if not self.compiled:
-            msg = "You must call `compile()` before "
-            if metrics_module:
-                msg += "using the model."
-            else:
-                msg += f"calling `{method_name}()`."
-            raise ValueError(msg)
 
     def _should_eval(self, epoch, validation_freq):
         epoch = epoch + 1  # one-index the user-facing epoch.
