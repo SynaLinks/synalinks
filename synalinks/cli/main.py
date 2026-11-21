@@ -19,8 +19,8 @@ from rich.console import Console
 from rich.panel import Panel
 from rich.text import Text
 
-# Synalinks brand amber (matches the logo gradient #92400E → #D97706).
-_BRAND_COLOR = "#D97706"
+# Synalinks brand violet (matches the logo gradient #4E2275 → #B07DDB in img/).
+_BRAND_COLOR = "#B07DDB"
 # Terminal stand-in for the Möbius-strip logo.
 _BRAND_ICON = "∞"
 
@@ -51,7 +51,7 @@ def _templates_root(stack: ExitStack) -> Path:
 
 
 def _print_banner() -> None:
-    """Print an amber icon + wordmark + version banner."""
+    """Print a violet icon + wordmark + version banner."""
     console = Console()
     logo = Text()
     logo.append(f"{_BRAND_ICON} ", style=f"bold {_BRAND_COLOR}")
@@ -257,18 +257,33 @@ def init(project_name, name, description, template, list_templates, force):
 
     console = Console()
     console.print(f"\n✨ Created '{project_name}' from the '{template}' template.")
-    commands = [
-        f"cd {project_name}",
-        "uv sync",
-        "npx skills add -y SynaLinks/synalinks-skills --skill synalinks",
+    # `$` is a shell command, `>` one typed inside the agent, `#` a comment.
+    steps = [
+        ("$", f"cd {project_name}"),
+        # The `app` template keeps its Python project in `backend/`.
+        ("$", "uv sync" if pyproject.parent == target else "uv sync --directory backend"),
+        ("", ""),
+        ("#", "Add the Synalinks skill to your coding agent:"),
+        ("#", "Claude Code (in a session)"),
+        (">", "/plugin install synalinks --marketplace SynaLinks/synalinks-skills"),
+        ("#", "Codex"),
+        ("$", "codex plugin marketplace add SynaLinks/synalinks-skills"),
+        ("$", "codex plugin add synalinks@synalinks-skills"),
+        ("#", "OpenCode"),
+        ("$", "opencode plugin github:SynaLinks/synalinks-skills"),
+        ("#", "Any other agent (Cursor, Gemini CLI, Copilot, ...)"),
+        ("$", "npx skills add -y SynaLinks/synalinks-skills --skill synalinks"),
     ]
     # The next steps, as typed in a terminal window (macOS "traffic light" dots).
     body = Text()
-    for i, command in enumerate(commands):
+    for i, (sign, line) in enumerate(steps):
         if i:
             body.append("\n")
-        body.append("$ ", style=f"bold {_BRAND_COLOR}")
-        body.append(command, style="bold white")
+        if sign == "#":
+            body.append(f"# {line}", style="green")
+        elif sign:
+            body.append(f"{sign} ", style=f"bold {_BRAND_COLOR}")
+            body.append(line, style="bold white")
     title = Text()
     title.append("● ", style="#FF5F56")
     title.append("● ", style="#FFBD2E")

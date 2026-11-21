@@ -46,7 +46,17 @@ After scaffolding, the printed next steps are:
 
 ```shell
 cd <project>
-uv sync
+uv sync  # `app`: uv sync --directory backend
+
+# Add the Synalinks skill to your coding agent:
+# Claude Code (in a session)
+/plugin install synalinks --marketplace SynaLinks/synalinks-skills
+# Codex
+codex plugin marketplace add SynaLinks/synalinks-skills
+codex plugin add synalinks@synalinks-skills
+# OpenCode
+opencode plugin github:SynaLinks/synalinks-skills
+# Any other agent (Cursor, Gemini CLI, Copilot, ...)
 npx skills add -y SynaLinks/synalinks-skills --skill synalinks
 ```
 
