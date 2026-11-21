@@ -684,7 +684,8 @@ class LanguageModel(Module):
     accepts:
 
     - `"none"` (the default): send nothing, leaving the model at its provider
-      default reasoning behavior.
+      default reasoning behavior. `None` (what a module passes when it
+      sets no effort) means the same.
     - `"disable"`: actively turn native reasoning *off*, for a model that
       reasons by default. Each provider gets its own switch:
 
@@ -1036,7 +1037,8 @@ class LanguageModel(Module):
             kwargs["tools"] = wire_tools
 
         # The `reasoning_effort` values are documented in the class docstring.
-        reasoning_effort = kwargs.pop("reasoning_effort", "none")
+        # `None` (what a module passes when it sets no effort) means "none".
+        reasoning_effort = kwargs.pop("reasoning_effort", None) or "none"
         schema_had_thinking = bool(schema) and "thinking" in (
             schema.get("properties") or {}
         )

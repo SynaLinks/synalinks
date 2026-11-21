@@ -539,6 +539,19 @@ class LanguageModelTest(testing.TestCase):
         self.assertNotIn("think", mock_completion.call_args.kwargs)
 
     @patch("litellm.acompletion")
+    async def test_reasoning_effort_python_none_sends_nothing(self, mock_completion):
+        mock_completion.return_value = {"choices": [{"message": {"content": "ok"}}]}
+        messages = ChatMessages(
+            messages=[ChatMessage(role=ChatRole.USER, content="Hello")]
+        )
+        lm = LanguageModel(
+            model="vllm/Qwen/Qwen3-8B", api_base="http://h/v1", supports_reasoning=True
+        )
+        await lm(messages, reasoning_effort=None)
+        self.assertNotIn("reasoning_effort", mock_completion.call_args.kwargs)
+        self.assertNotIn("extra_body", mock_completion.call_args.kwargs)
+
+    @patch("litellm.acompletion")
     async def test_reasoning_effort_disable_noop_for_non_ollama(self, mock_completion):
         """Opt-in providers reason only when enabled, so "disable" sends no
         `think` flag (it is ollama-specific and would be rejected elsewhere).
