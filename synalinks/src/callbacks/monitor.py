@@ -469,13 +469,17 @@ class Monitor(Callback):
 
         run_id = self.run_id
         if run_id is None and self.resume:
-            client = mlflow.MlflowClient()
-            found = client.search_runs(
-                experiment_ids=[self._experiment_id],
-                filter_string=f"tags.mlflow.runName = '{run_name}'",
-                order_by=["attributes.start_time DESC"],
-                max_results=1,
-            )
+            # MLflow filters cannot escape quotes: match them with `_`, then exactly.
+            pattern = run_name.replace("'", "_").replace('"', "_")
+            found = [
+                run
+                for run in mlflow.MlflowClient().search_runs(
+                    experiment_ids=[self._experiment_id],
+                    filter_string=f"tags.mlflow.runName LIKE '{pattern}'",
+                    order_by=["attributes.start_time DESC"],
+                )
+                if run.info.run_name == run_name
+            ]
             if found:
                 run_id = found[0].info.run_id
 
