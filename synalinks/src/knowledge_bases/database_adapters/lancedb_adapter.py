@@ -518,20 +518,22 @@ class LanceDBAdapter(DatabaseAdapter):
                 .when_not_matched_insert_all()
                 .execute(bucket["rows"])
             )
-            schema = self._table_json_schema(table, remove_embedding=False)
-            # LanceDB FTS indexes are one-per-field, so build a separate
-            # inverted index per text column; ``fulltext_search`` then queries
-            # across all of them via ``query_type="fts"``.
-            for col in self._string_columns(schema, exclude_pk=True):
-                try:
-                    tbl.create_fts_index(col, replace=True)
-                except Exception as e:
-                    warnings.warn(
-                        f"FTS index rebuild failed for '{table}.{col}'; "
-                        f"fulltext_search results may be stale. ({e})"
-                    )
+            self._rebuild_fts_indexes(tbl, table)
 
         return ids[0] if return_single else ids
+
+    def _rebuild_fts_indexes(self, tbl, table: str):
+        """Build one FTS index per text column (LanceDB FTS indexes are
+        one-per-field); ``fulltext_search`` queries across all of them."""
+        schema = self._table_json_schema(table, remove_embedding=False)
+        for col in self._string_columns(schema, exclude_pk=True):
+            try:
+                tbl.create_fts_index(col, replace=True)
+            except Exception as e:
+                warnings.warn(
+                    f"FTS index rebuild failed for '{table}.{col}'; "
+                    f"fulltext_search results may be stale. ({e})"
+                )
 
     async def get(
         self,
@@ -688,6 +690,10 @@ class LanceDBAdapter(DatabaseAdapter):
     ) -> SymbolicDataModel:
         """Rename a table and/or update its schema description.
 
+        LanceDB OSS has no table rename, so a new name copies the rows
+        (and the stored schema, retitled) into a new table, rebuilds its
+        FTS indexes and drops the old table.
+
         Args:
             source: ``SymbolicDataModel`` for the table to rename, or its
                 name as a string. Always normalized to PascalCase.
@@ -699,17 +705,32 @@ class LanceDBAdapter(DatabaseAdapter):
             reflecting its current column shape and the supplied
             description.
         """
+        if table_name is None and table_description is None:
+            raise ValueError(
+                "rename(): pass at least one of `table_name=` or `table_description=`."
+            )
         old = table_identifier(
             source.get_schema()["title"] if hasattr(source, "get_schema") else source
         )
+        if old not in self._db.table_names():
+            raise ValueError(
+                f"rename(): no table named {old!r} found in the knowledge base."
+            )
         new = table_identifier(table_name) if table_name else old
-        if new != old:
-            self._db.rename_table(old, new)
-        schema = self._table_json_schema(new, remove_embedding=False)
+        schema = self._table_json_schema(old, remove_embedding=False)
         schema["title"] = new
         if table_description is not None:
             schema["description"] = table_description
-        return SymbolicDataModel(schema=schema)
+        if new != old:
+            data = self._db.open_table(old).to_arrow()
+            data = data.replace_schema_metadata({_SCHEMA_META_KEY: orjson.dumps(schema)})
+            tbl = self._db.create_table(new, data=data)
+            self._db.drop_table(old)
+            self._rebuild_fts_indexes(tbl, new)
+        renamed_model = SymbolicDataModel(schema=schema)
+        self.data_models.pop(old, None)
+        self.data_models[new] = renamed_model
+        return renamed_model
 
     # -- bulk file loaders -----------------------------------------------------
 
