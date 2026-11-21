@@ -22,3 +22,6 @@ trained_*.json
 # Keep the placeholder dirs themselves
 !runs/.gitkeep
 !data/.gitkeep
+
+# Synalinks trace recordings (synalinks.record_traces())
+.synalinks/
