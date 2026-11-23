@@ -2,10 +2,13 @@
 
 import typing
 
+import docstring_parser
+import pydantic
+
 from synalinks.src import saving
 from synalinks.src import testing
 from synalinks.src.utils.tool_utils import Tool
-from synalinks.src.utils.tool_utils import json_schema_type
+from synalinks.src.utils.tool_utils import get_params_schema
 
 
 @saving.object_registration.register_synalinks_serializable()
@@ -70,68 +73,78 @@ class JsonSchemaTypeTest(testing.TestCase):
         self.assertEqual(tool.description, expected)
         self.assertEqual(tool.get_tool_schema()["description"], expected)
 
-    def test_basic_types(self):
-        self.assertEqual(json_schema_type(int), "integer")
-        self.assertEqual(json_schema_type(float), "number")
-        self.assertEqual(json_schema_type(bool), "boolean")
-        self.assertEqual(json_schema_type(str), "string")
-        self.assertEqual(json_schema_type(type(None)), "null")
 
-    def test_unparameterized_list(self):
-        result = json_schema_type(list)
-        self.assertEqual(result, {"type": "array", "items": {}})
+class GetParamsSchemaTest(testing.TestCase):
+    def params_schema(self, func):
+        return get_params_schema(func, docstring_parser.parse(func.__doc__))
 
-    def test_unparameterized_dict(self):
-        result = json_schema_type(dict)
-        self.assertEqual(result, {"type": "object", "additionalProperties": {}})
+    def test_optional_types_allow_null(self):
+        async def f(a: str | None, b: None | int = None, c: typing.Optional[str] = None):
+            """F.
 
-    def test_typed_list(self):
-        result = json_schema_type(typing.List[str])
-        self.assertEqual(result, {"type": "array", "items": {"type": "string"}})
+            Args:
+                a (str | None): A.
+                b (int | None): B.
+                c (str | None): C.
+            """
 
-    def test_typed_list_of_dict(self):
-        result = json_schema_type(typing.List[typing.Dict[str, int]])
+        properties, required = self.params_schema(f)
+        self.assertEqual(required, ["a"])
+        self.assertEqual(properties["a"]["anyOf"], [{"type": "string"}, {"type": "null"}])
         self.assertEqual(
-            result,
-            {
-                "type": "array",
-                "items": {"type": "object", "additionalProperties": {"type": "integer"}},
-            },
+            properties["b"]["anyOf"], [{"type": "integer"}, {"type": "null"}]
+        )
+        self.assertEqual(properties["b"]["default"], None)
+        self.assertEqual(properties["c"]["description"], "C.")
+
+    def test_nested_models_are_inlined(self):
+        class Point(pydantic.BaseModel):
+            x: int
+
+        async def f(points: list[Point]):
+            """F.
+
+            Args:
+                points (list): The points.
+            """
+
+        properties, _ = self.params_schema(f)
+        self.assertNotIn("$ref", str(properties))
+        self.assertEqual(
+            properties["points"]["items"]["properties"]["x"]["type"], "integer"
         )
 
-    def test_typed_dict(self):
-        result = json_schema_type(typing.Dict[str, int])
-        self.assertEqual(
-            result, {"type": "object", "additionalProperties": {"type": "integer"}}
-        )
+    def test_recursive_model_raises(self):
+        class Node(pydantic.BaseModel):
+            children: list["Node"]
 
-    def test_typed_dict_with_complex_value(self):
-        result = json_schema_type(typing.Dict[str, typing.List[int]])
-        self.assertEqual(
-            result,
-            {
-                "type": "object",
-                "additionalProperties": {
-                    "type": "array",
-                    "items": {"type": "integer"},
-                },
-            },
-        )
+        async def f(node: Node):
+            """F.
 
-    def test_optional_type(self):
-        result = json_schema_type(typing.Optional[str])
-        self.assertEqual(result, "string")
-
-    def test_union_type(self):
-        result = json_schema_type(typing.Union[str, int, float])
-        self.assertEqual(result, ["string", "integer", "number"])
-
-    def test_unsupported_type(self):
-        class Custom:
-            pass
+            Args:
+                node (Node): The node.
+            """
 
         with self.assertRaises(ValueError):
-            json_schema_type(Custom)
+            self.params_schema(f)
+
+    def test_missing_type_hint_raises(self):
+        async def f(x):
+            """F.
+
+            Args:
+                x: X.
+            """
+
+        with self.assertRaises(ValueError):
+            self.params_schema(f)
+
+    def test_missing_description_raises(self):
+        async def f(x: int):
+            """F."""
+
+        with self.assertRaises(ValueError):
+            self.params_schema(f)
 
 
 class ToolValidationTest(testing.TestCase):
