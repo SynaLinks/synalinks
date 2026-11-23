@@ -1,5 +1,5 @@
 version = 1
-revision = 3
+revision = 5
 requires-python = ">=3.12"
 resolution-markers = [
     "python_full_version >= '3.15' and sys_platform == 'win32'",
@@ -19,6 +19,9 @@ resolution-markers = [
 [options]
 exclude-newer = "0001-01-01T00:00:00Z" # This has no effect and is included for backwards compatibility when using relative exclude-newer values.
 exclude-newer-span = "P2D"
+
+[options.exclude-newer-package]
+synaops = false
 
 [[package]]
 name = "absl-py"
@@ -5264,7 +5267,7 @@ requires-dist = [
     { name = "rich" },
     { name = "skills-ref", specifier = ">=0.1.1" },
     { name = "soundfile", specifier = ">=0.12" },
-    { name = "synaops", specifier = ">=0.2.1" },
+    { name = "synaops", specifier = ">=0.2.2" },
     { name = "tenacity" },
 ]
 provides-extras = ["codex", "relate"]
@@ -5283,17 +5286,17 @@ dev = [
 
 [[package]]
 name = "synaops"
-version = "0.2.1"
+version = "0.2.2"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/8a/9c/50162352aeeeff5dbeac006e117947fd37a234c0129fbf63a4a878f1e251/synaops-0.2.1.tar.gz", hash = "sha256:637afd39e6f36a1caaebfc1aca035b705256c88020d20f7902ff97e8ab50dc1c", size = 406269, upload-time = "2026-06-04T14:04:21.677Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/f3/ee/a228d1d8dcb92d9276c6e0aad4eceab2944751cb5adab87a3dede131149f/synaops-0.2.2.tar.gz", hash = "sha256:752a9caa08387ba9f5df1f71fe81b8a41ea464233f5bbea6c84358f9b0e260c5", size = 406934, upload-time = "2026-11-23T10:49:17.736Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/86/29/2e96f87925ab14c6f86dfcddc38a3bfa4214180e78d2166577c430b39cfe/synaops-0.2.1-cp310-abi3-macosx_10_12_x86_64.whl", hash = "sha256:0f5a63b215d365d1fb17c60b9f9c3de14709fdd4e19e93c951dbc4c2f1af45c3", size = 965550, upload-time = "2026-06-04T14:04:11.187Z" },
-    { url = "https://files.pythonhosted.org/packages/f0/90/128917a33538fe8bc2f04474daa5efda94dcdba7e81b5eab4d0cf4e53e1f/synaops-0.2.1-cp310-abi3-macosx_11_0_arm64.whl", hash = "sha256:96264ce575c287911d65c524bf73eb5318dfb3093756ac9940d69147d798d637", size = 924371, upload-time = "2026-06-04T14:04:12.87Z" },
-    { url = "https://files.pythonhosted.org/packages/2b/26/7254f910f54ec4143bd15422bc85f8881b168a34bb98ee29d6d8b9c0058e/synaops-0.2.1-cp310-abi3-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:40cfe02bb4fd2f8f84c3e1b185a263778da2f9f31f126196dc605051405dfa2d", size = 1041154, upload-time = "2026-06-04T14:04:14.229Z" },
-    { url = "https://files.pythonhosted.org/packages/60/97/77e4e5c64bdf8058375e623159b840b20dd114ac9df4ad6b6192a7ea4ff8/synaops-0.2.1-cp310-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:09245eec17230b3168aee82e096ecfb3a1351ad1cb5c1de265aca67db7ae6948", size = 1058921, upload-time = "2026-06-04T14:04:15.812Z" },
-    { url = "https://files.pythonhosted.org/packages/ac/34/1045297d5473d9f1c2dac11972ca5207e3b0992a0b19ae96ade81cb35116/synaops-0.2.1-cp310-abi3-musllinux_1_2_aarch64.whl", hash = "sha256:25d5d2c9804cfc007824ee92d26d791ef67b4a3ea194c1378055a05fb223981b", size = 1216575, upload-time = "2026-06-04T14:04:17.148Z" },
-    { url = "https://files.pythonhosted.org/packages/0c/f4/d8c9018064ae32a6c3c2fb70aac733b85203547023d0cde0038c36fecceb/synaops-0.2.1-cp310-abi3-musllinux_1_2_x86_64.whl", hash = "sha256:85652f6d1fbd40d5d476c3e10db66585cc2095a37a2857a01b03c6a62cbf5021", size = 1291269, upload-time = "2026-06-04T14:04:18.59Z" },
-    { url = "https://files.pythonhosted.org/packages/05/b3/8004a06a2e539546541858f0d56536fc56b859b124aaf0cb2b4c8d17266d/synaops-0.2.1-cp310-abi3-win_amd64.whl", hash = "sha256:1856daae7a3769a7d15755d9e9fc322049cd8d534bf55ee59e3cbd36a400c718", size = 830055, upload-time = "2026-06-04T14:04:20.181Z" },
+    { url = "https://files.pythonhosted.org/packages/f0/92/657c7dca937d63455443c24024da857dad6540dba06d7ec73784b1b57c70/synaops-0.2.2-cp310-abi3-macosx_10_12_x86_64.whl", hash = "sha256:225b0d03e4fd468dc33a667e9415fda55c4283d13d95b3c211a66c1af4eed8a3", size = 940776, upload-time = "2026-11-23T10:49:09.768Z" },
+    { url = "https://files.pythonhosted.org/packages/6f/20/2daa55a446411b60c813c72954a0eb0516239ab75a0ad53bf55d9533869e/synaops-0.2.2-cp310-abi3-macosx_11_0_arm64.whl", hash = "sha256:89279fe1d92dcd10bba10291fb1edae57a4c8c6975ff55c93875e25c984b0156", size = 897342, upload-time = "2026-11-23T10:49:10.835Z" },
+    { url = "https://files.pythonhosted.org/packages/41/26/0c5ec27db0e180d5ec0c46574c65deea590a938dab99245f1eccf0f514b3/synaops-0.2.2-cp310-abi3-manylinux2014_aarch64.manylinux_2_17_aarch64.whl", hash = "sha256:f0ea24daa4c66d57668d09dc1de49ea06602518e39e56c20af65840ec8dae3a2", size = 1022513, upload-time = "2026-11-23T10:49:11.916Z" },
+    { url = "https://files.pythonhosted.org/packages/47/3d/90c066d16c40492b37779caafaa2ac3693530fd4ef85434b7a49b53cd6e0/synaops-0.2.2-cp310-abi3-manylinux2014_x86_64.manylinux_2_17_x86_64.whl", hash = "sha256:a566b1e5aa7f96671a8f20b5372e2de7d21d58f7f7873c515873c7271097e0a4", size = 1041203, upload-time = "2026-11-23T10:49:13.049Z" },
+    { url = "https://files.pythonhosted.org/packages/06/a6/f2b14a440227cd7340ef90355774277864adf4fc1219f0cb12ec860d2b0e/synaops-0.2.2-cp310-abi3-musllinux_1_2_aarch64.whl", hash = "sha256:bbfede5ea336de03d4f4cca1ffa098d8a438f5f30beeb4b261d6036b36674272", size = 1201875, upload-time = "2026-11-23T10:49:14.36Z" },
+    { url = "https://files.pythonhosted.org/packages/69/c7/74af701b61152bd0c907cd7322d1cc0f9ba2adc1e05e7cd390574cb4a684/synaops-0.2.2-cp310-abi3-musllinux_1_2_x86_64.whl", hash = "sha256:210aca5de527536f918973653ed76cdfa39a0e2b9cfe5f49c69910156df4a113", size = 1275136, upload-time = "2026-11-23T10:49:15.462Z" },
+    { url = "https://files.pythonhosted.org/packages/cf/e6/69121866526ed36d6b6cd74a4bd32d75348ad16feed79a60ce847f4bed7c/synaops-0.2.2-cp310-abi3-win_amd64.whl", hash = "sha256:045a132b111bcb0a0ac50165fb5d94d26b0543c4e2d552acd49a7c8a87a36f34", size = 810798, upload-time = "2026-11-23T10:49:16.581Z" },
 ]
 
 [[package]]
