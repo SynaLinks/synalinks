@@ -62,7 +62,7 @@ dependencies = [
   # Decodes the audio files `read_audio` sends (WAV, FLAC, OGG, MP3); the
   # wheels bundle libsndfile.
   "soundfile>=0.12",
-  "synaops>=0.2.1",
+  "synaops>=0.2.2",
   "tenacity",
 ]
 
@@ -91,6 +91,8 @@ build-backend = "setuptools.build_meta"
 [tool.uv]
 # Supply-chain cooldown: only resolve releases uploaded at least 2 days ago.
 exclude-newer = "2 days"
+# Our own package: releases ship fixes synalinks needs at once.
+exclude-newer-package = { synaops = false }
 
 [tool.setuptools]
 include-package-data = true
