@@ -28,6 +28,7 @@ import logging
 import typing
 
 import docstring_parser
+import pydantic
 from tenacity import retry
 from tenacity import retry_if_exception_type
 from tenacity import stop_after_attempt
@@ -37,68 +38,50 @@ from synalinks.src.api_export import synalinks_export
 from synalinks.src.saving import serialization_lib
 from synalinks.src.saving.synalinks_saveable import SynalinksSaveable
 
-JsonSchema = typing.Union[
-    typing.Dict[str, typing.Any],
-    typing.List[typing.Any],
-    str,
-    int,
-    float,
-    bool,
-    None,
-]
+
+def inline_refs(schema: dict) -> dict:
+    """Replace each `$ref` of a pydantic schema by its `$defs` entry.
+
+    A tool schema gets nested inside bigger schemas (the tool calls one),
+    where a `#/$defs/...` ref would resolve against the wrong root.
+    Recursive types cannot be inlined and raise a `ValueError`.
+    """
+    defs = schema.get("$defs", {})
+
+    def inline(node, seen):
+        if isinstance(node, list):
+            return [inline(v, seen) for v in node]
+        if not isinstance(node, dict):
+            return node
+        if "$ref" in node:
+            name = node["$ref"].rsplit("/", 1)[-1]
+            if name in seen:
+                raise ValueError(f"Recursive type '{name}' is not supported in tools")
+            siblings = {k: v for k, v in node.items() if k != "$ref"}
+            return {**inline(defs[name], seen | {name}), **inline(siblings, seen)}
+        return {k: inline(v, seen) for k, v in node.items() if k != "$defs"}
+
+    return inline(schema, frozenset())
 
 
-def json_schema_type(py_type: typing.Any) -> JsonSchema:
-    mapping = {
-        int: "integer",
-        float: "number",
-        bool: "boolean",
-        str: "string",
-        type(None): "null",
-    }
+def get_params_schema(func: typing.Callable, docstring: docstring_parser.Docstring):
+    """The JSON schema of `func`'s parameters, built by pydantic from the type
+    hints, each with its description taken from the docstring's Args.
 
-    # Check if type is a basic type
-    if py_type in mapping:
-        return mapping[py_type]
-
-    # For unparameterized list and dict types
-    if py_type is list or py_type is typing.List:
-        return {"type": "array", "items": {}}
-    if py_type is dict or py_type is typing.Dict:
-        return {"type": "object", "additionalProperties": {}}
-
-    origin = typing.get_origin(py_type)
-    args = typing.get_args(py_type)
-
-    if origin is typing.Union:
-        # this is a special case to handle Optional[type] which is just syntactic sugar
-        # around Union[type, None]
-        if len(args) == 2 and type(None) in args:
-            # Assuming the None is always last
-            return json_schema_type(args[0])
-        else:
-            return [json_schema_type(arg) for arg in args]
-
-    if origin is list or origin is typing.List:
-        # For simplicity, we're assuming all elements in the list are of the same type
-        schema_type = json_schema_type(args[0])
-        if isinstance(schema_type, dict):
-            return {"type": "array", "items": schema_type}
-        return {
-            "type": "array",
-            "items": {"type": json_schema_type(args[0])},
-        }
-
-    if origin is dict or origin is typing.Dict:
-        # For simplicity, we're assuming all keys are strings
-        # and all values are of the same type
-        schema_type = json_schema_type(args[1])
-        if isinstance(schema_type, dict):
-            return {"type": "object", "additionalProperties": schema_type}
-        return {"type": "object", "additionalProperties": {"type": schema_type}}
-
-    # The type is not supported
-    raise ValueError(f"Cannot convert {py_type} to a JSON schema type")
+    Returns:
+        (tuple): The `properties` dict and the `required` list.
+    """
+    type_hints = typing.get_type_hints(func)
+    descriptions = {p.arg_name: p.description for p in docstring.params}
+    for name in inspect.signature(func).parameters:
+        if name not in type_hints:
+            raise ValueError(f"Missing type hint for parameter '{name}'")
+        if descriptions.get(name) is None:
+            raise ValueError(f"Missing description for parameter '{name}' in docstring")
+    schema = inline_refs(pydantic.TypeAdapter(func).json_schema())
+    for name, prop in schema["properties"].items():
+        prop["description"] = descriptions[name].replace("\n", " ")
+    return schema["properties"], schema.get("required", [])
 
 
 def docstring_description(docstring: docstring_parser.Docstring) -> str:
@@ -116,37 +99,6 @@ def docstring_description(docstring: docstring_parser.Docstring) -> str:
     return short + ("\n\n" if docstring.blank_after_short_description else "\n") + long
 
 
-def get_param_schema(
-    param_name: str,
-    param: inspect.Parameter,
-    type_hints: typing.Dict[str, typing.Any],
-    doc_parsed: docstring_parser.Docstring,
-) -> JsonSchema:
-    """Create a schema for a single parameter."""
-    if param_name not in type_hints:
-        raise ValueError(f"Missing type hint for parameter '{param_name}'")
-    param_type = type_hints[param_name]
-    param_type_str = json_schema_type(param_type)
-    descriptions = (p.description for p in doc_parsed.params if p.arg_name == param_name)
-    param_doc = next(descriptions, None)
-    if param_doc is None:
-        raise ValueError(f"Missing description for parameter '{param_name}' in docstring")
-
-    param_schema = {}
-    param_schema["description"] = param_doc.replace("\n", " ")
-    param_schema["title"] = param_name.title().replace("_", " ")
-    # Check if the param_type_str is already a dictionary.
-    if isinstance(param_type_str, dict):
-        param_schema.update(**param_type_str)
-    else:
-        param_schema["type"] = param_type_str
-
-    if param.default is not param.empty:
-        param_schema["default"] = param.default
-
-    return param_schema
-
-
 @synalinks_export("synalinks.utils.Tool")
 class Tool(SynalinksSaveable):
     def __init__(self, func: typing.Callable):
@@ -159,12 +111,9 @@ class Tool(SynalinksSaveable):
             raise ValueError(f"The tool ({self.name}) must have a docstring")
 
         self._docstring = docstring_parser.parse(doc)
-        self._signature = inspect.signature(func)
-        self._type_hints = typing.get_type_hints(func)
-        self._params_schema = {}
-        self._required_params = []
-
-        self._parse_arguments()
+        self._params_schema, self._required_params = get_params_schema(
+            func, self._docstring
+        )
 
         if not self.description:
             logging.warning(
@@ -180,18 +129,6 @@ class Tool(SynalinksSaveable):
     )
     async def __call__(self, *args, **kwargs):
         return await self._func(*args, **kwargs)
-
-    def _parse_arguments(self):
-        for param_name, param in self._signature.parameters.items():
-            param_schema = get_param_schema(
-                param_name,
-                param,
-                self._type_hints,
-                self._docstring,
-            )
-            self._params_schema[param_name] = param_schema
-            if param.default is param.empty:
-                self._required_params.append(param_name)
 
     @property
     def description(self) -> str:

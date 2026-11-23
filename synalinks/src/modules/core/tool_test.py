@@ -3,7 +3,6 @@
 import synalinks
 from synalinks.src import testing
 from synalinks.src.modules.core.tool import Tool
-from synalinks.src.modules.core.tool import json_schema_type
 from synalinks.src.modules.module import Module
 
 
@@ -198,50 +197,6 @@ class ToolModuleTest(testing.TestCase):
         # Test that the restored tool works
         result = await restored_tool(arg1="test")
         self.assertEqual(result.get_json(), {"result": "test"})
-
-
-class JsonSchemaTypeTest(testing.TestCase):
-    """Tests for json_schema_type function."""
-
-    def test_basic_types(self):
-        """Test conversion of basic Python types."""
-        self.assertEqual(json_schema_type(int), "integer")
-        self.assertEqual(json_schema_type(float), "number")
-        self.assertEqual(json_schema_type(bool), "boolean")
-        self.assertEqual(json_schema_type(str), "string")
-        self.assertEqual(json_schema_type(type(None)), "null")
-
-    def test_list_type(self):
-        """Test conversion of list types."""
-        from typing import List
-
-        result = json_schema_type(List[str])
-        self.assertEqual(result["type"], "array")
-        self.assertEqual(result["items"]["type"], "string")
-
-    def test_dict_type(self):
-        """Test conversion of dict types."""
-        from typing import Dict
-
-        result = json_schema_type(Dict[str, int])
-        self.assertEqual(result["type"], "object")
-        self.assertEqual(result["additionalProperties"]["type"], "integer")
-
-    def test_optional_type(self):
-        """Test conversion of Optional types."""
-        from typing import Optional
-
-        result = json_schema_type(Optional[str])
-        self.assertEqual(result, "string")
-
-    def test_unsupported_type_raises(self):
-        """Test that unsupported types raise ValueError."""
-
-        class CustomClass:
-            pass
-
-        with self.assertRaises(ValueError):
-            json_schema_type(CustomClass)
 
 
 class ToolOutputSchemaTest(testing.TestCase):
