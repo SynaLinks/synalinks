@@ -87,8 +87,9 @@ jobs:
           print("sandbox backend:", backend, why)
           if platform.system() == "Linux":
               raise SystemExit(0 if backend == "namespaces" else 1)
-          from synalinks.src.utils.microvm_utils import hypervisor_supported, prepare_microvm
-          if hypervisor_supported():
+          from synalinks.src.utils.microvm_utils import microvm_available, prepare_microvm
+          ok, _ = microvm_available()
+          if ok:
               if backend != "microvm":
                   raise SystemExit("hypervisor available but no microVM: " + why)
               print("microVM ready:", prepare_microvm())
