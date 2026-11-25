@@ -172,10 +172,10 @@ reward = synalinks.rewards.LMAsJudge(
 
 Under the hood `LMAsJudge` is just a `Program` (the
 `LMAsJudgeProgram` class) wrapped as a reward, a wrapper
-called `ProgramAsJudge`. The judge sees both `y_true` and
-`y_pred` (or just `y_pred` if no ground truth is provided), and
-returns a numeric score that the framework normalizes to
-`[0, 1]`.
+called `ProgramAsJudge`. The judge sees the program's inputs
+`x`, its prediction `y_pred` and, when provided, the ground truth
+`y_true`, and returns a numeric score that the framework
+normalizes to `[0, 1]`.
 
 By default the judge picks from `synalinks.FineScore` (twenty-one
 values from 0.0 to 1.0, step 0.05). If your rubric reads more

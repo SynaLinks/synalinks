@@ -5,7 +5,9 @@ from synalinks.src.backend import DataModel
 from synalinks.src.metrics.accuracy_metrics import Accuracy
 from synalinks.src.metrics.agents_metrics import PassAtK
 from synalinks.src.metrics.reduction_metrics import Mean
+from synalinks.src.rewards.batch_reward import BatchReward
 from synalinks.src.rewards.exact_match import ExactMatch
+from synalinks.src.rewards.reward import Reward
 from synalinks.src.rewards.reward_wrappers import RewardFunctionWrapper
 from synalinks.src.trainers.compile_utils import CompileMetrics
 from synalinks.src.trainers.compile_utils import CompileReward
@@ -255,3 +257,36 @@ class CompileRewardMultiOutputTest(testing.TestCase):
         names = [m.name for m in cr.metrics]
         self.assertEqual(len(set(names)), 2)
         self.assertEqual([m.result() for m in cr.metrics], [1.0, 0.0])
+
+
+class CompileRewardInputsTest(testing.TestCase):
+    async def test_inputs_reach_per_sample_rewards_on_every_path(self):
+        seen = []
+
+        class InputAware(Reward):
+            async def call(self, y_true, y_pred, x=None):
+                seen.append((x, y_pred.get("answer")))
+                return 1.0
+
+        class Zero(BatchReward):
+            async def call(self, y_true, y_pred):
+                return [0.0] * len(y_pred)
+
+        answers = [Answer(answer=a) for a in ("a", "b", "c")]
+        inputs = ["x_a", "x_b", "x_c"]
+        # Mixed with a `BatchReward`, the batch goes through `compute_batch`.
+        cr = CompileReward([Zero(), InputAware()])
+        totals = await cr.compute_batch(
+            [[a, a] for a in answers], [[a, a] for a in answers], x_batch=inputs
+        )
+        self.assertEqual(totals, [1.0, 1.0, 1.0])
+        self.assertEqual(seen, [("x_a", "a"), ("x_b", "b"), ("x_c", "c")])
+
+        # One sample at a time, through `__call__`.
+        seen.clear()
+        await CompileReward(InputAware())(answers[0], answers[0], x="x_a")
+        self.assertEqual(seen, [("x_a", "a")])
+        # Without inputs, rewards that take them get `None`.
+        seen.clear()
+        await cr.compute_batch([[a, a] for a in answers], [[a, a] for a in answers])
+        self.assertEqual([x for x, _ in seen], [None, None, None])

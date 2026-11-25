@@ -362,3 +362,21 @@ def in_mask_json(json, mask=None, pattern=None, recursive=True):
         pattern=pattern,
         recursive=recursive,
     )
+
+
+def without_echoed_inputs(predicted_output, inputs):
+    """Drop from a prediction the fields that merely repeat the input.
+
+    Modules that return their inputs concatenated with their outputs (e.g.
+    `SelfCritique`, `Generator(return_inputs=True)`) would otherwise show every
+    sample twice (to OMEGA's mutation/crossover programs, to a judge). Only
+    fields whose value is identical to the input's are removed, so genuine
+    outputs are kept even when they share a key name with an input field.
+    """
+    if not isinstance(predicted_output, dict) or not isinstance(inputs, dict):
+        return predicted_output
+    return {
+        key: value
+        for key, value in predicted_output.items()
+        if not (key in inputs and inputs[key] == value)
+    }

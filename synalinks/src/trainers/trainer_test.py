@@ -1,5 +1,7 @@
 # License Apache 2.0: (c) 2025-2026 Yoan Sallami (Synalinks Team)
 
+import ast
+import asyncio
 import json
 from unittest.mock import patch
 
@@ -11,6 +13,7 @@ from synalinks.src import optimizers
 from synalinks.src import programs
 from synalinks.src import rewards
 from synalinks.src import testing
+from synalinks.src.backend import DataModel
 from synalinks.src.backend import JsonDataModel
 from synalinks.src.modules.language_models import LanguageModel
 from synalinks.src.testing.test_utils import AnswerWithRationale
@@ -690,3 +693,53 @@ class StratifiedMinibatchTest(testing.TestCase):
         y = self._targets([0.0, 1.0, 0.0])
         idx = stratified_minibatch_indices(y, 10, rng=np.random.default_rng(3))
         self.assertEqual(sorted(idx.tolist()), [0, 1, 2])
+
+
+class Question(DataModel):
+    question: str
+
+
+class Reply(DataModel):
+    reply: str
+
+
+class RecordingReward(rewards.Reward):
+    """Records which (x, y_true, y_pred) triple each reward call sees."""
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.seen = []
+
+    async def call(self, y_true, y_pred, x=None):
+        self.seen.append((x.get("question"), y_true.get("reply"), y_pred.get("reply")))
+        return 1.0
+
+
+async def _reply_out_of_order(*args, **kwargs):
+    # Later questions answer first, so a misaligned `gather` would show.
+    question = ast.literal_eval(kwargs["messages"][-1]["content"])["question"]
+    await asyncio.sleep(0.01 * (5 - int(question[-1])))
+    return {
+        "choices": [{"message": {"content": json.dumps({"reply": f"re {question}"})}}]
+    }
+
+
+class TestRewardInputs(testing.TestCase):
+    @patch("litellm.acompletion", side_effect=_reply_out_of_order)
+    async def test_each_reward_gets_its_own_sample_inputs(self, _):
+        language_model = LanguageModel(model="ollama/mistral")
+        x0 = modules.Input(data_model=Question)
+        x1 = await modules.Generator(data_model=Reply, language_model=language_model)(x0)
+        program = programs.Program(inputs=x0, outputs=x1)
+        reward = RecordingReward()
+        program.compile(reward=reward)
+
+        questions = [f"q{i}" for i in range(5)]
+        await program.evaluate(
+            x=np.array([Question(question=q) for q in questions], dtype="object"),
+            y=np.array([Reply(reply=f"re {q}") for q in questions], dtype="object"),
+            batch_size=2,
+        )
+        self.assertEqual(
+            sorted(reward.seen), [(q, f"re {q}", f"re {q}") for q in questions]
+        )

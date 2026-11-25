@@ -43,7 +43,8 @@ class Reward(SynalinksSaveable):
     To be implemented by subclasses:
 
     * `call()`: Contains the logic for eval calculation using `y_true`,
-        `y_pred`.
+        `y_pred`. A `call()` that also declares an `x` argument receives the
+        program's inputs (unmasked), or `None` when they are not given.
     """
 
     def __init__(
@@ -62,7 +63,7 @@ class Reward(SynalinksSaveable):
         self.in_mask_pattern = in_mask_pattern
         self.out_mask_pattern = out_mask_pattern
 
-    async def __call__(self, y_true, y_pred):
+    async def __call__(self, y_true, y_pred, x=None):
         with ops.name_scope(self.name):
             y_true, y_pred = apply_masks(
                 y_true,
@@ -72,7 +73,10 @@ class Reward(SynalinksSaveable):
                 out_mask=self.out_mask,
                 out_mask_pattern=self.out_mask_pattern,
             )
-            rewards = await self.call(y_true, y_pred)
+            if "x" in inspect.signature(self.call).parameters:
+                rewards = await self.call(y_true, y_pred, x=x)
+            else:
+                rewards = await self.call(y_true, y_pred)
             return reduce_values(
                 rewards,
                 reduction=self.reduction,

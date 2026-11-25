@@ -70,7 +70,8 @@ class RLMAsJudgeTest(testing.TestCase):
         mock_completion.side_effect = [
             # Turn 1: the judge recomputes in the sandbox and compares to gold.
             _exec_tool_call(
-                "print(int(inputs['answer']) == 152648 + 485, inputs['gold_answer'])"
+                "print(int(inputs['output_answer']) == 152648 + 485, "
+                "inputs['gold_answer'])"
             ),
             # Turn 2: it submits the verdict, which ends the run.
             _exec_tool_call(
@@ -120,7 +121,9 @@ class RLMAsJudgeTest(testing.TestCase):
         second_call_messages = mock_completion.call_args.kwargs["messages"]
         tool_messages = [m for m in second_call_messages if m.get("role") == "tool"]
         self.assertTrue(
-            any("['answer']" in json.dumps(m.get("content")) for m in tool_messages),
+            any(
+                "['output_answer']" in json.dumps(m.get("content")) for m in tool_messages
+            ),
             f"sandbox observation not found in tool messages: {tool_messages}",
         )
 
@@ -202,15 +205,11 @@ class RLMAsJudgeTest(testing.TestCase):
 
         mock_completion.side_effect = [
             # The only code turn never calls `submit`...
-            _exec_tool_call("print(inputs['answer'])"),
+            _exec_tool_call("print(inputs['output_answer'])"),
             # ...so the final grading step formats the trajectory.
             {
                 "choices": [
-                    {
-                        "message": {
-                            "content": '{"critique": "Out of turns.", "reward": 1}'
-                        }
-                    }
+                    {"message": {"content": '{"critique": "Out of turns.", "reward": 1}'}}
                 ]
             },
         ]

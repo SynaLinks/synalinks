@@ -3,13 +3,21 @@
 import json
 from unittest.mock import patch
 
+import numpy as np
+
+from synalinks.src import ops
 from synalinks.src import rewards
 from synalinks.src import testing
+from synalinks.src.backend import ChatMessage
+from synalinks.src.backend import ChatMessages
 from synalinks.src.backend import DataModel
 from synalinks.src.backend import Field
 from synalinks.src.backend import FineScore
 from synalinks.src.backend import Rating10
+from synalinks.src.modules import Generator
+from synalinks.src.modules import Input
 from synalinks.src.modules.language_models import LanguageModel
+from synalinks.src.programs import Program
 from synalinks.src.rewards.lm_as_judge import LMAsJudge
 from synalinks.src.rewards.lm_as_judge import LMAsJudgeProgram
 
@@ -166,7 +174,7 @@ class LMAsJudgeTest(testing.TestCase):
 
         with self.assertRaisesRegex(ValueError, "list or tuple"):
             await reward.program(Answer(answer="Paris"))
-        with self.assertRaisesRegex(ValueError, "length of 2"):
+        with self.assertRaisesRegex(ValueError, r"\[y_true, y_pred\]"):
             await reward.program([Answer(answer="Paris")])
 
     def test_lm_as_judge_registry_round_trip(self):
@@ -185,3 +193,70 @@ class LMAsJudgeTest(testing.TestCase):
         self.assertIs(restored.program.score_type, Rating10)
         self.assertIsInstance(rewards.get("lmasjudge"), LMAsJudge)
         self.assertIsInstance(rewards.get("lm_as_judge"), LMAsJudge)
+
+    @patch("litellm.acompletion")
+    async def test_lm_as_judge_labels_input_output_and_gold(self, mock_completion):
+        # A chat program with `return_inputs=True` echoes its input in its
+        # output: the judge sees the input once (`input_`), then the output
+        # (`output_`), then the gold reference (`gold_`), in one user turn.
+        x = ChatMessages(
+            messages=[ChatMessage(role="user", content="What is the French capital?")]
+        ).to_json_data_model()
+        answer = ChatMessage(role="assistant", content="The capital of France is Paris.")
+        y_pred = await ops.concat(x, answer.to_json_data_model())
+        y_true = ChatMessage(role="assistant", content="Paris.")
+        mock_completion.return_value = {
+            "choices": [{"message": {"content": '{"critique": "Ok", "reward": 1.0}'}}]
+        }
+
+        reward = LMAsJudge(language_model=LanguageModel(model="ollama/mistral"))
+        score = await reward(y_true=y_true, y_pred=y_pred, x=x)
+        self.assertEqual(score, 1.0)
+        messages = mock_completion.call_args.kwargs["messages"]
+        self.assertEqual([m["role"] for m in messages], ["system", "user"])
+        self.assertEqual(
+            messages[1]["content"],
+            "{'input_messages': [{'role': 'user', 'content': "
+            "'What is the French capital?'}], 'output_role': 'assistant', "
+            "'output_content': 'The capital of France is Paris.', "
+            "'gold_role': 'assistant', 'gold_content': 'Paris.'}",
+        )
+
+        # Without the program's inputs nor a reference, only the output.
+        await reward(y_true=None, y_pred=y_pred)
+        content = mock_completion.call_args.kwargs["messages"][1]["content"]
+        self.assertTrue(content.startswith("{'output_messages': "))
+        self.assertNotIn("input_", content)
+        self.assertNotIn("gold_", content)
+
+    @patch("litellm.acompletion")
+    async def test_lm_as_judge_receives_program_inputs_from_evaluate(
+        self, mock_completion
+    ):
+        class Query(DataModel):
+            query: str = Field(description="The user query")
+
+        class Answer(DataModel):
+            answer: str = Field(description="The correct answer")
+
+        language_model = LanguageModel(model="ollama/mistral")
+        x0 = Input(data_model=Query)
+        x1 = await Generator(data_model=Answer, language_model=language_model)(x0)
+        program = Program(inputs=x0, outputs=x1)
+        program.compile(reward=LMAsJudge(language_model=language_model))
+        mock_completion.side_effect = [
+            {"choices": [{"message": {"content": '{"answer": "Paris"}'}}]},
+            {"choices": [{"message": {"content": '{"critique": "Ok", "reward": 1.0}'}}]},
+        ]
+
+        await program.evaluate(
+            x=np.array([Query(query="What is the French capital?")], dtype="object"),
+            y=np.array([Answer(answer="Paris")], dtype="object"),
+            batch_size=1,
+        )
+        judge_prompt = mock_completion.call_args.kwargs["messages"][1]["content"]
+        self.assertEqual(
+            judge_prompt,
+            "{'input_query': 'What is the French capital?', "
+            "'output_answer': 'Paris', 'gold_answer': 'Paris'}",
+        )

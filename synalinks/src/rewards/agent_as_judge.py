@@ -1,6 +1,5 @@
 # License Apache 2.0: (c) 2025-2026 Yoan Sallami (Synalinks Team)
 
-from synalinks.src import ops
 from synalinks.src.api_export import synalinks_export
 from synalinks.src.backend import JsonDataModel
 from synalinks.src.backend import SymbolicDataModel
@@ -16,6 +15,7 @@ from synalinks.src.modules.ttc.self_critique import _normalized_reward_schema
 from synalinks.src.modules.ttc.self_critique import critique_with_reward_schema
 from synalinks.src.programs import Program
 from synalinks.src.rewards.reward_wrappers import ProgramAsJudge
+from synalinks.src.rewards.reward_wrappers import judge_inputs
 from synalinks.src.saving import serialization_lib
 
 
@@ -36,10 +36,13 @@ def default_agent_judge_instructions(score_type=Rating20):
     """
     return (
         "You are an impartial judge. Your task is to carefully examine the "
-        "provided inputs and evaluate the prediction. Use the available tools to "
+        "provided inputs and evaluate the prediction: the program's output (the "
+        "keys prefixed with `output_`) given its input (the keys prefixed with "
+        "`input_`). Use the available tools to "
         "verify the prediction against reality (run code, inspect files, look "
         "things up) instead of trusting your first impression; when a gold "
-        "reference is provided, compare the prediction against it. Once you have "
+        "reference is provided (the keys prefixed with `gold_`), compare the "
+        "prediction against it. Once you have "
         "enough evidence, stop calling tools, write an elaborated critique of the "
         "prediction, then grade it with a reward. The reward is "
         f"{score_type_description(score_type)}."
@@ -50,9 +53,10 @@ async def judge_with_agent(agent, score_type, inputs):
     """Run an agent judge on a `[y_true, y_pred]` pair and normalize its reward.
 
     Shared by the agent-based judge programs (`AgentAsJudgeProgram`,
-    `RLMAsJudgeProgram`): the gold reference, when given, is prefixed with
-    `gold` and concatenated with the prediction, the agent grades the result
-    on the `score_type` scale, and the reward is rewritten to a 0.0..1.0 float.
+    `RLMAsJudgeProgram`): the program's input, its prediction and the gold
+    reference are combined by `judge_inputs` (`input_`, `output_` then `gold_`
+    fields), the agent grades the result on the `score_type` scale, and the
+    reward is rewritten to a 0.0..1.0 float.
     An empty prediction, or an agent that produces nothing, scores 0.0 without
     raising so training keeps going.
 
@@ -67,20 +71,18 @@ async def judge_with_agent(agent, score_type, inputs):
     """
     if not isinstance(inputs, (list, tuple)):
         raise ValueError("The inputs should be a list or tuple.")
-    if len(inputs) != 2:
-        raise ValueError("The inputs of the program should have a length of 2.")
-    y_true, y_pred = inputs
+    if len(inputs) not in (2, 3):
+        raise ValueError(
+            "The inputs of the program should be `[y_true, y_pred]` or "
+            "`[y_true, y_pred, x]`."
+        )
+    y_true, y_pred, x = inputs if len(inputs) == 3 else (*inputs, None)
     if not y_pred:
         return CritiqueWithReward(
             critique="Empty prediction: nothing to evaluate.",
             reward=0.0,
         ).to_json_data_model()
-    if y_true:
-        y_true = await ops.prefix(y_true, prefix="gold", name="gold_y_true")
-        inputs = await ops.concat(y_true, y_pred, name="y_true_with_y_pred")
-    else:
-        inputs = y_pred
-    outputs = await agent(inputs)
+    outputs = await agent(await judge_inputs(y_true, y_pred, x))
     if outputs is None:
         return CritiqueWithReward(
             critique="The judge produced no verdict.",

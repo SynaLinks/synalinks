@@ -219,7 +219,7 @@ class RubricsAsJudgeTest(testing.TestCase):
 
         with self.assertRaisesRegex(ValueError, "list or tuple"):
             await reward.program(Answer(answer="Paris"))
-        with self.assertRaisesRegex(ValueError, "length of 2"):
+        with self.assertRaisesRegex(ValueError, r"\[y_true, y_pred\]"):
             await reward.program([Answer(answer="Paris")])
 
     async def test_rubrics_as_judge_symbolic_output_schema(self):
@@ -275,6 +275,34 @@ def score_answer(score, confidence=0.9):
         "probabilities": {key: 1.0 if key == str(int(score)) else 0.0 for key in keys},
         "confidence": confidence,
     }
+
+    @patch("litellm.acompletion")
+    async def test_rubrics_as_judge_sees_the_program_inputs(self, mock_completion):
+        # Rubrics such as relevancy grade the answer against the question.
+        class Query(DataModel):
+            query: str = Field(description="The query")
+
+        class Answer(DataModel):
+            answer: str = Field(description="The answer")
+
+        reward = RubricsAsJudge(
+            language_model=LanguageModel(model="ollama/mistral"),
+            rubrics=[{"name": "relevant", "description": "Answers the query."}],
+            score_type=Rating,
+        )
+        mock_completion.return_value = {
+            "choices": [{"message": {"content": '{"critique": "Ok.", "relevant": 5}'}}]
+        }
+        score = await reward(
+            y_true=None,
+            y_pred=Answer(answer="Paris"),
+            x=Query(query="French capital?"),
+        )
+        self.assertEqual(score, 1.0)
+        self.assertEqual(
+            mock_completion.call_args.kwargs["messages"][-1]["content"],
+            "{'input_query': 'French capital?', 'output_answer': 'Paris'}",
+        )
 
 
 @patch.dict(os.environ, {"TYPESAFE_API_KEY": "test-key"})
