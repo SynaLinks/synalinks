@@ -649,8 +649,7 @@ class LanguageModel(Module):
       - vLLM/SGLang (`vllm/`, `sglang/`, `mirai/`): the chat template's
         `enable_thinking=False` (ignored by templates without it).
       - OpenRouter, Together AI: `reasoning={"enabled": False}`.
-      - Anthropic, Claude on Bedrock: `thinking={"type": "disabled"}`
-        (`"between_tools"` on Claude Sonnet 5.5, which refuses `"disabled"`).
+      - Anthropic, Claude on Bedrock: `thinking={"type": "disabled"}`.
       - DeepSeek, Cohere's reasoning models: `thinking={"type": "disabled"}`.
       - OpenAI, Azure, Mistral, Groq, other Bedrock models:
         `reasoning_effort="none"`.
@@ -658,13 +657,9 @@ class LanguageModel(Module):
         level (Gemini 3 and later).
 
       Sent only when the model reasons natively (see `supports_reasoning()`;
-      Cohere's by their name). A model that cannot stop reasoning gets its
-      lowest effort instead: xAI's Grok and the always-thinking Claude models
-      (`"low"`), the OpenAI models without `"none"` (`"minimal"`, else
-      `"low"`), Mistral Large 4 and GLM 5 (`"low"`), Groq's models other than
-      Qwen (`"low"`), Gemini 2.5 Pro (its smallest thinking budget, 128
-      tokens), and the ChatGPT backend (`codex/`). `"disable"` is a
-      deprecated alias of `"none"`.
+      Cohere's by their name). It is sent even to a model that cannot stop
+      reasoning, never swapped for a low effort: its provider decides.
+      `"disable"` is a deprecated alias of `"none"`.
     - a level, from lowest to highest `"minimal"`, `"low"`, `"medium"`,
       `"high"`, `"xhigh"`, `"max"`: forwarded to the provider as the
       reasoning effort, but only when the model reasons natively (otherwise
@@ -1017,17 +1012,11 @@ class LanguageModel(Module):
         )
         enable_thinking = None
         prefix = self.model.split("/", 1)[0]
-        row = (
-            litellm.model_cost.get(self.model)
-            or litellm.model_cost.get(self.model.split("/", 1)[-1])
-            or {}
-        )
-        levels = row.get("reasoning_effort_levels") or []
         if reasoning_effort == "none":
             if prefix in ("ollama", "ollama_chat"):
                 kwargs["think"] = False
             elif prefix == "codex":
-                kwargs["reasoning_effort"] = "disable"
+                kwargs["reasoning_effort"] = "none"
             elif prefix == "cohere" and "reasoning" in self.model:
                 # Cohere's reasoning models think by default (not in litellm's table).
                 extra_body = dict(kwargs.get("extra_body") or {})
@@ -1038,69 +1027,22 @@ class LanguageModel(Module):
                 and not (prefix == "openai" and self.api_base)
                 and await self.supports_reasoning()
             ):
-                claude = prefix == "anthropic" or (
-                    prefix == "bedrock" and "claude" in self.model
-                )
                 if prefix == "openrouter":
                     # Only to a reasoner: with `require_parameters`, another has no route.
                     kwargs.setdefault("reasoning", {"enabled": False})
-                elif claude and "sonnet-5-5" in self.model:
-                    # Sonnet 5.5 refuses `disabled`; this skips its up-front thinking.
-                    kwargs.setdefault("thinking", {"type": "between_tools"})
-                elif claude and not row.get("thinking_always_on"):
-                    kwargs.setdefault("thinking", {"type": "disabled"})
-                elif claude or prefix == "xai":
-                    kwargs["reasoning_effort"] = "low"
-                elif prefix == "gemini":
-                    # Gemini 2.5 Pro cannot turn thinking off: its smallest budget.
-                    kwargs["reasoning_effort"] = (
-                        "minimal" if "gemini-2.5-pro" in self.model else "disable"
-                    )
-                elif prefix == "groq":
-                    # Of Groq's reasoning models only Qwen takes `none` (its docs).
-                    kwargs["reasoning_effort"] = "none" if "qwen" in self.model else "low"
-                elif prefix == "mistral" and any(
-                    n in self.model for n in ("large-4", "glm-5")
+                elif prefix == "anthropic" or (
+                    prefix == "bedrock" and "claude" in self.model
                 ):
-                    # Mistral's docs: no `none` (litellm's table says otherwise).
-                    kwargs["reasoning_effort"] = "low"
-                elif prefix in ("deepseek", "together_ai"):
-                    kwargs["reasoning_effort"] = "none"
-                elif row.get("supports_none_reasoning_effort") or "none" in levels:
-                    kwargs["reasoning_effort"] = "none"
-                elif row.get("supports_minimal_reasoning_effort"):
-                    kwargs["reasoning_effort"] = "minimal"
+                    kwargs.setdefault("thinking", {"type": "disabled"})
                 else:
-                    kwargs["reasoning_effort"] = levels[0] if levels else "low"
+                    # litellm's Gemini off value is "disable" (a zero thinking budget).
+                    kwargs["reasoning_effort"] = (
+                        "disable" if prefix == "gemini" else "none"
+                    )
             enable_thinking = False
         elif reasoning_effort is not None:
             if await self.supports_reasoning():
                 kwargs["reasoning_effort"] = reasoning_effort
-                litellm_logger = logging.getLogger("LiteLLM")
-                try:
-                    name, provider, _, _ = litellm.get_llm_provider(
-                        self.model, api_base=self.api_base
-                    )
-                    # Quiet: litellm logs "Dropping" for a level sent anyway below.
-                    litellm_logger.disabled = True
-                    dropped = litellm.utils.get_optional_params(
-                        model=name,
-                        custom_llm_provider=provider,
-                        reasoning_effort=reasoning_effort,
-                    ) == litellm.utils.get_optional_params(
-                        model=name, custom_llm_provider=provider
-                    )
-                except Exception:
-                    # litellm refuses the level itself, and the call says so.
-                    dropped = False
-                finally:
-                    litellm_logger.disabled = False
-                if dropped:
-                    # drop_params would silently drop a level its table lacks.
-                    kwargs["extra_body"] = {
-                        **(kwargs.get("extra_body") or {}),
-                        "reasoning_effort": kwargs.pop("reasoning_effort"),
-                    }
                 enable_thinking = True
                 if schema_had_thinking and self._reasoning_trace:
                     # The LM produces a native reasoning trace via
@@ -1110,6 +1052,36 @@ class LanguageModel(Module):
                     required = schema.get("required")
                     if isinstance(required, list) and "thinking" in required:
                         required.remove("thinking")
+        try:
+            name, provider, _, _ = litellm.get_llm_provider(
+                self.model, api_base=self.api_base
+            )
+        except Exception:
+            # Not a litellm provider (e.g. `codex/`): its transport reads the kwarg.
+            provider = None
+        if provider and "reasoning_effort" in kwargs:
+            litellm_logger = logging.getLogger("LiteLLM")
+            try:
+                # Quiet: litellm logs "Dropping" for a level sent anyway below.
+                litellm_logger.disabled = True
+                as_given = litellm.utils.get_optional_params(
+                    model=name,
+                    custom_llm_provider=provider,
+                    reasoning_effort=kwargs["reasoning_effort"],
+                ) != litellm.utils.get_optional_params(
+                    model=name, custom_llm_provider=provider
+                )
+            except Exception:
+                # litellm refuses the level itself (e.g. Gemini's "xhigh").
+                as_given = False
+            finally:
+                litellm_logger.disabled = False
+            if not as_given:
+                # litellm would drop or refuse it: the provider gets it unchanged.
+                kwargs["extra_body"] = {
+                    **(kwargs.get("extra_body") or {}),
+                    "reasoning_effort": kwargs.pop("reasoning_effort"),
+                }
         if enable_thinking is not None and self.model.startswith("hosted_vllm"):
             # Chat templates without the variable ignore it.
             extra_body = dict(kwargs.get("extra_body") or {})
