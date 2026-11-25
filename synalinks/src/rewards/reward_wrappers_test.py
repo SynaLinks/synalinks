@@ -435,6 +435,21 @@ class ProgramAsJudgeInputsTest(testing.TestCase):
             mock_completion.call_args.kwargs["messages"][-1]["content"], "{'answer': 'a'}"
         )
 
+    @patch("litellm.acompletion")
+    async def test_empty_prediction_scores_zero_without_calling_the_judge(
+        self, mock_completion
+    ):
+        # The judged program failed: the judge is not blamed nor called.
+        y_pred = Input(data_model=Answer)
+        critique = await SelfCritique(
+            language_model=LanguageModel(model="ollama/mistral")
+        )(y_pred)
+        judge = ProgramAsJudge(program=Program(inputs=y_pred, outputs=critique))
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")
+            self.assertEqual(await judge(Answer(answer="g"), None), 0.0)
+        mock_completion.assert_not_called()
+
     async def test_subclassed_program_gets_x_when_its_call_takes_it(self):
         seen = []
 

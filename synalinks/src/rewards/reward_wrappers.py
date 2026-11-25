@@ -267,6 +267,9 @@ class ProgramAsJudge(Reward):
         await self.program.close()
 
     async def call(self, y_true, y_pred, x=None):
+        if not y_pred:
+            # The judged program produced nothing: no judge call, the lowest grade.
+            return 0.0
         # A functional program gets what it declares, in order (`y_pred` alone,
         # `y_true` first, `x` last); a subclassed one gets the keywords its
         # `call` names (`**kwargs` may forward them on, so it does not count).
