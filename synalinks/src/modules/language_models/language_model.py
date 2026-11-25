@@ -63,9 +63,6 @@ OPENROUTER_IGNORED_PROVIDERS = (
     "nebius",
 )
 
-# The portable reasoning levels, lowest first ("none" turns reasoning off).
-REASONING_LEVELS = ("minimal", "low", "medium", "high", "xhigh", "max")
-
 # Providers sent their own off switch for `reasoning_effort="none"`.
 DISABLES_REASONING = (
     "anthropic",
@@ -671,11 +668,10 @@ class LanguageModel(Module):
     - a level, from lowest to highest `"minimal"`, `"low"`, `"medium"`,
       `"high"`, `"xhigh"`, `"max"`: forwarded to the provider as the
       reasoning effort, but only when the model reasons natively (otherwise
-      it is dropped; see `supports_reasoning()`). A level the model does not
-      list (in litellm's model table) is rounded down to the nearest level it
-      does (up when there is none below), with a warning; a model missing
-      from the table gets the level unchanged. The native trace then fills a
-      `thinking` field instead of the model.
+      it is dropped; see `supports_reasoning()`). The level is sent as
+      given, never changed or dropped, even when litellm's model table does
+      not list it for the model. The native trace then fills a `thinking`
+      field instead of the model.
 
     A provider-specific setting passed explicitly (e.g. `thinking={...}` or
     `extra_body`) is sent as is and wins over `reasoning_effort`.
@@ -1079,21 +1075,37 @@ class LanguageModel(Module):
             enable_thinking = False
         elif reasoning_effort is not None:
             if await self.supports_reasoning():
-                listed = [lv for lv in REASONING_LEVELS if lv in levels]
-                if (
-                    listed
-                    and reasoning_effort in REASONING_LEVELS
-                    and reasoning_effort not in listed
-                ):
-                    rank = REASONING_LEVELS.index(reasoning_effort)
-                    below = [lv for lv in listed if REASONING_LEVELS.index(lv) < rank]
-                    sent = below[-1] if below else listed[0]
-                    warnings.warn(
-                        f"{self.model} does not take reasoning_effort="
-                        f"{reasoning_effort!r}; sending {sent!r} instead."
-                    )
-                    reasoning_effort = sent
                 kwargs["reasoning_effort"] = reasoning_effort
+                try:
+                    name, provider, _, _ = litellm.get_llm_provider(
+                        self.model, api_base=self.api_base
+                    )
+                except Exception:
+                    # Not a litellm provider (`codex/`): its transport reads the kwarg.
+                    provider = None
+                if provider:
+                    litellm_logger = logging.getLogger("LiteLLM")
+                    try:
+                        # Quiet: litellm logs "Dropping" for a level sent anyway below.
+                        litellm_logger.disabled = True
+                        as_given = litellm.utils.get_optional_params(
+                            model=name,
+                            custom_llm_provider=provider,
+                            reasoning_effort=reasoning_effort,
+                        ) != litellm.utils.get_optional_params(
+                            model=name, custom_llm_provider=provider
+                        )
+                    except Exception:
+                        # litellm refuses the level itself (e.g. Gemini's "xhigh").
+                        as_given = False
+                    finally:
+                        litellm_logger.disabled = False
+                    if not as_given:
+                        # litellm would drop or refuse it: the provider gets it unchanged.
+                        kwargs["extra_body"] = {
+                            **(kwargs.get("extra_body") or {}),
+                            "reasoning_effort": kwargs.pop("reasoning_effort"),
+                        }
                 enable_thinking = True
                 if schema_had_thinking and self._reasoning_trace:
                     # The LM produces a native reasoning trace via
