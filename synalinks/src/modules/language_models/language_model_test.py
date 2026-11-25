@@ -566,7 +566,8 @@ class LanguageModelTest(testing.TestCase):
         self.assertEqual(mock_completion.call_args.kwargs, kwargs)
 
     @patch("litellm.acompletion")
-    async def test_unsupported_reasoning_level_rounds_down(self, mock_completion):
+    async def test_reasoning_level_is_sent_as_given(self, mock_completion):
+        """A level the model table does not list is still sent unchanged."""
         mock_completion.return_value = {"choices": [{"message": {"content": "ok"}}]}
         messages = ChatMessages(
             messages=[ChatMessage(role=ChatRole.USER, content="Hello")]
@@ -574,14 +575,11 @@ class LanguageModelTest(testing.TestCase):
         lm = LanguageModel(model="openai/o-test", supports_reasoning=True)
         table = {"openai/o-test": {"reasoning_effort_levels": ["low", "high"]}}
         with patch.dict(litellm.model_cost, table):
-            for asked, sent in [("xhigh", "high"), ("medium", "low"), ("minimal", "low")]:
-                with self.assertWarns(UserWarning):
-                    await lm(messages, reasoning_effort=asked)
+            for level in ("minimal", "medium", "high", "xhigh", "max"):
+                await lm(messages, reasoning_effort=level)
                 self.assertEqual(
-                    mock_completion.call_args.kwargs["reasoning_effort"], sent
+                    mock_completion.call_args.kwargs["reasoning_effort"], level
                 )
-            await lm(messages, reasoning_effort="high")
-            self.assertEqual(mock_completion.call_args.kwargs["reasoning_effort"], "high")
 
     @patch("litellm.acompletion")
     async def test_reasoning_effort_none_noop_for_non_ollama(self, mock_completion):
