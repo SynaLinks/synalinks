@@ -666,8 +666,8 @@ class LanguageModel(Module):
       (`"low"`), the OpenAI models without `"none"` (`"minimal"`, else
       `"low"`), Mistral Large 4 and GLM 5 (`"low"`), Groq's models other than
       Qwen (`"low"`), Gemini 2.5 Pro (its smallest thinking budget, 128
-      tokens), and the ChatGPT backend (`codex/`). `"disable"` is a
-      deprecated alias of `"none"`.
+      tokens), and the ChatGPT backend (`codex/`). `"disable"` is the
+      same as `"none"`.
     - a level, from lowest to highest `"minimal"`, `"low"`, `"medium"`,
       `"high"`, `"xhigh"`, `"max"`: forwarded to the provider as the
       reasoning effort, but only when the model reasons natively (otherwise
@@ -1010,11 +1010,6 @@ class LanguageModel(Module):
         # The `reasoning_effort` values are documented in the class docstring.
         reasoning_effort = kwargs.pop("reasoning_effort", None)
         if reasoning_effort == "disable":
-            warnings.warn(
-                '`reasoning_effort="disable"` is deprecated, use "none".',
-                DeprecationWarning,
-                stacklevel=2,
-            )
             reasoning_effort = "none"
         schema_had_thinking = bool(schema) and "thinking" in (
             schema.get("properties") or {}
