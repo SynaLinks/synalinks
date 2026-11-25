@@ -16,6 +16,9 @@ from synalinks.src.utils.tracking import Tracker
 class Metric(SynalinksSaveable):
     """Metric base class: all synalinks metrics inherit from this class.
 
+    During `fit()` / `evaluate()`, an `update_state()` that also declares an `x`
+    argument receives the program's inputs (per sample, or the batch's list for
+    a `BatchMetric`), e.g. to grade with a judge that needs the question.
 
     Example:
 
@@ -237,6 +240,32 @@ def ragged_add(current, fresh):
     return np.add(np.convert_to_numpy(current), np.convert_to_numpy(fresh))
 
 
+def mask_data_models(
+    value,
+    in_mask=None,
+    in_mask_pattern=None,
+    out_mask=None,
+    out_mask_pattern=None,
+):
+    """Convert `value` to `JsonDataModel` and apply field masks.
+
+    Works on a single data model or a list/tree of them (`None` leaves are
+    kept as is).
+    """
+
+    def apply(x):
+        x = ops.convert_to_json_data_model(x)
+        if x is None:
+            return x
+        if in_mask or in_mask_pattern:
+            x = x.in_mask(mask=in_mask, pattern=in_mask_pattern)
+        if out_mask or out_mask_pattern:
+            x = x.out_mask(mask=out_mask, pattern=out_mask_pattern)
+        return x
+
+    return tree.map_structure(apply, value)
+
+
 def apply_masks(
     y_true,
     y_pred,
@@ -250,39 +279,10 @@ def apply_masks(
     Works on both a single sample (a leaf ``JsonDataModel``) and a list/tree
     of samples; ``tree.map_structure`` handles either uniformly.
     """
-    y_pred = tree.map_structure(lambda x: ops.convert_to_json_data_model(x), y_pred)
-    y_true = tree.map_structure(lambda x: ops.convert_to_json_data_model(x), y_true)
-
-    if (in_mask or in_mask_pattern) and y_pred:
-        y_pred = tree.map_structure(
-            lambda x: (
-                x.in_mask(mask=in_mask, pattern=in_mask_pattern) if x is not None else x
-            ),
-            y_pred,
-        )
-    if (in_mask or in_mask_pattern) and y_true:
-        y_true = tree.map_structure(
-            lambda x: (
-                x.in_mask(mask=in_mask, pattern=in_mask_pattern) if x is not None else x
-            ),
-            y_true,
-        )
-    if (out_mask or out_mask_pattern) and y_pred:
-        y_pred = tree.map_structure(
-            lambda x: (
-                x.out_mask(mask=out_mask, pattern=out_mask_pattern)
-                if x is not None
-                else x
-            ),
-            y_pred,
-        )
-    if (out_mask or out_mask_pattern) and y_true:
-        y_true = tree.map_structure(
-            lambda x: (
-                x.out_mask(mask=out_mask, pattern=out_mask_pattern)
-                if x is not None
-                else x
-            ),
-            y_true,
-        )
-    return y_true, y_pred
+    masks = {
+        "in_mask": in_mask,
+        "in_mask_pattern": in_mask_pattern,
+        "out_mask": out_mask,
+        "out_mask_pattern": out_mask_pattern,
+    }
+    return mask_data_models(y_true, **masks), mask_data_models(y_pred, **masks)

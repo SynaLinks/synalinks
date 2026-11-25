@@ -5,6 +5,7 @@
 import binascii
 import codecs
 import functools
+import inspect
 import marshal
 import os
 import types as python_types
@@ -224,3 +225,29 @@ class class_method_variant:
             return getattr(objtype, name)(*args, **kwargs)
 
         return wrapper
+
+
+def accepts_argument(fn, name, var_keyword=True):
+    """Whether `fn` can be called with the keyword argument `name`.
+
+    True when `fn` declares `name` or (with `var_keyword`) takes `**kwargs`,
+    False when it does not or its signature cannot be read. Used to hand
+    optional arguments (such as the program's inputs `x`) only to the
+    callables that take them, so older ones keep working unchanged.
+
+    Args:
+        fn (callable): The callable to inspect.
+        name (str): The keyword argument name.
+        var_keyword (bool): Whether `**kwargs` counts as accepting it.
+            Defaults to True.
+
+    Returns:
+        (bool): Whether `fn(..., name=value)` is accepted.
+    """
+    try:
+        parameters = inspect.signature(fn).parameters.values()
+    except (TypeError, ValueError):
+        return False
+    return any(
+        p.name == name or (var_keyword and p.kind is p.VAR_KEYWORD) for p in parameters
+    )

@@ -5,7 +5,6 @@ from unittest.mock import patch
 
 import numpy as np
 
-from synalinks.src import ops
 from synalinks.src import rewards
 from synalinks.src import testing
 from synalinks.src.backend import ChatMessage
@@ -345,10 +344,7 @@ class AgentAsJudgeTest(testing.TestCase):
             _lm_response(content='{"critique": "Correct.", "reward": 20}'),
         ]
         x = ChatMessages(messages=[ChatMessage(role="user", content="2 + 2?")])
-        y_pred = await ops.concat(
-            x.to_json_data_model(),
-            ChatMessage(role="assistant", content="4").to_json_data_model(),
-        )
+        y_pred = ChatMessage(role="assistant", content="4")
 
         score = await reward(
             y_true=ChatMessage(role="assistant", content="4"), y_pred=y_pred, x=x

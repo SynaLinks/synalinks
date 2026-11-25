@@ -2,6 +2,7 @@
 
 import ast
 import asyncio
+import collections
 import json
 from unittest.mock import patch
 
@@ -742,4 +743,53 @@ class TestRewardInputs(testing.TestCase):
         )
         self.assertEqual(
             sorted(reward.seen), [(q, f"re {q}", f"re {q}") for q in questions]
+        )
+
+    @patch("litellm.acompletion", side_effect=_reply_out_of_order)
+    async def test_every_kind_of_reward_and_metric_gets_its_sample_inputs(self, _):
+        seen = collections.defaultdict(list)
+
+        async def fn_reward(y_true, y_pred, x=None):
+            seen["function"].append((x.get("question"), y_pred.get("reply")))
+            return 1.0
+
+        async def kwargs_reward(y_true, y_pred, **kwargs):
+            seen["kwargs"].append((kwargs["x"].get("question"), y_pred.get("reply")))
+            return 1.0
+
+        async def fn_metric(y_true, y_pred, x=None):
+            seen["mean_metric"].append((x.get("question"), y_pred.get("reply")))
+            return 1.0
+
+        class InputMetric(metrics.Metric):
+            async def update_state(self, y_true, y_pred, x=None):
+                seen["metric"].append((x.get("question"), y_pred.get("reply")))
+
+            def result(self):
+                return 0.0
+
+        language_model = LanguageModel(model="ollama/mistral")
+        x0 = modules.Input(data_model=Question)
+        x1 = await modules.Generator(data_model=Reply, language_model=language_model)(x0)
+        program = programs.Program(inputs=x0, outputs=x1)
+        nested = RecordingReward()
+        program.compile(
+            reward=rewards.ComposableReward([fn_reward, kwargs_reward, nested]),
+            metrics=[
+                InputMetric(name="input_metric"),
+                metrics.MeanMetricWrapper(fn=fn_metric, name="mean_metric"),
+            ],
+        )
+
+        questions = [f"q{i}" for i in range(5)]
+        await program.evaluate(
+            x=np.array([Question(question=q) for q in questions], dtype="object"),
+            y=np.array([Reply(reply=f"re {q}") for q in questions], dtype="object"),
+            batch_size=2,
+        )
+        expected = [(q, f"re {q}") for q in questions]
+        for kind in ("function", "kwargs", "metric", "mean_metric"):
+            self.assertEqual(sorted(seen[kind]), expected, kind)
+        self.assertEqual(
+            sorted(nested.seen), [(q, f"re {q}", f"re {q}") for q in questions]
         )

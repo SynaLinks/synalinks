@@ -7,7 +7,9 @@ from synalinks.src.backend.pydantic.metrics import serialize_score_type
 from synalinks.src.modules import SelfCritique
 from synalinks.src.modules import language_models
 from synalinks.src.modules.ttc.self_critique import CritiqueWithReward
+from synalinks.src.modules.ttc.self_critique import default_critique_instructions
 from synalinks.src.programs import Program
+from synalinks.src.rewards.reward_wrappers import JUDGE_INPUTS_DESCRIPTION
 from synalinks.src.rewards.reward_wrappers import ProgramAsJudge
 from synalinks.src.rewards.reward_wrappers import judge_inputs
 from synalinks.src.saving import serialization_lib
@@ -48,6 +50,11 @@ class LMAsJudgeProgram(Program):
         )
         self.score_type = get_score_type(score_type or FineScore)
         # A language model judge: its critique never uses a decision model.
+        if instructions is None:
+            instructions = (
+                f"{default_critique_instructions(self.score_type)} "
+                f"{JUDGE_INPUTS_DESCRIPTION}"
+            )
         self.critique = SelfCritique(
             language_model=language_models.get(language_model),
             prompt_template=prompt_template,
@@ -61,15 +68,12 @@ class LMAsJudgeProgram(Program):
         self.examples = examples
         self.instructions = instructions
 
-    async def call(self, inputs):
+    async def call(self, inputs, x=None):
         if not isinstance(inputs, (list, tuple)):
             raise ValueError("The inputs should be a list or tuple.")
-        if len(inputs) not in (2, 3):
-            raise ValueError(
-                "The inputs of the program should be `[y_true, y_pred]` or "
-                "`[y_true, y_pred, x]`."
-            )
-        y_true, y_pred, x = inputs if len(inputs) == 3 else (*inputs, None)
+        if len(inputs) != 2:
+            raise ValueError("The inputs of the program should be `[y_true, y_pred]`.")
+        y_true, y_pred = inputs
         if not y_pred:
             # No prediction to judge; return a reward-bearing data model
             # (the `ProgramAsJudge` contract) rather than a bare float, which

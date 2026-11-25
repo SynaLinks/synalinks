@@ -267,7 +267,10 @@ For anything Synalinks does not ship out of the box, subclass
 `synalinks.Metric`. The contract is three methods:
 
 - **`update_state(y_true, y_pred)`**: called once per
-  sample; mutate the metric's internal variables.
+  sample; mutate the metric's internal variables. Declare an
+  `x` argument to also receive the sample's inputs during
+  `fit` and `evaluate`. `PassAtK` & co. pass them on to their
+  reward, so a judge reward grades against the question.
 - **`result()`**: called at the end of each batch / epoch;
   return the current scalar value.
 - **`reset_state()`**: called at the start of each epoch.

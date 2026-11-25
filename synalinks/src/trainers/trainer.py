@@ -449,11 +449,12 @@ class Trainer:
                 the values of the metrics listed in `self.metrics` are returned.
                 Example: `{'reward': 0.2, 'accuracy': 0.7}`.
         """
-        del x  # The default implementation does not use `x`.
         if self._compile_metrics is not None:
             # Feed the whole batch: `BatchMetric`s (e.g. `PassAtK`) consume it
             # at once, ordinary metrics are still updated per-sample.
-            await self._compile_metrics.update_state_batch(y, y_pred)
+            await self._compile_metrics.update_state_batch(
+                y, y_pred, None if x is None else list(x)
+            )
         return self.get_metrics_result()
 
     def get_metrics_result(self):

@@ -24,7 +24,6 @@ from synalinks.src.backend import Field
 from synalinks.src.backend import Trainable
 from synalinks.src.backend import out_mask_json
 from synalinks.src.backend.common import numpy as np
-from synalinks.src.backend.common.json_utils import without_echoed_inputs
 from synalinks.src.initializers import Empty
 from synalinks.src.modules.core.generator import Generator
 from synalinks.src.modules.core.input_module import Input
@@ -607,7 +606,7 @@ class OMEGA(EvolutionaryOptimizer):
                 entry = {"key": key, "inputs": inputs, "rewards": []}
                 entries.append(entry)
                 by_key[key] = entry
-            entry["last_output"] = without_echoed_inputs(predicted, inputs)
+            entry["last_output"] = predicted
             entry["ground_truth"] = target
             entry["rewards"].append(float(rewards[i]))
 
@@ -676,7 +675,7 @@ class OMEGA(EvolutionaryOptimizer):
             scored.append(
                 {
                     "inputs": inputs,
-                    "predicted_output": without_echoed_inputs(predicted, inputs),
+                    "predicted_output": predicted,
                     "ground_truth": as_json(y[i]) if i < len(y) else None,
                     "reward": None if reward is None else float(reward),
                     "nb_observations": None,

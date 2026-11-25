@@ -3,10 +3,12 @@
 from synalinks.src import ops
 from synalinks.src.api_export import synalinks_export
 from synalinks.src.metrics.metric import apply_masks
+from synalinks.src.metrics.metric import mask_data_models
 from synalinks.src.rewards.reward import Reward
 from synalinks.src.rewards.reward import check_async_reward_fn
 from synalinks.src.rewards.reward import reduce_values
 from synalinks.src.saving import serialization_lib
+from synalinks.src.utils.python_utils import accepts_argument
 
 
 @synalinks_export(["synalinks.BatchReward", "synalinks.rewards.BatchReward"])
@@ -21,7 +23,8 @@ class BatchReward(Reward):
 
     * ``call(y_true, y_pred)``: ``y_true`` and ``y_pred`` are lists of
       length ``batch_size``. MUST return a ``list[float]`` of the same
-      length, one reward per sample.
+      length, one reward per sample. Declare an ``x`` argument to also get
+      the batch's inputs (a list) during ``fit`` / ``evaluate``.
 
     Args:
         name (str): Optional name for the reward instance.
@@ -42,16 +45,17 @@ class BatchReward(Reward):
             match are dropped (combined with ``out_mask``).
     """
 
-    async def __call__(self, y_true, y_pred):
-        rewards = await self.compute_batch(y_true, y_pred)
+    async def __call__(self, y_true, y_pred, x=None):
+        rewards = await self.compute_batch(y_true, y_pred, x=x)
         return reduce_values(rewards, reduction=self.reduction)
 
-    async def compute_batch(self, y_true, y_pred):
+    async def compute_batch(self, y_true, y_pred, x=None):
         """Apply masks and return the per-sample reward list (unreduced).
 
         This is what the trainer calls: it expects the raw ``list[float]``
         of length ``batch_size`` so it can treat each entry as that
-        sample's reward.
+        sample's reward. A ``call`` that declares ``x`` also gets the
+        batch's inputs (a list, masked like the targets).
         """
         with ops.name_scope(self.name):
             y_true, y_pred = apply_masks(
@@ -62,7 +66,17 @@ class BatchReward(Reward):
                 out_mask=self.out_mask,
                 out_mask_pattern=self.out_mask_pattern,
             )
-            rewards = await self.call(y_true, y_pred)
+            if accepts_argument(self.call, "x"):
+                x = mask_data_models(
+                    x,
+                    in_mask=self.in_mask,
+                    in_mask_pattern=self.in_mask_pattern,
+                    out_mask=self.out_mask,
+                    out_mask_pattern=self.out_mask_pattern,
+                )
+                rewards = await self.call(y_true, y_pred, x=x)
+            else:
+                rewards = await self.call(y_true, y_pred)
             cls_name = type(self).__name__
             if isinstance(rewards, (list, tuple)):
                 pass
@@ -154,8 +168,11 @@ class BatchRewardFunctionWrapper(BatchReward):
         self.fn = fn
         self._fn_kwargs = kwargs
 
-    async def call(self, y_true, y_pred):
-        return await self.fn(y_true, y_pred, **self._fn_kwargs)
+    async def call(self, y_true, y_pred, x=None):
+        kwargs = dict(self._fn_kwargs)
+        if accepts_argument(self.fn, "x"):
+            kwargs["x"] = x
+        return await self.fn(y_true, y_pred, **kwargs)
 
     def get_config(self):
         config = super().get_config()

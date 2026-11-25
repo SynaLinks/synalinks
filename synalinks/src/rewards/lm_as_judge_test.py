@@ -1,11 +1,9 @@
 # License Apache 2.0: (c) 2025-2026 Yoan Sallami (Synalinks Team)
 
-import json
 from unittest.mock import patch
 
 import numpy as np
 
-from synalinks.src import ops
 from synalinks.src import rewards
 from synalinks.src import testing
 from synalinks.src.backend import ChatMessage
@@ -161,9 +159,9 @@ class LMAsJudgeTest(testing.TestCase):
         score = await reward(y_true=None, y_pred=Answer(answer="Paris"))
         self.assertEqual(score, 1.0)
         # Without a reference the judge only sees the prediction: no `gold_` key.
-        prompt = json.dumps(mock_completion.call_args.kwargs["messages"])
-        self.assertNotIn("gold_", prompt)
-        self.assertIn("Paris", prompt)
+        data = mock_completion.call_args.kwargs["messages"][-1]["content"]
+        self.assertNotIn("gold_", data)
+        self.assertIn("Paris", data)
 
     async def test_lm_as_judge_malformed_inputs(self):
         class Answer(DataModel):
@@ -196,14 +194,12 @@ class LMAsJudgeTest(testing.TestCase):
 
     @patch("litellm.acompletion")
     async def test_lm_as_judge_labels_input_output_and_gold(self, mock_completion):
-        # A chat program with `return_inputs=True` echoes its input in its
-        # output: the judge sees the input once (`input_`), then the output
-        # (`output_`), then the gold reference (`gold_`), in one user turn.
+        # A chat program's judge sees the conversation (`input_`), the reply
+        # (`output_`) and the reference (`gold_`), in one user turn.
         x = ChatMessages(
             messages=[ChatMessage(role="user", content="What is the French capital?")]
-        ).to_json_data_model()
-        answer = ChatMessage(role="assistant", content="The capital of France is Paris.")
-        y_pred = await ops.concat(x, answer.to_json_data_model())
+        )
+        y_pred = ChatMessage(role="assistant", content="The capital of France is Paris.")
         y_true = ChatMessage(role="assistant", content="Paris.")
         mock_completion.return_value = {
             "choices": [{"message": {"content": '{"critique": "Ok", "reward": 1.0}'}}]
@@ -225,7 +221,7 @@ class LMAsJudgeTest(testing.TestCase):
         # Without the program's inputs nor a reference, only the output.
         await reward(y_true=None, y_pred=y_pred)
         content = mock_completion.call_args.kwargs["messages"][1]["content"]
-        self.assertTrue(content.startswith("{'output_messages': "))
+        self.assertTrue(content.startswith("{'output_role': "))
         self.assertNotIn("input_", content)
         self.assertNotIn("gold_", content)
 
@@ -259,4 +255,31 @@ class LMAsJudgeTest(testing.TestCase):
             judge_prompt,
             "{'input_query': 'What is the French capital?', "
             "'output_answer': 'Paris', 'gold_answer': 'Paris'}",
+        )
+
+    @patch("litellm.acompletion")
+    async def test_lm_as_judge_masks_apply_to_the_inputs_too(self, mock_completion):
+        # `out_mask=["context"]` keeps a large context away from the judge,
+        # even when it reaches the reward through the program's inputs.
+        class QueryWithContext(DataModel):
+            query: str = Field(description="The user query")
+            context: str = Field(description="Retrieved documents")
+
+        class Answer(DataModel):
+            answer: str = Field(description="The answer")
+
+        mock_completion.return_value = {
+            "choices": [{"message": {"content": '{"critique": "Ok", "reward": 1.0}'}}]
+        }
+        reward = LMAsJudge(
+            language_model=LanguageModel(model="ollama/mistral"), out_mask=["context"]
+        )
+        await reward(
+            y_true=None,
+            y_pred=Answer(answer="Paris"),
+            x=QueryWithContext(query="French capital?", context="HUGE DOCUMENT"),
+        )
+        self.assertEqual(
+            mock_completion.call_args.kwargs["messages"][-1]["content"],
+            "{'input_query': 'French capital?', 'output_answer': 'Paris'}",
         )

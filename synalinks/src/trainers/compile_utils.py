@@ -14,6 +14,7 @@ from synalinks.src.backend.common.symbolic_data_model import SymbolicDataModel
 from synalinks.src.metrics.batch_metric import BatchMetric
 from synalinks.src.rewards.batch_reward import BatchReward
 from synalinks.src.utils.naming import get_object_name
+from synalinks.src.utils.python_utils import accepts_argument
 from synalinks.src.utils.tracking import Tracker
 
 
@@ -27,14 +28,22 @@ class MetricsList(metrics_module.Metric):
         for m in self.metrics:
             await m.update_state(y_true, y_pred)
 
-    async def update_state_batch(self, y_true_batch, y_pred_batch):
-        """Update over a whole batch: batch metrics once, others per-sample."""
+    async def update_state_batch(self, y_true_batch, y_pred_batch, x_batch=None):
+        """Update over a whole batch: batch metrics once, others per-sample.
+
+        A metric whose `update_state` declares `x` also gets the inputs.
+        """
+        if x_batch is None:
+            x_batch = [None] * len(y_pred_batch)
         for m in self.metrics:
+            takes_x = accepts_argument(m.update_state, "x")
             if isinstance(m, BatchMetric):
-                await m.update_state(y_true_batch, y_pred_batch)
+                kwargs = {"x": x_batch} if takes_x else {}
+                await m.update_state(y_true_batch, y_pred_batch, **kwargs)
             else:
-                for y_t, y_p in zip(y_true_batch, y_pred_batch):
-                    await m.update_state(y_t, y_p)
+                for y_t, y_p, x in zip(y_true_batch, y_pred_batch, x_batch):
+                    kwargs = {"x": x} if takes_x else {}
+                    await m.update_state(y_t, y_p, **kwargs)
 
     def reset_state(self):
         for m in self.metrics:
@@ -283,7 +292,7 @@ class CompileMetrics(metrics_module.Metric):
             if m is not None:
                 await m.update_state(y_t, y_p)
 
-    async def update_state_batch(self, y_true_batch, y_pred_batch):
+    async def update_state_batch(self, y_true_batch, y_pred_batch, x_batch=None):
         """Update every metric over a whole batch.
 
         `BatchMetric` instances (e.g. `PassAtK`) receive the full per-output
@@ -301,7 +310,7 @@ class CompileMetrics(metrics_module.Metric):
                 continue
             y_t_batch = [sample[i] for sample in y_true_flat]
             y_p_batch = [sample[i] for sample in y_pred_flat]
-            await m.update_state_batch(y_t_batch, y_p_batch)
+            await m.update_state_batch(y_t_batch, y_p_batch, x_batch)
 
     def reset_state(self):
         if not self.built:
@@ -665,12 +674,14 @@ class CompileReward(rewards_module.Reward):
             y_t_batch = [resolve_path(path, y_t) for y_t in y_true_batch]
             y_p_batch = [resolve_path(path, y_p) for y_p in y_pred_batch]
 
+            takes_x = accepts_argument(reward_fn, "x")
             if isinstance(reward_fn, BatchReward):
-                per_sample = await reward_fn.compute_batch(y_t_batch, y_p_batch)
+                kwargs = {"x": list(x_batch)} if takes_x else {}
+                per_sample = await reward_fn.compute_batch(y_t_batch, y_p_batch, **kwargs)
             else:
                 results = await asyncio.gather(
                     *[
-                        reward_fn(y_t, y_p, x=x)
+                        reward_fn(y_t, y_p, **({"x": x} if takes_x else {}))
                         for y_t, y_p, x in zip(y_t_batch, y_p_batch, x_batch)
                     ]
                 )
@@ -694,7 +705,10 @@ class CompileReward(rewards_module.Reward):
             if not self.built:
                 self.build(y_true, y_pred)
             _, reward_fn, reward_weight, _ = self._flat_rewards[0]
-            reward_value = numpy.convert_to_tensor(await reward_fn(y_true, y_pred, x=x))
+            kwargs = {"x": x} if accepts_argument(reward_fn, "x") else {}
+            reward_value = numpy.convert_to_tensor(
+                await reward_fn(y_true, y_pred, **kwargs)
+            )
             if reward_weight is not None:
                 reward_value = numpy.multiply(reward_value, reward_weight)
             return reward_value
@@ -778,7 +792,8 @@ class CompileReward(rewards_module.Reward):
         ):
             y_t, y_p = resolve_path(path, y_true), resolve_path(path, y_pred)
 
-            value = numpy.convert_to_tensor(await reward_fn(y_t, y_p, x=x))
+            kwargs = {"x": x} if accepts_argument(reward_fn, "x") else {}
+            value = numpy.convert_to_tensor(await reward_fn(y_t, y_p, **kwargs))
             # Record *unweighted* individual rewards.
             if metric:
                 await metric.update_state(value)

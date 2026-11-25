@@ -3,6 +3,8 @@
 import json
 from unittest.mock import patch
 
+import numpy as np
+
 from synalinks.src import modules
 from synalinks.src import programs
 from synalinks.src import rewards
@@ -222,3 +224,76 @@ class PassAtKEvaluateIntegrationTest(testing.TestCase):
         # is only 0.125 -- the gap pass@k captures over plain accuracy.
         self.assertAlmostEqual(results["pass_at_k"], 0.5, places=6)
         self.assertAlmostEqual(results["reward"], 0.125, places=6)
+
+
+class SampledRewardInputsTest(testing.TestCase):
+    async def test_reward_gets_each_samples_inputs(self):
+        seen = []
+
+        class InputAware(rewards.Reward):
+            async def call(self, y_true, y_pred, x=None):
+                seen.append((x and x.get("answer"), y_pred.get("answer")))
+                return 1.0
+
+        y_true, y_pred = _batch(n_correct=1, n_total=2)
+        metric = PassAtK(k=2, reward=InputAware())
+        await metric.update_state(
+            y_true, y_pred, x=[Answer(answer="x_correct"), Answer(answer="x_wrong")]
+        )
+        self.assertEqual(seen, [("x_correct", "correct"), ("x_wrong", "wrong")])
+        # Without inputs (e.g. called directly), the reward gets `None`.
+        seen.clear()
+        await metric.update_state(y_true, y_pred)
+        self.assertEqual([x for x, _ in seen], [None, None])
+
+    async def test_reward_function_without_x_still_works(self):
+        async def exact(y_true, y_pred):
+            return float(y_true.get("answer") == y_pred.get("answer"))
+
+        metric = PassHatK(k=2, reward=exact)
+        y_true, y_pred = _batch(n_correct=2, n_total=2)
+        await metric.update_state(y_true, y_pred, x=["x0", "x1"])
+        self.assertEqual(metric.result(), 1.0)
+
+    @patch("litellm.acompletion")
+    async def test_judge_reward_grades_with_the_question_in_evaluate(
+        self, mock_completion
+    ):
+        judge_prompts = []
+
+        async def respond(*args, **kwargs):
+            messages = kwargs["messages"]
+            if "critique" in messages[0]["content"]:
+                judge_prompts.append(messages[-1]["content"])
+                content = '{"critique": "Correct.", "reward": 1.0}'
+            else:
+                content = '{"answer": "Paris"}'
+            return {"choices": [{"message": {"content": content}}]}
+
+        mock_completion.side_effect = respond
+        language_model = LanguageModel(model="ollama/mistral")
+        x0 = modules.Input(data_model=Question)
+        x1 = await modules.Generator(data_model=Answer, language_model=language_model)(x0)
+        program = programs.Program(inputs=x0, outputs=x1)
+        program.compile(
+            reward=rewards.ExactMatch(in_mask=["answer"]),
+            metrics=[
+                PassAtK(k=2, reward=rewards.LMAsJudge(language_model=language_model))
+            ],
+        )
+        results = await program.evaluate(
+            x=np.array([Question(question="Capital of France?")] * 2, dtype="object"),
+            y=np.array([Answer(answer="Paris")] * 2, dtype="object"),
+            batch_size=2,
+            return_dict=True,
+            verbose=0,
+        )
+        self.assertEqual(results["pass_at_k"], 1.0)
+        self.assertEqual(
+            judge_prompts,
+            [
+                "{'input_question': 'Capital of France?', 'output_answer': 'Paris', "
+                "'gold_answer': 'Paris'}"
+            ]
+            * 2,
+        )
