@@ -5,8 +5,11 @@ from unittest.mock import patch
 
 import numpy as np
 
+from synalinks.src import ops
 from synalinks.src import rewards
 from synalinks.src import testing
+from synalinks.src.backend import ChatMessage
+from synalinks.src.backend import ChatMessages
 from synalinks.src.backend import DataModel
 from synalinks.src.backend import Field
 from synalinks.src.backend import Rating10
@@ -133,8 +136,8 @@ class AgentAsJudgeTest(testing.TestCase):
         self.assertEqual(score, 1.0)
         # Without a reference the judge only sees the prediction: no `gold_` key.
         prompt = json.dumps(mock_completion.call_args_list[0].kwargs["messages"])
-        self.assertNotIn("gold_", prompt)
-        self.assertIn("Paris", prompt)
+        self.assertNotIn("gold_answer", prompt)
+        self.assertIn("'output_answer': 'Paris'", prompt)
 
     @patch("litellm.acompletion")
     async def test_agent_as_judge_masked_fields(self, mock_completion):
@@ -224,7 +227,7 @@ class AgentAsJudgeTest(testing.TestCase):
 
         with self.assertRaisesRegex(ValueError, "list or tuple"):
             await reward.program(Answer(answer="Paris"))
-        with self.assertRaisesRegex(ValueError, "length of 2"):
+        with self.assertRaisesRegex(ValueError, r"\[y_true, y_pred\]"):
             await reward.program([Answer(answer="Paris")])
 
     def test_agent_as_judge_requires_tools(self):
@@ -330,3 +333,32 @@ class AgentAsJudgeTest(testing.TestCase):
         history = await program.fit(x=x_train, y=y_train, epochs=1, verbose=0)
         # Every sample was graded 7 on the 1..10 scale: (7 - 1) / (10 - 1)
         self.assertAlmostEqual(history.history["reward"][-1], 6 / 9)
+
+    @patch("litellm.acompletion")
+    async def test_agent_as_judge_reads_a_chat_as_data(self, mock_completion):
+        # The judge agent grades the conversation instead of continuing it:
+        # one user turn holding the input, the output and the gold reference.
+        language_model = LanguageModel(model="ollama/mistral")
+        reward = AgentAsJudge(language_model=language_model, tools=[Tool(calculate)])
+        mock_completion.side_effect = [
+            _lm_response(content="Nothing to verify."),
+            _lm_response(content='{"critique": "Correct.", "reward": 20}'),
+        ]
+        x = ChatMessages(messages=[ChatMessage(role="user", content="2 + 2?")])
+        y_pred = await ops.concat(
+            x.to_json_data_model(),
+            ChatMessage(role="assistant", content="4").to_json_data_model(),
+        )
+
+        score = await reward(
+            y_true=ChatMessage(role="assistant", content="4"), y_pred=y_pred, x=x
+        )
+        self.assertEqual(score, 1.0)
+        messages = mock_completion.call_args_list[0].kwargs["messages"]
+        self.assertEqual([m["role"] for m in messages], ["system", "user"])
+        self.assertEqual(
+            messages[1]["content"],
+            "{'input_messages': [{'role': 'user', 'content': '2 + 2?'}], "
+            "'output_role': 'assistant', 'output_content': '4', "
+            "'gold_role': 'assistant', 'gold_content': '4'}",
+        )

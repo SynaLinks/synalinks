@@ -3,11 +3,14 @@
 from synalinks.src import testing
 from synalinks.src import tree
 from synalinks.src.backend import DataModel
+from synalinks.src.backend import JsonDataModel
 from synalinks.src.backend.common import numpy as np
 from synalinks.src.metrics.metric import apply_masks
+from synalinks.src.rewards.reward import Reward
 from synalinks.src.rewards.reward import reduce_rewards
 from synalinks.src.rewards.reward import reduce_values
 from synalinks.src.rewards.reward import squeeze_or_expand_to_same_rank
+from synalinks.src.rewards.reward_wrappers import RewardFunctionWrapper
 
 
 class ReduceValuesTest(testing.TestCase):
@@ -158,3 +161,46 @@ class SqueezeOrExpandToSameRankTest(testing.TestCase):
         y1, y2 = squeeze_or_expand_to_same_rank(x1, x2)
         self.assertEqual(y1.shape, (2, 2))
         self.assertEqual(y2.shape, (2,))
+
+
+class RewardInputsTest(testing.TestCase):
+    async def test_x_reaches_a_call_that_declares_it_unmasked(self):
+        seen = {}
+
+        class InputAware(Reward):
+            async def call(self, y_true, y_pred, x=None):
+                seen.update(y_true=y_true, y_pred=y_pred, x=x)
+                return 1.0
+
+        x = JsonDataModel(
+            json={"query": "q", "noise": "n"}, schema=_schema("query", "noise")
+        )
+        y = JsonDataModel(
+            json={"answer": "a", "noise": "n"}, schema=_schema("answer", "noise")
+        )
+        await InputAware(out_mask=["noise"])(y, y, x=x)
+        # Masks name the target's fields: they apply to y_true / y_pred, not x.
+        self.assertEqual(seen["y_pred"].get_json(), {"answer": "a"})
+        self.assertEqual(seen["y_true"].get_json(), {"answer": "a"})
+        self.assertIs(seen["x"], x)
+
+    async def test_rewards_without_x_are_unchanged(self):
+        class Plain(Reward):
+            async def call(self, y_true, y_pred):
+                return 1.0
+
+        async def plain_fn(y_true, y_pred):
+            return 1.0
+
+        y = JsonDataModel(json={"answer": "a"}, schema=_schema("answer"))
+        x = JsonDataModel(json={"query": "q"}, schema=_schema("query"))
+        self.assertEqual(await Plain()(y, y, x=x), 1.0)
+        self.assertEqual(await RewardFunctionWrapper(fn=plain_fn)(y, y, x=x), 1.0)
+
+
+def _schema(*keys):
+    return {
+        "type": "object",
+        "properties": {key: {"type": "string"} for key in keys},
+        "required": list(keys),
+    }

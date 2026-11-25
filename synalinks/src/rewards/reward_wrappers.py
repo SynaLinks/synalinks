@@ -4,7 +4,11 @@
 
 import warnings
 
+from synalinks.src import ops
 from synalinks.src.api_export import synalinks_export
+from synalinks.src.backend import JsonDataModel
+from synalinks.src.backend import is_symbolic_data_model
+from synalinks.src.backend.common.json_utils import without_echoed_inputs
 from synalinks.src.rewards.reward import Reward
 from synalinks.src.rewards.reward import check_async_reward_fn
 from synalinks.src.saving import serialization_lib
@@ -114,6 +118,63 @@ class RewardFunctionWrapper(Reward):
         return f"<RewardFunctionWrapper({self.fn}, kwargs={self._fn_kwargs})>"
 
 
+async def judge_inputs(y_true, y_pred, x=None):
+    """Build what a judge grades from the program's inputs, output and target.
+
+    The program's inputs (when given) come first with their fields prefixed
+    with `input_`, then its output with `output_`, then the gold reference
+    (when given) with `gold_`. The output fields that merely repeat an input
+    (same key and value, e.g. from `return_inputs=True`) are dropped, so each
+    appears once, as an input; an output made only of such fields is kept
+    whole. Prefixing also renames chat `messages`, so every judge reads a
+    conversation as data instead of continuing it.
+
+    Args:
+        y_true (JsonDataModel): The gold reference, or `None`.
+        y_pred (JsonDataModel): The program's output to grade.
+        x (JsonDataModel | list): Optional. The program's inputs (a list for a
+            multi-input program).
+
+    Returns:
+        (JsonDataModel | SymbolicDataModel): The judge's inputs.
+    """
+    inputs = None
+    for x_i in x if isinstance(x, (list, tuple)) else [x]:
+        if x_i is not None:
+            inputs = x_i if inputs is None else await ops.concat(inputs, x_i)
+    parts = []
+    if inputs is not None:
+        concrete = not (is_symbolic_data_model(inputs) or is_symbolic_data_model(y_pred))
+        output = y_pred.get_json() if concrete else {}
+        kept = without_echoed_inputs(output, inputs.get_json()) if concrete else {}
+        # An output that only echoes its input is still the output: shown whole.
+        if kept and len(kept) < len(output):
+            schema = y_pred.get_schema()
+            y_pred = JsonDataModel(
+                json=kept,
+                schema={
+                    **schema,
+                    "properties": {
+                        key: value
+                        for key, value in schema["properties"].items()
+                        if key in kept
+                    },
+                    "required": [
+                        key for key in schema.get("required", []) if key in kept
+                    ],
+                },
+                name=y_pred.name,
+            )
+        parts.append(await ops.prefix(inputs, prefix="input", name="input_x"))
+    parts.append(await ops.prefix(y_pred, prefix="output", name="output_y_pred"))
+    if y_true:
+        parts.append(await ops.prefix(y_true, prefix="gold", name="gold_y_true"))
+    result = parts[0]
+    for part in parts[1:]:
+        result = await ops.concat(result, part)
+    return result
+
+
 @synalinks_export(
     [
         "synalinks.ProgramAsJudge",
@@ -124,7 +185,12 @@ class ProgramAsJudge(Reward):
     """Wrap a `Program` into a `Reward`.
 
     You can use this to create advanced reward functions that use a Synalinks `Program`.
-    The program should have two inputs and one output.
+    The program should have two inputs (`y_true`, `y_pred`) and one output.
+    A program declaring a third input also receives the inputs of the program
+    being judged (`x`), e.g. to grade an answer against its question. `x` is
+    `None` when the reward is called without it, so declare that input with
+    `optional=True` to judge with or without it (the same goes for `y_true`
+    when there is no ground truth).
 
     **Note:** The output data model/schema should have a field named `reward`.
 
@@ -141,6 +207,20 @@ class ProgramAsJudge(Reward):
     program.compile(
         reward=synalinks.rewards.ProgramAsJudge(program=judge_program),
         optimizer=synalinks.optimizers.RandomFewShot(),
+    )
+    ```
+
+    With the program's inputs:
+
+    ```python
+    y_true = synalinks.Input(data_model=Answer, optional=True)
+    y_pred = synalinks.Input(data_model=Answer)
+    x = synalinks.Input(data_model=Query, optional=True)
+    # ... your judge program declaration (inputs: y_true, y_pred, x)
+
+    judge_program = synalinks.Program(
+        inputs=[y_true, y_pred, x],
+        outputs=xn,
     )
     ```
 
@@ -185,8 +265,12 @@ class ProgramAsJudge(Reward):
         """Close the judge's program: an agent judge's sandbox, say. Idempotent."""
         await self.program.close()
 
-    async def call(self, y_true, y_pred):
-        result = await self.program([y_true, y_pred])
+    async def call(self, y_true, y_pred, x=None):
+        # The built-in judges, and a program declaring a third input, take `x`.
+        if self.program_class or len(getattr(self.program, "inputs", None) or ()) == 3:
+            result = await self.program([y_true, y_pred, x])
+        else:
+            result = await self.program([y_true, y_pred])
         if result is None:
             warnings.warn(
                 f"{self.__class__.__name__}: judge program returned None "

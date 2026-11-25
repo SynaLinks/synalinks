@@ -85,7 +85,7 @@ class DeepAgentAsJudgeTest(testing.TestCase):
                         "arguments": {
                             "command": (
                                 'cat /inputs.json | python3 -c "import json, sys; '
-                                "exec(json.load(sys.stdin)['code'])\""
+                                "exec(json.load(sys.stdin)['output_code'])\""
                             )
                         },
                     }
@@ -139,7 +139,8 @@ class DeepAgentAsJudgeTest(testing.TestCase):
                         "arguments": {
                             "command": (
                                 'cat /inputs.json | python3 -c "import json, sys; '
-                                "print(json.load(sys.stdin)['code'])\" > /solution.py"
+                                "print(json.load(sys.stdin)['output_code'])\""
+                                " > /solution.py"
                                 " && cat /solution.py /test_solution.py | python3 -c "
                                 '"import sys; exec(sys.stdin.read())"'
                             )

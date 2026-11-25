@@ -349,7 +349,8 @@ class Trainer:
         computation logic.
 
         Args:
-            x (list): Input data.
+            x (list): Input data, handed to the rewards that take it (the
+                judges show it as the program's input).
             y (list): Target data.
             y_pred (list): Predictions returned by the program
                 (output of `program(x)`).
@@ -360,19 +361,22 @@ class Trainer:
             (list[float]): A list of per-sample reward values,
                 one for each (y, y_pred) pair.
         """
-        # The default implementation does not use `x` or `training`.
-        del x
+        # The default implementation does not use `training`.
         del training
+        x = [None] * len(y_pred) if x is None else list(x)
         rewards = []
         with op_scope("reward", clock=self._phase_clock):
             if self._compile_reward is not None:
                 if not self._compile_reward.built:
                     self._compile_reward.build(y[0], y_pred[0])
                 if self._compile_reward.has_batch_rewards:
-                    results = await self._compile_reward.compute_batch(y, y_pred)
+                    results = await self._compile_reward.compute_batch(y, y_pred, x)
                 else:
                     results = await asyncio.gather(
-                        *[self._compile_reward(y_t, y_p) for y_t, y_p in zip(y, y_pred)]
+                        *[
+                            self._compile_reward(y_t, y_p, x=x_i)
+                            for y_t, y_p, x_i in zip(y, y_pred, x)
+                        ]
                     )
                 for reward in results:
                     if reward is not None:

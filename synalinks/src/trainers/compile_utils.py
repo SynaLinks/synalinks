@@ -631,7 +631,7 @@ class CompileReward(rewards_module.Reward):
             isinstance(_reward.reward, BatchReward) for _reward in self._flat_rewards
         )
 
-    async def compute_batch(self, y_true_batch, y_pred_batch):
+    async def compute_batch(self, y_true_batch, y_pred_batch, x_batch=None):
         """Run flat rewards over a whole batch, returning per-sample totals.
 
         Each ``BatchReward`` is invoked once with the full per-sample list;
@@ -650,6 +650,7 @@ class CompileReward(rewards_module.Reward):
             self.build(sample_y_true, sample_y_pred)
 
         n = len(y_pred_batch)
+        x_batch = [None] * n if x_batch is None else x_batch
         metrics = [None] if len(self.metrics) == 0 else self.metrics
         totals = [0.0] * n
 
@@ -668,7 +669,10 @@ class CompileReward(rewards_module.Reward):
                 per_sample = await reward_fn.compute_batch(y_t_batch, y_p_batch)
             else:
                 results = await asyncio.gather(
-                    *[reward_fn(y_t, y_p) for y_t, y_p in zip(y_t_batch, y_p_batch)]
+                    *[
+                        reward_fn(y_t, y_p, x=x)
+                        for y_t, y_p, x in zip(y_t_batch, y_p_batch, x_batch)
+                    ]
                 )
                 per_sample = [float(v) if v is not None else 0.0 for v in results]
 
@@ -680,17 +684,17 @@ class CompileReward(rewards_module.Reward):
 
         return totals
 
-    async def __call__(self, y_true, y_pred):
+    async def __call__(self, y_true, y_pred, x=None):
         with ops.name_scope(self.name):
-            return await self.call(y_true, y_pred)
+            return await self.call(y_true, y_pred, x=x)
 
-    async def call(self, y_true, y_pred):
+    async def call(self, y_true, y_pred, x=None):
         if not tree.is_nested(y_true) and not tree.is_nested(y_pred):
             # Fast path: single output case / no reward-tracking metric.
             if not self.built:
                 self.build(y_true, y_pred)
             _, reward_fn, reward_weight, _ = self._flat_rewards[0]
-            reward_value = numpy.convert_to_tensor(await reward_fn(y_true, y_pred))
+            reward_value = numpy.convert_to_tensor(await reward_fn(y_true, y_pred, x=x))
             if reward_weight is not None:
                 reward_value = numpy.multiply(reward_value, reward_weight)
             return reward_value
@@ -774,7 +778,7 @@ class CompileReward(rewards_module.Reward):
         ):
             y_t, y_p = resolve_path(path, y_true), resolve_path(path, y_pred)
 
-            value = numpy.convert_to_tensor(await reward_fn(y_t, y_p))
+            value = numpy.convert_to_tensor(await reward_fn(y_t, y_p, x=x))
             # Record *unweighted* individual rewards.
             if metric:
                 await metric.update_state(value)
