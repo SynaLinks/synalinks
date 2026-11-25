@@ -5,6 +5,7 @@ import logging
 import typing
 
 import docstring_parser
+import pydantic
 from tenacity import retry
 from tenacity import retry_if_exception_type
 from tenacity import stop_after_attempt
@@ -18,94 +19,8 @@ from synalinks.src.backend.pydantic.media import Image
 from synalinks.src.modules.module import Module
 from synalinks.src.saving import serialization_lib
 from synalinks.src.utils.tool_utils import docstring_description
-
-JsonSchema = typing.Union[
-    typing.Dict[str, typing.Any],
-    typing.List[typing.Any],
-    str,
-    int,
-    float,
-    bool,
-    None,
-]
-
-
-def json_schema_type(py_type: typing.Any) -> JsonSchema:
-    """Convert a Python type to a JSON schema type."""
-    mapping = {
-        int: "integer",
-        float: "number",
-        bool: "boolean",
-        str: "string",
-        type(None): "null",
-    }
-
-    # Check if type is a basic type
-    if py_type in mapping:
-        return mapping[py_type]
-
-    # For unparameterized list and dict types
-    if py_type is list or py_type is typing.List:
-        return {"type": "array", "items": {}}
-    if py_type is dict or py_type is typing.Dict:
-        return {"type": "object", "additionalProperties": {}}
-
-    origin = typing.get_origin(py_type)
-    args = typing.get_args(py_type)
-
-    if origin is typing.Union:
-        # Handle Optional[type] which is Union[type, None]
-        if len(args) == 2 and type(None) in args:
-            return json_schema_type(args[0])
-        else:
-            return [json_schema_type(arg) for arg in args]
-
-    if origin is list or origin is typing.List:
-        schema_type = json_schema_type(args[0])
-        if isinstance(schema_type, dict):
-            return {"type": "array", "items": schema_type}
-        return {
-            "type": "array",
-            "items": {"type": json_schema_type(args[0])},
-        }
-
-    if origin is dict or origin is typing.Dict:
-        schema_type = json_schema_type(args[1])
-        if isinstance(schema_type, dict):
-            return {"type": "object", "additionalProperties": schema_type}
-        return {"type": "object", "additionalProperties": {"type": schema_type}}
-
-    raise ValueError(f"Cannot convert {py_type} to a JSON schema type")
-
-
-def get_param_schema(
-    param_name: str,
-    param: inspect.Parameter,
-    type_hints: typing.Dict[str, typing.Any],
-    doc_parsed: docstring_parser.Docstring,
-) -> JsonSchema:
-    """Create a schema for a single parameter."""
-    if param_name not in type_hints:
-        raise ValueError(f"Missing type hint for parameter '{param_name}'")
-    param_type = type_hints[param_name]
-    param_type_str = json_schema_type(param_type)
-    descriptions = (p.description for p in doc_parsed.params if p.arg_name == param_name)
-    param_doc = next(descriptions, None)
-    if param_doc is None:
-        raise ValueError(f"Missing description for parameter '{param_name}' in docstring")
-
-    param_schema = {}
-    param_schema["description"] = param_doc.replace("\n", " ")
-    param_schema["title"] = param_name.title().replace("_", " ")
-    if isinstance(param_type_str, dict):
-        param_schema.update(**param_type_str)
-    else:
-        param_schema["type"] = param_type_str
-
-    if param.default is not param.empty:
-        param_schema["default"] = param.default
-
-    return param_schema
+from synalinks.src.utils.tool_utils import get_params_schema
+from synalinks.src.utils.tool_utils import inline_refs
 
 
 @synalinks_export(["synalinks.modules.Tool", "synalinks.Tool"])
@@ -210,12 +125,10 @@ class Tool(Module):
             raise ValueError(f"The tool ({self._func.__name__}) must have a docstring")
 
         self._docstring = docstring_parser.parse(doc)
-        self._signature = inspect.signature(func)
         self._type_hints = typing.get_type_hints(func)
-        self._params_schema = {}
-        self._required_params = []
-
-        self._parse_arguments()
+        self._params_schema, self._required_params = get_params_schema(
+            func, self._docstring
+        )
 
         # Use function name if no name provided
         if not name:
@@ -241,83 +154,25 @@ class Tool(Module):
         # program look unbuilt to `fit` and `evaluate`.
         self.built = True
 
-    def _parse_arguments(self):
-        """Parse the function arguments to build the input parameter schema."""
-        for param_name, param in self._signature.parameters.items():
-            param_schema = get_param_schema(
-                param_name,
-                param,
-                self._type_hints,
-                self._docstring,
-            )
-            self._params_schema[param_name] = param_schema
-            if param.default is param.empty:
-                self._required_params.append(param_name)
-
     def _build_output_schema(self):
         """Build the output schema from the function's return type hint.
 
         Since tools must always return a dict, this method ensures
         the output schema is always of type "object".
         """
-        return_type = self._type_hints.get("return", None)
-        base_schema = {
-            "type": "object",
-            "title": f"{self.name}_output",
-        }
-
-        if return_type is None:
-            # No return type hint, use generic object schema
-            base_schema["additionalProperties"] = True
-            return base_schema
-
-        origin = typing.get_origin(return_type)
-        args = typing.get_args(return_type)
-
-        # Handle Dict[K, V] - extract value type for additionalProperties
-        if origin is dict or origin is typing.Dict:
-            if len(args) >= 2:
-                value_type = args[1]
-                try:
-                    value_schema = json_schema_type(value_type)
-                    if isinstance(value_schema, dict):
-                        base_schema["additionalProperties"] = value_schema
-                    else:
-                        base_schema["additionalProperties"] = {"type": value_schema}
-                except ValueError:
-                    base_schema["additionalProperties"] = True
-            else:
-                base_schema["additionalProperties"] = True
-            return base_schema
-
-        # Handle TypedDict - extract properties from annotations
-        if hasattr(return_type, "__annotations__"):
-            properties = {}
-            required = []
-            for field_name, field_type in return_type.__annotations__.items():
-                try:
-                    field_schema = json_schema_type(field_type)
-                    if isinstance(field_schema, dict):
-                        properties[field_name] = field_schema
-                    else:
-                        properties[field_name] = {"type": field_schema}
-                    # Check if field is required (not Optional)
-                    if typing.get_origin(field_type) is not typing.Union:
-                        required.append(field_name)
-                    elif type(None) not in typing.get_args(field_type):
-                        required.append(field_name)
-                except ValueError:
-                    properties[field_name] = {}
-            if properties:
-                base_schema["properties"] = properties
-                if required:
-                    base_schema["required"] = required
-                base_schema["additionalProperties"] = False
-                return base_schema
-
-        # Fallback to generic object schema
-        base_schema["additionalProperties"] = True
-        return base_schema
+        return_type = self._type_hints.get("return")
+        schema = {}
+        if return_type is not None:
+            try:
+                schema = inline_refs(pydantic.TypeAdapter(return_type).json_schema())
+            except (pydantic.PydanticUserError, ValueError):
+                pass
+        if schema.get("type") != "object":
+            schema = {"type": "object", "additionalProperties": True}
+        # A TypedDict or BaseModel result has exactly its declared keys
+        schema.setdefault("additionalProperties", False)
+        schema["title"] = f"{self.name}_output"
+        return schema
 
     def get_input_schema(self) -> dict:
         """Get the JSON schema for this tool's input parameters.

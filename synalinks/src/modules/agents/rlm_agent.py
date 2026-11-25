@@ -189,6 +189,8 @@ _JSON_TO_PY_TYPES = {
 
 def _annotation_from_schema(param_schema: dict) -> str:
     """Best-effort Python type annotation for a parameter's JSON schema."""
+    if "anyOf" in param_schema:
+        return " | ".join(_annotation_from_schema(s) for s in param_schema["anyOf"])
     json_type = param_schema.get("type")
     if isinstance(json_type, list):
         parts = []
@@ -357,8 +359,8 @@ def get_sandbox_functions_guidance(schema, tools) -> str:
                     param += f" = {param_schema.get('default')!r}"
                 params.append(param)
                 description = str(param_schema.get("description") or "").strip()
-                if any(
-                    k in param_schema for k in ("properties", "enum", "anyOf", "oneOf")
+                if any(k in param_schema for k in ("properties", "enum", "oneOf")) or any(
+                    set(s) - {"type"} for s in param_schema.get("anyOf", [])
                 ):
                     structural = {
                         k: v
