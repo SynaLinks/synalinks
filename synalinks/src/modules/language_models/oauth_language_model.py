@@ -118,6 +118,12 @@ _CATALOG_TOOL_FIELDS = {
 # which is why the tools are taken out of the catalog in the first place.
 _ALLOWED_ITEM_TYPES = frozenset({"agent_message", "reasoning", "error"})
 
+# `reasoning_effort` values Synalinks accepts that the ChatGPT backend does not
+# take on every model. Measured with codex-cli 0.162: gpt-6.1-sol accepts
+# low/medium/high/xhigh/max and rejects "none" and "minimal" (gpt-5.5 still
+# took "none"), so "low" is the lowest effort every listed model accepts.
+_EFFORT_ALIASES = {"disable": "low", "minimal": "low"}
+
 # Request parameters with no Codex CLI equivalent, dropped with a warning.
 _IGNORED_PARAMS = (
     "temperature",
@@ -962,10 +968,12 @@ class OAuthLanguageModel(LanguageModel):
         workflows; check the terms of your subscription before unattended
         use.
 
-    `reasoning_effort` behaves as with `LanguageModel`: a level or `"none"`
-    (off) is sent to the backend as given, even one a model rejects, and
-    `None` keeps the default of the model. A `thinking` field of the output
-    schema is written by the model.
+    `reasoning_effort` behaves as with `LanguageModel`: a level (`"low"`,
+    `"medium"`, `"high"`...) is sent to the backend, `None` keeps the
+    default of the model. `"none"` (off) and `"minimal"` send `"low"`, the
+    lowest effort every model accepts (most of them cannot turn reasoning
+    off). A `thinking` field of the output schema is written by
+    the model.
 
     Args:
         model (str): The model to use, as `codex/<model>` (e.g.
@@ -1070,6 +1078,7 @@ class OAuthLanguageModel(LanguageModel):
     async def _acompletion(self, formatted_messages, **kwargs):
         # As for any provider, `None` leaves the model at its default: no effort is sent.
         reasoning_effort = kwargs.pop("reasoning_effort", None)
+        reasoning_effort = _EFFORT_ALIASES.get(reasoning_effort, reasoning_effort)
         response_format = kwargs.pop("response_format", None)
         schema = None
         if response_format:
