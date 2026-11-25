@@ -43,6 +43,7 @@ from synalinks.src.api_export import synalinks_export
 from synalinks.src.backend import DataModel
 from synalinks.src.metrics.batch_metric import BatchMetric
 from synalinks.src.saving import serialization_lib
+from synalinks.src.utils.python_utils import accepts_argument
 
 
 class TotalWithCount(DataModel):
@@ -61,7 +62,8 @@ class SampledRewardMetric(BatchMetric):
         k (int): The number of samples ``k`` in ``@k``. Clamped to the number
             of samples actually present in the batch.
         reward (Reward): The per-sample correctness signal, callable as
-            ``await reward(y_true, y_pred) -> float``. Defaults to
+            ``await reward(y_true, y_pred) -> float``; one that takes an ``x``
+            argument (e.g. a judge) also gets each sample's inputs. Defaults to
             `synalinks.rewards.ExactMatch`. Configure its masks (e.g.
             ``ExactMatch(in_mask=["answer"])``) to compare only the relevant
             fields of each sample.
@@ -93,15 +95,23 @@ class SampledRewardMetric(BatchMetric):
             data_model=TotalWithCount, name="total_with_count"
         )
 
-    async def _count(self, y_true, y_pred):
+    async def _count(self, y_true, y_pred, x=None):
         """Return ``(n, c)``: total samples in the batch and number passing."""
         if not isinstance(y_pred, (list, tuple)):
             y_pred = [y_pred]
             y_true = [y_true]
+            x = [x]
         n = len(y_pred)
+        if x is None:
+            x = [None] * n
+        # A judge reward grades each sample against its own inputs.
+        takes_x = accepts_argument(self.reward, "x")
         c = 0
-        for y_t, y_p in zip(y_true, y_pred):
-            reward = await self.reward(y_t, y_p)
+        for y_t, y_p, x_i in zip(y_true, y_pred, x):
+            if takes_x:
+                reward = await self.reward(y_t, y_p, x=x_i)
+            else:
+                reward = await self.reward(y_t, y_p)
             if reward is not None and float(reward) >= self.pass_threshold:
                 c += 1
         return n, c
@@ -109,8 +119,8 @@ class SampledRewardMetric(BatchMetric):
     def _estimate(self, n, c):
         raise NotImplementedError
 
-    async def update_state(self, y_true, y_pred):
-        n, c = await self._count(y_true, y_pred)
+    async def update_state(self, y_true, y_pred, x=None):
+        n, c = await self._count(y_true, y_pred, x)
         value = self._estimate(n, c)
         total = self.total_with_count.get("total")
         count = self.total_with_count.get("count")

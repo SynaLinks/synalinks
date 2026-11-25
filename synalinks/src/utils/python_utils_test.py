@@ -1,6 +1,9 @@
 # License Apache 2.0: (c) 2025-2026 Yoan Sallami (Synalinks Team)
 
+import functools
+
 from synalinks.src import testing
+from synalinks.src.utils.python_utils import accepts_argument
 from synalinks.src.utils.python_utils import default
 from synalinks.src.utils.python_utils import func_dump
 from synalinks.src.utils.python_utils import func_load
@@ -165,3 +168,27 @@ class PythonUtilsTest(testing.TestCase):
         # Pass defaults as list to test conversion
         restored = func_load([code, list(defaults), closure])
         self.assertEqual(restored(3), 8)
+
+
+class AcceptsArgumentTest(testing.TestCase):
+    def test_declared_keyword_or_var_keyword(self):
+        async def declares(y_true, y_pred, x=None):
+            pass
+
+        async def var_keyword(y_true, y_pred, **kwargs):
+            pass
+
+        async def without(y_true, y_pred):
+            pass
+
+        class Callable:
+            async def __call__(self, y_true, y_pred, x=None):
+                pass
+
+        self.assertTrue(accepts_argument(declares, "x"))
+        self.assertTrue(accepts_argument(var_keyword, "x"))
+        self.assertTrue(accepts_argument(Callable(), "x"))
+        self.assertTrue(accepts_argument(functools.partial(declares, None), "x"))
+        self.assertFalse(accepts_argument(without, "x"))
+        # An unreadable signature means: do not pass it.
+        self.assertFalse(accepts_argument(object(), "x"))

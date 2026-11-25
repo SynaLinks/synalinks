@@ -726,30 +726,25 @@ class GoodBadPredictionsTest(testing.TestCase):
         self.assertIn("bad_predictions", crossover_instructions(["instructions"]))
 
 
-class EchoedInputsTest(testing.TestCase):
-    def test_predicted_output_drops_fields_identical_to_the_input(self):
+class PredictedOutputTest(testing.TestCase):
+    def test_predicted_output_keeps_fields_equal_to_the_input(self):
+        # An already-correct text handed back by a fixer is its answer: the
+        # mutation programs must see it, not an output missing its text.
         optimizer = OMEGA(nb_best_predictions=0, nb_worst_predictions=1)
-        x = [
-            JsonDataModel(
-                json={"steps": [1, 2], "session_id": "s"}, schema={"type": "object"}
-            )
-        ]
+        x = [JsonDataModel(json={"text": "Hello world."}, schema={"type": "object"})]
         y_pred = [
             JsonDataModel(
-                json={
-                    "steps": [1, 2],
-                    "session_id": "s",
-                    "critique": "meh",
-                    "reward": 0.3,
-                },
+                json={"text": "Hello world.", "explanation": "Already correct."},
                 schema={"type": "object"},
             )
         ]
         _good, bad = optimizer.split_predictions(
             x=x, y=None, y_pred=y_pred, rewards=[0.4]
         )
-        self.assertEqual(bad[0]["inputs"], {"steps": [1, 2], "session_id": "s"})
-        self.assertEqual(bad[0]["predicted_output"], {"critique": "meh", "reward": 0.3})
+        self.assertEqual(
+            bad[0]["predicted_output"],
+            {"text": "Hello world.", "explanation": "Already correct."},
+        )
 
     def test_predicted_output_keeps_fields_that_differ_from_the_input(self):
         optimizer = OMEGA(nb_best_predictions=0, nb_worst_predictions=1)
@@ -800,8 +795,8 @@ class HardExampleMemoryTest(testing.TestCase):
         self.assertAlmostEqual(hard["reward"], 0.15)
         self.assertEqual(hard["nb_observations"], 2)
         self.assertEqual(hard["ground_truth"], {"a": "gt-hard"})
-        # the echoed input field is stripped from the remembered output
-        self.assertEqual(hard["predicted_output"], {"a": "pred-hard"})
+        # The remembered output is shown whole, fields equal to an input included.
+        self.assertEqual(hard["predicted_output"], {"q": "hard", "a": "pred-hard"})
         self.assertIsNone(bad[0]["nb_observations"])
 
     def test_hard_examples_skip_inputs_already_in_the_batch(self):

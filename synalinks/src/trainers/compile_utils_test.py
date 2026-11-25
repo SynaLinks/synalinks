@@ -4,8 +4,11 @@ from synalinks.src import testing
 from synalinks.src.backend import DataModel
 from synalinks.src.metrics.accuracy_metrics import Accuracy
 from synalinks.src.metrics.agents_metrics import PassAtK
+from synalinks.src.metrics.metric import Metric
 from synalinks.src.metrics.reduction_metrics import Mean
 from synalinks.src.rewards.batch_reward import BatchReward
+from synalinks.src.rewards.batch_reward import BatchRewardFunctionWrapper
+from synalinks.src.rewards.composable_reward import ComposableReward
 from synalinks.src.rewards.exact_match import ExactMatch
 from synalinks.src.rewards.reward import Reward
 from synalinks.src.rewards.reward_wrappers import RewardFunctionWrapper
@@ -260,33 +263,80 @@ class CompileRewardMultiOutputTest(testing.TestCase):
 
 
 class CompileRewardInputsTest(testing.TestCase):
-    async def test_inputs_reach_per_sample_rewards_on_every_path(self):
+    async def test_inputs_reach_rewards_on_every_path(self):
         seen = []
+        seen_batch = []
 
         class InputAware(Reward):
             async def call(self, y_true, y_pred, x=None):
-                seen.append((x, y_pred.get("answer")))
+                seen.append((x and x.get("answer"), y_pred.get("answer")))
                 return 1.0
 
-        class Zero(BatchReward):
-            async def call(self, y_true, y_pred):
+        class BatchInputAware(BatchReward):
+            async def call(self, y_true, y_pred, x=None):
+                seen_batch.append([x_i and x_i.get("answer") for x_i in x])
                 return [0.0] * len(y_pred)
 
         answers = [Answer(answer=a) for a in ("a", "b", "c")]
-        inputs = ["x_a", "x_b", "x_c"]
+        inputs = [Answer(answer=f"x_{a}") for a in ("a", "b", "c")]
         # Mixed with a `BatchReward`, the batch goes through `compute_batch`.
-        cr = CompileReward([Zero(), InputAware()])
+        cr = CompileReward([BatchInputAware(), InputAware()])
         totals = await cr.compute_batch(
             [[a, a] for a in answers], [[a, a] for a in answers], x_batch=inputs
         )
         self.assertEqual(totals, [1.0, 1.0, 1.0])
         self.assertEqual(seen, [("x_a", "a"), ("x_b", "b"), ("x_c", "c")])
+        self.assertEqual(seen_batch, [["x_a", "x_b", "x_c"]])
 
         # One sample at a time, through `__call__`.
         seen.clear()
-        await CompileReward(InputAware())(answers[0], answers[0], x="x_a")
+        await CompileReward(InputAware())(answers[0], answers[0], x=inputs[0])
         self.assertEqual(seen, [("x_a", "a")])
         # Without inputs, rewards that take them get `None`.
         seen.clear()
         await cr.compute_batch([[a, a] for a in answers], [[a, a] for a in answers])
+        self.assertEqual([x for x, _ in seen], [None, None, None])
+
+    async def test_rewards_that_do_not_take_x_are_called_without_it(self):
+        # Rewards written before `x` existed: a `__call__` override, a
+        # `ComposableReward`, a plain function; none may receive `x=`.
+        class Legacy(Reward):
+            async def __call__(self, y_true, y_pred):
+                return 1.0
+
+        async def plain(y_true, y_pred):
+            return 1.0
+
+        async def zeros(y_true, y_pred):
+            return [0.0] * len(y_pred)
+
+        answer = Answer(answer="a")
+        x = Answer(answer="x")
+        for reward in (Legacy(), ComposableReward([ExactMatch()]), plain):
+            self.assertEqual(float(await CompileReward(reward)(answer, answer, x=x)), 1.0)
+            # Next to a `BatchReward`, through `compute_batch`.
+            cr = CompileReward([reward, BatchRewardFunctionWrapper(zeros)])
+            pair = [answer, answer]
+            self.assertEqual(await cr.compute_batch([pair], [pair], x_batch=[x]), [1.0])
+
+
+class CompileMetricsInputsTest(testing.TestCase):
+    async def test_inputs_reach_only_metrics_that_take_them(self):
+        seen = []
+
+        class InputAware(Metric):
+            async def update_state(self, y_true, y_pred, x=None):
+                seen.append((x, y_pred.get("answer")))
+
+            def result(self):
+                return 0.0
+
+        answers = [Answer(answer=a) for a in ("a", "b", "c")]
+        cm = CompileMetrics(metrics=[InputAware(name="aware"), Accuracy(name="acc")])
+        await cm.update_state_batch(answers, answers, x_batch=["x_a", "x_b", "x_c"])
+        self.assertEqual(seen, [("x_a", "a"), ("x_b", "b"), ("x_c", "c")])
+        self.assertEqual(cm.result()["acc"], 1.0)
+
+        seen.clear()
+        await cm.update_state_batch(answers, answers)
         self.assertEqual([x for x, _ in seen], [None, None, None])

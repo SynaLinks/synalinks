@@ -46,6 +46,26 @@ extra keyword arguments forwarded to it. Batched functions are never
 auto-wrapped (a `batch -> list[float]` signature is indistinguishable from a
 per-sample one), so they always go through `BatchRewardFunctionWrapper`.
 
+## Rewards that see the program's inputs, and training without labels
+
+Any reward (a function, a `Reward` or `BatchReward` subclass's `call`) that
+declares an `x` argument also receives the program's inputs during `fit` and
+`evaluate`, masked like the targets (`None` when called without them):
+
+```python
+async def stays_on_topic(y_true, y_pred, x=None):
+    if x is None:
+        return 0.0
+    topic = x.get("question").rstrip("?").split()[-1].lower()
+    return 1.0 if topic in y_pred.get("answer", "").lower() else 0.0
+```
+
+The judges use it to grade the answer against the question, so they need no
+ground truth: `fit(x=x_train)` and `evaluate(x=x_test)` work on inputs alone,
+which is unsupervised learning from the judge's grades. A judge sees the
+inputs as `input_*` fields, the prediction as `output_*` and the ground truth,
+when given, as `gold_*`.
+
 ## Rewards Overview
 
 - [Base Reward class](Base Reward class.md)

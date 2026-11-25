@@ -49,7 +49,7 @@ def default_agent_judge_instructions(score_type=Rating20):
     )
 
 
-async def judge_with_agent(agent, score_type, inputs):
+async def judge_with_agent(agent, score_type, inputs, x=None):
     """Run an agent judge on a `[y_true, y_pred]` pair and normalize its reward.
 
     Shared by the agent-based judge programs (`AgentAsJudgeProgram`,
@@ -65,18 +65,16 @@ async def judge_with_agent(agent, score_type, inputs):
             `critique` and a `reward` on the `score_type` scale.
         score_type (type): The score scale the agent grades on.
         inputs (list): The `[y_true, y_pred]` pair to grade.
+        x (JsonDataModel | list): Optional. The inputs of the program judged.
 
     Returns:
         (JsonDataModel | SymbolicDataModel): The critique with a normalized reward.
     """
     if not isinstance(inputs, (list, tuple)):
         raise ValueError("The inputs should be a list or tuple.")
-    if len(inputs) not in (2, 3):
-        raise ValueError(
-            "The inputs of the program should be `[y_true, y_pred]` or "
-            "`[y_true, y_pred, x]`."
-        )
-    y_true, y_pred, x = inputs if len(inputs) == 3 else (*inputs, None)
+    if len(inputs) != 2:
+        raise ValueError("The inputs of the program should be `[y_true, y_pred]`.")
+    y_true, y_pred = inputs
     if not y_pred:
         return CritiqueWithReward(
             critique="Empty prediction: nothing to evaluate.",
@@ -182,8 +180,8 @@ class AgentAsJudgeProgram(Program):
         self.workdir = workdir
         self.skills = skills
 
-    async def call(self, inputs):
-        return await judge_with_agent(self.agent, self.score_type, inputs)
+    async def call(self, inputs, x=None):
+        return await judge_with_agent(self.agent, self.score_type, inputs, x=x)
 
     def get_config(self):
         config = {

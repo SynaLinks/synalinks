@@ -253,8 +253,8 @@ class RLMAsJudgeProgram(Program):
         self.sandbox = sandbox
         self.sandbox_type = self.agent.sandbox_type
 
-    async def call(self, inputs):
-        return await judge_with_agent(self.agent, self.score_type, inputs)
+    async def call(self, inputs, x=None):
+        return await judge_with_agent(self.agent, self.score_type, inputs, x=x)
 
     def get_config(self):
         config = {

@@ -10,7 +10,9 @@ from synalinks.src.backend import DataModel
 from synalinks.src.backend.common import numpy
 from synalinks.src.metrics.metric import Metric
 from synalinks.src.metrics.metric import apply_masks
+from synalinks.src.metrics.metric import mask_data_models
 from synalinks.src.saving import serialization_lib
+from synalinks.src.utils.python_utils import accepts_argument
 
 
 def reduce_to_samplewise_values(values, reduce_fn):
@@ -295,16 +297,18 @@ class MeanMetricWrapper(Mean):
         self._fn = fn
         self._fn_kwargs = kwargs
 
-    async def update_state(self, y_true, y_pred):
-        y_true, y_pred = apply_masks(
-            y_true,
-            y_pred,
-            in_mask=self.in_mask,
-            in_mask_pattern=self.in_mask_pattern,
-            out_mask=self.out_mask,
-            out_mask_pattern=self.out_mask_pattern,
-        )
-        values = await self._fn(y_true, y_pred, **self._fn_kwargs)
+    async def update_state(self, y_true, y_pred, x=None):
+        masks = {
+            "in_mask": self.in_mask,
+            "in_mask_pattern": self.in_mask_pattern,
+            "out_mask": self.out_mask,
+            "out_mask_pattern": self.out_mask_pattern,
+        }
+        y_true, y_pred = apply_masks(y_true, y_pred, **masks)
+        kwargs = dict(self._fn_kwargs)
+        if accepts_argument(self._fn, "x"):
+            kwargs["x"] = mask_data_models(x, **masks)
+        values = await self._fn(y_true, y_pred, **kwargs)
         return await super().update_state(values)
 
     async def close(self):

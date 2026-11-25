@@ -3,9 +3,11 @@
 from synalinks.src import tree
 from synalinks.src.api_export import synalinks_export
 from synalinks.src.metrics.metric import apply_masks
+from synalinks.src.metrics.metric import mask_data_models
 from synalinks.src.rewards.reward import Reward
 from synalinks.src.rewards.reward_wrappers import RewardFunctionWrapper
 from synalinks.src.saving import serialization_lib
+from synalinks.src.utils.python_utils import accepts_argument
 
 
 @synalinks_export(
@@ -74,19 +76,18 @@ class ComposableReward(Reward):
             return reward
         return RewardFunctionWrapper(reward)
 
-    async def __call__(self, y_true, y_pred):
-        y_true, y_pred = apply_masks(
-            y_true,
-            y_pred,
-            in_mask=self.in_mask,
-            in_mask_pattern=self.in_mask_pattern,
-            out_mask=self.out_mask,
-            out_mask_pattern=self.out_mask_pattern,
-        )
-        return await self.call(y_true, y_pred)
+    async def __call__(self, y_true, y_pred, x=None):
+        masks = {
+            "in_mask": self.in_mask,
+            "in_mask_pattern": self.in_mask_pattern,
+            "out_mask": self.out_mask,
+            "out_mask_pattern": self.out_mask_pattern,
+        }
+        y_true, y_pred = apply_masks(y_true, y_pred, **masks)
+        return await self.call(y_true, y_pred, x=mask_data_models(x, **masks))
 
-    async def call(self, y_true, y_pred):
-        values = [await self.call_reward(r, y_true, y_pred) for r in self.rewards]
+    async def call(self, y_true, y_pred, x=None):
+        values = [await self.call_reward(r, y_true, y_pred, x) for r in self.rewards]
         if self.reduction == "min":
             return tree.map_structure(lambda *v: min(map(float, v)), *values)
         if self.reduction == "max":
@@ -99,15 +100,16 @@ class ComposableReward(Reward):
         weight_sum = sum(self.weights)
         return tree.map_structure(lambda value: value / weight_sum, total)
 
-    async def call_reward(self, reward, y_true, y_pred):
-        y_true, y_pred = apply_masks(
-            y_true,
-            y_pred,
-            in_mask=reward.in_mask,
-            in_mask_pattern=reward.in_mask_pattern,
-            out_mask=reward.out_mask,
-            out_mask_pattern=reward.out_mask_pattern,
-        )
+    async def call_reward(self, reward, y_true, y_pred, x=None):
+        masks = {
+            "in_mask": reward.in_mask,
+            "in_mask_pattern": reward.in_mask_pattern,
+            "out_mask": reward.out_mask,
+            "out_mask_pattern": reward.out_mask_pattern,
+        }
+        y_true, y_pred = apply_masks(y_true, y_pred, **masks)
+        if accepts_argument(reward.call, "x"):
+            return await reward.call(y_true, y_pred, x=mask_data_models(x, **masks))
         return await reward.call(y_true, y_pred)
 
     async def close(self):

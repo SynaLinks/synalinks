@@ -18,6 +18,7 @@ from synalinks.src.modules import Input
 from synalinks.src.modules import SelfCritique
 from synalinks.src.modules.language_models import LanguageModel
 from synalinks.src.programs import Program
+from synalinks.src.rewards.lm_as_judge import LMAsJudgeProgram
 from synalinks.src.rewards.reward_wrappers import ProgramAsJudge
 from synalinks.src.rewards.reward_wrappers import RewardFunctionWrapper
 from synalinks.src.rewards.reward_wrappers import judge_inputs
@@ -275,49 +276,29 @@ class JudgeInputsTest(testing.TestCase):
             ["input_query", "output_answer", "gold_answer"],
         )
 
-    async def test_drops_echoed_inputs_but_keeps_rewritten_ones(self):
-        x = Query(query="French capital?").to_json_data_model()
-        # A field sharing the input's name but not its value is a real output.
+    async def test_output_equal_to_its_input_is_shown(self):
+        # A fixer given an already-correct text answers with that same text:
+        # the judge must see it as the output, or it grades it as missing.
+        class Text(DataModel):
+            text: str
+
+        class Fixed(DataModel):
+            text: str
+            explanation: str
+
         inputs = await judge_inputs(
-            None, QueryAnswer(query="capital of France?", answer="Paris"), x=x
+            Text(text="Hello world."),
+            Fixed(text="Hello world.", explanation="Already correct."),
+            x=Text(text="Hello world."),
         )
         self.assertEqual(
             inputs.get_json(),
             {
-                "input_query": "French capital?",
-                "output_query": "capital of France?",
-                "output_answer": "Paris",
+                "input_text": "Hello world.",
+                "output_text": "Hello world.",
+                "output_explanation": "Already correct.",
+                "gold_text": "Hello world.",
             },
-        )
-        # `return_inputs=True` echoes the input: shown once, as an input.
-        y_pred = await ops.concat(x, Answer(answer="Paris").to_json_data_model())
-        inputs = await judge_inputs(None, y_pred, x=x)
-        self.assertEqual(
-            inputs.get_json(),
-            {"input_query": "French capital?", "output_answer": "Paris"},
-        )
-        self.assertEqual(inputs.get_schema()["required"], list(inputs.get_json()))
-
-    async def test_keeps_rewritten_output_with_suffixed_name(self):
-        # `return_inputs=True` with an output named like an input yields
-        # `query` (the echo) and `query_1` (the output): only the echo goes,
-        # though masks would match both by ignoring the numerical suffix.
-        x = Query(query="French capital?").to_json_data_model()
-        y_pred = await ops.concat(
-            x, Query(query="capital of France?").to_json_data_model()
-        )
-        inputs = await judge_inputs(None, y_pred, x=x)
-        self.assertEqual(
-            inputs.get_json(),
-            {"input_query": "French capital?", "output_query_1": "capital of France?"},
-        )
-
-    async def test_output_that_only_echoes_its_input_is_kept(self):
-        x = Query(query="French capital?").to_json_data_model()
-        inputs = await judge_inputs(None, Query(query="French capital?"), x=x)
-        self.assertEqual(
-            inputs.get_json(),
-            {"input_query": "French capital?", "output_query": "French capital?"},
         )
 
     async def test_multi_input_program(self):
@@ -369,6 +350,7 @@ class JudgeInputsTest(testing.TestCase):
             list(inputs.get_json()),
             [
                 "input_messages",
+                "output_messages",
                 "output_role",
                 "output_content",
                 "gold_role",
@@ -432,12 +414,63 @@ class ProgramAsJudgeInputsTest(testing.TestCase):
             "query", mock_completion.call_args.kwargs["messages"][-1]["content"]
         )
 
-    async def test_builtin_judge_program_gets_x(self):
-        class BuiltinJudge(ProgramAsJudge):
-            program_class = object
+    @patch("litellm.acompletion")
+    async def test_one_input_program_gets_the_prediction(self, mock_completion):
+        # A judge needing no ground truth declares only the prediction.
+        mock_completion.return_value = {
+            "choices": [{"message": {"content": '{"critique": "Ok", "reward": 1.0}'}}]
+        }
+        y_pred = Input(data_model=Answer)
+        critique = await SelfCritique(
+            language_model=LanguageModel(model="ollama/mistral")
+        )(y_pred)
+        judge = ProgramAsJudge(program=Program(inputs=y_pred, outputs=critique))
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")
+            score = await judge(
+                Answer(answer="g"), Answer(answer="a"), x=Query(query="q")
+            )
+        self.assertEqual(score, 1.0)
+        self.assertEqual(
+            mock_completion.call_args.kwargs["messages"][-1]["content"], "{'answer': 'a'}"
+        )
 
-        program = AsyncMock(return_value={"reward": 1.0})
-        judge = BuiltinJudge(program=program)
-        x = Query(query="q")
-        await judge(Answer(answer="a"), Answer(answer="a"), x=x)
-        self.assertIs(program.call_args.args[0][2], x)
+    async def test_subclassed_program_gets_x_when_its_call_takes_it(self):
+        seen = []
+
+        class Score(DataModel):
+            reward: float
+
+        class WithX(Program):
+            async def call(self, inputs, x=None):
+                seen.append(("with_x", len(inputs), x and x.get("query")))
+                return Score(reward=1.0).to_json_data_model()
+
+        class WithoutX(Program):
+            async def call(self, inputs):
+                seen.append(("without_x", len(inputs)))
+                return Score(reward=1.0).to_json_data_model()
+
+        for program in (WithX(), WithoutX()):
+            judge = ProgramAsJudge(program=program)
+            self.assertEqual(
+                await judge(Answer(answer="a"), Answer(answer="a"), x=Query(query="q")),
+                1.0,
+            )
+        self.assertEqual(seen, [("with_x", 2, "q"), ("without_x", 2)])
+
+    @patch("litellm.acompletion")
+    async def test_builtin_judge_program_gets_x_through_program_as_judge(
+        self, mock_completion
+    ):
+        mock_completion.return_value = {
+            "choices": [{"message": {"content": '{"critique": "Ok", "reward": 1.0}'}}]
+        }
+        program = LMAsJudgeProgram(language_model=LanguageModel(model="ollama/mistral"))
+        await ProgramAsJudge(program=program)(
+            None, Answer(answer="Paris"), x=Query(query="French capital?")
+        )
+        self.assertEqual(
+            mock_completion.call_args.kwargs["messages"][-1]["content"],
+            "{'input_query': 'French capital?', 'output_answer': 'Paris'}",
+        )

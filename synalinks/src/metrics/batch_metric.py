@@ -22,6 +22,8 @@ class BatchMetric(Metric):
 
     * ``update_state(y_true, y_pred)``: ``y_true`` and ``y_pred`` are lists of
       length ``batch_size`` (one batch). Accumulate state from the group.
+      Declare an ``x`` argument to also get the batch's inputs (a list)
+      during ``fit`` / ``evaluate``.
     * ``result()``: return the current scalar (or dict) value.
 
     Note:

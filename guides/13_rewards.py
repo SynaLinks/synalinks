@@ -297,20 +297,75 @@ For most tasks you will not need `BatchReward`. The default
 sample-by-sample rewards are simpler to write, faster, and
 easier to debug.
 
+## Rewards that See the Program's Inputs
+
+Some scores need the question, not only the answer: is the
+answer on topic, does it follow the request? A reward whose
+`call` also declares an `x` argument receives the program's
+inputs for that sample during `fit` and `evaluate` (`None`
+when you call the reward yourself without them):
+
+```python
+class StaysOnTopic(synalinks.Reward):
+    async def call(self, y_true, y_pred, x=None):
+        if x is None:
+            return 0.0
+        topic = x.get("question").rstrip("?").split()[-1].lower()
+        return 1.0 if topic in y_pred.get("answer", "").lower() else 0.0
+```
+
+The judges (`LMAsJudge`, `RubricsAsJudge`, the agent judges)
+use it to grade the answer against the question: they see the
+inputs as `input_*` fields, the prediction as `output_*` and,
+when there is one, the ground truth as `gold_*`. A functional
+`ProgramAsJudge` program gets what it declares: one input is
+the prediction alone, two are `[y_true, y_pred]`, three are
+`[y_true, y_pred, x]`. A subclassed one gets `x` as a keyword
+when its `call` takes it.
+
+## Learning Without Labels
+
+A judge does not need the right answer: it can grade the
+answer against the question alone. Is it correct, complete,
+grounded, polite? So the targets are optional. Give `fit` and
+`evaluate` the inputs only, and the judge's reward drives the
+optimizer. This is **unsupervised** learning: no labelled
+dataset, only the questions your program will actually face.
+
+```python
+program.compile(
+    reward=synalinks.LMAsJudge(language_model=judge_model),
+    optimizer=synalinks.optimizers.RandomFewShot(),
+)
+
+# Inputs only: no `y`, the judge grades each answer against its question.
+history = await program.fit(x=x_train, epochs=2, batch_size=8)
+results = await program.evaluate(x=x_test, return_dict=True)
+```
+
+When some labels exist, pass them: the judge then also compares
+the answer to the ground truth (the `gold_*` fields). Without
+them, the reward is only as good as the judge, so spot-check its
+critiques before trusting the scores, and prefer a judge model
+at least as strong as the program's.
+
 ## Picking a Reward: a Short Decision Tree
 
 When you do not know which reward to start with, walk this
 ladder top to bottom and stop at the first match:
 
-1. **The right answer is a fixed value or label?** Use
+1. **You have no labels at all?** Use a judge (`LMAsJudge`,
+   or `RubricsAsJudge` with your criteria) and train on the
+   inputs alone (see Learning Without Labels above).
+2. **The right answer is a fixed value or label?** Use
    `ExactMatch(in_mask=[field])`.
-2. **The right answer is open-ended text where paraphrases
+3. **The right answer is open-ended text where paraphrases
    should earn credit?** Use `CosineSimilarity` with a cheap
    embedding model.
-3. **The "right answer" is a judgment call: helpfulness,
+4. **The "right answer" is a judgment call: helpfulness,
    tone, policy compliance?** Use `LMAsJudge` with a small
    judge model. Spot-check the judge.
-4. **None of the above?** Write a custom function and wrap it
+5. **None of the above?** Write a custom function and wrap it
    with `RewardFunctionWrapper`. If the score depends on the
    whole batch at once, subclass `BatchReward` instead.
 

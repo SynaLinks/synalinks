@@ -170,16 +170,14 @@ class DeepAgentAsJudgeProgram(Program):
             reset_sandbox = sandbox is None
         self.reset_sandbox = reset_sandbox
 
-    async def call(self, inputs):
+    async def call(self, inputs, x=None):
         y_pred = (
-            inputs[1]
-            if isinstance(inputs, (list, tuple)) and len(inputs) in (2, 3)
-            else None
+            inputs[1] if isinstance(inputs, (list, tuple)) and len(inputs) == 2 else None
         )
         # A fresh workspace per graded sample; symbolic builds never run tools.
         if self.reset_sandbox and y_pred and not is_symbolic_data_model(y_pred):
             self.agent.sandbox.reset()
-        return await judge_with_agent(self.agent, self.score_type, inputs)
+        return await judge_with_agent(self.agent, self.score_type, inputs, x=x)
 
     def get_config(self):
         config = {

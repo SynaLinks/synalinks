@@ -1,6 +1,5 @@
 # License Apache 2.0: (c) 2025-2026 Yoan Sallami (Synalinks Team)
 
-import json
 import os
 from unittest.mock import patch
 
@@ -165,9 +164,9 @@ class RubricsAsJudgeTest(testing.TestCase):
         score = await reward(y_true=None, y_pred=Answer(answer="Paris"))
         self.assertEqual(score, 1.0)
         # Without a reference the judge only sees the prediction: no `gold_` key.
-        prompt = json.dumps(mock_completion.call_args.kwargs["messages"])
-        self.assertNotIn("gold_", prompt)
-        self.assertIn("Paris", prompt)
+        data = mock_completion.call_args.kwargs["messages"][-1]["content"]
+        self.assertNotIn("gold_", data)
+        self.assertIn("Paris", data)
 
     @patch("litellm.acompletion")
     async def test_rubrics_as_judge_incomplete_grade_sheet(self, mock_completion):
@@ -265,17 +264,6 @@ class RubricsAsJudgeTest(testing.TestCase):
         self.assertEqual(restored.program.rubrics[0].name, "correct")
         self.assertEqual(restored.program.rubrics[0].weight, 2.0)
 
-
-def score_answer(score, confidence=0.9):
-    keys = [str(i) for i in range(len(DECISION_MODEL_LEVELS))]
-    return {
-        "type": "score",
-        "score": score,
-        "legend": dict(zip(keys, DECISION_MODEL_LEVELS)),
-        "probabilities": {key: 1.0 if key == str(int(score)) else 0.0 for key in keys},
-        "confidence": confidence,
-    }
-
     @patch("litellm.acompletion")
     async def test_rubrics_as_judge_sees_the_program_inputs(self, mock_completion):
         # Rubrics such as relevancy grade the answer against the question.
@@ -303,6 +291,17 @@ def score_answer(score, confidence=0.9):
             mock_completion.call_args.kwargs["messages"][-1]["content"],
             "{'input_query': 'French capital?', 'output_answer': 'Paris'}",
         )
+
+
+def score_answer(score, confidence=0.9):
+    keys = [str(i) for i in range(len(DECISION_MODEL_LEVELS))]
+    return {
+        "type": "score",
+        "score": score,
+        "legend": dict(zip(keys, DECISION_MODEL_LEVELS)),
+        "probabilities": {key: 1.0 if key == str(int(score)) else 0.0 for key in keys},
+        "confidence": confidence,
+    }
 
 
 @patch.dict(os.environ, {"TYPESAFE_API_KEY": "test-key"})

@@ -226,6 +226,13 @@ will try to fit the Pydantic objects into a structured numeric dtype
 and silently produce garbage that does not crash but does not work
 either.
 
+The targets are optional. With a reward that needs no ground truth,
+such as `LMAsJudge` grading each answer against its question, pass
+the inputs only, `program.fit(x=x_train)`: the program learns
+**without labels** (unsupervised), from the judge's grades alone.
+See [Guide 13](https://synalinks.github.io/synalinks/guides/Rewards/)
+for how judges see the question.
+
 ## Optimizers
 
 ### `RandomFewShot`
@@ -311,7 +318,9 @@ A **second** LM reads the output and scores it against a rubric you
 provide. This is the most flexible reward (it can grade open-ended
 answers a regex never could), the most expensive (every reward
 computation costs an LM call), and the noisiest (the judge can be
-wrong, and biases in the judge become biases in the optimizer).
+wrong, and biases in the judge become biases in the optimizer). It
+is also the one that needs no labels: it grades each answer against
+its question (the program's inputs), so it trains on inputs alone.
 
 ```python
 reward = synalinks.LMAsJudge(
