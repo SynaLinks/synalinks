@@ -184,7 +184,10 @@ class ProgramAsJudge(Reward):
       `[y_true, y_pred, x]`, `x` being the inputs of the program judged (e.g.
       to grade an answer against its question);
     - a subclassed program gets `[y_true, y_pred]`, and `x` as a keyword when
-      its `call` takes an `x` argument: `call(self, inputs, x=None)`.
+      its `call` declares an `x` argument: `call(self, inputs, x=None)`. If
+      its `call` declares `y_true`, it gets the prediction alone as `inputs`
+      and the ground truth as a keyword (`None` without labels):
+      `call(self, inputs, y_true=None, x=None)`.
 
     `x` is `None` when the reward is called without it, so declare that input
     `optional=True` (and `y_true` too, to judge without a ground truth).
@@ -265,16 +268,21 @@ class ProgramAsJudge(Reward):
 
     async def call(self, y_true, y_pred, x=None):
         # A functional program gets what it declares, in order (`y_pred` alone,
-        # `y_true` first, `x` last); a subclassed one gets `x` as a keyword.
+        # `y_true` first, `x` last); a subclassed one gets the keywords its
+        # `call` names (`**kwargs` may forward them on, so it does not count).
         nb_inputs = len(getattr(self.program, "inputs", None) or ())
+        call = self.program.call
+        kwargs = {}
+        if accepts_argument(call, "x", var_keyword=False):
+            kwargs["x"] = x
         if nb_inputs == 1:
             result = await self.program(y_pred)
         elif nb_inputs == 3:
             result = await self.program([y_true, y_pred, x])
-        elif accepts_argument(self.program.call, "x"):
-            result = await self.program([y_true, y_pred], x=x)
+        elif accepts_argument(call, "y_true", var_keyword=False):
+            result = await self.program(y_pred, y_true=y_true, **kwargs)
         else:
-            result = await self.program([y_true, y_pred])
+            result = await self.program([y_true, y_pred], **kwargs)
         if result is None:
             warnings.warn(
                 f"{self.__class__.__name__}: judge program returned None "

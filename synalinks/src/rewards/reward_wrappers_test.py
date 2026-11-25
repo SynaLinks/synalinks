@@ -459,6 +459,37 @@ class ProgramAsJudgeInputsTest(testing.TestCase):
             )
         self.assertEqual(seen, [("with_x", 2, "q"), ("without_x", 2)])
 
+    async def test_subclassed_program_declaring_y_true_gets_the_prediction(self):
+        seen = []
+
+        class Score(DataModel):
+            reward: float
+
+        class PredictionOnly(Program):
+            async def call(self, inputs, y_true=None, x=None):
+                seen.append(
+                    (
+                        inputs.get("answer"),
+                        y_true and y_true.get("answer"),
+                        x and x.get("query"),
+                    )
+                )
+                return Score(reward=1.0).to_json_data_model()
+
+        class ForwardsKwargs(Program):
+            async def call(self, inputs, **kwargs):
+                # `**kwargs` is not an opt-in: it gets the pair, no keyword.
+                seen.append((len(inputs), kwargs))
+                return Score(reward=1.0).to_json_data_model()
+
+        judge = ProgramAsJudge(program=PredictionOnly())
+        await judge(Answer(answer="g"), Answer(answer="a"), x=Query(query="q"))
+        await judge(None, Answer(answer="a"))
+        await ProgramAsJudge(program=ForwardsKwargs())(
+            Answer(answer="g"), Answer(answer="a"), x=Query(query="q")
+        )
+        self.assertEqual(seen, [("a", "g", "q"), ("a", None, None), (2, {})])
+
     @patch("litellm.acompletion")
     async def test_builtin_judge_program_gets_x_through_program_as_judge(
         self, mock_completion

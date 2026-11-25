@@ -320,8 +320,9 @@ inputs as `input_*` fields, the prediction as `output_*` and,
 when there is one, the ground truth as `gold_*`. A functional
 `ProgramAsJudge` program gets what it declares: one input is
 the prediction alone, two are `[y_true, y_pred]`, three are
-`[y_true, y_pred, x]`. A subclassed one gets `x` as a keyword
-when its `call` takes it.
+`[y_true, y_pred, x]`. A subclassed one gets `x` and `y_true`
+as keywords when its `call` declares them; declaring `y_true`
+makes `inputs` the prediction alone.
 
 ## Learning Without Labels
 

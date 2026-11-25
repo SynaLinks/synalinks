@@ -190,5 +190,8 @@ class AcceptsArgumentTest(testing.TestCase):
         self.assertTrue(accepts_argument(Callable(), "x"))
         self.assertTrue(accepts_argument(functools.partial(declares, None), "x"))
         self.assertFalse(accepts_argument(without, "x"))
+        # Only a declared name counts when `**kwargs` is excluded.
+        self.assertFalse(accepts_argument(var_keyword, "x", var_keyword=False))
+        self.assertTrue(accepts_argument(declares, "x", var_keyword=False))
         # An unreadable signature means: do not pass it.
         self.assertFalse(accepts_argument(object(), "x"))
