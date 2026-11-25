@@ -322,7 +322,7 @@ when there is one, the ground truth as `gold_*`. A functional
 the prediction alone, two are `[y_true, y_pred]`, three are
 `[y_true, y_pred, x]`. A subclassed one gets `x` and `y_true`
 as keywords when its `call` declares them; declaring `y_true`
-makes `inputs` the prediction alone.
+makes its first argument the prediction alone.
 
 ## Learning Without Labels
 

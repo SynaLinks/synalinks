@@ -185,9 +185,9 @@ class ProgramAsJudge(Reward):
       to grade an answer against its question);
     - a subclassed program gets `[y_true, y_pred]`, and `x` as a keyword when
       its `call` declares an `x` argument: `call(self, inputs, x=None)`. If
-      its `call` declares `y_true`, it gets the prediction alone as `inputs`
-      and the ground truth as a keyword (`None` without labels):
-      `call(self, inputs, y_true=None, x=None)`.
+      its `call` declares `y_true`, it gets the prediction alone as its first
+      argument and the ground truth as a keyword (`None` without labels):
+      `call(self, y_pred, y_true=None, x=None)`.
 
     `x` is `None` when the reward is called without it, so declare that input
     `optional=True` (and `y_true` too, to judge without a ground truth).

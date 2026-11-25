@@ -466,10 +466,10 @@ class ProgramAsJudgeInputsTest(testing.TestCase):
             reward: float
 
         class PredictionOnly(Program):
-            async def call(self, inputs, y_true=None, x=None):
+            async def call(self, y_pred, y_true=None, x=None):
                 seen.append(
                     (
-                        inputs.get("answer"),
+                        y_pred.get("answer"),
                         y_true and y_true.get("answer"),
                         x and x.get("query"),
                     )
