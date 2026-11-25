@@ -1,9 +1,9 @@
 (DEBUG) [Synalinks]
-Call ID: 77e60eff-20f9-40f0-baa1-7e5de18654a7
+Call ID: eb57a10c-366e-44ef-9c51-1f38daab48cb
 Parent call ID: None
 Module: Generator
 Module Name: generator
-Module Description: Use a `LanguageModel` to generate a data model from an arbitrary input data model.
+Module Description: Use a `LanguageModel` (or a `DecisionModel`) to generate a data model from an
 Data Model JSON Schema:
 [
   {
@@ -25,11 +25,11 @@ Data Model JSON Schema:
 ]
 
 (DEBUG) [Synalinks]
-Call ID: 77e60eff-20f9-40f0-baa1-7e5de18654a7
+Call ID: eb57a10c-366e-44ef-9c51-1f38daab48cb
 Parent call ID: None
 Module: Generator
 Module Name: generator
-Module Description: Use a `LanguageModel` to generate a data model from an arbitrary input data model.
+Module Description: Use a `LanguageModel` (or a `DecisionModel`) to generate a data model from an
 Data Model JSON Schema:
 [
   {
@@ -70,7 +70,7 @@ of modules.'
 │                             │   answer: str                    │         │
 └─────────────────────────────┴──────────────────────────────────┴─────────┘
 [Synalinks]
-Call ID: e82567dc-45d2-4994-b0f5-d9e1b3675ae4
+Call ID: a0f8af90-4c85-45de-90f0-9085ef673dbd
 Parent call ID: None
 Module: Functional
 Module Name: qa_program
@@ -83,11 +83,11 @@ Data Model JSON:
 ]
 
 [Synalinks]
-Call ID: b9d4179c-1bb0-485f-a1fa-c43ba359e8aa
-Parent call ID: e82567dc-45d2-4994-b0f5-d9e1b3675ae4
+Call ID: ebe275f8-0652-4674-a241-ae6389dd09d9
+Parent call ID: a0f8af90-4c85-45de-90f0-9085ef673dbd
 Module: Generator
 Module Name: generator
-Module Description: Use a `LanguageModel` to generate a data model from an arbitrary input data model.
+Module Description: Use a `LanguageModel` (or a `DecisionModel`) to generate a data model from an
 Data Model JSON:
 [
   {
@@ -96,8 +96,8 @@ Data Model JSON:
 ]
 
 [Synalinks]
-Call ID: 5432f6db-b750-43b8-9ea5-9bcd0798e97b
-Parent call ID: b9d4179c-1bb0-485f-a1fa-c43ba359e8aa
+Call ID: c136d46b-b05c-407d-8dd4-65ca2df7a1cb
+Parent call ID: ebe275f8-0652-4674-a241-ae6389dd09d9
 Module: LanguageModel
 Module Name: language_model
 Module Description: A language model API wrapper.
@@ -107,19 +107,19 @@ Data Model JSON:
     "messages": [
       {
         "role": "system",
-        "content": "<instructions>\nYour task is to answer with a JSON containing the following keys: ['thinking', 'answer']\n</instructions>\n"
+        "content": "\nYour task is to answer with a JSON containing the following keys: ['thinking', 'answer']\n"
       },
       {
         "role": "user",
-        "content": "<input>\n{'question': 'What is the capital of France?'}\n</input>\n<output>\n"
+        "content": "{'question': 'What is the capital of France?'}"
       }
     ]
   }
 ]
 
 [Synalinks]
-Call ID: 5432f6db-b750-43b8-9ea5-9bcd0798e97b
-Parent call ID: b9d4179c-1bb0-485f-a1fa-c43ba359e8aa
+Call ID: c136d46b-b05c-407d-8dd4-65ca2df7a1cb
+Parent call ID: ebe275f8-0652-4674-a241-ae6389dd09d9
 Module: LanguageModel
 Module Name: language_model
 Module Description: A language model API wrapper.
@@ -132,11 +132,11 @@ Data Model JSON:
 ]
 
 [Synalinks]
-Call ID: b9d4179c-1bb0-485f-a1fa-c43ba359e8aa
-Parent call ID: e82567dc-45d2-4994-b0f5-d9e1b3675ae4
+Call ID: ebe275f8-0652-4674-a241-ae6389dd09d9
+Parent call ID: a0f8af90-4c85-45de-90f0-9085ef673dbd
 Module: Generator
 Module Name: generator
-Module Description: Use a `LanguageModel` to generate a data model from an arbitrary input data model.
+Module Description: Use a `LanguageModel` (or a `DecisionModel`) to generate a data model from an
 Data Model JSON:
 [
   {
@@ -146,7 +146,7 @@ Data Model JSON:
 ]
 
 [Synalinks]
-Call ID: e82567dc-45d2-4994-b0f5-d9e1b3675ae4
+Call ID: a0f8af90-4c85-45de-90f0-9085ef673dbd
 Parent call ID: None
 Module: Functional
 Module Name: qa_program
