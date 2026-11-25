@@ -9,7 +9,6 @@ from http.server import BaseHTTPRequestHandler
 from http.server import HTTPServer
 from unittest.mock import patch
 
-import litellm
 from litellm.types.utils import Choices
 from litellm.types.utils import CompletionTokensDetailsWrapper
 from litellm.types.utils import Message
@@ -564,22 +563,6 @@ class LanguageModelTest(testing.TestCase):
         with self.assertWarns(DeprecationWarning):
             await lm(messages, reasoning_effort="disable")
         self.assertEqual(mock_completion.call_args.kwargs, kwargs)
-
-    @patch("litellm.acompletion")
-    async def test_reasoning_level_is_sent_as_given(self, mock_completion):
-        """A level the model table does not list is still sent unchanged."""
-        mock_completion.return_value = {"choices": [{"message": {"content": "ok"}}]}
-        messages = ChatMessages(
-            messages=[ChatMessage(role=ChatRole.USER, content="Hello")]
-        )
-        lm = LanguageModel(model="openai/o-test", supports_reasoning=True)
-        table = {"openai/o-test": {"reasoning_effort_levels": ["low", "high"]}}
-        with patch.dict(litellm.model_cost, table):
-            for level in ("minimal", "medium", "high", "xhigh", "max"):
-                await lm(messages, reasoning_effort=level)
-                self.assertEqual(
-                    mock_completion.call_args.kwargs["reasoning_effort"], level
-                )
 
     @patch("litellm.acompletion")
     async def test_reasoning_effort_none_noop_for_non_ollama(self, mock_completion):
@@ -1916,6 +1899,19 @@ class CapabilityFlagsTest(testing.TestCase):
         self.assertEqual(sent["chat_template_kwargs"], {"enable_thinking": True})
         self.assertNotIn("thinking", self._schema_fields(sent))
         self.assertEqual(result, {"thinking": "native trace", "answer": "Paris"})
+
+    async def test_reasoning_level_reaches_the_wire_as_given(self):
+        # litellm drops `xhigh` for gpt-5 (drop_params); it is sent anyway.
+        server, base = self._serve(reasoning=True)
+        lm = LanguageModel(
+            model="openai/gpt-5", api_base=f"{base}/v1", supports_reasoning=True
+        )
+        for level in ("minimal", "high", "xhigh", "max"):
+            await self._ask(lm, effort=level)
+        self.assertEqual(
+            [sent["reasoning_effort"] for sent in server.requests],
+            ["minimal", "high", "xhigh", "max"],
+        )
 
     async def test_unflagged_self_hosted_model_keeps_thinking(self):
         server, base = self._serve(reasoning=True)

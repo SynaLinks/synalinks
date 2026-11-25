@@ -669,9 +669,9 @@ class LanguageModel(Module):
       `"high"`, `"xhigh"`, `"max"`: forwarded to the provider as the
       reasoning effort, but only when the model reasons natively (otherwise
       it is dropped; see `supports_reasoning()`). The level is sent as
-      given, never changed: a provider that does not take it rejects the
-      call. The native trace then fills a `thinking` field instead of the
-      model.
+      given, never changed or dropped, even when litellm's model table does
+      not list it for the model. The native trace then fills a `thinking`
+      field instead of the model.
 
     A provider-specific setting passed explicitly (e.g. `thinking={...}` or
     `extra_body`) is sent as is and wins over `reasoning_effort`.
@@ -1076,6 +1076,31 @@ class LanguageModel(Module):
         elif reasoning_effort is not None:
             if await self.supports_reasoning():
                 kwargs["reasoning_effort"] = reasoning_effort
+                litellm_logger = logging.getLogger("LiteLLM")
+                try:
+                    name, provider, _, _ = litellm.get_llm_provider(
+                        self.model, api_base=self.api_base
+                    )
+                    # Quiet: litellm logs "Dropping" for a level sent anyway below.
+                    litellm_logger.disabled = True
+                    dropped = litellm.utils.get_optional_params(
+                        model=name,
+                        custom_llm_provider=provider,
+                        reasoning_effort=reasoning_effort,
+                    ) == litellm.utils.get_optional_params(
+                        model=name, custom_llm_provider=provider
+                    )
+                except Exception:
+                    # litellm refuses the level itself, and the call says so.
+                    dropped = False
+                finally:
+                    litellm_logger.disabled = False
+                if dropped:
+                    # drop_params would silently drop a level its table lacks.
+                    kwargs["extra_body"] = {
+                        **(kwargs.get("extra_body") or {}),
+                        "reasoning_effort": kwargs.pop("reasoning_effort"),
+                    }
                 enable_thinking = True
                 if schema_had_thinking and self._reasoning_trace:
                     # The LM produces a native reasoning trace via
