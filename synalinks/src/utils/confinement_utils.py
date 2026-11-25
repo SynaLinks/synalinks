@@ -611,6 +611,14 @@ maybe_warn_native_windows()
 
 confine_smoke_cache: Optional[Tuple[bool, str]] = None
 
+# The user-namespace probe exits ``90 + step`` at the step that failed.
+PROBE_STEPS = {
+    90: "unshare",
+    91: "writing /proc/self/setgroups",
+    92: "writing /proc/self/uid_map",
+    93: "writing /proc/self/gid_map",
+}
+
 # ``CLONE_NEW*`` flags for the user-namespace probe in
 # `confinement_available`. ``CONFINE_SRC`` carries its
 # own copy because it runs as source in a separate interpreter.
@@ -696,47 +704,53 @@ def confinement_available() -> tuple[bool, str]:
     # ``_confine`` in a fresh interpreter, as the real confinement runs: not a
     # fork of this process, whose at-fork hooks (LanceDB restarts its runtime
     # threads in the child) make the child multithreaded, and `unshare` then
-    # refuses a new user namespace. Cached: constant for the process lifetime.
+    # refuses a new user namespace. Only a success is cached: a refusal can
+    # pass again by itself (a Kubernetes node refused the ``uid_map`` write for
+    # a while, then allowed it), and a cached one would refuse every sandbox
+    # until a restart, so the next sandbox probes again.
     global confine_smoke_cache
-    if confine_smoke_cache is None:
-        flags = (
-            CLONE_NEWUSER
-            | CLONE_NEWNS
-            | CLONE_NEWNET
-            | CLONE_NEWIPC
-            | CLONE_NEWUTS
-            | CLONE_NEWPID
-        )
-        probe = (
-            "import os\n"
-            "uid, gid = os.getuid(), os.getgid()\n"
-            f"os.unshare({flags})\n"
-            "open('/proc/self/setgroups', 'w').write('deny')\n"
-            "open('/proc/self/uid_map', 'w').write('0 %d 1' % uid)\n"
-            "open('/proc/self/gid_map', 'w').write('0 %d 1' % gid)\n"
-        )
-        try:
-            ok = (
-                subprocess.run(
-                    [sys.executable, "-I", "-S", "-c", probe],
-                    capture_output=True,
-                    timeout=30,
-                ).returncode
-                == 0
-            )
-        except (OSError, subprocess.SubprocessError) as exc:
-            return False, f"cannot start a process to probe confinement: {exc}"
-        confine_smoke_cache = (
-            (True, "")
-            if ok
-            else (
-                False,
-                "the kernel/environment forbids unprivileged user-namespace setup "
-                "(e.g. writing /proc/self/setgroups is denied, as on GitHub "
-                "Actions and inside many containers)",
-            )
-        )
-    return confine_smoke_cache
+    if confine_smoke_cache is not None:
+        return confine_smoke_cache
+    flags = (
+        CLONE_NEWUSER
+        | CLONE_NEWNS
+        | CLONE_NEWNET
+        | CLONE_NEWIPC
+        | CLONE_NEWUTS
+        | CLONE_NEWPID
+    )
+    probe = (
+        "import os\n"
+        "uid, gid = os.getuid(), os.getgid()\n"
+        "step = 0\n"
+        "try:\n"
+        f"    os.unshare({flags})\n"
+        "    for step, (path, data) in enumerate((\n"
+        "        ('/proc/self/setgroups', 'deny'),\n"
+        "        ('/proc/self/uid_map', '0 %d 1' % uid),\n"
+        "        ('/proc/self/gid_map', '0 %d 1' % gid),\n"
+        "    ), start=1):\n"
+        "        with open(path, 'w') as fh:\n"
+        "            fh.write(data)\n"
+        "except BaseException:\n"
+        "    os._exit(90 + step)\n"
+    )
+    try:
+        code = subprocess.run(
+            [sys.executable, "-I", "-S", "-c", probe],
+            capture_output=True,
+            timeout=30,
+        ).returncode
+    except (OSError, subprocess.SubprocessError) as exc:
+        return False, f"cannot start a process to probe confinement: {exc}"
+    if code == 0:
+        confine_smoke_cache = (True, "")
+        return confine_smoke_cache
+    refused = PROBE_STEPS.get(code, "the probe")
+    return False, (
+        f"the kernel/environment forbids unprivileged user-namespace setup "
+        f"({refused} was refused, as on GitHub Actions and inside many containers)"
+    )
 
 
 def confinement_backend() -> Tuple[Optional[str], str]:
