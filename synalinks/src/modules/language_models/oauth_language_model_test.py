@@ -616,6 +616,56 @@ class OAuthLanguageModelTest(testing.TestCase):
                 await lm(_messages(), schema=FreeForm.get_schema())
         self.assertEqual(recorder.calls, [])
 
+    async def test_build_request_asks_for_the_strict_schema_a_call_sends(self):
+        lm = OAuthLanguageModel(model="codex/gpt-6.1-sol")
+        built = await lm.build_request(_messages(), schema=Person.get_schema())
+        self.assertEqual(
+            built["response_format"]["json_schema"]["schema"],
+            _strict_schema(Person.get_schema()),
+        )
+
+    async def test_build_request_refuses_what_a_call_refuses(self):
+        lm = OAuthLanguageModel(model="codex/gpt-6.1-sol")
+        with self.assertRaisesRegex(ValueError, "free-form object"):
+            await lm.build_request(_messages(), schema=FreeForm.get_schema())
+        with self.assertRaisesRegex(ValueError, "streaming"):
+            await lm.build_request(_messages(), streaming=True)
+
+    async def test_nothing_to_send_is_not_refused(self):
+        lm = OAuthLanguageModel(model="codex/gpt-6.1-sol")
+        self.assertIsNone(await lm(None, streaming=True))
+        self.assertIsNone(await lm.build_request(None, streaming=True))
+
+    async def test_a_call_makes_the_schema_strict_once(self):
+        recorder = Recorder(stdout=_events('{"name": "Ada", "age": 36, "tags": []}'))
+        lm = OAuthLanguageModel(model="codex/gpt-6.1-sol")
+        with patch(_RUN, recorder):
+            with patch.object(
+                oauth_language_model, "_strict_schema", wraps=_strict_schema
+            ) as strict:
+                await lm(_messages(), schema=Person.get_schema())
+        self.assertEqual(strict.call_count, 1)
+
+    async def test_fallback_receives_the_strict_schema(self):
+        recorder = Recorder(stderr="connection reset", returncode=1)
+        lm = OAuthLanguageModel(
+            model="codex/gpt-6.1-sol",
+            retry=1,
+            fallback=LanguageModel(model="openai/gpt-4o-mini"),
+        )
+        with patch(_RUN, recorder):
+            with patch("litellm.acompletion") as mock_completion:
+                mock_completion.return_value = {
+                    "choices": [
+                        {"message": {"content": '{"name": "Ada", "age": 36, "tags": []}'}}
+                    ]
+                }
+                with warnings.catch_warnings():
+                    warnings.simplefilter("ignore")
+                    await lm(_messages(), schema=Person.get_schema())
+        sent = mock_completion.call_args.kwargs["response_format"]["json_schema"]
+        self.assertEqual(sent["schema"], _strict_schema(Person.get_schema()))
+
     async def test_tool_use_fails_the_call_without_retry(self):
         stdout = _events(
             "I searched the web.",
