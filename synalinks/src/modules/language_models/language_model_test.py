@@ -560,7 +560,9 @@ class LanguageModelTest(testing.TestCase):
             kwargs["extra_body"]["chat_template_kwargs"]["enable_thinking"], False
         )
 
-        with self.assertWarns(DeprecationWarning):
+        # "disable" is the same as "none", without a warning.
+        with warnings.catch_warnings():
+            warnings.simplefilter("error", DeprecationWarning)
             await lm(messages, reasoning_effort="disable")
         self.assertEqual(mock_completion.call_args.kwargs, kwargs)
 
