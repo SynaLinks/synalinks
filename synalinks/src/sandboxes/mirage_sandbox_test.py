@@ -1,5 +1,6 @@
 # License Apache 2.0: (c) 2025-2026 Yoan Sallami (Synalinks Team)
 
+import asyncio
 import base64
 import gc
 import io
@@ -1252,6 +1253,22 @@ class MirageSandboxTest(_SandboxTestCase):
         self.assertEqual(child_read["content"], "child")
         parent_only = await sandbox.read_file("/only_child.txt")
         self.assertIn("error", parent_only)
+
+    async def test_fork_waits_out_a_write_in_flight(self):
+        # A blocking copy starved the parent's write: EBUSY after 30 s.
+        from mirage.context.session_context import current_caller
+
+        sandbox = MirageSandbox(timeout=_TIMEOUT)
+
+        async def write_in_flight():
+            async with sandbox.workspace._admit_write(current_caller()):
+                await asyncio.sleep(0.2)
+
+        writing = asyncio.create_task(write_in_flight())
+        await asyncio.sleep(0)
+        (child,) = await asyncio.wait_for(sandbox.fork(), timeout=10)
+        await writing
+        self.assertIsInstance(child, MirageSandbox)
 
     async def test_fork_inherits_namespace(self):
         # As an E2B fork copies the whole sandbox, the child starts with the

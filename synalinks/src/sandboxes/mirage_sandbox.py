@@ -2503,7 +2503,7 @@ class MirageSandbox(Sandbox):
                 # child, so a confined fork keeps the same allowlisted capabilities.
                 child.functions = dict(self.functions)
                 child.rlimits = dict(self.rlimits)
-                ws = resolve_sync(self.workspace.copy())
+                ws = await self.workspace.copy()
                 # ``copy`` rebuilds through Mirage's ``_from_state``, which drops the
                 # runtime world; without this the child's ``python3`` is not CPython.
                 adopt_runtimes(
