@@ -1,6 +1,7 @@
 # License Apache 2.0: (c) 2025-2026 Yoan Sallami (Synalinks Team)
 
 import asyncio
+import copy
 import json
 import os
 import shutil
@@ -1065,15 +1066,33 @@ class OAuthLanguageModel(LanguageModel):
         Returns:
             (dict): The generated structured response.
         """
-        if streaming:
-            raise ValueError("`OAuthLanguageModel` does not support streaming.")
+        if not messages:
+            return None
+        # Refused before the CLI is looked up, as `build_request` refuses it.
+        self._check_call(schema, tools, tool_schemas, streaming)
         if self._codex is None:
             self._codex = _codex_executable()
-        if schema:
-            schema = _strict_schema(schema)
         return await super().call(
             messages, schema=schema, tools=tools, tool_schemas=tool_schemas, **kwargs
         )
+
+    def _check_call(self, schema, tools, tool_schemas, streaming):
+        """Refuse a streamed call (a free-form schema: see `_wire_schema`).
+
+        Raises:
+            ValueError: If `streaming` is set, or if `schema` comes with tools.
+        """
+        if streaming:
+            raise ValueError("`OAuthLanguageModel` does not support streaming.")
+        super()._check_call(schema, tools, tool_schemas, streaming)
+
+    def _wire_schema(self, schema):
+        """The caller's schema rewritten for strict mode (see `_strict_schema`).
+
+        Raises:
+            ValueError: If the schema has a free-form object.
+        """
+        return _strict_schema(copy.deepcopy(schema)) if schema else schema
 
     async def _acompletion(self, formatted_messages, **kwargs):
         # As for any provider, `None` leaves the model at its default: no effort is sent.
