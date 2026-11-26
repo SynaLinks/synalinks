@@ -184,12 +184,12 @@ class SupportedModelsTest(testing.TestCase):
 
     @patch.dict(os.environ, {}, clear=True)
     @patch.dict(os.environ, {"OPENAI_API_KEY": "sk-test"}, clear=True)
-    async def test_uberllm_asks_its_server(self):
+    async def test_martllm_asks_its_server(self):
         patcher, requests = mock_server(openai_compatible)
         with patcher:
-            models = await LanguageModel.supported_models("uberllm")
-        self.assertEqual(models, ["uberllm/Qwen/Qwen3-4B", "uberllm/Qwen/Qwen3-8B"])
-        self.assertEqual(str(requests[0].url), "https://api.uberllm.dev/v1/models")
+            models = await LanguageModel.supported_models("martllm")
+        self.assertEqual(models, ["martllm/Qwen/Qwen3-4B", "martllm/Qwen/Qwen3-8B"])
+        self.assertEqual(str(requests[0].url), "https://api.martllm.com/v1/models")
         self.assertEqual(requests[0].headers["Authorization"], "Bearer sk-test")
 
     async def test_openai_decision_models_are_the_ones_serving_decisions(self):

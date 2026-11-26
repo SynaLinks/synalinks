@@ -347,7 +347,7 @@ SUPPORTED_PROVIDERS = (
     "openrouter",
     "sglang",
     "together_ai",
-    "uberllm",
+    "martllm",
     "vllm",
     "xai",
 )
@@ -578,22 +578,22 @@ class LanguageModel(Module):
     )
     ```
 
-    **Using UberLLM models**
+    **Using MartLLM models**
 
-    UberLLM exposes an OpenAI-compatible API in front of many model vendors.
-    The `uberllm/` prefix is rewritten to `openai/` internally and `api_base`
-    is defaulted to `https://api.uberllm.dev/v1`, so structured outputs flow
-    through the standard OpenAI path. Set `OPENAI_API_KEY` to your UberLLM API
+    MartLLM exposes an OpenAI-compatible API in front of many model vendors.
+    The `martllm/` prefix is rewritten to `openai/` internally and `api_base`
+    is defaulted to `https://api.martllm.com/v1`, so structured outputs flow
+    through the standard OpenAI path. Set `OPENAI_API_KEY` to your MartLLM API
     key (or pass `api_base` explicitly to override).
 
     ```python
     import synalinks
     import os
 
-    os.environ["OPENAI_API_KEY"] = "your-uberllm-api-key"
+    os.environ["OPENAI_API_KEY"] = "your-martllm-api-key"
 
     language_model = synalinks.LanguageModel(
-        model="uberllm/meta-llama/llama-3.3-70b-instruct",
+        model="martllm/meta-llama/llama-3.3-70b-instruct",
     )
     ```
 
@@ -833,12 +833,12 @@ class LanguageModel(Module):
             model = model.replace("doubleword", "openai", 1)
             if not api_base:
                 api_base = "https://api.doubleword.ai/v1"
-        if model_provider == "uberllm":
-            # UberLLM is OpenAI-compatible too (`response_format` json_schema);
-            # same `openai` route with the UberLLM endpoint as `api_base`.
-            model = model.replace("uberllm", "openai", 1)
+        if model_provider == "martllm":
+            # MartLLM is OpenAI-compatible too (`response_format` json_schema);
+            # same `openai` route with the MartLLM endpoint as `api_base`.
+            model = model.replace("martllm", "openai", 1)
             if not api_base:
-                api_base = "https://api.uberllm.dev/v1"
+                api_base = "https://api.martllm.com/v1"
         if model_provider == "mirai":
             # Mirai serves a local OpenAI-compatible API without an API
             # key; `hosted_vllm` speaks that wire format and never asks
@@ -1615,7 +1615,7 @@ class LanguageModel(Module):
         These are the values accepted before the `/` in `model`, e.g.
         `"openai"` in `"openai/gpt-4o-mini"`. Some are routed to a different
         litellm provider internally (`ollama` to `ollama_chat`, `vllm` to
-        `hosted_vllm`, `doubleword` and `uberllm` to `openai`, `mirai` and
+        `hosted_vllm`, `doubleword` and `martllm` to `openai`, `mirai` and
         `sglang` to `hosted_vllm`); the names listed here are the ones to
         write in `model`. Other litellm providers can still be used for plain
         chat completion, but structured output raises for them.
@@ -1664,7 +1664,7 @@ class LanguageModel(Module):
         """Returns the language models a provider offers.
 
         Self-hosted providers and open catalogs (Ollama, vLLM, SGLang, Mirai,
-        OpenRouter, Doubleword, UberLLM) are asked for the models they serve,
+        OpenRouter, Doubleword, MartLLM) are asked for the models they serve,
         keeping the Ollama models that can chat. The others are listed from
         litellm's model table; for OpenAI with `OPENAI_API_KEY` set, narrowed
         to the models the account can use (with its fine-tuned models), from
