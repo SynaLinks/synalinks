@@ -105,6 +105,9 @@ class RubricsAsJudgeTest(testing.TestCase):
         )
         with self.assertRaisesRegex(ValueError, "weights must be positive"):
             Rubric(name="correct", description="Correct.", weight=0)
+        for weight in (float("nan"), float("inf")):
+            with self.assertRaisesRegex(ValueError, "weights must be positive"):
+                Rubric(name="correct", description="Correct.", weight=weight)
 
     def test_rubrics_as_judge_preset(self):
         language_model = LanguageModel(model="ollama/mistral")
