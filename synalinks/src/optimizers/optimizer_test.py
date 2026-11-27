@@ -245,6 +245,18 @@ class CandidateScoreTest(testing.TestCase):
         # A candidate without a count is treated as a single measurement.
         self.assertAlmostEqual(optimizer.candidate_score({"reward": 0.9}), 0.7)
 
+    async def test_train_end_keeps_the_best_scored_candidate(self):
+        """A lucky 1.0 on 2 samples must not beat a 0.95 measured on 200."""
+        optimizer = _ConcreteOptimizer(reward_uncertainty=0.25)
+        variable = _trainable(
+            candidates=[
+                {"examples": ["lucky"], "reward": 1.0, "reward_count": 2},
+                {"examples": ["solid"], "reward": 0.95, "reward_count": 200},
+            ],
+        )
+        await optimizer.on_train_end([variable])
+        self.assertEqual(variable.get("examples"), ["solid"])
+
     def test_zero_uncertainty_ranks_by_raw_reward(self):
         optimizer = _ConcreteOptimizer(reward_uncertainty=0.0)
         self.assertEqual(
