@@ -108,9 +108,13 @@ def default_rubrics_prompt_template():
 
 
 def normalize_rubric_name(name):
-    """Normalize a rubric name into a JSON property name."""
+    """Normalize a rubric name into a JSON property name.
+
+    A name the grade sheet already uses (`critique`, `reward`) or that starts
+    with a digit is prefixed with `criterion_`.
+    """
     name = to_snake_case(str(name).strip())
-    if not name or name[0].isdigit():
+    if not name or name[0].isdigit() or name in ("critique", "reward"):
         name = f"criterion_{name}" if name else "criterion"
     return name
 

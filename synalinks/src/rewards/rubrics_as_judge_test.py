@@ -359,3 +359,21 @@ class RubricsAsJudgeWithDecisionModelTest(testing.TestCase):
         restored = rewards.deserialize(rewards.serialize(reward))
         self.assertIsInstance(restored.program.decision_model, DecisionModel)
         self.assertIsNone(restored.program.score_type)
+
+
+class ReservedRubricNameTest(testing.TestCase):
+    def test_rubric_named_like_a_grade_sheet_field_is_prefixed(self):
+        from synalinks.src.modules.language_models import LanguageModel
+
+        program = RubricsAsJudgeProgram(
+            language_model=LanguageModel(model="ollama/mistral"),
+            rubrics=[
+                {"name": "critique", "description": "A"},
+                {"name": "reward", "description": "B"},
+            ],
+        )
+        self.assertEqual(
+            program.schema["required"],
+            ["critique", "criterion_critique", "criterion_reward"],
+        )
+        self.assertEqual(program.schema["properties"]["critique"]["type"], "string")
