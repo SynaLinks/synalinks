@@ -925,3 +925,57 @@ class LMOperationalMetricsWithDecisionModelTest(testing.TestCase):
 
         self.assertEqual(callback._read_cost(), 100.0)
         self.assertEqual(callback._read_tokens(), 110)
+
+
+class FailedAttemptAveragesTest(testing.TestCase):
+    async def test_per_call_averages_count_failed_calls(self):
+        """One call valid at once, one invalid on all 3 attempts: 4 requests of
+        100 prompt tokens over 2 finished calls."""
+        import json
+
+        import numpy as np
+
+        from synalinks.src import modules
+        from synalinks.src import programs
+        from synalinks.src import rewards
+        from synalinks.src.modules.language_models import LanguageModel
+
+        class Question(DataModel):
+            question: str
+
+        class Answer(DataModel):
+            answer: str
+
+        async def completion(*args, **kwargs):
+            good = "good" in json.dumps(kwargs["messages"])
+            return {
+                "choices": [
+                    {"message": {"content": '{"answer": "Paris"}' if good else "{"}}
+                ],
+                "usage": {
+                    "prompt_tokens": 100,
+                    "completion_tokens": 1,
+                    "total_tokens": 101,
+                },
+            }
+
+        with patch("litellm.acompletion", side_effect=completion):
+            inputs = modules.Input(data_model=Question)
+            outputs = await modules.Generator(
+                data_model=Answer,
+                language_model=LanguageModel(model="ollama/mistral", retry=3),
+            )(inputs)
+            program = programs.Program(inputs=inputs, outputs=outputs)
+            program.compile(
+                reward=rewards.ExactMatch(), metrics=[AvgInputTokensPerCall()]
+            )
+            logs = await program.evaluate(
+                x=np.array(
+                    [Question(question="good"), Question(question="bad")], dtype="object"
+                ),
+                y=np.array([Answer(answer="Paris")] * 2, dtype="object"),
+                batch_size=2,
+                return_dict=True,
+                verbose=0,
+            )
+        self.assertEqual(logs["avg_input_tokens_per_call"], 200.0)
