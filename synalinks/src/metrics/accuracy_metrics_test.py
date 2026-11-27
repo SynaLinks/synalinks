@@ -460,3 +460,19 @@ class FieldAlignmentAccuracyTest(testing.TestCase):
         await metric.update_state(sample, Cited(sources=["doc1", "x"], title="city"))
         # sources/0, title, sources/1: `title` is never mixed with `sources/1`.
         self.assertEqual([round(s, 3) for s in metric.result()], [1.0, 1.0, 0.0])
+
+
+class SingleLabelResultTest(testing.TestCase):
+    async def test_one_label_is_still_a_dict(self):
+        from synalinks.src.metrics.f_score_metrics import CategoricalF1Score
+
+        class Labels(DataModel):
+            labels: list[str]
+
+        for metric in (
+            CategoricalAccuracy(labels=["cat"]),
+            CategoricalF1Score(labels=["cat"]),
+        ):
+            self.assertEqual(metric.result(), {"cat": 0.0})
+            await metric.update_state(Labels(labels=["cat"]), Labels(labels=["cat"]))
+            self.assertEqual(metric.result(), {"cat": 1.0})
