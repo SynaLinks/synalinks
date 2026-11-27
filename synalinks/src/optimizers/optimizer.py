@@ -305,10 +305,14 @@ class Optimizer(SynalinksSaveable):
         """
         if not logs or logs.get("val_reward") is None:
             return
+        reward = logs["val_reward"]
+        compile_reward = getattr(self.program, "_compile_reward", None)
+        if getattr(compile_reward, "reduction", None) == "sum" and val_size:
+            reward /= val_size  # Candidates hold per-sample means.
         for trainable_variable in trainable_variables:
             candidate = self.find_candidate(trainable_variable)
             if candidate is not None:
-                self.fold_reward(candidate, logs["val_reward"], weight=val_size or 1)
+                self.fold_reward(candidate, reward, weight=val_size or 1)
 
     async def select_variable_name_to_update(self, trainable_variables):
         rewards = []
@@ -606,6 +610,8 @@ class Optimizer(SynalinksSaveable):
         self.observe_training_batch(x=x, y=y, y_pred=y_pred, rewards=rewards)
         compile_reward = getattr(self.program, "_compile_reward", None)
         reduction = compile_reward.reduction if compile_reward is not None else "mean"
+        # Folded as per-sample means: a sum over n samples is not comparable.
+        reduction = "mean" if reduction == "sum" else reduction
         val_weight = len(val_x) if val_x is not None else 1
         mask = list(Trainable.keys()) + CANDIDATE_METADATA_KEYS
 
