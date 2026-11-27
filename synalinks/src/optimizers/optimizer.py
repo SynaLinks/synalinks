@@ -390,12 +390,8 @@ class Optimizer(SynalinksSaveable):
             all_candidates = candidates + best_candidates
             if not all_candidates:
                 continue
-            sorted_candidates = sorted(
-                all_candidates,
-                key=lambda x: x.get("reward"),
-                reverse=True,
-            )
-            best_candidate = sorted_candidates[0]
+            # Ranked like every other selection: few-sample rewards discounted.
+            best_candidate = max(all_candidates, key=self.candidate_score)
             best_candidate = out_mask_json(
                 best_candidate,
                 mask=CANDIDATE_METADATA_KEYS,
