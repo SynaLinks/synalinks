@@ -142,6 +142,13 @@ class NLPUtilsTest(testing.TestCase):
         )
         self.assertEqual(normalize_and_tokenize("An Apple a Day..."), ["apple", "day"])
 
+    def test_normalize_and_tokenize_strips_punctuation_before_articles(self):
+        # Articles are whole words once punctuation is gone, not word pieces.
+        self.assertEqual(normalize_and_tokenize("a-1"), ["a1"])
+        self.assertEqual(normalize_and_tokenize("A1"), ["a1"])
+        self.assertEqual(normalize_and_tokenize("the-end"), ["theend"])
+        self.assertEqual(normalize_and_tokenize("9 a.m."), ["9", "am"])
+
     def test_normalize_and_tokenize_keeps_text_that_normalizes_to_nothing(self):
         self.assertEqual(normalize_and_tokenize("A"), ["a"])
         self.assertEqual(normalize_and_tokenize("A."), ["a"])
