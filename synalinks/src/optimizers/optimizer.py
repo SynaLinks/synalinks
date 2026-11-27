@@ -733,8 +733,9 @@ class Optimizer(SynalinksSaveable):
 
         Args:
             trainable_variables (list): Variables containing predictions.
-            rewards (list[float]): Per-sample reward values to assign.
-                Each reward corresponds to a prediction in order.
+            rewards (list[float]): Per-sample reward values to assign. A
+                prediction gets the reward of the sample it was made for (its
+                `sample` index), or the reward at its position when untagged.
         """
         if not rewards:
             rewards = [0.0]
@@ -742,8 +743,12 @@ class Optimizer(SynalinksSaveable):
             current_predictions = trainable_variable.get("current_predictions")
             predictions = trainable_variable.get("predictions")
             unassigned = [p for p in current_predictions if p["reward"] is None]
-            for p, r in zip(unassigned, rewards):
-                p["reward"] = r
+            for i, p in enumerate(unassigned):
+                # By sample: predictions come in completion order, some missing.
+                index = p.pop("sample", None)
+                index = i if index is None else index
+                if index < len(rewards):
+                    p["reward"] = rewards[index]
             # `nb_visit` / `cumulative_reward` are the per-batch struggle signal
             # read by `select_variable_name_to_update`: they reflect ONLY this
             # batch's predictions for this variable (reset, not accumulated), so

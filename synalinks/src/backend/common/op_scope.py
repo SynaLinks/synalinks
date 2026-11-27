@@ -162,6 +162,10 @@ def _add_phase_wall_clock_s(phase, seconds, clock=None):
     (clock or default_phase_clock()).add(phase, seconds)
 
 
+# The position, in its batch, of the sample a `predict_on_batch` call is running.
+SAMPLE_INDEX = contextvars.ContextVar("synalinks_sample_index", default=None)
+
+
 # ---------------------------------------------------------------------------
 # Trajectory start (for whole-trajectory time-to-first-token of agents)
 # ---------------------------------------------------------------------------
