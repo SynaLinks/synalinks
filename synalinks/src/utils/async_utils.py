@@ -502,7 +502,8 @@ _CORO_THREAD_EXECUTOR = ThreadPoolExecutor(
     # Allow for a ridiculously large number so that we will never end up
     # queuing one job after another. This is critical as we could otherwise end
     # up in deadlock, if a job triggers another job and waits for it.
-    max_workers=2**64,
+    max_workers=2
+    ** 64,
 )
 
 
