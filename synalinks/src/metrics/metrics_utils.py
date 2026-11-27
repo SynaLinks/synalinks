@@ -103,8 +103,7 @@ def collect_models(program, model_types, attrs):
     models = []
     seen = set()
     for holder in model_holders(program):
-        # A knowledge base is not a module: its models are read through the
-        # module that holds it (a retriever, a RAG agent).
+        # A knowledge base is not a module: read it through its holder.
         owners = [holder, getattr(holder, "knowledge_base", None)]
         candidates = [getattr(owner, attr, None) for owner in owners for attr in attrs]
         for model in candidates + [holder]:
