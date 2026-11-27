@@ -2,6 +2,7 @@
 # Original authors: François Chollet et al. (Keras Team)
 # License Apache 2.0: (c) 2025-2026 Yoan Sallami (Synalinks Team)
 
+import copy
 import math
 import random
 
@@ -587,6 +588,22 @@ class Optimizer(SynalinksSaveable):
         if not self.built:
             await self.build(trainable_variables)
 
+        # Per-output reward logs keep only the last validation pass, like `reward`.
+        compile_reward = getattr(self.program, "_compile_reward", None)
+        reward_metrics = compile_reward.metrics if compile_reward is not None else []
+        saved = {
+            id(m): [copy.deepcopy(v.get_json()) for v in m.variables]
+            for m in reward_metrics
+        }
+
+        def restore_reward_metrics():
+            for metric in compile_reward.metrics if compile_reward is not None else []:
+                if id(metric) not in saved:
+                    metric.reset_state()  # Built during this step.
+                    continue
+                for variable, state in zip(metric.variables, saved[id(metric)]):
+                    variable.assign(state)
+
         y_pred = await self.program.predict_on_batch(
             x=x,
             training=True,
@@ -604,7 +621,6 @@ class Optimizer(SynalinksSaveable):
         )
         train_rewards = rewards
         self.observe_training_batch(x=x, y=y, y_pred=y_pred, rewards=rewards)
-        compile_reward = getattr(self.program, "_compile_reward", None)
         reduction = compile_reward.reduction if compile_reward is not None else "mean"
         val_weight = len(val_x) if val_x is not None else 1
         mask = list(Trainable.keys()) + CANDIDATE_METADATA_KEYS
@@ -629,6 +645,7 @@ class Optimizer(SynalinksSaveable):
                 x=val_x,
                 training=False,
             )
+            restore_reward_metrics()
             rewards = await self.program.compute_reward(
                 x=val_x,
                 y=val_y,
@@ -661,6 +678,7 @@ class Optimizer(SynalinksSaveable):
                 x=val_x,
                 training=False,
             )
+            restore_reward_metrics()
             rewards = await self.program.compute_reward(
                 x=val_x,
                 y=val_y,

@@ -226,13 +226,13 @@ class Trainer:
             if not isinstance(module, Trainer):
                 continue
             own_metrics = []
-            if self._reward_tracker is not None:
-                own_metrics.append(self._reward_tracker)
-            if self._compile_metrics is not None:
-                own_metrics.append(self._compile_metrics)
-            if self._compile_reward is not None:
-                own_metrics.extend(self._compile_reward.metrics)
-            own_metrics.extend(self._metrics)
+            if module._reward_tracker is not None:
+                own_metrics.append(module._reward_tracker)
+            if module._compile_metrics is not None:
+                own_metrics.append(module._compile_metrics)
+            if module._compile_reward is not None:
+                own_metrics.extend(module._compile_reward.metrics)
+            own_metrics.extend(module._metrics)
             for m in own_metrics:
                 module._tracker.untrack(m)
             module._reward_tracker = None
@@ -1239,7 +1239,7 @@ class Trainer:
             return
         config = serialization_lib.deserialize_synalinks_object(config)
         self.compile(**config)
-        if hasattr(self, "optimizer") and self.built:
+        if self.optimizer is not None and self.built:
             # Create optimizer variables/programs.
             if not self.optimizer.built:
                 run_maybe_nested(self.optimizer.build(self.trainable_variables))

@@ -4,6 +4,7 @@ from synalinks.src import testing
 from synalinks.src.api_export import synalinks_export
 from synalinks.src.backend import DataModel
 from synalinks.src.backend import Field
+from synalinks.src.rewards.batch_reward import BatchRewardFunctionWrapper
 from synalinks.src.rewards.composable_reward import ComposableReward
 from synalinks.src.rewards.exact_match import ExactMatch
 from synalinks.src.rewards.exact_match import exact_match
@@ -173,3 +174,14 @@ class ComposableRewardBatchReductionTest(testing.TestCase):
         x = np.array([Answer(answer=str(i)) for i in range(4)], dtype=object)
         logs = await program.evaluate(x=x, y=x, batch_size=4, verbose=0)
         self.assertAlmostEqual(logs["reward"], 0.75)
+
+
+class ComposableRewardBatchChildTest(testing.TestCase):
+    def test_rejects_batch_reward_children(self):
+        async def batch_fn(y_true, y_pred):
+            return [1.0] * len(y_pred)
+
+        with self.assertRaisesRegex(ValueError, "BatchReward"):
+            ComposableReward(
+                rewards=[ExactMatch(), BatchRewardFunctionWrapper(fn=batch_fn)]
+            )
