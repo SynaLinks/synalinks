@@ -159,6 +159,9 @@ def remove_by_id(lst, value):
 def pythonify_logs(logs):
     """Flatten and convert log values to Python-native types.
 
+    A nested dict's keys are prefixed with its key: `{"accuracy": {"cat": 1}}`
+    becomes `{"accuracy_cat": 1.0}`.
+
     This function attempts to convert dict value by `float(value)` and skips
     the conversion if it fails.
 
@@ -173,7 +176,8 @@ def pythonify_logs(logs):
     result = {}
     for key, value in sorted(logs.items()):
         if isinstance(value, dict):
-            result.update(pythonify_logs(value))
+            # Prefixed: `{label: score}` results of two metrics must not collide.
+            result.update(pythonify_logs({f"{key}_{k}": v for k, v in value.items()}))
         else:
             try:
                 value = float(value)
