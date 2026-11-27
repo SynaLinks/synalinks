@@ -19,6 +19,7 @@ from synalinks.src.backend.common import numpy
 from synalinks.src.backend.common.op_scope import SAMPLE_INDEX
 from synalinks.src.backend.common.op_scope import PhaseClock
 from synalinks.src.backend.common.op_scope import op_scope
+from synalinks.src.metrics.agents_metrics import SampledRewardMetric
 from synalinks.src.saving import serialization_lib
 from synalinks.src.trainers.compile_utils import CompileMetrics
 from synalinks.src.trainers.compile_utils import CompileReward
@@ -56,32 +57,41 @@ def _own_metrics(metrics):
         lazily-built `CompileMetrics`, so state from one program leaks into the
         next.
 
-    Cloning per compile removes both at the root. String / callable identifiers
-    are left untouched -- they're resolved into a fresh metric per program by
-    `CompileMetrics` anyway, so they're already isolated.
+    Cloning per compile removes both at the root. A wrapped reward is kept by
+    reference, so a judge still runs (and is billed) on the user's model.
+    Callables and string identifiers are resolved into a fresh metric per
+    program by `CompileMetrics`, except the name of an operational metric,
+    resolved here so it can be bound to the program.
     """
     if metrics is None:
         return None
 
     def clone(m):
+        if isinstance(m, str):
+            # An operational metric by name must exist now to be bound below.
+            resolved = metrics_module.get(m)
+            if not hasattr(resolved, "bind_program"):
+                return m
+            resolved.name = m  # Logged under the given name, as `CompileMetrics` does.
+            return resolved
         if not isinstance(m, metrics_module.Metric):
             return m
-        # Rebuild from config; config objects (a wrapped reward...) stay by reference.
-        try:
-            return type(m).from_config(m.get_config())
-        except Exception:
-            # A bare callable the registry cannot locate: rebuild it directly.
-            if isinstance(m, metrics_module.MeanMetricWrapper):
-                return type(m)(
-                    fn=m._fn,
-                    name=m.name,
-                    in_mask=m.in_mask,
-                    out_mask=m.out_mask,
-                    in_mask_pattern=m.in_mask_pattern,
-                    out_mask_pattern=m.out_mask_pattern,
-                    **m._fn_kwargs,
-                )
-            raise
+        # A wrapped reward stays by reference: a judge keeps the user's model.
+        if type(m) is metrics_module.MeanMetricWrapper:
+            return type(m)(
+                fn=m._fn,
+                name=m.name,
+                in_mask=m.in_mask,
+                out_mask=m.out_mask,
+                in_mask_pattern=m.in_mask_pattern,
+                out_mask_pattern=m.out_mask_pattern,
+                **m._fn_kwargs,
+            )
+        if isinstance(m, SampledRewardMetric):
+            return type(m)(
+                k=m.k, reward=m.reward, pass_threshold=m.pass_threshold, name=m.name
+            )
+        return type(m).from_config(m.get_config())
 
     return tree.map_structure(clone, metrics)
 
@@ -415,9 +425,10 @@ class Trainer:
         if self._compile_metrics is not None:
             # Feed the whole batch: `BatchMetric`s (e.g. `PassAtK`) consume it
             # at once, ordinary metrics are still updated per-sample.
-            await self._compile_metrics.update_state_batch(
-                y, y_pred, None if x is None else list(x)
-            )
+            with op_scope("reward", clock=self._phase_clock):  # A metric's judge.
+                await self._compile_metrics.update_state_batch(
+                    y, y_pred, None if x is None else list(x)
+                )
         return self.get_metrics_result()
 
     def get_metrics_result(self):

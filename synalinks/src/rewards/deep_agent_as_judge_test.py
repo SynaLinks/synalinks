@@ -422,9 +422,9 @@ class DeepAgentAsJudgeCloseTest(testing.TestCase):
         await program.close()
         self.assertTrue(judge.program.agent.sandbox.killed)
 
-    async def test_a_metric_clone_builds_one_sandbox_and_closes_it_with_the_program(self):
-        # `compile` clones each metric with tracking off: the clone's judge, and
-        # only it, is the program's to close; nothing is built and dropped.
+    async def test_a_metric_judge_is_kept_and_closed_with_the_program(self):
+        # `compile` clones the metric but keeps its judge: no sandbox is built,
+        # and the judge is closed with the program, like a compiled reward.
         from synalinks.src import metrics
         from synalinks.src.modules.core.generator import Generator
         from synalinks.src.modules.core.input_module import Input
@@ -447,9 +447,9 @@ class DeepAgentAsJudgeCloseTest(testing.TestCase):
             outputs=await Generator(data_model=A, language_model=lm)(inputs),
         )
         program.compile(metrics=[metric])
-        self.assertEqual(len(set(Sandbox.live_sandboxes) - live), 1)
-        (clone,) = program._compile_metrics._user_metrics
-        self.assertEqual(clone._fn.program.max_iterations, 3)
-        await program.close()
         self.assertEqual(set(Sandbox.live_sandboxes) - live, set())
+        (clone,) = program._compile_metrics._user_metrics
+        self.assertIs(clone._fn, metric._fn)
+        await program.close()
+        self.assertNotIn(metric._fn.program.agent.sandbox, Sandbox.live_sandboxes)
         await metric.close()
