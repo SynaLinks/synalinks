@@ -1,6 +1,5 @@
 # License Apache 2.0: (c) 2025-2026 Yoan Sallami (Synalinks Team)
 
-from synalinks.src import backend
 from synalinks.src import tree
 from synalinks.src.backend.common import numpy as np
 from synalinks.src.backend.common.op_scope import read_phase_wall_clock_s
@@ -71,11 +70,8 @@ def aggregate_scores(score, average, axis, intermediate_weights=None):
     """
     score = np.convert_to_tensor(score)
     if average == "weighted":
-        weights = np.divide(
-            intermediate_weights,
-            np.sum(intermediate_weights) + backend.epsilon(),
-        )
-        score = np.sum(score * weights)
+        weights = np.convert_to_tensor(intermediate_weights)
+        score = np.divide_no_nan(np.sum(score * weights), np.sum(weights))
     elif average is not None:  # [micro, macro]
         score = np.mean(score, axis)
     # numpy 1.25+ deprecates float() on a >0-D array even when size == 1.

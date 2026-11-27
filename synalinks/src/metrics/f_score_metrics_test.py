@@ -594,3 +594,21 @@ class FieldAlignmentFScoreTest(testing.TestCase):
         )
         # flags/0, flags/1 (missing: a false negative), done.
         self.assertEqual([round(s, 3) for s in metric.result()], [1.0, 0.0, 1.0])
+
+
+class PerfectScoreTest(testing.TestCase):
+    async def test_perfect_predictions_score_exactly_one(self):
+        from synalinks.src.metrics.accuracy_metrics import Accuracy
+        from synalinks.src.metrics.precision_recall_metrics import Precision
+        from synalinks.src.metrics.precision_recall_metrics import Recall
+
+        class Answer(DataModel):
+            answer: str
+            rationale: str
+
+        sample = Answer(answer="Paris", rationale="It is the capital of France.")
+        for metric_class in (Accuracy, F1Score, Precision, Recall):
+            for average in ("micro", "macro", "weighted"):
+                metric = metric_class(average=average)
+                await metric.update_state(sample, sample)
+                self.assertEqual(metric.result(), 1.0, (metric_class, average))
