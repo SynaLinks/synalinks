@@ -512,8 +512,10 @@ class CategoricalAccuracy(Accuracy):
 
     def result(self):
         res = super().result()
-        if self.labels is not None and self.average is None and isinstance(res, list):
-            return {label: score for label, score in zip(self.labels, res)}
+        if self.labels is not None and self.average is None:
+            # One label (or no update yet) gives a single float.
+            scores = res if isinstance(res, list) else [res] * len(self.labels)
+            return dict(zip(self.labels, scores))
         return res
 
     def get_config(self):
