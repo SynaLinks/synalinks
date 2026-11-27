@@ -1083,8 +1083,7 @@ class Monitor(Callback):
         the batch's predictions came from the auto-build pass that ran before
         the run started) nothing is logged.
         """
-        # A batch that ended without `on_test_batch_begin` has no traces of
-        # its own to attach rewards to.
+        # A batch that never began has no traces of its own.
         if self._run is None or self.program is None or self._trace_mark is None:
             return
         rewards = getattr(self.program, "_per_sample_rewards", None)
