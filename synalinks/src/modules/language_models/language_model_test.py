@@ -438,6 +438,36 @@ class LanguageModelTest(testing.TestCase):
             language_model.cumulated_streaming_ttft_s,
         )
 
+    @patch("tenacity.nap.sleep")
+    @patch("litellm.acompletion")
+    async def test_invalid_replies_count_tokens_not_calls(self, mock_completion, _):
+        """A reply that fails to parse is billed (its tokens count) but is not a
+        successful call: `calls` only counts valid replies, so `ErrorRate`
+        reflects logical calls."""
+        from synalinks.src.testing.test_utils import AnswerWithRationale
+
+        usage = {"prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15}
+        invalid = {"choices": [{"message": {"content": "not json {"}}], "usage": usage}
+        answer = json.dumps({"rationale": "r", "answer": "a"})
+        valid = {"choices": [{"message": {"content": answer}}], "usage": usage}
+        messages = ChatMessages(messages=[ChatMessage(role=ChatRole.USER, content="?")])
+        schema = AnswerWithRationale.get_schema()
+
+        language_model = LanguageModel(model="ollama/mistral", retry=3)
+        mock_completion.side_effect = [invalid, valid]
+        self.assertIsNotNone(await language_model(messages, schema=schema))
+        self.assertEqual(language_model.cumulated_calls, 1)
+        self.assertEqual(language_model.cumulated_failed_calls, 0)
+        self.assertEqual(language_model.cumulated_tokens, 30)
+
+        language_model = LanguageModel(model="ollama/mistral", retry=3)
+        mock_completion.side_effect = None
+        mock_completion.return_value = invalid
+        self.assertIsNone(await language_model(messages, schema=schema))
+        self.assertEqual(language_model.cumulated_calls, 0)
+        self.assertEqual(language_model.cumulated_failed_calls, 1)
+        self.assertEqual(language_model.cumulated_tokens, 45)
+
     @patch("litellm.acompletion")
     async def test_streaming_records_the_call_usage_and_cost(self, mock_completion):
         """A drained stream counts as a call, with the tokens of its final
