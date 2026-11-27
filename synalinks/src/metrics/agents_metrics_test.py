@@ -297,3 +297,68 @@ class SampledRewardInputsTest(testing.TestCase):
             ]
             * 2,
         )
+
+
+class CompiledMetricOwnershipTest(testing.TestCase):
+    """`compile` clones metrics but keeps their rewards, and binds by name."""
+
+    async def _evaluate(self, metrics_list, respond):
+        from synalinks.src.modules.language_models import LanguageModel
+
+        with patch("litellm.acompletion", side_effect=respond):
+            inputs = modules.Input(data_model=Question)
+            outputs = await modules.Generator(
+                data_model=Answer, language_model=LanguageModel(model="ollama/mistral")
+            )(inputs)
+            program = programs.Program(inputs=inputs, outputs=outputs)
+            program.compile(reward=rewards.ExactMatch(), metrics=metrics_list)
+            return await program.evaluate(
+                x=np.array([Question(question="Q?")] * 2, dtype="object"),
+                y=np.array([Answer(answer="Paris")] * 2, dtype="object"),
+                batch_size=2,
+                return_dict=True,
+                verbose=0,
+            )
+
+    @staticmethod
+    async def _respond(*args, **kwargs):
+        class Response(dict):
+            _hidden_params = {"response_cost": 0.01}
+
+        judging = "critique" in kwargs["messages"][0]["content"]
+        content = (
+            '{"critique": "ok", "reward": 1.0}' if judging else '{"answer": "Paris"}'
+        )
+        return Response(
+            choices=[{"message": {"content": content}}],
+            usage={"prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15},
+        )
+
+    async def test_function_reward_compiles(self):
+        async def exact(y_true, y_pred):
+            return float(y_true.get_json() == y_pred.get_json())
+
+        logs = await self._evaluate([PassAtK(k=2, reward=exact)], self._respond)
+        self.assertEqual(logs["pass_at_k"], 1.0)
+
+    async def test_judge_keeps_the_users_model_and_is_billed(self):
+        from synalinks.src import metrics
+        from synalinks.src.modules.language_models import LanguageModel
+
+        judge_lm = LanguageModel(model="ollama/judge")
+        logs = await self._evaluate(
+            [
+                PassAtK(k=2, reward=rewards.LMAsJudge(language_model=judge_lm)),
+                metrics.ProgramCost(),
+                metrics.RewardCost(),
+            ],
+            self._respond,
+        )
+        self.assertAlmostEqual(judge_lm.cumulated_cost, 0.02)
+        self.assertAlmostEqual(logs["reward_cost"], 0.02)
+        self.assertAlmostEqual(logs["program_cost"], 0.04)
+
+    async def test_operational_metric_by_name_is_bound(self):
+        logs = await self._evaluate(["ProgramCalls", "total_tokens"], self._respond)
+        self.assertEqual(logs["ProgramCalls"], 2.0)
+        self.assertEqual(logs["total_tokens"], 30.0)

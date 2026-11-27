@@ -26,7 +26,8 @@ def model_holders(program):
 
     That is every module of the program, plus the modules of its compiled
     reward: a judge's model (e.g. the one of `RubricsAsJudge`) runs during the
-    reward phase, so its counters belong to the program's run too. The same
+    reward phase, so its counters belong to the program's run too, as do the
+    models of its compiled metrics' rewards (e.g. a `PassAtK` judge). The same
     holds for the compiled optimizer (e.g. `OMEGA`'s language and embedding
     models, and its mutation/crossover programs) during the optimizer phase.
 
@@ -39,11 +40,16 @@ def model_holders(program):
     holders = []
     if hasattr(program, "_flatten_modules"):
         holders.extend(program._flatten_modules(include_self=True, recursive=True))
+    seen = set()
     compile_reward = getattr(program, "_compile_reward", None)
     if compile_reward is not None:
-        seen = set()
         for reward in tree.flatten(getattr(compile_reward, "_user_reward", None)):
             _reward_holders(reward, holders, seen)
+    compile_metrics = getattr(program, "_compile_metrics", None)
+    for metric in tree.flatten(getattr(compile_metrics, "_user_metrics", None)):
+        # A metric's reward (e.g. a `PassAtK` judge) runs in the reward phase.
+        reward = getattr(metric, "reward", None) or getattr(metric, "_fn", None)
+        _reward_holders(reward, holders, seen)
     optimizer = getattr(program, "_optimizer", None)
     if optimizer is not None:
         holders.append(optimizer)
