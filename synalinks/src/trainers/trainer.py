@@ -1239,7 +1239,7 @@ class Trainer:
             return
         config = serialization_lib.deserialize_synalinks_object(config)
         self.compile(**config)
-        if hasattr(self, "optimizer") and self.built:
+        if self.optimizer is not None and self.built:
             # Create optimizer variables/programs.
             if not self.optimizer.built:
                 run_maybe_nested(self.optimizer.build(self.trainable_variables))
