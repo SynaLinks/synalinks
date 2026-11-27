@@ -186,7 +186,8 @@ def reduce_values(values, reduction="mean"):
     # to a scalar 0.0. This keeps downstream scalar consumers (trackers, tuner
     # objectives) from ever receiving an empty list (the ``"none"`` branch) or
     # hitting ``min``/``max``'s "zero-size array" error.
-    if hasattr(values, "__len__") and len(values) == 0:
+    # A function that returns None (no grade) scores 0.0, like the trainer does.
+    if values is None or (hasattr(values, "__len__") and len(values) == 0):
         return 0.0
     if reduction is None or reduction == "none":
         # Preserve the per-sample structure: scalars stay scalars, lists/

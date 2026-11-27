@@ -309,7 +309,8 @@ class MeanMetricWrapper(Mean):
         if accepts_argument(self._fn, "x"):
             kwargs["x"] = mask_data_models(x, **masks)
         values = await self._fn(y_true, y_pred, **kwargs)
-        return await super().update_state(values)
+        # No grade counts as 0.0 (as for rewards), not as a NaN sample.
+        return await super().update_state(0.0 if values is None else values)
 
     async def close(self):
         """Close the reward this metric wraps (a judge's program). Idempotent."""
