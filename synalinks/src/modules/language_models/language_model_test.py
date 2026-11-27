@@ -439,6 +439,47 @@ class LanguageModelTest(testing.TestCase):
         )
 
     @patch("litellm.acompletion")
+    async def test_streaming_records_the_call_usage_and_cost(self, mock_completion):
+        """A drained stream counts as a call, with the tokens of its final
+        usage-only chunk (empty `choices`) and the cost litellm reports."""
+        from synalinks.src.backend.common.op_scope import op_scope
+
+        class Stream:
+            def __init__(self, chunks):
+                self._chunks = iter(chunks)
+                self._hidden_params = {"response_cost": 0.01}
+
+            def __iter__(self):
+                return self
+
+            def __next__(self):
+                return next(self._chunks)
+
+        language_model = LanguageModel(model="ollama/deepseek-r1")
+        messages = ChatMessages(
+            messages=[ChatMessage(role=ChatRole.USER, content="Hello")]
+        )
+        usage = {"prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15}
+        mock_completion.return_value = Stream(
+            [
+                {"choices": [{"delta": {"content": "Hel"}}]},
+                {"choices": [{"delta": {"content": "lo"}}]},
+                {"choices": [], "usage": usage},
+            ]
+        )
+        with op_scope("inference"):
+            response = await language_model(messages, streaming=True)
+            message = await response.aconsume()
+        self.assertEqual(message.get("content"), "Hello")
+        self.assertEqual(
+            mock_completion.call_args.kwargs["stream_options"], {"include_usage": True}
+        )
+        for prefix in ("", "inference_"):
+            self.assertEqual(getattr(language_model, f"{prefix}cumulated_calls"), 1)
+            self.assertEqual(getattr(language_model, f"{prefix}cumulated_tokens"), 15)
+            self.assertEqual(getattr(language_model, f"{prefix}cumulated_cost"), 0.01)
+
+    @patch("litellm.acompletion")
     async def test_streaming_abandoned_before_exhaustion_records_nothing(
         self, mock_completion
     ):

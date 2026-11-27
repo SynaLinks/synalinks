@@ -306,10 +306,14 @@ class Optimizer(SynalinksSaveable):
         """
         if not logs or logs.get("val_reward") is None:
             return
+        reward = logs["val_reward"]
+        compile_reward = getattr(self.program, "_compile_reward", None)
+        if getattr(compile_reward, "reduction", None) == "sum" and val_size:
+            reward /= val_size  # Candidates hold per-sample means.
         for trainable_variable in trainable_variables:
             candidate = self.find_candidate(trainable_variable)
             if candidate is not None:
-                self.fold_reward(candidate, logs["val_reward"], weight=val_size or 1)
+                self.fold_reward(candidate, reward, weight=val_size or 1)
 
     async def select_variable_name_to_update(self, trainable_variables):
         rewards = []
@@ -618,6 +622,8 @@ class Optimizer(SynalinksSaveable):
         train_rewards = rewards
         self.observe_training_batch(x=x, y=y, y_pred=y_pred, rewards=rewards)
         reduction = compile_reward.reduction if compile_reward is not None else "mean"
+        # Folded as per-sample means: a sum over n samples is not comparable.
+        reduction = "mean" if reduction == "sum" else reduction
         val_weight = len(val_x) if val_x is not None else 1
         mask = list(Trainable.keys()) + CANDIDATE_METADATA_KEYS
 
@@ -733,8 +739,9 @@ class Optimizer(SynalinksSaveable):
 
         Args:
             trainable_variables (list): Variables containing predictions.
-            rewards (list[float]): Per-sample reward values to assign.
-                Each reward corresponds to a prediction in order.
+            rewards (list[float]): Per-sample reward values to assign. A
+                prediction gets the reward of the sample it was made for (its
+                `sample` index), or the reward at its position when untagged.
         """
         if not rewards:
             rewards = [0.0]
@@ -742,8 +749,12 @@ class Optimizer(SynalinksSaveable):
             current_predictions = trainable_variable.get("current_predictions")
             predictions = trainable_variable.get("predictions")
             unassigned = [p for p in current_predictions if p["reward"] is None]
-            for p, r in zip(unassigned, rewards):
-                p["reward"] = r
+            for i, p in enumerate(unassigned):
+                # By sample: predictions come in completion order, some missing.
+                index = p.pop("sample", None)
+                index = i if index is None else index
+                if index < len(rewards):
+                    p["reward"] = rewards[index]
             # `nb_visit` / `cumulative_reward` are the per-batch struggle signal
             # read by `select_variable_name_to_update`: they reflect ONLY this
             # batch's predictions for this variable (reset, not accumulated), so

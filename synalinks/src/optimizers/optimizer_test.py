@@ -159,6 +159,71 @@ class OptimizerRewardAssignmentTest(testing.TestCase):
         self.assertEqual(var.get("cumulative_reward"), 1.0)
 
 
+class PredictionSampleOrderTest(testing.TestCase):
+    async def test_rewards_follow_the_sample_tag(self):
+        """Predictions are recorded in completion order and a failed sample
+        records none, so each one gets the reward of its own sample."""
+        optimizer = Optimizer(population_size=5)
+        var = _trainable(
+            current_predictions=[
+                {"outputs": "c", "reward": None, "sample": 2},
+                {"outputs": "a", "reward": None, "sample": 0},
+            ],
+        )
+        await optimizer.assign_reward_to_predictions([var], rewards=[1.0, 0.5, 0.0])
+        rewards = {p["outputs"]: p["reward"] for p in var.get("predictions")}
+        self.assertEqual(rewards, {"a": 1.0, "c": 0.0})
+        self.assertNotIn("sample", var.get("predictions")[0])
+
+    async def test_predictions_finishing_out_of_order(self):
+        import asyncio
+        import json
+        from unittest.mock import patch
+
+        import numpy as np
+
+        from synalinks.src.backend import DataModel
+        from synalinks.src.modules import Generator
+        from synalinks.src.modules import Input
+        from synalinks.src.modules.language_models import LanguageModel
+        from synalinks.src.optimizers.random_few_shot import RandomFewShot
+        from synalinks.src.programs import Program
+        from synalinks.src.rewards.exact_match import ExactMatch
+
+        class Q(DataModel):
+            query: str
+
+        class A(DataModel):
+            answer: str
+
+        async def completion(*args, **kwargs):
+            # Sample "0" answers last.
+            for query, delay in (("0", 0.3), ("1", 0.2), ("2", 0.1)):
+                if f"'query': '{query}'" in str(kwargs["messages"][-1]["content"]):
+                    await asyncio.sleep(delay)
+                    content = json.dumps({"answer": query})
+                    return {"choices": [{"message": {"content": content}}]}
+
+        with patch("litellm.acompletion", side_effect=completion):
+            inputs = Input(data_model=Q)
+            outputs = await Generator(
+                data_model=A, language_model=LanguageModel(model="ollama/mistral")
+            )(inputs)
+            program = Program(inputs=inputs, outputs=outputs)
+            program.compile(reward=ExactMatch(), optimizer=RandomFewShot())
+            x = np.array([Q(query=q) for q in "012"], dtype=object)
+            # Only sample 0 is right.
+            y = np.array([A(answer=a) for a in ("0", "X", "X")], dtype=object)
+            y_pred = await program.predict_on_batch(x, training=True)
+            rewards = await program.compute_reward(x=x, y=y, y_pred=y_pred)
+            await program.optimizer.assign_reward_to_predictions(
+                program.trainable_variables, rewards=rewards
+            )
+        predictions = program.trainable_variables[0].get("predictions")
+        rewards = {p["inputs"]["query"]: p["reward"] for p in predictions}
+        self.assertEqual(rewards, {"0": 1.0, "1": 0.0, "2": 0.0})
+
+
 class _ConcreteOptimizer(Optimizer):
     async def propose_new_candidates(self, *args, **kwargs):
         return None
@@ -475,3 +540,61 @@ class PerOutputRewardLogsTest(testing.TestCase):
                 self.assertAlmostEqual(logs["g1_reward"], expected)
                 self.assertAlmostEqual(logs["g2_reward"], expected)
                 self.assertAlmostEqual(logs["reward"], 2 * expected)
+
+
+class SumReductionCandidateTest(testing.TestCase):
+    async def test_candidates_hold_per_sample_means(self):
+        """With a `"sum"` reward, a minibatch sum and the epoch-end sum over the
+        whole validation set are folded as per-sample means."""
+        import json
+        from unittest.mock import patch
+
+        import numpy as np
+
+        from synalinks.src.backend import DataModel
+        from synalinks.src.modules import Generator
+        from synalinks.src.modules import Input
+        from synalinks.src.modules.language_models import LanguageModel
+        from synalinks.src.optimizers.random_few_shot import RandomFewShot
+        from synalinks.src.programs import Program
+        from synalinks.src.rewards.reward_wrappers import RewardFunctionWrapper
+
+        class Q(DataModel):
+            query: str
+
+        class A(DataModel):
+            answer: str
+
+        async def completion(*args, **kwargs):
+            return {"choices": [{"message": {"content": json.dumps({"answer": "a"})}}]}
+
+        async def right(y_true, y_pred):
+            return 1.0 if y_pred.get("answer") == y_true.get("answer") else 0.0
+
+        with patch("litellm.acompletion", side_effect=completion):
+            inputs = Input(data_model=Q)
+            outputs = await Generator(
+                data_model=A, language_model=LanguageModel(model="ollama/mistral")
+            )(inputs)
+            program = Program(inputs=inputs, outputs=outputs)
+            program.compile(
+                reward=RewardFunctionWrapper(fn=right, reduction="sum"),
+                optimizer=RandomFewShot(),
+            )
+            x = np.array([Q(query=str(i)) for i in range(4)], dtype=object)
+            y = np.array([A(answer="a")] * 4, dtype=object)
+            await program.train_on_batch(step=0, x=x, y=y, val_x=x, val_y=y)
+
+        variable = program.trainable_variables[0]
+        candidates = variable.get("candidates") + variable.get("best_candidates")
+        self.assertTrue(candidates)
+        for candidate in candidates:
+            self.assertAlmostEqual(candidate["reward"], 1.0)
+
+        # The epoch-end validation sum over 20 samples is folded as a mean.
+        candidate = program.optimizer.find_candidate(variable)
+        count = candidate["reward_count"]
+        program.optimizer.assign_validation_reward(
+            [variable], logs={"val_reward": 10.0}, val_size=20
+        )
+        self.assertAlmostEqual(candidate["reward"], (count + 0.5 * 20) / (count + 20))

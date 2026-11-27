@@ -569,3 +569,28 @@ class ShortAnswerFScoreTest(testing.TestCase):
             # `average=None` gives one score per field.
             for score in tree.flatten(await metric(gold, gold)):
                 self.assertAlmostEqual(score, 1.0, delta=1e-3)
+
+
+class FieldAlignmentFScoreTest(testing.TestCase):
+    async def test_fields_after_a_shorter_list_stay_aligned(self):
+        class Cited(DataModel):
+            answer: str
+            sources: list[str]
+            title: str
+
+        class Flags(DataModel):
+            flags: list[bool]
+            done: bool
+
+        gold = Cited(answer="paris", sources=["doc1", "doc2"], title="capital")
+        pred = Cited(answer="paris", sources=["doc1"], title="capital")
+        self.assertAlmostEqual(
+            await F1Score(average="macro")(gold, pred), 0.75, delta=1e-3
+        )
+
+        metric = BinaryF1Score()
+        await metric.update_state(
+            Flags(flags=[True, True], done=True), Flags(flags=[True], done=True)
+        )
+        # flags/0, flags/1 (missing: a false negative), done.
+        self.assertEqual([round(s, 3) for s in metric.result()], [1.0, 0.0, 1.0])

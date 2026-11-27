@@ -202,8 +202,9 @@ class ProgramCallsPerSecond(ProgramOperationalMetric):
 @synalinks_export("synalinks.metrics.ProgramCost")
 class ProgramCost(ProgramOperationalMetric):
     """Total provider cost (USD, as reported by litellm) across every LM
-    and EM reached from the program for this run. The program object
-    itself doesn't pay providers; cost is summed from its bound models.
+    and EM reached from the program for this run, in every phase: the
+    program's own calls, its judge's (reward) and its optimizer's. The program
+    object itself doesn't pay providers; cost is summed from its bound models.
 
     Example:
 
@@ -219,13 +220,18 @@ class ProgramCost(ProgramOperationalMetric):
     def __init__(self, name="program_cost"):
         super().__init__(name=name)
 
+    def _read_model_cost(self):
+        models = self._language_models + self._embedding_models
+        return sum(getattr(model, "cumulated_cost", 0) for model in models)
+
     def result(self):
         return float(self._delta_model_cost())
 
 
 @synalinks_export("synalinks.metrics.ProgramAvgCostPerInvocation")
 class ProgramAvgCostPerInvocation(ProgramOperationalMetric):
-    """Average provider cost per program invocation.
+    """Average provider cost per program invocation: the cost of the
+    program's own calls (inference), without its judge's or optimizer's.
 
     Example:
 

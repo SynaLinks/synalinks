@@ -353,16 +353,22 @@ def get_score_type(identifier):
     name (as stored in a serialized config) are accepted.
 
     Args:
-        identifier (type | str | None): The score type class, its name
+        identifier (type | str | dict | None): The score type class, its name
             (`"Score"`, `"FineScore"`, `"Rating"`, `"Rating10"`, `"Rating20"`,
-            or the registered name of a custom one), or `None` for the
-            default `Score`.
+            or the registered name of a custom one), a custom scale as saved
+            by `serialize_score_type` (`{"name", "members"}`), or `None` for
+            the default `Score`.
 
     Returns:
         (type): The resolved score type class.
     """
     if identifier is None:
         return Score
+    if isinstance(identifier, dict):
+        # A custom scale saved by `serialize_score_type`: rebuilt from its members.
+        members = identifier.get("members") or {}
+        base = int if all(isinstance(v, int) for v in members.values()) else float
+        identifier = Enum(identifier.get("name", "ScoreType"), members, type=base)
     if isinstance(identifier, str):
         score_type = _BUILTIN_SCORE_TYPES.get(identifier)
         if score_type is None:
@@ -384,8 +390,19 @@ def get_score_type(identifier):
 
 
 def serialize_score_type(score_type):
-    """Return the string name under which a score type is serialized."""
-    return get_registered_name(get_score_type(score_type))
+    """Return how a score type is serialized: its name when it can be looked up
+    again (a built-in or registered scale), else its name and members, from
+    which `get_score_type` rebuilds it."""
+    score_type = get_score_type(score_type)
+    name = get_registered_name(score_type)
+    if _BUILTIN_SCORE_TYPES.get(name) is score_type:
+        return name
+    if get_registered_object(name) is score_type:
+        return name
+    return {
+        "name": score_type.__name__,
+        "members": {member.name: member.value for member in score_type},
+    }
 
 
 def score_type_bounds(score_type):

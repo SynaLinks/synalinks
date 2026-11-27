@@ -411,8 +411,10 @@ def normalize_and_tokenize(text):
     Returns:
         (list): A list of normalized words.
     """
-    tokens = remove_punctuation(remove_articles(text.lower())).split()
-    return tokens or remove_punctuation(text.lower()).split() or text.lower().split()
+    text = text.lower()
+    # Punctuation first, as `normalize_text` does: "a-1" is one word, "a1".
+    tokens = remove_articles(remove_punctuation(text)).split()
+    return tokens or remove_punctuation(text).split() or text.split()
 
 
 def shorten_text(text, nb_words_offset=10):
