@@ -137,6 +137,9 @@ class Accuracy(Metric):
         for yt, yp in zip_longest(y_true, y_pred, fillvalue=""):
             y_true_tokens = nlp_utils.normalize_and_tokenize(str(yt))
             y_pred_tokens = nlp_utils.normalize_and_tokenize(str(yp))
+            if not y_true_tokens and not y_pred_tokens:
+                # Both blank: a correct (empty) answer, not a 0/0.
+                y_true_tokens = y_pred_tokens = [""]
             common_tokens = set(y_true_tokens) & set(y_pred_tokens)
             union_tokens = set(y_true_tokens) | set(y_pred_tokens)
             correct.append(len(common_tokens))

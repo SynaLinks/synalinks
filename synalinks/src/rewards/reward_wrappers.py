@@ -286,17 +286,17 @@ class ProgramAsJudge(Reward):
             result = await self.program(y_pred, y_true=y_true, **kwargs)
         else:
             result = await self.program([y_true, y_pred], **kwargs)
-        if result is None:
+        if result is None or result.get("reward") is None:
             warnings.warn(
-                f"{self.__class__.__name__}: judge program returned None "
-                "(likely an LLM / provider failure). Scoring this sample as "
+                f"{self.__class__.__name__}: judge program returned None or no "
+                "reward (likely an LLM / provider failure). Scoring this sample as "
                 "0.0 and continuing. Check the underlying language model "
                 "and structured-output configuration.",
                 RuntimeWarning,
                 stacklevel=2,
             )
             return 0.0
-        return float(result.get("reward", 0.0))
+        return float(result.get("reward"))
 
     def get_config(self):
         config = super().get_config()

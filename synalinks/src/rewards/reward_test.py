@@ -204,3 +204,23 @@ def _schema(*keys):
         "properties": {key: {"type": "string"} for key in keys},
         "required": list(keys),
     }
+
+
+class NoneGradeTest(testing.TestCase):
+    async def test_function_returning_none_scores_zero(self):
+        from synalinks.src.metrics.reduction_metrics import MeanMetricWrapper
+        from synalinks.src.rewards.reward_wrappers import RewardFunctionWrapper
+
+        class Answer(DataModel):
+            answer: str
+
+        async def no_grade(y_true, y_pred):
+            return None
+
+        y = Answer(answer="a")
+        for reduction in ("mean", "sum", "min", "max", "none", None):
+            self.assertEqual(reduce_values(None, reduction=reduction), 0.0)
+        self.assertEqual(await RewardFunctionWrapper(fn=no_grade)(y, y), 0.0)
+        metric = MeanMetricWrapper(fn=no_grade)
+        await metric.update_state(y, y)
+        self.assertEqual(metric.result(), 0.0)

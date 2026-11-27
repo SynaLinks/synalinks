@@ -401,3 +401,65 @@ class SampleWeightedRewardTest(testing.TestCase):
         lucky = next(c for c in best if c["instructions"] == "lucky")
         self.assertEqual(lucky["reward_count"], 64)
         self.assertAlmostEqual(lucky["reward"], (1.0 * 4 + 0.7 * 60) / 64)
+
+
+class PerOutputRewardLogsTest(testing.TestCase):
+    async def test_per_output_rewards_follow_the_validation_pass(self):
+        """`fit` logs the per-output rewards next to `reward`, which records
+        the validation pass: the training batch must not leak into them."""
+        import json
+        from unittest.mock import patch
+
+        import numpy as np
+
+        from synalinks.src.backend import DataModel
+        from synalinks.src.modules import Generator
+        from synalinks.src.modules import Input
+        from synalinks.src.modules.language_models import LanguageModel
+        from synalinks.src.optimizers.random_few_shot import RandomFewShot
+        from synalinks.src.programs import Program
+
+        class Q(DataModel):
+            query: str
+
+        class A(DataModel):
+            answer: str
+
+        async def completion(*args, **kwargs):
+            return {"choices": [{"message": {"content": json.dumps({"answer": "a"})}}]}
+
+        async def right(y_true, y_pred):
+            return 1.0 if y_pred.get("answer") == y_true.get("answer") else 0.0
+
+        def targets(answer):
+            y = np.empty((2,), dtype=object)
+            for i in range(2):
+                y[i] = [A(answer=answer), A(answer=answer)]
+            return y
+
+        with patch("litellm.acompletion", side_effect=completion):
+            language_model = LanguageModel(model="ollama/mistral")
+            inputs = Input(data_model=Q)
+            outputs = [
+                await Generator(data_model=A, language_model=language_model, name=n)(
+                    inputs
+                )
+                for n in ("g1", "g2")
+            ]
+            program = Program(inputs=inputs, outputs=outputs)
+            program.compile(reward=right, optimizer=RandomFewShot())
+            x = np.array([Q(query="q1"), Q(query="q2")], dtype=object)
+            # Training targets are right, validation targets wrong, then right.
+            for step, val_answer in enumerate(("z", "a")):
+                logs = await program.train_on_batch(
+                    step=step,
+                    x=x,
+                    y=targets("a"),
+                    val_x=x,
+                    val_y=targets(val_answer),
+                    return_dict=True,
+                )
+                expected = step / 2
+                self.assertAlmostEqual(logs["g1_reward"], expected)
+                self.assertAlmostEqual(logs["g2_reward"], expected)
+                self.assertAlmostEqual(logs["reward"], 2 * expected)
