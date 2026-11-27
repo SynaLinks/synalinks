@@ -2,6 +2,7 @@
 # Original authors: François Chollet et al. (Keras Team)
 # License Apache 2.0: (c) 2025-2026 Yoan Sallami (Synalinks Team)
 
+import copy
 import math
 import random
 
@@ -394,12 +395,8 @@ class Optimizer(SynalinksSaveable):
             all_candidates = candidates + best_candidates
             if not all_candidates:
                 continue
-            sorted_candidates = sorted(
-                all_candidates,
-                key=lambda x: x.get("reward"),
-                reverse=True,
-            )
-            best_candidate = sorted_candidates[0]
+            # Ranked like every other selection: few-sample rewards discounted.
+            best_candidate = max(all_candidates, key=self.candidate_score)
             best_candidate = out_mask_json(
                 best_candidate,
                 mask=CANDIDATE_METADATA_KEYS,
@@ -591,6 +588,22 @@ class Optimizer(SynalinksSaveable):
         if not self.built:
             await self.build(trainable_variables)
 
+        # Per-output reward logs keep only the last validation pass, like `reward`.
+        compile_reward = getattr(self.program, "_compile_reward", None)
+        reward_metrics = compile_reward.metrics if compile_reward is not None else []
+        saved = {
+            id(m): [copy.deepcopy(v.get_json()) for v in m.variables]
+            for m in reward_metrics
+        }
+
+        def restore_reward_metrics():
+            for metric in compile_reward.metrics if compile_reward is not None else []:
+                if id(metric) not in saved:
+                    metric.reset_state()  # Built during this step.
+                    continue
+                for variable, state in zip(metric.variables, saved[id(metric)]):
+                    variable.assign(state)
+
         y_pred = await self.program.predict_on_batch(
             x=x,
             training=True,
@@ -608,7 +621,6 @@ class Optimizer(SynalinksSaveable):
         )
         train_rewards = rewards
         self.observe_training_batch(x=x, y=y, y_pred=y_pred, rewards=rewards)
-        compile_reward = getattr(self.program, "_compile_reward", None)
         reduction = compile_reward.reduction if compile_reward is not None else "mean"
         # Folded as per-sample means: a sum over n samples is not comparable.
         reduction = "mean" if reduction == "sum" else reduction
@@ -635,6 +647,7 @@ class Optimizer(SynalinksSaveable):
                 x=val_x,
                 training=False,
             )
+            restore_reward_metrics()
             rewards = await self.program.compute_reward(
                 x=val_x,
                 y=val_y,
@@ -667,6 +680,7 @@ class Optimizer(SynalinksSaveable):
                 x=val_x,
                 training=False,
             )
+            restore_reward_metrics()
             rewards = await self.program.compute_reward(
                 x=val_x,
                 y=val_y,

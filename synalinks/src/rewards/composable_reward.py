@@ -4,6 +4,7 @@ from synalinks.src import tree
 from synalinks.src.api_export import synalinks_export
 from synalinks.src.metrics.metric import apply_masks
 from synalinks.src.metrics.metric import mask_data_models
+from synalinks.src.rewards.batch_reward import BatchReward
 from synalinks.src.rewards.reward import Reward
 from synalinks.src.rewards.reward_wrappers import RewardFunctionWrapper
 from synalinks.src.saving import serialization_lib
@@ -25,6 +26,8 @@ class ComposableReward(Reward):
 
     Args:
         rewards (list): List of `Reward` instances or async reward functions.
+            A `BatchReward` is not accepted: it needs the whole batch, while
+            this reward combines its children one sample at a time.
         weights (list): Optional positive weights, one per reward, used by the
             `"mean"` and `"sum"` reductions. Defaults to equal weights.
         name (str): Optional name for the reward instance.
@@ -59,6 +62,13 @@ class ComposableReward(Reward):
         )
         if not rewards:
             raise ValueError("`rewards` is required and must not be empty.")
+        batch_rewards = [r.name for r in rewards if isinstance(r, BatchReward)]
+        if batch_rewards:
+            raise ValueError(
+                f"`ComposableReward` scores one sample at a time, so it cannot "
+                f"combine the `BatchReward`s {batch_rewards}. Pass them to "
+                "`compile(reward=[...])` instead, which feeds each one the batch."
+            )
         self.rewards = [self.standardize_reward(reward) for reward in rewards]
         if weights is None:
             weights = [1.0] * len(self.rewards)
