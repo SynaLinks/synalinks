@@ -1075,9 +1075,6 @@ class DecisionModel(Module):
             )
             elapsed_s = time.perf_counter() - t0
             body = response.model_dump()
-            # A malformed answer is a `ValueError`: not retried, it fails the
-            # call (fallback or `None`) instead of reaching downstream code.
-            answers = validate_answers(questions, body.get("answers"))
             answered_by = body.get("model") or self.model_id
             usage = body.get("usage") or {}
             prompt_tokens = int(usage.get("input_tokens") or 0)
@@ -1089,7 +1086,6 @@ class DecisionModel(Module):
                     "response_cost"
                 )
             increments = {
-                "calls": 1,
                 "prompt_tokens": prompt_tokens,
                 "completion_tokens": completion_tokens,
                 "tokens": prompt_tokens + completion_tokens,
@@ -1103,6 +1099,11 @@ class DecisionModel(Module):
             self.last_call_elapsed_s = elapsed_s
             self.last_call_cost = increments.get("cost", 0.0)
             self.last_call_model = answered_by
+            # Billed even when the answer turns out malformed.
+            self._record(increments)
+            # A malformed answer is a `ValueError`: not retried, it fails the
+            # call (fallback or `None`) instead of reaching downstream code.
+            answers = validate_answers(questions, body.get("answers"))
             _CURRENT_CALL_USAGE.set(
                 {
                     "input_tokens": prompt_tokens,
@@ -1115,7 +1116,8 @@ class DecisionModel(Module):
                     "answers": answers,
                 }
             )
-            self._record(increments)
+            # Only a valid answer is a successful call.
+            self._record({"calls": 1})
             return answers
 
         return await _do_call()
