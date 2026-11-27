@@ -12,6 +12,10 @@ too. The models reachable from the program are collected on `compile()`,
 including `fallback` chains and the models of the compiled reward (e.g. a
 judge's), whose calls run during the reward phase.
 
+Every attempt's tokens, cost and latency are counted, retries included, so
+the "per call" averages divide by the calls that ended (`calls`, the
+successes, plus `failed_calls`).
+
 Class hierarchy:
 
     LMOperationalMetric         (base, _phase = "inference")
@@ -170,7 +174,7 @@ class AvgInputTokensPerCall(LMOperationalMetric):
         super().__init__(name=name)
 
     def result(self):
-        calls = self._delta("calls")
+        calls = self._delta("calls") + self._delta("failed_calls")
         if calls <= 0:
             return 0.0
         return self._delta("prompt_tokens") / calls
@@ -195,7 +199,7 @@ class AvgOutputTokensPerCall(LMOperationalMetric):
         super().__init__(name=name)
 
     def result(self):
-        calls = self._delta("calls")
+        calls = self._delta("calls") + self._delta("failed_calls")
         if calls <= 0:
             return 0.0
         return self._delta("completion_tokens") / calls
@@ -220,7 +224,7 @@ class AvgTotalTokensPerCall(LMOperationalMetric):
         super().__init__(name=name)
 
     def result(self):
-        calls = self._delta("calls")
+        calls = self._delta("calls") + self._delta("failed_calls")
         if calls <= 0:
             return 0.0
         return self._delta("tokens") / calls
@@ -247,7 +251,7 @@ class AvgCachedTokensPerCall(LMOperationalMetric):
         super().__init__(name=name)
 
     def result(self):
-        calls = self._delta("calls")
+        calls = self._delta("calls") + self._delta("failed_calls")
         if calls <= 0:
             return 0.0
         return self._delta("cached_tokens") / calls
@@ -272,7 +276,7 @@ class AvgCacheCreationTokensPerCall(LMOperationalMetric):
         super().__init__(name=name)
 
     def result(self):
-        calls = self._delta("calls")
+        calls = self._delta("calls") + self._delta("failed_calls")
         if calls <= 0:
             return 0.0
         return self._delta("cache_creation_tokens") / calls
@@ -297,7 +301,7 @@ class AvgReasoningTokensPerCall(LMOperationalMetric):
         super().__init__(name=name)
 
     def result(self):
-        calls = self._delta("calls")
+        calls = self._delta("calls") + self._delta("failed_calls")
         if calls <= 0:
             return 0.0
         return self._delta("reasoning_tokens") / calls
@@ -364,11 +368,11 @@ class Throughput(LMOperationalMetric):
 class AvgLatency(LMOperationalMetric):
     """Average wall-clock latency in seconds per LM call over this run.
 
-    Computed as ``elapsed_s / calls``. Because ``elapsed_s`` accumulates each
-    call's own duration, this reports the mean per-call latency regardless of
-    how many calls ran concurrently -- unlike `Throughput`, which divides
-    output tokens by the phase's wall-clock span and so does reflect
-    concurrency.
+    Computed as ``elapsed_s / (calls + failed_calls)``. Because ``elapsed_s``
+    accumulates each call's own duration, this reports the mean per-call
+    latency regardless of how many calls ran concurrently -- unlike
+    `Throughput`, which divides output tokens by the phase's wall-clock span
+    and so does reflect concurrency.
 
     Example:
 
@@ -385,7 +389,7 @@ class AvgLatency(LMOperationalMetric):
         super().__init__(name=name)
 
     def result(self):
-        calls = self._delta("calls")
+        calls = self._delta("calls") + self._delta("failed_calls")
         if calls <= 0:
             return 0.0
         return self._delta("elapsed_s") / calls
@@ -432,7 +436,7 @@ class AvgCostPerCall(LMOperationalMetric):
         super().__init__(name=name)
 
     def result(self):
-        calls = self._delta("calls")
+        calls = self._delta("calls") + self._delta("failed_calls")
         if calls <= 0:
             return 0.0
         return self._delta("cost") / calls
@@ -619,8 +623,7 @@ class ErrorRate(LMOperationalMetric):
     """Fraction of LM calls that failed: failed / (succeeded + failed).
 
     The headline reliability signal: successful calls bump `calls`, failures
-    bump `failed_calls`, so the error rate is observable even though failures
-    leave the token / cost / latency counters untouched.
+    bump `failed_calls`.
 
     Example:
 
@@ -859,7 +862,7 @@ class AvgRewardInputTokensPerCall(LMRewardsOperationalMetric):
         super().__init__(name=name)
 
     def result(self):
-        calls = self._delta("calls")
+        calls = self._delta("calls") + self._delta("failed_calls")
         if calls <= 0:
             return 0.0
         return self._delta("prompt_tokens") / calls
@@ -884,7 +887,7 @@ class AvgRewardOutputTokensPerCall(LMRewardsOperationalMetric):
         super().__init__(name=name)
 
     def result(self):
-        calls = self._delta("calls")
+        calls = self._delta("calls") + self._delta("failed_calls")
         if calls <= 0:
             return 0.0
         return self._delta("completion_tokens") / calls
@@ -909,7 +912,7 @@ class AvgRewardTotalTokensPerCall(LMRewardsOperationalMetric):
         super().__init__(name=name)
 
     def result(self):
-        calls = self._delta("calls")
+        calls = self._delta("calls") + self._delta("failed_calls")
         if calls <= 0:
             return 0.0
         return self._delta("tokens") / calls
@@ -936,7 +939,7 @@ class AvgRewardCachedTokensPerCall(LMRewardsOperationalMetric):
         super().__init__(name=name)
 
     def result(self):
-        calls = self._delta("calls")
+        calls = self._delta("calls") + self._delta("failed_calls")
         if calls <= 0:
             return 0.0
         return self._delta("cached_tokens") / calls
@@ -961,7 +964,7 @@ class AvgRewardCacheCreationTokensPerCall(LMRewardsOperationalMetric):
         super().__init__(name=name)
 
     def result(self):
-        calls = self._delta("calls")
+        calls = self._delta("calls") + self._delta("failed_calls")
         if calls <= 0:
             return 0.0
         return self._delta("cache_creation_tokens") / calls
@@ -986,7 +989,7 @@ class AvgRewardReasoningTokensPerCall(LMRewardsOperationalMetric):
         super().__init__(name=name)
 
     def result(self):
-        calls = self._delta("calls")
+        calls = self._delta("calls") + self._delta("failed_calls")
         if calls <= 0:
             return 0.0
         return self._delta("reasoning_tokens") / calls
@@ -1064,7 +1067,7 @@ class AvgRewardLatency(LMRewardsOperationalMetric):
         super().__init__(name=name)
 
     def result(self):
-        calls = self._delta("calls")
+        calls = self._delta("calls") + self._delta("failed_calls")
         if calls <= 0:
             return 0.0
         return self._delta("elapsed_s") / calls
@@ -1111,7 +1114,7 @@ class AvgRewardCostPerCall(LMRewardsOperationalMetric):
         super().__init__(name=name)
 
     def result(self):
-        calls = self._delta("calls")
+        calls = self._delta("calls") + self._delta("failed_calls")
         if calls <= 0:
             return 0.0
         return self._delta("cost") / calls
@@ -1425,7 +1428,7 @@ class AvgOptimizerInputTokensPerCall(LMOptimizersOperationalMetric):
         super().__init__(name=name)
 
     def result(self):
-        calls = self._delta("calls")
+        calls = self._delta("calls") + self._delta("failed_calls")
         if calls <= 0:
             return 0.0
         return self._delta("prompt_tokens") / calls
@@ -1450,7 +1453,7 @@ class AvgOptimizerOutputTokensPerCall(LMOptimizersOperationalMetric):
         super().__init__(name=name)
 
     def result(self):
-        calls = self._delta("calls")
+        calls = self._delta("calls") + self._delta("failed_calls")
         if calls <= 0:
             return 0.0
         return self._delta("completion_tokens") / calls
@@ -1475,7 +1478,7 @@ class AvgOptimizerTotalTokensPerCall(LMOptimizersOperationalMetric):
         super().__init__(name=name)
 
     def result(self):
-        calls = self._delta("calls")
+        calls = self._delta("calls") + self._delta("failed_calls")
         if calls <= 0:
             return 0.0
         return self._delta("tokens") / calls
@@ -1502,7 +1505,7 @@ class AvgOptimizerCachedTokensPerCall(LMOptimizersOperationalMetric):
         super().__init__(name=name)
 
     def result(self):
-        calls = self._delta("calls")
+        calls = self._delta("calls") + self._delta("failed_calls")
         if calls <= 0:
             return 0.0
         return self._delta("cached_tokens") / calls
@@ -1527,7 +1530,7 @@ class AvgOptimizerCacheCreationTokensPerCall(LMOptimizersOperationalMetric):
         super().__init__(name=name)
 
     def result(self):
-        calls = self._delta("calls")
+        calls = self._delta("calls") + self._delta("failed_calls")
         if calls <= 0:
             return 0.0
         return self._delta("cache_creation_tokens") / calls
@@ -1552,7 +1555,7 @@ class AvgOptimizerReasoningTokensPerCall(LMOptimizersOperationalMetric):
         super().__init__(name=name)
 
     def result(self):
-        calls = self._delta("calls")
+        calls = self._delta("calls") + self._delta("failed_calls")
         if calls <= 0:
             return 0.0
         return self._delta("reasoning_tokens") / calls
@@ -1630,7 +1633,7 @@ class AvgOptimizerLatency(LMOptimizersOperationalMetric):
         super().__init__(name=name)
 
     def result(self):
-        calls = self._delta("calls")
+        calls = self._delta("calls") + self._delta("failed_calls")
         if calls <= 0:
             return 0.0
         return self._delta("elapsed_s") / calls
@@ -1677,7 +1680,7 @@ class AvgOptimizerCostPerCall(LMOptimizersOperationalMetric):
         super().__init__(name=name)
 
     def result(self):
-        calls = self._delta("calls")
+        calls = self._delta("calls") + self._delta("failed_calls")
         if calls <= 0:
             return 0.0
         return self._delta("cost") / calls
