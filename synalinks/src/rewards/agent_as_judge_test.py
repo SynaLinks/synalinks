@@ -144,7 +144,7 @@ class AgentAsJudgeTest(testing.TestCase):
         reward = AgentAsJudge(
             language_model=language_model,
             tools=[Tool(calculate)],
-            in_mask=["answer"],
+            in_mask=["output_answer", "gold_answer"],
         )
 
         y_true = AnswerWithThinking(thinking="The gold reasoning", answer="Paris")

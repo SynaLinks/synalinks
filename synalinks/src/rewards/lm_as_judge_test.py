@@ -258,9 +258,8 @@ class LMAsJudgeTest(testing.TestCase):
         )
 
     @patch("litellm.acompletion")
-    async def test_lm_as_judge_masks_apply_to_the_inputs_too(self, mock_completion):
-        # `out_mask=["context"]` keeps a large context away from the judge,
-        # even when it reaches the reward through the program's inputs.
+    async def test_lm_as_judge_masks_name_prefixed_fields(self, mock_completion):
+        # `out_mask=["input_context"]` keeps a large context away from the judge.
         class QueryWithContext(DataModel):
             query: str = Field(description="The user query")
             context: str = Field(description="Retrieved documents")
@@ -272,7 +271,8 @@ class LMAsJudgeTest(testing.TestCase):
             "choices": [{"message": {"content": '{"critique": "Ok", "reward": 1.0}'}}]
         }
         reward = LMAsJudge(
-            language_model=LanguageModel(model="ollama/mistral"), out_mask=["context"]
+            language_model=LanguageModel(model="ollama/mistral"),
+            out_mask=["input_context"],
         )
         await reward(
             y_true=None,
@@ -283,3 +283,61 @@ class LMAsJudgeTest(testing.TestCase):
             mock_completion.call_args.kwargs["messages"][-1]["content"],
             "{'input_query': 'French capital?', 'output_answer': 'Paris'}",
         )
+
+
+class JudgeMaskTest(testing.TestCase):
+    class Query(DataModel):
+        query: str
+        context: str
+
+    class Answer(DataModel):
+        thinking: str
+        answer: str
+
+    def _judge_prompt(self, mock_completion):
+        return mock_completion.call_args.kwargs["messages"][-1]["content"]
+
+    @patch("litellm.acompletion")
+    async def test_masks_name_the_prefixed_fields(self, mock_completion):
+        mock_completion.return_value = {
+            "choices": [{"message": {"content": '{"critique": "Ok", "reward": 1.0}'}}]
+        }
+        x = self.Query(query="Capital?", context="HUGE")
+        y_pred = self.Answer(thinking="hmm", answer="Paris")
+        y_true = self.Answer(thinking="gold reasoning", answer="Paris")
+        language_model = LanguageModel(model="ollama/mistral")
+
+        judge = LMAsJudge(
+            language_model=language_model,
+            in_mask=["input_query", "output_answer", "gold_answer"],
+        )
+        await judge(y_true, y_pred, x=x)
+        self.assertEqual(
+            self._judge_prompt(mock_completion),
+            "{'input_query': 'Capital?', 'output_answer': 'Paris', "
+            "'gold_answer': 'Paris'}",
+        )
+
+        judge = LMAsJudge(language_model=language_model, out_mask_pattern="^input_")
+        await judge(None, y_pred, x=x)
+        self.assertEqual(
+            self._judge_prompt(mock_completion),
+            "{'output_thinking': 'hmm', 'output_answer': 'Paris'}",
+        )
+
+        # A judge inside a composite applies its own prefixed masks.
+        from synalinks.src.rewards.composable_reward import ComposableReward
+
+        composite = ComposableReward(
+            [LMAsJudge(language_model=language_model, out_mask=["input_context"])]
+        )
+        await composite(None, y_pred, x=x)
+        self.assertNotIn("HUGE", self._judge_prompt(mock_completion))
+        self.assertIn("input_query", self._judge_prompt(mock_completion))
+
+    def test_unprefixed_mask_name_warns(self):
+        with self.assertWarnsRegex(UserWarning, "output_answer"):
+            LMAsJudge(
+                language_model=LanguageModel(model="ollama/mistral"),
+                in_mask=["answer"],
+            )

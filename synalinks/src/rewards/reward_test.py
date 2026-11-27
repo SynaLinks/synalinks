@@ -164,7 +164,7 @@ class SqueezeOrExpandToSameRankTest(testing.TestCase):
 
 
 class RewardInputsTest(testing.TestCase):
-    async def test_x_reaches_a_call_that_declares_it_masked_like_targets(self):
+    async def test_x_reaches_a_call_that_declares_it_unmasked(self):
         seen = {}
 
         class InputAware(Reward):
@@ -179,10 +179,10 @@ class RewardInputsTest(testing.TestCase):
             json={"answer": "a", "noise": "n"}, schema=_schema("answer", "noise")
         )
         await InputAware(out_mask=["noise"])(y, y, x=x)
-        # A masked field stays out of the reward, whichever side it comes from.
+        # Masks select the targets' fields; the inputs reach the reward whole.
         self.assertEqual(seen["y_pred"].get_json(), {"answer": "a"})
         self.assertEqual(seen["y_true"].get_json(), {"answer": "a"})
-        self.assertEqual(seen["x"].get_json(), {"query": "q"})
+        self.assertEqual(seen["x"].get_json(), {"query": "q", "noise": "n"})
 
     async def test_rewards_without_x_are_unchanged(self):
         class Plain(Reward):

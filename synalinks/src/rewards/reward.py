@@ -46,7 +46,7 @@ class Reward(SynalinksSaveable):
 
     * `call()`: Contains the logic for eval calculation using `y_true`,
         `y_pred`. A `call()` that also declares an `x` argument (or takes
-        `**kwargs`) receives the program's inputs, masked like the targets, or
+        `**kwargs`) receives the program's inputs, unmasked (see `mask`), or
         `None` when they are not given.
     """
 
@@ -68,22 +68,8 @@ class Reward(SynalinksSaveable):
 
     async def __call__(self, y_true, y_pred, x=None):
         with ops.name_scope(self.name):
-            y_true, y_pred = apply_masks(
-                y_true,
-                y_pred,
-                in_mask=self.in_mask,
-                in_mask_pattern=self.in_mask_pattern,
-                out_mask=self.out_mask,
-                out_mask_pattern=self.out_mask_pattern,
-            )
+            y_true, y_pred, x = self.mask(y_true, y_pred, x)
             if accepts_argument(self.call, "x"):
-                x = mask_data_models(
-                    x,
-                    in_mask=self.in_mask,
-                    in_mask_pattern=self.in_mask_pattern,
-                    out_mask=self.out_mask,
-                    out_mask_pattern=self.out_mask_pattern,
-                )
                 rewards = await self.call(y_true, y_pred, x=x)
             else:
                 rewards = await self.call(y_true, y_pred)
@@ -91,6 +77,25 @@ class Reward(SynalinksSaveable):
                 rewards,
                 reduction=self.reduction,
             )
+
+    def mask(self, y_true, y_pred, x=None):
+        """Apply this reward's masks: to `y_true` and `y_pred` only.
+
+        The program's inputs `x` are converted but never masked, so a keep-list
+        of output fields cannot drop the question a reward needs.
+
+        Returns:
+            (tuple): The masked `y_true` and `y_pred`, and `x`.
+        """
+        y_true, y_pred = apply_masks(
+            y_true,
+            y_pred,
+            in_mask=self.in_mask,
+            in_mask_pattern=self.in_mask_pattern,
+            out_mask=self.out_mask,
+            out_mask_pattern=self.out_mask_pattern,
+        )
+        return y_true, y_pred, mask_data_models(x)
 
     async def call(self, y_true, y_pred):
         raise NotImplementedError

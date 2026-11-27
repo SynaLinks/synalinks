@@ -307,7 +307,7 @@ class MeanMetricWrapper(Mean):
         y_true, y_pred = apply_masks(y_true, y_pred, **masks)
         kwargs = dict(self._fn_kwargs)
         if accepts_argument(self._fn, "x"):
-            kwargs["x"] = mask_data_models(x, **masks)
+            kwargs["x"] = mask_data_models(x)  # Masks select y_true/y_pred fields.
         values = await self._fn(y_true, y_pred, **kwargs)
         # No grade counts as 0.0 (as for rewards), not as a NaN sample.
         return await super().update_state(0.0 if values is None else values)

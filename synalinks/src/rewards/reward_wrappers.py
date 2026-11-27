@@ -5,7 +5,11 @@
 import warnings
 
 from synalinks.src import ops
+from synalinks.src import tree
 from synalinks.src.api_export import synalinks_export
+from synalinks.src.backend.common.json_utils import in_mask_json
+from synalinks.src.backend.common.json_utils import out_mask_json
+from synalinks.src.metrics.metric import mask_data_models
 from synalinks.src.rewards.reward import Reward
 from synalinks.src.rewards.reward import check_async_reward_fn
 from synalinks.src.saving import serialization_lib
@@ -192,6 +196,12 @@ class ProgramAsJudge(Reward):
     `x` is `None` when the reward is called without it, so declare that input
     `optional=True` (and `y_true` too, to judge without a ground truth).
 
+    Masks name the fields as the judge sees them, prefixed by where they come
+    from: `input_` for the program's inputs, `output_` for its prediction and
+    `gold_` for the ground truth. `out_mask=["input_context"]` keeps a large
+    retrieved context away from the judge; `in_mask=["input_query",
+    "output_answer"]` shows it only the question and the answer.
+
     Example:
 
     ```python
@@ -261,6 +271,48 @@ class ProgramAsJudge(Reward):
             out_mask_pattern=out_mask_pattern,
         )
         self.program = program
+        for name in (in_mask or []) + (out_mask or []):
+            if not name.startswith(("input_", "output_", "gold_")):
+                warnings.warn(
+                    f"{self.__class__.__name__}: mask field {name!r} matches "
+                    "nothing: a judge's masks name prefixed fields, e.g. "
+                    f"'output_{name}' or 'input_{name}'.",
+                    stacklevel=2,
+                )
+
+    def mask(self, y_true, y_pred, x=None):
+        """Keep the top-level fields whose prefixed name (`gold_`, `output_`,
+        `input_`) passes the masks, on each side."""
+        masks = {
+            "in_mask": self.in_mask,
+            "in_mask_pattern": self.in_mask_pattern,
+            "out_mask": self.out_mask,
+            "out_mask_pattern": self.out_mask_pattern,
+        }
+        if not any(masks.values()):
+            return super().mask(y_true, y_pred, x)
+
+        def side(model, prefix):
+            if model is None:
+                return None
+            names = {f"{prefix}_{key}": key for key in model.get_json()}
+            kept = dict.fromkeys(names)
+            if self.in_mask or self.in_mask_pattern:
+                kept = in_mask_json(
+                    kept, self.in_mask, self.in_mask_pattern, recursive=False
+                )
+            if self.out_mask or self.out_mask_pattern:
+                kept = out_mask_json(
+                    kept, self.out_mask, self.out_mask_pattern, recursive=False
+                )
+            return model.in_mask(mask=[names[key] for key in kept], recursive=False)
+
+        y_true, y_pred, x = (mask_data_models(v) for v in (y_true, y_pred, x))
+        return (
+            tree.map_structure(lambda m: side(m, "gold"), y_true),
+            tree.map_structure(lambda m: side(m, "output"), y_pred),
+            tree.map_structure(lambda m: side(m, "input"), x),
+        )
 
     async def close(self):
         """Close the judge's program: an agent judge's sandbox, say. Idempotent."""
