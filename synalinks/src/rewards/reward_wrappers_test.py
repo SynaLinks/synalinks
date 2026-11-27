@@ -10,6 +10,7 @@ from synalinks.src import testing
 from synalinks.src.backend import ChatMessage
 from synalinks.src.backend import ChatMessages
 from synalinks.src.backend import DataModel
+from synalinks.src.backend import JsonDataModel
 from synalinks.src.backend import SymbolicDataModel
 from synalinks.src.backend import is_chat_message
 from synalinks.src.backend import is_chat_messages
@@ -179,6 +180,24 @@ class ProgramAsJudgeTest(testing.TestCase):
         judge_warnings = [w for w in caught if issubclass(w.category, RuntimeWarning)]
         self.assertEqual(len(judge_warnings), 1)
         self.assertIn("returned None", str(judge_warnings[0].message))
+
+    async def test_call_program_returns_no_reward(self):
+        """A grade sheet without a reward scores 0.0 and warns, not crashes."""
+
+        class Answer(DataModel):
+            answer: str
+
+        for json in ({"critique": "x", "reward": None}, {"critique": "x"}):
+            mock_program = AsyncMock()
+            mock_program.return_value = JsonDataModel(
+                json=json, schema={"type": "object"}
+            )
+            judge = ProgramAsJudge(program=mock_program)
+            with warnings.catch_warnings(record=True) as caught:
+                warnings.simplefilter("always")
+                reward = await judge(Answer(answer="hello"), Answer(answer="world"))
+            self.assertEqual(reward, 0.0)
+            self.assertTrue(any("no reward" in str(w.message) for w in caught))
 
     def test_get_config(self):
         mock_program = MagicMock()
