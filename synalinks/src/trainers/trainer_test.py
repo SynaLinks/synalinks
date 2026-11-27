@@ -795,6 +795,44 @@ class TestRewardInputs(testing.TestCase):
         )
 
 
+class EchoReply(modules.Module):
+    async def call(self, inputs, training=False):
+        return Reply(reply=inputs.get("question")).to_json_data_model()
+
+    async def compute_output_spec(self, inputs, training=False):
+        return Reply.to_symbolic_data_model()
+
+
+class TestMultiOutputRewards(testing.TestCase):
+    async def test_per_output_rewards_compile_and_evaluate(self):
+        x = np.array([Question(question="a"), Question(question="b")], dtype=object)
+        y = np.empty((2,), dtype=object)
+        y[0] = [Reply(reply="a"), Reply(reply="z")]
+        y[1] = [Reply(reply="b"), Reply(reply="b")]
+        for reward, weights in (
+            ([rewards.ExactMatch(), rewards.ExactMatch()], [1.0, 3.0]),
+            ({"o1": rewards.ExactMatch(), "o2": rewards.ExactMatch()}, None),
+        ):
+            inputs = modules.Input(data_model=Question)
+            outputs = [
+                await EchoReply(name="o1")(inputs),
+                await EchoReply(name="o2")(inputs),
+            ]
+            program = programs.Program(inputs=inputs, outputs=outputs)
+            if weights is None:
+                weights = {"o1": 1.0, "o2": 3.0}
+            program.compile(reward=reward, reward_weights=weights)
+            result = await program.evaluate(
+                x=x, y=y, batch_size=2, verbose=0, return_dict=True
+            )
+            # Per sample: 1 + 3 * 0 and 1 + 3 * 1.
+            self.assertAlmostEqual(result["reward"], 2.5)
+            self.assertAlmostEqual(result["o2_reward"], 0.5)
+            self.assertEqual(
+                program._per_sample_targets[0], [{"reply": "a"}, {"reply": "z"}]
+            )
+
+
 class TestCompileSubProgram(testing.TestCase):
     async def test_compile_untracks_the_sub_program_own_metrics(self):
         """Compiling an outer program clears the metrics of the programs it
