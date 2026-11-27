@@ -89,7 +89,7 @@ class Sum(Metric):
     async def update_state(self, values):
         values = reduce_to_samplewise_values(values, reduce_fn=numpy.sum)
         total = self.total.get("total")
-        self.total.update({"total": float(numpy.sum(total, values))})
+        self.total.update({"total": float(total + numpy.sum(values))})
 
     def reset_state(self):
         self.total.assign(Total())
