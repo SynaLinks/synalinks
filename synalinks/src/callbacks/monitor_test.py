@@ -273,6 +273,25 @@ class MonitorLifecycleTest(testing.TestCase):
             cb.on_test_batch_end(0, logs={"loss": 0.5})
         mlf.log_metrics.assert_not_called()
 
+    def test_batch_end_without_begin_with_traces_recorded(self):
+        """Traces left by earlier calls must not break a test batch that ended
+        without `on_test_batch_begin`: it has no traces of its own."""
+        import collections
+
+        cb = self._patched_monitor(log_program_plot=False, log_program_model=False)
+        with (
+            patch.object(monitor_module, "mlflow") as mlf,
+            patch.object(
+                monitor_module.monitor_hook,
+                "_ROOT_TRACES",
+                collections.deque([(0, "tr-earlier")]),
+            ),
+        ):
+            mlf.start_run.return_value = _FakeRun()
+            cb.on_train_begin()
+            cb.on_test_batch_end(0, logs={"loss": 0.5})
+        mlf.log_feedback.assert_not_called()
+
     def test_test_lifecycle_outside_training_starts_and_ends_run(self):
         cb = self._patched_monitor()
         with patch.object(monitor_module, "mlflow") as mlf:
