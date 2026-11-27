@@ -276,6 +276,11 @@ def apply_masks(
 
     Works on both a single sample (a leaf ``JsonDataModel``) and a list/tree
     of samples; ``tree.map_structure`` handles either uniformly.
+
+    Raises:
+        ValueError: If the masks drop every field of a non-empty `y_true`
+            (e.g. a typo in a field name), which would score every sample
+            as a match.
     """
     masks = {
         "in_mask": in_mask,
@@ -283,4 +288,14 @@ def apply_masks(
         "out_mask": out_mask,
         "out_mask_pattern": out_mask_pattern,
     }
-    return mask_data_models(y_true, **masks), mask_data_models(y_pred, **masks)
+    masked_true = mask_data_models(y_true, **masks)
+    if any(masks.values()):
+        unmasked = tree.flatten(mask_data_models(y_true))
+        for before, after in zip(unmasked, tree.flatten(masked_true)):
+            if before is not None and before.get_json() and not after.get_json():
+                raise ValueError(
+                    f"The masks {({k: v for k, v in masks.items() if v})} match "
+                    f"none of the fields {list(before.get_json())}: check the "
+                    "field names."
+                )
+    return masked_true, mask_data_models(y_pred, **masks)

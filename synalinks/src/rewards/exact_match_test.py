@@ -71,6 +71,14 @@ class ExactMatchTest(testing.TestCase):
         reward = await exact_match(y_true, y_pred)
         self.assertEqual(reward, 1.0)
 
+    async def test_mask_matching_no_field_raises(self):
+        class Answer(DataModel):
+            answer: str
+
+        exact_match = ExactMatch(in_mask=["anwser"])
+        with self.assertRaisesRegex(ValueError, "match none of the fields"):
+            await exact_match(Answer(answer="Paris"), Answer(answer="Lyon"))
+
     def test_pattern_in_get_config(self):
         cfg = ExactMatch(
             in_mask_pattern=r"^answer$",
