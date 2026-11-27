@@ -60,3 +60,46 @@ class MetricsTest(testing.TestCase):
         self.assertEqual(Holder(value=3).value, Rating.THREE)
         with self.assertRaises(Exception):
             Holder(value=6)
+
+
+class CustomScoreTypeSerializationTest(testing.TestCase):
+    def test_custom_scale_round_trips(self):
+        import enum
+
+        from synalinks.src.backend.pydantic.metrics import get_score_type
+        from synalinks.src.backend.pydantic.metrics import normalize_score
+        from synalinks.src.backend.pydantic.metrics import serialize_score_type
+
+        class Stars(int, enum.Enum):
+            ZERO = 0
+            ONE = 1
+            TWO = 2
+            THREE = 3
+
+        self.assertEqual(serialize_score_type(Rating), "Rating")
+        config = serialize_score_type(Stars)
+        self.assertEqual(
+            config,
+            {"name": "Stars", "members": {"ZERO": 0, "ONE": 1, "TWO": 2, "THREE": 3}},
+        )
+        restored = get_score_type(config)
+        self.assertEqual([m.value for m in restored], [0, 1, 2, 3])
+        self.assertTrue(issubclass(restored, int))
+        self.assertAlmostEqual(normalize_score(2, restored), 2 / 3)
+
+    def test_judge_with_custom_scale_reloads(self):
+        import enum
+
+        from synalinks.src.modules.language_models import LanguageModel
+        from synalinks.src.rewards.lm_as_judge import LMAsJudge
+
+        class Stars(int, enum.Enum):
+            ZERO = 0
+            ONE = 1
+            TWO = 2
+
+        judge = LMAsJudge(
+            language_model=LanguageModel(model="ollama/mistral"), score_type=Stars
+        )
+        restored = LMAsJudge.from_config(judge.get_config())
+        self.assertEqual([m.value for m in restored.program.score_type], [0, 1, 2])
