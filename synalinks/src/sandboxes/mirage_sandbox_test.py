@@ -605,6 +605,12 @@ class MirageSandboxTest(_SandboxTestCase):
         self.assertIsNotNone(result.error)
         self.assertEqual(result.error.name, "NameError")
 
+    async def test_reset_wipes_the_filesystem(self):
+        sandbox = MirageSandbox(timeout=_TIMEOUT)
+        await sandbox.write_file("/scratch.txt", "left over")
+        sandbox.reset()
+        self.assertIn("error", await sandbox.read_file("/scratch.txt"))
+
     async def test_timeout_raises_like_e2b(self):
         sandbox = MirageSandbox(timeout=1.0)
         with self.assertRaisesRegex(TimeoutException, "Execution timed out"):

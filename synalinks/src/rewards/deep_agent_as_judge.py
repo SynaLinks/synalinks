@@ -1,5 +1,7 @@
 # License Apache 2.0: (c) 2025-2026 Yoan Sallami (Synalinks Team)
 
+import asyncio
+
 from synalinks.src.api_export import synalinks_export
 from synalinks.src.backend import is_symbolic_data_model
 from synalinks.src.backend.pydantic.metrics import Rating20
@@ -93,8 +95,9 @@ class DeepAgentAsJudgeProgram(Program):
             forks of its filesystem (see `DeepAgent`). Defaults to 0.
         reset_sandbox (bool): Optional. Whether to wipe the sandbox back to
             the `workdir` seed before each evaluation, so samples are graded
-            independently. Defaults to True when the judge builds its own
-            sandbox and to False when a `sandbox` is supplied.
+            independently (one at a time, even within a batch). Defaults to
+            True when the judge builds its own sandbox and to False when a
+            `sandbox` is supplied.
         name (str): Optional. The name of the program.
         description (str): Optional. The description of the program.
         trainable (bool): Whether the program's variables should be trainable.
@@ -169,6 +172,7 @@ class DeepAgentAsJudgeProgram(Program):
         if reset_sandbox is None:
             reset_sandbox = sandbox is None
         self.reset_sandbox = reset_sandbox
+        self._grading = asyncio.Lock()
 
     async def call(self, inputs, x=None):
         y_pred = (
@@ -176,7 +180,9 @@ class DeepAgentAsJudgeProgram(Program):
         )
         # A fresh workspace per graded sample; symbolic builds never run tools.
         if self.reset_sandbox and y_pred and not is_symbolic_data_model(y_pred):
-            self.agent.sandbox.reset()
+            async with self._grading:  # One sample at a time in the shared sandbox.
+                self.agent.sandbox.reset()
+                return await judge_with_agent(self.agent, self.score_type, inputs, x=x)
         return await judge_with_agent(self.agent, self.score_type, inputs, x=x)
 
     def get_config(self):
@@ -381,8 +387,9 @@ class DeepAgentAsJudge(ProgramAsJudge):
             forks of its filesystem (see `DeepAgent`). Defaults to 0.
         reset_sandbox (bool): Optional. Whether to wipe the sandbox back to
             the `workdir` seed before each evaluation, so samples are graded
-            independently. Defaults to True when the judge builds its own
-            sandbox and to False when a `sandbox` is supplied.
+            independently (one at a time, even within a batch). Defaults to
+            True when the judge builds its own sandbox and to False when a
+            `sandbox` is supplied.
         reduction (str): Optional. The reward reduction (Default to `"mean"`).
         name (str): Optional. string name of the reward instance.
         in_mask (list): Optional. list of keys to keep to compute the reward.

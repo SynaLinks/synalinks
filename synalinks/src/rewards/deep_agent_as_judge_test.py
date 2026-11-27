@@ -259,7 +259,7 @@ class DeepAgentAsJudgeTest(testing.TestCase):
         await sandbox.write_file("/scratch.txt", "left over")
         await reward(y_true=Solution(code="a"), y_pred=Solution(code="b"))
         # ...is gone, while the workdir seed is back.
-        self.assertFalse((await sandbox.read_file("/scratch.txt")).get("ok", False))
+        self.assertIn("error", await sandbox.read_file("/scratch.txt"))
         self.assertEqual(
             (await sandbox.read_file("/seed.txt"))["content"], "from the workdir"
         )
@@ -271,6 +271,46 @@ class DeepAgentAsJudgeTest(testing.TestCase):
         await sandbox.write_file("/scratch.txt", "kept")
         await reward(y_true=Solution(code="a"), y_pred=Solution(code="b"))
         self.assertEqual((await sandbox.read_file("/scratch.txt"))["content"], "kept")
+
+    async def test_deep_agent_as_judge_concurrent_samples_are_isolated(self):
+        import asyncio
+
+        listings = []
+
+        async def fake_completion(*args, **kwargs):
+            text = json.dumps(kwargs["messages"])
+            tools = [m for m in kwargs["messages"] if m.get("role") == "tool"]
+            if not tools:
+                if "AAA" in text:
+                    name, arguments = "write_file", {
+                        "path": "/notes_A.txt",
+                        "content": "A",
+                    }
+                else:
+                    await asyncio.sleep(0.2)
+                    name, arguments = "list_files", {}
+                return _lm_response(
+                    content="step", tool_calls=[{"name": name, "arguments": arguments}]
+                )
+            if "BBB" in text:
+                listings.append(tools[-1]["content"])
+            if "AAA" in text:
+                await asyncio.sleep(0.5)
+            if kwargs.get("tools"):
+                return _lm_response(content="done")
+            return _lm_response(content='{"critique": "ok", "reward": 20}')
+
+        reward = DeepAgentAsJudge(
+            language_model=LanguageModel(model="ollama/mistral"), max_iterations=2
+        )
+        with patch("litellm.acompletion", side_effect=fake_completion):
+            await asyncio.gather(
+                reward(y_true=None, y_pred=Solution(code="AAA")),
+                reward(y_true=None, y_pred=Solution(code="BBB")),
+            )
+        await reward.close()
+        self.assertTrue(listings)
+        self.assertNotIn("notes_A", listings[0])
 
     @patch("litellm.acompletion")
     async def test_deep_agent_as_judge_supplied_sandbox(self, mock_completion):
