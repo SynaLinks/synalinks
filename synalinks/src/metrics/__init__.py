@@ -331,6 +331,13 @@ ALL_OBJECTS = {
 
 ALL_OBJECTS_DICT = {cls.__name__.lower(): cls for cls in ALL_OBJECTS}
 ALL_OBJECTS_DICT.update({to_snake_case(cls.__name__): cls for cls in ALL_OBJECTS})
+# Also by default instance name (`FBetaScore` is "fbeta_score").
+for _cls in ALL_OBJECTS:
+    _name = inspect.signature(_cls).parameters.get("name")
+    if _name is not None and isinstance(_name.default, str):
+        ALL_OBJECTS_DICT.setdefault(_name.default, _cls)
+ALL_OBJECTS_DICT["list_fbeta_score"] = CategoricalFBetaScore
+ALL_OBJECTS_DICT["list_f1_score"] = CategoricalF1Score
 
 
 @synalinks_export("synalinks.metrics.serialize")
