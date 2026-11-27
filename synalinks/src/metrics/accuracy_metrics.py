@@ -1,6 +1,5 @@
 # License Apache 2.0: (c) 2025-2026 Yoan Sallami (Synalinks Team)
 
-from itertools import zip_longest
 from typing import List
 from typing import Optional
 
@@ -10,8 +9,9 @@ from synalinks.src.api_export import synalinks_export
 from synalinks.src.backend import DataModel
 from synalinks.src.backend.common import numpy as np
 from synalinks.src.metrics.metric import Metric
+from synalinks.src.metrics.metric import accumulate
+from synalinks.src.metrics.metric import align_leaves
 from synalinks.src.metrics.metric import apply_masks
-from synalinks.src.metrics.metric import ragged_add
 from synalinks.src.metrics.metrics_utils import aggregate_scores
 from synalinks.src.utils import nlp_utils
 
@@ -20,6 +20,7 @@ class AccuracyState(DataModel):
     correct: Optional[List[float]] = None
     total: Optional[List[float]] = None
     intermediate_weights: Optional[List[float]] = None
+    fields: Optional[List[str]] = None
 
 
 @synalinks_export("synalinks.metrics.Accuracy")
@@ -119,22 +120,14 @@ class Accuracy(Metric):
 
         if y_true is None:
             return
-        y_true = tree.flatten(tree.map_structure(lambda x: str(x), y_true.get_json()))
-        # A failed prediction (`y_pred is None`) scores as an empty one.
-        y_pred = (
-            []
-            if y_pred is None
-            else tree.flatten(tree.map_structure(lambda x: str(x), y_pred.get_json()))
-        )
+        # A leaf missing on one side (a failed prediction misses them all)
+        # scores as an empty string.
+        fields, y_true, y_pred = align_leaves(y_true, y_pred, fill="")
 
         correct = []
         total = []
         intermediate_weights = []
-        # zip_longest, not zip: a prediction with fewer/more leaves than the
-        # gold must be scored against every leaf; plain zip would silently
-        # drop the unmatched ones and inflate the score. The "" fill has no
-        # tokens, so an unmatched leaf scores 0 over the other side's tokens.
-        for yt, yp in zip_longest(y_true, y_pred, fillvalue=""):
+        for yt, yp in zip(y_true, y_pred):
             y_true_tokens = nlp_utils.normalize_and_tokenize(str(yt))
             y_pred_tokens = nlp_utils.normalize_and_tokenize(str(yp))
             if not y_true_tokens and not y_pred_tokens:
@@ -146,30 +139,12 @@ class Accuracy(Metric):
             total.append(len(union_tokens))
             intermediate_weights.append(len(y_true_tokens))
 
-        correct = np.convert_to_numpy(correct)
-        total = np.convert_to_numpy(total)
-        intermediate_weights = np.convert_to_numpy(intermediate_weights)
-
-        current_correct = self.state.get("correct")
-        if current_correct:
-            correct = ragged_add(current_correct, correct)
-
-        current_total = self.state.get("total")
-        if current_total:
-            total = ragged_add(current_total, total)
-
-        current_intermediate_weights = self.state.get("intermediate_weights")
-        if current_intermediate_weights:
-            intermediate_weights = ragged_add(
-                current_intermediate_weights, intermediate_weights
-            )
-
-        self.state.update(
-            {
-                "correct": correct.tolist(),
-                "total": total.tolist(),
-                "intermediate_weights": intermediate_weights.tolist(),
-            }
+        accumulate(
+            self.state,
+            fields,
+            correct=correct,
+            total=total,
+            intermediate_weights=intermediate_weights,
         )
 
     def result(self):
@@ -342,57 +317,21 @@ class BinaryAccuracy(Accuracy):
 
         if y_true is None:
             return
-        y_true = tree.flatten(
-            tree.map_structure(lambda x: convert_to_binary(x), y_true.get_json())
-        )
-        # A failed prediction (`y_pred is None`) scores as an empty one.
-        y_pred = (
-            []
-            if y_pred is None
-            else tree.flatten(
-                tree.map_structure(lambda x: convert_to_binary(x), y_pred.get_json())
-            )
-        )
-        y_true = np.convert_to_tensor(y_true)
-        y_pred = np.convert_to_tensor(y_pred)
+        # A leaf missing on one side (a failed prediction misses them all) is
+        # None, which never equals a 0.0/1.0 leaf.
+        fields, y_true, y_pred = align_leaves(y_true, y_pred)
+        y_true = [None if v is None else convert_to_binary(v) for v in y_true]
+        y_pred = [None if v is None else convert_to_binary(v) for v in y_pred]
+        correct = [1.0 if yt == yp else 0.0 for yt, yp in zip(y_true, y_pred)]
+        total = [1.0] * len(fields)
+        intermediate_weights = [yt or 0.0 for yt in y_true]
 
-        # zip_longest, not zip: a structure mismatch between pred and gold
-        # (variable-length arrays) must count the unmatched leaves as wrong,
-        # not silently drop them. The None fill never equals a 0.0/1.0 leaf.
-        y_true_leaves = y_true.tolist()
-        y_pred_leaves = y_pred.tolist()
-        size = max(len(y_true_leaves), len(y_pred_leaves))
-        correct = np.convert_to_tensor(
-            [
-                1.0 if yt == yp else 0.0
-                for yt, yp in zip_longest(y_true_leaves, y_pred_leaves)
-            ]
-        )
-        total = np.convert_to_tensor([1.0] * size)
-        intermediate_weights = np.convert_to_tensor(
-            y_true_leaves + [0.0] * (size - len(y_true_leaves))
-        )
-
-        current_correct = self.state.get("correct")
-        if current_correct:
-            correct = ragged_add(current_correct, correct)
-
-        current_total = self.state.get("total")
-        if current_total:
-            total = ragged_add(current_total, total)
-
-        current_intermediate_weights = self.state.get("intermediate_weights")
-        if current_intermediate_weights:
-            intermediate_weights = ragged_add(
-                current_intermediate_weights, intermediate_weights
-            )
-
-        self.state.update(
-            {
-                "correct": correct.tolist(),
-                "total": total.tolist(),
-                "intermediate_weights": intermediate_weights.tolist(),
-            }
+        accumulate(
+            self.state,
+            fields,
+            correct=correct,
+            total=total,
+            intermediate_weights=intermediate_weights,
         )
 
     def get_config(self):
@@ -542,6 +481,7 @@ class CategoricalAccuracy(Accuracy):
         total = []
         intermediate_weights = []
 
+        fields = self.labels if self.labels is not None else ["labels"]
         if self.labels is not None:
             y_true_set = {str(v) for v in y_true}
             y_pred_set = {str(v) for v in y_pred}
@@ -563,30 +503,12 @@ class CategoricalAccuracy(Accuracy):
             total.append(len(union_labels))
             intermediate_weights.append(len(y_true_labels))
 
-        correct = np.convert_to_numpy(correct)
-        total = np.convert_to_numpy(total)
-        intermediate_weights = np.convert_to_numpy(intermediate_weights)
-
-        current_correct = self.state.get("correct")
-        if current_correct:
-            correct = ragged_add(current_correct, correct)
-
-        current_total = self.state.get("total")
-        if current_total:
-            total = ragged_add(current_total, total)
-
-        current_intermediate_weights = self.state.get("intermediate_weights")
-        if current_intermediate_weights:
-            intermediate_weights = ragged_add(
-                current_intermediate_weights, intermediate_weights
-            )
-
-        self.state.update(
-            {
-                "correct": correct.tolist(),
-                "total": total.tolist(),
-                "intermediate_weights": intermediate_weights.tolist(),
-            }
+        accumulate(
+            self.state,
+            fields,
+            correct=correct,
+            total=total,
+            intermediate_weights=intermediate_weights,
         )
 
     def result(self):

@@ -219,25 +219,64 @@ class Metric(SynalinksSaveable):
         return self.__repr__()
 
 
-def ragged_add(current, fresh):
-    """Element-wise add of two per-leaf state vectors that may differ in length.
+def align_leaves(y_true, y_pred, fill=None):
+    """Pair the leaves of two data models by their path in the JSON.
 
-    Metric state is positional (leaf ``i`` of the flattened JSON). Samples
-    with variable-length structures (e.g. an extraction gold whose array
-    holds N items) produce a different leaf count per update, so a plain
-    ``np.add`` raises a broadcast error the moment two updates disagree on
-    length. The shorter vector is zero-padded instead: aggregate sums
-    ("micro") stay exact, and per-position reductions simply see no
-    contribution at positions a sample doesn't have.
+    Pairing by position would shift every field after a list whose length
+    differs between the two. A failed prediction (`y_pred is None`) has no
+    leaves.
+
+    Args:
+        y_true (JsonDataModel): The ground truth.
+        y_pred (JsonDataModel): The prediction, or `None`.
+        fill (any): The value of a leaf missing on one side.
+
+    Returns:
+        (tuple): The paths (e.g. `"sources/1"`), the `y_true` leaves and the
+            `y_pred` leaves, aligned.
     """
-    from synalinks.src.backend.common import numpy as np
 
-    current = list(current)
-    fresh = list(fresh)
-    size = max(len(current), len(fresh))
-    current = current + [0.0] * (size - len(current))
-    fresh = fresh + [0.0] * (size - len(fresh))
-    return np.add(np.convert_to_numpy(current), np.convert_to_numpy(fresh))
+    def leaves(value, path=""):
+        if isinstance(value, dict):
+            items = value.items()
+        elif isinstance(value, list):
+            items = enumerate(value)
+        else:
+            return {path: value}
+        result = {}
+        for key, item in items:
+            result.update(leaves(item, f"{path}/{key}" if path else str(key)))
+        return result
+
+    true = leaves(y_true.get_json())
+    pred = {} if y_pred is None else leaves(y_pred.get_json())
+    paths = list(true) + [path for path in pred if path not in true]
+    return paths, [true.get(p, fill) for p in paths], [pred.get(p, fill) for p in paths]
+
+
+def accumulate(state, fields, **values):
+    """Add per-field counts into a metric state, matching fields by name.
+
+    The state keeps the list of fields seen so far under `"fields"`, and each
+    count list in the same order, so samples with different structures (e.g.
+    lists of different lengths) never mix the counts of different fields.
+
+    Args:
+        state (Variable): The metric state.
+        fields (list): The name of each count, e.g. a leaf path or a label.
+        **values (list): The new counts, one list per state key, aligned with
+            `fields`.
+    """
+    known = list(state.get("fields") or [])
+    known += [field for field in dict.fromkeys(fields) if field not in known]
+    update = {"fields": known}
+    for name, new in values.items():
+        current = list(state.get(name) or [])
+        current += [0.0] * (len(known) - len(current))
+        for field, value in zip(fields, new):
+            current[known.index(field)] += float(value)
+        update[name] = current
+    state.update(update)
 
 
 def mask_data_models(
