@@ -1200,8 +1200,7 @@ class Trainer:
         with op_scope("inference", clock=self._phase_clock):
 
             async def run(index, inputs):
-                # Each task has its own context: predictions it records know
-                # their sample, whatever order the calls finish in.
+                # Each task has its own context copy: no leak between samples.
                 SAMPLE_INDEX.set(index)
                 return await self(inputs, training=training)
 

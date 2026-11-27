@@ -730,8 +730,7 @@ class Optimizer(SynalinksSaveable):
             predictions = trainable_variable.get("predictions")
             unassigned = [p for p in current_predictions if p["reward"] is None]
             for i, p in enumerate(unassigned):
-                # By sample when known: predictions are recorded in completion
-                # order, and a failed sample records none.
+                # By sample: predictions come in completion order, some missing.
                 index = p.pop("sample", None)
                 index = i if index is None else index
                 if index < len(rewards):
