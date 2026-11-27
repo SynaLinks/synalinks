@@ -252,7 +252,10 @@ class Trainer:
         else:
             output_names = None
         if reward is not None:
-            reward = rewards_module.get(reward)
+            # A list/dict of per-output rewards is resolved leaf by leaf in
+            # `CompileReward`; a dict with a `class_name` is a single config.
+            if not tree.is_nested(reward) or "class_name" in reward:
+                reward = rewards_module.get(reward)
             reduction = getattr(reward, "reduction", "mean")
             self._compile_reward = CompileReward(
                 reward,
@@ -1172,7 +1175,12 @@ class Trainer:
         # (e.g. `callbacks.Monitor` logs them as per-trace assessments).
         self._per_sample_rewards = list(rewards)
         self._per_sample_targets = (
-            [None if t is None else t.get_json() for t in y] if y is not None else None
+            [
+                tree.map_structure(lambda t: None if t is None else t.get_json(), y_t)
+                for y_t in y
+            ]
+            if y is not None
+            else None
         )
         await self._reward_tracker.update_state(rewards)
 
