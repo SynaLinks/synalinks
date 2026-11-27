@@ -889,6 +889,8 @@ class Trainer:
         # and handed to the first `test_on_batch` instead of being dropped and
         # recomputed. Nothing is skipped either way; the difference is one
         # forward pass, which for an agent program is a whole agent run.
+        # Reset first: the build pass is scored, so its usage counts too.
+        self.reset_metrics()
         prebuilt_y_pred = None
         if not all(module.built for module in self._flatten_modules()):
             # Build the model on one batch of data.
@@ -920,7 +922,6 @@ class Trainer:
         callbacks.on_test_begin()
         try:
             logs = {}
-            self.reset_metrics()
             for step, iterator in epoch_iterator:
                 callbacks.on_test_batch_begin(step)
                 data = iterator[0]
