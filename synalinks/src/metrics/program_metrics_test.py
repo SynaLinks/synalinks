@@ -3,6 +3,7 @@
 from synalinks.src import backend
 from synalinks.src import modules
 from synalinks.src import testing
+from synalinks.src.backend.common.op_scope import _add_phase_wall_clock_s
 from synalinks.src.metrics.program_metrics import ProgramAvgCostPerInvocation
 from synalinks.src.metrics.program_metrics import ProgramCalls
 from synalinks.src.metrics.program_metrics import ProgramCallsPerSecond
@@ -91,10 +92,13 @@ class ProgramOperationalMetricsResultTest(testing.TestCase):
         self.assertAlmostEqual(metric.result(), 3.5)
 
     def test_calls_per_second(self):
+        """Invocations per wall-clock second: 10 concurrent calls of 2 s each
+        (20 s summed) over 2 s of wall clock is 5 calls per second."""
         program = _FakeProgram()
         metric = _bind(ProgramCallsPerSecond(), program)
-        _record_program(program, calls=10, elapsed=2.0)
-        self.assertEqual(metric.result(), 5.0)
+        _record_program(program, calls=10, elapsed=20.0)
+        _add_phase_wall_clock_s("inference", 2.0)
+        self.assertAlmostEqual(metric.result(), 5.0)
 
     def test_calls_per_second_zero_when_no_elapsed(self):
         program = _FakeProgram()
