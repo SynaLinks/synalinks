@@ -2250,6 +2250,14 @@ class MirageSandbox(Sandbox):
         # Release the current workspace's FUSE mount before replacing it;
         # otherwise every ``reset`` leaks a mount until ``mount_max`` is hit.
         sync_close_workspace(getattr(self, "workspace", None))
+        # A Workspace over the same RAMVFS keeps its files: mount a fresh one.
+        resources = {}
+        for prefix, value in self.resources.items():
+            resource, *mode = value if isinstance(value, tuple) else (value,)
+            if isinstance(resource, RAMVFS):
+                resource = RAMVFS()
+            resources[prefix] = (resource, *mode) if mode else resource
+        self.resources = resources
         self.set_workspace(self.new_workspace(), when=" after reset")
         self.fork_base = self.seed_from_workdir(self.workdir) if self.workdir else {}
 
