@@ -50,7 +50,8 @@ per-sample one), so they always go through `BatchRewardFunctionWrapper`.
 
 Any reward (a function, a `Reward` or `BatchReward` subclass's `call`) that
 declares an `x` argument also receives the program's inputs during `fit` and
-`evaluate`, masked like the targets (`None` when called without them):
+`evaluate`, whole: masks only select the fields of `y_true` and `y_pred`
+(`None` when called without them):
 
 ```python
 async def stays_on_topic(y_true, y_pred, x=None):
@@ -64,7 +65,10 @@ The judges use it to grade the answer against the question, so they need no
 ground truth: `fit(x=x_train)` and `evaluate(x=x_test)` work on inputs alone,
 which is unsupervised learning from the judge's grades. A judge sees the
 inputs as `input_*` fields, the prediction as `output_*` and the ground truth,
-when given, as `gold_*`.
+when given, as `gold_*`. A judge's masks name these prefixed fields:
+`out_mask=["input_context"]` keeps a large retrieved context out of its prompt,
+and `in_mask=["input_query", "output_answer"]` shows it only the question and
+the answer.
 
 ## Rewards Overview
 

@@ -2,8 +2,6 @@
 
 from synalinks.src import tree
 from synalinks.src.api_export import synalinks_export
-from synalinks.src.metrics.metric import apply_masks
-from synalinks.src.metrics.metric import mask_data_models
 from synalinks.src.rewards.batch_reward import BatchReward
 from synalinks.src.rewards.reward import Reward
 from synalinks.src.rewards.reward import standardize_reduction
@@ -92,14 +90,7 @@ class ComposableReward(Reward):
         return RewardFunctionWrapper(reward)
 
     async def __call__(self, y_true, y_pred, x=None):
-        masks = {
-            "in_mask": self.in_mask,
-            "in_mask_pattern": self.in_mask_pattern,
-            "out_mask": self.out_mask,
-            "out_mask_pattern": self.out_mask_pattern,
-        }
-        y_true, y_pred = apply_masks(y_true, y_pred, **masks)
-        return await self.call(y_true, y_pred, x=mask_data_models(x, **masks))
+        return await self.call(*self.mask(y_true, y_pred, x))
 
     async def call(self, y_true, y_pred, x=None):
         values = [await self.call_reward(r, y_true, y_pred, x) for r in self.rewards]
@@ -116,15 +107,9 @@ class ComposableReward(Reward):
         return tree.map_structure(lambda value: value / weight_sum, total)
 
     async def call_reward(self, reward, y_true, y_pred, x=None):
-        masks = {
-            "in_mask": reward.in_mask,
-            "in_mask_pattern": reward.in_mask_pattern,
-            "out_mask": reward.out_mask,
-            "out_mask_pattern": reward.out_mask_pattern,
-        }
-        y_true, y_pred = apply_masks(y_true, y_pred, **masks)
+        y_true, y_pred, x = reward.mask(y_true, y_pred, x)
         if accepts_argument(reward.call, "x"):
-            return await reward.call(y_true, y_pred, x=mask_data_models(x, **masks))
+            return await reward.call(y_true, y_pred, x=x)
         return await reward.call(y_true, y_pred)
 
     async def close(self):

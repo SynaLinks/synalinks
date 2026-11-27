@@ -2,8 +2,6 @@
 
 from synalinks.src import ops
 from synalinks.src.api_export import synalinks_export
-from synalinks.src.metrics.metric import apply_masks
-from synalinks.src.metrics.metric import mask_data_models
 from synalinks.src.rewards.reward import Reward
 from synalinks.src.rewards.reward import check_async_reward_fn
 from synalinks.src.rewards.reward import reduce_values
@@ -55,25 +53,11 @@ class BatchReward(Reward):
         This is what the trainer calls: it expects the raw ``list[float]``
         of length ``batch_size`` so it can treat each entry as that
         sample's reward. A ``call`` that declares ``x`` also gets the
-        batch's inputs (a list, masked like the targets).
+        batch's inputs (a list, unmasked).
         """
         with ops.name_scope(self.name):
-            y_true, y_pred = apply_masks(
-                y_true,
-                y_pred,
-                in_mask=self.in_mask,
-                in_mask_pattern=self.in_mask_pattern,
-                out_mask=self.out_mask,
-                out_mask_pattern=self.out_mask_pattern,
-            )
+            y_true, y_pred, x = self.mask(y_true, y_pred, x)
             if accepts_argument(self.call, "x"):
-                x = mask_data_models(
-                    x,
-                    in_mask=self.in_mask,
-                    in_mask_pattern=self.in_mask_pattern,
-                    out_mask=self.out_mask,
-                    out_mask_pattern=self.out_mask_pattern,
-                )
                 rewards = await self.call(y_true, y_pred, x=x)
             else:
                 rewards = await self.call(y_true, y_pred)
