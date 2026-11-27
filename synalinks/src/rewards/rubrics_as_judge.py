@@ -150,8 +150,10 @@ class Rubric(DataModel):
     @field_validator("weight")
     @classmethod
     def _check_weight(cls, weight):
-        if weight <= 0:
-            raise ValueError(f"Rubric weight is {weight}; weights must be positive.")
+        if not 0 < weight < float("inf"):  # Also rejects NaN.
+            raise ValueError(
+                f"Rubric weight is {weight}; weights must be positive and finite."
+            )
         return weight
 
 
