@@ -927,8 +927,7 @@ class Trainer:
         # and handed to the first `test_on_batch` instead of being dropped and
         # recomputed. Nothing is skipped either way; the difference is one
         # forward pass, which for an agent program is a whole agent run.
-        # Reset first: the build's forward pass is scored, so its tokens, cost
-        # and calls belong to this evaluation's operational metrics.
+        # Reset first: the build pass is scored, so its usage counts too.
         self.reset_metrics()
         prebuilt_y_pred = None
         if not all(module.built for module in self._flatten_modules()):
