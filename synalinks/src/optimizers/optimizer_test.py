@@ -540,3 +540,61 @@ class PerOutputRewardLogsTest(testing.TestCase):
                 self.assertAlmostEqual(logs["g1_reward"], expected)
                 self.assertAlmostEqual(logs["g2_reward"], expected)
                 self.assertAlmostEqual(logs["reward"], 2 * expected)
+
+
+class SumReductionCandidateTest(testing.TestCase):
+    async def test_candidates_hold_per_sample_means(self):
+        """With a `"sum"` reward, a minibatch sum and the epoch-end sum over the
+        whole validation set are folded as per-sample means."""
+        import json
+        from unittest.mock import patch
+
+        import numpy as np
+
+        from synalinks.src.backend import DataModel
+        from synalinks.src.modules import Generator
+        from synalinks.src.modules import Input
+        from synalinks.src.modules.language_models import LanguageModel
+        from synalinks.src.optimizers.random_few_shot import RandomFewShot
+        from synalinks.src.programs import Program
+        from synalinks.src.rewards.reward_wrappers import RewardFunctionWrapper
+
+        class Q(DataModel):
+            query: str
+
+        class A(DataModel):
+            answer: str
+
+        async def completion(*args, **kwargs):
+            return {"choices": [{"message": {"content": json.dumps({"answer": "a"})}}]}
+
+        async def right(y_true, y_pred):
+            return 1.0 if y_pred.get("answer") == y_true.get("answer") else 0.0
+
+        with patch("litellm.acompletion", side_effect=completion):
+            inputs = Input(data_model=Q)
+            outputs = await Generator(
+                data_model=A, language_model=LanguageModel(model="ollama/mistral")
+            )(inputs)
+            program = Program(inputs=inputs, outputs=outputs)
+            program.compile(
+                reward=RewardFunctionWrapper(fn=right, reduction="sum"),
+                optimizer=RandomFewShot(),
+            )
+            x = np.array([Q(query=str(i)) for i in range(4)], dtype=object)
+            y = np.array([A(answer="a")] * 4, dtype=object)
+            await program.train_on_batch(step=0, x=x, y=y, val_x=x, val_y=y)
+
+        variable = program.trainable_variables[0]
+        candidates = variable.get("candidates") + variable.get("best_candidates")
+        self.assertTrue(candidates)
+        for candidate in candidates:
+            self.assertAlmostEqual(candidate["reward"], 1.0)
+
+        # The epoch-end validation sum over 20 samples is folded as a mean.
+        candidate = program.optimizer.find_candidate(variable)
+        count = candidate["reward_count"]
+        program.optimizer.assign_validation_reward(
+            [variable], logs={"val_reward": 10.0}, val_size=20
+        )
+        self.assertAlmostEqual(candidate["reward"], (count + 0.5 * 20) / (count + 20))
