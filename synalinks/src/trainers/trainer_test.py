@@ -793,3 +793,41 @@ class TestRewardInputs(testing.TestCase):
         self.assertEqual(
             sorted(nested.seen), [(q, f"re {q}", f"re {q}") for q in questions]
         )
+
+
+class TestEvaluateOperationalMetrics(testing.TestCase):
+    @patch("litellm.acompletion")
+    async def test_build_batch_is_counted(self, mock_completion):
+        """`evaluate` scores the batch it auto-builds on, so that batch's tokens
+        and program calls count too, on every `evaluate` of a program that
+        never becomes fully built."""
+        answer = json.dumps({"rationale": "r", "answer": "Paris"})
+        mock_completion.return_value = {
+            "choices": [{"message": {"content": answer}}],
+            "usage": {"prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15},
+        }
+        language_model = LanguageModel(model="ollama/mistral")
+
+        class ProgramWithAnUntakenPath(programs.Program):
+            def __init__(self):
+                super().__init__()
+                self.answer = modules.Generator(
+                    data_model=AnswerWithRationale, language_model=language_model
+                )
+                self.fallback = modules.Generator(
+                    data_model=AnswerWithRationale, language_model=language_model
+                )
+
+            async def call(self, inputs, training=False):
+                return await self.answer(inputs)
+
+        program = ProgramWithAnUntakenPath()
+        program.compile(
+            reward=rewards.ExactMatch(in_mask=["answer"]),
+            metrics=[metrics.TotalTokens(), metrics.ProgramCalls()],
+        )
+        (_, _), (x, y) = load_test_data()
+        for _ in range(2):
+            logs = await program.evaluate(x=x, y=y, batch_size=4, verbose=0)
+            self.assertEqual(logs["program_calls"], len(x))
+            self.assertEqual(logs["total_tokens"], 15 * len(x))
