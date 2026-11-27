@@ -109,8 +109,10 @@ class ComposableReward(Reward):
     async def call_reward(self, reward, y_true, y_pred, x=None):
         y_true, y_pred, x = reward.mask(y_true, y_pred, x)
         if accepts_argument(reward.call, "x"):
-            return await reward.call(y_true, y_pred, x=x)
-        return await reward.call(y_true, y_pred)
+            value = await reward.call(y_true, y_pred, x=x)
+        else:
+            value = await reward.call(y_true, y_pred)
+        return 0.0 if value is None else value  # A failed reward scores 0.0.
 
     async def close(self):
         """Close each reward this one combines. Idempotent."""
@@ -130,6 +132,7 @@ class ComposableReward(Reward):
 
     @classmethod
     def from_config(cls, config):
+        config = dict(config)
         config["rewards"] = serialization_lib.deserialize_synalinks_object(
             config["rewards"]
         )

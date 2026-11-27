@@ -198,6 +198,17 @@ class CompileRewardBatchDispatchTest(testing.TestCase):
         rewards = await compile_reward.compute_batch(y_true, y_pred)
         self.assertEqual(rewards, [1.0, 0.0, 1.0])
 
+    async def test_none_sample_scores_zero(self):
+        class Answer(DataModel):
+            answer: str
+
+        async def partly_failed(y_true, y_pred):
+            return [1.0, None]
+
+        reward = BatchRewardFunctionWrapper(fn=partly_failed, reduction="none")
+        y = [Answer(answer="a"), Answer(answer="b")]
+        self.assertEqual(await reward(y, y), [1.0, 0.0])
+
     async def test_compile_reward_per_sample_path_unchanged(self):
         from synalinks.src.rewards.exact_match import ExactMatch
         from synalinks.src.trainers.compile_utils import CompileReward

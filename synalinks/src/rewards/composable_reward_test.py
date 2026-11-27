@@ -142,6 +142,19 @@ class ComposableRewardTest(testing.TestCase):
         self.assertEqual(restored.combine, "sum")
         self.assertEqual(len(restored.rewards), 2)
 
+    def test_from_config_twice_on_the_same_config(self):
+        config = ComposableReward(rewards=[ExactMatch()]).get_config()
+        ComposableReward.from_config(config)
+        self.assertIsInstance(ComposableReward.from_config(config), ComposableReward)
+
+    async def test_child_returning_none_scores_zero(self):
+        async def failed(y_true, y_pred):
+            return None
+
+        reward = ComposableReward(rewards=[ExactMatch(), failed])
+        value = await reward(Answer(answer="a"), Answer(answer="a"))
+        self.assertEqual(value, 0.5)
+
 
 class ComposableRewardBatchReductionTest(testing.TestCase):
     async def test_combination_does_not_reduce_the_batch(self):

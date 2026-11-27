@@ -79,7 +79,7 @@ class BatchReward(Reward):
                     f"`{cls_name}.call` returned {len(rewards)} rewards but the "
                     f"batch has {len(y_pred)} samples; they must match."
                 )
-            return [float(r) for r in rewards]
+            return [0.0 if r is None else float(r) for r in rewards]
 
     async def call(self, y_true, y_pred):
         raise NotImplementedError
