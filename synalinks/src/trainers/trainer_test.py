@@ -897,3 +897,49 @@ class TestEvaluateOperationalMetrics(testing.TestCase):
             logs = await program.evaluate(x=x, y=y, batch_size=4, verbose=0)
             self.assertEqual(logs["program_calls"], len(x))
             self.assertEqual(logs["total_tokens"], 15 * len(x))
+
+
+class TestOptimizerEpochEndMetrics(testing.TestCase):
+    async def test_epoch_end_work_counts_in_the_optimizer_phase(self):
+        """Model calls an optimizer makes at the end of an epoch (OMEGA embeds
+        its candidates there) count in the optimizer phase and in that epoch's
+        optimizer metrics, even with a validation pass in between."""
+        from synalinks.src.backend import EmbeddingRequest
+        from synalinks.src.modules.embedding_models import EmbeddingModel
+
+        answer = json.dumps({"rationale": "r", "answer": "Paris"})
+        completion = {"choices": [{"message": {"content": answer}}]}
+        embedding = {
+            "data": [{"embedding": [1.0, 0.0]}],
+            "usage": {"prompt_tokens": 7, "total_tokens": 7},
+        }
+
+        class EmbeddingOptimizer(optimizers.random_few_shot.RandomFewShot):
+            async def on_epoch_end(self, epoch, trainable_variables, **kwargs):
+                await self.embedding_model(EmbeddingRequest(texts=["a"]))
+                await super().on_epoch_end(epoch, trainable_variables, **kwargs)
+
+        with (
+            patch("litellm.acompletion", return_value=completion),
+            patch("litellm.aembedding", return_value=embedding),
+        ):
+            embedding_model = EmbeddingModel(model="ollama/mxbai-embed-large")
+            optimizer = EmbeddingOptimizer()
+            optimizer.embedding_model = embedding_model
+            inputs = modules.Input(data_model=Query)
+            outputs = await modules.Generator(
+                data_model=AnswerWithRationale,
+                language_model=LanguageModel(model="ollama/mistral"),
+            )(inputs)
+            program = programs.Program(inputs=inputs, outputs=outputs)
+            program.compile(
+                optimizer=optimizer,
+                reward=rewards.ExactMatch(in_mask=["answer"]),
+                metrics=[metrics.OptimizerEmbeddingTokens()],
+            )
+            (x, y), (x_val, y_val) = load_test_data()
+            history = await program.fit(
+                x=x, y=y, validation_data=(x_val, y_val), epochs=2, verbose=0
+            )
+        self.assertEqual(history.history["optimizer_embedding_tokens"], [7.0, 7.0])
+        self.assertEqual(embedding_model.optimizer_cumulated_tokens, 14)
