@@ -3,6 +3,7 @@
 # License Apache 2.0: (c) 2025-2026 Yoan Sallami (Synalinks Team)
 
 import asyncio
+import copy
 import inspect
 import json
 import warnings
@@ -791,6 +792,17 @@ class Trainer:
                 # Override with model metrics instead of last step logs if needed.
                 epoch_logs = dict(self._get_metrics_result_or_logs(logs))
 
+                # Validation resets the metrics: the optimizer phase's keep counting.
+                optimizer_metrics = [
+                    m
+                    for m in getattr(self._compile_metrics, "metrics", [])
+                    if getattr(m, "_phase", None) == "optimizer"
+                ]
+                baselines = [
+                    {k: copy.copy(v) for k, v in vars(m).items() if "baseline" in k}
+                    for m in optimizer_metrics
+                ]
+
                 # Run validation.
                 if validation_data is not None and self._should_eval(
                     epoch, validation_freq
@@ -817,15 +829,25 @@ class Trainer:
                     val_logs = {"val_" + name: val for name, val in val_logs.items()}
                     epoch_logs.update(val_logs)
 
+                for metric, baseline in zip(optimizer_metrics, baselines):
+                    vars(metric).update(baseline)
                 if self.trainable_variables and isinstance(
                     self.optimizer, optimizers_module.Optimizer
                 ):
-                    await self.optimizer.on_epoch_end(
-                        epoch,
-                        self.trainable_variables,
-                        logs=epoch_logs,
-                        val_size=len(val_x) if val_x is not None else None,
-                    )
+                    with op_scope("optimizer", clock=self._phase_clock):
+                        await self.optimizer.on_epoch_end(
+                            epoch,
+                            self.trainable_variables,
+                            logs=epoch_logs,
+                            val_size=len(val_x) if val_x is not None else None,
+                        )
+                # The epoch's optimizer metrics include its end-of-epoch work.
+                for metric in optimizer_metrics:
+                    for key in epoch_logs:
+                        if not key.startswith("val_") and (
+                            key == metric.name or key.endswith("_" + metric.name)
+                        ):
+                            epoch_logs[key] = metric.result()
 
                 callbacks.on_epoch_end(epoch, epoch_logs)
                 training_logs = epoch_logs
