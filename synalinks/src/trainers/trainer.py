@@ -16,6 +16,7 @@ from synalinks.src import optimizers as optimizers_module
 from synalinks.src import rewards as rewards_module
 from synalinks.src import tree
 from synalinks.src.backend.common import numpy
+from synalinks.src.backend.common.op_scope import SAMPLE_INDEX
 from synalinks.src.backend.common.op_scope import PhaseClock
 from synalinks.src.backend.common.op_scope import op_scope
 from synalinks.src.saving import serialization_lib
@@ -1197,11 +1198,14 @@ class Trainer:
         # only. See synalinks.src.backend.common.op_scope; the active phase
         # is one of "inference", "reward", "optimizer", or None.
         with op_scope("inference", clock=self._phase_clock):
-            tasks = []
-            for inputs in x:
-                tasks.append(self(inputs, training=training))
-            y_pred = await asyncio.gather(*tasks)
-            return y_pred
+
+            async def run(index, inputs):
+                # Each task has its own context: predictions it records know
+                # their sample, whatever order the calls finish in.
+                SAMPLE_INDEX.set(index)
+                return await self(inputs, training=training)
+
+            return await asyncio.gather(*[run(i, inputs) for i, inputs in enumerate(x)])
 
     def get_compile_config(self):
         """Returns a serialized config with information for compiling the program.

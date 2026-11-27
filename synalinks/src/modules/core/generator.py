@@ -16,6 +16,7 @@ from synalinks.src.backend import SymbolicDataModel
 from synalinks.src.backend import is_chat_messages
 from synalinks.src.backend import is_strictly_chat_message
 from synalinks.src.backend import is_strictly_chat_messages
+from synalinks.src.backend.common.op_scope import SAMPLE_INDEX
 from synalinks.src.backend.common.op_scope import current_op_scope
 from synalinks.src.modules.decision_models import resolve_decision_model
 from synalinks.src.modules.decision_models.decision_model import UnsupportedSchemaError
@@ -539,6 +540,7 @@ class Generator(Module):
                         "inputs": inputs.get_json(),
                         "outputs": result.get_json(),
                         "reward": None,
+                        "sample": SAMPLE_INDEX.get(),
                     }
                 )
             if self.return_inputs:
