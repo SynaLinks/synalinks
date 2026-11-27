@@ -252,8 +252,7 @@ class Trainer:
         else:
             output_names = None
         if reward is not None:
-            # A list/dict of per-output rewards is resolved leaf by leaf in
-            # `CompileReward`; a dict with a `class_name` is a single config.
+            # Per-output rewards are resolved by `CompileReward`, leaf by leaf.
             if not tree.is_nested(reward) or "class_name" in reward:
                 reward = rewards_module.get(reward)
             reduction = getattr(reward, "reduction", "mean")
