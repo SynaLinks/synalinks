@@ -4,6 +4,7 @@ import json
 
 from synalinks.src import backend
 from synalinks.src import testing
+from synalinks.src import tree
 from synalinks.src.backend import DataModel
 from synalinks.src.metrics.accuracy_metrics import Accuracy
 from synalinks.src.metrics.accuracy_metrics import BinaryAccuracy
@@ -396,3 +397,66 @@ class FailedPredictionAccuracyTest(testing.TestCase):
             await metric.update_state(gold, gold)
             await metric.update_state(gold, None)
             self.assertAlmostEqual(metric.result(), 0.5, delta=1e-3)
+
+
+class ShortAnswerAccuracyTest(testing.TestCase):
+    async def test_answers_that_normalize_to_no_tokens(self):
+        class Answer(DataModel):
+            answer: str
+
+        class Pair(DataModel):
+            answer: str
+            note: str
+
+        for average in (None, "micro", "macro", "weighted"):
+            metric = Accuracy(average=average)
+            self.assertAlmostEqual(
+                await metric(Answer(answer="A"), Answer(answer="A")), 1.0, delta=1e-3
+            )
+            metric = Accuracy(average=average)
+            self.assertAlmostEqual(
+                await metric(Answer(answer="A"), Answer(answer="B")), 0.0, delta=1e-3
+            )
+            metric = Accuracy(average=average)
+            gold = Pair(answer="yes", note="")
+            # `average=None` gives one score per field.
+            for score in tree.flatten(await metric(gold, gold)):
+                self.assertAlmostEqual(score, 1.0, delta=1e-3)
+
+
+class FieldAlignmentAccuracyTest(testing.TestCase):
+    async def test_fields_after_a_shorter_list_stay_aligned(self):
+        class Cited(DataModel):
+            answer: str
+            sources: list[str]
+            title: str
+
+        class Flags(DataModel):
+            flags: list[bool]
+            done: bool
+
+        gold = Cited(answer="paris", sources=["doc1", "doc2"], title="capital")
+        pred = Cited(answer="paris", sources=["doc1"], title="capital")
+        scores = await Accuracy()(gold, pred)
+        # answer, sources/0, sources/1 (missing), title.
+        self.assertEqual([round(s, 3) for s in scores], [1.0, 1.0, 0.0, 1.0])
+
+        metric = BinaryAccuracy()
+        await metric.update_state(
+            Flags(flags=[True, True], done=True), Flags(flags=[True], done=True)
+        )
+        # flags/0, flags/1 (missing), done.
+        self.assertEqual([round(s, 3) for s in metric.result()], [1.0, 0.0, 1.0])
+
+    async def test_samples_with_different_lengths_keep_fields_apart(self):
+        class Cited(DataModel):
+            sources: list[str]
+            title: str
+
+        metric = Accuracy()
+        sample = Cited(sources=["doc1"], title="capital")
+        await metric.update_state(sample, sample)
+        sample = Cited(sources=["doc1", "doc2"], title="city")
+        await metric.update_state(sample, Cited(sources=["doc1", "x"], title="city"))
+        # sources/0, title, sources/1: `title` is never mixed with `sources/1`.
+        self.assertEqual([round(s, 3) for s in metric.result()], [1.0, 1.0, 0.0])

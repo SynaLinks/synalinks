@@ -438,3 +438,37 @@ class EMRatesAndCacheTest(testing.TestCase):
                 _record(em, prompt=100, vectors=2, phase=phase)
                 _bump_cached(em, 60, phase=phase)
                 self.assertEqual(m_cached.result(), 30.0)  # 60 / 2
+
+
+class KnowledgeBaseEmbeddingModelTest(testing.TestCase):
+    async def test_embedding_model_of_a_knowledge_base_is_collected(self):
+        """A knowledge base is not a module: its embedding model is reached
+        through the retriever (or agent) holding it, so RAG programs report
+        their embedding usage."""
+        from synalinks.src.backend import DataModel
+        from synalinks.src.knowledge_bases import KnowledgeBase
+        from synalinks.src.metrics.metrics_utils import embedding_models
+        from synalinks.src.modules import Input
+        from synalinks.src.modules.embedding_models import EmbeddingModel
+        from synalinks.src.modules.retrievers.entity_similarity_search import (
+            EntitySimilaritySearch,
+        )
+        from synalinks.src.programs import Program
+
+        class Doc(DataModel):
+            id: str
+            text: str
+
+        class Query(DataModel):
+            query: str
+
+        embedding_model = EmbeddingModel(model="ollama/mxbai-embed-large")
+        knowledge_base = KnowledgeBase(
+            uri="duckdb://:memory:",
+            data_models=[Doc],
+            embedding_model=embedding_model,
+        )
+        inputs = Input(data_model=Query)
+        outputs = await EntitySimilaritySearch(knowledge_base=knowledge_base)(inputs)
+        program = Program(inputs=inputs, outputs=outputs)
+        self.assertEqual(embedding_models(program), [embedding_model])

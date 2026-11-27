@@ -10,6 +10,7 @@ from synalinks.src.backend import Field
 from synalinks.src.backend import JsonDataModel
 from synalinks.src.backend import SymbolicDataModel
 from synalinks.src.backend import Trainable
+from synalinks.src.backend.common.op_scope import SAMPLE_INDEX
 from synalinks.src.modules.module import Module
 from synalinks.src.sandboxes.mirage_sandbox import MirageSandbox
 from synalinks.src.sandboxes.sandbox import TimeoutException
@@ -387,6 +388,7 @@ class PythonSynthesis(Module):
                                 "stderr": stderr,
                             },
                             "reward": None,
+                            "sample": SAMPLE_INDEX.get(),
                         }
                     )
                 else:
@@ -401,6 +403,7 @@ class PythonSynthesis(Module):
                                 "stderr": stderr,
                             },
                             "reward": None,
+                            "sample": SAMPLE_INDEX.get(),
                         }
                     )
             else:
@@ -416,6 +419,7 @@ class PythonSynthesis(Module):
                                 "stderr": stderr,
                             },
                             "reward": None,
+                            "sample": SAMPLE_INDEX.get(),
                         }
                     )
                 else:
@@ -429,6 +433,7 @@ class PythonSynthesis(Module):
                                 "stderr": stderr,
                             },
                             "reward": None,
+                            "sample": SAMPLE_INDEX.get(),
                         }
                     )
         json = {

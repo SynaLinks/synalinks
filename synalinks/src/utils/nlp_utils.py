@@ -401,6 +401,10 @@ def normalize_and_tokenize(text):
     """
     Normalize the text and tokenize it into words.
 
+    A text that normalizes to nothing but is not blank (a lone article such as
+    `"A"`, or only punctuation such as `"?"`) is kept whole as one lowercased
+    token, so a multiple-choice answer can still match.
+
     Args:
         text (str): The text to process.
 
@@ -408,9 +412,9 @@ def normalize_and_tokenize(text):
         (list): A list of normalized words.
     """
     text = text.lower()
-    text = remove_articles(text)
-    text = remove_punctuation(text)
-    return text.split()
+    # Punctuation first, as `normalize_text` does: "a-1" is one word, "a1".
+    tokens = remove_articles(remove_punctuation(text)).split()
+    return tokens or remove_punctuation(text).split() or text.split()
 
 
 def shorten_text(text, nb_words_offset=10):

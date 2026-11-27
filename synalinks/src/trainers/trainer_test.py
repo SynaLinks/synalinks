@@ -793,3 +793,31 @@ class TestRewardInputs(testing.TestCase):
         self.assertEqual(
             sorted(nested.seen), [(q, f"re {q}", f"re {q}") for q in questions]
         )
+
+
+class TestCompileSubProgram(testing.TestCase):
+    async def test_compile_untracks_the_sub_program_own_metrics(self):
+        """Compiling an outer program clears the metrics of the programs it
+        contains and untracks them from those programs' own trackers, so a
+        cleared metric can be tracked again."""
+        language_model = LanguageModel(model="ollama/mistral")
+
+        class Inner(programs.Program):
+            def __init__(self):
+                super().__init__(name="inner")
+                self.answer = modules.Generator(
+                    data_model=AnswerWithRationale, language_model=language_model
+                )
+                self.seen = metrics.Mean(name="seen")
+
+            async def call(self, inputs, training=False):
+                return await self.answer(inputs)
+
+        inner = Inner()
+        inner.compile(reward=rewards.ExactMatch())
+        inputs = modules.Input(data_model=Query)
+        outer = programs.Program(inputs=inputs, outputs=await inner(inputs))
+        outer.compile(reward=rewards.ExactMatch())
+        self.assertEqual(inner._metrics, [])
+        inner.seen_again = inner.seen
+        self.assertEqual([m.name for m in inner._metrics], ["seen"])

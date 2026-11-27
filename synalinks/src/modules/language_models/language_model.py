@@ -1623,8 +1623,7 @@ class LanguageModel(Module):
                         response_cost = response._hidden_params["response_cost"]
                         if response_cost is not None:
                             self.last_call_cost = response_cost
-                # A stream's usage is only known once it completes: its
-                # iterator records it then.
+                # A stream's iterator records its usage once it completes.
                 if not streaming:
                     self._record_usage(
                         response.get("usage"),

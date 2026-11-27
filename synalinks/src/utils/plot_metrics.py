@@ -243,9 +243,7 @@ def plot_metrics_comparison(
 
     # Set y-axis limits: minimum 0.0, maximum 1.0 but allow exceeding if needed
     all_values = [
-        metrics_dict[cond][metric]
-        for cond in condition_names
-        for metric in metric_names
+        metrics_dict[cond][metric] for cond in condition_names for metric in metric_names
     ]
     max_value = max(all_values) if all_values else 1.0
     ax.set_ylim(0.0, max(1.0, max_value * 1.05))  # 5% padding above max value
@@ -364,9 +362,7 @@ def plot_metrics_comparison_with_mean_and_std(
                 " metric dictionaries"
             )
         if not metrics_comparison_dict[condition]:
-            raise ValueError(
-                f"Metrics list for condition '{condition}' cannot be empty"
-            )
+            raise ValueError(f"Metrics list for condition '{condition}' cannot be empty")
 
     # Get metric names from first condition's first run
     all_metric_names = list(metrics_comparison_dict[condition_names[0]][0].keys())
@@ -466,9 +462,7 @@ def plot_metrics_comparison_with_mean_and_std(
         for mean in condition_stats[condition]["means"]
     ]
     all_stds = [
-        std
-        for condition in condition_names
-        for std in condition_stats[condition]["stds"]
+        std for condition in condition_names for std in condition_stats[condition]["stds"]
     ]
     max_val = max(np.array(all_means) + np.array(all_stds)) if all_means else 1.0
     y_padding = 0.15 if show_values else 0.05
@@ -611,9 +605,7 @@ def plot_metrics_with_mean_and_std(
     ax = fig.subplots()
 
     # Create bar plot with error bars
-    bars = ax.bar(
-        metric_names, means, yerr=stds, color=colors, capsize=capsize, **kwargs
-    )
+    bars = ax.bar(metric_names, means, yerr=stds, color=colors, capsize=capsize, **kwargs)
 
     # Add value labels on top of bars if requested
     if show_values:

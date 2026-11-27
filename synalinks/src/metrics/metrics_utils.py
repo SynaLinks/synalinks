@@ -88,9 +88,9 @@ def aggregate_scores(score, average, axis, intermediate_weights=None):
 def collect_models(program, model_types, attrs):
     """Return every unique model of `model_types` that a program runs.
 
-    Walks `model_holders(program)`, reads each attribute in `attrs` (and the
-    holder itself) and follows each model's `fallback` chain, preserving
-    order.
+    Walks `model_holders(program)`, reads each attribute in `attrs` on the
+    holder and on its `knowledge_base` (and the holder itself) and follows
+    each model's `fallback` chain, preserving order.
 
     Args:
         program (Program): The program to walk.
@@ -103,7 +103,10 @@ def collect_models(program, model_types, attrs):
     models = []
     seen = set()
     for holder in model_holders(program):
-        for model in [getattr(holder, attr, None) for attr in attrs] + [holder]:
+        # A knowledge base is not a module: read it through its holder.
+        owners = [holder, getattr(holder, "knowledge_base", None)]
+        candidates = [getattr(owner, attr, None) for owner in owners for attr in attrs]
+        for model in candidates + [holder]:
             while isinstance(model, model_types) and id(model) not in seen:
                 seen.add(id(model))
                 models.append(model)

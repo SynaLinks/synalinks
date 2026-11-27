@@ -4,6 +4,7 @@ import json
 
 from synalinks.src import backend
 from synalinks.src import testing
+from synalinks.src import tree
 from synalinks.src.backend import DataModel
 from synalinks.src.metrics.f_score_metrics import BinaryF1Score
 from synalinks.src.metrics.f_score_metrics import BinaryFBetaScore
@@ -543,3 +544,53 @@ class FailedPredictionFScoreTest(testing.TestCase):
             await metric.update_state(gold, None)
             # precision 1.0, recall 0.5
             self.assertAlmostEqual(metric.result(), 2 / 3, delta=1e-3)
+
+
+class ShortAnswerFScoreTest(testing.TestCase):
+    async def test_answers_that_normalize_to_no_tokens(self):
+        class Answer(DataModel):
+            answer: str
+
+        class Pair(DataModel):
+            answer: str
+            note: str
+
+        for average in (None, "micro", "macro", "weighted"):
+            metric = F1Score(average=average)
+            self.assertAlmostEqual(
+                await metric(Answer(answer="A"), Answer(answer="A")), 1.0, delta=1e-3
+            )
+            metric = F1Score(average=average)
+            self.assertAlmostEqual(
+                await metric(Answer(answer="A"), Answer(answer="B")), 0.0, delta=1e-3
+            )
+            metric = F1Score(average=average)
+            gold = Pair(answer="yes", note="")
+            # `average=None` gives one score per field.
+            for score in tree.flatten(await metric(gold, gold)):
+                self.assertAlmostEqual(score, 1.0, delta=1e-3)
+
+
+class FieldAlignmentFScoreTest(testing.TestCase):
+    async def test_fields_after_a_shorter_list_stay_aligned(self):
+        class Cited(DataModel):
+            answer: str
+            sources: list[str]
+            title: str
+
+        class Flags(DataModel):
+            flags: list[bool]
+            done: bool
+
+        gold = Cited(answer="paris", sources=["doc1", "doc2"], title="capital")
+        pred = Cited(answer="paris", sources=["doc1"], title="capital")
+        self.assertAlmostEqual(
+            await F1Score(average="macro")(gold, pred), 0.75, delta=1e-3
+        )
+
+        metric = BinaryF1Score()
+        await metric.update_state(
+            Flags(flags=[True, True], done=True), Flags(flags=[True], done=True)
+        )
+        # flags/0, flags/1 (missing: a false negative), done.
+        self.assertEqual([round(s, 3) for s in metric.result()], [1.0, 0.0, 1.0])

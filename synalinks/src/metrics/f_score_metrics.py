@@ -3,7 +3,6 @@
 # License Apache 2.0: (c) 2025-2026 Yoan Sallami (Synalinks Team)
 
 from collections import Counter
-from itertools import zip_longest
 from typing import List
 from typing import Optional
 
@@ -13,8 +12,9 @@ from synalinks.src.api_export import synalinks_export
 from synalinks.src.backend import DataModel
 from synalinks.src.backend.common import numpy as np
 from synalinks.src.metrics.metric import Metric
+from synalinks.src.metrics.metric import accumulate
+from synalinks.src.metrics.metric import align_leaves
 from synalinks.src.metrics.metric import apply_masks
-from synalinks.src.metrics.metric import ragged_add
 from synalinks.src.metrics.metrics_utils import aggregate_scores
 from synalinks.src.utils import nlp_utils
 
@@ -24,6 +24,7 @@ class FBetaState(DataModel):
     false_positives: Optional[List[float]] = None
     false_negatives: Optional[List[float]] = None
     intermediate_weights: Optional[List[float]] = None
+    fields: Optional[List[str]] = None
 
 
 @synalinks_export("synalinks.metrics.FBetaScore")
@@ -142,13 +143,8 @@ class FBetaScore(Metric):
 
         if y_true is None:
             return
-        y_true = tree.flatten(tree.map_structure(lambda x: str(x), y_true.get_json()))
-        # A failed prediction (`y_pred is None`) scores as an empty one.
-        y_pred = (
-            []
-            if y_pred is None
-            else tree.flatten(tree.map_structure(lambda x: str(x), y_pred.get_json()))
-        )
+        # A leaf missing on one side (or a failed prediction) scores as "".
+        fields, y_true, y_pred = align_leaves(y_true, y_pred, fill="")
 
         true_positives = []
         false_positives = []
@@ -157,48 +153,25 @@ class FBetaScore(Metric):
         # For each field of y_true and y_pred. SQuAD-style multiset (Counter)
         # intersection, needed so identical strings with repeated tokens
         # score 1.0.
-        # zip_longest, not zip: unmatched leaves (pred and gold structures can
-        # disagree on variable-length arrays) must be scored; the "" fill has
-        # no tokens, so they land entirely in false positives/negatives.
-        for yt, yp in zip_longest(y_true, y_pred, fillvalue=""):
+        for yt, yp in zip(y_true, y_pred):
             y_true_tokens = nlp_utils.normalize_and_tokenize(str(yt))
             y_pred_tokens = nlp_utils.normalize_and_tokenize(str(yp))
+            if not y_true_tokens and not y_pred_tokens:
+                # Both blank: a correct (empty) answer, not a 0/0.
+                y_true_tokens = y_pred_tokens = [""]
             num_common = sum((Counter(y_true_tokens) & Counter(y_pred_tokens)).values())
             true_positives.append(num_common)
             false_positives.append(len(y_pred_tokens) - num_common)
             false_negatives.append(len(y_true_tokens) - num_common)
             intermediate_weights.append(len(y_true_tokens))
 
-        true_positives = np.convert_to_numpy(true_positives)
-        false_positives = np.convert_to_numpy(false_positives)
-        false_negatives = np.convert_to_numpy(false_negatives)
-        intermediate_weights = np.convert_to_numpy(intermediate_weights)
-
-        current_true_positives = self.state.get("true_positives")
-        if current_true_positives:
-            true_positives = ragged_add(current_true_positives, true_positives)
-
-        current_false_positives = self.state.get("false_positives")
-        if current_false_positives:
-            false_positives = ragged_add(current_false_positives, false_positives)
-
-        current_false_negatives = self.state.get("false_negatives")
-        if current_false_negatives:
-            false_negatives = ragged_add(current_false_negatives, false_negatives)
-
-        current_intermediate_weights = self.state.get("intermediate_weights")
-        if current_intermediate_weights:
-            intermediate_weights = ragged_add(
-                current_intermediate_weights, intermediate_weights
-            )
-
-        self.state.update(
-            {
-                "true_positives": true_positives.tolist(),
-                "false_positives": false_positives.tolist(),
-                "false_negatives": false_negatives.tolist(),
-                "intermediate_weights": intermediate_weights.tolist(),
-            }
+        accumulate(
+            self.state,
+            fields,
+            true_positives=true_positives,
+            false_positives=false_positives,
+            false_negatives=false_negatives,
+            intermediate_weights=intermediate_weights,
         )
 
     def result(self):
@@ -492,56 +465,23 @@ class BinaryFBetaScore(FBetaScore):
 
         if y_true is None:
             return
-        y_true = tree.flatten(
-            tree.map_structure(lambda x: convert_to_binary(x), y_true.get_json())
-        )
-        # A failed prediction (`y_pred is None`) scores as an empty one.
-        y_pred = (
-            []
-            if y_pred is None
-            else tree.flatten(
-                tree.map_structure(lambda x: convert_to_binary(x), y_pred.get_json())
-            )
-        )
-        # Pred and gold structures can disagree on variable-length arrays;
-        # zero-pad to the longer leaf list so the element-wise products below
-        # never hit a broadcast error. A padded gold 0 makes an extra pred
-        # leaf a false positive; a padded pred 0 makes a missing leaf a false
-        # negative: unmatched leaves are penalized, not dropped.
-        size = max(len(y_true), len(y_pred))
-        y_true = np.convert_to_tensor(y_true + [0.0] * (size - len(y_true)))
-        y_pred = np.convert_to_tensor(y_pred + [0.0] * (size - len(y_pred)))
+        # A missing leaf counts as 0: a false positive or a false negative.
+        fields, y_true, y_pred = align_leaves(y_true, y_pred, fill=False)
+        y_true = np.convert_to_tensor([convert_to_binary(v) for v in y_true])
+        y_pred = np.convert_to_tensor([convert_to_binary(v) for v in y_pred])
 
         true_positives = y_pred * y_true
         false_positives = y_pred * (1 - y_true)
         false_negatives = (1 - y_pred) * y_true
         intermediate_weights = y_true
 
-        current_true_positives = self.state.get("true_positives")
-        if current_true_positives:
-            true_positives = ragged_add(current_true_positives, true_positives)
-
-        current_false_positives = self.state.get("false_positives")
-        if current_false_positives:
-            false_positives = ragged_add(current_false_positives, false_positives)
-
-        current_false_negatives = self.state.get("false_negatives")
-        if current_false_negatives:
-            false_negatives = ragged_add(current_false_negatives, false_negatives)
-
-        current_intermediate_weights = self.state.get("intermediate_weights")
-        if current_intermediate_weights:
-            intermediate_weights = ragged_add(
-                current_intermediate_weights, intermediate_weights
-            )
-
-        self.state.update(
-            {
-                "true_positives": true_positives.tolist(),
-                "false_positives": false_positives.tolist(),
-                "false_negatives": false_negatives.tolist(),
-                "intermediate_weights": intermediate_weights.tolist(),
-            }
+        accumulate(
+            self.state,
+            fields,
+            true_positives=true_positives,
+            false_positives=false_positives,
+            false_negatives=false_negatives,
+            intermediate_weights=intermediate_weights,
         )
 
     def get_config(self):
@@ -799,6 +739,7 @@ class CategoricalFBetaScore(FBetaScore):
         false_negatives = []
         intermediate_weights = []
 
+        fields = self.labels if self.labels is not None else ["labels"]
         if self.labels is not None:
             y_true_set = {str(v) for v in y_true}
             y_pred_set = {str(v) for v in y_pred}
@@ -822,36 +763,13 @@ class CategoricalFBetaScore(FBetaScore):
             false_negatives.append(len(set(y_true_labels)) - len(common_labels))
             intermediate_weights.append(len(y_true_labels))
 
-        true_positives = np.convert_to_numpy(true_positives)
-        false_positives = np.convert_to_numpy(false_positives)
-        false_negatives = np.convert_to_numpy(false_negatives)
-        intermediate_weights = np.convert_to_numpy(intermediate_weights)
-
-        current_true_positives = self.state.get("true_positives")
-        if current_true_positives:
-            true_positives = ragged_add(current_true_positives, true_positives)
-
-        current_false_positives = self.state.get("false_positives")
-        if current_false_positives:
-            false_positives = ragged_add(current_false_positives, false_positives)
-
-        current_false_negatives = self.state.get("false_negatives")
-        if current_false_negatives:
-            false_negatives = ragged_add(current_false_negatives, false_negatives)
-
-        current_intermediate_weights = self.state.get("intermediate_weights")
-        if current_intermediate_weights:
-            intermediate_weights = ragged_add(
-                current_intermediate_weights, intermediate_weights
-            )
-
-        self.state.update(
-            {
-                "true_positives": true_positives.tolist(),
-                "false_positives": false_positives.tolist(),
-                "false_negatives": false_negatives.tolist(),
-                "intermediate_weights": intermediate_weights.tolist(),
-            }
+        accumulate(
+            self.state,
+            fields,
+            true_positives=true_positives,
+            false_positives=false_positives,
+            false_negatives=false_negatives,
+            intermediate_weights=intermediate_weights,
         )
 
     def result(self):
