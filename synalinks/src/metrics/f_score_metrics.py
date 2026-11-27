@@ -6,7 +6,6 @@ from collections import Counter
 from typing import List
 from typing import Optional
 
-from synalinks.src import backend
 from synalinks.src import tree
 from synalinks.src.api_export import synalinks_export
 from synalinks.src.backend import DataModel
@@ -193,10 +192,8 @@ class FBetaScore(Metric):
             fp = np.sum(fp)
             fn = np.sum(fn)
 
-        precision = np.convert_to_tensor(
-            np.divide(tp, np.add(tp, fp) + backend.epsilon())
-        )
-        recall = np.convert_to_tensor(np.divide(tp, np.add(tp, fn) + backend.epsilon()))
+        precision = np.divide_no_nan(tp, np.add(tp, fp))
+        recall = np.divide_no_nan(tp, np.add(tp, fn))
 
         formula = getattr(self, "_formula", "fbeta")
         if formula == "precision":
@@ -206,7 +203,7 @@ class FBetaScore(Metric):
         else:
             mul_value = precision * recall
             add_value = ((self.beta**2) * precision) + recall
-            mean = np.divide(mul_value, add_value + backend.epsilon())
+            mean = np.divide_no_nan(mul_value, add_value)
             score = mean * (1 + (self.beta**2))
 
         return aggregate_scores(

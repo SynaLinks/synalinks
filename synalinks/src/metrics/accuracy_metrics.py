@@ -3,7 +3,6 @@
 from typing import List
 from typing import Optional
 
-from synalinks.src import backend
 from synalinks.src import tree
 from synalinks.src.api_export import synalinks_export
 from synalinks.src.backend import DataModel
@@ -159,7 +158,7 @@ class Accuracy(Metric):
             correct = np.sum(correct)
             total = np.sum(total)
 
-        score = np.divide(correct, np.add(total, backend.epsilon()))
+        score = np.divide_no_nan(correct, total)
         return aggregate_scores(
             score, self.average, self.axis, self.state.get("intermediate_weights")
         )
