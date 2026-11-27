@@ -9,13 +9,13 @@ import warnings
 
 import numpy as np
 
-from synalinks.src import backend
 from synalinks.src import callbacks as callbacks_module
 from synalinks.src import metrics as metrics_module
 from synalinks.src import optimizers as optimizers_module
 from synalinks.src import rewards as rewards_module
 from synalinks.src import tree
 from synalinks.src.backend.common import numpy
+from synalinks.src.backend.common.op_scope import SAMPLE_INDEX
 from synalinks.src.backend.common.op_scope import PhaseClock
 from synalinks.src.backend.common.op_scope import op_scope
 from synalinks.src.saving import serialization_lib
@@ -226,13 +226,13 @@ class Trainer:
             if not isinstance(module, Trainer):
                 continue
             own_metrics = []
-            if self._reward_tracker is not None:
-                own_metrics.append(self._reward_tracker)
-            if self._compile_metrics is not None:
-                own_metrics.append(self._compile_metrics)
-            if self._compile_reward is not None:
-                own_metrics.extend(self._compile_reward.metrics)
-            own_metrics.extend(self._metrics)
+            if module._reward_tracker is not None:
+                own_metrics.append(module._reward_tracker)
+            if module._compile_metrics is not None:
+                own_metrics.append(module._compile_metrics)
+            if module._compile_reward is not None:
+                own_metrics.extend(module._compile_reward.metrics)
+            own_metrics.extend(module._metrics)
             for m in own_metrics:
                 module._tracker.untrack(m)
             module._reward_tracker = None
@@ -388,46 +388,6 @@ class Trainer:
             if len(rewards) == 0:
                 rewards = [0.0]
             return rewards
-
-    def stateless_compute_reward(
-        self,
-        trainable_variables,
-        non_trainable_variables,
-        metrics_variables,
-        x=None,
-        y=None,
-        y_pred=None,
-        training=True,
-    ):
-        var_mapping = list(zip(self.trainable_variables, trainable_variables))
-        var_mapping.extend(zip(self.non_trainable_variables, non_trainable_variables))
-        var_mapping.extend(zip(self.metrics_variables, metrics_variables))
-        with backend.StatelessScope(state_mapping=var_mapping) as scope:
-            # Note that this is needed for the regularization reward, which need
-            # the latest value of train/non-trainable variables.
-            reward = self._compute_reward(
-                x,
-                y,
-                y_pred,
-                training=training,
-            )
-
-        # Update non trainable vars (may have been updated in compute_reward)
-        non_trainable_variables = []
-        for v in self.non_trainable_variables:
-            new_v = scope.get_current_value(v)
-            non_trainable_variables.append(new_v)
-
-        # Update metrics vars (may have been updated in compute_reward)
-        metrics_variables = []
-        for v in self.metrics_variables:
-            new_v = scope.get_current_value(v)
-            metrics_variables.append(new_v)
-        return reward, (
-            trainable_variables,
-            non_trainable_variables,
-            metrics_variables,
-        )
 
     async def compute_metrics(self, x, y, y_pred):
         """Update metric states and collect all metrics to be returned.
@@ -1197,11 +1157,13 @@ class Trainer:
         # only. See synalinks.src.backend.common.op_scope; the active phase
         # is one of "inference", "reward", "optimizer", or None.
         with op_scope("inference", clock=self._phase_clock):
-            tasks = []
-            for inputs in x:
-                tasks.append(self(inputs, training=training))
-            y_pred = await asyncio.gather(*tasks)
-            return y_pred
+
+            async def run(index, inputs):
+                # Each task has its own context copy: no leak between samples.
+                SAMPLE_INDEX.set(index)
+                return await self(inputs, training=training)
+
+            return await asyncio.gather(*[run(i, inputs) for i, inputs in enumerate(x)])
 
     def get_compile_config(self):
         """Returns a serialized config with information for compiling the program.
@@ -1239,7 +1201,7 @@ class Trainer:
             return
         config = serialization_lib.deserialize_synalinks_object(config)
         self.compile(**config)
-        if hasattr(self, "optimizer") and self.built:
+        if self.optimizer is not None and self.built:
             # Create optimizer variables/programs.
             if not self.optimizer.built:
                 run_maybe_nested(self.optimizer.build(self.trainable_variables))

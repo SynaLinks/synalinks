@@ -159,6 +159,71 @@ class OptimizerRewardAssignmentTest(testing.TestCase):
         self.assertEqual(var.get("cumulative_reward"), 1.0)
 
 
+class PredictionSampleOrderTest(testing.TestCase):
+    async def test_rewards_follow_the_sample_tag(self):
+        """Predictions are recorded in completion order and a failed sample
+        records none, so each one gets the reward of its own sample."""
+        optimizer = Optimizer(population_size=5)
+        var = _trainable(
+            current_predictions=[
+                {"outputs": "c", "reward": None, "sample": 2},
+                {"outputs": "a", "reward": None, "sample": 0},
+            ],
+        )
+        await optimizer.assign_reward_to_predictions([var], rewards=[1.0, 0.5, 0.0])
+        rewards = {p["outputs"]: p["reward"] for p in var.get("predictions")}
+        self.assertEqual(rewards, {"a": 1.0, "c": 0.0})
+        self.assertNotIn("sample", var.get("predictions")[0])
+
+    async def test_predictions_finishing_out_of_order(self):
+        import asyncio
+        import json
+        from unittest.mock import patch
+
+        import numpy as np
+
+        from synalinks.src.backend import DataModel
+        from synalinks.src.modules import Generator
+        from synalinks.src.modules import Input
+        from synalinks.src.modules.language_models import LanguageModel
+        from synalinks.src.optimizers.random_few_shot import RandomFewShot
+        from synalinks.src.programs import Program
+        from synalinks.src.rewards.exact_match import ExactMatch
+
+        class Q(DataModel):
+            query: str
+
+        class A(DataModel):
+            answer: str
+
+        async def completion(*args, **kwargs):
+            # Sample "0" answers last.
+            for query, delay in (("0", 0.3), ("1", 0.2), ("2", 0.1)):
+                if f"'query': '{query}'" in str(kwargs["messages"][-1]["content"]):
+                    await asyncio.sleep(delay)
+                    content = json.dumps({"answer": query})
+                    return {"choices": [{"message": {"content": content}}]}
+
+        with patch("litellm.acompletion", side_effect=completion):
+            inputs = Input(data_model=Q)
+            outputs = await Generator(
+                data_model=A, language_model=LanguageModel(model="ollama/mistral")
+            )(inputs)
+            program = Program(inputs=inputs, outputs=outputs)
+            program.compile(reward=ExactMatch(), optimizer=RandomFewShot())
+            x = np.array([Q(query=q) for q in "012"], dtype=object)
+            # Only sample 0 is right.
+            y = np.array([A(answer=a) for a in ("0", "X", "X")], dtype=object)
+            y_pred = await program.predict_on_batch(x, training=True)
+            rewards = await program.compute_reward(x=x, y=y, y_pred=y_pred)
+            await program.optimizer.assign_reward_to_predictions(
+                program.trainable_variables, rewards=rewards
+            )
+        predictions = program.trainable_variables[0].get("predictions")
+        rewards = {p["inputs"]["query"]: p["reward"] for p in predictions}
+        self.assertEqual(rewards, {"0": 1.0, "1": 0.0, "2": 0.0})
+
+
 class _ConcreteOptimizer(Optimizer):
     async def propose_new_candidates(self, *args, **kwargs):
         return None
@@ -244,6 +309,18 @@ class CandidateScoreTest(testing.TestCase):
         )
         # A candidate without a count is treated as a single measurement.
         self.assertAlmostEqual(optimizer.candidate_score({"reward": 0.9}), 0.7)
+
+    async def test_train_end_keeps_the_best_scored_candidate(self):
+        """A lucky 1.0 on 2 samples must not beat a 0.95 measured on 200."""
+        optimizer = _ConcreteOptimizer(reward_uncertainty=0.25)
+        variable = _trainable(
+            candidates=[
+                {"examples": ["lucky"], "reward": 1.0, "reward_count": 2},
+                {"examples": ["solid"], "reward": 0.95, "reward_count": 200},
+            ],
+        )
+        await optimizer.on_train_end([variable])
+        self.assertEqual(variable.get("examples"), ["solid"])
 
     def test_zero_uncertainty_ranks_by_raw_reward(self):
         optimizer = _ConcreteOptimizer(reward_uncertainty=0.0)
@@ -401,3 +478,65 @@ class SampleWeightedRewardTest(testing.TestCase):
         lucky = next(c for c in best if c["instructions"] == "lucky")
         self.assertEqual(lucky["reward_count"], 64)
         self.assertAlmostEqual(lucky["reward"], (1.0 * 4 + 0.7 * 60) / 64)
+
+
+class PerOutputRewardLogsTest(testing.TestCase):
+    async def test_per_output_rewards_follow_the_validation_pass(self):
+        """`fit` logs the per-output rewards next to `reward`, which records
+        the validation pass: the training batch must not leak into them."""
+        import json
+        from unittest.mock import patch
+
+        import numpy as np
+
+        from synalinks.src.backend import DataModel
+        from synalinks.src.modules import Generator
+        from synalinks.src.modules import Input
+        from synalinks.src.modules.language_models import LanguageModel
+        from synalinks.src.optimizers.random_few_shot import RandomFewShot
+        from synalinks.src.programs import Program
+
+        class Q(DataModel):
+            query: str
+
+        class A(DataModel):
+            answer: str
+
+        async def completion(*args, **kwargs):
+            return {"choices": [{"message": {"content": json.dumps({"answer": "a"})}}]}
+
+        async def right(y_true, y_pred):
+            return 1.0 if y_pred.get("answer") == y_true.get("answer") else 0.0
+
+        def targets(answer):
+            y = np.empty((2,), dtype=object)
+            for i in range(2):
+                y[i] = [A(answer=answer), A(answer=answer)]
+            return y
+
+        with patch("litellm.acompletion", side_effect=completion):
+            language_model = LanguageModel(model="ollama/mistral")
+            inputs = Input(data_model=Q)
+            outputs = [
+                await Generator(data_model=A, language_model=language_model, name=n)(
+                    inputs
+                )
+                for n in ("g1", "g2")
+            ]
+            program = Program(inputs=inputs, outputs=outputs)
+            program.compile(reward=right, optimizer=RandomFewShot())
+            x = np.array([Q(query="q1"), Q(query="q2")], dtype=object)
+            # Training targets are right, validation targets wrong, then right.
+            for step, val_answer in enumerate(("z", "a")):
+                logs = await program.train_on_batch(
+                    step=step,
+                    x=x,
+                    y=targets("a"),
+                    val_x=x,
+                    val_y=targets(val_answer),
+                    return_dict=True,
+                )
+                expected = step / 2
+                self.assertAlmostEqual(logs["g1_reward"], expected)
+                self.assertAlmostEqual(logs["g2_reward"], expected)
+                self.assertAlmostEqual(logs["reward"], 2 * expected)

@@ -164,6 +164,24 @@ class ProgramTest(testing.TestCase):
 
         self.assertEqual(Program.load(filepath).description, "Answers")
 
+    async def test_save_and_load_compiled_without_optimizer(self):
+        """A program compiled for evaluation only (a reward, no optimizer)
+        reloads compiled."""
+        from synalinks.src.rewards.exact_match import ExactMatch
+
+        x0 = Input(data_model=Query)
+        x1 = await Generator(
+            data_model=Answer, language_model=LanguageModel(model="ollama/mistral")
+        )(x0)
+        program = Program(inputs=x0, outputs=x1, name="p")
+        program.compile(reward=ExactMatch())
+
+        filepath = os.path.join(tempfile.mkdtemp(), "program.json")
+        program.save(filepath)
+        loaded = Program.load(filepath)
+        self.assertTrue(loaded.compiled)
+        self.assertIsNone(loaded.optimizer)
+
     async def test_get_state_after_compile(self):
         class Query(DataModel):
             query: str
