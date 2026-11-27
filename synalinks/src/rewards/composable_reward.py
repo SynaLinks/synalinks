@@ -5,6 +5,7 @@ from synalinks.src.api_export import synalinks_export
 from synalinks.src.metrics.metric import apply_masks
 from synalinks.src.metrics.metric import mask_data_models
 from synalinks.src.rewards.reward import Reward
+from synalinks.src.rewards.reward import standardize_reduction
 from synalinks.src.rewards.reward_wrappers import RewardFunctionWrapper
 from synalinks.src.saving import serialization_lib
 from synalinks.src.utils.python_utils import accepts_argument
@@ -31,7 +32,9 @@ class ComposableReward(Reward):
         reduction (str): Optional. How child rewards are combined. One of
             `"mean"` (weighted mean), `"sum"` (weighted sum), `"min"`, `"max"`,
             `"none"` or `None` (both combine like `"mean"`, so each sample
-            keeps a single reward). Defaults to `"mean"`.
+            keeps a single reward). Defaults to `"mean"`. It only combines the
+            child rewards of each sample: the scores over a batch or a dataset
+            (progress logs, candidate scoring) are always their mean.
         in_mask (list): Optional outer fields to keep before computing rewards.
         out_mask (list): Optional outer fields to remove before computing rewards.
         in_mask_pattern (str): Optional regex of outer fields to keep.
@@ -49,9 +52,11 @@ class ComposableReward(Reward):
         in_mask_pattern=None,
         out_mask_pattern=None,
     ):
+        # `reduction` combines the children; the batch is always averaged.
+        self.combine = standardize_reduction(reduction)
         super().__init__(
             name=name,
-            reduction=reduction,
+            reduction="mean",
             in_mask=in_mask,
             out_mask=out_mask,
             in_mask_pattern=in_mask_pattern,
@@ -88,14 +93,14 @@ class ComposableReward(Reward):
 
     async def call(self, y_true, y_pred, x=None):
         values = [await self.call_reward(r, y_true, y_pred, x) for r in self.rewards]
-        if self.reduction == "min":
+        if self.combine == "min":
             return tree.map_structure(lambda *v: min(map(float, v)), *values)
-        if self.reduction == "max":
+        if self.combine == "max":
             return tree.map_structure(lambda *v: max(map(float, v)), *values)
         total = tree.map_structure(
             lambda *v: sum(float(x) * w for x, w in zip(v, self.weights)), *values
         )
-        if self.reduction == "sum":
+        if self.combine == "sum":
             return total
         weight_sum = sum(self.weights)
         return tree.map_structure(lambda value: value / weight_sum, total)
@@ -123,6 +128,7 @@ class ComposableReward(Reward):
             {
                 "rewards": serialization_lib.serialize_synalinks_object(self.rewards),
                 "weights": self.weights,
+                "reduction": self.combine,
             }
         )
         return config

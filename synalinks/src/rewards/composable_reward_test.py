@@ -138,5 +138,38 @@ class ComposableRewardTest(testing.TestCase):
         )
         self.assertIsInstance(restored, ComposableReward)
         self.assertEqual(restored.weights, [1.0, 3.0])
-        self.assertEqual(restored.reduction, "sum")
+        self.assertEqual(restored.combine, "sum")
         self.assertEqual(len(restored.rewards), 2)
+
+
+class ComposableRewardBatchReductionTest(testing.TestCase):
+    async def test_combination_does_not_reduce_the_batch(self):
+        """`reduction="sum"` sums the children of each sample; the score over
+        a dataset is still their mean."""
+        import numpy as np
+
+        from synalinks.src.modules import Input
+        from synalinks.src.modules import Module
+        from synalinks.src.programs import Program
+
+        class Echo(Module):
+            async def call(self, inputs, training=False):
+                return Answer(answer=inputs.get("answer")).to_json_data_model()
+
+            async def compute_output_spec(self, inputs, training=False):
+                return Answer.to_symbolic_data_model()
+
+        async def one(y_true, y_pred):
+            return 1.0
+
+        async def half(y_true, y_pred):
+            return 0.5
+
+        inputs = Input(data_model=Answer)
+        program = Program(inputs=inputs, outputs=await Echo()(inputs))
+        program.compile(
+            reward=ComposableReward([one, half], weights=[0.5, 0.5], reduction="sum")
+        )
+        x = np.array([Answer(answer=str(i)) for i in range(4)], dtype=object)
+        logs = await program.evaluate(x=x, y=x, batch_size=4, verbose=0)
+        self.assertAlmostEqual(logs["reward"], 0.75)
