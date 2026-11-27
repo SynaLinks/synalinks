@@ -476,3 +476,24 @@ class SingleLabelResultTest(testing.TestCase):
             self.assertEqual(metric.result(), {"cat": 0.0})
             await metric.update_state(Labels(labels=["cat"]), Labels(labels=["cat"]))
             self.assertEqual(metric.result(), {"cat": 1.0})
+
+
+class MetricEdgeCasesTest(testing.TestCase):
+    async def test_binary_metrics_accept_int_scores(self):
+        from synalinks.src.backend import JsonDataModel
+        from synalinks.src.metrics.f_score_metrics import BinaryF1Score
+
+        schema = {"type": "object", "properties": {"score": {"type": "number"}}}
+        y = JsonDataModel(json={"score": 1}, schema=schema)
+        self.assertEqual(await BinaryAccuracy()(y, y), 1.0)
+        self.assertEqual(await BinaryF1Score()(y, y), 1.0)
+
+    async def test_macro_with_no_scored_field_is_zero(self):
+        from synalinks.src.metrics.f_score_metrics import F1Score
+
+        class Sources(DataModel):
+            sources: list[str]
+
+        y = Sources(sources=[])
+        self.assertEqual(await Accuracy(average="macro")(y, y), 0.0)
+        self.assertEqual(await F1Score(average="macro")(y, y), 0.0)

@@ -452,7 +452,7 @@ class BinaryFBetaScore(FBetaScore):
         def convert_to_binary(x):
             if isinstance(x, bool):
                 return 1.0 if x is True else 0.0
-            elif isinstance(x, float):
+            elif isinstance(x, (int, float)):
                 return 1.0 if x > self.threshold else 0.0
             else:
                 raise ValueError(

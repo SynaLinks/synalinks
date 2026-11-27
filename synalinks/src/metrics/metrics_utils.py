@@ -69,6 +69,8 @@ def aggregate_scores(score, average, axis, intermediate_weights=None):
             `average=None`.
     """
     score = np.convert_to_tensor(score)
+    if average is not None and np.convert_to_numpy(score).size == 0:
+        return 0.0  # No field scored yet: the mean of nothing is not NaN.
     if average == "weighted":
         weights = np.convert_to_tensor(intermediate_weights)
         score = np.divide_no_nan(np.sum(score * weights), np.sum(weights))
