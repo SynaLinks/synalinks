@@ -300,10 +300,14 @@ class SelfCritique(Module):
         )
         self.language_model = _get_lm(language_model)
         self.decision_model = resolve_decision_model(decision_model, language_model)
-        if decision_model is None and not return_reward:
-            # A decision model does not write the critique: the default one
-            # does not apply.
+        if decision_model is None and (score_type is not None or not return_reward):
+            # A scale or a critique asks for a language model, not the default one.
             self.decision_model = None
+        if decision_model is not None and score_type is not None:
+            raise ValueError(
+                "`score_type` does not apply with a `DecisionModel`: it grades on "
+                "its own ordered levels."
+            )
         self.score_type = get_score_type(score_type or FineScore)
         self.prompt_template = prompt_template
         self.examples = examples
@@ -420,6 +424,7 @@ class SelfCritique(Module):
             config["decision_model"] = serialization_lib.deserialize_synalinks_object(
                 config.pop("decision_model"),
             )
+            config.pop("score_type", None)  # A decision model grades on its own levels.
         return cls(
             language_model=language_model,
             **config,

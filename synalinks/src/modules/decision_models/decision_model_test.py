@@ -796,6 +796,22 @@ class DefaultDecisionModelTest(testing.TestCase):
         rubrics = synalinks.rewards.RubricsAsJudge(rubrics="faithfulness")
         self.assertIs(rubrics.program.decision_model, self.default)
 
+    def test_a_score_type_asks_for_a_language_model(self):
+        """A requested scale is a language model's: the default decision model
+        (which grades on its own levels) does not apply, as in RubricsAsJudge."""
+        self_critique = synalinks.SelfCritique(score_type="Rating")
+        self.assertIsNone(self_critique.decision_model)
+        judge = synalinks.rewards.LMAsJudge(score_type="Rating")
+        self.assertIsNone(judge.program.critique.decision_model)
+        self.assertEqual(judge.program.critique.score_type, synalinks.Rating)
+        with self.assertRaisesRegex(ValueError, "score_type"):
+            synalinks.SelfCritique(decision_model=self.default, score_type="Rating")
+
+    def test_decision_model_self_critique_reloads(self):
+        self_critique = synalinks.SelfCritique(decision_model=self.default)
+        restored = synalinks.SelfCritique.from_config(self_critique.get_config())
+        self.assertEqual(restored.decision_model.model, self.default.model)
+
     def test_explicit_models_win(self):
         other = DecisionModel(model="typesafe/jev-1.13.0")
         decision = synalinks.Decision(
