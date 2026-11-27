@@ -64,12 +64,16 @@ def _record_program(program, calls, elapsed):
     program.inference_cumulated_invocation_elapsed_s += elapsed
 
 
-def _record_lm_cost(lm, cost):
-    lm.inference_cumulated_cost += cost
+def _record_lm_cost(lm, cost, phase="inference"):
+    # Like the models: the all-time counter and the phase's.
+    lm.cumulated_cost += cost
+    setattr(lm, f"{phase}_cumulated_cost", getattr(lm, f"{phase}_cumulated_cost") + cost)
 
 
-def _record_em_cost(em, cost):
-    em.inference_cumulated_cost += cost
+def _record_em_cost(em, cost, phase="inference"):
+    # Like the models: the all-time counter and the phase's.
+    em.cumulated_cost += cost
+    setattr(em, f"{phase}_cumulated_cost", getattr(em, f"{phase}_cumulated_cost") + cost)
 
 
 def _bind(metric, program):
@@ -100,6 +104,20 @@ class ProgramOperationalMetricsResultTest(testing.TestCase):
         program = _FakeProgram()
         metric = _bind(ProgramCallsPerSecond(), program)
         self.assertEqual(metric.result(), 0.0)
+
+    def test_program_cost_counts_every_phase(self):
+        """A judge's (reward) and an optimizer's spend are the program run's
+        too; the cost per invocation stays the program's own calls."""
+        lm = _stub_lm()
+        program = _FakeProgram(modules=[_FakeModule(lm=lm)])
+        cost = _bind(ProgramCost(), program)
+        per_call = _bind(ProgramAvgCostPerInvocation(), program)
+        _record_program(program, calls=2, elapsed=1.0)
+        _record_lm_cost(lm, 0.02)
+        _record_lm_cost(lm, 0.01, phase="reward")
+        _record_lm_cost(lm, 0.03, phase="optimizer")
+        self.assertAlmostEqual(cost.result(), 0.06)
+        self.assertAlmostEqual(per_call.result(), 0.01)
 
     def test_program_cost_sums_lm_and_em(self):
         lm = _stub_lm()
