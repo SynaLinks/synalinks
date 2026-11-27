@@ -1513,9 +1513,16 @@ class LanguageModel(Module):
             **kwargs,
         )
 
-    def _record_usage(self, usage, response_cost, elapsed_s, op_scope, hidden=None):
+    def _record_usage(
+        self, usage, response_cost, elapsed_s, op_scope, hidden=None, calls=1
+    ):
         """Add one answered call's usage and cost to the counters (all-time and
-        `op_scope`'s), for a plain call and for a stream once it completes."""
+        `op_scope`'s), for a plain call and for a stream once it completes.
+
+        The tokens and cost of a reply are spent even when it fails to parse,
+        so they always count; `calls` counts successes only (pass `0` until
+        the reply is known to be valid), which is what `ErrorRate` divides by.
+        """
         usage = usage or {}
         hidden = hidden or {}
         prompt_tokens = int(usage.get("prompt_tokens") or 0)
@@ -1560,7 +1567,7 @@ class LanguageModel(Module):
         self.last_call_cache_creation_tokens = cache_creation
         self.last_call_reasoning_tokens = reasoning
         flat_increments = {
-            "calls": 1,
+            "calls": calls,
             "prompt_tokens": prompt_tokens,
             "completion_tokens": completion_tokens,
             "tokens": total_tokens,
@@ -1624,6 +1631,7 @@ class LanguageModel(Module):
                         elapsed_s,
                         op_scope,
                         getattr(response, "_hidden_params", None),
+                        calls=0,
                     )
                 if streaming:
                     return StreamingIterator(
@@ -1740,6 +1748,8 @@ class LanguageModel(Module):
                         json_instance["refusal"] = refusal
                     if audio:
                         json_instance["audio"] = audio
+                # A valid reply: only now is it a successful call.
+                self._record_event("calls")
                 return JsonDataModel(
                     json=json_instance,
                     schema=schema if schema else ChatMessage.get_schema(),
