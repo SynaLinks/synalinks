@@ -340,3 +340,24 @@ class CompileMetricsInputsTest(testing.TestCase):
         seen.clear()
         await cm.update_state_batch(answers, answers)
         self.assertEqual([x for x, _ in seen], [None, None, None])
+
+
+class MultiOutputNoLabelsTest(testing.TestCase):
+    async def test_judge_rewards_without_labels(self):
+        async def judge(y_true, y_pred):
+            return 1.0 if y_true is None and y_pred.get("answer") else 0.0
+
+        async def batch_judge(y_true, y_pred):
+            return [await judge(t, p) for t, p in zip(y_true, y_pred)]
+
+        y_pred = [
+            Answer(answer="a").to_json_data_model(),
+            Answer(answer="b").to_json_data_model(),
+        ]
+        reward = CompileReward(judge, output_names=["o1", "o2"])
+        self.assertEqual(await reward(None, y_pred), 2.0)
+
+        reward = CompileReward(
+            BatchRewardFunctionWrapper(fn=batch_judge), output_names=["o1", "o2"]
+        )
+        self.assertEqual(await reward.compute_batch([None], [y_pred]), [2.0])
