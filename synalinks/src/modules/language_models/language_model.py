@@ -288,6 +288,7 @@ def _set_if_unset(kwargs, values):
 
 SUPPORTED_PROVIDERS = (
     "anthropic",
+    "atlascloud",
     "azure",
     "bedrock",
     "cohere",
@@ -511,6 +512,25 @@ class LanguageModel(Module):
 
     language_model = synalinks.LanguageModel(
         model="bedrock/anthropic.claude-3-sonnet-20240229-v1:0",
+    )
+    ```
+
+    **Using Atlas Cloud models**
+
+    Atlas Cloud exposes an OpenAI-compatible API. The `atlascloud/`
+    prefix is rewritten to `openai/` internally and `api_base` is
+    defaulted to `https://api.atlascloud.ai/v1`, so structured outputs
+    flow through the standard OpenAI path. Set `ATLASCLOUD_API_KEY` (or
+    pass `api_key` / `api_base` explicitly to override).
+
+    ```python
+    import synalinks
+    import os
+
+    os.environ["ATLASCLOUD_API_KEY"] = "your-atlascloud-api-key"
+
+    language_model = synalinks.LanguageModel(
+        model="atlascloud/deepseek-ai/deepseek-v4-flash",
     )
     ```
 
@@ -781,6 +801,15 @@ class LanguageModel(Module):
             model = model.replace("ollama", "ollama_chat", 1)
         if model_provider == "vllm":
             model = model.replace("vllm", "hosted_vllm", 1)
+        if model_provider == "atlascloud":
+            # Atlas Cloud is OpenAI-compatible; route via litellm's `openai`
+            # provider with the Atlas Cloud endpoint as `api_base` and its
+            # own key variable rather than `OPENAI_API_KEY`.
+            model = model.replace("atlascloud", "openai", 1)
+            if not api_base:
+                api_base = "https://api.atlascloud.ai/v1"
+            if "api_key" not in default_kwargs and os.environ.get("ATLASCLOUD_API_KEY"):
+                default_kwargs["api_key"] = os.environ["ATLASCLOUD_API_KEY"]
         if model_provider == "doubleword":
             # Doubleword is OpenAI-compatible (strict JSON schema + same
             # request/response shape); route via litellm's `openai`
@@ -1772,7 +1801,7 @@ class LanguageModel(Module):
         These are the values accepted before the `/` in `model`, e.g.
         `"openai"` in `"openai/gpt-4o-mini"`. Some are routed to a different
         litellm provider internally (`ollama` to `ollama_chat`, `vllm` to
-        `hosted_vllm`, `doubleword` to `openai`, `mirai` and `sglang` to
+        `hosted_vllm`, `atlascloud` and `doubleword` to `openai`, `mirai` and `sglang` to
         `hosted_vllm`); the names listed here are the ones to write in `model`.
         Other litellm providers can still be used for plain chat completion, but
         structured output raises for them.
@@ -1821,10 +1850,11 @@ class LanguageModel(Module):
         """Returns the language models a provider offers.
 
         Self-hosted providers and open catalogs (Ollama, vLLM, SGLang, Mirai,
-        OpenRouter, Doubleword) are asked for the models they serve, keeping the Ollama
-        models that can chat. The others are listed from litellm's model table;
-        for OpenAI with `OPENAI_API_KEY` set, narrowed to the models the account
-        can use (with its fine-tuned models), from OpenAI's live list.
+        OpenRouter, Atlas Cloud, Doubleword) are asked for the models they
+        serve, keeping the Ollama models that can chat. The others are listed
+        from litellm's model table; for OpenAI with `OPENAI_API_KEY` set,
+        narrowed to the models the account can use (with its fine-tuned
+        models), from OpenAI's live list.
 
         ```python
         import synalinks
