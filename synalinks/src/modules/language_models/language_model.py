@@ -986,7 +986,11 @@ class LanguageModel(Module):
                     "model": self.model,
                     "messages": formatted_messages,
                     "schema": schema,
-                    "kwargs": {k: v for k, v in kwargs.items() if k != "stream"},
+                    "kwargs": {
+                        k: v
+                        for k, v in kwargs.items()
+                        if k not in ("stream", "stream_options")
+                    },
                 }
             )
             if cache_key is not None:
@@ -1382,7 +1386,8 @@ class LanguageModel(Module):
         if streaming and schema:
             streaming = False
         if streaming:
-            kwargs.update({"stream": True})
+            # Ask for the final usage chunk, so the stream's tokens and cost count.
+            kwargs.update({"stream": True, "stream_options": {"include_usage": True}})
         # Enable prompt caching for the system instructions
         # (that only change during training not inference)
         if provider in ("gemini", "anthropic") and formatted_messages:
@@ -1508,6 +1513,81 @@ class LanguageModel(Module):
             **kwargs,
         )
 
+    def _record_usage(self, usage, response_cost, elapsed_s, op_scope, hidden=None):
+        """Add one answered call's usage and cost to the counters (all-time and
+        `op_scope`'s), for a plain call and for a stream once it completes."""
+        usage = usage or {}
+        hidden = hidden or {}
+        prompt_tokens = int(usage.get("prompt_tokens") or 0)
+        completion_tokens = int(usage.get("completion_tokens") or 0)
+        total_tokens = int(
+            usage.get("total_tokens") or (prompt_tokens + completion_tokens)
+        )
+        prompt_details = _safe_get(usage, "prompt_tokens_details")
+        completion_details = _safe_get(usage, "completion_tokens_details")
+        server_tool = _safe_get(usage, "server_tool_use")
+        cached = _to_int(_safe_get(prompt_details, "cached_tokens"))
+        cache_creation = _to_int(_safe_get(prompt_details, "cache_creation_tokens"))
+        reasoning = _to_int(_safe_get(completion_details, "reasoning_tokens"))
+        extras = {}
+        for key in _PROMPT_DETAIL_KEYS:
+            v = _safe_get(prompt_details, key)
+            if v:
+                extras[f"prompt_{key}"] = v
+        cache_create_ttl = _safe_get(prompt_details, "cache_creation_token_details")
+        for key in _CACHE_CREATION_TTL_KEYS:
+            v = _safe_get(cache_create_ttl, key)
+            if v:
+                extras[f"cache_creation_{key}"] = v
+        for key in _COMPLETION_DETAIL_KEYS:
+            v = _safe_get(completion_details, key)
+            if v:
+                extras[f"completion_{key}"] = v
+        for key in _SERVER_TOOL_KEYS:
+            v = _safe_get(server_tool, key)
+            if v:
+                extras[f"server_{key}"] = v
+        overhead = (
+            hidden.get("litellm_overhead_time_ms") if isinstance(hidden, dict) else None
+        )
+        if overhead is not None:
+            extras["litellm_overhead_time_ms"] = overhead
+        self.last_call_prompt_tokens = prompt_tokens
+        self.last_call_completion_tokens = completion_tokens
+        self.last_call_tokens = total_tokens
+        self.last_call_elapsed_s = elapsed_s
+        self.last_call_cached_tokens = cached
+        self.last_call_cache_creation_tokens = cache_creation
+        self.last_call_reasoning_tokens = reasoning
+        flat_increments = {
+            "calls": 1,
+            "prompt_tokens": prompt_tokens,
+            "completion_tokens": completion_tokens,
+            "tokens": total_tokens,
+            "elapsed_s": elapsed_s,
+            "cached_tokens": cached,
+            "cache_creation_tokens": cache_creation,
+            "reasoning_tokens": reasoning,
+        }
+        if response_cost is not None:
+            flat_increments["cost"] = response_cost
+        _CURRENT_CALL_USAGE.set(
+            {
+                "input_tokens": prompt_tokens,
+                "output_tokens": completion_tokens,
+                "total_tokens": total_tokens,
+                "cache_read_input_tokens": cached,
+                "cache_creation_input_tokens": cache_creation,
+                "reasoning_tokens": reasoning,
+                "cost": response_cost,
+                "elapsed_s": elapsed_s,
+                "finish_reason": None,
+            }
+        )
+        _accumulate(self, "", flat_increments, extras)
+        if op_scope is not None:
+            _accumulate(self, f"{op_scope}_", flat_increments, extras)
+
     async def _call_with_retry(
         self, formatted_messages, schema, streaming, schema_had_thinking, **kwargs
     ):
@@ -1536,86 +1616,15 @@ class LanguageModel(Module):
                         response_cost = response._hidden_params["response_cost"]
                         if response_cost is not None:
                             self.last_call_cost = response_cost
-                # Streaming usage isn't known until the stream completes,
-                # so skip counter updates in that case.
+                # A stream's iterator records its usage once it completes.
                 if not streaming:
-                    usage = response.get("usage") or {}
-                    prompt_tokens = int(usage.get("prompt_tokens") or 0)
-                    completion_tokens = int(usage.get("completion_tokens") or 0)
-                    total_tokens = int(
-                        usage.get("total_tokens") or (prompt_tokens + completion_tokens)
+                    self._record_usage(
+                        response.get("usage"),
+                        response_cost,
+                        elapsed_s,
+                        op_scope,
+                        getattr(response, "_hidden_params", None),
                     )
-                    prompt_details = _safe_get(usage, "prompt_tokens_details")
-                    completion_details = _safe_get(usage, "completion_tokens_details")
-                    server_tool = _safe_get(usage, "server_tool_use")
-                    hidden = getattr(response, "_hidden_params", None) or {}
-                    cached = _to_int(_safe_get(prompt_details, "cached_tokens"))
-                    cache_creation = _to_int(
-                        _safe_get(prompt_details, "cache_creation_tokens")
-                    )
-                    reasoning = _to_int(_safe_get(completion_details, "reasoning_tokens"))
-                    extras = {}
-                    for key in _PROMPT_DETAIL_KEYS:
-                        v = _safe_get(prompt_details, key)
-                        if v:
-                            extras[f"prompt_{key}"] = v
-                    cache_create_ttl = _safe_get(
-                        prompt_details, "cache_creation_token_details"
-                    )
-                    for key in _CACHE_CREATION_TTL_KEYS:
-                        v = _safe_get(cache_create_ttl, key)
-                        if v:
-                            extras[f"cache_creation_{key}"] = v
-                    for key in _COMPLETION_DETAIL_KEYS:
-                        v = _safe_get(completion_details, key)
-                        if v:
-                            extras[f"completion_{key}"] = v
-                    for key in _SERVER_TOOL_KEYS:
-                        v = _safe_get(server_tool, key)
-                        if v:
-                            extras[f"server_{key}"] = v
-                    overhead = (
-                        hidden.get("litellm_overhead_time_ms")
-                        if isinstance(hidden, dict)
-                        else None
-                    )
-                    if overhead is not None:
-                        extras["litellm_overhead_time_ms"] = overhead
-                    self.last_call_prompt_tokens = prompt_tokens
-                    self.last_call_completion_tokens = completion_tokens
-                    self.last_call_tokens = total_tokens
-                    self.last_call_elapsed_s = elapsed_s
-                    self.last_call_cached_tokens = cached
-                    self.last_call_cache_creation_tokens = cache_creation
-                    self.last_call_reasoning_tokens = reasoning
-                    flat_increments = {
-                        "calls": 1,
-                        "prompt_tokens": prompt_tokens,
-                        "completion_tokens": completion_tokens,
-                        "tokens": total_tokens,
-                        "elapsed_s": elapsed_s,
-                        "cached_tokens": cached,
-                        "cache_creation_tokens": cache_creation,
-                        "reasoning_tokens": reasoning,
-                    }
-                    if response_cost is not None:
-                        flat_increments["cost"] = response_cost
-                    _CURRENT_CALL_USAGE.set(
-                        {
-                            "input_tokens": prompt_tokens,
-                            "output_tokens": completion_tokens,
-                            "total_tokens": total_tokens,
-                            "cache_read_input_tokens": cached,
-                            "cache_creation_input_tokens": cache_creation,
-                            "reasoning_tokens": reasoning,
-                            "cost": response_cost,
-                            "elapsed_s": elapsed_s,
-                            "finish_reason": None,
-                        }
-                    )
-                    _accumulate(self, "", flat_increments, extras)
-                    if op_scope is not None:
-                        _accumulate(self, f"{op_scope}_", flat_increments, extras)
                 if streaming:
                     return StreamingIterator(
                         response,
@@ -2007,6 +2016,7 @@ class StreamingIterator:
     When `language_model` and `request_start` are provided, the iterator times
     each consumed stream and, once exhausted, records two latencies onto the
     LM's operational counters (all-time + the phase captured at request time):
+    the call itself, with the usage and cost of the final usage chunk, then
     time-to-first-token (request start -> first non-empty chunk) and
     time-to-last-token (request start -> final non-empty chunk). These drive
     the `AvgTimeToFirstToken` / `AvgTimeToLastToken` metrics. A stream that the
@@ -2043,6 +2053,9 @@ class StreamingIterator:
         self._content_parts = []
         self._reasoning_parts = []
         self._on_complete = None
+        # The final usage chunk (`stream_options.include_usage`).
+        self._usage = None
+        self._cost = None
 
     def __aiter__(self):
         return self
@@ -2072,7 +2085,29 @@ class StreamingIterator:
             return
         self._recorded = True
         lm = self._language_model
-        if lm is None or self._request_start is None or self._first_token_time is None:
+        if lm is None or self._request_start is None:
+            return
+        cost = self._cost
+        if cost is None:
+            hidden = getattr(self._iterator, "_hidden_params", None) or {}
+            cost = hidden.get("response_cost")
+        if cost is None and self._usage:
+            try:
+                cost = sum(
+                    litellm.cost_per_token(
+                        model=lm.model,
+                        prompt_tokens=int(self._usage.get("prompt_tokens") or 0),
+                        completion_tokens=int(self._usage.get("completion_tokens") or 0),
+                    )
+                )
+            except Exception:  # noqa: BLE001
+                cost = None  # A model litellm has no price for.
+        if cost is not None:
+            lm.last_call_cost = cost
+        lm._record_usage(
+            self._usage, cost, time.perf_counter() - self._request_start, self._op_scope
+        )
+        if self._first_token_time is None:
             return
         increments = {
             "streaming_calls": 1,
@@ -2101,6 +2136,13 @@ class StreamingIterator:
                 self._record_latencies()
                 self._fire_on_complete()
                 raise StopAsyncIteration
+            usage = _safe_get(chunk, "usage")
+            if usage:
+                self._usage = usage
+                hidden = getattr(chunk, "_hidden_params", None) or {}
+                self._cost = hidden.get("response_cost", self._cost)
+            if not chunk.get("choices"):
+                continue  # The usage-only chunk.
             delta = chunk["choices"][0].get("delta") or {}
             content = delta.get("content")
             thinking = delta.get("reasoning_content")

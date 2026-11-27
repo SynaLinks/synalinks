@@ -522,6 +522,9 @@ class CompileReward(rewards_module.Reward):
             )
 
     def build(self, y_true, y_pred):
+        if y_true is None:
+            # No labels: every output is graded without a target (a judge).
+            y_true = tree.map_structure(lambda _: None, y_pred)
         reward = self._user_reward
         reward_weights = self._user_reward_weights
         flat_output_names = self.output_names
@@ -664,7 +667,10 @@ class CompileReward(rewards_module.Reward):
         totals = [0.0] * n
 
         def resolve_path(path, obj):
+            # A missing target (no labels) or a failed prediction is None.
             for _path in path:
+                if obj is None:
+                    return None
                 obj = obj[_path]
             return obj
 
@@ -700,6 +706,8 @@ class CompileReward(rewards_module.Reward):
             return await self.call(y_true, y_pred, x=x)
 
     async def call(self, y_true, y_pred, x=None):
+        if y_true is None:
+            y_true = tree.map_structure(lambda _: None, y_pred)
         if not tree.is_nested(y_true) and not tree.is_nested(y_pred):
             # Fast path: single output case / no reward-tracking metric.
             if not self.built:
@@ -783,7 +791,10 @@ class CompileReward(rewards_module.Reward):
         reward_values = []
 
         def resolve_path(path, object):
+            # A missing target (no labels) or a failed prediction is None.
             for _path in path:
+                if object is None:
+                    return None
                 object = object[_path]
             return object
 

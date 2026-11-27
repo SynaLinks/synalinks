@@ -197,6 +197,17 @@ class DecisionModelTest(testing.TestCase):
         await decision_model(ticket("Hi"), schema=Billing.get_schema())
         self.assertAlmostEqual(decision_model.cumulated_cost, 0.1)
 
+    async def test_malformed_answer_is_billed_not_a_call(self):
+        """A malformed answer was still billed: its tokens and cost count, but
+        it is a failed call, not a successful one."""
+        decision_model = DecisionModel(model="typesafe/jev-latest")
+        mock_decision_model(decision_model, {})
+        self.assertIsNone(await decision_model(ticket("Hi"), schema=Billing.get_schema()))
+        self.assertEqual(decision_model.cumulated_calls, 0)
+        self.assertEqual(decision_model.cumulated_failed_calls, 1)
+        self.assertEqual(decision_model.cumulated_tokens, 110)
+        self.assertAlmostEqual(decision_model.cumulated_cost, 100 * 0.042e-6)
+
     async def test_retry_on_rate_limit(self):
         decision_model = DecisionModel(model="typesafe/jev-latest", retry=3)
         payloads = mock_decision_model(decision_model, 429, 529, ANSWERS)
@@ -795,6 +806,22 @@ class DefaultDecisionModelTest(testing.TestCase):
 
         rubrics = synalinks.rewards.RubricsAsJudge(rubrics="faithfulness")
         self.assertIs(rubrics.program.decision_model, self.default)
+
+    def test_a_score_type_asks_for_a_language_model(self):
+        """A requested scale is a language model's: the default decision model
+        (which grades on its own levels) does not apply, as in RubricsAsJudge."""
+        self_critique = synalinks.SelfCritique(score_type="Rating")
+        self.assertIsNone(self_critique.decision_model)
+        judge = synalinks.rewards.LMAsJudge(score_type="Rating")
+        self.assertIsNone(judge.program.critique.decision_model)
+        self.assertEqual(judge.program.critique.score_type, synalinks.Rating)
+        with self.assertRaisesRegex(ValueError, "score_type"):
+            synalinks.SelfCritique(decision_model=self.default, score_type="Rating")
+
+    def test_decision_model_self_critique_reloads(self):
+        self_critique = synalinks.SelfCritique(decision_model=self.default)
+        restored = synalinks.SelfCritique.from_config(self_critique.get_config())
+        self.assertEqual(restored.decision_model.model, self.default.model)
 
     def test_explicit_models_win(self):
         other = DecisionModel(model="typesafe/jev-1.13.0")

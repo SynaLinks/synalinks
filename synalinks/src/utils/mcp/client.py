@@ -86,9 +86,9 @@ class MultiServerMCPClient:
         connections = connections or {}
 
         if connections:
-            assert len(set(connections.keys())) == len(connections), (
-                "MCP server names in the connections mapping must be unique."
-            )
+            assert len(set(connections.keys())) == len(
+                connections
+            ), "MCP server names in the connections mapping must be unique."
 
         self.connections: dict[str, Connection] = connections
 

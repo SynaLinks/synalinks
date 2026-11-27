@@ -536,14 +536,10 @@ def plot_history_comparison_with_mean_and_std(
                 f"Values for condition '{condition}' must be a list of History objects"
             )
         if not history_comparison_dict[condition]:
-            raise ValueError(
-                f"History list for condition '{condition}' cannot be empty"
-            )
+            raise ValueError(f"History list for condition '{condition}' cannot be empty")
 
     # Get metric names from first condition's first history
-    all_metric_names = list(
-        history_comparison_dict[condition_names[0]][0].history.keys()
-    )
+    all_metric_names = list(history_comparison_dict[condition_names[0]][0].history.keys())
 
     # Validate consistency across all conditions and histories
     for condition in condition_names:

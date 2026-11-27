@@ -112,7 +112,24 @@ class PythonUtilsTest(testing.TestCase):
 
     def test_pythonify_logs_nested(self):
         result = pythonify_logs({"outer": {"inner_a": 1, "inner_b": 2}})
-        self.assertEqual(result, {"inner_a": 1.0, "inner_b": 2.0})
+        self.assertEqual(result, {"outer_inner_a": 1.0, "outer_inner_b": 2.0})
+
+    def test_pythonify_logs_per_label_results_do_not_collide(self):
+        result = pythonify_logs(
+            {
+                "categorical_accuracy": {"cat": 0.5, "dog": 0.5},
+                "categorical_f1_score": {"cat": 0.0, "dog": 0.75},
+            }
+        )
+        self.assertEqual(
+            result,
+            {
+                "categorical_accuracy_cat": 0.5,
+                "categorical_accuracy_dog": 0.5,
+                "categorical_f1_score_cat": 0.0,
+                "categorical_f1_score_dog": 0.75,
+            },
+        )
 
     def test_pythonify_logs_non_numeric(self):
         result = pythonify_logs({"key": "not_a_number"})

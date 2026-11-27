@@ -142,8 +142,7 @@ class FBetaScore(Metric):
 
         if y_true is None:
             return
-        # A leaf missing on one side (a failed prediction misses them all)
-        # scores as an empty string.
+        # A leaf missing on one side (or a failed prediction) scores as "".
         fields, y_true, y_pred = align_leaves(y_true, y_pred, fill="")
 
         true_positives = []
@@ -463,9 +462,7 @@ class BinaryFBetaScore(FBetaScore):
 
         if y_true is None:
             return
-        # A leaf missing on one side (a failed prediction misses them all)
-        # counts as 0: an extra pred leaf is a false positive, a missing one a
-        # false negative.
+        # A missing leaf counts as 0: a false positive or a false negative.
         fields, y_true, y_pred = align_leaves(y_true, y_pred, fill=False)
         y_true = np.convert_to_tensor([convert_to_binary(v) for v in y_true])
         y_pred = np.convert_to_tensor([convert_to_binary(v) for v in y_pred])

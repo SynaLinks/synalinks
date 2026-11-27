@@ -17,6 +17,7 @@ so subclasses can sum across them.
 """
 
 from synalinks.src.api_export import synalinks_export
+from synalinks.src.backend.common.op_scope import read_phase_wall_clock_s
 from synalinks.src.metrics.metric import Metric
 from synalinks.src.metrics.metrics_utils import embedding_models
 from synalinks.src.metrics.metrics_utils import language_models
@@ -59,6 +60,8 @@ class ProgramOperationalMetric(Metric):
         self._embedding_models = []
         self._program_baselines = {suffix: 0 for suffix in _PROGRAM_SUFFIXES}
         self._model_cost_baseline = 0.0
+        self._wall_baseline = 0.0
+        self._phase_clock = None
 
     @property
     def program(self):
@@ -76,6 +79,7 @@ class ProgramOperationalMetric(Metric):
         self._program = program
         self._language_models = language_models(program)
         self._embedding_models = embedding_models(program)
+        self._phase_clock = getattr(program, "_phase_clock", None)
         self._snapshot()
 
     def _attr(self, suffix):
@@ -96,6 +100,7 @@ class ProgramOperationalMetric(Metric):
         for suffix in _PROGRAM_SUFFIXES:
             self._program_baselines[suffix] = self._read_program(suffix)
         self._model_cost_baseline = self._read_model_cost()
+        self._wall_baseline = read_phase_wall_clock_s(self._phase, self._phase_clock)
 
     def _delta_program(self, suffix):
         return self._read_program(suffix) - self._program_baselines.get(suffix, 0)
@@ -186,17 +191,20 @@ class ProgramCallsPerSecond(ProgramOperationalMetric):
         super().__init__(name=name)
 
     def result(self):
-        elapsed = self._delta_program("invocation_elapsed_s")
-        if elapsed <= 0.0:
+        # Wall clock, not summed per-call time: batch calls run concurrently.
+        wall = read_phase_wall_clock_s(self._phase, self._phase_clock)
+        wall -= self._wall_baseline
+        if wall <= 0.0:
             return 0.0
-        return self._delta_program("invocations") / elapsed
+        return self._delta_program("invocations") / wall
 
 
 @synalinks_export("synalinks.metrics.ProgramCost")
 class ProgramCost(ProgramOperationalMetric):
     """Total provider cost (USD, as reported by litellm) across every LM
-    and EM reached from the program for this run. The program object
-    itself doesn't pay providers; cost is summed from its bound models.
+    and EM reached from the program for this run, in every phase: the
+    program's own calls, its judge's (reward) and its optimizer's. The program
+    object itself doesn't pay providers; cost is summed from its bound models.
 
     Example:
 
@@ -212,13 +220,18 @@ class ProgramCost(ProgramOperationalMetric):
     def __init__(self, name="program_cost"):
         super().__init__(name=name)
 
+    def _read_model_cost(self):
+        models = self._language_models + self._embedding_models
+        return sum(getattr(model, "cumulated_cost", 0) for model in models)
+
     def result(self):
         return float(self._delta_model_cost())
 
 
 @synalinks_export("synalinks.metrics.ProgramAvgCostPerInvocation")
 class ProgramAvgCostPerInvocation(ProgramOperationalMetric):
-    """Average provider cost per program invocation.
+    """Average provider cost per program invocation: the cost of the
+    program's own calls (inference), without its judge's or optimizer's.
 
     Example:
 

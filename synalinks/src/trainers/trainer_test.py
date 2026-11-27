@@ -793,3 +793,107 @@ class TestRewardInputs(testing.TestCase):
         self.assertEqual(
             sorted(nested.seen), [(q, f"re {q}", f"re {q}") for q in questions]
         )
+
+
+class EchoReply(modules.Module):
+    async def call(self, inputs, training=False):
+        return Reply(reply=inputs.get("question")).to_json_data_model()
+
+    async def compute_output_spec(self, inputs, training=False):
+        return Reply.to_symbolic_data_model()
+
+
+class TestMultiOutputRewards(testing.TestCase):
+    async def test_per_output_rewards_compile_and_evaluate(self):
+        x = np.array([Question(question="a"), Question(question="b")], dtype=object)
+        y = np.empty((2,), dtype=object)
+        y[0] = [Reply(reply="a"), Reply(reply="z")]
+        y[1] = [Reply(reply="b"), Reply(reply="b")]
+        for reward, weights in (
+            ([rewards.ExactMatch(), rewards.ExactMatch()], [1.0, 3.0]),
+            ({"o1": rewards.ExactMatch(), "o2": rewards.ExactMatch()}, None),
+        ):
+            inputs = modules.Input(data_model=Question)
+            outputs = [
+                await EchoReply(name="o1")(inputs),
+                await EchoReply(name="o2")(inputs),
+            ]
+            program = programs.Program(inputs=inputs, outputs=outputs)
+            if weights is None:
+                weights = {"o1": 1.0, "o2": 3.0}
+            program.compile(reward=reward, reward_weights=weights)
+            result = await program.evaluate(
+                x=x, y=y, batch_size=2, verbose=0, return_dict=True
+            )
+            # Per sample: 1 + 3 * 0 and 1 + 3 * 1.
+            self.assertAlmostEqual(result["reward"], 2.5)
+            self.assertAlmostEqual(result["o2_reward"], 0.5)
+            self.assertEqual(
+                program._per_sample_targets[0], [{"reply": "a"}, {"reply": "z"}]
+            )
+
+
+class TestCompileSubProgram(testing.TestCase):
+    async def test_compile_untracks_the_sub_program_own_metrics(self):
+        """Compiling an outer program clears the metrics of the programs it
+        contains and untracks them from those programs' own trackers, so a
+        cleared metric can be tracked again."""
+        language_model = LanguageModel(model="ollama/mistral")
+
+        class Inner(programs.Program):
+            def __init__(self):
+                super().__init__(name="inner")
+                self.answer = modules.Generator(
+                    data_model=AnswerWithRationale, language_model=language_model
+                )
+                self.seen = metrics.Mean(name="seen")
+
+            async def call(self, inputs, training=False):
+                return await self.answer(inputs)
+
+        inner = Inner()
+        inner.compile(reward=rewards.ExactMatch())
+        inputs = modules.Input(data_model=Query)
+        outer = programs.Program(inputs=inputs, outputs=await inner(inputs))
+        outer.compile(reward=rewards.ExactMatch())
+        self.assertEqual(inner._metrics, [])
+        inner.seen_again = inner.seen
+        self.assertEqual([m.name for m in inner._metrics], ["seen"])
+
+
+class TestEvaluateOperationalMetrics(testing.TestCase):
+    @patch("litellm.acompletion")
+    async def test_build_batch_is_counted(self, mock_completion):
+        """`evaluate` scores the batch it auto-builds on, so that batch's tokens
+        and program calls count too, on every `evaluate` of a program that
+        never becomes fully built."""
+        answer = json.dumps({"rationale": "r", "answer": "Paris"})
+        mock_completion.return_value = {
+            "choices": [{"message": {"content": answer}}],
+            "usage": {"prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15},
+        }
+        language_model = LanguageModel(model="ollama/mistral")
+
+        class ProgramWithAnUntakenPath(programs.Program):
+            def __init__(self):
+                super().__init__()
+                self.answer = modules.Generator(
+                    data_model=AnswerWithRationale, language_model=language_model
+                )
+                self.fallback = modules.Generator(
+                    data_model=AnswerWithRationale, language_model=language_model
+                )
+
+            async def call(self, inputs, training=False):
+                return await self.answer(inputs)
+
+        program = ProgramWithAnUntakenPath()
+        program.compile(
+            reward=rewards.ExactMatch(in_mask=["answer"]),
+            metrics=[metrics.TotalTokens(), metrics.ProgramCalls()],
+        )
+        (_, _), (x, y) = load_test_data()
+        for _ in range(2):
+            logs = await program.evaluate(x=x, y=y, batch_size=4, verbose=0)
+            self.assertEqual(logs["program_calls"], len(x))
+            self.assertEqual(logs["total_tokens"], 15 * len(x))

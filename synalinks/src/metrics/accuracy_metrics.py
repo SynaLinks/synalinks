@@ -119,8 +119,7 @@ class Accuracy(Metric):
 
         if y_true is None:
             return
-        # A leaf missing on one side (a failed prediction misses them all)
-        # scores as an empty string.
+        # A leaf missing on one side (or a failed prediction) scores as "".
         fields, y_true, y_pred = align_leaves(y_true, y_pred, fill="")
 
         correct = []
@@ -316,8 +315,7 @@ class BinaryAccuracy(Accuracy):
 
         if y_true is None:
             return
-        # A leaf missing on one side (a failed prediction misses them all) is
-        # None, which never equals a 0.0/1.0 leaf.
+        # A missing leaf is None, which never equals a 0.0/1.0 leaf.
         fields, y_true, y_pred = align_leaves(y_true, y_pred)
         y_true = [None if v is None else convert_to_binary(v) for v in y_true]
         y_pred = [None if v is None else convert_to_binary(v) for v in y_pred]

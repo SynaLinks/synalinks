@@ -1083,7 +1083,8 @@ class Monitor(Callback):
         the batch's predictions came from the auto-build pass that ran before
         the run started) nothing is logged.
         """
-        if self._run is None or self.program is None:
+        # A batch that never began has no traces of its own.
+        if self._run is None or self.program is None or self._trace_mark is None:
             return
         rewards = getattr(self.program, "_per_sample_rewards", None)
         trace_ids = monitor_hook.root_trace_ids_since(self._trace_mark)
