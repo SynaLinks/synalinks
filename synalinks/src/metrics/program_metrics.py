@@ -223,7 +223,8 @@ class ProgramCost(ProgramOperationalMetric):
 
 @synalinks_export("synalinks.metrics.ProgramAvgCostPerInvocation")
 class ProgramAvgCostPerInvocation(ProgramOperationalMetric):
-    """Average provider cost per program invocation.
+    """Average provider cost per program invocation: the cost of the
+    program's own calls (inference), without its judge's or optimizer's.
 
     Example:
 
