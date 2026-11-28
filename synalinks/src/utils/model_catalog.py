@@ -3,8 +3,8 @@
 environment variables each one needs, the models it serves and their info.
 
 Hosted providers list their models from litellm's model table. Self-hosted
-ones (Ollama, vLLM, SGLang...) and open catalogs (OpenRouter, Doubleword) are asked
-for the models they actually serve.
+ones (Ollama, vLLM, SGLang...) and open catalogs (OpenRouter, Doubleword,
+MartLLM) are asked for the models they actually serve.
 """
 
 import asyncio
@@ -122,6 +122,11 @@ PROVIDERS = {
         "server": OPENAI_COMPATIBLE,
     },
     "together_ai": {"env": [env_var("TOGETHERAI_API_KEY")]},
+    "martllm": {
+        "env": [env_var("OPENAI_API_KEY")],
+        "default_api_base": "https://api.martllm.com/v1",
+        "server": OPENAI_COMPATIBLE,
+    },
     "vertex_ai": {
         "env": [
             env_var("VERTEXAI_PROJECT", secret=False),

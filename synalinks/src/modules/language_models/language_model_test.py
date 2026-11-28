@@ -1298,6 +1298,7 @@ class SupportedProvidersTest(testing.TestCase):
             "openrouter",
             "sglang",
             "together_ai",
+            "martllm",
             "vllm",
             "xai",
         ):
@@ -1342,6 +1343,35 @@ class SupportedProvidersTest(testing.TestCase):
         self.assertEqual(called["response_format"]["type"], "json_schema")
         self.assertTrue(called["response_format"]["json_schema"]["strict"])
         # Not routed through OpenRouter: no provider preferences are added.
+        self.assertNotIn("provider", called)
+
+    def test_martllm_is_a_provider_listed_from_its_server(self):
+        info = LanguageModel.provider_info("martllm")
+        self.assertEqual(
+            [(v["name"], v["required"], v["secret"]) for v in info["env"]],
+            [("OPENAI_API_KEY", True, True)],
+        )
+        self.assertEqual(info["default_api_base"], "https://api.martllm.com/v1")
+        self.assertEqual(info["lists_models_from"], "server")
+
+    @patch("litellm.acompletion")
+    async def test_martllm_structured_output_sends_a_strict_json_schema(
+        self, mock_completion
+    ):
+        class Answer(DataModel):
+            answer: str
+
+        lm = LanguageModel(model="martllm/meta-llama/llama-3.3-70b-instruct")
+        self.assertEqual(lm.model, "openai/meta-llama/llama-3.3-70b-instruct")
+        mock_completion.return_value = {
+            "choices": [{"message": {"content": '{"answer": "B"}'}}]
+        }
+        result = await lm(_chat_messages(), schema=Answer.get_schema())
+        self.assertEqual(result.get_json(), {"answer": "B"})
+        called = mock_completion.call_args.kwargs
+        self.assertEqual(called["api_base"], "https://api.martllm.com/v1")
+        self.assertEqual(called["response_format"]["type"], "json_schema")
+        self.assertTrue(called["response_format"]["json_schema"]["strict"])
         self.assertNotIn("provider", called)
 
     @patch("litellm.acompletion")
